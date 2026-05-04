@@ -105,7 +105,7 @@ Phần này cần định nghĩa rõ vì nhiều bài dùng lẫn lộn:
 - Auto-grading code: Phung et al., 2023 (SIGCSE); Cipriano & Alves, 2023.
 - Content generation (bài tập, giáo án): Malinka et al., 2023; Doughty et al., 2024 (L@S).
 - Rủi ro & ethics: academic integrity, bias, over-reliance (Baidoo-Anu & Owusu Ansah, 2023).
-- **Gap**: hầu hết dùng commercial LLM (GPT-4), không local; không có multi-agent; không HITL rõ ràng → khoảng trống hệ thống đề xuất lấp.
+- **Gap**: nhiều hệ thống giáo dục dùng commercial LLM hoặc chatbot/RAG tổng quát; các thành phần như retrieval, agent workflow, verifier, HITL và ràng buộc sư phạm đã có tiền lệ riêng lẻ. Khoảng trống của đề tài là thiếu một cấu hình tích hợp được đánh giá có kiểm soát cho tác vụ sư phạm kỹ thuật, chạy trên local small LLM, dùng dữ liệu giáo viên nội bộ và có ablation để tách đóng góp của typed workflow, verifier/repair và pedagogical constraints.
 
 ## 3.12 Nền tảng sư phạm
 
@@ -116,7 +116,9 @@ Phần này cần định nghĩa rõ vì nhiều bài dùng lẫn lộn:
 
 ## 3.13 Khoảng trống & định vị hệ thống
 
-Bảng so sánh tổng hợp: hệ thống đề xuất vs các công trình liên quan trên các chiều: local LLM / multi-agent / HITL / domain plugin / pedagogical awareness / desktop deployment / memory layers / guardrails.
+Bảng so sánh tổng hợp: hệ thống đề xuất vs các công trình liên quan trên các chiều: local LLM / agentic workflow / verifier-guided repair / HITL / domain plugin / pedagogical awareness / desktop deployment / memory layers / guardrails.
+
+Phần này phải nêu rõ: đề tài không claim từng chiều trong bảng là mới; đóng góp nằm ở cấu hình tích hợp TTG-ARAG cho bối cảnh sư phạm kỹ thuật local small LLM và cách đánh giá controlled comparison + ablation.
 
 ---
 

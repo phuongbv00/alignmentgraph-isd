@@ -4,6 +4,8 @@
 
 Hệ thống **không coupling** với một chuyên ngành cụ thể. Thiết kế theo mô hình **domain-agnostic core + domain-specific plugin** để giáo viên Lập trình, Điện tử, Cơ khí, ... đều sử dụng được.
 
+Lưu ý về định vị đóng góp: các thành phần như LangGraph, typed schema, verifier, retry/repair, HITL và domain plugin không được trình bày như phát minh mới độc lập. Chương này tập trung vào cách tích hợp các kỹ thuật đó thành một workflow sư phạm có kiểm chứng, phù hợp với local small LLM và dữ liệu giáo viên nội bộ.
+
 ### Core (domain-agnostic)
 
 - **LLM local**: Gemma 4 E2B / E4B (edge-optimized, chạy máy thường). Serve qua **llama.cpp** (nhúng trực tiếp, không cần cài riêng — phù hợp đóng gói Electron).
@@ -158,7 +160,7 @@ Bảng dưới minh họa sự khác biệt không thể share qua ba domain k�
 
 ## 4.4 Typed Task Graph Orchestration
 
-Core không định nghĩa một tập 4 agent cố định. Thay vào đó, hệ thống dùng **Supervisor Orchestrator** để phân tích yêu cầu giáo viên, chọn graph template phù hợp và thực thi các node theo thứ tự có kiểm soát. Mỗi node có thể gọi một role-scoped sub-agent invocation của cùng local LLM, với prompt, tool access, retrieval policy và output schema riêng.
+Typed task graph trong hệ thống là một lựa chọn thiết kế để kiểm soát agentic workflow, không phải claim thuật toán mới. Core không định nghĩa một tập 4 agent cố định. Thay vào đó, hệ thống dùng **Supervisor Orchestrator** để phân tích yêu cầu giáo viên, chọn graph template phù hợp và thực thi các node theo thứ tự có kiểm soát. Mỗi node có thể gọi một role-scoped sub-agent invocation của cùng local LLM, với prompt, tool access, retrieval policy và output schema riêng.
 
 **Task node contract**:
 
@@ -246,7 +248,7 @@ Sub-agent trong luận văn được định nghĩa thực dụng: **một lần
 
 ### Verification-guided repair loop
 
-Retry không dùng prompt chung kiểu "try again". Mỗi verifier trả lỗi có cấu trúc để Supervisor quyết định sửa thành phần nào:
+Verification-guided repair kế thừa ý tưởng kiểm chứng và tự sửa lỗi trong các hệ thống agent/code generation, nhưng được giới hạn vào các component sư phạm-kỹ thuật cụ thể. Retry không dùng prompt chung kiểu "try again". Mỗi verifier trả lỗi có cấu trúc để Supervisor quyết định sửa thành phần nào:
 
 ```python
 class VerificationError(BaseModel):

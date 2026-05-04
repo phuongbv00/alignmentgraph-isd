@@ -24,7 +24,7 @@
 
 ### Thiết kế thực nghiệm cho EQ1
 
-Controlled comparison: **cùng LLM + cùng corpus + cùng queries**; chỉ thay đổi kiến trúc hệ thống.
+Controlled comparison: **cùng LLM + cùng corpus + cùng queries**; chỉ thay đổi kiến trúc hệ thống. Mục tiêu là đánh giá giá trị của cấu hình tích hợp TTG-ARAG trong bối cảnh sư phạm kỹ thuật local small LLM, không phải chứng minh typed graph, verifier hay pedagogical constraints là kỹ thuật mới độc lập.
 
 **Bảng đảm bảo fairness** — mọi variant giữ nguyên các yếu tố nền tảng dưới đây, chỉ thay đổi cơ chế orchestration/verification:
 
@@ -39,7 +39,7 @@ Controlled comparison: **cùng LLM + cùng corpus + cùng queries**; chỉ thay 
 | **Số lần retry**      | Tối đa 2 retry per task; riêng ablation sẽ bật/tắt targeted repair |
 | **Prompt budget**     | System prompt ≤ 512 token; retrieved context ≤ 2 048 token; instruction ≤ 256 token |
 
-> Các variant agentic phải lock cùng model, corpus, retriever, tool implementation, context length và temperature. Khác biệt chính chỉ nằm ở: generic ReAct loop, fixed multi-agent pipeline, hay typed task graph có verifier/constraint.
+> Các variant agentic phải lock cùng model, corpus, retriever, tool implementation, context length và temperature. Khác biệt chính chỉ nằm ở cách tổ chức workflow: generic ReAct loop, fixed multi-agent pipeline, hay typed task graph có verifier/constraint/targeted repair.
 
 _Tầng 1 — Comparison study_ (trả lời trực tiếp EQ1):
 
@@ -49,9 +49,9 @@ _Tầng 1 — Comparison study_ (trả lời trực tiếp EQ1):
 | **Naive RAG** | top-k vector search + LLM generate; không agent loop | Đo giá trị của retrieval |
 | **Generic ReAct ARAG** | 1 ReAct agent tự do, có retrieval/tool access, không typed graph | Baseline giống agent platform tổng quát |
 | **Fixed MA-ARAG** | Pipeline nhiều role cố định: planner/generator/grader/reviewer | Kiểm tra liệu chia role thủ công đã đủ chưa |
-| **TTG-ARAG** | Typed Task Graph + verifier + pedagogy constraints + targeted repair | Hệ thống đề xuất |
+| **TTG-ARAG** | Typed Task Graph + verifier + pedagogy constraints + targeted repair | Cấu hình tích hợp đề xuất |
 
-_Tầng 2 — Ablation study_ (giải thích tại sao TTG-ARAG hoạt động):
+_Tầng 2 — Ablation study_ (giải thích phần nào trong cấu hình tích hợp tạo ra khác biệt):
 
 | Variant | Thành phần bỏ/thay đổi | Câu hỏi ablation |
 | --- | --- | --- |
@@ -86,4 +86,4 @@ Tất cả: latency end-to-end (ms) + VRAM peak (MB) + số LLM calls + số ret
 - Significance matrix: heatmap p-value giữa các cặp.
 - Per-task insight: TTG-ARAG dự kiến win rõ nhất ở Task B/C, nơi verifier và targeted repair có tín hiệu khách quan.
 - Error analysis: ≥ 30 output thất bại phân loại (hallucination, off-Bloom, unsupported citation, code không compile, test thiếu edge case, feedback thiếu giải thích).
-- Ablation contribution chart: bar chart ∆ score khi bỏ typed schemas, verifier, targeted repair, pedagogical constraints.
+- Ablation contribution chart: bar chart ∆ score khi bỏ typed schemas, verifier, targeted repair, pedagogical constraints; diễn giải như đóng góp thực nghiệm của từng thành phần trong cấu hình, không diễn giải như novelty thuật toán.

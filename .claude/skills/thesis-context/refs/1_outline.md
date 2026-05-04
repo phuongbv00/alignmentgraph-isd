@@ -5,6 +5,7 @@
 - Bối cảnh: giáo viên/giảng viên kỹ thuật mất nhiều giờ cho tác vụ lặp; LLM thương mại có rủi ro dữ liệu.
 - Vấn đề: RAG tổng quát / generic ReAct Agentic RAG chưa tối ưu cho tác vụ sư phạm, đặc biệt khi ràng buộc local LLM nhỏ.
 - Phạm vi: hệ thống desktop hỗ trợ giáo viên kỹ thuật, kiến trúc core + plugin, plugin đầu tiên cho CNTT.
+- Định vị đóng góp: không claim từng cơ chế là mới; nhấn mạnh cấu hình tích hợp TTG-ARAG cho sư phạm kỹ thuật local small LLM và kiểm chứng bằng ablation.
 - Mục tiêu và EQ (xem [0_context.md](refs/0_context.md)).
 - Bố cục luận văn.
 
@@ -67,14 +68,14 @@ Tóm tắt cấu trúc:
 
 **Đóng góp dự kiến** (cập nhật thành "đóng góp được xác nhận" sau khi có kết quả thực nghiệm):
 
-1. **Typed Task Graph Orchestration cho giáo dục kỹ thuật**: workflow sư phạm được mô hình hóa thành graph node có schema, tool scope, retrieval policy, verifier, retry policy và stop condition.
-2. **Verification-Guided Retry/Repair trên local small LLM**: lỗi từ verifier được cấu trúc hóa để sửa đúng component lỗi thay vì regenerate toàn bộ output.
-3. **Pedagogy-Constrained Agentic RAG**: tích hợp Bloom alignment, constructive alignment, citation coverage, rubric consistency, misconception mapping, feedback policy và HITL vào pipeline sinh nội dung.
-4. **Bộ benchmark sư phạm tự xây**: 130 sample (giáo án / bài tập / chấm code) với corpus nội bộ tiếng Việt — tái sử dụng được cho các nghiên cứu tiếp theo.
+1. **TTG-ARAG như một system/integration contribution**: kiến trúc Agentic RAG có kiểm chứng sư phạm cho đào tạo kỹ thuật trên local small LLM, thay vì claim thuật toán mới cho từng cơ chế con.
+2. **Tổ hợp typed workflow + verifier-guided repair + pedagogical constraints**: giải thích cách ba nhóm kỹ thuật đã biết được ràng buộc lại thành workflow có kiểm soát cho giáo án, sinh bài tập và chấm code.
+3. **Core + domain plugin cho tác vụ kỹ thuật verify được bằng máy**: plugin CNTT/lập trình là proof-of-concept, cho thấy domain knowledge, verifier, error taxonomy và feedback policy có thể được đóng gói ngoài core.
+4. **Bộ benchmark sư phạm tự xây**: 130 sample (giáo án / bài tập / chấm code) với corpus nội bộ tiếng Việt — dùng để đánh giá controlled comparison và ablation.
 
 So sánh EQ2 (optional): TTG-ARAG local vs generic agentic RAG dùng LLM lớn / commercial API — trình bày như trade-off giữa an toàn dữ liệu, khả năng tái lập và chất lượng, không phải claim tuyệt đối.
 
-Phân tích điều kiện/context mà kiến trúc đề xuất vượt trội (dựa ablation Chương 5).
+Phân tích điều kiện/context mà kiến trúc đề xuất vượt trội (dựa ablation Chương 5), đồng thời nêu rõ giới hạn: kết quả chứng minh giá trị của cấu hình tích hợp trong bối cảnh thử nghiệm, không chứng minh các cơ chế con là mới.
 
 ## Chương 7 — Kết luận và hướng phát triển
 

@@ -23,6 +23,6 @@ version: 1.0.0
 - Trả lời bằng **tiếng Việt** trừ khi được yêu cầu khác.
 - LaTeX: bám sát preamble và cấu trúc trong `0_context.md`; không tự ý đổi compiler, font, margin.
 - Mọi thay đổi cấu trúc chương phải cập nhật đồng thời `0_context.md`, `1_outline.md`, và `main.tex`.
-- Đóng góp novelty **chưa chốt** — không tự phát biểu novelty cụ thể cho đến khi có kết quả thực nghiệm.
+- Đóng góp novelty **chưa chốt** — không claim từng cơ chế như typed graph, verifier/repair, constraint generation, plugin hay HITL là mới độc lập; chỉ trình bày ở mức system/integration contribution và chờ kết quả thực nghiệm để xác nhận.
 - Mọi thiết kế hệ thống phải tôn trọng nguyên tắc HITL trong `3_system-design.md`.
 - Citation: BibLaTeX key dạng `AuthorYYYY` — không bịa reference.

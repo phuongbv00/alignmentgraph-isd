@@ -5,15 +5,24 @@
 **Tên đề tài**: "Ứng dụng mô hình Multi-Agent Agentic RAG trong đào tạo và hướng dẫn kỹ thuật"
 
 **Phát biểu định vị** (dùng xuyên suốt quyển):
-> Đề tài không định vị đóng góp ở việc xây dựng một agent platform tổng quát kiểu Claude Code/Cursor/Devin, cũng không claim rằng việc chia hệ thống thành nhiều agent, supervisor agent, plugin hay tool registry là mới. Đề tài định vị đóng góp ở việc chuyên biệt hóa Agentic RAG cho bối cảnh sư phạm kỹ thuật dưới ràng buộc local small LLM: workflow được biểu diễn bằng typed task graph, output được kiểm chứng bằng verifier miền và các lần retry/repair được dẫn dắt bởi lỗi có cấu trúc, đồng thời mọi nội dung sinh ra phải thỏa các ràng buộc sư phạm như Bloom alignment, constructive alignment, citation coverage, rubric consistency, misconception mapping và HITL gate. Hệ thống được hiện thực và đánh giá trên miền lập trình/CNTT như một proof-of-concept cho kiến trúc có khả năng mở rộng sang các ngành kỹ thuật khác thông qua domain plugin.
+> Đề tài không claim rằng typed task graph, verifier-guided repair, ràng buộc sư phạm, multi-agent orchestration, supervisor agent, plugin hay tool registry là các kỹ thuật mới độc lập. Đóng góp của đề tài nằm ở việc thiết kế, tích hợp và đánh giá một cấu hình Agentic RAG có kiểm soát cho bối cảnh sư phạm kỹ thuật dưới ràng buộc local small LLM: agent loop tự do được thay bằng typed task graph; các verifier miền trả lỗi có cấu trúc để sửa đúng thành phần sai; và output phải đi qua các ràng buộc sư phạm như Bloom alignment, constructive alignment, citation coverage, rubric consistency, misconception mapping và HITL gate. Hệ thống được hiện thực trên miền lập trình/CNTT như proof-of-concept và được kiểm chứng bằng comparison + ablation với các baseline RAG/Agentic RAG tổng quát.
 
-Ba cơ chế kỹ thuật làm trọng tâm bảo vệ:
+**Signature của luận văn**:
+> TTG-ARAG: một kiến trúc Agentic RAG có kiểm chứng sư phạm cho đào tạo kỹ thuật trên local small LLM.
+
+**Ranh giới novelty / claim**:
+
+- Không claim phát minh thuật toán mới cho graph orchestration, verifier, self-repair, Bloom/rubric constraint hay plugin architecture.
+- Claim ở mức **system/integration contribution**: tổ hợp có chủ đích các kỹ thuật đã biết thành một workflow sư phạm có kiểm chứng, phù hợp với local small LLM và dữ liệu giáo viên nội bộ.
+- Claim thực nghiệm chỉ được phát biểu sau khi có kết quả: TTG-ARAG có/không cải thiện so với LLM-only, Naive RAG, Generic ReAct ARAG và Fixed MA-ARAG trên benchmark sư phạm kỹ thuật.
+
+Ba cơ chế kỹ thuật là trụ cột hiện thực, không phải novelty độc lập:
 
 1. **Typed Task Graph Orchestration**: tác vụ sư phạm được phân rã thành đồ thị các bước có kiểu rõ ràng; mỗi node định nghĩa `input_schema`, `output_schema`, `allowed_tools`, `retrieval_policy`, `verifier`, `retry_policy` và `stop_condition`.
 2. **Verification-Guided Retry/Repair**: lỗi từ verifier được cấu trúc hóa thành `error_type`, `failed_component`, `evidence`, `repair_action`; hệ thống sửa đúng thành phần lỗi thay vì regenerate toàn bộ output.
 3. **Pedagogy-Constrained Generation**: output phải thỏa các ràng buộc sư phạm và bằng chứng, gồm Bloom alignment, citation coverage, rubric consistency, misconception taxonomy, feedback policy và HITL.
 
-- **Đóng góp**: cơ chế Agentic RAG có typed task graph, verifier-guided repair và ràng buộc sư phạm; hiện thực qua core + domain plugin và đánh giá trên domain IT.
+- **Đóng góp**: một kiến trúc Agentic RAG chuyên biệt cho sư phạm kỹ thuật chạy local small LLM, tích hợp typed workflow, verifier-guided repair, pedagogical constraints, HITL và domain plugin; được đánh giá bằng comparison + ablation trên domain IT.
 - **Ràng buộc cứng**: LLM chạy local / mã nguồn mở trên edge (Gemma 4 E2B/E4B).
 - **Đánh giá**: benchmark tự động + LLM-as-judge (không human eval diện rộng).
 
@@ -24,13 +33,14 @@ Ba cơ chế kỹ thuật làm trọng tâm bảo vệ:
 
 ## Đóng góp dự kiến của đề tài
 
-Đề tài dự kiến đóng góp ba thành phần kỹ thuật, được xác nhận bằng thực nghiệm ablation:
+Đề tài dự kiến đóng góp ở mức kiến trúc hệ thống và bằng chứng thực nghiệm, không ở mức phát minh từng cơ chế riêng lẻ:
 
-1. **Typed Task Graph Orchestration cho tác vụ sư phạm kỹ thuật**: thay vì agent loop tự do, workflow được mô hình hóa thành đồ thị các node có schema, tool scope, retrieval policy, verifier và retry policy rõ ràng.
-2. **Verification-Guided Retry/Repair**: verifier trả lỗi có cấu trúc để hệ thống sửa đúng thành phần lỗi như lời giải, test case, citation, feedback hoặc Bloom alignment; không regenerate toàn bộ output một cách mơ hồ.
-3. **Pedagogy-Constrained Agentic RAG**: output phải thỏa các ràng buộc sư phạm và bằng chứng như Bloom alignment, constructive alignment, citation coverage, rubric consistency, misconception mapping, feedback policy và HITL.
+1. **TTG-ARAG cho sư phạm kỹ thuật chạy local small LLM**: một cấu hình Agentic RAG chuyển agent loop tự do thành typed workflow có schema, tool scope, retrieval policy, verifier, retry policy và stop condition rõ ràng.
+2. **Cơ chế tích hợp verifier miền với targeted repair**: dùng kết quả kiểm chứng có cấu trúc để sửa đúng component lỗi như lời giải, test case, citation, feedback hoặc Bloom alignment, thay vì regenerate toàn bộ output.
+3. **Pipeline sinh nội dung bị ràng buộc bởi yêu cầu sư phạm**: đưa Bloom alignment, constructive alignment, citation coverage, rubric consistency, misconception mapping, feedback policy và HITL thành điều kiện kiểm tra trong pipeline.
+4. **Benchmark và ablation cho tác vụ sư phạm kỹ thuật**: xây bộ đánh giá trên miền CNTT/lập trình để đo giá trị của toàn bộ cấu hình TTG-ARAG và từng thành phần so với các baseline RAG/Agentic RAG tổng quát.
 
-Kiến trúc core + domain plugin là phương tiện hiện thực các cơ chế trên, không phải claim novelty chính. Plugin CNTT/lập trình được dùng làm proof-of-concept để đánh giá thực nghiệm; các domain kỹ thuật khác là hướng mở rộng.
+Kiến trúc core + domain plugin là phương tiện hiện thực và kiểm thử khả năng mở rộng của cấu hình trên. Plugin CNTT/lập trình được dùng làm proof-of-concept để đánh giá thực nghiệm; các domain kỹ thuật khác là hướng mở rộng.
 
 ## Format & Template
 
