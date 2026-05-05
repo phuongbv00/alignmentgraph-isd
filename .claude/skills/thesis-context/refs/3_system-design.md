@@ -2,11 +2,11 @@
 
 ## Kiến trúc tổng quan: Core + Plugin
 
-Hệ thống **không coupling** với một chuyên ngành cụ thể. Thiết kế theo mô hình **domain-agnostic core + domain-specific plugin** để giáo viên Lập trình, Điện tử, Cơ khí, ... đều sử dụng được.
+Hệ thống được thiết kế theo mô hình **domain-aware core + domain-specific plugin** để tách phần workflow chung khỏi phần tri thức/công cụ của từng miền. Mục tiêu của thiết kế là tạo ra một kiến trúc có thể mở rộng sang nhiều miền kỹ thuật thông qua plugin contract; trong phạm vi luận văn, kiến trúc này được hiện thực và đánh giá thực nghiệm với plugin CNTT/lập trình.
 
 Lưu ý về định vị đóng góp: các thành phần như LangGraph, typed schema, verifier, retry/repair, HITL và domain plugin không được trình bày như phát minh mới độc lập. Chương này tập trung vào cách tích hợp các kỹ thuật đó thành một workflow sư phạm có kiểm chứng, phù hợp với local small LLM và dữ liệu giáo viên nội bộ.
 
-### Core (domain-agnostic)
+### Core (domain-independent workflow)
 
 - **LLM local**: Gemma 4 E2B / E4B (edge-optimized, chạy máy thường). Serve qua **llama.cpp** (nhúng trực tiếp, không cần cài riêng — phù hợp đóng gói Electron).
 - **Embedding**: `bge-m3` (đa ngôn ngữ VN+EN) hoặc `nomic-embed-text-v2`.
@@ -19,7 +19,19 @@ Lưu ý về định vị đóng góp: các thành phần như LangGraph, typed 
 
 Mỗi plugin đóng gói: metadata schema · task schemas · pedagogical constraints · prompt templates · retrieval policy · verifier/repair policy · tool set · corpus ingestion pipeline.
 
-Plugin CNTT (lập trình) là plugin đầu tiên — validate kiến trúc core. Các plugin khác là hướng mở rộng.
+Plugin CNTT (lập trình) là plugin duy nhất trong prototype — dùng để validate tính khả thi của kiến trúc core và plugin contract trên một miền kỹ thuật cụ thể. Các plugin khác được phân tích như khả năng mở rộng của thiết kế, chưa nằm trong phạm vi hiện thực.
+
+### Scope triển khai trong luận văn
+
+| Nhóm chức năng                                                      | Trạng thái trong luận văn                                                |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Core orchestration, typed task graph, verifier-guided repair        | Triển khai và đánh giá                                                   |
+| Plugin CNTT/lập trình, PytestRunner, syntax/lint checks cơ bản      | Triển khai và đánh giá                                                   |
+| Retrieval từ corpus học phần đã index local                         | Triển khai và đánh giá                                                   |
+| HITL review queue / approve-reject flow                             | Triển khai ở mức prototype                                               |
+| Plugin Điện tử/Cơ khí/Xây dựng                                      | Không triển khai; dùng để phân tích khả năng mở rộng của plugin contract |
+| Web search, Google Drive/Classroom connector, dynamic concept graph | Ngoài đánh giá chính; optional/future work                               |
+| Đánh giá hiệu quả học tập dài hạn với lớp thật                      | Ngoài phạm vi luận văn                                                   |
 
 ### IPC Architecture
 
@@ -86,7 +98,7 @@ CheckPedagogicalOutput →  [L3: teacher override nếu reject]
 flowchart TD
     T(["Giáo viên"])
 
-    subgraph CORE["Core  —  domain-agnostic"]
+    subgraph CORE["Core  —  domain-independent workflow"]
         ORC["Orchestrator"]
 
         subgraph POOL["Role-scoped Sub-agents"]
@@ -122,23 +134,23 @@ flowchart TD
 
 ## 4.3 Cơ sở thiết kế kiến trúc Core + Plugin
 
-Đề tài hướng đến hỗ trợ giáo viên **các ngành kỹ thuật nói chung** (IT, Điện tử, Cơ khí, Xây dựng...). Để kiến trúc có thể mở rộng sang các ngành khác mà không phải viết lại hệ thống, cần xác định rõ: tác vụ nào là bất biến (_core_), tác vụ nào đòi hỏi tri thức và công cụ chuyên biệt (_plugin_).
+Kiến trúc Core + Plugin được dùng như một **nguyên tắc phân tách trách nhiệm**: core giữ workflow sư phạm-kỹ thuật có thể tái sử dụng, còn plugin đóng gói tri thức, công cụ và tiêu chí kiểm tra của từng miền. Luận văn khẳng định khả năng mở rộng ở mức thiết kế/interface; phạm vi triển khai và đánh giá thực nghiệm chỉ tập trung vào plugin CNTT/lập trình.
 
-### Đặc thù chung của domain kỹ thuật
+### Đặc thù sư phạm-kỹ thuật dùng làm giả định thiết kế
 
-Các ngành kỹ thuật chia sẻ một số đặc điểm sư phạm chung, phân biệt với các lĩnh vực hàn lâm thuần tuý:
+Trong case study CNTT/lập trình, một số đặc điểm sư phạm-kỹ thuật sau được dùng làm giả định thiết kế. Các đặc điểm này cũng gợi ý những yêu cầu mà plugin cho miền kỹ thuật khác cần khai báo lại, nhưng luận văn không kiểm chứng bằng thực nghiệm đa ngành:
 
-| Đặc thù                    | Biểu hiện                                                                                     | Ý nghĩa với hệ thống                                        |
-| -------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| **Thực hành với công cụ**  | Lab, project, simulation — học qua làm                                                        | Bài tập luôn có exercise_type + tool context                |
-| **Verify được bằng máy**   | Chạy code, chạy mạch điện, kiểm tra tính toán — đáp án có tính khách quan                     | verify() là hook bắt buộc trong plugin interface            |
-| **Tiêu chuẩn kỹ thuật**    | PEP8 (IT), IEEE (Điện tử), TCVN/ISO (Cơ khí) — "đúng" phải tuân theo chuẩn                    | domain_quality_checks() cần biết chuẩn của từng ngành       |
-| **Error taxonomy đặc thù** | Off-by-one (IT), ngắn mạch (Điện tử), safety factor sai (Cơ khí) — lỗi mang tính chuyên ngành | error_taxonomy và feedback_template không thể dùng chung    |
-| **Bloom áp dụng được**     | Mọi ngành đều có Remember → Apply → Evaluate trên nội dung kỹ thuật                           | Bloom metadata và corpus indexing là chung, domain-agnostic |
+| Đặc thù                    | Biểu hiện                                                                                     | Ý nghĩa với hệ thống                                                                   |
+| -------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **Thực hành với công cụ**  | Lab, project, simulation — học qua làm                                                        | Bài tập luôn có exercise_type + tool context                                           |
+| **Verify được bằng máy**   | Chạy code, chạy mạch điện, kiểm tra tính toán — đáp án có tính khách quan                     | verify() là hook bắt buộc trong plugin interface                                       |
+| **Tiêu chuẩn kỹ thuật**    | PEP8 (IT), IEEE (Điện tử), TCVN/ISO (Cơ khí) — "đúng" phải tuân theo chuẩn                    | domain_quality_checks() cần biết chuẩn của từng ngành                                  |
+| **Error taxonomy đặc thù** | Off-by-one (IT), ngắn mạch (Điện tử), safety factor sai (Cơ khí) — lỗi mang tính chuyên ngành | error_taxonomy và feedback_template không thể dùng chung                               |
+| **Bloom áp dụng được**     | Trong case study, nội dung lập trình có thể gắn Remember → Apply → Evaluate                   | Bloom metadata và corpus indexing đặt ở core, nhưng rule cụ thể vẫn do plugin cấu hình |
 
 ### Điểm riêng buộc phải thành plugin
 
-Bảng dưới minh họa sự khác biệt không thể share qua ba domain kỹ thuật cụ thể — IT, Điện tử và Cơ khí:
+Bảng dưới minh họa lý do cần tách phần domain-specific khỏi core và các loại thông tin mà plugin contract phải biểu đạt. Chỉ cột IT/lập trình nằm trong phạm vi hiện thực của luận văn; các cột Điện tử và Cơ khí là ví dụ thiết kế để kiểm tra tính đầy đủ của interface, không phải requirement triển khai:
 
 | Thành phần plugin       | IT (Lập trình)                                    | Điện tử _(minh họa)_                                   | Cơ khí _(minh họa)_                                      |
 | ----------------------- | ------------------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------- |
@@ -151,10 +163,10 @@ Bảng dưới minh họa sự khác biệt không thể share qua ba domain k�
 
 **Kết luận phân tách:**
 
-- **Core** = _workflow logic_: lesson planning flow, exercise design flow, grading flow, quality review flow — bất biến giữa mọi domain kỹ thuật.
+- **Core** = _workflow logic_: lesson planning flow, exercise design flow, grading flow, quality review flow — phần workflow được giả định là có thể tái sử dụng cho nhiều tác vụ sư phạm-kỹ thuật.
 - **Plugin** = _domain knowledge + tools_: toàn bộ các thành phần trong bảng trên — thay đổi hoàn toàn theo từng ngành.
 
-**Plugin IT** trong luận văn đóng vai trò _proof-of-concept_: validate rằng interface plugin đủ biểu đạt cho một domain kỹ thuật phức tạp, đồng thời mở đường để thêm plugin mới mà không thay đổi core.
+**Plugin IT** trong luận văn đóng vai trò _proof-of-concept_: validate rằng interface plugin đủ biểu đạt cho một domain kỹ thuật cụ thể và đủ phức tạp để đánh giá workflow. Luận văn kết luận thực nghiệm trong phạm vi case study này; khả năng thêm plugin mới mà không thay đổi core được trình bày như khẳng định ở mức thiết kế và hướng mở rộng cần kiểm chứng thêm.
 
 ---
 
@@ -237,14 +249,14 @@ NormalizeSubmission
 
 Sub-agent trong luận văn được định nghĩa thực dụng: **một lần gọi LLM có role, prompt, tool scope và state riêng**, không nhất thiết là process/model riêng. Supervisor chỉ spawn role khi graph cần node tương ứng.
 
-| Role | Khi được gọi | Tool/retrieval scope |
-| --- | --- | --- |
-| `RetrievalRole` | Cần theory/example/explanation chunk | VectorSearch, KnowledgeGraph, DiskReader tùy task |
-| `LessonDraftRole` | Soạn giáo án | Corpus theory, activity templates, Bloom metadata |
-| `ExerciseDraftRole` | Sinh đề/lời giải/test | Example chunks, generation templates, verifier schema |
-| `VerificationRole` | Kiểm tra code/test/citation/Bloom | PytestRunner, linter, citation checker, constraint checker |
-| `FeedbackRole` | Sinh feedback chấm bài | Error taxonomy, misconception mapping, feedback template |
-| `ReviewRole` | Kiểm tra output cuối | Pedagogical constraints, citation coverage, HITL policy |
+| Role                | Khi được gọi                         | Tool/retrieval scope                                       |
+| ------------------- | ------------------------------------ | ---------------------------------------------------------- |
+| `RetrievalRole`     | Cần theory/example/explanation chunk | VectorSearch, KnowledgeGraph, DiskReader tùy task          |
+| `LessonDraftRole`   | Soạn giáo án                         | Corpus theory, activity templates, Bloom metadata          |
+| `ExerciseDraftRole` | Sinh đề/lời giải/test                | Example chunks, generation templates, verifier schema      |
+| `VerificationRole`  | Kiểm tra code/test/citation/Bloom    | PytestRunner, linter, citation checker, constraint checker |
+| `FeedbackRole`      | Sinh feedback chấm bài               | Error taxonomy, misconception mapping, feedback template   |
+| `ReviewRole`        | Kiểm tra output cuối                 | Pedagogical constraints, citation coverage, HITL policy    |
 
 ### Verification-guided repair loop
 
@@ -275,7 +287,7 @@ Các constraint bất biến giữa domain:
 
 ## 4.5 Plugin System
 
-**Plugin Interface** (contract mọi plugin phải implement):
+**Plugin Interface** (contract thiết kế). Trong prototype, chỉ các trường/hook cần cho Plugin CNTT/lập trình được hiện thực đầy đủ; các hook còn lại là extension point cho tương lai:
 
 ```python
 class DomainPlugin(ABC):
@@ -369,9 +381,9 @@ RetrievalRole  (graph node do Supervisor gọi khi cần)
 ├── Source Tools (parallel)
 │   ├── VectorSearchTool  — Qdrant (bge-m3) + payload filter (bloom, topic, language)
 │   ├── DiskReaderTool    — đọc trực tiếp file trên disk (PDF/DOCX/slide chưa index)
-│   ├── WebSearchTool     — tìm kiếm web (opt-in, teacher-controlled; tắt mặc định)
-│   ├── ConnectorTool[]   — plugin-specific: Google Drive, Google Classroom (OAuth)
-│   └── KnowledgeGraphTool— topic dependency graph (plugin-provided) + concept graph từ corpus
+│   ├── WebSearchTool     — optional/future: tìm kiếm web, tắt mặc định
+│   ├── ConnectorTool[]   — optional/future: Google Drive, Google Classroom
+│   └── KnowledgeGraphTool— topic dependency graph tĩnh; dynamic concept graph là optional
 ├── ResultAggregator      — merge kết quả, gắn provenance metadata
 └── CrossSourceReranker   — bge-reranker-v2-m3 + source trust weighting
 ```
@@ -380,12 +392,12 @@ RetrievalRole  (graph node do Supervisor gọi khi cần)
 
 Nhận `{task_type, bloom_target, topic, plugin_id}` → quyết định tool nào kích hoạt:
 
-| Task                   | Tools ưu tiên                                                                |
-| ---------------------- | ---------------------------------------------------------------------------- |
-| Lesson planning        | VectorSearch (theory) + KnowledgeGraph (prerequisite chain)                  |
-| Exercise design        | VectorSearch (example) + KnowledgeGraph (topic scope) + Connector (syllabus) |
-| Grading                | VectorSearch (explanation) + DiskReader (rubric file)                        |
-| Web-augmented (opt-in) | + WebSearch nếu topic mới / chưa có trong corpus                             |
+| Task                          | Tools ưu tiên                                                                           |
+| ----------------------------- | --------------------------------------------------------------------------------------- |
+| Lesson planning               | VectorSearch (theory) + KnowledgeGraph (prerequisite chain)                             |
+| Exercise design               | VectorSearch (example) + KnowledgeGraph (topic scope) + DiskReader nếu có rubric/đề mẫu |
+| Grading                       | VectorSearch (explanation) + DiskReader (rubric file)                                   |
+| Web-augmented (future/opt-in) | + WebSearch nếu topic mới / chưa có trong corpus                                        |
 
 QueryPlanner là LLM call nhỏ (Gemma E2B, ≤ 128 token output) nằm trong `RetrievalRole`; kết quả là `tool_plan: list[ToolCall]`. Các role khác không thấy tool plan này, chỉ nhận retrieved context đã lọc.
 
@@ -395,11 +407,11 @@ QueryPlanner là LLM call nhỏ (Gemma E2B, ≤ 128 token output) nằm trong `R
 
 **DiskReaderTool**: đọc file chưa index (giáo viên drop vào session folder) theo chunk tạm thời; không persist vào Qdrant. Hữu ích cho tài liệu one-off (đề thi cũ, rubric cụ thể).
 
-**WebSearchTool**: disabled mặc định; giáo viên bật per-session từ UI. Kết quả gắn flag `source=web` + warning trong Review Queue (tài liệu web chưa kiểm chứng).
+**WebSearchTool**: không thuộc phạm vi đánh giá chính. Nếu hiện thực ở phiên bản mở rộng, công cụ này disabled mặc định; giáo viên bật per-session từ UI. Kết quả gắn flag `source=web` + warning trong Review Queue (tài liệu web chưa kiểm chứng).
 
-**ConnectorTool**: plugin-specific — Plugin CNTT có thể cung cấp `GoogleClassroomConnector` (fetch assignment, submission) và `GoogleDriveConnector` (fetch tài liệu giảng dạy). Yêu cầu OAuth; token lưu local, không sync cloud.
+**ConnectorTool**: không thuộc phạm vi prototype chính. Plugin CNTT có thể mở rộng thêm `GoogleClassroomConnector` (fetch assignment, submission) và `GoogleDriveConnector` (fetch tài liệu giảng dạy). Yêu cầu OAuth; token lưu local, không sync cloud.
 
-**KnowledgeGraphTool**: hai lớp — (1) static topic graph do plugin cung cấp (`TopicDependencyGraph`); (2) dynamic concept graph tự xây từ corpus bằng entity extraction (optional, heavy). Dùng để expand query theo prerequisite chain và tránh recommend nội dung học viên chưa có nền tảng.
+**KnowledgeGraphTool**: trong prototype chỉ cần static topic graph do plugin cung cấp (`TopicDependencyGraph`). Dynamic concept graph tự xây từ corpus bằng entity extraction là optional/future vì chi phí triển khai và đánh giá cao.
 
 ### ResultAggregator & CrossSourceReranker
 
@@ -407,19 +419,19 @@ Mọi kết quả được gắn provenance: `{source_type, source_id, chunk_tex
 
 CrossSourceReranker dùng `bge-reranker-v2-m3` với source trust weighting:
 
-| Source                                    | Trust weight mặc định |
-| ----------------------------------------- | --------------------- |
-| VectorSearch (indexed + HITL-verified)    | 1.0                   |
-| DiskReader (chưa verify)                  | 0.8                   |
-| Connector (corpus giáo viên, có cấu trúc) | 0.9                   |
-| WebSearch (nguồn ngoài)                   | 0.6                   |
+| Source                                         | Trust weight mặc định |
+| ---------------------------------------------- | --------------------- |
+| VectorSearch (indexed + HITL-verified)         | 1.0                   |
+| DiskReader (chưa verify)                       | 0.8                   |
+| Connector (corpus giáo viên, có cấu trúc)      | 0.9                   |
+| WebSearch (nguồn ngoài, nếu bật ở bản mở rộng) | 0.6                   |
 
 Top-5 final chunks được trả về kèm provenance → Supervisor truyền vào các node downstream dưới dạng `context_pack`. Nếu verifier phát hiện citation không hỗ trợ claim, Supervisor gọi lại `RetrievalRole` ở chế độ citation repair thay vì yêu cầu draft role tự retrieve.
 
 ### Privacy & opt-in
 
-- WebSearch tắt mặc định — tài liệu nội bộ không leak.
-- ConnectorTool chỉ active khi giáo viên authorize OAuth session.
+- WebSearch tắt mặc định và không nằm trong đánh giá chính — tài liệu nội bộ không leak.
+- ConnectorTool chỉ active khi giáo viên authorize OAuth session; trong luận văn có thể để ở mức thiết kế.
 - DiskReader chỉ đọc trong session folder được giáo viên chỉ định.
 - Mọi external source fetch được log trong Audit log (xem §4.1 HITL).
 
@@ -476,20 +488,20 @@ Nếu vượt budget → cắt `history_summary` trước, rồi giảm retrieve
 
 _(Cơ sở lý thuyết: §3.5 — Sumers taxonomy \[`Sumers2024`\], MemGPT \[`Packer2023`\], episodic memory \[`Vo2025Episodic`\])_
 
-4 tầng ánh xạ lên taxonomy Sumers (2024):
+4 tầng ánh xạ lên taxonomy Sumers (2024). Trong prototype/đánh giá chính, M1, M2 và M4 là đủ; M3 được mô tả như extension để cá nhân hóa theo giáo viên nếu có thời gian triển khai:
 
 | Tầng           | Tên                                  | Storage                          | Vòng đời            |
 | -------------- | ------------------------------------ | -------------------------------- | ------------------- |
 | M1 — Working   | State task hiện tại                  | LangGraph state dict (RAM)       | Trong 1 task        |
 | M2 — Episodic  | Conversation history + corrections   | SQLite `session.db`              | Đến khi xóa session |
-| M3 — Long-term | Teacher profile + correction pattern | SQLite `profile.db` (persistent) | Vĩnh viễn           |
+| M3 — Long-term | Teacher profile + correction pattern | SQLite `profile.db` (persistent) | Optional/future     |
 | M4 — Semantic  | Corpus giáo trình nội bộ             | Qdrant embedded                  | Update khi import   |
 
-**Luồng ghi từ L3 Override**: reject reason → M2 (immediate) → M3 nếu pattern lặp ≥ 3 lần → inject vào system prompt retry.
+**Luồng ghi từ L3 Override**: reject reason → M2 (immediate). Nếu có triển khai M3, pattern lặp ≥ 3 lần được lưu vào teacher profile và inject vào system prompt retry.
 
-**Luồng đọc khi bắt đầu task**: Orchestrator prepend teacher preferences (M3) + N correction gần nhất (M2) vào system prompt slot ≤ 512 token trước khi gọi LLM.
+**Luồng đọc khi bắt đầu task**: Orchestrator prepend N correction gần nhất (M2) vào system prompt slot ≤ 512 token trước khi gọi LLM. Teacher preferences từ M3 là phần mở rộng.
 
-**Privacy**: M2 + M3 local only, không sync cloud; giáo viên xóa từng session hoặc toàn bộ profile từ UI.
+**Privacy**: M2 và M3 nếu có đều local only, không sync cloud; giáo viên xóa từng session hoặc toàn bộ profile từ UI.
 
 ---
 
@@ -499,6 +511,6 @@ _(Cơ sở lý thuyết: §3.5 — Sumers taxonomy \[`Sumers2024`\], MemGPT \[`P
 - **Renderer** (React/Vue): UI giáo viên — workspace chọn plugin, soạn yêu cầu, xem output + citation highlight, Review Queue (HITL).
 - **IPC bridge**: `ipcMain`/`ipcRenderer` ↔ child process qua `child_process.spawn` + JSON-line protocol.
 - **Child process** (Python): toàn bộ MAS + llama.cpp + Qdrant embedded. Nhận lệnh từ main, stream response về.
-- Packaging: `electron-builder` → `.dmg` / `.exe` / `.AppImage`. Bundle model GGUF riêng (download lần đầu qua UI).
+- Packaging bằng `electron-builder` (`.dmg` / `.exe` / `.AppImage`) là yêu cầu sản phẩm nếu phát hành rộng. Trong phạm vi luận văn, prototype chỉ cần chạy được ở môi trường local demo; packaging đầy đủ có thể đưa vào hướng phát triển.
 
 ---
