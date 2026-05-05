@@ -18,23 +18,26 @@
 
 ## Chương 3 — Nền tảng lý thuyết & công nghệ sử dụng
 
-Xem chi tiết 10 subsection tại [2_lit-review.md](refs/2_lit-review.md).
+Xem chi tiết 16 subsection tại [2_lit-review.md](refs/2_lit-review.md).
 
-Tóm tắt cấu trúc (13 subsection):
+Tóm tắt cấu trúc (16 subsection):
 
 1. Large Language Models (LLM)
 2. AI Agent vs Agentic AI — phân biệt khái niệm
-3. Retrieval-Augmented Generation (RAG)
-4. Multi-Agent Systems (MAS) với LLM
-5. Agent Memory Architecture (MemGPT, Sumers taxonomy, episodic memory)
-6. Context Management cho LLM Agent (ACON, Lost in the Middle, Chain-of-Agents)
-7. LLM Agent Safety & Guardrails (AGrail, ToolSafe, prompt injection)
-8. Agentic AI trong thực tế — AI coding assistants (Claude Code, Devin, Cursor)
-9. Edge LLM & triển khai local
-10. Desktop app tích hợp AI (Electron + Python IPC)
-11. LLM trong giáo dục
-12. Nền tảng sư phạm (Bloom's Taxonomy, Constructive Alignment)
-13. Khoảng trống & định vị hệ thống
+3. Agentic AI trong thực tế — AI coding assistants (Claude Code, OpenAI Codex, Devin, Cursor/Windsurf)
+4. Human-in-the-loop & Human-Agent Collaboration (teacher-in-the-loop, override, preference memory)
+5. Retrieval-Augmented Generation (RAG, Self-RAG, CRAG, Agentic RAG, GraphRAG, A-RAG)
+6. Multi-Agent Systems (MAS) với LLM (AutoGen, MetaGPT, CrewAI, LangGraph, communication/collaboration surveys)
+7. Agent Memory Architecture (MemGPT, Sumers taxonomy, episodic/preference memory)
+8. Context Management cho LLM Agent (ACON, Lost in the Middle, Chain-of-Agents, Context-Folding)
+9. LLM Agent Safety & Guardrails (prompt injection, LlamaGuard, AGrail, ToolSafe, No Free Lunch)
+10. Edge LLM & triển khai local (llama.cpp, quantization, Gemma 3n/Gemma 4)
+11. Evaluation Methodology cho hệ thống LLM/RAG/Agent (LLM-as-Judge, RAGAS, agent trajectory evaluation, ablation)
+12. Desktop app tích hợp AI (Electron + Python IPC)
+13. LLM trong giáo dục (tutoring, auto-grading, content generation, AI-assisted feedback)
+14. Privacy & Local-first Deployment trong giáo dục (student data, local-first, teacher-controlled data governance)
+15. Nền tảng sư phạm (Bloom's Taxonomy, Constructive Alignment)
+16. Khoảng trống & định vị hệ thống
 
 ## Chương 4 — Thiết kế và triển khai hệ thống
 
@@ -61,7 +64,7 @@ Tóm tắt cấu trúc:
 1. Thiết lập thực nghiệm (hardware, mô hình, corpus, hyperparameters)
 2. Bộ dữ liệu đánh giá (tự xây — 3 task × 50 mẫu)
 3. Baselines + Ablation (LLM-only → Naive RAG → Generic ReAct ARAG → Fixed MA-ARAG → TTG-ARAG)
-4. Metrics (RAGAS, verifier pass rate, schema validity, pedagogical constraint violation, LLM-as-judge, latency/VRAM)
+4. Metrics (RAGAS, verifier pass rate, schema validity, pedagogical constraint violation, LLM-as-judge, tool-call/trajectory quality, latency/VRAM)
 5. Kết quả, phân tích lỗi, thảo luận
 
 ## Chương 6 — Giải pháp và đóng góp nổi bật
@@ -80,5 +83,5 @@ Phân tích điều kiện/context mà kiến trúc đề xuất vượt trội 
 ## Chương 7 — Kết luận và hướng phát triển
 
 - Trả lời rõ EQ1 (và EQ2 nếu có).
-- Giới hạn: không human eval diện rộng, plugin mới 1 domain, LLM-as-judge bias.
+- Giới hạn: không human eval diện rộng, plugin mới 1 domain, LLM-as-judge bias, local small LLM còn gap so với frontier/cloud models.
 - Hướng mở rộng: plugin Toán/Cơ khí, human eval, fine-tune LLM nhỏ trên curriculum VN, cloud mode opt-in.
