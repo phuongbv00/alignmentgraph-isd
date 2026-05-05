@@ -4,7 +4,7 @@
 
 **Tên đề tài**: "Ứng dụng mô hình Multi-Agent Agentic RAG trong đào tạo và hướng dẫn kỹ thuật"
 
-Đề tài mang định hướng ứng dụng, tập trung thiết kế và hiện thực một hệ thống hỗ trợ giáo viên các tác vụ sư phạm kỹ thuật dựa trên Multi-Agent Agentic RAG. Kiến trúc đề xuất được tổ chức quanh ba trụ cột: Pedagogy-Constrained Orchestration, Edge-LLM-Aware Orchestration và Pedagogy Domain Extension.
+Đề tài mang định hướng ứng dụng, tập trung thiết kế và hiện thực một hệ thống hỗ trợ giáo viên các tác vụ sư phạm kỹ thuật dựa trên Multi-Agent Agentic RAG. Kiến trúc đề xuất được tổ chức quanh ba trụ cột: Pedagogy-Constrained Orchestration, Edge-LLM-Constrained Orchestration và Pedagogy Domain Extension.
 
 ## 2. Phạm vi và ràng buộc
 
@@ -12,7 +12,8 @@
 
 - Miền thực nghiệm: CNTT/lập trình.
 - Mức sản phẩm: prototype chạy local, đủ để demo và đánh giá kỹ thuật.
-- LLM: local / mã nguồn mở trên edge (Gemma 4 E2B/E4B).
+- Local-first deployment là ràng buộc cứng: dữ liệu học phần, bài nộp, feedback, session history và corpus được xử lý/lưu cục bộ.
+- LLM: local / mã nguồn mở trên edge (Gemma 4 E2B/E4B); workflow chính không phụ thuộc frontier/cloud LLM.
 - Đánh giá: benchmark tự động + LLM-as-judge; không human eval diện rộng.
 
 **Tác vụ chính trong case study**:
@@ -33,21 +34,21 @@ Kiến trúc vẫn được thiết kế có điểm mở rộng cho nhiều mi�
 ## 3. Mục tiêu và câu hỏi đánh giá
 
 - **EQ1**: Trong case study CNTT/lập trình, kiến trúc đề xuất có hiệu quả hơn LLM-only, Naive RAG, Generic ReAct ARAG và Fixed MA-ARAG trên các tác vụ hỗ trợ sư phạm đã giới hạn không?
-- **EQ2** _(optional — chỉ đưa vào nếu đủ thời gian/kết quả)_: Với cùng benchmark case study, kiến trúc đề xuất chạy local small LLM có đạt chất lượng cạnh tranh với phương án dùng LLM tham số lớn / thương mại không? (trade-off an toàn dữ liệu vs chất lượng)
+- **EQ2** _(optional — chỉ đưa vào nếu đủ thời gian/kết quả)_: Với cùng benchmark case study, kiến trúc đề xuất chạy local/edge small LLM đạt mức chất lượng nào so với một frontier/cloud LLM dùng làm reference upper bound? So sánh này chỉ nhằm định vị khoảng cách chất lượng, không xem cloud LLM là phương án triển khai của hệ thống.
 
 ## 4. Đóng góp kỹ thuật dự kiến
 
 Đề tài đóng góp ở mức thiết kế hệ thống, hiện thực prototype và đánh giá kỹ thuật, không ở mức phát minh thuật toán mới. Phần này liệt kê **artifact** của đồ án; các nguyên lý thiết kế bên trong được mô tả riêng ở mục 5.
 
-1. **Kiến trúc đề xuất**: một kiến trúc Multi-Agent Agentic RAG được tùy chỉnh cho hỗ trợ sư phạm kỹ thuật dưới ràng buộc local small LLM, tổ chức quanh ba trụ cột: Pedagogy-Constrained Orchestration, Edge-LLM-Aware Orchestration và Pedagogy Domain Extension.
+1. **Kiến trúc đề xuất**: một kiến trúc Multi-Agent Agentic RAG được tùy chỉnh cho hỗ trợ sư phạm kỹ thuật dưới ràng buộc local-first/privacy và local/edge small LLM, tổ chức quanh ba trụ cột: Pedagogy-Constrained Orchestration, Edge-LLM-Constrained Orchestration và Pedagogy Domain Extension.
 2. **Extension implementation cho miền sư phạm CNTT/lập trình**: một bản hiện thực cụ thể của Pedagogy Domain Extension cho miền CNTT/lập trình, bao gồm metadata schema, retrieval policy, verifier lập trình, error taxonomy, feedback template, pedagogical constraints và corpus ingestion pipeline.
-3. **Prototype end-to-end**: hệ thống chạy được trên phạm vi case study, bao gồm corpus nội bộ, retrieval local, các flow hỏi đáp/sinh bài tập/sinh feedback, verifier lập trình và review flow cho giáo viên.
+3. **Prototype end-to-end**: hệ thống chạy được trên phạm vi case study, bao gồm corpus nội bộ, retrieval local, các flow hỏi đáp/sinh bài tập/sinh feedback, verifier lập trình và teacher-controlled data mutation/review flow.
 4. **Bộ đánh giá kỹ thuật**: benchmark nhỏ, baseline comparison với LLM-only/Naive RAG/Generic ReAct ARAG/Fixed MA-ARAG và ablation cho các thành phần chính của prototype.
 
 ## 5. Trụ cột kiến trúc
 
-1. **Pedagogy-Constrained Orchestration**: các tác vụ như hỏi đáp tài liệu, sinh bài tập và sinh feedback được thực thi dưới dạng task graph có kiểm soát. Core điều phối retrieval, generation, verification, repair và HITL theo từng bước; output phải thỏa các ràng buộc sư phạm như Bloom/rubric alignment, citation coverage, misconception mapping và feedback policy.
-2. **Edge-LLM-Aware Orchestration**: orchestration được thiết kế theo ràng buộc context window, năng lực suy luận và tài nguyên tính toán hạn chế của local LLM; hệ thống giới hạn tool scope, retrieval/context budget, retry depth và chia nhỏ tác vụ để giảm tải cho model.
+1. **Pedagogy-Constrained Orchestration**: các tác vụ như hỏi đáp tài liệu, sinh bài tập và sinh feedback được thực thi dưới dạng task graph có kiểm soát. Core điều phối retrieval, generation, verification, repair và HITL theo từng bước; output phải thỏa các ràng buộc sư phạm như Bloom/rubric alignment, citation coverage, misconception mapping và feedback policy; mọi thay đổi dữ liệu/trạng thái cần được giáo viên cho phép.
+2. **Edge-LLM-Constrained Orchestration**: orchestration được thiết kế dưới ràng buộc bắt buộc của local/edge small LLM; hệ thống xem context window, memory, latency, compute, tool scope, retrieval/context budget, retry depth và task decomposition là constraint của workflow, không phải tối ưu phụ.
 3. **Pedagogy Domain Extension**: mỗi miền sư phạm-kỹ thuật được bổ sung vào hệ thống dưới dạng một extension, khai báo metadata schema, task schema, retrieval policy, verifier/tool interface, error taxonomy, feedback template, pedagogical constraints và corpus ingestion pipeline. Core chỉ phụ thuộc vào các khai báo này thay vì hard-code logic của từng miền.
 
 ## 6. Ranh giới kết luận
@@ -55,6 +56,7 @@ Kiến trúc vẫn được thiết kế có điểm mở rộng cho nhiều mi�
 - Không xem từng kỹ thuật riêng lẻ như graph orchestration, verifier, self-repair, Bloom/rubric constraint hay extension mechanism là đóng góp mới.
 - Kết quả đánh giá chỉ kết luận trong phạm vi case study CNTT/lập trình và benchmark đã xây dựng.
 - Pedagogy Domain Extension là cơ chế mở rộng ở mức kiến trúc; luận văn không khẳng định đã chứng minh hệ thống scale thực nghiệm sang nhiều ngành khác trong miền sư phạm kỹ thuật.
+- Local-first/privacy và local/edge small LLM là ràng buộc thiết kế cứng; mọi so sánh với frontier/cloud LLM chỉ có vai trò mốc tham chiếu chất lượng.
 
 ## 7. Format & Template
 

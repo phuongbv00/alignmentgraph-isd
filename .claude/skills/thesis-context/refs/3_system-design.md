@@ -1,522 +1,481 @@
-# Thiết kế và triển khai hệ thống — Chương 4
+# Thiết kế và triển khai hệ thống -- Chương 4
 
-## Kiến trúc tổng quan
+## 4.1 Mục tiêu thiết kế và phạm vi hệ thống
 
-Hệ thống được thiết kế quanh ba trụ cột: **Pedagogy-Constrained Orchestration**, **Edge-LLM-Aware Orchestration** và **Pedagogy Domain Extension**. Core chịu trách nhiệm điều phối các workflow sư phạm-kỹ thuật có kiểm soát; extension đóng gói phần tri thức, công cụ và tiêu chí kiểm tra của từng miền. Trong phạm vi luận văn, kiến trúc này được hiện thực và đánh giá thực nghiệm với extension CNTT/lập trình.
+- Thiết kế hệ thống hỗ trợ giáo viên kỹ thuật bằng kiến trúc Multi-Agent Agentic RAG.
+- Tập trung vào các tác vụ sư phạm-kỹ thuật có thể kiểm chứng:
+  - hỏi đáp/giải thích dựa trên tài liệu học phần;
+  - sinh bài tập lập trình;
+  - sinh feedback cho bài nộp lập trình.
+- Local-first deployment là ràng buộc cứng để bảo vệ dữ liệu giáo viên và học viên.
+- Prototype hiện thực và đánh giá trong miền CNTT/lập trình.
+- Các miền kỹ thuật khác chỉ được phân tích ở mức khả năng mở rộng của interface.
+- Hệ thống không nhằm thay thế giáo viên, LMS, hay quy trình đánh giá học tập dài hạn.
 
-Lưu ý về định vị đóng góp: các thành phần như LangGraph, typed schema, verifier, retry/repair, HITL và extension mechanism không được trình bày như phát minh mới độc lập. Chương này tập trung vào cách tích hợp các kỹ thuật đó thành một kiến trúc hỗ trợ sư phạm kỹ thuật, phù hợp với local small LLM và dữ liệu giáo viên nội bộ.
+## 4.2 Yêu cầu thiết kế chính
 
-### Core (domain-independent workflow)
+- **Local-first và privacy-aware**
+  - local-first deployment là ràng buộc bắt buộc của hệ thống;
+  - dữ liệu học phần, bài nộp và feedback được xử lý cục bộ;
+  - hạn chế phụ thuộc API thương mại;
+  - corpus và session data lưu local.
 
-- **LLM local**: Gemma 4 E2B / E4B (edge-optimized, chạy máy thường). Serve qua **llama.cpp** (nhúng trực tiếp, không cần cài riêng — phù hợp đóng gói Electron).
-- **Embedding**: `bge-m3` (đa ngôn ngữ VN+EN) hoặc `nomic-embed-text-v2`.
-- **Vector DB**: Qdrant local (embedded mode — không cần server riêng, bundle trong app).
-- **Orchestration**: LangGraph — biểu diễn typed task graph có schema, verifier, retry policy và stop condition rõ ràng.
-- **Multi-Agent System (MAS)**: supervisor điều phối các role-scoped sub-agent invocation theo từng task; không đóng cứng 4 agent luôn chạy (xem 4.4).
-- **Desktop app**: Electron — main process quản lý child processes; MAS Python chạy trong child process; IPC bridge giữa Electron ↔ MAS ↔ llama.cpp.
+- **Human-in-the-loop**
+  - giáo viên kiểm soát việc hệ thống có được thay đổi dữ liệu/trạng thái hay không;
+  - giáo viên quyết định thay đổi cụ thể nào được áp dụng, chỉnh sửa, lưu, xuất hoặc hủy;
+  - reject/edit reason được dùng làm tín hiệu sửa output và audit trail.
 
-### Pedagogy Domain Extension
+- **Pedagogy-constrained**
+  - output cần bám mục tiêu học tập, Bloom level, rubric và constructive alignment;
+  - feedback cần giải thích lỗi và gợi ý cải thiện;
+  - citation/provenance cần rõ khi dùng tài liệu học phần.
 
-Mỗi extension đóng gói: metadata schema · task schemas · pedagogical constraints · prompt templates · retrieval policy · verifier/repair policy · tool set · corpus ingestion pipeline.
+- **Technical-verification-aware**
+  - bài tập/lời giải/test cần có khả năng kiểm chứng bằng công cụ;
+  - feedback chấm code cần dựa trên kết quả verifier khi có thể;
+  - lỗi kỹ thuật được ánh xạ sang error taxonomy của miền.
 
-Extension CNTT/lập trình là extension duy nhất trong prototype — dùng để validate tính khả thi của core và extension interface trên một miền sư phạm-kỹ thuật cụ thể. Các extension khác được phân tích như khả năng mở rộng của thiết kế, chưa nằm trong phạm vi hiện thực.
+- **Edge-LLM-constrained**
+  - local/edge small LLM là ràng buộc bắt buộc của hệ thống;
+  - mọi workflow phải được thiết kế theo giới hạn context, memory, latency và compute của edge LLM;
+  - quản lý context, memory, tool scope, retry và số lần gọi model như constraint của orchestration;
+  - không giả định frontier/cloud LLM, context rất dài hoặc agent có khả năng tool planning mạnh.
 
-### Scope triển khai trong luận văn
+- **Extensible-by-design**
+  - core không hard-code logic CNTT/lập trình;
+  - domain knowledge, tool, verifier và prompt policy nằm trong Pedagogy Domain Extension;
+  - extension CNTT/lập trình là bản hiện thực đầu tiên.
 
-| Nhóm chức năng                                                      | Trạng thái trong luận văn                                                |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Core orchestration, typed task graph, verifier-guided repair        | Triển khai và đánh giá                                                   |
-| Extension CNTT/lập trình, PytestRunner, syntax/lint checks cơ bản   | Triển khai và đánh giá                                                   |
-| Retrieval từ corpus học phần đã index local                         | Triển khai và đánh giá                                                   |
-| HITL review queue / approve-reject flow                             | Triển khai ở mức prototype                                               |
-| Extension Điện tử/Cơ khí/Xây dựng                                   | Không triển khai; phân tích ở mức thiết kế/interface                         |
-| Web search, Google Drive/Classroom connector, dynamic concept graph | Ngoài đánh giá chính; optional/future work                               |
-| Đánh giá hiệu quả học tập dài hạn với lớp thật                      | Ngoài phạm vi luận văn                                                   |
+## 4.3 Kiến trúc tổng quan
 
-### IPC Architecture
-
-```
-Electron Main Process
-  ├── Renderer (UI)
-  └── Child Process: MAS (Python/llama.cpp bindings)
-        ├── Supervisor Orchestrator (LangGraph typed task graph)
-        ├── Role-scoped Sub-agents (Planner / Generator / Verifier / Reviewer / ...)
-        ├── Retriever (Qdrant embedded + bge-m3)
-        └── LLM Backend (llama.cpp — Gemma 4 E2B/E4B)
-```
-
----
-
-## 4.1 Nguyên tắc HITL (Human-In-The-Loop)
-
-HITL không phải tính năng tuỳ chọn — đây là **ràng buộc thiết kế cứng** của hệ thống, xuất phát từ bản chất của domain sư phạm:
-
-> _Giáo viên là người chịu trách nhiệm pháp lý và đạo đức với học viên. Hệ thống chỉ là công cụ hỗ trợ soạn thảo — không bao giờ được tự động phát hành output đến học viên mà không qua tay giáo viên._
-
-**Lý do HITL là "sống còn":**
-
-- LLM hallucinate → kiến thức sai → học viên học sai → thiệt hại khó đảo ngược.
-- Test case tự sinh có thể thiếu edge case → chấm code sai → điểm số không công bằng.
-- Feedback không phù hợp có thể gây demotivation hoặc ảnh hưởng tâm lý học viên.
-- Giáo viên biết ngữ cảnh lớp học (em này học chậm, lớp đang ôn thi, …) — LLM không biết.
-- Bloom calibration sai → dạy sai trình tự kiến thức.
-
-**Ba mức HITL trong hệ thống:**
-
-| Mức | Tên                     | Mô tả                                                                           | Khi nào                      |
-| --- | ----------------------- | ------------------------------------------------------------------------------- | ---------------------------- |
-| L1  | **Hard gate**           | Output bị giữ lại, không thể đến học viên nếu chưa được duyệt                   | Grading feedback — luôn luôn |
-| L2  | **Soft review**         | Hiển thị confidence score + cảnh báo; giáo viên có thể approve nhanh hoặc edit  | Lesson plan, exercise draft  |
-| L3  | **Override & feedback** | Giáo viên reject + ghi lý do → lý do được inject lại vào agent prompt khi retry | Mọi output bị reject         |
-
-**HITL checkpoint trong typed task graph:**
-
-```
-DraftLessonPlan        →  [L2: Soft Review]  →  approved / edited
-DraftExercise          →  [L2: Soft Review]  →  approved / edited
-DraftFeedback          →  [L1: Hard Gate]    →  sent to student
-CheckPedagogicalOutput →  [L3: teacher override nếu reject]
-```
-
-**Thiết kế UI cho HITL:**
-
-- **Review Queue**: panel chứa tất cả output đang chờ duyệt, sorted by task type.
-- **Diff view**: highlight phần AI tạo vs phần giáo viên đã edit (audit trail).
-- **Confidence badge**: mỗi output kèm mức độ tin cậy từ verifier/constraint checks (citation coverage + pedagogical score).
-- **Reject with reason**: textarea ghi lý do → prepend vào prompt retry dưới dạng constraint.
-- **Audit log**: lưu mọi action (approve/edit/reject) với timestamp.
-
-**HITL trong corpus labeling**: Bloom label + metadata do LLM gợi ý → export CSV → giáo viên/domain expert review → import lại. Không index chunk chưa được xác nhận.
-
-**Implication cho nghiên cứu**: edit rate + reject rate là metric thực tiễn — bổ sung vào 4.9 nếu thu thập được, hoặc ghi nhận là hướng đánh giá tương lai.
-
----
-
-## 4.2 Tổng quan kiến trúc core + extension
+- Kiến trúc được tổ chức quanh ba trụ cột:
+  - **Pedagogy-Constrained Orchestration** — hiện thực qua Orchestrator, Role-scoped Agents, Guardrails và HITL;
+  - **Edge-LLM-Constrained Orchestration** — hiện thực qua Orchestrator và Memory (context/memory budget control);
+  - **Pedagogy Domain Extension** — hiện thực qua Extension và Knowledge Base.
 
 ```mermaid
-flowchart TD
-    T(["Giáo viên"])
+flowchart TB
+    T["User"]
+    APP["Application"]
+    EXT["Pedagogy<br/>Domain<br/>Extension"]
+    MODEL["Model<br/>Inference"]
 
-    subgraph CORE["Core  —  domain-independent workflow"]
-        ORC["Orchestrator"]
-
-        subgraph POOL["Role-scoped Sub-agents"]
-            direction LR
-            RT["Retrieval Role"]
-            DR["Draft / Feedback Role"]
-            VF["Verification Role"]
-            RV["Review Role"]
-        end
+    subgraph CORE["Core System"]
+        ORCHESTRATOR["Orchestrator"]
+        AGENTS["Role-Scoped Agents"]
+        KNOW["Knowledge Base"]
+        MEM["Memory"]
+        STORE["Storage"]
+        TOOL["Tool Sandbox"]
+        GUARD([Guardrails])
+        HITL([HITL])
     end
 
-    RS[("Retrieval Sources")]
-    PLG[/"Pedagogy Domain Extension<br/>(implemented: IT/lập trình)"/]
+    T --> APP
+    APP <--> ORCHESTRATOR
+    APP <--> STORE
 
-    T -->|"task"| ORC
-    ORC -->|"spawn retrieval node"| RT
-    RT <-->|"query source tools"| RS
-    RT <-->|"retrieval policy"| PLG
-    RT -->|"top-k context + provenance"| ORC
-    ORC -->|"spawn draft/feedback node with filtered context"| DR
-    DR <-->|"templates + constraints"| PLG
-    DR -->|"structured draft"| VF
-    VF <-->|"verifiers + tools"| PLG
-    VF -->|"pass / structured errors"| ORC
-    ORC -->|"review node"| RV
-    RV -->|"output"| T
-    T -->|"reject + reason"| ORC
+    ORCHESTRATOR <--> AGENTS
+
+    ORCHESTRATOR <--> EXT
+    EXT --> KNOW
+    ORCHESTRATOR <--> MEM
+    ORCHESTRATOR <--> STORE
+    ORCHESTRATOR <--> TOOL
+    ORCHESTRATOR <--> GUARD
+    ORCHESTRATOR <--> HITL
+    ORCHESTRATOR <--> MODEL
+
+    AGENTS <--> KNOW
+    AGENTS --> MEM
+    AGENTS <--> TOOL
+    AGENTS <--> MODEL
+
+    KNOW <--> STORE
+    MEM <--> STORE
+
+    HITL <--> APP
+
+    style AGENTS stroke-dasharray: 5 5
 ```
 
-> Retrieval được tách thành node/sub-agent riêng để tránh nhồi toàn bộ retrieval capability vào mọi role. Các role sinh nội dung chỉ nhận context đã lọc kèm provenance, giúp giảm prompt size và tool surface cho local small LLM. Core không chứa logic domain-specific nào; pedagogy domain extension là điểm mở rộng duy nhất.
-
----
-
-## 4.3 Pedagogy Domain Extension
-
-Pedagogy Domain Extension là **nguyên tắc phân tách trách nhiệm** giữa core và miền cụ thể: core giữ workflow sư phạm-kỹ thuật có thể tái sử dụng, còn extension đóng gói tri thức, công cụ và tiêu chí kiểm tra của từng miền. Luận văn khẳng định khả năng mở rộng ở mức thiết kế/interface; phạm vi triển khai và đánh giá thực nghiệm chỉ tập trung vào extension CNTT/lập trình.
-
-### Đặc thù sư phạm-kỹ thuật dùng làm giả định thiết kế
-
-Trong case study CNTT/lập trình, một số đặc điểm sư phạm-kỹ thuật sau được dùng làm giả định thiết kế. Các đặc điểm này cũng gợi ý những yêu cầu mà extension cho miền kỹ thuật khác cần khai báo lại, nhưng luận văn không kiểm chứng bằng thực nghiệm đa ngành:
-
-| Đặc thù                    | Biểu hiện                                                                                     | Ý nghĩa với hệ thống                                                                   |
-| -------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| **Thực hành với công cụ**  | Lab, project, simulation — học qua làm                                                        | Bài tập luôn có exercise_type + tool context                                           |
-| **Verify được bằng máy**   | Chạy code, chạy mạch điện, kiểm tra tính toán — đáp án có tính khách quan                     | verify() là hook bắt buộc trong extension interface                                    |
-| **Tiêu chuẩn kỹ thuật**    | PEP8 (IT), IEEE (Điện tử), TCVN/ISO (Cơ khí) — "đúng" phải tuân theo chuẩn                    | domain_quality_checks() cần biết chuẩn của từng ngành                                  |
-| **Error taxonomy đặc thù** | Off-by-one (IT), ngắn mạch (Điện tử), safety factor sai (Cơ khí) — lỗi mang tính chuyên ngành | error_taxonomy và feedback_template không thể dùng chung                               |
-| **Bloom áp dụng được**     | Trong case study, nội dung lập trình có thể gắn Remember → Apply → Evaluate                   | Bloom metadata và corpus indexing đặt ở core, nhưng rule cụ thể vẫn do extension cấu hình |
-
-### Điểm riêng buộc phải thành extension
-
-Bảng dưới minh họa lý do cần tách phần domain-specific khỏi core và các loại thông tin mà extension interface phải biểu đạt. Chỉ cột IT/lập trình nằm trong phạm vi hiện thực của luận văn; các cột Điện tử và Cơ khí là ví dụ thiết kế để kiểm tra tính đầy đủ của interface, không phải requirement triển khai:
-
-| Thành phần extension    | IT (Lập trình)                                    | Điện tử _(minh họa)_                                   | Cơ khí _(minh họa)_                                      |
-| ----------------------- | ------------------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------- |
-| `exercise_types`        | Implementation / Debug / Trace / Design           | Circuit Design / Simulation / Analysis / Fault Finding | Stress Analysis / Mechanism Design / Manufacturing / CAD |
-| `verify_solution()`     | `PytestRunner` — chạy test case, pass/fail        | `SPICERunner` — chạy simulation, check waveform        | `FEMChecker` — check stress/strain, safety factor        |
-| `error_taxonomy`        | off-by-one, mutate-while-iterate, wrong-base-case | wrong-polarity, short-circuit, impedance-mismatch      | unit-mismatch, safety-factor-violation, tolerance-error  |
-| `feedback_template`     | Code block + inline comment + fix suggestion      | Circuit diagram annotation + formula derivation        | Engineering drawing markup + calculation correction      |
-| `domain_quality_checks` | Compile check + code style (PEP8)                 | Unit consistency + component rating (IEEE std)         | Dimensional consistency + material standard (TCVN/ISO)   |
-| `corpus_pipeline`       | Chunk code + docstring, tag by language/framework | Chunk datasheet + schematic, tag by component/topology | Chunk drawing + spec sheet, tag by material/process      |
-
-**Kết luận phân tách:**
-
-- **Core** = _workflow logic_: lesson planning flow, exercise design flow, grading flow, quality review flow — phần workflow được giả định là có thể tái sử dụng cho nhiều tác vụ sư phạm-kỹ thuật.
-- **Extension** = _domain knowledge + tools_: toàn bộ các thành phần trong bảng trên — thay đổi hoàn toàn theo từng ngành.
-
-**Extension IT** trong luận văn đóng vai trò _proof-of-concept_: validate rằng extension interface đủ biểu đạt cho một domain kỹ thuật cụ thể và đủ phức tạp để đánh giá workflow. Luận văn kết luận thực nghiệm trong phạm vi case study này; khả năng thêm extension mới mà không thay đổi core được trình bày như khẳng định ở mức thiết kế và hướng mở rộng cần kiểm chứng thêm.
-
----
-
-## 4.4 Pedagogy-Constrained Orchestration
-
-Pedagogy-Constrained Orchestration là cách core thực thi các tác vụ sư phạm-kỹ thuật dưới dạng task graph có kiểm soát. Typed task graph trong hệ thống là một lựa chọn thiết kế để kiểm soát agentic workflow, không phải đóng góp thuật toán mới. Core không định nghĩa một tập 4 agent cố định. Thay vào đó, hệ thống dùng **Supervisor Orchestrator** để phân tích yêu cầu giáo viên, chọn graph template phù hợp và thực thi các node theo thứ tự có kiểm soát. Mỗi node có thể gọi một role-scoped sub-agent invocation của cùng local LLM, với prompt, tool access, retrieval policy, verifier và output schema riêng.
-
-Điểm tùy chỉnh cho domain sư phạm nằm ở chỗ các ràng buộc như citation coverage, Bloom/rubric alignment, misconception mapping, feedback policy và HITL không được xử lý như bước hậu kiểm rời rạc, mà được đưa vào graph như các node/condition bắt buộc.
-
-**Task node contract**:
-
-```python
-class TaskNodeSpec(BaseModel):
-    node_id: str
-    role: str
-    input_schema: type[BaseModel]
-    output_schema: type[BaseModel]
-    allowed_tools: list[str]
-    retrieval_policy: RetrievalPolicy
-    verifier: VerifierSpec | None
-    retry_policy: RetryPolicy
-    stop_condition: StopCondition
-```
-
-**Message protocol**:
-
-```python
-{
-    "task_id": str,
-    "node_id": str,
-    "role": str,
-    "extension_id": str,
-    "input": dict,
-    "context_chunks": list[Chunk],
-    "output": dict,
-    "citations": list[Citation],
-    "verification": VerificationResult | None,
-    "repair_history": list[RepairAction],
-}
-```
-
-### Graph template theo task
-
-**Lesson planning**:
-
-```
-NormalizeRequest
-  → RetrieveConcepts
-  → DraftLessonPlan
-  → CheckBloomAlignment
-  → CheckConstructiveAlignment
-  → CheckCitationCoverage
-  → HITLGate
-```
-
-**Exercise generation**:
-
-```
-NormalizeRequest
-  → RetrieveExamples
-  → DraftExercise
-  → GenerateReferenceSolution
-  → GenerateTests
-  → RunDomainVerifier
-  → CheckPedagogicalConstraints
-  → HITLGate
-```
-
-**Code grading / feedback**:
-
-```
-NormalizeSubmission
-  → RunDomainVerifier
-  → ClassifyErrors
-  → RetrieveExplanations
-  → DraftFeedback
-  → CheckFeedbackPolicy
-  → HITLGate
-```
-
-### Role-scoped sub-agents
-
-Sub-agent trong luận văn được định nghĩa thực dụng: **một lần gọi LLM có role, prompt, tool scope và state riêng**, không nhất thiết là process/model riêng. Supervisor chỉ spawn role khi graph cần node tương ứng.
-
-| Role                | Khi được gọi                         | Tool/retrieval scope                                       |
-| ------------------- | ------------------------------------ | ---------------------------------------------------------- |
-| `RetrievalRole`     | Cần theory/example/explanation chunk | VectorSearch, KnowledgeGraph, DiskReader tùy task          |
-| `LessonDraftRole`   | Soạn giáo án                         | Corpus theory, activity templates, Bloom metadata          |
-| `ExerciseDraftRole` | Sinh đề/lời giải/test                | Example chunks, generation templates, verifier schema      |
-| `VerificationRole`  | Kiểm tra code/test/citation/Bloom    | PytestRunner, linter, citation checker, constraint checker |
-| `FeedbackRole`      | Sinh feedback chấm bài               | Error taxonomy, misconception mapping, feedback template   |
-| `ReviewRole`        | Kiểm tra output cuối                 | Pedagogical constraints, citation coverage, HITL policy    |
-
-### Verification-guided repair loop
-
-Verification-guided repair kế thừa ý tưởng kiểm chứng và tự sửa lỗi trong các hệ thống agent/code generation, nhưng được giới hạn vào các component sư phạm-kỹ thuật cụ thể. Retry không dùng prompt chung kiểu "try again". Mỗi verifier trả lỗi có cấu trúc để Supervisor quyết định sửa thành phần nào:
-
-```python
-class VerificationError(BaseModel):
-    error_type: str                 # compile_error, edge_case_failure, off_bloom, unsupported_claim, ...
-    failed_component: str           # exercise, solution, tests, citation, feedback, ...
-    evidence: dict                  # traceback, failed test, unsupported claim, violated rubric item
-    repair_action: str              # regenerate_solution, add_edge_tests, replace_citation, revise_feedback
-```
-
-Ví dụ: nếu `RunDomainVerifier` phát hiện lời giải mẫu fail ở edge case, Supervisor chỉ gọi lại node `GenerateReferenceSolution` với ràng buộc sửa edge case đó; không regenerate đề bài và test đã pass. Nếu `CheckCitationCoverage` phát hiện citation không hỗ trợ claim, Supervisor chỉ gọi lại retrieval/citation repair.
-
-### Core constraints
-
-Các constraint bất biến giữa domain:
-
-- **Bloom alignment**: output phải khớp cấp độ nhận thức yêu cầu.
-- **Constructive alignment**: mục tiêu học tập, hoạt động học và đánh giá không mâu thuẫn.
-- **Citation coverage**: claim quan trọng phải có source chunk hỗ trợ.
-- **Rubric consistency**: đề, lời giải, test case và thang điểm phải nhất quán.
-- **Feedback policy**: feedback phải giải thích lỗi và gợi ý sửa, không chỉ báo đúng/sai.
-- **HITL gate**: output không được phát hành đến học viên nếu chưa được giáo viên duyệt.
-
----
-
-## 4.5 Pedagogy Domain Extension Interface
-
-**Extension Interface** (contract thiết kế). Trong prototype, chỉ các trường/hook cần cho extension CNTT/lập trình được hiện thực đầy đủ; các hook còn lại là extension point cho tương lai:
-
-```python
-class PedagogyDomainExtension(ABC):
-    extension_id: str
-
-    # Corpus
-    metadata_schema: dict
-    corpus_pipeline: CorpusPipeline
-    retrieval_policies: dict[str, RetrievalPolicy]
-
-    # Typed task graph
-    task_schemas: dict[str, TaskSchema]
-    graph_templates: dict[str, TaskGraphSpec]
-
-    # Pedagogical constraints
-    bloom_mapping_rules: dict
-    learning_objective_templates: dict[str, Template]
-    rubric_schema: dict
-    misconception_taxonomy: dict[str, str]
-    feedback_policy: dict
-    citation_policy: dict
-    hitl_policy: dict
-
-    # Lesson planning
-    activity_types: list[str]
-    section_format: dict[str, Template]
-    prerequisite_graph: TopicGraph | None
-
-    # Exercise design
-    exercise_types: list[str]
-    generation_template: dict[str, Template]
-    def verify_solution(self, solution: str) -> bool: ...
-
-    # Grading
-    def verify(self, submission: str) -> VerificationResult: ...
-    feedback_template: Template
-
-    # Verification + repair
-    def domain_quality_checks(self, output: str) -> list[CheckResult]: ...
-    def map_verification_error(self, error: VerificationError) -> RepairAction: ...
-```
-
-**Extension CNTT (Lập trình)** — implementation:
-
-_Metadata schema_: `bloom_level` · `topic` (CS topic slug) · `difficulty` · `language` (`python/java/any`) · `content_type` (`theory/example/exercise/solution`).
-
-_activity_types_: `[theory_block, live_code_demo, guided_practice, independent_exercise]`.
-
-_exercise_types_: `[Implementation, Debug, Trace, Design]` — mỗi type có generation prompt riêng.
-
-_verify_solution_: `PytestRunner` chạy generated test suite → `True` nếu pass ≥ 90%.
-
-_verify(submission)_: `PytestRunner` (pass rate) + `Linter` (ruff violations) → `VerificationResult{pass_rate, lint_issues[], runtime_errors[]}`.
-
-_error_taxonomy_: `off-by-one` · `mutate-while-iterate` · `variable-shadow` · `wrong-base-case` · `missing-return` · `type-confusion`.
-
-_feedback_template_: code block highlight lỗi + inline comment + citation textbook section.
-
-_domain_quality_checks_: `CodeSyntaxValidator` (compile check) + language consistency.
-
-_Tool set Extension CNTT_:
-
-- `CodeSyntaxValidator`: parse AST Python/Java, phát hiện syntax error.
-- `PytestRunner`: subprocess isolated, timeout 10s, `resource.setrlimit` (no network, no fs write).
-- `Linter`: `ruff check` → violation list + severity.
-- `ASTAnalyzer`: cyclomatic complexity, unused var, naming → map sang misconception.
-- `TopicDependencyGraph`: đồ thị CS topic tĩnh (arrays → sorting → searching → graph…).
-
-_Corpus ingestion_: PDF/HTML giáo trình (Python Crash Course, CLRS, giáo trình nội bộ) + slide + bài tập có đáp án. Chunk tại heading/code-block boundary (chunk_size=512, overlap=64). LLM gợi ý bloom+content_type → export CSV review → import Qdrant.
-
----
-
-## 4.6 Retrieval Sub-agent
-
-_(Cơ sở lý thuyết: §3.3 — Agentic RAG Survey \[`AgenticRAGSurvey2025`\], A-RAG \[`ARAG2025`\], GraphRAG \[`Edge2024GraphRAG`\])_
-
-`RetrievalRole` là một **sub-agent/node riêng trong typed task graph**, không phải base capability nhúng vào mọi agent. Supervisor gọi retrieval node trước các node sinh nội dung, truyền vào `{task_type, topic, bloom_target, extension_id, retrieval_policy}` và chỉ chuyển tiếp `top-k` context đã rerank kèm provenance cho các role downstream.
-
-Lý do tách retrieval thành sub-agent:
-
-- Giảm context size cho các role sinh nội dung; chúng không cần biết toàn bộ source/tool plan.
-- Giảm tool surface, tránh local small LLM phải chọn giữa quá nhiều retrieval tool trong cùng prompt.
-- Dễ ablation retrieval policy và đo riêng retrieval quality.
-- Cho phép cache kết quả retrieval theo task/node và tái sử dụng giữa draft, verification và citation repair.
-
-### Kiến trúc nội bộ
-
-```
-RetrievalRole  (graph node do Supervisor gọi khi cần)
-├── QueryPlanner          — LLM call nhỏ (≤ 128 token): phân tích query + bloom_target → tool_plan
-├── Source Tools (parallel)
-│   ├── VectorSearchTool  — Qdrant (bge-m3) + payload filter (bloom, topic, language)
-│   ├── DiskReaderTool    — đọc trực tiếp file trên disk (PDF/DOCX/slide chưa index)
-│   ├── WebSearchTool     — optional/future: tìm kiếm web, tắt mặc định
-│   ├── ConnectorTool[]   — optional/future: Google Drive, Google Classroom
-│   └── KnowledgeGraphTool— topic dependency graph tĩnh; dynamic concept graph là optional
-├── ResultAggregator      — merge kết quả, gắn provenance metadata
-└── CrossSourceReranker   — bge-reranker-v2-m3 + source trust weighting
-```
-
-### QueryPlanner
-
-Nhận `{task_type, bloom_target, topic, extension_id}` → quyết định tool nào kích hoạt:
-
-| Task                          | Tools ưu tiên                                                                           |
-| ----------------------------- | --------------------------------------------------------------------------------------- |
-| Lesson planning               | VectorSearch (theory) + KnowledgeGraph (prerequisite chain)                             |
-| Exercise design               | VectorSearch (example) + KnowledgeGraph (topic scope) + DiskReader nếu có rubric/đề mẫu |
-| Grading                       | VectorSearch (explanation) + DiskReader (rubric file)                                   |
-| Web-augmented (future/opt-in) | + WebSearch nếu topic mới / chưa có trong corpus                                        |
-
-QueryPlanner là LLM call nhỏ (Gemma E2B, ≤ 128 token output) nằm trong `RetrievalRole`; kết quả là `tool_plan: list[ToolCall]`. Các role khác không thấy tool plan này, chỉ nhận retrieved context đã lọc.
-
-### Source Tools
-
-**VectorSearchTool**: embed query bằng `bge-m3` → hybrid search Qdrant (vector + payload filter `bloom_level`, `topic`, `language`) → top-20 candidates.
-
-**DiskReaderTool**: đọc file chưa index (giáo viên drop vào session folder) theo chunk tạm thời; không persist vào Qdrant. Hữu ích cho tài liệu one-off (đề thi cũ, rubric cụ thể).
-
-**WebSearchTool**: không thuộc phạm vi đánh giá chính. Nếu hiện thực ở phiên bản mở rộng, công cụ này disabled mặc định; giáo viên bật per-session từ UI. Kết quả gắn flag `source=web` + warning trong Review Queue (tài liệu web chưa kiểm chứng).
-
-**ConnectorTool**: không thuộc phạm vi prototype chính. Extension CNTT có thể mở rộng thêm `GoogleClassroomConnector` (fetch assignment, submission) và `GoogleDriveConnector` (fetch tài liệu giảng dạy). Yêu cầu OAuth; token lưu local, không sync cloud.
-
-**KnowledgeGraphTool**: trong prototype chỉ cần static topic graph do extension cung cấp (`TopicDependencyGraph`). Dynamic concept graph tự xây từ corpus bằng entity extraction là optional/future vì chi phí triển khai và đánh giá cao.
-
-### ResultAggregator & CrossSourceReranker
-
-Mọi kết quả được gắn provenance: `{source_type, source_id, chunk_text, bloom_level, confidence, freshness}`.
-
-CrossSourceReranker dùng `bge-reranker-v2-m3` với source trust weighting:
-
-| Source                                         | Trust weight mặc định |
-| ---------------------------------------------- | --------------------- |
-| VectorSearch (indexed + HITL-verified)         | 1.0                   |
-| DiskReader (chưa verify)                       | 0.8                   |
-| Connector (corpus giáo viên, có cấu trúc)      | 0.9                   |
-| WebSearch (nguồn ngoài, nếu bật ở bản mở rộng) | 0.6                   |
-
-Top-5 final chunks được trả về kèm provenance → Supervisor truyền vào các node downstream dưới dạng `context_pack`. Nếu verifier phát hiện citation không hỗ trợ claim, Supervisor gọi lại `RetrievalRole` ở chế độ citation repair thay vì yêu cầu draft role tự retrieve.
-
-### Privacy & opt-in
-
-- WebSearch tắt mặc định và không nằm trong đánh giá chính — tài liệu nội bộ không leak.
-- ConnectorTool chỉ active khi giáo viên authorize OAuth session; trong luận văn có thể để ở mức thiết kế.
-- DiskReader chỉ đọc trong session folder được giáo viên chỉ định.
-- Mọi external source fetch được log trong Audit log (xem §4.1 HITL).
-
----
-
-## 4.7 Edge-LLM-Aware Orchestration
-
-Edge-LLM-Aware Orchestration là nhóm quyết định thiết kế giúp agentic workflow chạy được trên local small LLM thay vì giả định model thương mại lớn với context rộng và năng lực suy luận mạnh. Core kiểm soát prompt/context budget, giới hạn tool scope, đặt retry depth và tách retrieval thành node riêng để giảm tải cho model.
-
-### llama.cpp Integration
-
-- Nhúng `llama-cpp-python` trong Python child process — không cần server riêng.
-- Model load một lần khi khởi động app; giữ context window tối đa của Gemma 4 E2B/E4B.
-- Prompt caching: tái dùng KV cache cho system prompt + retrieved chunks ở đầu mỗi agent call.
-- Fallback VRAM (theo thứ tự thử): (1) giảm quantization xuống Q2_K; (2) bật CPU offload một phần (`n_gpu_layers` giảm dần); (3) giảm `n_ctx` (context window) xuống 4 096; (4) nếu vẫn không đủ, thông báo lỗi rõ ràng cho người dùng.
-
----
-
-## 4.8 Guardrails
-
-_(Cơ sở lý thuyết: §3.7 — AGrail \[`Luo2025AGrail`\], ToolSafe \[`Zhang2025ToolSafe`\], prompt injection \[`Perez2022`\])_
-
-Ba tầng độc lập, không thay thế HITL:
-
-- **Input**: topic relevance (zero-shot Gemma), prompt injection detect, PII scrub, length/budget check.
-- **Output**: citation coverage ≥ 0.6, code safety blocklist (`os.system`, network call), Bloom mismatch flag (lệch > 1 bậc).
-- **Tool sandbox**: `PytestRunner` dùng `resource.setrlimit` (CPU 10 s, RAM 256 MB, no network, no fs write) — theo ToolSafe step-level principle. Mọi tool có timeout cứng; timeout → `VerificationResult{pass_rate=0, error="timeout"}`.
-
-Calibration: false positive gây friction cho giáo viên → threshold dễ hơn so với guardrail an toàn dữ liệu thông thường; false negative (output sai) vẫn bắt được qua HITL.
-
----
-
-## 4.9 Context Management
-
-_(Cơ sở lý thuyết: §3.6 — ACON \[`Kang2025ACON`\], Lost in the Middle \[`Liu2023LostInMiddle`\], Context Engineering \[`ContextEngineering2025`\])_
-
-**Budget cố định** (tổng ≤ 8 192 token — context window Gemma 4 E2B):
-
-| Slot             | Giới hạn |
-| ---------------- | -------- |
-| System prompt    | ≤ 512    |
-| Retrieved chunks | ≤ 2 048  |
-| History summary  | ≤ 512    |
-| Task instruction | ≤ 256    |
-| Output reserve   | ≥ 1 024  |
-
-Nếu vượt budget → cắt `history_summary` trước, rồi giảm retrieved chunks.
-
-**Conversation compaction**: sau mỗi task hoàn thành (hoặc khi history > 1 500 token), LLM call riêng compress history thành ≤ 200 token — ý tưởng từ ACON, đơn giản hoá vì single local LLM.
-
-**Chain depth limit**: max 3 retry per task; sau 3 lần fail → đẩy draft lên Review Queue với flag `⚠ needs_human_revision`.
-
-**Agent federation**: mọi LLM call qua Orchestrator (single backend); agent chỉ build prompt + parse output — Orchestrator kiểm soát KV cache và budget tập trung.
-
----
-
-## 4.10 Memory Architecture
-
-_(Cơ sở lý thuyết: §3.5 — Sumers taxonomy \[`Sumers2024`\], MemGPT \[`Packer2023`\], episodic memory \[`Vo2025Episodic`\])_
-
-4 tầng ánh xạ lên taxonomy Sumers (2024). Trong prototype/đánh giá chính, M1, M2 và M4 là đủ; M3 được mô tả như extension để cá nhân hóa theo giáo viên nếu có thời gian triển khai:
-
-| Tầng           | Tên                                  | Storage                          | Vòng đời            |
-| -------------- | ------------------------------------ | -------------------------------- | ------------------- |
-| M1 — Working   | State task hiện tại                  | LangGraph state dict (RAM)       | Trong 1 task        |
-| M2 — Episodic  | Conversation history + corrections   | SQLite `session.db`              | Đến khi xóa session |
-| M3 — Long-term | Teacher profile + correction pattern | SQLite `profile.db` (persistent) | Optional/future     |
-| M4 — Semantic  | Corpus giáo trình nội bộ             | Qdrant embedded                  | Update khi import   |
-
-**Luồng ghi từ L3 Override**: reject reason → M2 (immediate). Nếu có triển khai M3, pattern lặp ≥ 3 lần được lưu vào teacher profile và inject vào system prompt retry.
-
-**Luồng đọc khi bắt đầu task**: Orchestrator prepend N correction gần nhất (M2) vào system prompt slot ≤ 512 token trước khi gọi LLM. Teacher preferences từ M3 là phần mở rộng.
-
-**Privacy**: M2 và M3 nếu có đều local only, không sync cloud; giáo viên xóa từng session hoặc toàn bộ profile từ UI.
-
----
-
-## 4.11 Electron Desktop App
-
-- **Main process** (Node.js): quản lý lifecycle, spawn child process Python MAS, expose IPC channel.
-- **Renderer** (React/Vue): UI giáo viên — workspace chọn pedagogy domain extension, soạn yêu cầu, xem output + citation highlight, Review Queue (HITL).
-- **IPC bridge**: `ipcMain`/`ipcRenderer` ↔ child process qua `child_process.spawn` + JSON-line protocol.
-- **Child process** (Python): toàn bộ MAS + llama.cpp + Qdrant embedded. Nhận lệnh từ main, stream response về.
-- Packaging bằng `electron-builder` (`.dmg` / `.exe` / `.AppImage`) là yêu cầu sản phẩm nếu phát hành rộng. Trong phạm vi luận văn, prototype chỉ cần chạy được ở môi trường local demo; packaging đầy đủ có thể đưa vào hướng phát triển.
-
----
+- **Core System**
+  - bao gồm Orchestrator, Role-scoped Agents, Knowledge Base, Memory, Storage, Tool Runtime/Sandbox, Guardrails và HITL;
+  - không bao gồm User, Application, Pedagogy Domain Extension và Model Inference;
+  - giữ workflow/runtime logic có thể tái sử dụng giữa các domain extension.
+
+- **Orchestrator**
+  - điều phối workflow sư phạm-kỹ thuật;
+  - quản lý task graph, role-scoped agents, retrieval, verification, repair và HITL;
+  - spawn/điều phối role-scoped agents theo từng task thay vì chạy pipeline cố định;
+  - nạp template, retrieval policy và feedback policy từ Extension khi khởi tạo agent invocation;
+  - áp dụng đồng thời Pedagogy-Constrained Orchestration và Edge-LLM-Constrained Orchestration;
+  - độc lập với từng miền kỹ thuật cụ thể.
+
+- **Role-scoped agents**
+  - gồm các role như retrieval, draft, verification, feedback và review;
+  - là các ephemeral agent invocations được orchestrator spawn khi cần;
+  - mỗi invocation có role, context scope, memory scope và tool scope riêng;
+  - orchestrator quyết định role nào được gọi, thứ tự gọi và điều kiện dừng/retry;
+  - agent invocation dùng chung model inference backend nhưng không nhất thiết là process/model riêng.
+
+- **Pedagogy Domain Extension**
+  - khai báo metadata schema, task schema, prompt templates;
+  - cung cấp retrieval policy, verifier, error taxonomy, feedback policy;
+  - đóng gói corpus ingestion pipeline và domain tools;
+  - được orchestrator nạp khi khởi tạo; agents không truy cập Extension trực tiếp.
+
+- **Knowledge Base**
+  - corpus học phần đã index;
+  - vector search/reranking;
+  - provenance/citation metadata;
+  - nhận tài liệu từ workspace/storage qua ingestion/indexing pipeline;
+  - metadata và retrieval behavior được cấu hình bởi Pedagogy Domain Extension;
+  - topic dependency graph ở mức prototype nếu cần.
+
+- **Memory**
+  - working memory cho state của task hiện tại;
+  - short-term/session memory cho history và teacher corrections;
+  - long-term memory cho teacher preferences/profile nếu được triển khai;
+  - orchestrator kiểm soát lượng memory được inject vào agent context (prompt budget);
+  - agents ghi kết quả trung gian vào working memory nhưng không tự đọc lại history ngoài scope được cấp.
+
+- **Storage**
+  - lưu workspace, configs, session metadata và audit log;
+  - lưu chat history/correction history ở dạng persistable;
+  - lưu corpus registry, index metadata và trạng thái ingestion;
+  - là tầng lưu trữ cục bộ phục vụ Application, Knowledge Base và Memory.
+
+- **Tool Sandbox**
+  - chạy verifier, test runner, linter, syntax checker và các domain tools;
+  - áp dụng timeout, resource limit và isolation cho tool execution;
+  - nhận tool definitions/verifier hooks từ Pedagogy Domain Extension thông qua Orchestrator;
+  - trả kết quả có cấu trúc cho Orchestrator để repair, retry hoặc chuyển HITL.
+
+- **Guardrails**
+  - kiểm tra schema và ràng buộc sư phạm;
+  - kiểm tra code/test/lint trong extension CNTT;
+  - áp dụng ở cả input/output của node và trước/sau tool call;
+  - trả kết quả có cấu trúc để orchestrator quyết định repair hay chuyển HITL.
+
+- **HITL**
+  - giáo viên kiểm soát việc thay đổi dữ liệu/trạng thái;
+  - approve/edit/reject/cancel trước khi lưu, xuất hoặc cập nhật;
+  - edit/reject reason được lưu vào memory và dùng cho repair;
+  - là ràng buộc workflow, không phải component sinh nội dung.
+
+- **Model inference**
+  - local/edge small LLM inference backend;
+  - local embedding/reranking model services;
+  - model lifecycle và resource control;
+  - không phụ thuộc frontier/cloud LLM cho workflow chính.
+
+- **Application**
+  - desktop UI cho giáo viên;
+  - review queue, approve/edit/reject;
+  - hiển thị draft/proposed changes để giáo viên quyết định trước khi áp dụng;
+  - giao tiếp hai chiều với orchestration backend qua IPC (gửi task, nhận stream trạng thái và output).
+
+## 4.4 Các luồng nghiệp vụ chính
+
+- **Luồng hỏi đáp/giải thích tài liệu học phần**
+  - giáo viên nhập câu hỏi/chủ đề;
+  - hệ thống chuẩn hóa intent và truy xuất tài liệu liên quan;
+  - agent sinh câu trả lời có citation;
+  - verifier kiểm tra citation coverage và ràng buộc sư phạm;
+  - giáo viên quyết định câu trả lời có được lưu/xuất hay cần chỉnh sửa/hủy.
+
+- **Luồng sinh bài tập lập trình**
+  - giáo viên nhập topic, độ khó, Bloom target và exercise type;
+  - hệ thống retrieve ví dụ/tài liệu/rubric liên quan;
+  - agent sinh đề bài, lời giải tham chiếu và test cơ bản;
+  - verifier chạy kiểm tra kỹ thuật;
+  - nếu lỗi, supervisor repair đúng thành phần lỗi;
+  - output được đưa vào HITL review.
+
+- **Luồng sinh feedback cho bài nộp**
+  - hệ thống nhận bài nộp và yêu cầu chấm/feedback;
+  - domain verifier chạy test/lint/syntax checks;
+  - lỗi được phân loại theo error taxonomy;
+  - retrieval lấy giải thích liên quan từ corpus;
+  - feedback agent sinh nhận xét có tính sư phạm;
+  - giáo viên quyết định feedback có được lưu/xuất/gửi hay cần chỉnh sửa/hủy.
+
+## 4.5 Pedagogy-Constrained Orchestration
+
+- Mục tiêu:
+  - đưa ràng buộc sư phạm vào workflow thay vì chỉ hậu kiểm cuối cùng;
+  - giúp output phù hợp với mục tiêu học tập, rubric và ngữ cảnh lớp học.
+
+- Supervisor Orchestrator:
+  - nhận yêu cầu từ giáo viên;
+  - chọn graph template theo task;
+  - gọi các role-scoped agents khi cần;
+  - điều phối retrieval, generation, verification, repair và HITL.
+
+- Typed task graph:
+  - mỗi node có input/output schema;
+  - mỗi node có role, tool scope và verifier riêng;
+  - stop condition và retry policy được khai báo rõ.
+
+- Role-scoped agents:
+  - `RetrievalRole`: truy xuất context và provenance;
+  - `DraftRole`: sinh giáo án/câu trả lời/bài tập;
+  - `VerificationRole`: kiểm tra schema, citation, code và constraints;
+  - `FeedbackRole`: sinh feedback dựa trên verifier và error taxonomy;
+  - `ReviewRole`: chuẩn bị output cho HITL.
+
+- Pedagogical constraints:
+  - Bloom alignment;
+  - constructive alignment;
+  - rubric consistency;
+  - citation coverage;
+  - misconception mapping;
+  - feedback policy;
+  - HITL gate.
+
+- Verification-guided repair:
+  - verifier trả lỗi có cấu trúc;
+  - supervisor xác định thành phần cần sửa;
+  - chỉ repair component lỗi thay vì regenerate toàn bộ;
+  - nếu quá số lần retry thì chuyển sang human review.
+
+## 4.6 Edge-LLM-Constrained Orchestration
+
+- Mục tiêu:
+  - thiết kế agentic workflow dưới ràng buộc bắt buộc của local/edge small LLM;
+  - biến giới hạn context, memory, latency và compute thành constraint của orchestration;
+  - giảm tải reasoning, context và tool planning cho model;
+  - kiểm soát chi phí tính toán, latency và lỗi tool/schema;
+  - đảm bảo hệ thống không phụ thuộc vào frontier/cloud LLM để hoàn thành workflow chính.
+
+- Ràng buộc cứng của edge LLM:
+  - context window hạn chế;
+  - RAM/VRAM hạn chế;
+  - reasoning và tool planning yếu hơn frontier model;
+  - dễ lỗi khi prompt quá dài hoặc tool surface quá rộng;
+  - nhiều LLM calls làm tăng latency;
+  - retry không kiểm soát dễ tốn tài nguyên;
+  - không thể đẩy toàn bộ history, corpus, tool list và multi-agent state vào một prompt.
+
+- Context management:
+  - context budget là quota bắt buộc theo từng node;
+  - giới hạn retrieved chunks truyền vào mỗi node;
+  - downstream agent chỉ nhận context đã lọc theo role;
+  - history được tóm tắt trước khi đưa lại vào prompt;
+  - provenance được giữ ngắn và có cấu trúc.
+
+- Memory management:
+  - working memory cho state của task hiện tại;
+  - episodic memory cho session history và teacher corrections;
+  - semantic memory cho corpus đã index;
+  - long-term teacher profile là optional/future;
+  - memory injection bị giới hạn bởi prompt budget;
+  - memory không được dùng như nơi nhồi toàn bộ lịch sử vào LLM.
+
+- Task decomposition:
+  - tách task lớn thành các node nhỏ;
+  - mỗi node giải quyết một mục tiêu hẹp;
+  - tránh yêu cầu một prompt vừa retrieve, vừa generate, vừa verify, vừa format;
+  - node output được chuẩn hóa để node sau dùng lại.
+
+- Agent coordination:
+  - agent là role-scoped invocation, không nhất thiết là process/model riêng;
+  - supervisor quyết định role nào cần gọi theo từng task;
+  - không chạy fixed multi-agent pipeline nếu task không cần;
+  - trạng thái chung được quản lý ở orchestrator.
+
+- Tool-use control:
+  - tool access được cấp theo node;
+  - retrieval tool chỉ mở cho retrieval node;
+  - code verifier/linter chỉ mở cho verification node;
+  - tool call có schema, timeout và sandbox;
+  - số tool call và retry được giới hạn như tài nguyên hệ thống.
+
+- Retrieval compression:
+  - retrieval node có thể lấy nhiều candidates hơn;
+  - reranker chọn context nhỏ cho downstream node;
+  - context pack gồm chunk ngắn, metadata và provenance;
+  - citation repair gọi lại retrieval node thay vì để draft agent tự tìm nguồn.
+
+- Retry and repair policy:
+  - retry dựa trên lỗi có cấu trúc;
+  - ưu tiên targeted repair;
+  - giới hạn retry depth;
+  - nếu không chắc chắn thì chuyển sang HITL;
+  - tránh vòng lặp agent tự sửa không dừng.
+
+- Runtime scheduling:
+  - giới hạn số LLM calls cho mỗi task;
+  - cache retrieval result khi dùng lại;
+  - tái sử dụng prompt/context cố định nếu runtime hỗ trợ;
+  - fallback khi thiếu tài nguyên bằng cách giảm top-k, giảm context hoặc giảm retry.
+
+## 4.7 Pedagogy Domain Extension
+
+- Mục tiêu:
+  - tách core workflow khỏi tri thức và công cụ của từng miền;
+  - cho phép thêm miền kỹ thuật mới mà không thay đổi core;
+  - giữ claim mở rộng ở mức thiết kế/interface.
+
+- Core giữ:
+  - orchestration logic;
+  - task graph execution;
+  - HITL workflow;
+  - context/memory/tool scheduling;
+  - generic verification/repair loop.
+
+- Extension giữ:
+  - metadata schema;
+  - domain task schema;
+  - retrieval policy;
+  - prompt templates;
+  - verifier/tool interface;
+  - error taxonomy;
+  - feedback policy;
+  - corpus ingestion pipeline.
+
+- Extension CNTT/lập trình:
+  - exercise types: implementation, debug, trace, design;
+  - metadata: topic, Bloom level, difficulty, language, content type;
+  - verifier: syntax check, unit test, lint check;
+  - error taxonomy: off-by-one, wrong-base-case, missing-return, type-confusion;
+  - feedback template: chỉ ra lỗi, giải thích nguyên nhân, gợi ý sửa.
+
+- Các extension khác:
+  - Điện tử/Cơ khí/Xây dựng chỉ dùng làm ví dụ interface;
+  - không đưa vào đánh giá thực nghiệm chính;
+  - trình bày như hướng mở rộng cần kiểm chứng thêm.
+
+## 4.8 Retrieval và quản lý tri thức
+
+- Mục tiêu:
+  - cung cấp grounding từ tài liệu học phần;
+  - giảm hallucination;
+  - hỗ trợ citation/provenance;
+  - chọn context phù hợp với task và Bloom target.
+
+- Corpus:
+  - slide bài giảng;
+  - giáo trình/tài liệu nội bộ;
+  - đề bài, rubric, lời giải mẫu;
+  - bài nộp/lỗi mẫu nếu được phép sử dụng.
+
+- Metadata:
+  - topic;
+  - Bloom level;
+  - difficulty;
+  - content type;
+  - language/framework;
+  - source/provenance.
+
+- Retrieval pipeline:
+  - chunking theo cấu trúc tài liệu;
+  - embedding và index local;
+  - filter theo metadata;
+  - rerank;
+  - trả về context pack ngắn cho downstream agents.
+
+- RetrievalRole:
+  - lập truy vấn theo task;
+  - chọn nguồn truy xuất phù hợp;
+  - gom và lọc kết quả;
+  - trả context có provenance;
+  - hỗ trợ citation repair khi cần.
+
+- Privacy:
+  - corpus nội bộ không gửi ra ngoài mặc định;
+  - nguồn external/web là optional/future;
+  - mọi nguồn chưa xác minh cần được đánh dấu trong review.
+
+## 4.9 Verification, Guardrails và HITL
+
+- Verification:
+  - kiểm tra output schema;
+  - kiểm tra citation coverage;
+  - kiểm tra Bloom/rubric/feedback policy;
+  - kiểm tra kỹ thuật bằng domain verifier;
+  - trả lỗi có cấu trúc cho repair loop.
+
+- Guardrails:
+  - input relevance check;
+  - prompt injection detection;
+  - PII/data leakage checks;
+  - unsafe code/tool-use checks;
+  - output quality and safety flags.
+
+- Tool sandbox:
+  - tool chạy trong phạm vi giới hạn;
+  - timeout cứng;
+  - không cho network/filesystem access nếu không cần;
+  - lỗi tool được chuẩn hóa thành verification result.
+
+- HITL levels:
+  - hard gate cho các thao tác thay đổi dữ liệu/trạng thái;
+  - soft review cho draft chưa ghi vào dữ liệu chính;
+  - approve/edit/reject trước khi lưu, xuất hoặc cập nhật;
+  - reject/edit reason cho repair;
+  - audit log cho mọi thao tác được áp dụng.
+
+- Vai trò của giáo viên:
+  - cho phép hoặc từ chối data mutation;
+  - xác định phần thay đổi cụ thể được áp dụng;
+  - chỉnh sửa nội dung trước khi lưu/xuất/cập nhật;
+  - phản hồi lý do reject;
+  - xác nhận metadata/corpus label khi cần.
+
+## 4.10 Kiến trúc ứng dụng desktop và local runtime
+
+- Desktop application:
+  - giao diện nhập yêu cầu;
+  - quản lý workspace/corpus;
+  - hiển thị câu trả lời, citation và verifier result;
+  - review queue cho HITL.
+
+- Runtime architecture:
+  - UI process;
+  - orchestration backend;
+  - local LLM backend;
+  - local vector database;
+  - local session/profile storage.
+
+- IPC:
+  - UI gửi task tới backend;
+  - backend stream trạng thái và output về UI;
+  - tool/verifier chạy phía backend;
+  - lỗi runtime được trả về có cấu trúc.
+
+- Local storage:
+  - indexed corpus;
+  - task/session history;
+  - teacher corrections;
+  - audit log;
+  - optional teacher profile.
+
+- Deployment scope:
+  - prototype chạy local để demo và đánh giá;
+  - packaging hoàn chỉnh là mục tiêu sản phẩm/future work nếu chưa hoàn thiện.
+
+## 4.11 Tổng kết thiết kế
+
+- Chương này trình bày kiến trúc hệ thống ở mức system design.
+- Đóng góp không nằm ở từng kỹ thuật riêng lẻ.
+- Giá trị chính là cách tích hợp:
+  - Multi-Agent Agentic RAG;
+  - ràng buộc sư phạm;
+  - điều phối dưới ràng buộc edge LLM;
+  - cơ chế extension cho miền kỹ thuật;
+  - verification, guardrails và HITL.
+
+- Phạm vi hiện thực:
+  - core orchestration;
+  - extension CNTT/lập trình;
+  - retrieval local từ corpus học phần;
+  - verifier kỹ thuật cơ bản;
+  - teacher-controlled data mutation/review flow.
+
+- Chương tiếp theo đánh giá hệ thống qua:
+  - baseline comparison;
+  - ablation study;
+  - quality metrics theo từng task;
+  - latency/resource metrics cho local small LLM.

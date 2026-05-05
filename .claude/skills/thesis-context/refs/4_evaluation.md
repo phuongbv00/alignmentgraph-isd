@@ -24,52 +24,67 @@
 
 ### Thiết kế thực nghiệm cho EQ1
 
-Controlled comparison: **cùng LLM + cùng corpus + cùng queries**; chỉ thay đổi kiến trúc hệ thống. Mục tiêu là đánh giá giá trị của kiến trúc đề xuất trong bối cảnh sư phạm kỹ thuật local small LLM, không phải chứng minh typed graph, verifier hay pedagogical constraints là kỹ thuật mới độc lập.
+Controlled comparison: **cùng local/edge small LLM + cùng corpus + cùng queries**; chỉ thay đổi kiến trúc hệ thống. Mục tiêu là đánh giá giá trị của kiến trúc đề xuất trong bối cảnh sư phạm kỹ thuật với local-first/privacy và edge LLM là ràng buộc cứng, không phải chứng minh typed graph, verifier hay pedagogical constraints là kỹ thuật mới độc lập.
 
 **Bảng đảm bảo fairness** — mọi variant giữ nguyên các yếu tố nền tảng dưới đây, chỉ thay đổi cơ chế orchestration/verification:
 
-| Yếu tố                | Giá trị cố định cho tất cả variant                        |
-| --------------------- | --------------------------------------------------------- |
-| **Model**             | Gemma 4 E2B GGUF Q4_K_M (cùng checkpoint, cùng file)     |
-| **Corpus**            | Cùng Qdrant collection, cùng chunk, cùng embedding        |
-| **Retriever**         | bge-m3 embedding + bge-reranker-v2-m3; top-k = 5         |
-| **Tool access**       | LLM-only: không tool; Naive RAG: không tool; các variant agentic dùng cùng tool set nếu variant đó cho phép tool |
-| **Context length**    | Tối đa 8 192 token (giới hạn Gemma 4 E2B)                |
-| **Temperature**       | 0.2 (generation); 0.0 (judge)                            |
-| **Số lần retry**      | Tối đa 2 retry per task; riêng ablation sẽ bật/tắt targeted repair |
-| **Prompt budget**     | System prompt ≤ 512 token; retrieved context ≤ 2 048 token; instruction ≤ 256 token |
+| Yếu tố             | Giá trị cố định cho tất cả variant                                                                               |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| **Model**          | Gemma 4 E2B GGUF Q4_K_M (cùng checkpoint, cùng file)                                                             |
+| **Corpus**         | Cùng Qdrant collection, cùng chunk, cùng embedding                                                               |
+| **Retriever**      | bge-m3 embedding + bge-reranker-v2-m3; top-k = 5                                                                 |
+| **Tool access**    | LLM-only: không tool; Naive RAG: không tool; các variant agentic dùng cùng tool set nếu variant đó cho phép tool |
+| **Context length** | Tối đa 8 192 token (giới hạn Gemma 4 E2B)                                                                        |
+| **Temperature**    | 0.2 (generation); 0.0 (judge)                                                                                    |
+| **Số lần retry**   | Tối đa 2 retry per task; riêng ablation sẽ bật/tắt targeted repair                                               |
+| **Prompt budget**  | System prompt ≤ 512 token; retrieved context ≤ 2 048 token; instruction ≤ 256 token                              |
 
-> Các variant agentic phải lock cùng model, corpus, retriever, tool implementation, context length và temperature. Khác biệt chính chỉ nằm ở cách tổ chức workflow: generic ReAct loop, fixed multi-agent pipeline, hay kiến trúc đề xuất với Pedagogy-Constrained Orchestration, Edge-LLM-Aware Orchestration và Pedagogy Domain Extension.
+> Các variant agentic phải lock cùng model, corpus, retriever, tool implementation, context length và temperature. Khác biệt chính chỉ nằm ở cách tổ chức workflow: generic ReAct loop, fixed multi-agent pipeline, hay kiến trúc đề xuất với Pedagogy-Constrained Orchestration, Edge-LLM-Constrained Orchestration và Pedagogy Domain Extension.
 
 _Tầng 1 — Comparison study_ (trả lời trực tiếp EQ1):
 
-| Variant | Mô tả | Mục đích |
-| --- | --- | --- |
-| **LLM-only** | Không RAG, không agent — Gemma 4 E2B generate thẳng | Baseline thấp nhất; đo giá trị của RAG |
-| **Naive RAG** | top-k vector search + LLM generate; không agent loop | Đo giá trị của retrieval |
-| **Generic ReAct ARAG** | 1 ReAct agent tự do, có retrieval/tool access, không typed graph | Baseline giống agent platform tổng quát |
-| **Fixed MA-ARAG** | Pipeline nhiều role cố định: planner/generator/grader/reviewer | Kiểm tra liệu chia role thủ công đã đủ chưa |
-| **Hệ thống đề xuất** | Multi-Agent Agentic RAG với Pedagogy-Constrained Orchestration, Edge-LLM-Aware Orchestration và extension CNTT/lập trình | Kiến trúc tích hợp đề xuất |
+| Variant                | Mô tả                                                                                                                          | Mục đích                                    |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| **LLM-only**           | Không RAG, không agent — Gemma 4 E2B generate thẳng                                                                            | Baseline thấp nhất; đo giá trị của RAG      |
+| **Naive RAG**          | top-k vector search + LLM generate; không agent loop                                                                           | Đo giá trị của retrieval                    |
+| **Generic ReAct ARAG** | 1 ReAct agent tự do, có retrieval/tool access, không typed graph                                                               | Baseline giống agent platform tổng quát     |
+| **Fixed MA-ARAG**      | Pipeline nhiều role cố định: planner/generator/grader/reviewer                                                                 | Kiểm tra liệu chia role thủ công đã đủ chưa |
+| **Hệ thống đề xuất**   | Multi-Agent Agentic RAG với Pedagogy-Constrained Orchestration, Edge-LLM-Constrained Orchestration và extension CNTT/lập trình | Kiến trúc tích hợp đề xuất                  |
 
 _Tầng 2 — Ablation study_ (giải thích phần nào trong cấu hình tích hợp tạo ra khác biệt):
 
-| Variant | Thành phần bỏ/thay đổi | Câu hỏi ablation |
-| --- | --- | --- |
-| **Đề xuất − Typed schemas** | Node vẫn theo graph nhưng input/output free-form | Schema có giúp giảm lỗi định dạng và hallucination không? |
-| **Đề xuất − Verifier** | Không chạy pytest/linter/citation/Bloom checks trước output | Verifier đóng góp bao nhiêu vào correctness? |
-| **Đề xuất − Targeted Repair** | Có verifier nhưng retry regenerate toàn bộ output | Sửa đúng component lỗi có tốt hơn retry toàn cục không? |
-| **Đề xuất − Pedagogical Constraints** | Bỏ Bloom/rubric/misconception/feedback checks | Constraint sư phạm cải thiện chất lượng giáo dục bao nhiêu? |
-| **Đề xuất − HITL Feedback Injection** | Teacher reject không được đưa lại thành constraint retry | Vòng teacher feedback có giảm reject rate không? |
+| Variant                                            | Thành phần bỏ/thay đổi                                               | Câu hỏi ablation                                                                                 |
+| -------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| **Đề xuất − Typed schemas**                        | Node vẫn theo graph nhưng input/output free-form                     | Schema có giúp giảm lỗi định dạng và hallucination không?                                        |
+| **Đề xuất − Verifier**                             | Không chạy pytest/linter/citation/Bloom checks trước output          | Verifier đóng góp bao nhiêu vào correctness?                                                     |
+| **Đề xuất − Targeted Repair**                      | Có verifier nhưng retry regenerate toàn bộ output                    | Sửa đúng component lỗi có tốt hơn retry toàn cục không?                                          |
+| **Đề xuất − Pedagogical Constraints**              | Bỏ Bloom/rubric/misconception/feedback checks                        | Constraint sư phạm cải thiện chất lượng giáo dục bao nhiêu?                                      |
+| **Đề xuất − Teacher-controlled mutation feedback** | Teacher edit/reject reason không được đưa lại thành constraint retry | Phản hồi của giáo viên về thay đổi được phép áp dụng có giảm lỗi lặp lại và số lần reject không? |
 
 **Metrics per task**:
 
-| Task | Metric tự động | LLM-as-judge / human-subset rubric |
-| --- | --- | --- |
-| A: Giáo án | RAGAS faithfulness/context recall · Bloom violation rate · citation coverage · schema validity | Bloom alignment · constructive alignment · pedagogical coherence · completeness |
-| B: Bài tập | `verify_solution()` pass rate · test coverage proxy · compile/runtime error rate · schema validity | Exercise clarity · difficulty calibration · rubric consistency · test case adequacy |
+| Task         | Metric tự động                                                                                           | LLM-as-judge / human-subset rubric                                                               |
+| ------------ | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| A: Giáo án   | RAGAS faithfulness/context recall · Bloom violation rate · citation coverage · schema validity           | Bloom alignment · constructive alignment · pedagogical coherence · completeness                  |
+| B: Bài tập   | `verify_solution()` pass rate · test coverage proxy · compile/runtime error rate · schema validity       | Exercise clarity · difficulty calibration · rubric consistency · test case adequacy              |
 | C: Chấm code | pytest pass-rate precision · misconception hit rate · feedback policy violation rate · citation coverage | Feedback helpfulness · explanation depth · pedagogical tone · correctness of misconception label |
 
-Tất cả: latency end-to-end (ms) + VRAM peak (MB) + số LLM calls + số retry + token budget.
+Tất cả: latency end-to-end (ms) + RAM/VRAM peak (MB) + số LLM calls + số tool calls + số retry + token/context budget.
+
+**Edge-LLM constraint metrics**:
+
+- Context budget violation rate.
+- Average retrieved chunks passed to downstream nodes.
+- Memory injection size per task.
+- Tool-call failure/timeout rate.
+- Retry depth distribution.
+- Fallback rate khi giảm top-k/context/retry do thiếu tài nguyên.
+
+**Teacher-controlled mutation metrics** _(nếu có log prototype)_:
+
+- Số thao tác approve/edit/reject trước khi lưu/xuất/cập nhật.
+- Tỷ lệ output bị hủy hoặc yêu cầu sửa trước khi áp dụng.
+- Số lần teacher edit/reject reason được dùng trong repair.
 
 **LLM-as-judge setup**: 2 judge độc lập (GPT-4o + Claude 3.5 Sonnet); rubric gửi blind. Tính Cohen's κ — nếu κ < 0.6 thì thảo luận lại rubric.
 
