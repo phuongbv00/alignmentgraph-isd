@@ -1,10 +1,10 @@
 # Thiết kế và triển khai hệ thống — Chương 4
 
-## Kiến trúc tổng quan: Core + Plugin
+## Kiến trúc tổng quan
 
-Hệ thống được thiết kế theo mô hình **domain-aware core + domain-specific plugin** để tách phần workflow chung khỏi phần tri thức/công cụ của từng miền. Mục tiêu của thiết kế là tạo ra một kiến trúc có thể mở rộng sang nhiều miền kỹ thuật thông qua plugin contract; trong phạm vi luận văn, kiến trúc này được hiện thực và đánh giá thực nghiệm với plugin CNTT/lập trình.
+Hệ thống được thiết kế quanh ba trụ cột: **Pedagogy-Constrained Orchestration**, **Edge-LLM-Aware Orchestration** và **Pedagogy Domain Extension**. Core chịu trách nhiệm điều phối các workflow sư phạm-kỹ thuật có kiểm soát; extension đóng gói phần tri thức, công cụ và tiêu chí kiểm tra của từng miền. Trong phạm vi luận văn, kiến trúc này được hiện thực và đánh giá thực nghiệm với extension CNTT/lập trình.
 
-Lưu ý về định vị đóng góp: các thành phần như LangGraph, typed schema, verifier, retry/repair, HITL và domain plugin không được trình bày như phát minh mới độc lập. Chương này tập trung vào cách tích hợp các kỹ thuật đó thành một workflow sư phạm có kiểm chứng, phù hợp với local small LLM và dữ liệu giáo viên nội bộ.
+Lưu ý về định vị đóng góp: các thành phần như LangGraph, typed schema, verifier, retry/repair, HITL và extension mechanism không được trình bày như phát minh mới độc lập. Chương này tập trung vào cách tích hợp các kỹ thuật đó thành một kiến trúc hỗ trợ sư phạm kỹ thuật, phù hợp với local small LLM và dữ liệu giáo viên nội bộ.
 
 ### Core (domain-independent workflow)
 
@@ -15,21 +15,21 @@ Lưu ý về định vị đóng góp: các thành phần như LangGraph, typed 
 - **Multi-Agent System (MAS)**: supervisor điều phối các role-scoped sub-agent invocation theo từng task; không đóng cứng 4 agent luôn chạy (xem 4.4).
 - **Desktop app**: Electron — main process quản lý child processes; MAS Python chạy trong child process; IPC bridge giữa Electron ↔ MAS ↔ llama.cpp.
 
-### Domain Plugin (domain-specific)
+### Pedagogy Domain Extension
 
-Mỗi plugin đóng gói: metadata schema · task schemas · pedagogical constraints · prompt templates · retrieval policy · verifier/repair policy · tool set · corpus ingestion pipeline.
+Mỗi extension đóng gói: metadata schema · task schemas · pedagogical constraints · prompt templates · retrieval policy · verifier/repair policy · tool set · corpus ingestion pipeline.
 
-Plugin CNTT (lập trình) là plugin duy nhất trong prototype — dùng để validate tính khả thi của kiến trúc core và plugin contract trên một miền kỹ thuật cụ thể. Các plugin khác được phân tích như khả năng mở rộng của thiết kế, chưa nằm trong phạm vi hiện thực.
+Extension CNTT/lập trình là extension duy nhất trong prototype — dùng để validate tính khả thi của core và extension interface trên một miền sư phạm-kỹ thuật cụ thể. Các extension khác được phân tích như khả năng mở rộng của thiết kế, chưa nằm trong phạm vi hiện thực.
 
 ### Scope triển khai trong luận văn
 
 | Nhóm chức năng                                                      | Trạng thái trong luận văn                                                |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | Core orchestration, typed task graph, verifier-guided repair        | Triển khai và đánh giá                                                   |
-| Plugin CNTT/lập trình, PytestRunner, syntax/lint checks cơ bản      | Triển khai và đánh giá                                                   |
+| Extension CNTT/lập trình, PytestRunner, syntax/lint checks cơ bản   | Triển khai và đánh giá                                                   |
 | Retrieval từ corpus học phần đã index local                         | Triển khai và đánh giá                                                   |
 | HITL review queue / approve-reject flow                             | Triển khai ở mức prototype                                               |
-| Plugin Điện tử/Cơ khí/Xây dựng                                      | Không triển khai; dùng để phân tích khả năng mở rộng của plugin contract |
+| Extension Điện tử/Cơ khí/Xây dựng                                   | Không triển khai; phân tích ở mức thiết kế/interface                         |
 | Web search, Google Drive/Classroom connector, dynamic concept graph | Ngoài đánh giá chính; optional/future work                               |
 | Đánh giá hiệu quả học tập dài hạn với lớp thật                      | Ngoài phạm vi luận văn                                                   |
 
@@ -92,7 +92,7 @@ CheckPedagogicalOutput →  [L3: teacher override nếu reject]
 
 ---
 
-## 4.2 Tổng quan kiến trúc core + plugin
+## 4.2 Tổng quan kiến trúc core + extension
 
 ```mermaid
 flowchart TD
@@ -111,7 +111,7 @@ flowchart TD
     end
 
     RS[("Retrieval Sources")]
-    PLG[/"Domain Plugin<br/>(IT · Điện tử · Cơ khí · ...)"/]
+    PLG[/"Pedagogy Domain Extension<br/>(implemented: IT/lập trình)"/]
 
     T -->|"task"| ORC
     ORC -->|"spawn retrieval node"| RT
@@ -128,31 +128,31 @@ flowchart TD
     T -->|"reject + reason"| ORC
 ```
 
-> Retrieval được tách thành node/sub-agent riêng để tránh nhồi toàn bộ retrieval capability vào mọi role. Các role sinh nội dung chỉ nhận context đã lọc kèm provenance, giúp giảm prompt size và tool surface cho local small LLM. Core không chứa logic domain-specific nào; plugin là điểm mở rộng duy nhất.
+> Retrieval được tách thành node/sub-agent riêng để tránh nhồi toàn bộ retrieval capability vào mọi role. Các role sinh nội dung chỉ nhận context đã lọc kèm provenance, giúp giảm prompt size và tool surface cho local small LLM. Core không chứa logic domain-specific nào; pedagogy domain extension là điểm mở rộng duy nhất.
 
 ---
 
-## 4.3 Cơ sở thiết kế kiến trúc Core + Plugin
+## 4.3 Pedagogy Domain Extension
 
-Kiến trúc Core + Plugin được dùng như một **nguyên tắc phân tách trách nhiệm**: core giữ workflow sư phạm-kỹ thuật có thể tái sử dụng, còn plugin đóng gói tri thức, công cụ và tiêu chí kiểm tra của từng miền. Luận văn khẳng định khả năng mở rộng ở mức thiết kế/interface; phạm vi triển khai và đánh giá thực nghiệm chỉ tập trung vào plugin CNTT/lập trình.
+Pedagogy Domain Extension là **nguyên tắc phân tách trách nhiệm** giữa core và miền cụ thể: core giữ workflow sư phạm-kỹ thuật có thể tái sử dụng, còn extension đóng gói tri thức, công cụ và tiêu chí kiểm tra của từng miền. Luận văn khẳng định khả năng mở rộng ở mức thiết kế/interface; phạm vi triển khai và đánh giá thực nghiệm chỉ tập trung vào extension CNTT/lập trình.
 
 ### Đặc thù sư phạm-kỹ thuật dùng làm giả định thiết kế
 
-Trong case study CNTT/lập trình, một số đặc điểm sư phạm-kỹ thuật sau được dùng làm giả định thiết kế. Các đặc điểm này cũng gợi ý những yêu cầu mà plugin cho miền kỹ thuật khác cần khai báo lại, nhưng luận văn không kiểm chứng bằng thực nghiệm đa ngành:
+Trong case study CNTT/lập trình, một số đặc điểm sư phạm-kỹ thuật sau được dùng làm giả định thiết kế. Các đặc điểm này cũng gợi ý những yêu cầu mà extension cho miền kỹ thuật khác cần khai báo lại, nhưng luận văn không kiểm chứng bằng thực nghiệm đa ngành:
 
 | Đặc thù                    | Biểu hiện                                                                                     | Ý nghĩa với hệ thống                                                                   |
 | -------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | **Thực hành với công cụ**  | Lab, project, simulation — học qua làm                                                        | Bài tập luôn có exercise_type + tool context                                           |
-| **Verify được bằng máy**   | Chạy code, chạy mạch điện, kiểm tra tính toán — đáp án có tính khách quan                     | verify() là hook bắt buộc trong plugin interface                                       |
+| **Verify được bằng máy**   | Chạy code, chạy mạch điện, kiểm tra tính toán — đáp án có tính khách quan                     | verify() là hook bắt buộc trong extension interface                                    |
 | **Tiêu chuẩn kỹ thuật**    | PEP8 (IT), IEEE (Điện tử), TCVN/ISO (Cơ khí) — "đúng" phải tuân theo chuẩn                    | domain_quality_checks() cần biết chuẩn của từng ngành                                  |
 | **Error taxonomy đặc thù** | Off-by-one (IT), ngắn mạch (Điện tử), safety factor sai (Cơ khí) — lỗi mang tính chuyên ngành | error_taxonomy và feedback_template không thể dùng chung                               |
-| **Bloom áp dụng được**     | Trong case study, nội dung lập trình có thể gắn Remember → Apply → Evaluate                   | Bloom metadata và corpus indexing đặt ở core, nhưng rule cụ thể vẫn do plugin cấu hình |
+| **Bloom áp dụng được**     | Trong case study, nội dung lập trình có thể gắn Remember → Apply → Evaluate                   | Bloom metadata và corpus indexing đặt ở core, nhưng rule cụ thể vẫn do extension cấu hình |
 
-### Điểm riêng buộc phải thành plugin
+### Điểm riêng buộc phải thành extension
 
-Bảng dưới minh họa lý do cần tách phần domain-specific khỏi core và các loại thông tin mà plugin contract phải biểu đạt. Chỉ cột IT/lập trình nằm trong phạm vi hiện thực của luận văn; các cột Điện tử và Cơ khí là ví dụ thiết kế để kiểm tra tính đầy đủ của interface, không phải requirement triển khai:
+Bảng dưới minh họa lý do cần tách phần domain-specific khỏi core và các loại thông tin mà extension interface phải biểu đạt. Chỉ cột IT/lập trình nằm trong phạm vi hiện thực của luận văn; các cột Điện tử và Cơ khí là ví dụ thiết kế để kiểm tra tính đầy đủ của interface, không phải requirement triển khai:
 
-| Thành phần plugin       | IT (Lập trình)                                    | Điện tử _(minh họa)_                                   | Cơ khí _(minh họa)_                                      |
+| Thành phần extension    | IT (Lập trình)                                    | Điện tử _(minh họa)_                                   | Cơ khí _(minh họa)_                                      |
 | ----------------------- | ------------------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------- |
 | `exercise_types`        | Implementation / Debug / Trace / Design           | Circuit Design / Simulation / Analysis / Fault Finding | Stress Analysis / Mechanism Design / Manufacturing / CAD |
 | `verify_solution()`     | `PytestRunner` — chạy test case, pass/fail        | `SPICERunner` — chạy simulation, check waveform        | `FEMChecker` — check stress/strain, safety factor        |
@@ -164,15 +164,17 @@ Bảng dưới minh họa lý do cần tách phần domain-specific khỏi core 
 **Kết luận phân tách:**
 
 - **Core** = _workflow logic_: lesson planning flow, exercise design flow, grading flow, quality review flow — phần workflow được giả định là có thể tái sử dụng cho nhiều tác vụ sư phạm-kỹ thuật.
-- **Plugin** = _domain knowledge + tools_: toàn bộ các thành phần trong bảng trên — thay đổi hoàn toàn theo từng ngành.
+- **Extension** = _domain knowledge + tools_: toàn bộ các thành phần trong bảng trên — thay đổi hoàn toàn theo từng ngành.
 
-**Plugin IT** trong luận văn đóng vai trò _proof-of-concept_: validate rằng interface plugin đủ biểu đạt cho một domain kỹ thuật cụ thể và đủ phức tạp để đánh giá workflow. Luận văn kết luận thực nghiệm trong phạm vi case study này; khả năng thêm plugin mới mà không thay đổi core được trình bày như khẳng định ở mức thiết kế và hướng mở rộng cần kiểm chứng thêm.
+**Extension IT** trong luận văn đóng vai trò _proof-of-concept_: validate rằng extension interface đủ biểu đạt cho một domain kỹ thuật cụ thể và đủ phức tạp để đánh giá workflow. Luận văn kết luận thực nghiệm trong phạm vi case study này; khả năng thêm extension mới mà không thay đổi core được trình bày như khẳng định ở mức thiết kế và hướng mở rộng cần kiểm chứng thêm.
 
 ---
 
-## 4.4 Typed Task Graph Orchestration
+## 4.4 Pedagogy-Constrained Orchestration
 
-Typed task graph trong hệ thống là một lựa chọn thiết kế để kiểm soát agentic workflow, không phải claim thuật toán mới. Core không định nghĩa một tập 4 agent cố định. Thay vào đó, hệ thống dùng **Supervisor Orchestrator** để phân tích yêu cầu giáo viên, chọn graph template phù hợp và thực thi các node theo thứ tự có kiểm soát. Mỗi node có thể gọi một role-scoped sub-agent invocation của cùng local LLM, với prompt, tool access, retrieval policy và output schema riêng.
+Pedagogy-Constrained Orchestration là cách core thực thi các tác vụ sư phạm-kỹ thuật dưới dạng task graph có kiểm soát. Typed task graph trong hệ thống là một lựa chọn thiết kế để kiểm soát agentic workflow, không phải đóng góp thuật toán mới. Core không định nghĩa một tập 4 agent cố định. Thay vào đó, hệ thống dùng **Supervisor Orchestrator** để phân tích yêu cầu giáo viên, chọn graph template phù hợp và thực thi các node theo thứ tự có kiểm soát. Mỗi node có thể gọi một role-scoped sub-agent invocation của cùng local LLM, với prompt, tool access, retrieval policy, verifier và output schema riêng.
+
+Điểm tùy chỉnh cho domain sư phạm nằm ở chỗ các ràng buộc như citation coverage, Bloom/rubric alignment, misconception mapping, feedback policy và HITL không được xử lý như bước hậu kiểm rời rạc, mà được đưa vào graph như các node/condition bắt buộc.
 
 **Task node contract**:
 
@@ -196,7 +198,7 @@ class TaskNodeSpec(BaseModel):
     "task_id": str,
     "node_id": str,
     "role": str,
-    "plugin_id": str,
+    "extension_id": str,
     "input": dict,
     "context_chunks": list[Chunk],
     "output": dict,
@@ -285,13 +287,13 @@ Các constraint bất biến giữa domain:
 
 ---
 
-## 4.5 Plugin System
+## 4.5 Pedagogy Domain Extension Interface
 
-**Plugin Interface** (contract thiết kế). Trong prototype, chỉ các trường/hook cần cho Plugin CNTT/lập trình được hiện thực đầy đủ; các hook còn lại là extension point cho tương lai:
+**Extension Interface** (contract thiết kế). Trong prototype, chỉ các trường/hook cần cho extension CNTT/lập trình được hiện thực đầy đủ; các hook còn lại là extension point cho tương lai:
 
 ```python
-class DomainPlugin(ABC):
-    plugin_id: str
+class PedagogyDomainExtension(ABC):
+    extension_id: str
 
     # Corpus
     metadata_schema: dict
@@ -330,7 +332,7 @@ class DomainPlugin(ABC):
     def map_verification_error(self, error: VerificationError) -> RepairAction: ...
 ```
 
-**Plugin CNTT (Lập trình)** — implementation:
+**Extension CNTT (Lập trình)** — implementation:
 
 _Metadata schema_: `bloom_level` · `topic` (CS topic slug) · `difficulty` · `language` (`python/java/any`) · `content_type` (`theory/example/exercise/solution`).
 
@@ -348,7 +350,7 @@ _feedback_template_: code block highlight lỗi + inline comment + citation text
 
 _domain_quality_checks_: `CodeSyntaxValidator` (compile check) + language consistency.
 
-_Tool set Plugin CNTT_:
+_Tool set Extension CNTT_:
 
 - `CodeSyntaxValidator`: parse AST Python/Java, phát hiện syntax error.
 - `PytestRunner`: subprocess isolated, timeout 10s, `resource.setrlimit` (no network, no fs write).
@@ -364,7 +366,7 @@ _Corpus ingestion_: PDF/HTML giáo trình (Python Crash Course, CLRS, giáo trì
 
 _(Cơ sở lý thuyết: §3.3 — Agentic RAG Survey \[`AgenticRAGSurvey2025`\], A-RAG \[`ARAG2025`\], GraphRAG \[`Edge2024GraphRAG`\])_
 
-`RetrievalRole` là một **sub-agent/node riêng trong typed task graph**, không phải base capability nhúng vào mọi agent. Supervisor gọi retrieval node trước các node sinh nội dung, truyền vào `{task_type, topic, bloom_target, plugin_id, retrieval_policy}` và chỉ chuyển tiếp `top-k` context đã rerank kèm provenance cho các role downstream.
+`RetrievalRole` là một **sub-agent/node riêng trong typed task graph**, không phải base capability nhúng vào mọi agent. Supervisor gọi retrieval node trước các node sinh nội dung, truyền vào `{task_type, topic, bloom_target, extension_id, retrieval_policy}` và chỉ chuyển tiếp `top-k` context đã rerank kèm provenance cho các role downstream.
 
 Lý do tách retrieval thành sub-agent:
 
@@ -390,7 +392,7 @@ RetrievalRole  (graph node do Supervisor gọi khi cần)
 
 ### QueryPlanner
 
-Nhận `{task_type, bloom_target, topic, plugin_id}` → quyết định tool nào kích hoạt:
+Nhận `{task_type, bloom_target, topic, extension_id}` → quyết định tool nào kích hoạt:
 
 | Task                          | Tools ưu tiên                                                                           |
 | ----------------------------- | --------------------------------------------------------------------------------------- |
@@ -409,9 +411,9 @@ QueryPlanner là LLM call nhỏ (Gemma E2B, ≤ 128 token output) nằm trong `R
 
 **WebSearchTool**: không thuộc phạm vi đánh giá chính. Nếu hiện thực ở phiên bản mở rộng, công cụ này disabled mặc định; giáo viên bật per-session từ UI. Kết quả gắn flag `source=web` + warning trong Review Queue (tài liệu web chưa kiểm chứng).
 
-**ConnectorTool**: không thuộc phạm vi prototype chính. Plugin CNTT có thể mở rộng thêm `GoogleClassroomConnector` (fetch assignment, submission) và `GoogleDriveConnector` (fetch tài liệu giảng dạy). Yêu cầu OAuth; token lưu local, không sync cloud.
+**ConnectorTool**: không thuộc phạm vi prototype chính. Extension CNTT có thể mở rộng thêm `GoogleClassroomConnector` (fetch assignment, submission) và `GoogleDriveConnector` (fetch tài liệu giảng dạy). Yêu cầu OAuth; token lưu local, không sync cloud.
 
-**KnowledgeGraphTool**: trong prototype chỉ cần static topic graph do plugin cung cấp (`TopicDependencyGraph`). Dynamic concept graph tự xây từ corpus bằng entity extraction là optional/future vì chi phí triển khai và đánh giá cao.
+**KnowledgeGraphTool**: trong prototype chỉ cần static topic graph do extension cung cấp (`TopicDependencyGraph`). Dynamic concept graph tự xây từ corpus bằng entity extraction là optional/future vì chi phí triển khai và đánh giá cao.
 
 ### ResultAggregator & CrossSourceReranker
 
@@ -437,7 +439,11 @@ Top-5 final chunks được trả về kèm provenance → Supervisor truyền v
 
 ---
 
-## 4.7 llama.cpp Integration
+## 4.7 Edge-LLM-Aware Orchestration
+
+Edge-LLM-Aware Orchestration là nhóm quyết định thiết kế giúp agentic workflow chạy được trên local small LLM thay vì giả định model thương mại lớn với context rộng và năng lực suy luận mạnh. Core kiểm soát prompt/context budget, giới hạn tool scope, đặt retry depth và tách retrieval thành node riêng để giảm tải cho model.
+
+### llama.cpp Integration
 
 - Nhúng `llama-cpp-python` trong Python child process — không cần server riêng.
 - Model load một lần khi khởi động app; giữ context window tối đa của Gemma 4 E2B/E4B.
@@ -508,7 +514,7 @@ _(Cơ sở lý thuyết: §3.5 — Sumers taxonomy \[`Sumers2024`\], MemGPT \[`P
 ## 4.11 Electron Desktop App
 
 - **Main process** (Node.js): quản lý lifecycle, spawn child process Python MAS, expose IPC channel.
-- **Renderer** (React/Vue): UI giáo viên — workspace chọn plugin, soạn yêu cầu, xem output + citation highlight, Review Queue (HITL).
+- **Renderer** (React/Vue): UI giáo viên — workspace chọn pedagogy domain extension, soạn yêu cầu, xem output + citation highlight, Review Queue (HITL).
 - **IPC bridge**: `ipcMain`/`ipcRenderer` ↔ child process qua `child_process.spawn` + JSON-line protocol.
 - **Child process** (Python): toàn bộ MAS + llama.cpp + Qdrant embedded. Nhận lệnh từ main, stream response về.
 - Packaging bằng `electron-builder` (`.dmg` / `.exe` / `.AppImage`) là yêu cầu sản phẩm nếu phát hành rộng. Trong phạm vi luận văn, prototype chỉ cần chạy được ở môi trường local demo; packaging đầy đủ có thể đưa vào hướng phát triển.

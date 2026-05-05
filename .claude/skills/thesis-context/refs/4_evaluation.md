@@ -24,7 +24,7 @@
 
 ### Thiết kế thực nghiệm cho EQ1
 
-Controlled comparison: **cùng LLM + cùng corpus + cùng queries**; chỉ thay đổi kiến trúc hệ thống. Mục tiêu là đánh giá giá trị của cấu hình tích hợp TTG-ARAG trong bối cảnh sư phạm kỹ thuật local small LLM, không phải chứng minh typed graph, verifier hay pedagogical constraints là kỹ thuật mới độc lập.
+Controlled comparison: **cùng LLM + cùng corpus + cùng queries**; chỉ thay đổi kiến trúc hệ thống. Mục tiêu là đánh giá giá trị của kiến trúc đề xuất trong bối cảnh sư phạm kỹ thuật local small LLM, không phải chứng minh typed graph, verifier hay pedagogical constraints là kỹ thuật mới độc lập.
 
 **Bảng đảm bảo fairness** — mọi variant giữ nguyên các yếu tố nền tảng dưới đây, chỉ thay đổi cơ chế orchestration/verification:
 
@@ -39,7 +39,7 @@ Controlled comparison: **cùng LLM + cùng corpus + cùng queries**; chỉ thay 
 | **Số lần retry**      | Tối đa 2 retry per task; riêng ablation sẽ bật/tắt targeted repair |
 | **Prompt budget**     | System prompt ≤ 512 token; retrieved context ≤ 2 048 token; instruction ≤ 256 token |
 
-> Các variant agentic phải lock cùng model, corpus, retriever, tool implementation, context length và temperature. Khác biệt chính chỉ nằm ở cách tổ chức workflow: generic ReAct loop, fixed multi-agent pipeline, hay typed task graph có verifier/constraint/targeted repair.
+> Các variant agentic phải lock cùng model, corpus, retriever, tool implementation, context length và temperature. Khác biệt chính chỉ nằm ở cách tổ chức workflow: generic ReAct loop, fixed multi-agent pipeline, hay kiến trúc đề xuất với Pedagogy-Constrained Orchestration, Edge-LLM-Aware Orchestration và Pedagogy Domain Extension.
 
 _Tầng 1 — Comparison study_ (trả lời trực tiếp EQ1):
 
@@ -49,17 +49,17 @@ _Tầng 1 — Comparison study_ (trả lời trực tiếp EQ1):
 | **Naive RAG** | top-k vector search + LLM generate; không agent loop | Đo giá trị của retrieval |
 | **Generic ReAct ARAG** | 1 ReAct agent tự do, có retrieval/tool access, không typed graph | Baseline giống agent platform tổng quát |
 | **Fixed MA-ARAG** | Pipeline nhiều role cố định: planner/generator/grader/reviewer | Kiểm tra liệu chia role thủ công đã đủ chưa |
-| **TTG-ARAG** | Typed Task Graph + verifier + pedagogy constraints + targeted repair | Cấu hình tích hợp đề xuất |
+| **Hệ thống đề xuất** | Multi-Agent Agentic RAG với Pedagogy-Constrained Orchestration, Edge-LLM-Aware Orchestration và extension CNTT/lập trình | Kiến trúc tích hợp đề xuất |
 
 _Tầng 2 — Ablation study_ (giải thích phần nào trong cấu hình tích hợp tạo ra khác biệt):
 
 | Variant | Thành phần bỏ/thay đổi | Câu hỏi ablation |
 | --- | --- | --- |
-| **TTG − Typed schemas** | Node vẫn theo graph nhưng input/output free-form | Schema có giúp giảm lỗi định dạng và hallucination không? |
-| **TTG − Verifier** | Không chạy pytest/linter/citation/Bloom checks trước output | Verifier đóng góp bao nhiêu vào correctness? |
-| **TTG − Targeted Repair** | Có verifier nhưng retry regenerate toàn bộ output | Sửa đúng component lỗi có tốt hơn retry toàn cục không? |
-| **TTG − Pedagogical Constraints** | Bỏ Bloom/rubric/misconception/feedback checks | Constraint sư phạm cải thiện chất lượng giáo dục bao nhiêu? |
-| **TTG − HITL Feedback Injection** | Teacher reject không được đưa lại thành constraint retry | Vòng teacher feedback có giảm reject rate không? |
+| **Đề xuất − Typed schemas** | Node vẫn theo graph nhưng input/output free-form | Schema có giúp giảm lỗi định dạng và hallucination không? |
+| **Đề xuất − Verifier** | Không chạy pytest/linter/citation/Bloom checks trước output | Verifier đóng góp bao nhiêu vào correctness? |
+| **Đề xuất − Targeted Repair** | Có verifier nhưng retry regenerate toàn bộ output | Sửa đúng component lỗi có tốt hơn retry toàn cục không? |
+| **Đề xuất − Pedagogical Constraints** | Bỏ Bloom/rubric/misconception/feedback checks | Constraint sư phạm cải thiện chất lượng giáo dục bao nhiêu? |
+| **Đề xuất − HITL Feedback Injection** | Teacher reject không được đưa lại thành constraint retry | Vòng teacher feedback có giảm reject rate không? |
 
 **Metrics per task**:
 
@@ -76,7 +76,7 @@ Tất cả: latency end-to-end (ms) + VRAM peak (MB) + số LLM calls + số ret
 **Kiểm định thống kê**:
 
 - Test: **Wilcoxon signed-rank** (paired, non-parametric).
-- So sánh: mọi cặp variant Tầng 1, per metric per task; tập trung chính vào `TTG-ARAG` vs `Generic ReAct ARAG` và `TTG-ARAG` vs `Fixed MA-ARAG`.
+- So sánh: mọi cặp variant Tầng 1, per metric per task; tập trung chính vào `Hệ thống đề xuất` vs `Generic ReAct ARAG` và `Hệ thống đề xuất` vs `Fixed MA-ARAG`.
 - Threshold: p < 0.05; report effect size (rank-biserial correlation r).
 - Multiple comparison correction: Bonferroni hoặc Holm–Bonferroni.
 
@@ -84,6 +84,6 @@ Tất cả: latency end-to-end (ms) + VRAM peak (MB) + số LLM calls + số ret
 
 - Bảng chính: mean ± std per variant × task × metric.
 - Significance matrix: heatmap p-value giữa các cặp.
-- Per-task insight: TTG-ARAG dự kiến win rõ nhất ở Task B/C, nơi verifier và targeted repair có tín hiệu khách quan.
+- Per-task insight: hệ thống đề xuất dự kiến cải thiện rõ nhất ở Task B/C, nơi verifier và targeted repair có tín hiệu khách quan.
 - Error analysis: ≥ 30 output thất bại phân loại (hallucination, off-Bloom, unsupported citation, code không compile, test thiếu edge case, feedback thiếu giải thích).
 - Ablation contribution chart: bar chart ∆ score khi bỏ typed schemas, verifier, targeted repair, pedagogical constraints; diễn giải như đóng góp thực nghiệm của từng thành phần trong cấu hình, không diễn giải như novelty thuật toán.
