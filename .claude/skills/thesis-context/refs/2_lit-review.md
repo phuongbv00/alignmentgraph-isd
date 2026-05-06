@@ -10,7 +10,7 @@ Nền tảng kỹ thuật của toàn hệ thống. Cần trình bày đủ đ�
 - Pre-training & instruction tuning: GPT series (Brown et al., 2020), InstructGPT (Ouyang et al., 2022).
 - Emergent capabilities & scaling laws (Kaplan et al., 2020; Wei et al., 2022 — *Emergent Abilities of LLMs*).
 - Giới hạn nội tại: hallucination, knowledge cutoff, context window — motivate cho RAG.
-- Edge/small LLM: Gemma (Google DeepMind, 2024), Phi series (Microsoft), quantization GGUF/AWQ (llama.cpp — Gerganov 2023).
+- Edge SLM / small LLM: Gemma, Phi, Qwen; local inference, quantization GGUF/AWQ/GPTQ, và triển khai on-device/edge-hosted. Dùng "Edge SLM" khi nhấn vào mô hình nhỏ chạy local/edge; dùng "Edge LLM" như nhãn bao quát cho mô hình ngôn ngữ triển khai tại biên.
 
 ## 3.2 AI Agent vs Agentic AI — phân biệt khái niệm
 
@@ -93,14 +93,33 @@ Phần này đặt nền cho teacher-in-the-loop, override, preference memory v�
 - **No Free Lunch** (arXiv 2504.00441 \[`NoFreeLunch2025`\]): guardrail mạnh → false positive cao → UX xấu; cần calibrate threshold theo use case.
 - **Ứng dụng trong hệ thống đề xuất**: xem §4.8 — 3 tầng (input / output / tool sandbox) theo phân loại AGrail; PytestRunner sandbox theo ToolSafe principle; threshold calibrate cho sư phạm.
 
-## 3.10 Edge LLM & triển khai local
+## 3.10 Edge SLM / Edge LLM & triển khai local
 
-- Động lực: data privacy, offline capability, cost — đặc biệt quan trọng với dữ liệu học viên.
-- Quantization: GGUF (llama.cpp), AWQ, GPTQ — trade-off quality vs size.
-- llama.cpp (Gerganov, 2023): inference engine C++ cross-platform, Python binding — **được chọn** để nhúng trong Electron child process.
-- **Gemma 3n** (Google DeepMind, 2025): E2B / E4B edge models — multimodal, offline, dưới 2.5 GB quantized. Cite Gemma 3n model card (ai.google.dev/gemma/docs/gemma-3n/model_card).
-- **Gemma 4** (Google DeepMind, tháng 4/2026): E2B (2B eff params) / E4B (4B eff params) — context 128K, multimodal (vision + audio + text), function calling. Cite model card (deepmind.google/models/gemma/gemma-4). *Nếu hệ thống được build sau tháng 4/2026, ưu tiên Gemma 4; nếu build trong 2025 thì dùng Gemma 3n.*
-- So sánh capability: edge LLM vs frontier LLM trên các task — nhấn gap để motivate giả thuyết typed decomposition + verifier-guided repair giúp local small LLM xử lý tác vụ sư phạm phức tạp tốt hơn generic RAG/ReAct.
+Phần này đặt nền cho trụ cột **Edge-LLM-Constrained Orchestration**: hệ thống không chỉ "chạy LLM local", mà thiết kế workflow theo ràng buộc thực tế của small model tại biên.
+
+- **Naming**:
+  - **Edge SLM**: thuật ngữ ưu tiên trong luận văn khi nói về mô hình ngôn ngữ nhỏ chạy trực tiếp trên thiết bị người dùng hoặc edge server nội bộ. Tên này chính xác hơn "Edge LLM" nếu model mục tiêu là Gemma E2B/E4B, Phi-mini, Qwen 0.8B/2B/4B/9B hoặc các model vài tỷ tham số.
+  - **Edge LLM**: dùng như nhãn bao quát cho mọi mô hình ngôn ngữ triển khai tại tầng biên, bao gồm cả small model và model lớn hơn chạy trên edge server/GPU cục bộ.
+  - **On-device SLM**: model chạy ngay trên laptop/desktop/thiết bị cá nhân.
+  - **Edge-hosted SLM**: model chạy trên máy chủ biên hoặc máy chủ nội bộ gần dữ liệu người dùng.
+- **Động lực**: data privacy, offline capability, latency, cost control — đặc biệt quan trọng với dữ liệu học viên, rubric nội bộ, học liệu giáo viên và log tương tác.
+- **Vai trò trong Multi-Agent Agentic RAG**:
+  - Edge SLM phù hợp cho các bước có cấu trúc hoặc cần phản hồi nhanh: intent classification, query rewriting nhẹ, entity/topic extraction, context filtering, summarization ngắn, draft generation, routing giữa agent, và kiểm tra sơ bộ output.
+  - Không claim Edge SLM thay thế hoàn toàn frontier/cloud LLM; luận văn định vị nó như một **local inference layer** trong kiến trúc RAG/agentic workflow.
+  - Mô hình lai hợp lý: Edge SLM xử lý default path; cloud/frontier LLM chỉ dùng làm baseline/reference upper bound hoặc fallback tùy chọn trong đánh giá.
+- **Quantization & inference runtime**:
+  - Quantization: GGUF (llama.cpp), AWQ, GPTQ — trade-off quality vs memory/latency.
+  - llama.cpp (Gerganov, 2023): inference engine C++ cross-platform, Python binding — **được chọn** để nhúng trong Electron child process.
+  - Cần trình bày rõ đánh đổi: 4-bit/8-bit giảm RAM/VRAM và tăng khả năng chạy local, nhưng có thể làm giảm chất lượng ở task reasoning dài, tool-use phức tạp hoặc tiếng Việt chuyên ngành.
+- **Model families để khảo sát**:
+  - **Gemma 3n** (Google DeepMind, 2025): E2B / E4B edge models — multimodal, offline, dưới 2.5 GB quantized. Cite Gemma 3n model card (ai.google.dev/gemma/docs/gemma-3n/model_card).
+  - **Gemma 4** (Google DeepMind, tháng 4/2026): E2B / E4B hướng tới ultra-mobile, edge và browser; context dài, multimodal, function calling. Cite official Gemma docs/model card (`Google2026Gemma4`). *Nếu hệ thống được build sau tháng 4/2026, ưu tiên Gemma 4; nếu build trong 2025 thì dùng Gemma 3n.*
+  - **Phi series** (Microsoft): nhóm model nhỏ tối ưu cho reasoning, function calling và multimodal use case; dùng official Microsoft model/blog docs làm nguồn (`Microsoft2025Phi4`).
+  - **Qwen small models** (Qwen Team): các biến thể nhỏ/đa ngữ, phù hợp khi cần tiếng Việt hoặc multilingual capability; cite official Qwen repository/blog (`Qwen2026Qwen36` hoặc nguồn chính thức tương ứng).
+- **Industry source từ blog Digital Applied**:
+  - Blog "Small Language Models Business Guide: Gemma, Phi, Qwen" (`DigitalApplied2026SLMBusiness`) hữu ích để framing xu hướng business/engineering: privacy, latency, offline, cost, deployment tiers, Gemma/Phi/Qwen comparison.
+  - Không dùng blog này làm nguồn học thuật chính cho benchmark hoặc thông số kỹ thuật; các claim về model size, license, context length, RAM/VRAM phải đối chiếu bằng model card, official docs hoặc paper.
+- **Luận điểm cần nhấn**: local/edge small LLM có capability gap so với frontier LLM. Khoảng trống này motivate giả thuyết thiết kế của đề tài: typed decomposition, retrieval có kiểm soát, verifier-guided repair, memory/context compaction và HITL giúp Edge SLM xử lý các tác vụ sư phạm kỹ thuật tốt hơn generic RAG/ReAct trong phạm vi case study.
 
 ## 3.11 Evaluation Methodology cho hệ thống LLM/RAG/Agent
 
