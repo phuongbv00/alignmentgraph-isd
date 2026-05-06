@@ -60,61 +60,68 @@ flowchart TB
     EXT["Pedagogy<br/>Domain<br/>Extension"]
     MODEL["Model<br/>Inference"]
 
+    APP ~~~ EXT
+
     subgraph CORE["Core System"]
-        ORCHESTRATOR["Orchestrator"]
+        ORCHESTRATOR["Supervisor<br/>Orchestrator"]
         AGENTS["Role-Scoped Agents"]
-        KNOW["Knowledge Base"]
-        MEM["Memory"]
-        STORE["Storage"]
-        TOOL["Tool Sandbox"]
-        GUARD([Guardrails])
-        HITL([HITL])
+        subgraph EXEC_CTX["Agent Execution Context"]
+            direction LR
+            KNOW([Knowledge Base])
+            MEM([Memory])
+            TOOL([Tool Sandbox])
+            KNOW ~~~ MEM ~~~ TOOL
+        end
+        STORE["Persistence / Storage"]
     end
+
+    CORE ~~~ MODEL
 
     T --> APP
     APP <--> ORCHESTRATOR
-    APP <--> STORE
 
     ORCHESTRATOR <--> AGENTS
 
-    ORCHESTRATOR <--> EXT
-    EXT --> KNOW
-    ORCHESTRATOR <--> MEM
+    EXT --> ORCHESTRATOR
+    EXT --> EXEC_CTX
+    ORCHESTRATOR <--> EXEC_CTX
     ORCHESTRATOR <--> STORE
-    ORCHESTRATOR <--> TOOL
-    ORCHESTRATOR <--> GUARD
-    ORCHESTRATOR <--> HITL
-    ORCHESTRATOR <--> MODEL
+    ORCHESTRATOR --> MODEL
 
-    AGENTS <--> KNOW
-    AGENTS --> MEM
-    AGENTS <--> TOOL
-    AGENTS <--> MODEL
+    AGENTS <--> EXEC_CTX
+    AGENTS --> MODEL
 
-    KNOW <--> STORE
-    MEM <--> STORE
-
-    HITL <--> APP
+    EXEC_CTX <--> STORE
 
     style AGENTS stroke-dasharray: 5 5
+    style EXEC_CTX stroke-dasharray: 5 5
 ```
 
 - **Core System**
-  - bao gồm Orchestrator, Role-scoped Agents, Knowledge Base, Memory, Storage, Tool Runtime/Sandbox, Guardrails và HITL;
+  - bao gồm Supervisor Orchestrator, Role-scoped Agents, Knowledge Base, Memory, Persistence/Storage và Tool Sandbox;
   - không bao gồm User, Application, Pedagogy Domain Extension và Model Inference;
   - giữ workflow/runtime logic có thể tái sử dụng giữa các domain extension.
 
-- **Orchestrator**
+- **Agent Execution Context**
+  - gom Knowledge Base, Memory và Tool Sandbox;
+  - là môi trường thực thi được cấp theo scope cho role-scoped agent invocations;
+  - giúp agents truy cập context, memory và tools mà không mở toàn bộ hệ thống;
+  - scope cụ thể vẫn do Supervisor Orchestrator kiểm soát.
+
+- **Supervisor Orchestrator**
   - điều phối workflow sư phạm-kỹ thuật;
   - quản lý task graph, role-scoped agents, retrieval, verification, repair và HITL;
   - spawn/điều phối role-scoped agents theo từng task thay vì chạy pipeline cố định;
+  - giữ vai trò routing/coordination trung tâm; agents không tự handoff trực tiếp cho nhau;
   - nạp template, retrieval policy và feedback policy từ Extension khi khởi tạo agent invocation;
+  - enforce guardrails và HITL checkpoints như middleware nội bộ trong task graph;
   - áp dụng đồng thời Pedagogy-Constrained Orchestration và Edge-LLM-Constrained Orchestration;
   - độc lập với từng miền kỹ thuật cụ thể.
 
 - **Role-scoped agents**
   - gồm các role như retrieval, draft, verification, feedback và review;
   - là các ephemeral agent invocations được orchestrator spawn khi cần;
+  - giúp cô lập context của từng bước và chỉ trả kết quả có cấu trúc về orchestrator;
   - mỗi invocation có role, context scope, memory scope và tool scope riêng;
   - orchestrator quyết định role nào được gọi, thứ tự gọi và điều kiện dừng/retry;
   - agent invocation dùng chung model inference backend nhưng không nhất thiết là process/model riêng.
@@ -138,11 +145,12 @@ flowchart TB
   - short-term/session memory cho history và teacher corrections;
   - long-term memory cho teacher preferences/profile nếu được triển khai;
   - orchestrator kiểm soát lượng memory được inject vào agent context (prompt budget);
-  - agents ghi kết quả trung gian vào working memory nhưng không tự đọc lại history ngoài scope được cấp.
+  - agents đọc/ghi memory trong phạm vi context scope được orchestrator cấp.
 
-- **Storage**
+- **Persistence / Storage**
   - lưu workspace, configs, session metadata và audit log;
   - lưu chat history/correction history ở dạng persistable;
+  - lưu checkpoint/state snapshot để hỗ trợ resume sau HITL hoặc lỗi runtime;
   - lưu corpus registry, index metadata và trạng thái ingestion;
   - là tầng lưu trữ cục bộ phục vụ Application, Knowledge Base và Memory.
 
@@ -151,18 +159,6 @@ flowchart TB
   - áp dụng timeout, resource limit và isolation cho tool execution;
   - nhận tool definitions/verifier hooks từ Pedagogy Domain Extension thông qua Orchestrator;
   - trả kết quả có cấu trúc cho Orchestrator để repair, retry hoặc chuyển HITL.
-
-- **Guardrails**
-  - kiểm tra schema và ràng buộc sư phạm;
-  - kiểm tra code/test/lint trong extension CNTT;
-  - áp dụng ở cả input/output của node và trước/sau tool call;
-  - trả kết quả có cấu trúc để orchestrator quyết định repair hay chuyển HITL.
-
-- **HITL**
-  - giáo viên kiểm soát việc thay đổi dữ liệu/trạng thái;
-  - approve/edit/reject/cancel trước khi lưu, xuất hoặc cập nhật;
-  - edit/reject reason được lưu vào memory và dùng cho repair;
-  - là ràng buộc workflow, không phải component sinh nội dung.
 
 - **Model inference**
   - local/edge small LLM inference backend;
