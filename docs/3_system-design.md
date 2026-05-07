@@ -57,19 +57,19 @@
 flowchart TB
     T["User"]
     APP["Application"]
-    EXT["Pedagogy<br/>Domain<br/>Extension"]
-    MODEL["Model<br/>Inference"]
+    EXT["Pedagogy Domain Extension"]
+    MODEL["Model Inference"]
 
     APP ~~~ EXT
 
     subgraph CORE["Core System"]
-        ORCHESTRATOR["Supervisor<br/>Orchestrator"]
+        ORCHESTRATOR["Supervisor Orchestrator"]
         AGENTS["Role-Scoped Agents"]
         subgraph EXEC_CTX["Agent Execution Context"]
             direction LR
-            KNOW([Knowledge Base])
-            MEM([Memory])
-            TOOL([Tool Sandbox])
+            KNOW["Knowledge Base"]
+            MEM["Memory"]
+            TOOL["Tool Sandbox"]
             KNOW ~~~ MEM ~~~ TOOL
         end
         STORE["Persistence / Storage"]
@@ -110,20 +110,21 @@ flowchart TB
 
 - **Supervisor Orchestrator**
   - điều phối workflow sư phạm-kỹ thuật;
-  - quản lý task graph, role-scoped agents, retrieval, verification, repair và HITL;
-  - spawn/điều phối role-scoped agents theo từng task thay vì chạy pipeline cố định;
+  - quản lý task graph, pedagogical agent template catalog, retrieval, verification, repair và HITL;
+  - instantiate/điều phối role-scoped agent invocations theo từng task thay vì chạy pipeline cố định;
   - giữ vai trò routing/coordination trung tâm; agents không tự handoff trực tiếp cho nhau;
-  - nạp template, retrieval policy và feedback policy từ Extension khi khởi tạo agent invocation;
+  - nạp agent template, retrieval policy và feedback policy từ Extension khi khởi tạo agent invocation;
   - enforce guardrails và HITL checkpoints như middleware nội bộ trong task graph;
   - áp dụng đồng thời Pedagogy-Constrained Orchestration và Edge-LLM-Constrained Orchestration;
   - độc lập với từng miền kỹ thuật cụ thể.
 
-- **Role-scoped agents**
-  - gồm các role như retrieval, draft, verification, feedback và review;
-  - là các ephemeral agent invocations được orchestrator spawn khi cần;
+- **Role-scoped agent templates and invocations**
+  - gồm một agent template catalog theo trách nhiệm sư phạm như grounding/alignment, explanation/scaffolding, assessment design, feedback/diagnosis và teacher review;
+  - mỗi template về bản chất là cấu hình prompt, context contract, tool policy và output schema, không phải agent runtime riêng;
+  - mỗi template được Orchestrator instantiate thành ephemeral agent invocation khi cần;
   - giúp cô lập context của từng bước và chỉ trả kết quả có cấu trúc về orchestrator;
-  - mỗi invocation có role, context scope, memory scope và tool scope riêng;
-  - orchestrator quyết định role nào được gọi, thứ tự gọi và điều kiện dừng/retry;
+  - mỗi invocation có template, context scope, memory scope và tool scope riêng;
+  - orchestrator quyết định template nào được instantiate, thứ tự gọi và điều kiện dừng/retry;
   - agent invocation dùng chung model inference backend nhưng không nhất thiết là process/model riêng.
 
 - **Pedagogy Domain Extension**
@@ -172,6 +173,369 @@ flowchart TB
   - hiển thị draft/proposed changes để giáo viên quyết định trước khi áp dụng;
   - giao tiếp hai chiều với orchestration backend qua IPC (gửi task, nhận stream trạng thái và output).
 
+### 4.3.1 Detail design: Supervisor Orchestrator
+
+- Thiết kế Supervisor Orchestrator dựa trên nền tảng lit-review về LLM-based MAS và Agentic AI ở §3.2, §3.6: agent không tự trao đổi ngang hàng tùy ý, mà được điều phối qua một supervisor để giảm coordination overhead, context fragmentation và error propagation.
+- HITL/control gate kế thừa lập luận human-agent collaboration ở §3.4; guardrail/tool gate liên hệ §3.9; context và retry budget liên hệ §3.8 và §3.10 về giới hạn Edge SLM.
+
+```mermaid
+flowchart LR
+    START([START])
+    INTAKE(["Task Intake"])
+    COMPILE(["Compile Task Graph"])
+    REVIEW(["Human Review"])
+    COMMIT(["Commit / Export"])
+    END([END])
+
+    subgraph EXEC_DETAIL["Graph Executor"]
+        direction LR
+        ROUTER{"Router"}
+        STATE[("Graph State")]
+        AGENT["Agent Node"]
+        TOOL_GATE["HITL Tool Gate"]
+        TOOL["Tool Sandbox Node"]
+        VERIFY["Verification Node"]
+        REPAIR["Repair Node"]
+
+        ROUTER --> AGENT
+        ROUTER --> TOOL_GATE
+        TOOL_GATE --> TOOL
+        ROUTER --> VERIFY
+        AGENT --> STATE
+        TOOL --> STATE
+        VERIFY --> STATE
+        VERIFY -- "fail" --> REPAIR
+        REPAIR --> STATE
+        STATE -. "update" .-> ROUTER
+    end
+
+    START --> INTAKE
+    INTAKE --> COMPILE
+    COMPILE --> ROUTER
+    ROUTER -- "ready for human decision" --> REVIEW
+    REVIEW -- "edit / reject" --> ROUTER
+    REVIEW -- "approved final" --> COMMIT
+    COMMIT --> END
+```
+
+Hình trên mô tả kiến trúc Orchestrator tổng quát theo kiểu LangGraph/state-machine: task được compile thành graph, executor chạy các node qua router/state, tool execution luôn đi qua HITL gate và sandbox, verification lỗi thì repair, còn quyết định cuối vẫn đi qua human review.
+
+```mermaid
+flowchart LR
+    START([START])
+    INTAKE(["Task Intake"])
+    COMPILE(["Compile Typed Task Graph"])
+    INJECTOR["Constraint / Policy Injector"]
+    EDGE_ADAPT["Edge Adaptation Layer"]
+    REVIEW(["Human Review"])
+    COMMIT(["Commit / Export"])
+    END([END])
+
+    subgraph EXEC_DETAIL["Graph Executor"]
+        direction LR
+        ROUTER{"Policy-aware Router"}
+        STATE[("Typed Graph State<br/>checkpoint + audit")]
+        AGENT["Role-scoped Agent Node"]
+        TOOL_GATE["HITL Tool Gate"]
+        TOOL["Tool Sandbox Node"]
+        VERIFY["Verification Node"]
+        REPAIR["Targeted Repair Node"]
+
+        ROUTER --> AGENT
+        ROUTER --> TOOL_GATE
+        TOOL_GATE --> TOOL
+        ROUTER --> VERIFY
+        AGENT --> STATE
+        TOOL --> STATE
+        VERIFY --> STATE
+        VERIFY -- "structured error" --> REPAIR
+        REPAIR --> STATE
+        STATE -. "update" .-> ROUTER
+    end
+
+    subgraph P1["Pedagogy-Constrained"]
+        PED["Bloom, rubric,<br/>feedback policy,<br/>citation rules"]
+    end
+
+    subgraph P2["Edge-LLM-Constrained"]
+        EDGE["small context,<br/>weak planning,<br/>latency / reliability risk"]
+    end
+
+    subgraph P3["Domain Extension"]
+        EXT["schemas, prompts,<br/>retrieval policy,<br/>verifier hooks, taxonomy"]
+    end
+
+    START --> INTAKE
+    INTAKE --> INJECTOR
+    INJECTOR --> COMPILE
+    COMPILE --> ROUTER
+    ROUTER -- "ready for human decision" --> REVIEW
+    REVIEW -- "edit / reject" --> ROUTER
+    REVIEW -- "approved final" --> COMMIT
+    COMMIT --> END
+
+    PED -.-> INJECTOR
+    EDGE -.-> EDGE_ADAPT
+    EDGE_ADAPT -. "context packing,<br/>role scoping,<br/>repair strategy" .-> INJECTOR
+    EXT -.-> INJECTOR
+    INJECTOR -. "runtime policy" .-> ROUTER
+    INJECTOR -. "scoped prompt/tool policy" .-> AGENT
+    INJECTOR -. "HITL policy" .-> TOOL_GATE
+    INJECTOR -. "verification policy" .-> VERIFY
+    INJECTOR -. "state schema" .-> STATE
+
+    classDef specialized fill:#fff3cd,stroke:#b7791f,stroke-width:2px,color:#1f2933
+    classDef pedagogy fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1f2933
+    classDef edge fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#1f2933
+    classDef extension fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px,color:#1f2933
+
+    class COMPILE,ROUTER,INJECTOR,EDGE_ADAPT,STATE,AGENT,REPAIR specialized
+    class PED pedagogy
+    class EDGE edge
+    class EXT extension
+```
+
+- Diagram thứ hai giữ cùng skeleton với diagram tổng quát; phần tô vàng là các node được specialize so với diagram 1, còn `Constraint / Policy Injector` là component nội bộ của Orchestrator nhận ba control surfaces rồi inject policy vào compiler/router/executor/state.
+- Với **Pedagogy-Constrained Orchestration**, `Pedagogy Constraints` inject Bloom target, rubric, feedback policy và citation requirement vào graph compiler/node executor; verification trả lỗi có cấu trúc để repair đúng thành phần thay vì regenerate toàn bộ.
+- Với **Edge-LLM-Constrained Orchestration**, `Edge Adaptation Layer` chuyển các giới hạn của small/local LLM thành cơ chế vận hành: context packing, role scoping, output schema bắt buộc, verifier-guided repair, retry/tool-call budget và HITL fallback.
+- Với **Pedagogy Domain Extension**, `Domain Extension` cung cấp schema, prompt template, retrieval policy, verifier hook và error taxonomy để graph không hard-code miền CNTT/lập trình.
+- Tool invocation tách khỏi agent invocation là invariant của cả hai diagram: mọi tool node bắt buộc đi qua `HITL Tool Gate` trước khi chạy trong sandbox; diagram thứ hai chỉ bổ sung policy/scoping cụ thể cho gate này.
+- `Typed Graph State` đồng thời là checkpoint/audit surface, phục vụ đánh giá trajectory/tool-use ở §3.11 và resume sau HITL hoặc lỗi runtime.
+
+### 4.3.2 Detail design: Role-scoped agent templates and invocation
+
+- Role-scoped agent bắt đầu từ một pedagogical agent template trong catalog, sau đó được Orchestrator instantiate thành invocation tạm thời với hợp đồng input/output cụ thể.
+- Template về bản chất là cấu hình prompt + context contract + tool policy + output schema; invocation là một lần gọi model/tool-loop được bind với cấu hình đó dưới context/memory/tool budget của task node.
+- Cách này tận dụng role assignment của LLM-based MAS (§3.6) nhưng giới hạn autonomy để phù hợp với HITL, safety và edge deployment (§3.4, §3.9, §3.10).
+
+```mermaid
+flowchart LR
+    subgraph SETUP["Invocation Setup"]
+        direction TB
+        ORCH["Supervisor Orchestrator"]
+        TEMPLATE["Selected Agent Template<br/>prompt + tools + output schema"]
+        SCOPE["Invocation Scope<br/>context, memory, tool budget"]
+        INSTANTIATE(["Instantiate Invocation"])
+
+        ORCH --> INSTANTIATE
+        TEMPLATE --> INSTANTIATE
+        SCOPE --> INSTANTIATE
+    end
+
+    subgraph LOOP["Invocation Loop"]
+        direction LR
+        PACK(["Build Bounded Context Pack"])
+        CALL(["Local Model Call"])
+        VALIDATE(["Validate Structured Output"])
+        STOP{"Stop Condition?"}
+        RESULT["Result"]
+
+        PACK --> CALL
+        CALL --> VALIDATE
+        VALIDATE --> STOP
+        STOP -- "met" --> RESULT
+        STOP -- "continue" --> PACK
+    end
+
+    subgraph SIDECAR["Sidecar Handlers"]
+        direction TB
+        TOOL_HANDLER["Tool Interaction Handler<br/>HITL gate + sandbox + observation compression"]
+        REPAIR_HANDLER["Repair Handler<br/>schema/policy error + bounded retry"]
+    end
+
+    INSTANTIATE --> PACK
+    RESULT --> ORCH
+
+    VALIDATE -. "tool request" .-> TOOL_HANDLER
+    TOOL_HANDLER -. "compressed observation" .-> PACK
+    VALIDATE -. "invalid output" .-> REPAIR_HANDLER
+    REPAIR_HANDLER -. "repair instruction" .-> PACK
+```
+
+- Pedagogical agent templates được phân hoá theo trách nhiệm sư phạm: grounding/alignment, explanation/scaffolding, assessment design, feedback/diagnosis và teacher review.
+- `CourseGroundingRole` và `AlignmentRole` chuẩn bị grounding, provenance, Bloom/objective/rubric alignment; `ExplanationRole` và `ScaffoldingRole` sinh giải thích, ví dụ và gợi ý từng bước; `ExerciseDesignRole`, `SolutionDesignRole` và `AssessmentCheckRole` hỗ trợ thiết kế bài tập, lời giải tham chiếu, rubric/test/difficulty checks; `MisconceptionDiagnosisRole` và `FeedbackRole` tạo feedback dựa trên lỗi, rubric và misconception taxonomy; `ReviewRole` và `RevisionRole` chuẩn hoá output cho giáo viên và áp dụng edit/reject reason.
+- Invocation không tự ghi persistence chính và không tự gọi agent khác; mọi state mutation đi qua Orchestrator và HITL.
+- Tool loop là mediated loop: invocation chỉ phát structured tool request; Orchestrator kiểm tra HITL policy, chạy tool trong sandbox, rồi nén/lọc observation trước khi đưa quay lại bounded context pack.
+- Khi tool output vượt context window được cấp, observation compressor giữ phần liên quan theo schema của template: lỗi chính, stdout/stderr rút gọn, test summary, citation/provenance hoặc artifact pointer thay vì toàn bộ log.
+- Thiết kế này giảm tool surface trong prompt, phù hợp với các khuyến nghị context management ở §3.8 và rủi ro tool-use ở §3.9.
+- Dưới ràng buộc Edge SLM, invocation không nhận toàn bộ history/corpus/tool list; bounded context pack chỉ gồm task slice, retrieved context, selected memory và allowed action schema theo budget.
+- Invocation luôn trả structured output để Orchestrator có thể validate, kiểm tra stop condition, repair theo lỗi cụ thể hoặc chuyển HITL khi vượt retry/tool budget.
+- Stop condition của invocation gồm: final output hợp lệ theo schema/policy, tool request đã hoàn tất, retry/tool budget đã cạn, hoặc cần chuyển sang HITL.
+
+```mermaid
+flowchart LR
+    CATALOG["Pedagogical Agent Template Catalog"]
+    INVOKE(["Role-scoped Agent Invocation"])
+
+    subgraph TEMPLATE["Shared Template Contract"]
+        direction TB
+        RESPONSIBILITY["Pedagogical responsibility"]
+        PROMPT["Prompt template"]
+        CONTEXT["Context contract"]
+        TOOLS["Tool policy"]
+        OUTPUT["Output schema"]
+    end
+
+    subgraph GROUNDING["Grounding and Alignment Templates"]
+        direction TB
+        GA1["CourseGroundingRole<br/>retrieve course context and provenance"]
+        GA2["AlignmentRole<br/>Bloom, objective, rubric alignment"]
+        GA3["CitationRepairRole<br/>repair weak or missing grounding"]
+    end
+
+    subgraph INSTRUCTION["Instructional Explanation Templates"]
+        direction TB
+        I1["ExplanationRole<br/>concept explanation and examples"]
+        I2["ScaffoldingRole<br/>hints, steps, prerequisite links"]
+    end
+
+    subgraph ASSESSMENT["Assessment Design Templates"]
+        direction TB
+        A1["ExerciseDesignRole<br/>problem statement and constraints"]
+        A2["SolutionDesignRole<br/>reference solution and rationale"]
+        A3["AssessmentCheckRole<br/>tests, rubric, difficulty checks"]
+    end
+
+    subgraph FEEDBACK["Feedback and Diagnosis Templates"]
+        direction TB
+        F1["MisconceptionDiagnosisRole<br/>map errors to misconception taxonomy"]
+        F2["FeedbackRole<br/>actionable, rubric-aware feedback"]
+    end
+
+    subgraph REVIEW["Teacher Review Templates"]
+        direction TB
+        RV1["ReviewRole<br/>teacher-facing proposal"]
+        RV2["RevisionRole<br/>apply teacher edit / reject reason"]
+    end
+
+    CATALOG --> TEMPLATE
+    CATALOG --> GROUNDING
+    CATALOG --> INSTRUCTION
+    CATALOG --> ASSESSMENT
+    CATALOG --> FEEDBACK
+    CATALOG --> REVIEW
+
+    GROUNDING --> INVOKE
+    INSTRUCTION --> INVOKE
+    ASSESSMENT --> INVOKE
+    FEEDBACK --> INVOKE
+    REVIEW --> INVOKE
+```
+
+- Diagram trên là agent template catalog theo trách nhiệm sư phạm; Orchestrator chọn template phù hợp rồi instantiate thành role-scoped invocation cho từng task node.
+- Mỗi template có cùng contract tối thiểu: pedagogical responsibility, prompt template, context contract, tool policy và output schema; các template có thể dùng cùng local model backend nhưng khác prompt, context pack, tool permission và output schema.
+- Tool request, tool observation compression và schema validation là capability/cross-cutting mechanism của invocation, không phải nhóm role sư phạm riêng.
+
+### 4.3.3 Detail design: Knowledge Base và ingestion mechanism
+
+- Knowledge Base hiện thực lớp semantic memory/corpus grounding cho RAG, kế thừa RAG/Agentic RAG ở §3.5. Ingestion được đóng gói trong Pedagogy Domain Extension để metadata, chunking và retrieval policy có thể thay đổi theo miền kỹ thuật.
+- Thiết kế có thể mở rộng sang topic dependency graph, lấy cảm hứng từ GraphRAG và graph-based agent memory trong §3.5, nhưng prototype giới hạn ở graph tĩnh/metadata graph để không vượt khả năng Edge SLM.
+
+```mermaid
+flowchart TB
+    DOCS["Course Documents"]
+    SUBMISSIONS["Allowed Submissions and Exemplars"]
+    RUBRICS["Rubrics and Solutions"]
+    REGISTRY["Corpus Registry"]
+    PARSE(["Parse and Normalize"])
+    CHUNK(["Structure-aware Chunking"])
+    META(["Metadata Enrichment"])
+    EMBED(["Local Embedding"])
+    INDEX["Vector Index"]
+    GRAPH["Topic Dependency Graph"]
+    PROV["Provenance Store"]
+    SEARCH(["Hybrid Search"])
+    RERANK(["Rerank and Filter"])
+    PACK["Context Pack with Citations"]
+    GROUND_ROLE["CourseGroundingRole"]
+
+    DOCS --> REGISTRY
+    SUBMISSIONS --> REGISTRY
+    RUBRICS --> REGISTRY
+    REGISTRY --> PARSE
+    PARSE --> CHUNK
+    CHUNK --> META
+    META --> EMBED
+    EMBED --> INDEX
+    META --> GRAPH
+    META --> PROV
+
+    GROUND_ROLE --> SEARCH
+    INDEX --> SEARCH
+    GRAPH --> SEARCH
+    PROV --> SEARCH
+    SEARCH --> RERANK
+    RERANK --> PACK
+    PACK --> GROUND_ROLE
+
+    subgraph INGEST["Local Ingestion Pipeline"]
+        REGISTRY
+        PARSE
+        CHUNK
+        META
+        EMBED
+    end
+
+    subgraph KB["Knowledge Base"]
+        INDEX
+        GRAPH
+        PROV
+        SEARCH
+        RERANK
+    end
+```
+
+- Ingestion chạy local: tài liệu được đăng ký vào corpus registry, parse/normalize, chunk theo cấu trúc, gắn metadata như topic, Bloom level, difficulty, content type, source và quyền sử dụng.
+- Retrieval trả về context pack ngắn gồm chunk, metadata, citation/provenance và lý do chọn; downstream agents không đọc trực tiếp toàn corpus.
+- Khi citation thiếu hoặc sai, Orchestrator gọi `CitationRepairRole` thay vì để role sinh nội dung tự bịa nguồn, liên hệ trực tiếp với mục tiêu giảm hallucination của RAG ở §3.5.
+
+### 4.3.4 Detail design: Memory
+
+- Memory được thiết kế theo taxonomy trong lit-review §3.7: working memory, episodic memory, semantic memory và procedural/preference-like memory. Cơ chế đọc/ghi có kiểm soát lấy cảm hứng từ MemGPT và các survey memory agent, nhưng được đơn giản hóa cho local Edge SLM.
+- Context injection và compaction liên hệ §3.8: memory không phải nơi nhồi toàn bộ lịch sử vào prompt, mà là external store được Orchestrator chọn lọc theo budget.
+
+```mermaid
+flowchart TB
+    ORCH["Supervisor Orchestrator"]
+    TASK_STATE["M1 Working Memory Task State"]
+    SESSION["M2 Session Episodic Memory"]
+    PROFILE["M3 Teacher Preference Profile"]
+    PROCEDURE["M4 Procedural Policy Cache"]
+    CORRECTION["Teacher Edit Reject Reason"]
+    SELECTOR["Memory Selector"]
+    COMPACT(["Summarize and Compact"])
+    PROMPT_PACK["Memory Pack for Agent"]
+    AGENT["Role-scoped Agent"]
+    STORE["Local Persistence"]
+
+    ORCH <--> TASK_STATE
+    CORRECTION --> SESSION
+    CORRECTION --> PROFILE
+    ORCH --> SELECTOR
+    TASK_STATE --> SELECTOR
+    SESSION --> SELECTOR
+    PROFILE --> SELECTOR
+    PROCEDURE --> SELECTOR
+    SELECTOR --> COMPACT
+    COMPACT --> PROMPT_PACK
+    PROMPT_PACK --> AGENT
+    AGENT --> ORCH
+
+    TASK_STATE <--> STORE
+    SESSION <--> STORE
+    PROFILE <--> STORE
+    PROCEDURE <--> STORE
+
+    ORCH -. "read write policy and budget" .-> SELECTOR
+```
+
+- M1 working memory giữ state task hiện tại và intermediate artifacts.
+- M2 episodic memory giữ lịch sử session, quyết định HITL, correction và reject reason.
+- Semantic memory của hệ thống là Knowledge Base ở §4.3.3; Memory chỉ inject phần tri thức đã được retrieval/selector chọn vào agent context.
+- M3 teacher preference profile lưu preference dài hạn nếu giáo viên cho phép, ví dụ tone feedback, mức độ gợi ý, format bài tập.
+- M4 procedural policy cache lưu cấu hình/policy thường dùng như prompt template version, verifier preference và retrieval defaults; đây là cache vận hành, không thay thế Extension.
+- Mọi ghi dài hạn cần được gắn provenance/audit và có thể bị tắt để đáp ứng local-first, privacy-aware design ở §3.14.
+
 ## 4.4 Các luồng nghiệp vụ chính
 
 - **Luồng hỏi đáp/giải thích tài liệu học phần**
@@ -206,20 +570,21 @@ flowchart TB
 - Supervisor Orchestrator:
   - nhận yêu cầu từ giáo viên;
   - chọn graph template theo task;
-  - gọi các role-scoped agents khi cần;
-  - điều phối retrieval, generation, verification, repair và HITL.
+  - chọn pedagogical agent template phù hợp cho từng node;
+  - instantiate role-scoped agent invocation khi cần;
+  - điều phối grounding, explanation, assessment design, feedback, verification, repair và HITL.
 
 - Typed task graph:
   - mỗi node có input/output schema;
-  - mỗi node có role, tool scope và verifier riêng;
+  - mỗi node khai báo agent template, tool scope và verifier riêng;
   - stop condition và retry policy được khai báo rõ.
 
-- Role-scoped agents:
-  - `RetrievalRole`: truy xuất context và provenance;
-  - `DraftRole`: sinh giáo án/câu trả lời/bài tập;
-  - `VerificationRole`: kiểm tra schema, citation, code và constraints;
-  - `FeedbackRole`: sinh feedback dựa trên verifier và error taxonomy;
-  - `ReviewRole`: chuẩn bị output cho HITL.
+- Pedagogical agent templates:
+  - `CourseGroundingRole`, `AlignmentRole`, `CitationRepairRole`: chuẩn bị grounding, provenance và alignment theo Bloom/objective/rubric;
+  - `ExplanationRole`, `ScaffoldingRole`: sinh giải thích, ví dụ, hint và prerequisite links;
+  - `ExerciseDesignRole`, `SolutionDesignRole`, `AssessmentCheckRole`: thiết kế bài tập, lời giải tham chiếu, rubric/test và kiểm tra độ khó;
+  - `MisconceptionDiagnosisRole`, `FeedbackRole`: ánh xạ lỗi sang misconception taxonomy và sinh feedback có tính sư phạm;
+  - `ReviewRole`, `RevisionRole`: chuẩn bị output cho HITL và áp dụng edit/reject reason của giáo viên.
 
 - Pedagogical constraints:
   - Bloom alignment;
@@ -372,12 +737,12 @@ flowchart TB
   - rerank;
   - trả về context pack ngắn cho downstream agents.
 
-- RetrievalRole:
+- Grounding and citation roles:
   - lập truy vấn theo task;
   - chọn nguồn truy xuất phù hợp;
   - gom và lọc kết quả;
   - trả context có provenance;
-  - hỗ trợ citation repair khi cần.
+  - hỗ trợ citation repair khi cần qua `CitationRepairRole`.
 
 - Privacy:
   - corpus nội bộ không gửi ra ngoài mặc định;
