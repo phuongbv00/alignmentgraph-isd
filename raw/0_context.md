@@ -62,7 +62,7 @@ Kiến trúc vẫn được thiết kế có điểm mở rộng cho nhiều mi�
 
 Dùng template **SOICT_DATN_Application_VIE_Template** tại [templates/SOICT_DATN_Application_VIE_Template/](templates/SOICT_DATN_Application_VIE_Template/).
 
-Cấu hình preamble từ [templates/.../DoAn.tex](templates/SOICT_DATN_Application_VIE_Template/DoAn.tex):
+Cấu hình preamble từ [templates/.../LuanVan.tex](templates/SOICT_DATN_Application_VIE_Template/LuanVan.tex):
 
 - Class: `report`, `a4paper`, `13pt`, `twoside`.
 - Font: `times` (Times New Roman).
