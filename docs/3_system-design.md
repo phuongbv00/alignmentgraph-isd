@@ -794,27 +794,29 @@ flowchart TB
   - review queue cho HITL.
 
 - Runtime architecture:
-  - UI process;
-  - orchestration backend;
+  - desktop UI (Tauri — webview shell nhẹ, không bundle browser engine);
+  - orchestration backend chạy như HTTP server cục bộ (LangGraph dev server trên localhost);
   - local LLM backend;
   - local vector database;
   - local session/profile storage.
 
-- IPC:
-  - UI gửi task tới backend;
-  - backend stream trạng thái và output về UI;
-  - tool/verifier chạy phía backend;
-  - lỗi runtime được trả về có cấu trúc.
+- Giao tiếp UI — backend (HTTP + SSE):
+  - UI gửi task tới backend qua HTTP REST (`POST /threads`, `POST /threads/{id}/runs`);
+  - backend stream trạng thái và output về UI qua SSE (`GET /threads/{id}/runs/{runId}/stream`);
+  - HITL interrupt: backend pause tại breakpoint, lưu checkpoint; UI gửi decision qua HTTP POST để resume;
+  - tool/verifier chạy hoàn toàn phía backend, kết quả trả về có cấu trúc qua stream;
+  - lỗi runtime được serialize và gửi qua stream event.
 
 - Local storage:
   - indexed corpus;
-  - task/session history;
+  - task/session history (checkpoint của LangGraph);
   - teacher corrections;
   - audit log;
   - optional teacher profile.
 
 - Deployment scope:
   - prototype chạy local để demo và đánh giá;
+  - UI và backend khởi động cùng nhau trên máy giáo viên;
   - packaging hoàn chỉnh là mục tiêu sản phẩm/future work nếu chưa hoàn thiện.
 
 ## 4.11 Tổng kết thiết kế
