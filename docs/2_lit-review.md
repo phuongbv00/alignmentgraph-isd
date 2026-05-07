@@ -109,7 +109,7 @@ Phần này đặt nền cho trụ cột **Edge-LLM-Constrained Orchestration**:
   - Mô hình lai hợp lý: Edge SLM xử lý default path; cloud/frontier LLM chỉ dùng làm baseline/reference upper bound hoặc fallback tùy chọn trong đánh giá.
 - **Quantization & inference runtime**:
   - Quantization: GGUF (llama.cpp), AWQ, GPTQ — trade-off quality vs memory/latency.
-  - llama.cpp (Gerganov, 2023): inference engine C++ cross-platform, Python binding — **được chọn** để nhúng trong Electron child process.
+  - llama.cpp (Gerganov, 2023): inference engine C++ cross-platform, Python binding — **được chọn** làm local inference backend, chạy như sidecar process được quản lý bởi orchestration backend.
   - Cần trình bày rõ đánh đổi: 4-bit/8-bit giảm RAM/VRAM và tăng khả năng chạy local, nhưng có thể làm giảm chất lượng ở task reasoning dài, tool-use phức tạp hoặc tiếng Việt chuyên ngành.
 - **Model families để khảo sát**:
   - **Gemma 3n** (Google DeepMind, 2025): E2B / E4B edge models — multimodal, offline, dưới 2.5 GB quantized. Cite Gemma 3n model card (ai.google.dev/gemma/docs/gemma-3n/model_card).
@@ -133,13 +133,13 @@ Phần này làm nền cho thiết kế thực nghiệm ở Chương 5: không c
 - **Ablation study**: so sánh baseline RAG/ReAct với TTG-ARAG; tách đóng góp của typed workflow, verifier-guided repair, pedagogical constraints, memory/context compaction và HITL.
 - **Human/rubric alignment**: dùng rubric giáo viên và kiểm tra độ khớp giữa automated judge với human evaluation; liên hệ với các nghiên cứu AI-assisted grading ở §3.13.
 
-## 3.12 Desktop app tích hợp AI (Electron + Python IPC)
+## 3.12 Desktop app tích hợp AI (Tauri + HTTP server + SSE)
 
-- Electron (GitHub, 2013–): Chromium + Node.js, cross-platform desktop. Dùng trong VS Code, Slack, Figma.
-- Kiến trúc main process / renderer / child process.
-- IPC patterns: `ipcMain`/`ipcRenderer`, `child_process.spawn`, JSON-line protocol.
-- Python interop trong Electron: subprocess, local HTTP (FastAPI), hay stdin/stdout — trade-off latency vs complexity.
-- Cite: ít bài học thuật về Electron+AI; dùng official docs + kỹ thuật từ open-source projects (ví dụ Jan.ai, LM Studio architecture).
+- **Tauri** (Tauri Apps, 2021–): Rust backend + OS native webview (WebView2/WebKit), cross-platform desktop; bundle size và RAM footprint nhỏ hơn Electron vì không bundle Chromium. Dùng trong các app desktop nhẹ, privacy-aware.
+- Kiến trúc: webview frontend (web tech) giao tiếp với Rust backend qua Tauri commands; Rust backend quản lý process lifecycle của Python/native sidecar.
+- **HTTP + SSE pattern**: orchestration backend chạy như HTTP server cục bộ (LangGraph dev server, localhost); UI gửi task qua REST, nhận stream trạng thái/output qua SSE; HITL decision gửi về qua HTTP POST để resume.
+- So với Electron: Tauri đơn giản hơn về process isolation vì backend là HTTP server độc lập — UI không cần biết gì về Python runtime; Python interop qua HTTP thay vì `child_process` Node.js.
+- Cite: ít bài học thuật về Tauri+AI; dùng official Tauri docs + kỹ thuật từ open-source projects (ví dụ Jan.ai, LM Studio architecture cho local AI desktop app pattern).
 
 ## 3.13 LLM trong giáo dục
 
