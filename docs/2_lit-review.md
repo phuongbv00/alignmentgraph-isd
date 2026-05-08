@@ -32,7 +32,7 @@ Phần này cần định nghĩa rõ vì nhiều bài dùng lẫn lộn:
 - **Claude Code** (Anthropic, 2025): Claude model + coding harness (tool: file read/write, bash, search; HITL: hỏi trước khi thực thi lệnh nguy hiểm; execution loop; MCP extensibility) = Claude Code agent. Cite official docs/product page (docs.anthropic.com/en/docs/claude-code/overview). → **Analogy chính**: harness biến Claude (model) thành Claude Code (agent); tương tự, Pedagogy Agent Harness biến LLM thành Pedagogy Agent. Tool layer thay bằng retrieval/verifier/rubric-checker; constraint thay bằng Bloom/rubric/HITL; extensibility thay bằng Pedagogy Domain Extension.
 - **OpenAI Codex** (OpenAI, 2025; Codex app 2026): GPT + coding harness (sandbox, worktree, file ops, test runner) = Codex agent. Cite official product/blog docs (openai.com/codex). → Minh chứng thêm cho pattern Model + Harness = Agent; khác hệ thống đề xuất ở domain (software engineering vs. pedagogy) và user (developer vs. teacher).
 - Cursor, Windsurf: IDE-integrated agent — cho thấy xu hướng embedded agentic AI trong desktop app.
-- **LangChain (2026)** — *"The Anatomy of an Agent Harness"* \[`LangChain2026HarnessAnatomy`\]: định nghĩa harness là "every piece of code, configuration, and execution logic that isn't the model itself"; mô tả 6 capability cốt lõi của harness: durable storage, code execution/sandbox, memory & context injection, orchestration logic, **context management** và **hooks for deterministic behavior enforcement**. Raw model trở thành agent khi được trang bị harness với state, tool execution, feedback loops và enforceable constraints. → Củng cố analogy trung tâm: Claude Code = Claude model + coding harness; Pedagogy Agent = LLM + Pedagogy Agent Harness. Hai capability đặc biệt liên quan: context management là trách nhiệm của harness (không phải model) — xem §4.3.2/§4.3.4; hooks for deterministic behavior enforcement ánh xạ lên teacher-in-the-loop và Pedagogy-Constrained Orchestration — xem §4.5/§4.8.
+- **LangChain (2026)** — *"The Anatomy of an Agent Harness"* \[`LangChain2026HarnessAnatomy`\]: định nghĩa harness là "every piece of code, configuration, and execution logic that isn't the model itself"; mô tả 6 capability cốt lõi của harness: durable storage, code execution/sandbox, memory & context injection, orchestration logic, **context management** và **hooks for deterministic behavior enforcement**. Raw model trở thành agent khi được trang bị harness với state, tool execution, feedback loops và enforceable constraints. → Củng cố analogy trung tâm: Claude Code = Claude model + coding harness; Pedagogy Agent = LLM + Pedagogy Agent Harness. Hai capability đặc biệt liên quan: context management là trách nhiệm của harness (không phải model) — xem §4.3.2/§4.3.4; hooks for deterministic behavior enforcement ánh xạ lên teacher-in-the-loop và pedagogical constraint enforcement xuyên suốt harness.
 - **Tóm tắt analogy (Agent = Model + Harness)**:
 
 | Chiều | Coding agent (Claude Code/Codex) | Pedagogy Agent (đề xuất) |
@@ -41,7 +41,7 @@ Phần này cần định nghĩa rõ vì nhiều bài dùng lẫn lộn:
 | Tool layer | file read/write, bash, search | retrieval, verifier, rubric-checker |
 | Constraint | safe execution, HITL | Bloom/rubric alignment, HITL |
 | Context management | context window + compaction | bounded context pack (§4.3.2) |
-| Deterministic enforcement | hooks for behavior enforcement | teacher-in-the-loop, pedagogical constraints (§4.5/§4.8) |
+| Deterministic enforcement | hooks for behavior enforcement | teacher-in-the-loop, pedagogical constraints |
 | Extensibility | MCP servers | Pedagogy Domain Extension |
 | User | Developer | Teacher |
 
@@ -174,7 +174,7 @@ Bảng so sánh tổng hợp: Pedagogy Agent Harness đề xuất vs các công 
 
 Hai chiều differentiation chính:
 1. **Harness framing (Agent = Model + Harness)**: hệ thống định vị là harness — kết hợp với LLM tạo thành Pedagogy Agent — thay vì application. Contribution là thiết kế harness (tool layer, constraints, HITL, extensibility), không phải LLM hay tính năng sư phạm cụ thể.
-2. **Domain extensibility với 2 case study**: CNTT và Toán cùng implement một interface → bằng chứng thực nghiệm về tính tổng quát của Pedagogy Domain Extension, không chỉ là design claim.
+2. **Domain extensibility với 2 case study**: CNTT và Toán cùng implement domain plugin interface → bằng chứng thực nghiệm về tính tổng quát của interface, không chỉ là design claim.
 
 Phần này phải nêu rõ: đề tài không claim từng chiều trong bảng là mới; đóng góp nằm ở cấu hình tích hợp của harness cho bối cảnh sư phạm và bằng chứng thực nghiệm qua controlled comparison + ablation trên hai domain.
 

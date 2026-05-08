@@ -4,7 +4,7 @@
 
 **Tên đề tài**: "Thiết kế và Hiện thực Pedagogy Agent Harness cho các Tác vụ Sư phạm"
 
-Đề tài mang định hướng thiết kế hệ thống, tập trung xây dựng một **Pedagogy Agent Harness** — môi trường thực thi kết hợp với LLM tạo thành Pedagogy Agent có khả năng hỗ trợ các tác vụ sư phạm. Quan hệ cốt lõi: **Agent = Model + Harness**; harness không "điều phối agent" như một thực thể bên ngoài, mà là thứ biến LLM thành agent. Cách tiếp cận này tương tự Claude Code = Claude model + coding harness, hay Codex = GPT + coding harness, nhưng hướng đến giáo viên thay vì lập trình viên. Kiến trúc đề xuất được tổ chức quanh hai trụ cột: **Pedagogy-Constrained Orchestration** và **Pedagogy Domain Extension**. Multi-Agent và Agentic RAG là các cơ chế kỹ thuật bên trong harness, không phải tên gọi của hệ thống.
+Đề tài mang định hướng thiết kế hệ thống, tập trung xây dựng một **Pedagogy Agent Harness** — môi trường thực thi kết hợp với LLM tạo thành Pedagogy Agent có khả năng hỗ trợ các tác vụ sư phạm. Quan hệ cốt lõi: **Agent = Model + Harness**; harness không "điều phối agent" như một thực thể bên ngoài, mà là thứ biến LLM thành agent. Cách tiếp cận này tương tự Claude Code = Claude model + coding harness, hay Codex = GPT + coding harness, nhưng hướng đến giáo viên thay vì lập trình viên. Harness được thiết kế thỏa hai ràng buộc cứng: (1) **pedagogical constraint enforcement** xuyên suốt pipeline — mọi giai đoạn thực thi phải tuân theo ràng buộc sư phạm, không giới hạn ở bước orchestration; (2) **domain extensibility** — harness nhận domain sư phạm mới qua plugin interface mà không thay đổi core. Multi-Agent và Agentic RAG là các cơ chế kỹ thuật bên trong harness, không phải tên gọi của hệ thống.
 
 ## 2. Phạm vi và ràng buộc
 
@@ -33,7 +33,7 @@
 - Đánh giá hiệu quả học tập qua nhiều tuần/lớp thật.
 - Triển khai và đánh giá thực nghiệm extension cho nhiều domain hơn ngoài CNTT và Toán.
 
-Kiến trúc được thiết kế có điểm mở rộng cho nhiều domain khác thông qua Pedagogy Domain Extension. Khả năng mở rộng này được khẳng định ở mức thiết kế/interface; bằng chứng thực nghiệm nằm trong hai case study CNTT/lập trình và Toán.
+Kiến trúc được thiết kế có điểm mở rộng cho nhiều domain khác qua plugin interface. Khả năng mở rộng này được khẳng định ở mức thiết kế/interface compliance; bằng chứng thực nghiệm nằm trong hai case study CNTT/lập trình và Toán.
 
 ## 3. Mục tiêu và câu hỏi đánh giá
 
@@ -44,21 +44,21 @@ Kiến trúc được thiết kế có điểm mở rộng cho nhiều domain kh
 
 Đề tài đóng góp ở mức thiết kế hệ thống, hiện thực prototype và đánh giá kỹ thuật, không ở mức phát minh thuật toán mới.
 
-1. **Pedagogy Agent Harness — kiến trúc đề xuất**: môi trường thực thi kết hợp với LLM tạo thành Pedagogy Agent (Agent = Model + Harness), tổ chức quanh Pedagogy-Constrained Orchestration và Pedagogy Domain Extension. Harness cung cấp tool layer sư phạm, memory, constraint enforcement, HITL governance và extensibility mechanism; kết hợp với LLM tạo thành agent có năng lực sư phạm — tương tự coding harness kết hợp với LLM tạo thành Claude Code hay Codex.
-2. **Hai domain extension**: CNTT/lập trình và Toán — hai bản hiện thực của Pedagogy Domain Extension interface, minh chứng tính tổng quát của interface trên hai domain có đặc trưng khác biệt (có/không code verifier, error taxonomy khác nhau).
+1. **Pedagogy Agent Harness — kiến trúc đề xuất**: môi trường thực thi kết hợp với LLM tạo thành Pedagogy Agent (Agent = Model + Harness), thỏa hai ràng buộc thiết kế cứng: pedagogical constraint enforcement xuyên suốt pipeline và domain extensibility qua plugin interface. Harness cung cấp tool layer sư phạm, memory, constraint enforcement, HITL governance và extensibility mechanism; kết hợp với LLM tạo thành agent có năng lực sư phạm — tương tự coding harness kết hợp với LLM tạo thành Claude Code hay Codex.
+2. **Hai domain plugin implementation**: CNTT/lập trình và Toán — minh chứng tính tổng quát của domain plugin interface trên hai domain có đặc trưng khác biệt (có/không code verifier, error taxonomy khác nhau).
 3. **Prototype end-to-end**: hệ thống chạy được trên cả hai case study, bao gồm corpus nội bộ, retrieval local, các flow tác vụ sư phạm, verifier và teacher-controlled review flow.
 4. **Bộ đánh giá kỹ thuật**: benchmark hai domain (~180 sample), baseline comparison với LLM-only/Naive RAG/Generic ReAct ARAG/Fixed MA-ARAG và ablation cho các thành phần chính của harness.
 
-## 5. Trụ cột kiến trúc
+## 5. Ràng buộc thiết kế cứng
 
-1. **Pedagogy-Constrained Orchestration**: các tác vụ sư phạm được thực thi dưới dạng typed task graph có kiểm soát. Core điều phối retrieval, generation, verification, repair và HITL theo từng bước; output phải thỏa các ràng buộc sư phạm như Bloom/rubric alignment, citation coverage, misconception mapping và feedback policy; mọi thay đổi dữ liệu/trạng thái cần được giáo viên cho phép.
-2. **Pedagogy Domain Extension**: mỗi domain sư phạm được bổ sung vào harness dưới dạng một extension, khai báo metadata schema, task schema, retrieval policy, verifier/tool interface, error taxonomy, feedback template, pedagogical constraints và corpus ingestion pipeline. Core chỉ phụ thuộc vào các khai báo này thay vì hard-code logic của từng domain.
+1. **Pedagogical constraint enforcement**: mọi giai đoạn thực thi của harness (retrieval policy, generation, schema validation, verification, repair, output) phải tuân theo ràng buộc sư phạm — Bloom/rubric alignment, citation coverage, misconception mapping, feedback policy, HITL approval. Constraint không chỉ áp ở bước orchestration mà được enforce xuyên suốt pipeline qua typed schema, verifier, HITL gate và memory.
+2. **Domain extensibility**: harness nhận domain sư phạm mới qua plugin interface mà không thay đổi core. Mỗi domain khai báo metadata schema, task schema, retrieval policy, verifier/tool interface, error taxonomy, feedback template, pedagogical constraints và corpus ingestion pipeline; core chỉ phụ thuộc vào interface này thay vì hard-code logic từng domain.
 
 ## 6. Ranh giới kết luận
 
 - Không xem từng kỹ thuật riêng lẻ như graph orchestration, verifier, self-repair, Bloom/rubric constraint hay extension mechanism là đóng góp mới.
 - Kết quả đánh giá chỉ kết luận trong phạm vi hai case study CNTT/lập trình và Toán và benchmark đã xây dựng.
-- Pedagogy Domain Extension là cơ chế mở rộng ở mức kiến trúc; luận văn không khẳng định đã chứng minh hệ thống scale thực nghiệm sang nhiều domain khác.
+- Domain extensibility là ràng buộc thiết kế được validate qua interface compliance của hai domain plugin; luận văn không khẳng định đã chứng minh hệ thống scale thực nghiệm sang nhiều domain khác.
 - LLM là pluggable component; luận văn không đánh giá riêng hiệu quả của từng LLM provider.
 
 ## 7. Format & Template

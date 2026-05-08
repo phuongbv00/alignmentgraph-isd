@@ -4,7 +4,7 @@
 
 - Bối cảnh: giáo viên/giảng viên mất nhiều giờ cho tác vụ sư phạm lặp; LLM thương mại có rủi ro dữ liệu; các agent framework tổng quát chưa tối ưu cho tác vụ sư phạm.
 - Vấn đề: LLM đơn thuần chưa phải agent sư phạm — thiếu một harness kết hợp với LLM để tạo thành Pedagogy Agent có tool layer, pedagogical constraints, HITL và extensibility; tương tự Claude Code/Codex là harness biến LLM thành coding agent, nhưng dành cho giáo viên.
-- Phạm vi: Pedagogy Agent Harness với hai trụ cột (Pedagogy-Constrained Orchestration, Pedagogy Domain Extension), được validate qua hai case study: CNTT/lập trình và Toán.
+- Phạm vi: Pedagogy Agent Harness thỏa hai ràng buộc thiết kế cứng (pedagogical constraint enforcement xuyên suốt pipeline, domain extensibility qua plugin interface), được validate qua hai case study: CNTT/lập trình và Toán.
 - Định vị đóng góp: không xem từng cơ chế riêng lẻ là mới; nhấn mạnh harness như contribution ở tầng infrastructure, với Multi-Agent và Agentic RAG là implementation bên trong.
 - Mục tiêu và EQ (xem [0_context.md](refs/0_context.md)).
 - Bố cục luận văn.
@@ -13,7 +13,7 @@
 
 - Khảo sát nhu cầu giáo viên (qualitative — phỏng vấn / bảng hỏi nhanh hoặc literature-based).
 - Phân tích use case: soạn giáo án, sinh bài tập/đề, chấm bài + feedback cá nhân hoá.
-- Yêu cầu phi chức năng/ràng buộc thiết kế: HITL bắt buộc, pedagogical constraint enforcement, khả năng mở rộng bằng Pedagogy Domain Extension, LLM là pluggable component.
+- Yêu cầu phi chức năng/ràng buộc thiết kế: HITL bắt buộc, pedagogical constraint enforcement xuyên suốt pipeline, domain extensibility qua plugin interface, LLM là pluggable component.
 - Benchmarks hiện có trong lĩnh vực (AI in education, agentic RAG, coding agent harness) — xác định gap.
 
 ## Chương 3 — Nền tảng lý thuyết & công nghệ sử dụng
@@ -43,18 +43,7 @@ Tóm tắt cấu trúc (16 subsection):
 
 Xem chi tiết đầy đủ tại [3_system-design.md](refs/3_system-design.md).
 
-Tóm tắt cấu trúc:
-
-1. Mục tiêu thiết kế và phạm vi hệ thống
-2. Yêu cầu thiết kế chính: HITL, pedagogy constraints, technical verification, extensibility, LLM-agnostic
-3. Kiến trúc tổng quan — Pedagogy Agent Harness
-4. Các luồng nghiệp vụ chính
-5. Pedagogy-Constrained Orchestration
-6. Pedagogy Domain Extension (CNTT/lập trình extension + Toán extension)
-7. Retrieval và quản lý tri thức
-8. Verification, Guardrails và HITL
-9. Kiến trúc ứng dụng desktop và runtime
-10. Tổng kết thiết kế
+Tóm tắt cấu trúc: **(TBD — thiết kế lại từ đầu)**
 
 ## Chương 5 — Đánh giá hệ thống
 
@@ -72,8 +61,8 @@ Tóm tắt cấu trúc:
 
 **Đóng góp dự kiến** (cập nhật thành "đóng góp được xác nhận" sau khi có kết quả thực nghiệm):
 
-1. **Pedagogy Agent Harness — kiến trúc đề xuất**: môi trường thực thi kết hợp với LLM tạo thành Pedagogy Agent (Agent = Model + Harness), tổ chức quanh Pedagogy-Constrained Orchestration và Pedagogy Domain Extension. Định vị rõ ràng như harness infrastructure (tương tự coding harness trong Claude Code/Codex) thay vì application.
-2. **Hai domain extension**: CNTT/lập trình và Toán — bằng chứng thực nghiệm rằng Pedagogy Domain Extension interface đủ tổng quát cho hai domain có đặc trưng khác biệt.
+1. **Pedagogy Agent Harness — kiến trúc đề xuất**: môi trường thực thi kết hợp với LLM tạo thành Pedagogy Agent (Agent = Model + Harness), thỏa hai ràng buộc thiết kế cứng: pedagogical constraint enforcement xuyên suốt pipeline và domain extensibility qua plugin interface. Định vị rõ ràng như harness infrastructure (tương tự coding harness trong Claude Code/Codex) thay vì application.
+2. **Hai domain plugin implementation**: CNTT/lập trình và Toán — bằng chứng thực nghiệm rằng domain plugin interface đủ tổng quát cho hai domain có đặc trưng khác biệt.
 3. **Prototype end-to-end**: hệ thống chạy được trên cả hai case study với corpus nội bộ, retrieval local, verifier và teacher-controlled review flow.
 4. **Bộ benchmark sư phạm tự xây**: ~180 sample (CNTT: giáo án/bài tập/chấm code; Toán: bài tập/chấm lời giải) với corpus nội bộ tiếng Việt.
 
