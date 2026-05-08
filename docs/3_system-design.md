@@ -2,7 +2,7 @@
 
 ## 4.1 Mục tiêu thiết kế và phạm vi hệ thống
 
-- Thiết kế **Pedagogy Agent Harness** — lớp điều phối và ràng buộc agent cho tác vụ sư phạm, hỗ trợ giáo viên tương tự cách Claude Code/Codex hỗ trợ lập trình viên.
+- Thiết kế **Pedagogy Agent Harness** — môi trường thực thi kết hợp với LLM tạo thành Pedagogy Agent (Agent = Model + Harness), hỗ trợ giáo viên tương tự cách coding harness kết hợp với LLM tạo thành Claude Code hay Codex.
 - Tập trung vào các tác vụ sư phạm có thể kiểm chứng:
   - hỏi đáp/giải thích dựa trên tài liệu học phần;
   - sinh bài tập kèm lời giải tham chiếu;
@@ -89,16 +89,16 @@ flowchart TB
     style EXEC_CTX stroke-dasharray: 5 5
 ```
 
-- **Core System**
-  - bao gồm Supervisor Orchestrator, Role-scoped Agents, Knowledge Base, Memory, Persistence/Storage và Tool Sandbox;
-  - không bao gồm User, Application, Pedagogy Domain Extension và Model Inference;
+- **Core System (Harness)**
+  - là phần harness-side của Pedagogy Agent: Supervisor Orchestrator, Role-scoped agent instances (harness config), Knowledge Base, Memory, Tool Sandbox, Persistence/Storage;
+  - kết hợp với Model Inference (LLM) tạo thành Pedagogy Agent; Model Inference nằm ngoài Core nhưng là thành phần bắt buộc của agent;
   - giữ workflow/runtime logic có thể tái sử dụng giữa các domain extension.
 
 - **Agent Execution Context**
   - gom Knowledge Base, Memory và Tool Sandbox;
-  - là môi trường thực thi được cấp theo scope cho role-scoped agent invocations;
-  - giúp agents truy cập context, memory và tools mà không mở toàn bộ hệ thống;
-  - scope cụ thể vẫn do Supervisor Orchestrator kiểm soát.
+  - là phần harness cung cấp context, memory và tools cho mỗi agent instance trong quá trình thực thi;
+  - scope được cấp theo từng invocation — agent instance chỉ truy cập phần được harness cấp phép;
+  - scope cụ thể do Supervisor Orchestrator kiểm soát.
 
 - **Supervisor Orchestrator**
   - điều phối workflow sư phạm-kỹ thuật;
@@ -110,14 +110,13 @@ flowchart TB
   - áp dụng Pedagogy-Constrained Orchestration và enforce domain extension policy;
   - độc lập với từng domain sư phạm cụ thể.
 
-- **Role-scoped agent templates and invocations**
-  - gồm một agent template catalog theo trách nhiệm sư phạm như grounding/alignment, explanation/scaffolding, assessment design, feedback/diagnosis và teacher review;
-  - mỗi template về bản chất là cấu hình prompt, context contract, tool policy và output schema, không phải agent runtime riêng;
-  - mỗi template được Orchestrator instantiate thành ephemeral agent invocation khi cần;
-  - giúp cô lập context của từng bước và chỉ trả kết quả có cấu trúc về orchestrator;
-  - mỗi invocation có template, context scope, memory scope và tool scope riêng;
-  - orchestrator quyết định template nào được instantiate, thứ tự gọi và điều kiện dừng/retry;
-  - agent invocation dùng chung model inference backend nhưng không nhất thiết là process/model riêng.
+- **Role-scoped agent instances**
+  - mỗi agent instance = LLM (Model) + role config từ harness (Harness-side): Agent = Model + Harness;
+  - role config gồm: prompt template, context contract, tool policy và output schema — đây là phần harness đóng góp để biến LLM thành agent chuyên biệt;
+  - orchestrator instantiate role config và gọi LLM tương ứng để tạo agent instance khi cần trong task graph;
+  - mỗi instance có context scope, memory scope và tool scope riêng — cô lập giữa các bước trong workflow;
+  - orchestrator quyết định role config nào được kích hoạt, thứ tự và điều kiện dừng/retry;
+  - các instance dùng chung LLM backend nhưng khác nhau về harness config → khác nhau về behavior.
 
 - **Pedagogy Domain Extension**
   - khai báo metadata schema, task schema, prompt templates;
@@ -137,8 +136,8 @@ flowchart TB
   - working memory cho state của task hiện tại;
   - short-term/session memory cho history và teacher corrections;
   - long-term memory cho teacher preferences/profile nếu được triển khai;
-  - orchestrator kiểm soát lượng memory được inject vào agent context (prompt budget);
-  - agents đọc/ghi memory trong phạm vi context scope được orchestrator cấp.
+  - orchestrator kiểm soát lượng memory được inject vào agent instance context;
+  - agent instance đọc/ghi memory trong phạm vi scope được harness cấp.
 
 - **Persistence / Storage**
   - lưu workspace, configs, session metadata và audit log;
@@ -166,8 +165,8 @@ flowchart TB
 
 ### 4.3.1 Detail design: Supervisor Orchestrator
 
-- Thiết kế Supervisor Orchestrator dựa trên nền tảng lit-review về LLM-based MAS và Agentic AI ở §3.2, §3.6: agent không tự trao đổi ngang hàng tùy ý, mà được điều phối qua một supervisor để giảm coordination overhead, context fragmentation và error propagation.
-- HITL/control gate kế thừa lập luận human-agent collaboration ở §3.4; guardrail/tool gate liên hệ §3.9; context và retry budget liên hệ §3.8 và §3.10 về giới hạn Edge SLM.
+- Thiết kế Supervisor Orchestrator dựa trên nền tảng lit-review về LLM-based MAS và Agentic AI ở §3.2, §3.6: các agent instance (= LLM + role config từ harness) không tự handoff trực tiếp cho nhau; orchestrator — là thành phần trung tâm của harness — quyết định role config nào được kích hoạt và khi nào, giảm coordination overhead, context fragmentation và error propagation.
+- HITL/control gate kế thừa lập luận human-agent collaboration ở §3.4; guardrail/tool gate liên hệ §3.9; context và retry budget liên hệ §3.8.
 
 ```mermaid
 flowchart LR
@@ -287,9 +286,9 @@ flowchart LR
 
 ### 4.3.2 Detail design: Role-scoped agent templates and invocation
 
-- Role-scoped agent bắt đầu từ một pedagogical agent template trong catalog, sau đó được Orchestrator instantiate thành invocation tạm thời với hợp đồng input/output cụ thể.
-- Template về bản chất là cấu hình prompt + context contract + tool policy + output schema; invocation là một lần gọi model/tool-loop được bind với cấu hình đó dưới context/memory/tool budget của task node.
-- Cách này tận dụng role assignment của LLM-based MAS (§3.6) nhưng giới hạn autonomy để phù hợp với HITL và safety (§3.4, §3.9).
+- Mỗi role-scoped agent instance = LLM + role config từ harness (prompt template + context contract + tool policy + output schema). Template là phần harness-side; khi harness instantiate template và gọi LLM theo cấu hình đó, kết quả là một agent instance chuyên biệt cho một trách nhiệm sư phạm cụ thể.
+- Invocation là một lần thực thi của agent instance đó: harness build bounded context pack → gọi LLM → validate output → tool loop nếu cần → trả kết quả có cấu trúc về orchestrator.
+- Cách này tận dụng role assignment của LLM-based MAS (§3.6) nhưng giới hạn autonomy để phù hợp với HITL và safety (§3.4, §3.9); agent instance không tồn tại độc lập — lifecycle do harness orchestrator kiểm soát.
 
 ```mermaid
 flowchart LR
@@ -740,13 +739,12 @@ flowchart TB
 
 ## 4.10 Tổng kết thiết kế
 
-- Chương này trình bày kiến trúc Pedagogy Agent Harness ở mức system design.
-- Đóng góp không nằm ở từng kỹ thuật riêng lẻ.
-- Giá trị chính là cách tích hợp:
-  - Multi-Agent Agentic RAG bên trong harness;
-  - Pedagogy-Constrained Orchestration;
-  - Pedagogy Domain Extension với hai case study (CNTT và Toán);
-  - verification, guardrails và HITL.
+- Chương này trình bày thiết kế Pedagogy Agent Harness theo nguyên lý Agent = Model + Harness.
+- Đóng góp không nằm ở từng kỹ thuật riêng lẻ mà ở thiết kế harness tích hợp:
+  - Pedagogy-Constrained Orchestration — harness điều phối execution steps và enforce pedagogical constraints;
+  - Pedagogy Domain Extension — harness extensible qua plugin interface (CNTT và Toán);
+  - Multi-Agent bên trong harness — nhiều role config → nhiều agent instance chuyên biệt (Agent = Model + role config);
+  - Verification, guardrails và HITL — harness kiểm soát safety và teacher governance.
 
 - Phạm vi hiện thực:
   - core harness (orchestration, memory, retrieval, verification);

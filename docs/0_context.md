@@ -4,7 +4,7 @@
 
 **Tên đề tài**: "Thiết kế và Hiện thực Pedagogy Agent Harness cho các Tác vụ Sư phạm"
 
-Đề tài mang định hướng thiết kế hệ thống, tập trung xây dựng một **Pedagogy Agent Harness** — lớp điều phối và ràng buộc agent dành riêng cho các tác vụ sư phạm — tương tự cách Claude Code, OpenAI Codex là harness cho coding agent nhưng hướng đến giáo viên thay vì lập trình viên. Kiến trúc đề xuất được tổ chức quanh hai trụ cột: **Pedagogy-Constrained Orchestration** và **Pedagogy Domain Extension**. Multi-Agent và Agentic RAG là các cơ chế kỹ thuật bên trong harness, không phải tên gọi của hệ thống.
+Đề tài mang định hướng thiết kế hệ thống, tập trung xây dựng một **Pedagogy Agent Harness** — môi trường thực thi kết hợp với LLM tạo thành Pedagogy Agent có khả năng hỗ trợ các tác vụ sư phạm. Quan hệ cốt lõi: **Agent = Model + Harness**; harness không "điều phối agent" như một thực thể bên ngoài, mà là thứ biến LLM thành agent. Cách tiếp cận này tương tự Claude Code = Claude model + coding harness, hay Codex = GPT + coding harness, nhưng hướng đến giáo viên thay vì lập trình viên. Kiến trúc đề xuất được tổ chức quanh hai trụ cột: **Pedagogy-Constrained Orchestration** và **Pedagogy Domain Extension**. Multi-Agent và Agentic RAG là các cơ chế kỹ thuật bên trong harness, không phải tên gọi của hệ thống.
 
 ## 2. Phạm vi và ràng buộc
 
@@ -44,7 +44,7 @@ Kiến trúc được thiết kế có điểm mở rộng cho nhiều domain kh
 
 Đề tài đóng góp ở mức thiết kế hệ thống, hiện thực prototype và đánh giá kỹ thuật, không ở mức phát minh thuật toán mới.
 
-1. **Pedagogy Agent Harness — kiến trúc đề xuất**: lớp điều phối agent được thiết kế riêng cho tác vụ sư phạm, tổ chức quanh Pedagogy-Constrained Orchestration và Pedagogy Domain Extension. Harness cung cấp tool layer sư phạm, enforcement pedagogical constraints, HITL governance và extensibility mechanism — tương tự coding agent harness nhưng cho giáo viên.
+1. **Pedagogy Agent Harness — kiến trúc đề xuất**: môi trường thực thi kết hợp với LLM tạo thành Pedagogy Agent (Agent = Model + Harness), tổ chức quanh Pedagogy-Constrained Orchestration và Pedagogy Domain Extension. Harness cung cấp tool layer sư phạm, memory, constraint enforcement, HITL governance và extensibility mechanism; kết hợp với LLM tạo thành agent có năng lực sư phạm — tương tự coding harness kết hợp với LLM tạo thành Claude Code hay Codex.
 2. **Hai domain extension**: CNTT/lập trình và Toán — hai bản hiện thực của Pedagogy Domain Extension interface, minh chứng tính tổng quát của interface trên hai domain có đặc trưng khác biệt (có/không code verifier, error taxonomy khác nhau).
 3. **Prototype end-to-end**: hệ thống chạy được trên cả hai case study, bao gồm corpus nội bộ, retrieval local, các flow tác vụ sư phạm, verifier và teacher-controlled review flow.
 4. **Bộ đánh giá kỹ thuật**: benchmark hai domain (~180 sample), baseline comparison với LLM-only/Naive RAG/Generic ReAct ARAG/Fixed MA-ARAG và ablation cho các thành phần chính của harness.

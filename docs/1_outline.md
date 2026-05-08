@@ -3,7 +3,7 @@
 ## Chương 1 — Giới thiệu đề tài
 
 - Bối cảnh: giáo viên/giảng viên mất nhiều giờ cho tác vụ sư phạm lặp; LLM thương mại có rủi ro dữ liệu; các agent framework tổng quát chưa tối ưu cho tác vụ sư phạm.
-- Vấn đề: thiếu một lớp harness điều phối và ràng buộc agent theo nguyên tắc sư phạm — tương tự Claude Code/Codex cho lập trình viên nhưng dành cho giáo viên.
+- Vấn đề: LLM đơn thuần chưa phải agent sư phạm — thiếu một harness kết hợp với LLM để tạo thành Pedagogy Agent có tool layer, pedagogical constraints, HITL và extensibility; tương tự Claude Code/Codex là harness biến LLM thành coding agent, nhưng dành cho giáo viên.
 - Phạm vi: Pedagogy Agent Harness với hai trụ cột (Pedagogy-Constrained Orchestration, Pedagogy Domain Extension), được validate qua hai case study: CNTT/lập trình và Toán.
 - Định vị đóng góp: không xem từng cơ chế riêng lẻ là mới; nhấn mạnh harness như contribution ở tầng infrastructure, với Multi-Agent và Agentic RAG là implementation bên trong.
 - Mục tiêu và EQ (xem [0_context.md](refs/0_context.md)).
@@ -72,7 +72,7 @@ Tóm tắt cấu trúc:
 
 **Đóng góp dự kiến** (cập nhật thành "đóng góp được xác nhận" sau khi có kết quả thực nghiệm):
 
-1. **Pedagogy Agent Harness — kiến trúc đề xuất**: lớp điều phối agent cho tác vụ sư phạm, tổ chức quanh Pedagogy-Constrained Orchestration và Pedagogy Domain Extension. Định vị rõ ràng như harness infrastructure (tương tự Claude Code/Codex) thay vì application.
+1. **Pedagogy Agent Harness — kiến trúc đề xuất**: môi trường thực thi kết hợp với LLM tạo thành Pedagogy Agent (Agent = Model + Harness), tổ chức quanh Pedagogy-Constrained Orchestration và Pedagogy Domain Extension. Định vị rõ ràng như harness infrastructure (tương tự coding harness trong Claude Code/Codex) thay vì application.
 2. **Hai domain extension**: CNTT/lập trình và Toán — bằng chứng thực nghiệm rằng Pedagogy Domain Extension interface đủ tổng quát cho hai domain có đặc trưng khác biệt.
 3. **Prototype end-to-end**: hệ thống chạy được trên cả hai case study với corpus nội bộ, retrieval local, verifier và teacher-controlled review flow.
 4. **Bộ benchmark sư phạm tự xây**: ~180 sample (CNTT: giáo án/bài tập/chấm code; Toán: bài tập/chấm lời giải) với corpus nội bộ tiếng Việt.

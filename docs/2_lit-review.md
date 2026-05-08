@@ -20,18 +20,27 @@ Phần này cần định nghĩa rõ vì nhiều bài dùng lẫn lộn:
 - **LLM-based Agent**: LLM làm "brain" — reasoning, planning, tool use (ReAct: Yao et al., 2023; Toolformer: Schick et al., 2023).
 - **Agentic AI** (rộng hơn): LLM hoạt động với autonomy cao, multi-step, long-horizon task, tự quyết định khi nào dùng tool nào (Shinn et al., 2023 — *Reflexion*; Wang et al., 2024 — *A Survey on LLM-based Autonomous Agents*).
 - Phân biệt: AI Agent = một instance; Agentic AI = paradigm/cách vận hành tự chủ. Hệ thống này thuộc **Agentic AI** với kiến trúc multi-agent.
-- Ví dụ thực tế tiêu biểu của agentic AI trong coding assistant được trình bày ngay ở §3.3, làm cầu nối từ khái niệm sang kiến trúc hệ thống đề xuất.
+- **Quan hệ Agent = Model + Harness**: LLM đơn thuần là model, chưa phải agent. Agent hình thành khi LLM được kết hợp với một harness cung cấp tool, memory, constraint enforcement và execution loop. Đây là nền tảng định vị đóng góp của luận văn: thiết kế harness, không phải thiết kế model.
+- Ví dụ thực tế tiêu biểu được trình bày ngay ở §3.3, làm cầu nối từ khái niệm sang kiến trúc hệ thống đề xuất.
 
 ## 3.3 Agentic AI trong thực tế — AI coding assistants và analogy với Pedagogy Agent Harness
 
-Đặt hệ thống vào bức tranh lớn của agentic AI tools. Quan trọng hơn, phần này thiết lập **analogy trung tâm** của luận văn: Claude Code và Codex là harness cho coding agent — Pedagogy Agent Harness đề xuất có cùng vị trí kiến trúc nhưng cho tác vụ sư phạm.
+Đặt hệ thống vào bức tranh lớn của agentic AI tools. Quan trọng hơn, phần này thiết lập **analogy trung tâm** của luận văn theo nguyên lý Agent = Model + Harness.
 
 - GitHub Copilot (Chen et al., 2021 — *Evaluating Large Language Models Trained on Code*): autocomplete, không agentic.
 - Devin (Cognition AI, 2024): fully autonomous software engineer — agentic nhưng không có HITL.
-- **Claude Code** (Anthropic, 2025): agentic coding assistant chạy trong terminal, dùng tool (file read/write, bash, search), HITL rõ ràng (hỏi trước khi thực thi lệnh nguy hiểm). Cite official docs/product page (docs.anthropic.com/en/docs/claude-code/overview). → **Analogy chính**: Claude Code là harness bọc ngoài coding agent, cung cấp tool layer, constraint enforcement (hỏi trước khi hành động nguy hiểm) và HITL. Pedagogy Agent Harness có cùng cấu trúc nhưng tool layer là retrieval/verifier/rubric-checker, constraint là Bloom/rubric/HITL, và extensibility là Pedagogy Domain Extension thay vì MCP.
-- **OpenAI Codex** (OpenAI, 2025; Codex app 2026): coding agent cho software engineering, có thể xử lý nhiều task song song trong cloud sandbox/worktree, đọc/sửa file, chạy lệnh/test và đề xuất PR. Cite official product/blog docs (openai.com/codex). → Dẫn chứng xu hướng multi-agent/asynchronous workflow trong harness, nhưng khác hệ thống đề xuất ở domain (software engineering vs. pedagogy) và user (developer vs. teacher).
+- **Claude Code** (Anthropic, 2025): Claude model + coding harness (tool: file read/write, bash, search; HITL: hỏi trước khi thực thi lệnh nguy hiểm; execution loop; MCP extensibility) = Claude Code agent. Cite official docs/product page (docs.anthropic.com/en/docs/claude-code/overview). → **Analogy chính**: harness biến Claude (model) thành Claude Code (agent); tương tự, Pedagogy Agent Harness biến LLM thành Pedagogy Agent. Tool layer thay bằng retrieval/verifier/rubric-checker; constraint thay bằng Bloom/rubric/HITL; extensibility thay bằng Pedagogy Domain Extension.
+- **OpenAI Codex** (OpenAI, 2025; Codex app 2026): GPT + coding harness (sandbox, worktree, file ops, test runner) = Codex agent. Cite official product/blog docs (openai.com/codex). → Minh chứng thêm cho pattern Model + Harness = Agent; khác hệ thống đề xuất ở domain (software engineering vs. pedagogy) và user (developer vs. teacher).
 - Cursor, Windsurf: IDE-integrated agent — cho thấy xu hướng embedded agentic AI trong desktop app.
-- **Tóm tắt analogy**: coding agent harness (Claude Code/Codex) :: Pedagogy Agent Harness = tool layer (file/bash) :: tool layer (retrieval/verifier/rubric) = user (developer) :: user (teacher) = constraint (safe execution) :: constraint (Bloom/HITL/feedback policy).
+- **Tóm tắt analogy (Agent = Model + Harness)**:
+
+| Chiều | Coding agent (Claude Code/Codex) | Pedagogy Agent (đề xuất) |
+|---|---|---|
+| Model | Claude / GPT | Pluggable LLM |
+| Tool layer | file read/write, bash, search | retrieval, verifier, rubric-checker |
+| Constraint | safe execution, HITL | Bloom/rubric alignment, HITL |
+| Extensibility | MCP servers | Pedagogy Domain Extension |
+| User | Developer | Teacher |
 
 ## 3.4 Human-in-the-loop & Human-Agent Collaboration
 
@@ -39,7 +48,7 @@ Phần này đặt nền cho teacher-in-the-loop, override, preference memory v�
 
 - **LLM-based Human-Agent Systems** (Zou et al., arXiv 2505.00753 \[`Zou2025HumanAgentSurvey`\]): survey hệ thống hoá human-agent collaboration qua human feedback, human control, orchestration, interaction type và profiling; lập luận fully autonomous agent còn hạn chế về reliability, hallucination, safety và ethics.
 - **Teacher-in-the-loop**: khác user-in-the-loop thông thường vì giáo viên không chỉ xác nhận output mà còn giữ quyền quyết định sư phạm: chỉnh learning objective, rubric, difficulty, tone feedback và chấp nhận/override correction.
-- **Ứng dụng trong hệ thống đề xuất**: L3 Override trong §4.8/§4.10 vừa là guardrail vận hành vừa là nguồn ghi episodic/preference memory; HITL giúp cân bằng autonomy của agent với accountability của giáo viên.
+- **Ứng dụng trong hệ thống đề xuất**: HITL override trong §4.8 (Verification/Guardrails/HITL) vừa là guardrail vận hành vừa là nguồn ghi episodic/preference memory (§4.3.4); HITL giúp cân bằng autonomy của Pedagogy Agent với accountability của giáo viên.
 
 ## 3.5 Retrieval-Augmented Generation (RAG)
 
@@ -49,9 +58,9 @@ Phần này đặt nền cho teacher-in-the-loop, override, preference memory v�
 - CRAG (Corrective RAG): Yan et al., 2024 — evaluate retrieved docs, web search fallback.
 - GraphRAG: Edge et al., 2024 (Microsoft) — entity graph + community summary.
 - **Agentic RAG**: RAG được điều khiển bởi agent loop — multi-step retrieval, adaptive query, tool-augmented. Khác Self-RAG ở chỗ agent có thể gọi nhiều retrieval action độc lập. Survey hệ thống: Agentic RAG Survey (arXiv 2501.09136 \[`AgenticRAGSurvey2025`\]) — taxonomy theo agent cardinality, control structure, autonomy, knowledge representation.
-- **A-RAG** (arXiv 2602.03442 \[`ARAG2026`\], submitted Feb 2026): hierarchical retrieval interface — agent có 3 tool (keyword search, semantic search, chunk read), chủ động quyết định granularity và số lần retrieve; là nền tảng cho thiết kế AgenticRetriever trong §4.6.
-- **GraphRAG** (Edge et al., 2024 — Microsoft \[`Edge2024GraphRAG`\]): entity graph + community summary; giúp trả lời câu hỏi cần tổng hợp nhiều document (global query). Knowledge graph trong §4.6 lấy cảm hứng từ đây nhưng giới hạn ở topic dependency graph (tĩnh) để phù hợp với edge LLM.
-- **Graph-based Agent Memory** (arXiv 2602.05665 \[`Yang2026GraphAgentMemory`\], submitted Feb 2026): survey taxonomy kỹ thuật memory dựa trên graph cho agent — liên quan đến KnowledgeGraphTool trong §4.6.
+- **A-RAG** (arXiv 2602.03442 \[`ARAG2026`\], submitted Feb 2026): hierarchical retrieval interface — agent có 3 tool (keyword search, semantic search, chunk read), chủ động quyết định granularity và số lần retrieve; là nền tảng cho thiết kế retrieval trong §4.7.
+- **GraphRAG** (Edge et al., 2024 — Microsoft \[`Edge2024GraphRAG`\]): entity graph + community summary; giúp trả lời câu hỏi cần tổng hợp nhiều document (global query). Knowledge graph trong §4.7 lấy cảm hứng từ đây nhưng giới hạn ở topic dependency graph tĩnh cho phù hợp với scope prototype.
+- **Graph-based Agent Memory** (arXiv 2602.05665 \[`Yang2026GraphAgentMemory`\], submitted Feb 2026): survey taxonomy kỹ thuật memory dựa trên graph cho agent — liên quan đến Knowledge Base trong §4.7.
 
 ## 3.6 Multi-Agent Systems (MAS) với LLM
 
@@ -72,7 +81,7 @@ Phần này đặt nền cho teacher-in-the-loop, override, preference memory v�
 - **Survey 2024** (Zhang et al., arXiv 2404.13501 \[`Zhang2024MemSurvey`\]): phân loại cơ chế memory theo hình thức lưu trữ (in-context / external DB / model weight), thao tác (read/write/reflect), và vòng đời.
 - **Survey 2026** (Du, arXiv 2603.07670 \[`Du2026MemSurvey`\], tháng 3/2026): "Memory for Autonomous LLM Agents: Mechanisms, Evaluation, and Emerging Frontiers" — hệ thống hóa write–manage–read loop; taxonomy 3 chiều (temporal scope, representational substrate, control policy); 5 nhóm cơ chế: context compression, retrieval-augmented, reflective, hierarchical virtual context, policy-learned.
 - **Episodic memory** (Pink et al., 2025 — arXiv 2502.06975 \[`Pink2025Episodic`\]): lập luận episodic memory là thành phần còn thiếu cho long-term agent coherence — 5 thuộc tính cần có: long-term storage, explicit reasoning, single-shot learning, instance-specific, contextual. Quan trọng khi agent cần nhớ correction và preference qua nhiều session.
-- **Ứng dụng trong hệ thống đề xuất**: xem §4.10 — 4 tầng M1–M4 ánh xạ lên taxonomy Sumers; L3 Override của HITL là cơ chế ghi episodic + preference vào long-term.
+- **Ứng dụng trong hệ thống đề xuất**: xem §4.3.4 (Memory design) — 4 tầng M1–M4 ánh xạ lên taxonomy Sumers; HITL override là cơ chế ghi episodic + preference vào long-term.
 
 ## 3.8 Context Management cho LLM Agent
 
@@ -82,7 +91,7 @@ Phần này đặt nền cho teacher-in-the-loop, override, preference memory v�
 - **Context-Folding** (Li et al., 2025 — arXiv 2510.11967 \[`Li2025ContextFolding`\]): nén lịch sử agent thành fold có cấu trúc, scale cho very long-horizon task.
 - **Chain-of-Agents** (Zhang et al., NeurIPS 2024 — arXiv 2406.02818 \[`Zhang2024ChainOfAgents`\]): worker agents xử lý từng đoạn context tuần tự, manager tổng hợp — giải pháp khi task vượt xa context window một LLM; training-free và task-agnostic.
 - **Context Engineering** (arXiv 2508.08322 \[`ContextEngineering2025`\], engineering practice / gray literature): kết hợp nhiều AI component (Intent Translator, Elicit semantic retrieval, NotebookLM synthesis, Claude Code multi-agent executor) để nâng accuracy code assistant trên multi-file project. Cite như ví dụ thực tiễn, không phải scholarly foundation về context budget; nếu cần nền học thuật về slot allocation thì dùng ACON + Lost in the Middle + Chain-of-Agents.
-- **Ứng dụng trong hệ thống đề xuất**: xem §4.9 — context budget cố định (≤ 8 192 token), conversation compaction lấy ý tưởng từ ACON, đơn giản hoá cho single local LLM.
+- **Ứng dụng trong hệ thống đề xuất**: context budget được quản lý trong harness — bounded context pack theo từng agent invocation (xem §4.3.2), compaction lấy ý tưởng từ ACON.
 
 ## 3.9 LLM Agent Safety & Guardrails
 
@@ -92,7 +101,7 @@ Phần này đặt nền cho teacher-in-the-loop, override, preference memory v�
 - **AGrail** (Luo et al., ACL 2025 — arXiv 2502.11448 \[`Luo2025AGrail`\]): guardrail *lifelong* phân tách *task-specific risk* vs *systemic risk*; adaptive safety check không cần retrain khi thêm task mới.
 - **ToolSafe** (Mou et al., 2026 — arXiv 2601.10156 \[`Mou2026ToolSafe`\]): guardrail *proactive step-level* ở cấp từng bước tool invocation — TS-Guard phát hiện unsafe invocation trước khi thực thi; TS-Flow giảm 65% harmful tool invocations trên ReAct agent.
 - **No Free Lunch** (arXiv 2504.00441 \[`NoFreeLunch2025`\]): guardrail mạnh → false positive cao → UX xấu; cần calibrate threshold theo use case.
-- **Ứng dụng trong hệ thống đề xuất**: xem §4.8 — 3 tầng (input / output / tool sandbox) theo phân loại AGrail; PytestRunner sandbox theo ToolSafe principle; threshold calibrate cho sư phạm.
+- **Ứng dụng trong hệ thống đề xuất**: xem §4.8 (Verification, Guardrails và HITL) — 3 tầng (input / output / tool sandbox) theo phân loại AGrail; verifier sandbox theo ToolSafe principle; threshold calibrate cho sư phạm.
 
 ## 3.10 LLM Deployment Options — context cho prototype
 
@@ -117,7 +126,7 @@ Phần này làm nền cho thiết kế thực nghiệm ở Chương 5: không c
 - **Agent evaluation survey** (Yehudai et al., ACL Findings 2025 — arXiv 2503.16416 \[`Yehudai2025AgentEval`\]): tổng quan benchmark/framework cho planning, tool use, self-reflection, memory, web/software/scientific agents; nhấn khoảng trống về cost-efficiency, safety, robustness và fine-grained scalable evaluation.
 - **TRAJECT-Bench** (He et al., arXiv 2510.04550 \[`He2025TRAJECTBench`\]): đánh giá tool-use trajectory thay vì chỉ output cuối — tool selection, argument correctness, dependency/order satisfaction; hữu ích cho đánh giá AgenticRetriever/Tool invocations.
 - **Agent evaluation**: task success rate, tool-call correctness, trajectory quality, cost/latency, số vòng repair, và failure mode taxonomy — phù hợp để đánh giá agentic workflow thay vì chỉ đánh giá câu trả lời cuối.
-- **Ablation study**: so sánh baseline RAG/ReAct với TTG-ARAG; tách đóng góp của typed workflow, verifier-guided repair, pedagogical constraints, memory/context compaction và HITL.
+- **Ablation study**: so sánh baseline RAG/ReAct với Pedagogy Agent Harness; tách đóng góp của typed workflow, verifier-guided repair, pedagogical constraints và HITL.
 - **Human/rubric alignment**: dùng rubric giáo viên và kiểm tra độ khớp giữa automated judge với human evaluation; liên hệ với các nghiên cứu AI-assisted grading ở §3.13.
 
 ## 3.12 Desktop app tích hợp AI (Tauri + HTTP server + SSE)
@@ -137,7 +146,7 @@ Phần này làm nền cho thiết kế thực nghiệm ở Chương 5: không c
 - AI-assisted feedback: Ba et al., 2025 — systematic review trên 129 nghiên cứu, phân loại feedback theo task/process/self-regulation/self và mức độ complexity; dùng để đặt nền cho feedback sư phạm có rubric, không chỉ sinh lời giải.
 - Rủi ro & ethics: academic integrity, bias, over-reliance (Baidoo-Anu & Owusu Ansah, 2023).
 - **LLM grading assessment** (Saez, Garcia, Mochon & Isasi, *Scientific Reports*, published 18 Apr 2026 \[`Saez2026LLMGrading`\]): "Evaluating large language models for AI-assisted grading: a framework and case study in higher education" — DOI 10.1038/s41598-026-48656-3; hợp đề tài nếu hệ thống có rubric/feedback.
-- **Gap**: nhiều hệ thống giáo dục dùng commercial LLM hoặc chatbot/RAG tổng quát; các thành phần như retrieval, agent workflow, verifier, HITL và ràng buộc sư phạm đã có tiền lệ riêng lẻ. Khoảng trống của đề tài là thiếu một cấu hình tích hợp được đánh giá có kiểm soát cho tác vụ sư phạm kỹ thuật, chạy trên local small LLM, dùng dữ liệu giáo viên nội bộ và có ablation để tách đóng góp của typed workflow, verifier/repair và pedagogical constraints.
+- **Gap**: nhiều hệ thống giáo dục dùng commercial LLM hoặc chatbot/RAG tổng quát; các thành phần như retrieval, agent workflow, verifier, HITL và ràng buộc sư phạm đã có tiền lệ riêng lẻ. Khoảng trống của đề tài là thiếu một harness tích hợp được đánh giá có kiểm soát — kết hợp với LLM tạo thành Pedagogy Agent — dùng dữ liệu giáo viên nội bộ, hỗ trợ nhiều domain qua extension mechanism và có ablation để tách đóng góp của typed workflow, verifier/repair và pedagogical constraints.
 
 ## 3.14 Privacy & Local-first Deployment trong giáo dục
 
@@ -145,22 +154,23 @@ Phần này chuyển động lực "local" từ lựa chọn triển khai thành
 
 - **Privacy risks in LLM/LLM agents**: prompt, retrieved document, submission học viên và log tool execution đều có thể chứa dữ liệu nhạy cảm; cần phân biệt data minimization, local processing, access control và audit log.
 - **Small Models, Big Support** (Reza et al., arXiv 2506.05925 \[`Reza2025SmallModels`\]): framework local small LLM 3B–7B cho educator-centric content creation và assessment, kết hợp RAG/CAG, teacher-in-the-loop và verifier LLM; rất gần với định vị local-first, private, affordable cho giáo dục.
-- **Trade-off**: local small LLM tăng privacy/offline/cost control nhưng giảm capability so với frontier models; vì vậy cần typed workflow, retrieval có kiểm soát, verifier-guided repair, HITL và evaluation/ablation.
-- **Ứng dụng trong hệ thống đề xuất**: dữ liệu giáo viên và submission học viên ưu tiên xử lý local; chỉ dùng external/cloud model như baseline hoặc tùy chọn đánh giá, không phải phụ thuộc mặc định.
+- **Trade-off**: local deployment tăng privacy/offline control nhưng có thể giảm capability so với frontier models — harness thiết kế LLM-agnostic để giáo viên chọn deployment phù hợp; typed workflow, retrieval có kiểm soát, verifier-guided repair và HITL giúp bù đắp capability gap khi dùng model nhỏ hơn.
+- **Ứng dụng trong hệ thống đề xuất**: harness không coupled với provider; dữ liệu giáo viên và submission học viên ưu tiên xử lý local; LLM provider là cấu hình triển khai, không phải dependency cứng của kiến trúc.
 
 ## 3.15 Nền tảng sư phạm
 
 - Bloom's Taxonomy (Bloom et al., 1956; revised Anderson & Krathwohl, 2001) — 6 cấp độ nhận thức: Remember → Understand → Apply → Analyze → Evaluate → Create. Dùng để gán metadata chunk và calibrate exercise difficulty.
-- Constructive Alignment (Biggs, 1996; Biggs & Tang, 2011) — learning objectives → teaching activities → assessment phải thống nhất. Cơ sở lý luận cho `LessonPlannerAgent`.
-- Learning objectives well-formed (Mager, 1962) — SMART objectives dùng action verb theo Bloom. Dùng trong prompt template của `LessonPlannerAgent`.
-- CS education misconceptions (Sorva, 2012 — *Visual Program Simulation*; Qian & Lehman, 2017) — cơ sở cho `error_taxonomy` của Plugin CNTT.
+- Constructive Alignment (Biggs, 1996; Biggs & Tang, 2011) — learning objectives → teaching activities → assessment phải thống nhất. Cơ sở lý luận cho AlignmentRole và task graph design trong harness.
+- Learning objectives well-formed (Mager, 1962) — SMART objectives dùng action verb theo Bloom. Dùng trong prompt template của role-scoped agent invocations.
+- CS education misconceptions (Sorva, 2012 — *Visual Program Simulation*; Qian & Lehman, 2017) — cơ sở cho `error_taxonomy` của CNTT extension.
+- Math misconceptions (literature-based) — cơ sở cho `error_taxonomy` của Toán extension (computation error, wrong method, missing step, conceptual error).
 
 ## 3.16 Khoảng trống & định vị hệ thống
 
 Bảng so sánh tổng hợp: Pedagogy Agent Harness đề xuất vs các công trình liên quan trên các chiều: agentic workflow / verifier-guided repair / HITL / domain plugin / pedagogical awareness / desktop deployment / memory layers / guardrails / LLM-agnostic design.
 
 Hai chiều differentiation chính:
-1. **Harness framing**: hệ thống định vị là infrastructure layer (như coding agent harness) thay vì application — contribution là cơ chế điều phối và ràng buộc, không phải tính năng sư phạm cụ thể.
+1. **Harness framing (Agent = Model + Harness)**: hệ thống định vị là harness — kết hợp với LLM tạo thành Pedagogy Agent — thay vì application. Contribution là thiết kế harness (tool layer, constraints, HITL, extensibility), không phải LLM hay tính năng sư phạm cụ thể.
 2. **Domain extensibility với 2 case study**: CNTT và Toán cùng implement một interface → bằng chứng thực nghiệm về tính tổng quát của Pedagogy Domain Extension, không chỉ là design claim.
 
 Phần này phải nêu rõ: đề tài không claim từng chiều trong bảng là mới; đóng góp nằm ở cấu hình tích hợp của harness cho bối cảnh sư phạm và bằng chứng thực nghiệm qua controlled comparison + ablation trên hai domain.
