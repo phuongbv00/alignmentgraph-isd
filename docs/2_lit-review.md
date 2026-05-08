@@ -22,15 +22,16 @@ Phần này cần định nghĩa rõ vì nhiều bài dùng lẫn lộn:
 - Phân biệt: AI Agent = một instance; Agentic AI = paradigm/cách vận hành tự chủ. Hệ thống này thuộc **Agentic AI** với kiến trúc multi-agent.
 - Ví dụ thực tế tiêu biểu của agentic AI trong coding assistant được trình bày ngay ở §3.3, làm cầu nối từ khái niệm sang kiến trúc hệ thống đề xuất.
 
-## 3.3 Agentic AI trong thực tế — AI coding assistants
+## 3.3 Agentic AI trong thực tế — AI coding assistants và analogy với Pedagogy Agent Harness
 
-Đặt hệ thống vào bức tranh lớn của agentic AI tools:
+Đặt hệ thống vào bức tranh lớn của agentic AI tools. Quan trọng hơn, phần này thiết lập **analogy trung tâm** của luận văn: Claude Code và Codex là harness cho coding agent — Pedagogy Agent Harness đề xuất có cùng vị trí kiến trúc nhưng cho tác vụ sư phạm.
 
 - GitHub Copilot (Chen et al., 2021 — *Evaluating Large Language Models Trained on Code*): autocomplete, không agentic.
-- Devin (Cognition AI, 2024): fully autonomous software engineer — agentic nhưng không local.
-- **Claude Code** (Anthropic, 2025): agentic coding assistant chạy trong terminal, dùng tool (file read/write, bash, search), HITL rõ ràng (hỏi trước khi thực thi lệnh nguy hiểm). Cite official docs/product page (docs.anthropic.com/en/docs/claude-code/overview) — chưa có technical report chính thức nên không gọi là "technical report". → Hệ thống đề xuất lấy triết lý HITL + tool-use từ đây, điều chỉnh cho domain sư phạm.
-- **OpenAI Codex** (OpenAI, 2025; Codex app 2026): coding agent cho software engineering, có thể xử lý nhiều task song song trong cloud sandbox/worktree, đọc/sửa file, chạy lệnh/test và đề xuất PR; mở rộng qua CLI, IDE, web/cloud và desktop app. Cite official product/blog docs (openai.com/codex; openai.com/index/introducing-codex; openai.com/index/codex-now-generally-available; openai.com/index/introducing-the-codex-app). → Dẫn chứng xu hướng multi-agent/asynchronous coding workflow, nhưng khác hệ thống đề xuất ở chỗ tập trung software engineering tổng quát và thường dựa trên frontier/cloud models.
+- Devin (Cognition AI, 2024): fully autonomous software engineer — agentic nhưng không có HITL.
+- **Claude Code** (Anthropic, 2025): agentic coding assistant chạy trong terminal, dùng tool (file read/write, bash, search), HITL rõ ràng (hỏi trước khi thực thi lệnh nguy hiểm). Cite official docs/product page (docs.anthropic.com/en/docs/claude-code/overview). → **Analogy chính**: Claude Code là harness bọc ngoài coding agent, cung cấp tool layer, constraint enforcement (hỏi trước khi hành động nguy hiểm) và HITL. Pedagogy Agent Harness có cùng cấu trúc nhưng tool layer là retrieval/verifier/rubric-checker, constraint là Bloom/rubric/HITL, và extensibility là Pedagogy Domain Extension thay vì MCP.
+- **OpenAI Codex** (OpenAI, 2025; Codex app 2026): coding agent cho software engineering, có thể xử lý nhiều task song song trong cloud sandbox/worktree, đọc/sửa file, chạy lệnh/test và đề xuất PR. Cite official product/blog docs (openai.com/codex). → Dẫn chứng xu hướng multi-agent/asynchronous workflow trong harness, nhưng khác hệ thống đề xuất ở domain (software engineering vs. pedagogy) và user (developer vs. teacher).
 - Cursor, Windsurf: IDE-integrated agent — cho thấy xu hướng embedded agentic AI trong desktop app.
+- **Tóm tắt analogy**: coding agent harness (Claude Code/Codex) :: Pedagogy Agent Harness = tool layer (file/bash) :: tool layer (retrieval/verifier/rubric) = user (developer) :: user (teacher) = constraint (safe execution) :: constraint (Bloom/HITL/feedback policy).
 
 ## 3.4 Human-in-the-loop & Human-Agent Collaboration
 
@@ -93,33 +94,19 @@ Phần này đặt nền cho teacher-in-the-loop, override, preference memory v�
 - **No Free Lunch** (arXiv 2504.00441 \[`NoFreeLunch2025`\]): guardrail mạnh → false positive cao → UX xấu; cần calibrate threshold theo use case.
 - **Ứng dụng trong hệ thống đề xuất**: xem §4.8 — 3 tầng (input / output / tool sandbox) theo phân loại AGrail; PytestRunner sandbox theo ToolSafe principle; threshold calibrate cho sư phạm.
 
-## 3.10 Edge SLM / Edge LLM & triển khai local
+## 3.10 LLM Deployment Options — context cho prototype
 
-Phần này đặt nền cho trụ cột **Edge-LLM-Constrained Orchestration**: hệ thống không chỉ "chạy LLM local", mà thiết kế workflow theo ràng buộc thực tế của small model tại biên.
+Phần này cung cấp bối cảnh về các lựa chọn triển khai LLM; harness không coupled với provider cụ thể nhưng prototype cần chọn một LLM để chạy thực nghiệm.
 
-- **Naming**:
-  - **Edge SLM**: thuật ngữ ưu tiên trong luận văn khi nói về mô hình ngôn ngữ nhỏ chạy trực tiếp trên thiết bị người dùng hoặc edge server nội bộ. Tên này chính xác hơn "Edge LLM" nếu model mục tiêu là Gemma E2B/E4B, Phi-mini, Qwen 0.8B/2B/4B/9B hoặc các model vài tỷ tham số.
-  - **Edge LLM**: dùng như nhãn bao quát cho mọi mô hình ngôn ngữ triển khai tại tầng biên, bao gồm cả small model và model lớn hơn chạy trên edge server/GPU cục bộ.
-  - **On-device SLM**: model chạy ngay trên laptop/desktop/thiết bị cá nhân.
-  - **Edge-hosted SLM**: model chạy trên máy chủ biên hoặc máy chủ nội bộ gần dữ liệu người dùng.
-- **Động lực**: data privacy, offline capability, latency, cost control — đặc biệt quan trọng với dữ liệu học viên, rubric nội bộ, học liệu giáo viên và log tương tác.
-- **Vai trò trong Multi-Agent Agentic RAG**:
-  - Edge SLM phù hợp cho các bước có cấu trúc hoặc cần phản hồi nhanh: intent classification, query rewriting nhẹ, entity/topic extraction, context filtering, summarization ngắn, draft generation, routing giữa agent, và kiểm tra sơ bộ output.
-  - Không claim Edge SLM thay thế hoàn toàn frontier/cloud LLM; luận văn định vị nó như một **local inference layer** trong kiến trúc RAG/agentic workflow.
-  - Mô hình lai hợp lý: Edge SLM xử lý default path; cloud/frontier LLM chỉ dùng làm baseline/reference upper bound hoặc fallback tùy chọn trong đánh giá.
-- **Quantization & inference runtime**:
-  - Quantization: GGUF (llama.cpp), AWQ, GPTQ — trade-off quality vs memory/latency.
-  - llama.cpp (Gerganov, 2023): inference engine C++ cross-platform, Python binding — **được chọn** làm local inference backend, chạy như sidecar process được quản lý bởi orchestration backend.
-  - Cần trình bày rõ đánh đổi: 4-bit/8-bit giảm RAM/VRAM và tăng khả năng chạy local, nhưng có thể làm giảm chất lượng ở task reasoning dài, tool-use phức tạp hoặc tiếng Việt chuyên ngành.
-- **Model families để khảo sát**:
-  - **Gemma 3n** (Google DeepMind, 2025): E2B / E4B edge models — multimodal, offline, dưới 2.5 GB quantized. Cite Gemma 3n model card (ai.google.dev/gemma/docs/gemma-3n/model_card).
-  - **Gemma 4** (Google DeepMind, tháng 4/2026): E2B / E4B hướng tới ultra-mobile, edge và browser; context dài, multimodal, function calling. Cite official Gemma docs/model card (`Google2026Gemma4`). *Nếu hệ thống được build sau tháng 4/2026, ưu tiên Gemma 4; nếu build trong 2025 thì dùng Gemma 3n.*
-  - **Phi series** (Microsoft): nhóm model nhỏ tối ưu cho reasoning, function calling và multimodal use case; dùng official Microsoft model/blog docs làm nguồn (`Microsoft2025Phi4`).
-  - **Qwen small models** (Qwen Team): các biến thể nhỏ/đa ngữ, phù hợp khi cần tiếng Việt hoặc multilingual capability; cite official Qwen repository/blog (`Qwen2026Qwen36` hoặc nguồn chính thức tương ứng).
-- **Industry source từ blog Digital Applied**:
-  - Blog "Small Language Models Business Guide: Gemma, Phi, Qwen" (`DigitalApplied2026SLMBusiness`) hữu ích để framing xu hướng business/engineering: privacy, latency, offline, cost, deployment tiers, Gemma/Phi/Qwen comparison.
-  - Không dùng blog này làm nguồn học thuật chính cho benchmark hoặc thông số kỹ thuật; các claim về model size, license, context length, RAM/VRAM phải đối chiếu bằng model card, official docs hoặc paper.
-- **Luận điểm cần nhấn**: local/edge small LLM có capability gap so với frontier LLM. Khoảng trống này motivate giả thuyết thiết kế của đề tài: typed decomposition, retrieval có kiểm soát, verifier-guided repair, memory/context compaction và HITL giúp Edge SLM xử lý các tác vụ sư phạm kỹ thuật tốt hơn generic RAG/ReAct trong phạm vi case study.
+- **Phổ lựa chọn**: cloud/frontier API (GPT-4o, Claude, Gemini) → self-hosted local model → edge/on-device model. Mỗi lựa chọn có trade-off khác nhau về capability, privacy, cost và offline capability.
+- **Privacy motivation**: dữ liệu học viên, rubric nội bộ và học liệu giáo viên nhạy cảm — local deployment giảm rủi ro data leakage mà không cần thay đổi kiến trúc harness.
+- **LLM-agnostic design của harness**: harness giao tiếp với LLM qua interface chuẩn (OpenAI-compatible API); việc chuyển đổi provider chỉ cần thay đổi config, không thay đổi orchestration logic.
+- **Lựa chọn cho prototype**:
+  - Local inference: llama.cpp (Gerganov, 2023) — inference engine C++ cross-platform; GGUF quantization; chạy như sidecar process.
+  - Model families phù hợp cho local: Gemma 4 E2B/E4B (Google DeepMind, 2026), Phi series (Microsoft), Qwen small models — cite model cards/official docs.
+  - Cloud API dùng làm baseline/reference nếu cần so sánh chất lượng.
+- **Quantization**: GGUF/AWQ/GPTQ — giảm RAM/VRAM nhưng có thể ảnh hưởng quality ở reasoning dài hoặc tiếng Việt chuyên ngành; cần ghi rõ cấu hình trong thiết lập thực nghiệm.
+- **Nguồn**: model card/official docs từ Google, Microsoft, Qwen; llama.cpp repo; blog industry như `DigitalApplied2026SLMBusiness` chỉ dùng để framing xu hướng, không dùng làm nguồn benchmark.
 
 ## 3.11 Evaluation Methodology cho hệ thống LLM/RAG/Agent
 
@@ -170,9 +157,13 @@ Phần này chuyển động lực "local" từ lựa chọn triển khai thành
 
 ## 3.16 Khoảng trống & định vị hệ thống
 
-Bảng so sánh tổng hợp: hệ thống đề xuất vs các công trình liên quan trên các chiều: local LLM / agentic workflow / verifier-guided repair / HITL / domain plugin / pedagogical awareness / desktop deployment / memory layers / guardrails.
+Bảng so sánh tổng hợp: Pedagogy Agent Harness đề xuất vs các công trình liên quan trên các chiều: agentic workflow / verifier-guided repair / HITL / domain plugin / pedagogical awareness / desktop deployment / memory layers / guardrails / LLM-agnostic design.
 
-Phần này phải nêu rõ: đề tài không claim từng chiều trong bảng là mới; đóng góp nằm ở cấu hình tích hợp TTG-ARAG cho bối cảnh sư phạm kỹ thuật local small LLM và cách đánh giá controlled comparison + ablation.
+Hai chiều differentiation chính:
+1. **Harness framing**: hệ thống định vị là infrastructure layer (như coding agent harness) thay vì application — contribution là cơ chế điều phối và ràng buộc, không phải tính năng sư phạm cụ thể.
+2. **Domain extensibility với 2 case study**: CNTT và Toán cùng implement một interface → bằng chứng thực nghiệm về tính tổng quát của Pedagogy Domain Extension, không chỉ là design claim.
+
+Phần này phải nêu rõ: đề tài không claim từng chiều trong bảng là mới; đóng góp nằm ở cấu hình tích hợp của harness cho bối cảnh sư phạm và bằng chứng thực nghiệm qua controlled comparison + ablation trên hai domain.
 
 ---
 

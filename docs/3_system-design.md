@@ -2,23 +2,22 @@
 
 ## 4.1 Mục tiêu thiết kế và phạm vi hệ thống
 
-- Thiết kế hệ thống hỗ trợ giáo viên kỹ thuật bằng kiến trúc Multi-Agent Agentic RAG.
-- Tập trung vào các tác vụ sư phạm-kỹ thuật có thể kiểm chứng:
+- Thiết kế **Pedagogy Agent Harness** — lớp điều phối và ràng buộc agent cho tác vụ sư phạm, hỗ trợ giáo viên tương tự cách Claude Code/Codex hỗ trợ lập trình viên.
+- Tập trung vào các tác vụ sư phạm có thể kiểm chứng:
   - hỏi đáp/giải thích dựa trên tài liệu học phần;
-  - sinh bài tập lập trình;
-  - sinh feedback cho bài nộp lập trình.
-- Local-first deployment là ràng buộc cứng để bảo vệ dữ liệu giáo viên và học viên.
-- Prototype hiện thực và đánh giá trong miền CNTT/lập trình.
-- Các miền kỹ thuật khác chỉ được phân tích ở mức khả năng mở rộng của interface.
+  - sinh bài tập kèm lời giải tham chiếu;
+  - sinh feedback cho bài nộp dựa trên kết quả verifier.
+- LLM là pluggable component — harness không coupled với provider cụ thể.
+- Prototype hiện thực và đánh giá qua hai case study: CNTT/lập trình và Toán.
+- Các domain khác được phân tích ở mức khả năng mở rộng của Pedagogy Domain Extension interface.
 - Hệ thống không nhằm thay thế giáo viên, LMS, hay quy trình đánh giá học tập dài hạn.
 
 ## 4.2 Yêu cầu thiết kế chính
 
-- **Local-first và privacy-aware**
-  - local-first deployment là ràng buộc bắt buộc của hệ thống;
-  - dữ liệu học phần, bài nộp và feedback được xử lý cục bộ;
-  - hạn chế phụ thuộc API thương mại;
-  - corpus và session data lưu local.
+- **Privacy-aware và teacher-controlled**
+  - dữ liệu học phần, bài nộp và feedback được xử lý theo cấu hình của giáo viên;
+  - corpus và session data ưu tiên lưu local khi có thể;
+  - LLM là pluggable — local hoặc API tùy thiết lập triển khai.
 
 - **Human-in-the-loop**
   - giáo viên kiểm soát việc hệ thống có được thay đổi dữ liệu/trạng thái hay không;
@@ -35,12 +34,6 @@
   - feedback chấm code cần dựa trên kết quả verifier khi có thể;
   - lỗi kỹ thuật được ánh xạ sang error taxonomy của miền.
 
-- **Edge-LLM-constrained**
-  - local/edge small LLM là ràng buộc bắt buộc của hệ thống;
-  - mọi workflow phải được thiết kế theo giới hạn context, memory, latency và compute của edge LLM;
-  - quản lý context, memory, tool scope, retry và số lần gọi model như constraint của orchestration;
-  - không giả định frontier/cloud LLM, context rất dài hoặc agent có khả năng tool planning mạnh.
-
 - **Extensible-by-design**
   - core không hard-code logic CNTT/lập trình;
   - domain knowledge, tool, verifier và prompt policy nằm trong Pedagogy Domain Extension;
@@ -48,9 +41,8 @@
 
 ## 4.3 Kiến trúc tổng quan
 
-- Kiến trúc được tổ chức quanh ba trụ cột:
+- Kiến trúc **Pedagogy Agent Harness** được tổ chức quanh hai trụ cột:
   - **Pedagogy-Constrained Orchestration** — hiện thực qua Orchestrator, Role-scoped Agents, Guardrails và HITL;
-  - **Edge-LLM-Constrained Orchestration** — hiện thực qua Orchestrator và Memory (context/memory budget control);
   - **Pedagogy Domain Extension** — hiện thực qua Extension và Knowledge Base.
 
 ```mermaid
@@ -115,8 +107,8 @@ flowchart TB
   - giữ vai trò routing/coordination trung tâm; agents không tự handoff trực tiếp cho nhau;
   - nạp agent template, retrieval policy và feedback policy từ Extension khi khởi tạo agent invocation;
   - enforce guardrails và HITL checkpoints như middleware nội bộ trong task graph;
-  - áp dụng đồng thời Pedagogy-Constrained Orchestration và Edge-LLM-Constrained Orchestration;
-  - độc lập với từng miền kỹ thuật cụ thể.
+  - áp dụng Pedagogy-Constrained Orchestration và enforce domain extension policy;
+  - độc lập với từng domain sư phạm cụ thể.
 
 - **Role-scoped agent templates and invocations**
   - gồm một agent template catalog theo trách nhiệm sư phạm như grounding/alignment, explanation/scaffolding, assessment design, feedback/diagnosis và teacher review;
@@ -162,10 +154,9 @@ flowchart TB
   - trả kết quả có cấu trúc cho Orchestrator để repair, retry hoặc chuyển HITL.
 
 - **Model inference**
-  - local/edge small LLM inference backend;
+  - pluggable LLM backend (local hoặc API) — harness giao tiếp qua OpenAI-compatible interface;
   - local embedding/reranking model services;
-  - model lifecycle và resource control;
-  - không phụ thuộc frontier/cloud LLM cho workflow chính.
+  - model lifecycle và resource control.
 
 - **Application**
   - desktop UI cho giáo viên;
@@ -257,10 +248,6 @@ flowchart LR
         PED["Bloom, rubric,<br/>feedback policy,<br/>citation rules"]
     end
 
-    subgraph P2["Edge-LLM-Constrained"]
-        EDGE["small context,<br/>weak planning,<br/>latency / reliability risk"]
-    end
-
     subgraph P3["Domain Extension"]
         EXT["schemas, prompts,<br/>retrieval policy,<br/>verifier hooks, taxonomy"]
     end
@@ -268,6 +255,7 @@ flowchart LR
     START --> INTAKE
     INTAKE --> INJECTOR
     INJECTOR --> COMPILE
+
     COMPILE --> ROUTER
     ROUTER -- "ready for human decision" --> REVIEW
     REVIEW -- "edit / reject" --> ROUTER
@@ -275,8 +263,6 @@ flowchart LR
     COMMIT --> END
 
     PED -.-> INJECTOR
-    EDGE -.-> EDGE_ADAPT
-    EDGE_ADAPT -. "context packing,<br/>role scoping,<br/>repair strategy" .-> INJECTOR
     EXT -.-> INJECTOR
     INJECTOR -. "runtime policy" .-> ROUTER
     INJECTOR -. "scoped prompt/tool policy" .-> AGENT
@@ -286,19 +272,16 @@ flowchart LR
 
     classDef specialized fill:#fff3cd,stroke:#b7791f,stroke-width:2px,color:#1f2933
     classDef pedagogy fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1f2933
-    classDef edge fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#1f2933
     classDef extension fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px,color:#1f2933
 
-    class COMPILE,ROUTER,INJECTOR,EDGE_ADAPT,STATE,AGENT,REPAIR specialized
+    class COMPILE,ROUTER,INJECTOR,STATE,AGENT,REPAIR specialized
     class PED pedagogy
-    class EDGE edge
     class EXT extension
 ```
 
 - Diagram thứ hai giữ cùng skeleton với diagram tổng quát; phần tô vàng là các node được specialize so với diagram 1, còn `Constraint / Policy Injector` là component nội bộ của Orchestrator nhận ba control surfaces rồi inject policy vào compiler/router/executor/state.
 - Với **Pedagogy-Constrained Orchestration**, `Pedagogy Constraints` inject Bloom target, rubric, feedback policy và citation requirement vào graph compiler/node executor; verification trả lỗi có cấu trúc để repair đúng thành phần thay vì regenerate toàn bộ.
-- Với **Edge-LLM-Constrained Orchestration**, `Edge Adaptation Layer` chuyển các giới hạn của small/local LLM thành cơ chế vận hành: context packing, role scoping, output schema bắt buộc, verifier-guided repair, retry/tool-call budget và HITL fallback.
-- Với **Pedagogy Domain Extension**, `Domain Extension` cung cấp schema, prompt template, retrieval policy, verifier hook và error taxonomy để graph không hard-code miền CNTT/lập trình.
+- Với **Pedagogy Domain Extension**, `Domain Extension` cung cấp schema, prompt template, retrieval policy, verifier hook và error taxonomy để graph không hard-code logic của từng domain sư phạm cụ thể.
 - Tool invocation tách khỏi agent invocation là invariant của cả hai diagram: mọi tool node bắt buộc đi qua `HITL Tool Gate` trước khi chạy trong sandbox; diagram thứ hai chỉ bổ sung policy/scoping cụ thể cho gate này.
 - `Typed Graph State` đồng thời là checkpoint/audit surface, phục vụ đánh giá trajectory/tool-use ở §3.11 và resume sau HITL hoặc lỗi runtime.
 
@@ -306,7 +289,7 @@ flowchart LR
 
 - Role-scoped agent bắt đầu từ một pedagogical agent template trong catalog, sau đó được Orchestrator instantiate thành invocation tạm thời với hợp đồng input/output cụ thể.
 - Template về bản chất là cấu hình prompt + context contract + tool policy + output schema; invocation là một lần gọi model/tool-loop được bind với cấu hình đó dưới context/memory/tool budget của task node.
-- Cách này tận dụng role assignment của LLM-based MAS (§3.6) nhưng giới hạn autonomy để phù hợp với HITL, safety và edge deployment (§3.4, §3.9, §3.10).
+- Cách này tận dụng role assignment của LLM-based MAS (§3.6) nhưng giới hạn autonomy để phù hợp với HITL và safety (§3.4, §3.9).
 
 ```mermaid
 flowchart LR
@@ -358,7 +341,7 @@ flowchart LR
 - Tool loop là mediated loop: invocation chỉ phát structured tool request; Orchestrator kiểm tra HITL policy, chạy tool trong sandbox, rồi nén/lọc observation trước khi đưa quay lại bounded context pack.
 - Khi tool output vượt context window được cấp, observation compressor giữ phần liên quan theo schema của template: lỗi chính, stdout/stderr rút gọn, test summary, citation/provenance hoặc artifact pointer thay vì toàn bộ log.
 - Thiết kế này giảm tool surface trong prompt, phù hợp với các khuyến nghị context management ở §3.8 và rủi ro tool-use ở §3.9.
-- Dưới ràng buộc Edge SLM, invocation không nhận toàn bộ history/corpus/tool list; bounded context pack chỉ gồm task slice, retrieved context, selected memory và allowed action schema theo budget.
+- Invocation không nhận toàn bộ history/corpus/tool list; bounded context pack chỉ gồm task slice, retrieved context, selected memory và allowed action schema theo budget — giảm noise và tăng độ chính xác của structured output.
 - Invocation luôn trả structured output để Orchestrator có thể validate, kiểm tra stop condition, repair theo lỗi cụ thể hoặc chuyển HITL khi vượt retry/tool budget.
 - Stop condition của invocation gồm: final output hợp lệ theo schema/policy, tool request đã hoàn tất, retry/tool budget đã cạn, hoặc cần chuyển sang HITL.
 
@@ -429,7 +412,7 @@ flowchart LR
 ### 4.3.3 Detail design: Knowledge Base và ingestion mechanism
 
 - Knowledge Base hiện thực lớp semantic memory/corpus grounding cho RAG, kế thừa RAG/Agentic RAG ở §3.5. Ingestion được đóng gói trong Pedagogy Domain Extension để metadata, chunking và retrieval policy có thể thay đổi theo miền kỹ thuật.
-- Thiết kế có thể mở rộng sang topic dependency graph, lấy cảm hứng từ GraphRAG và graph-based agent memory trong §3.5, nhưng prototype giới hạn ở graph tĩnh/metadata graph để không vượt khả năng Edge SLM.
+- Thiết kế có thể mở rộng sang topic dependency graph, lấy cảm hứng từ GraphRAG và graph-based agent memory trong §3.5; prototype giới hạn ở metadata graph tĩnh cho phù hợp với scope thực nghiệm.
 
 ```mermaid
 flowchart TB
@@ -492,7 +475,7 @@ flowchart TB
 ### 4.3.4 Detail design: Memory
 
 - Memory được thiết kế theo taxonomy trong lit-review §3.7: working memory, episodic memory, semantic memory và procedural/preference-like memory. Cơ chế đọc/ghi có kiểm soát lấy cảm hứng từ MemGPT và các survey memory agent, nhưng được đơn giản hóa cho local Edge SLM.
-- Context injection và compaction liên hệ §3.8: memory không phải nơi nhồi toàn bộ lịch sử vào prompt, mà là external store được Orchestrator chọn lọc theo budget.
+- Context injection và compaction liên hệ §3.8: memory không phải nơi nhồi toàn bộ lịch sử vào prompt, mà là external store được Orchestrator chọn lọc theo context budget của từng invocation.
 
 ```mermaid
 flowchart TB
@@ -601,78 +584,7 @@ flowchart TB
   - chỉ repair component lỗi thay vì regenerate toàn bộ;
   - nếu quá số lần retry thì chuyển sang human review.
 
-## 4.6 Edge-LLM-Constrained Orchestration
-
-- Mục tiêu:
-  - thiết kế agentic workflow dưới ràng buộc bắt buộc của local/edge small LLM;
-  - biến giới hạn context, memory, latency và compute thành constraint của orchestration;
-  - giảm tải reasoning, context và tool planning cho model;
-  - kiểm soát chi phí tính toán, latency và lỗi tool/schema;
-  - đảm bảo hệ thống không phụ thuộc vào frontier/cloud LLM để hoàn thành workflow chính.
-
-- Ràng buộc cứng của edge LLM:
-  - context window hạn chế;
-  - RAM/VRAM hạn chế;
-  - reasoning và tool planning yếu hơn frontier model;
-  - dễ lỗi khi prompt quá dài hoặc tool surface quá rộng;
-  - nhiều LLM calls làm tăng latency;
-  - retry không kiểm soát dễ tốn tài nguyên;
-  - không thể đẩy toàn bộ history, corpus, tool list và multi-agent state vào một prompt.
-
-- Context management:
-  - context budget là quota bắt buộc theo từng node;
-  - giới hạn retrieved chunks truyền vào mỗi node;
-  - downstream agent chỉ nhận context đã lọc theo role;
-  - history được tóm tắt trước khi đưa lại vào prompt;
-  - provenance được giữ ngắn và có cấu trúc.
-
-- Memory management:
-  - working memory cho state của task hiện tại;
-  - episodic memory cho session history và teacher corrections;
-  - semantic memory cho corpus đã index;
-  - long-term teacher profile là optional/future;
-  - memory injection bị giới hạn bởi prompt budget;
-  - memory không được dùng như nơi nhồi toàn bộ lịch sử vào LLM.
-
-- Task decomposition:
-  - tách task lớn thành các node nhỏ;
-  - mỗi node giải quyết một mục tiêu hẹp;
-  - tránh yêu cầu một prompt vừa retrieve, vừa generate, vừa verify, vừa format;
-  - node output được chuẩn hóa để node sau dùng lại.
-
-- Agent coordination:
-  - agent là role-scoped invocation, không nhất thiết là process/model riêng;
-  - supervisor quyết định role nào cần gọi theo từng task;
-  - không chạy fixed multi-agent pipeline nếu task không cần;
-  - trạng thái chung được quản lý ở orchestrator.
-
-- Tool-use control:
-  - tool access được cấp theo node;
-  - retrieval tool chỉ mở cho retrieval node;
-  - code verifier/linter chỉ mở cho verification node;
-  - tool call có schema, timeout và sandbox;
-  - số tool call và retry được giới hạn như tài nguyên hệ thống.
-
-- Retrieval compression:
-  - retrieval node có thể lấy nhiều candidates hơn;
-  - reranker chọn context nhỏ cho downstream node;
-  - context pack gồm chunk ngắn, metadata và provenance;
-  - citation repair gọi lại retrieval node thay vì để draft agent tự tìm nguồn.
-
-- Retry and repair policy:
-  - retry dựa trên lỗi có cấu trúc;
-  - ưu tiên targeted repair;
-  - giới hạn retry depth;
-  - nếu không chắc chắn thì chuyển sang HITL;
-  - tránh vòng lặp agent tự sửa không dừng.
-
-- Runtime scheduling:
-  - giới hạn số LLM calls cho mỗi task;
-  - cache retrieval result khi dùng lại;
-  - tái sử dụng prompt/context cố định nếu runtime hỗ trợ;
-  - fallback khi thiếu tài nguyên bằng cách giảm top-k, giảm context hoặc giảm retry.
-
-## 4.7 Pedagogy Domain Extension
+## 4.6 Pedagogy Domain Extension
 
 - Mục tiêu:
   - tách core workflow khỏi tri thức và công cụ của từng miền;
@@ -696,19 +608,26 @@ flowchart TB
   - feedback policy;
   - corpus ingestion pipeline.
 
-- Extension CNTT/lập trình:
+- Extension CNTT/lập trình *(case study 1)*:
   - exercise types: implementation, debug, trace, design;
   - metadata: topic, Bloom level, difficulty, language, content type;
-  - verifier: syntax check, unit test, lint check;
+  - verifier: syntax check, unit test, lint check (PytestRunner sandbox);
   - error taxonomy: off-by-one, wrong-base-case, missing-return, type-confusion;
-  - feedback template: chỉ ra lỗi, giải thích nguyên nhân, gợi ý sửa.
+  - feedback template: chỉ ra lỗi kỹ thuật, giải thích nguyên nhân, gợi ý sửa.
+
+- Extension Toán *(case study 2)*:
+  - exercise types: computation, proof/derivation, problem-solving, concept explanation;
+  - metadata: topic (đại số, giải tích, thống kê...), Bloom level, difficulty, math domain;
+  - verifier: SymPy cho biểu thức đại số đơn giản; structural check (có đủ bước giải, biến được định nghĩa); LLM-as-judge cho bài tự luận — verifier là optional/pluggable;
+  - error taxonomy: computation error, wrong method, missing step, conceptual error;
+  - feedback template: chỉ ra bước sai, giải thích phương pháp đúng, gợi ý hướng tiếp cận.
 
 - Các extension khác:
-  - Điện tử/Cơ khí/Xây dựng chỉ dùng làm ví dụ interface;
+  - domain khác (Vật lý, Lịch sử...) chỉ được phân tích ở mức interface;
   - không đưa vào đánh giá thực nghiệm chính;
   - trình bày như hướng mở rộng cần kiểm chứng thêm.
 
-## 4.8 Retrieval và quản lý tri thức
+## 4.7 Retrieval và quản lý tri thức
 
 - Mục tiêu:
   - cung cấp grounding từ tài liệu học phần;
@@ -749,7 +668,7 @@ flowchart TB
   - nguồn external/web là optional/future;
   - mọi nguồn chưa xác minh cần được đánh dấu trong review.
 
-## 4.9 Verification, Guardrails và HITL
+## 4.8 Verification, Guardrails và HITL
 
 - Verification:
   - kiểm tra output schema;
@@ -785,7 +704,7 @@ flowchart TB
   - phản hồi lý do reject;
   - xác nhận metadata/corpus label khi cần.
 
-## 4.10 Kiến trúc ứng dụng desktop và local runtime
+## 4.9 Kiến trúc ứng dụng desktop và runtime
 
 - Desktop application:
   - giao diện nhập yêu cầu;
@@ -796,7 +715,7 @@ flowchart TB
 - Runtime architecture:
   - desktop UI (Tauri — webview shell nhẹ, không bundle browser engine);
   - orchestration backend chạy như HTTP server cục bộ (LangGraph dev server trên localhost);
-  - local LLM backend;
+  - LLM backend (pluggable — local hoặc API endpoint);
   - local vector database;
   - local session/profile storage.
 
@@ -819,26 +738,25 @@ flowchart TB
   - UI và backend khởi động cùng nhau trên máy giáo viên;
   - packaging hoàn chỉnh là mục tiêu sản phẩm/future work nếu chưa hoàn thiện.
 
-## 4.11 Tổng kết thiết kế
+## 4.10 Tổng kết thiết kế
 
-- Chương này trình bày kiến trúc hệ thống ở mức system design.
+- Chương này trình bày kiến trúc Pedagogy Agent Harness ở mức system design.
 - Đóng góp không nằm ở từng kỹ thuật riêng lẻ.
 - Giá trị chính là cách tích hợp:
-  - Multi-Agent Agentic RAG;
-  - ràng buộc sư phạm;
-  - điều phối dưới ràng buộc edge LLM;
-  - cơ chế extension cho miền kỹ thuật;
+  - Multi-Agent Agentic RAG bên trong harness;
+  - Pedagogy-Constrained Orchestration;
+  - Pedagogy Domain Extension với hai case study (CNTT và Toán);
   - verification, guardrails và HITL.
 
 - Phạm vi hiện thực:
-  - core orchestration;
+  - core harness (orchestration, memory, retrieval, verification);
   - extension CNTT/lập trình;
+  - extension Toán;
   - retrieval local từ corpus học phần;
-  - verifier kỹ thuật cơ bản;
   - teacher-controlled data mutation/review flow.
 
 - Chương tiếp theo đánh giá hệ thống qua:
-  - baseline comparison;
+  - baseline comparison trên cả hai case study;
   - ablation study;
-  - quality metrics theo từng task;
-  - latency/resource metrics cho local small LLM.
+  - quality metrics theo từng task và domain;
+  - interface compliance analysis cho EQ2.
