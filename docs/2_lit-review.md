@@ -32,6 +32,7 @@ Phần này cần định nghĩa rõ vì nhiều bài dùng lẫn lộn:
 - **Claude Code** (Anthropic, 2025): Claude model + coding harness (tool: file read/write, bash, search; HITL: hỏi trước khi thực thi lệnh nguy hiểm; execution loop; MCP extensibility) = Claude Code agent. Cite official docs/product page (docs.anthropic.com/en/docs/claude-code/overview). → **Analogy chính**: harness biến Claude (model) thành Claude Code (agent); tương tự, Pedagogy Agent Harness biến LLM thành Pedagogy Agent. Tool layer thay bằng retrieval/verifier/rubric-checker; constraint thay bằng Bloom/rubric/HITL; extensibility thay bằng Pedagogy Domain Extension.
 - **OpenAI Codex** (OpenAI, 2025; Codex app 2026): GPT + coding harness (sandbox, worktree, file ops, test runner) = Codex agent. Cite official product/blog docs (openai.com/codex). → Minh chứng thêm cho pattern Model + Harness = Agent; khác hệ thống đề xuất ở domain (software engineering vs. pedagogy) và user (developer vs. teacher).
 - Cursor, Windsurf: IDE-integrated agent — cho thấy xu hướng embedded agentic AI trong desktop app.
+- **LangChain (2026)** — *"The Anatomy of an Agent Harness"* \[`LangChain2026HarnessAnatomy`\]: định nghĩa harness là "every piece of code, configuration, and execution logic that isn't the model itself"; mô tả 6 capability cốt lõi của harness: durable storage, code execution/sandbox, memory & context injection, orchestration logic, **context management** và **hooks for deterministic behavior enforcement**. Raw model trở thành agent khi được trang bị harness với state, tool execution, feedback loops và enforceable constraints. → Củng cố analogy trung tâm: Claude Code = Claude model + coding harness; Pedagogy Agent = LLM + Pedagogy Agent Harness. Hai capability đặc biệt liên quan: context management là trách nhiệm của harness (không phải model) — xem §4.3.2/§4.3.4; hooks for deterministic behavior enforcement ánh xạ lên teacher-in-the-loop và Pedagogy-Constrained Orchestration — xem §4.5/§4.8.
 - **Tóm tắt analogy (Agent = Model + Harness)**:
 
 | Chiều | Coding agent (Claude Code/Codex) | Pedagogy Agent (đề xuất) |
@@ -39,6 +40,8 @@ Phần này cần định nghĩa rõ vì nhiều bài dùng lẫn lộn:
 | Model | Claude / GPT | Pluggable LLM |
 | Tool layer | file read/write, bash, search | retrieval, verifier, rubric-checker |
 | Constraint | safe execution, HITL | Bloom/rubric alignment, HITL |
+| Context management | context window + compaction | bounded context pack (§4.3.2) |
+| Deterministic enforcement | hooks for behavior enforcement | teacher-in-the-loop, pedagogical constraints (§4.5/§4.8) |
 | Extensibility | MCP servers | Pedagogy Domain Extension |
 | User | Developer | Teacher |
 
