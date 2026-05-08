@@ -20,24 +20,25 @@
 
 Xem chi tiết 16 subsection tại [2_lit-review.md](refs/2_lit-review.md).
 
-Tóm tắt cấu trúc (16 subsection):
+Tóm tắt cấu trúc (17 subsection):
 
 1. Large Language Models (LLM)
 2. AI Agent vs Agentic AI — phân biệt khái niệm
-3. Agentic AI trong thực tế — AI coding assistants (Claude Code, OpenAI Codex, Devin, Cursor/Windsurf) → **analogy chính cho Pedagogy Agent Harness**
-4. Human-in-the-loop & Human-Agent Collaboration (teacher-in-the-loop, override, preference memory)
-5. Retrieval-Augmented Generation (RAG, Self-RAG, CRAG, Agentic RAG, GraphRAG, A-RAG)
-6. Multi-Agent Systems (MAS) với LLM (AutoGen, MetaGPT, CrewAI, LangGraph, communication/collaboration surveys)
-7. Agent Memory Architecture (MemGPT, Sumers taxonomy, episodic/preference memory)
-8. Context Management cho LLM Agent (ACON, Lost in the Middle, Chain-of-Agents, Context-Folding)
-9. LLM Agent Safety & Guardrails (prompt injection, LlamaGuard, AGrail, ToolSafe, No Free Lunch)
-10. LLM deployment options (cloud, local, edge) — context cho lựa chọn LLM của prototype
-11. Evaluation Methodology cho hệ thống LLM/RAG/Agent (LLM-as-Judge, RAGAS, agent trajectory evaluation, ablation)
-12. Desktop app tích hợp AI (Tauri + HTTP server + SSE)
-13. LLM trong giáo dục (tutoring, auto-grading, content generation, AI-assisted feedback)
-14. Privacy & Local-first Deployment trong giáo dục (student data, local-first, teacher-controlled data governance)
-15. Nền tảng sư phạm (Bloom's Taxonomy, Constructive Alignment)
-16. Khoảng trống & định vị hệ thống
+3. **Agent Harness Engineering** — định nghĩa harness, 6 capability cốt lõi, harness vs framework, infrastructure contribution framing
+4. Agentic AI trong thực tế — AI coding assistants (Claude Code, OpenAI Codex, Devin, Cursor/Windsurf) → **analogy chính cho Pedagogy Agent Harness**
+5. Human-in-the-loop & Human-Agent Collaboration (teacher-in-the-loop, override, preference memory)
+6. Retrieval-Augmented Generation (RAG, Self-RAG, CRAG, Agentic RAG, GraphRAG, A-RAG)
+7. Multi-Agent Systems (MAS) với LLM (AutoGen, MetaGPT, CrewAI, LangGraph, communication/collaboration surveys)
+8. Agent Memory Architecture (MemGPT, Sumers taxonomy, episodic/preference memory)
+9. Context Management cho LLM Agent (ACON, Lost in the Middle, Chain-of-Agents, Context-Folding)
+10. LLM Agent Safety & Guardrails (prompt injection, LlamaGuard, AGrail, ToolSafe, No Free Lunch)
+11. LLM deployment options (cloud, local, edge) — context cho lựa chọn LLM của prototype
+12. Evaluation Methodology cho hệ thống LLM/RAG/Agent (LLM-as-Judge, RAGAS, agent trajectory evaluation, ablation)
+13. Desktop app tích hợp AI (Tauri + HTTP server + SSE)
+14. LLM trong giáo dục (tutoring, auto-grading, content generation, AI-assisted feedback)
+15. Privacy & Local-first Deployment trong giáo dục (student data, local-first, teacher-controlled data governance)
+16. Nền tảng sư phạm (Bloom's Taxonomy, Constructive Alignment)
+17. Khoảng trống & định vị hệ thống
 
 ## Chương 4 — Thiết kế và triển khai hệ thống
 

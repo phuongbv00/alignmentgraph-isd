@@ -54,14 +54,7 @@ Kiến trúc được thiết kế có điểm mở rộng cho nhiều domain kh
 1. **Pedagogical constraint enforcement**: mọi giai đoạn thực thi của harness (retrieval policy, generation, schema validation, verification, repair, output) phải tuân theo ràng buộc sư phạm — Bloom/rubric alignment, citation coverage, misconception mapping, feedback policy, HITL approval. Constraint không chỉ áp ở bước orchestration mà được enforce xuyên suốt pipeline qua typed schema, verifier, HITL gate và memory.
 2. **Domain extensibility**: harness nhận domain sư phạm mới qua plugin interface mà không thay đổi core. Mỗi domain khai báo metadata schema, task schema, retrieval policy, verifier/tool interface, error taxonomy, feedback template, pedagogical constraints và corpus ingestion pipeline; core chỉ phụ thuộc vào interface này thay vì hard-code logic từng domain.
 
-## 6. Ranh giới kết luận
-
-- Không xem từng kỹ thuật riêng lẻ như graph orchestration, verifier, self-repair, Bloom/rubric constraint hay extension mechanism là đóng góp mới.
-- Kết quả đánh giá chỉ kết luận trong phạm vi hai case study CNTT/lập trình và Toán và benchmark đã xây dựng.
-- Domain extensibility là ràng buộc thiết kế được validate qua interface compliance của hai domain plugin; luận văn không khẳng định đã chứng minh hệ thống scale thực nghiệm sang nhiều domain khác.
-- LLM là pluggable component; luận văn không đánh giá riêng hiệu quả của từng LLM provider.
-
-## 7. Format & Template
+## 6. Format & Template
 
 Dùng template **SOICT_DATN_Application_VIE_Template** tại [templates/SOICT_DATN_Application_VIE_Template/](templates/SOICT_DATN_Application_VIE_Template/).
 
