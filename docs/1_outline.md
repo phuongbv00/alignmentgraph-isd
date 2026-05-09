@@ -34,7 +34,7 @@ Tóm tắt cấu trúc (17 subsection):
 10. LLM Agent Safety & Guardrails (prompt injection, LlamaGuard, AGrail, ToolSafe, No Free Lunch)
 11. LLM deployment options (cloud, local, edge) — context cho lựa chọn LLM của prototype
 12. Evaluation Methodology cho hệ thống LLM/RAG/Agent (LLM-as-Judge, RAGAS, agent trajectory evaluation, ablation)
-13. Desktop app tích hợp AI (Electron + IPC/HTTP server + SSE)
+13. Desktop app tích hợp AI (Electron + in-process agent)
 14. LLM trong giáo dục (tutoring, auto-grading, content generation, AI-assisted feedback)
 15. Privacy & Local-first Deployment trong giáo dục (student data, local-first, teacher-controlled data governance)
 16. Nền tảng sư phạm (Bloom's Taxonomy, Constructive Alignment)

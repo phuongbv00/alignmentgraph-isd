@@ -147,13 +147,13 @@ Phần này làm nền cho thiết kế thực nghiệm ở Chương 5: không c
 - **Ablation study**: so sánh baseline RAG/ReAct với Pedagogy Agent Harness; tách đóng góp của typed workflow, verifier-guided repair, pedagogical constraints và HITL.
 - **Human/rubric alignment**: dùng rubric giáo viên và kiểm tra độ khớp giữa automated judge với human evaluation; liên hệ với các nghiên cứu AI-assisted grading ở §3.14.
 
-## 3.13 Desktop app tích hợp AI (Electron + IPC/HTTP server + SSE)
+## 3.13 Desktop app tích hợp AI (Electron + in-process agent)
 
 - **Electron** (GitHub/OpenJS Foundation, 2013–): Node.js main process + Chromium renderer, cross-platform desktop; hệ sinh thái npm phong phú, tech stack JS/TS đồng nhất cho cả UI và backend logic; bundle size lớn hơn Tauri vì bundle Chromium nhưng không yêu cầu Rust và UI nhất quán cross-platform.
-- Kiến trúc: Renderer process (web tech) giao tiếp với Main process (Node.js) qua Electron IPC (ipcMain/ipcRenderer); Main process quản lý agent lifecycle và có thể expose local HTTP server cho SSE streaming.
-- **JS/TS agent**: orchestration backend được viết bằng TypeScript, chạy trực tiếp trong Node.js main process hoặc worker thread — không cần Python sidecar riêng. **LangGraph.js** (LangChain, JS implementation) được dùng cho state machine graph: tường minh, dễ visualize cho luận văn và đồng nhất với runtime Electron.
-- **HTTP + SSE pattern**: agent expose HTTP server cục bộ (localhost); UI gửi task qua REST, nhận stream trạng thái/output qua SSE; HITL decision gửi về qua HTTP POST để resume. Hoặc dùng Electron IPC trực tiếp khi agent chạy in-process — giảm overhead serialization.
-- So với Tauri: Tauri dùng Rust backend + native webview, nhẹ hơn về RAM/bundle nhưng yêu cầu Rust và interop cross-language; Electron dùng Node.js + Chromium, tech stack đồng nhất JS/TS, agent chạy in-process hoặc qua `child_process` Node.js — không cần HTTP bridge riêng giữa UI và agent.
+- Kiến trúc: Renderer process (web tech) giao tiếp với Main process (Node.js) qua Electron IPC (ipcMain/ipcRenderer); agent chạy trực tiếp trong Main process — không có HTTP server trung gian.
+- **JS/TS agent in-process**: **LangGraph.js** (LangChain, JS implementation) chạy trong Node.js main process; UI invoke agent qua IPC call, nhận streaming token/state update qua IPC event — không cần HTTP/SSE. Đơn giản hoá deployment (một process duy nhất), loại bỏ overhead serialization qua network loopback.
+- **HITL qua IPC**: khi agent cần phê duyệt của giáo viên, main process phát IPC event lên renderer; giáo viên xác nhận/override trên UI; renderer gửi IPC reply để resume agent graph — toàn bộ round-trip trong cùng một process group, không qua HTTP.
+- So với Tauri: Tauri dùng Rust backend + native webview, nhẹ hơn về RAM/bundle nhưng yêu cầu Rust và interop cross-language; Electron dùng Node.js + Chromium, tech stack đồng nhất JS/TS, agent nhúng thẳng vào main process.
 - Cite: Electron official docs; LangGraph.js docs; ví dụ open-source AI desktop apps trên Electron (ví dụ Jan.ai, LM Studio architecture cho local AI desktop app pattern).
 
 ## 3.14 LLM trong giáo dục
