@@ -137,7 +137,7 @@ Mỗi task invocation nhận context injection theo thứ tự ưu tiên (cao �
 
 ## 4.6 Profile Synthesis Pipeline
 
-Chạy tự động sau khi UC-AS sinh diagnosis. Gồm 3 bước:
+Cơ chế **episodic → semantic consolidation**: chuyển hoá DiagnosisHistory (episodic memory — sự kiện đánh giá cụ thể) thành StudentGroupProfiles (semantic memory — tri thức tổng hợp về đặc điểm nhóm). Chạy tự động sau khi UC-AS sinh diagnosis. Gồm 3 bước:
 
 1. **Parse**: extract structured group-level patterns từ diagnosis output (LLM call với output schema).
 2. **Merge**: so sánh với `StudentGroupProfiles` hiện tại; merge theo rule (misconception mới → append; readiness level thay đổi → update nếu confidence > threshold).
