@@ -90,41 +90,44 @@ Cấu hình preamble từ [templates/.../LuanVan.tex](templates/SOICT_DATN_Appli
 - Front-matter bắt buộc: Bìa → Bìa lót → Lời cảm ơn → Tóm tắt VN → Tóm tắt EN → Mục lục → Danh mục hình vẽ → Danh mục bảng biểu → Danh mục thuật ngữ/viết tắt.
 - Phụ lục: qua `\appendices`.
 
-Cấu trúc chương (7 chương — mở rộng từ template SOICT 6 chương):
+Cấu trúc chương (5 chương):
 
-| Chương | Tiêu đề                         | File chính                         |
-| ------ | ------------------------------- | ---------------------------------- |
-| 1      | Giới thiệu đề tài               | `chapters/1_introduction.tex`      |
-| 2      | Khảo sát và phân tích yêu cầu   | `chapters/2_survey.tex`            |
-| 3      | Nền tảng lý thuyết & công nghệ  | `chapters/3_literature_review.tex` |
-| 4      | Thiết kế và triển khai hệ thống | `chapters/4_system_design.tex`     |
-| 5      | Đánh giá hệ thống               | `chapters/5_evaluation.tex`        |
-| 6      | Giải pháp và đóng góp nổi bật   | `chapters/6_contribution.tex`      |
-| 7      | Kết luận và hướng phát triển    | `chapters/7_conclusion.tex`        |
+| Chương | Tiêu đề                              | Doc                  | File chính                         |
+| ------ | ------------------------------------ | -------------------- | ---------------------------------- |
+| 1      | Giới thiệu & Khảo sát yêu cầu       | [1_intro.md](1_intro.md) | `chapters/1_introduction.tex`  |
+| 2      | Nền tảng lý thuyết & công nghệ       | [2_lit-review.md](2_lit-review.md) | `chapters/2_literature_review.tex` |
+| 3      | Thiết kế và triển khai hệ thống      | [3_method.md](3_method.md) | `chapters/3_method.tex`        |
+| 4      | Đánh giá hệ thống                    | [4_eval.md](4_eval.md) | `chapters/4_evaluation.tex`    |
+| 5      | Kết luận và hướng phát triển         | *(không có file doc riêng)* | `chapters/5_conclusion.tex`   |
 
 Nội dung tương ứng trong `main.tex`:
 
 ```latex
+\chapter{GIỚI THIỆU \& KHẢO SÁT YÊU CẦU}
+\subfile{chapters/1_introduction}
+
+\chapter{NỀN TẢNG LÝ THUYẾT \& CÔNG NGHỆ}
+\subfile{chapters/2_literature_review}
+
 \chapter{THIẾT KẾ VÀ TRIỂN KHAI HỆ THỐNG}
-\subfile{chapters/4_system_design}
+\subfile{chapters/3_method}
 
 \chapter{ĐÁNH GIÁ HỆ THỐNG}
-\subfile{chapters/5_evaluation}
-
-\chapter{CÁC GIẢI PHÁP VÀ ĐÓNG GÓP NỔI BẬT}
-\subfile{chapters/6_contribution}
+\subfile{chapters/4_evaluation}
 
 \chapter{KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN}
-\subfile{chapters/7_conclusion}
+\subfile{chapters/5_conclusion}
 ```
 
 ---
 
-# Đề cương 7 chương (theo template SOICT, mở rộng)
+# Đề cương
 
-Xem chi tiết Chương 1 & 2 tại [1_intro.md](1_intro.md).
+## Chương 1 — Giới thiệu & Khảo sát yêu cầu
 
-## Chương 1 — Giới thiệu đề tài
+*Chi tiết: [1_intro.md](1_intro.md)*
+
+### 1.1 Giới thiệu đề tài
 
 - Bối cảnh: giáo viên/giảng viên mất nhiều giờ cho tác vụ sư phạm lặp; LLM thương mại có rủi ro dữ liệu; các agent framework tổng quát chưa tối ưu cho tác vụ sư phạm.
 - Vấn đề: LLM đơn thuần chưa phải agent sư phạm — thiếu một harness kết hợp với LLM để tạo thành Pedagogy Agent có tool layer, pedagogical constraints, HITL, workspace-scoped memory và extensibility. Đặc biệt, vòng lặp thiết kế dạy học–đánh giá cá nhân hoá (IDA Loop) — giáo viên đánh giá nhóm học sinh → thiết kế dạy học phân hoá → đánh giá lại → lặp — đòi hỏi harness có khả năng duy trì hồ sơ nhóm và lịch sử chẩn đoán xuyên suốt khoá học, điều mà LLM stateless và agent framework tổng quát không cung cấp; tương tự Claude Code/Codex là harness biến LLM thành coding agent, nhưng dành cho giáo viên.
@@ -133,7 +136,7 @@ Xem chi tiết Chương 1 & 2 tại [1_intro.md](1_intro.md).
 - Mục tiêu và EQ (xem §3 phía trên).
 - Bố cục luận văn.
 
-## Chương 2 — Khảo sát và phân tích yêu cầu
+### 1.2 Khảo sát và phân tích yêu cầu
 
 - Khảo sát nhu cầu giáo viên (qualitative — phỏng vấn / bảng hỏi nhanh hoặc literature-based).
 - Phân tích use case theo hai UC family: **UC-ID** (soạn kế hoạch bài dạy theo phẩm chất/năng lực, điều chỉnh theo StudentGroupProfile) và **UC-AS** (xây dựng công cụ đánh giá/rubric/ma trận đề, sinh đề/bài tập cá nhân hoá, chấm bài + feedback theo nhóm, tổng hợp StudentGroupProfile). **IDA Loop** là vòng lặp kết nối UC-ID và UC-AS theo nhóm học sinh.
@@ -142,7 +145,9 @@ Xem chi tiết Chương 1 & 2 tại [1_intro.md](1_intro.md).
 - Yêu cầu phi chức năng/ràng buộc thiết kế: HITL bắt buộc, pedagogical constraint enforcement xuyên suốt pipeline, Workspace Memory duy trì xuyên khoá học, domain extensibility qua optional plugin interface (null-plugin contract), LLM là pluggable component.
 - Benchmarks hiện có trong lĩnh vực (AI in education, agentic RAG, coding agent harness) — xác định gap.
 
-## Chương 3 — Nền tảng lý thuyết & công nghệ sử dụng
+## Chương 2 — Nền tảng lý thuyết & công nghệ sử dụng
+
+*Chi tiết: [2_lit-review.md](2_lit-review.md)*
 
 Xem chi tiết 17 subsection tại [2_lit-review.md](2_lit-review.md).
 
@@ -166,7 +171,9 @@ Tóm tắt cấu trúc (17 subsection):
 16. Nền tảng sư phạm (Bloom's Taxonomy, Constructive Alignment)
 17. Khoảng trống & định vị hệ thống
 
-## Chương 4 — Thiết kế và triển khai hệ thống
+## Chương 3 — Thiết kế và triển khai hệ thống
+
+*Chi tiết: [3_method.md](3_method.md)*
 
 Xem chi tiết đầy đủ tại [3_method.md](3_method.md).
 
@@ -182,7 +189,9 @@ Tóm tắt cấu trúc:
 8. **Domain Plugin Interface (optional)**: khai báo verifier, error taxonomy, tool interface; null-plugin contract — core chạy đầy đủ khi plugin = null; hai implementation: IT plugin (code verifier + error taxonomy IT) và Toán plugin (SymPy checker + math error taxonomy).
 9. **HITL Governance**: mọi output phải qua approval gate trước khi lưu vào ArtifactLog; giáo viên chỉnh sửa qua chat; rejection reason feed lại làm constraint retry.
 
-## Chương 5 — Đánh giá hệ thống
+## Chương 4 — Đánh giá hệ thống
+
+*Chi tiết: [4_eval.md](4_eval.md)*
 
 Xem chi tiết đầy đủ tại [4_eval.md](4_eval.md).
 
@@ -194,7 +203,9 @@ Tóm tắt cấu trúc:
 4. Metrics (RAGAS, verifier pass rate, schema validity, pedagogical constraint violation, **personalization delta**, teacher-controlled mutation metrics, LLM-as-judge, latency)
 5. Kết quả trả lời EQ1, EQ2, EQ3; phân tích lỗi; thảo luận
 
-## Chương 6 — Giải pháp và đóng góp nổi bật
+## Chương 5 — Kết luận và hướng phát triển
+
+### 5.1 Đóng góp
 
 **Đóng góp dự kiến** (cập nhật thành "đóng góp được xác nhận" sau khi có kết quả thực nghiệm):
 
@@ -203,10 +214,13 @@ Tóm tắt cấu trúc:
 3. **Prototype end-to-end**: hệ thống chạy được trên cả hai case study với corpus nội bộ, retrieval local, verifier và teacher-controlled review flow.
 4. **Bộ benchmark sư phạm tự xây**: ~180 sample (CNTT: giáo án/bài tập/chấm code; Toán: bài tập/chấm lời giải) với corpus nội bộ tiếng Việt.
 
-Phân tích điều kiện/context mà kiến trúc đề xuất vượt trội (dựa ablation Chương 5), đồng thời nêu rõ giới hạn: kết quả chứng minh giá trị của cấu hình tích hợp trong phạm vi hai case study, không chứng minh các cơ chế con là mới.
+Phân tích điều kiện/context mà kiến trúc đề xuất vượt trội (dựa ablation Chương 4), đồng thời nêu rõ giới hạn: kết quả chứng minh giá trị của cấu hình tích hợp trong phạm vi hai case study, không chứng minh các cơ chế con là mới.
 
-## Chương 7 — Kết luận và hướng phát triển
+### 5.2 Kết luận
 
-- Trả lời rõ EQ1 và EQ2.
+- Trả lời rõ EQ1, EQ2, EQ3.
 - Giới hạn: không human eval diện rộng, mới hai domain extension, LLM-as-judge bias, performance phụ thuộc LLM được chọn.
-- Hướng mở rộng: extension thêm domain (Vật lý, Lịch sử...), human eval, fine-tune LLM nhỏ trên curriculum VN, tối ưu runtime local, tích hợp LMS.
+
+### 5.3 Hướng phát triển
+
+- Extension thêm domain (Vật lý, Lịch sử...), human eval, fine-tune LLM nhỏ trên curriculum VN, tối ưu runtime local, tích hợp LMS.
