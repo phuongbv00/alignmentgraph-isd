@@ -7,7 +7,7 @@
 - Quan hệ cốt lõi: **Agent = Model + Harness** — LLM là pluggable component; Pedagogy Agent Harness là execution environment biến LLM thành Pedagogy Agent.
 - Luồng vận hành chính: **IDA Loop** (Instructional Design–Assessment Loop) — giáo viên đánh giá nhóm (UC-AS) → diagnosis tổng hợp StudentGroupProfile → giáo viên thiết kế dạy học phân hoá (UC-ID) → dạy → đánh giá lại → lặp trong phạm vi một môn/khoá học.
 - Điểm vào giáo viên: **giao diện chat hội thoại** — giáo viên gõ yêu cầu tự nhiên; Intent Router phân loại; pipeline tương ứng được kích hoạt trong nền; output stream về chat.
-- Sơ đồ tổng thể: `[Chat UI] ↔ IPC ↔ [Main Process: Intent Router → UC-ID/UC-AS Pipeline → Course Memory ↔ LLM ↔ Domain Plugin (optional)]`
+- Sơ đồ tổng thể: `[Chat UI] ↔ IPC ↔ [Main Process: Intent Router → UC-ID/UC-AS Pipeline → Memory (global/workspace/session) ↔ LLM ↔ Domain Plugin (optional)]`
 
 ## 4.2 Intent Router
 
@@ -64,34 +64,76 @@ Context Injection
 - Khi có `student_group_profile`: feedback nhấn đúng điểm yếu của nhóm; đề bài calibrate độ khó phù hợp nhóm.
 - Domain Verifier: nếu plugin loaded → chạy verifier (code verifier / SymPy checker); nếu plugin = null → pipeline tiếp tục mà không verify (null-plugin contract).
 
-## 4.5 Course Memory
+## 4.5 Memory Architecture — 3-scope taxonomy
 
-Stateful layer duy trì xuyên suốt một môn học/khoá học. Reset khi bắt đầu khoá mới.
+Harness quản lý memory theo ba tầng scope lồng nhau.
+
+### Global scope — cá nhân hoá giáo viên/user
+
+Duy trì xuyên suốt mọi khoá học và phiên làm việc. Không bị reset khi bắt đầu khoá mới.
 
 ```
-CourseMemory
+GlobalMemory
+├── teacher_id
+├── preferences
+│   ├── feedback_tone         (formal | encouraging | direct)
+│   ├── default_bloom_target  (bloom level ưa dùng khi không chỉ định)
+│   ├── difficulty_calibration_style
+│   └── preferred_language_register
+└── teaching_style_notes[]    (tổng hợp từ HITL history qua nhiều khoá)
+```
+
+### Workspace scope — context khoá học/môn học (phục vụ IDA Loop)
+
+Một workspace = một môn học/khoá học cụ thể với tập hợp học viên xác định. Duy trì đến hết khoá, reset khi bắt đầu khoá mới.
+
+```
+WorkspaceMemory
+├── workspace_id, teacher_id
 ├── CourseContext
 │   ├── subject, syllabus, chuẩn đầu ra, số buổi
-│   └── domain (xác định plugin nào được load)
+│   └── domain          (xác định plugin nào được load)
 │
 ├── StudentGroupProfiles[]
 │   ├── group_id, group_name, size
-│   ├── readiness_level (beginner / intermediate / advanced)
+│   ├── readiness_level (beginner | intermediate | advanced)
 │   ├── known_misconceptions[]
-│   └── last_updated (timestamp + source: manual | synthesized)
+│   └── last_updated    (timestamp + source: manual | synthesized)
 │
 ├── DiagnosisHistory[]
-│   ├── round_id, timestamp, uc_as_artifact_id
+│   ├── round_id, timestamp, session_id, uc_as_artifact_id
 │   └── group_diagnoses[]: {group_id, error_patterns[], strengths[]}
 │
 └── ArtifactLog[]
-    ├── artifact_id, type (lesson_plan | exam | rubric | feedback)
-    ├── status (draft | approved | rejected)
-    └── hitl_notes (rejection reason, teacher edits)
+    ├── artifact_id, type  (lesson_plan | exam | rubric | feedback)
+    ├── session_id         (session sinh ra artifact này)
+    ├── status             (draft | approved | rejected)
+    └── hitl_notes         (rejection reason, teacher edits)
 ```
 
 - Hai nguồn cập nhật `StudentGroupProfiles`: (1) giáo viên nhập tay qua chat → `UPDATE_PROFILE` intent; (2) Profile Synthesis Pipeline sau mỗi vòng UC-AS → đề xuất giáo viên confirm.
-- Context Injection tự động đọc và inject profile + DiagnosisHistory (N vòng gần nhất, mặc định N=3) vào prompt mọi task.
+
+### Session scope — phiên làm việc (nằm trong workspace)
+
+Ephemeral. Khởi tạo khi giáo viên mở session trong một workspace, kết thúc khi đóng session.
+
+```
+SessionMemory
+├── session_id, workspace_id, teacher_id
+├── conversation_history[]   (toàn bộ chat messages của phiên này)
+├── active_task_context      (task đang xử lý: intent, input params, draft output)
+└── pending_artifacts[]      (draft chưa HITL approve → chưa commit vào Workspace)
+```
+
+**Session commit**: khi session kết thúc — artifact đã HITL-approve → commit vào `WorkspaceMemory.ArtifactLog`; diagnosis đã approve → trigger Profile Synthesis → update `WorkspaceMemory.StudentGroupProfiles`. Session memory bị xoá sau commit; không lẫn context giữa các phiên làm việc khác nhau.
+
+### Context Injection order
+
+Mỗi task invocation nhận context injection theo thứ tự ưu tiên (cao → thấp):
+1. `SessionMemory.active_task_context` — task đang làm (ưu tiên cao nhất)
+2. `WorkspaceMemory.StudentGroupProfiles` + `DiagnosisHistory` (N vòng gần nhất, mặc định N=3)
+3. `WorkspaceMemory.CourseContext`
+4. `GlobalMemory.preferences` — tone, style của giáo viên (inject nhẹ vào system prompt)
 
 ## 4.6 Profile Synthesis Pipeline
 
@@ -103,11 +145,11 @@ Chạy tự động sau khi UC-AS sinh diagnosis. Gồm 3 bước:
 
 ## 4.7 Context Injection
 
-Chạy tự động trước mọi task invocation (UC-ID và UC-AS). Không cần giáo viên nhắc lại ngữ cảnh mỗi lần.
+Chạy tự động trước mọi task invocation (UC-ID và UC-AS). Thứ tự inject đã mô tả trong §4.5. Không cần giáo viên nhắc lại ngữ cảnh mỗi lần.
 
-- **Inject vào retrieval policy**: nếu có StudentGroupProfile của nhóm yếu → ưu tiên chunk có metadata `difficulty: basic` hoặc `topic` liên quan misconception đã biết.
-- **Inject vào generation prompt**: prepend system context gồm CourseContext summary + StudentGroupProfiles + DiagnosisHistory (N vòng gần nhất).
-- **Context budget**: tổng token injected phải nằm trong budget định trước; nếu DiagnosisHistory dài → nén bằng summary (lấy ý tưởng từ ACON — §3.9).
+- **Inject vào retrieval policy**: StudentGroupProfiles → ưu tiên chunk phù hợp trình độ nhóm (metadata `difficulty`, `topic` liên quan misconception đã biết trong workspace).
+- **Inject vào generation prompt**: system context = CourseContext summary + StudentGroupProfiles + DiagnosisHistory (N vòng gần nhất từ workspace) + teacher preferences (từ global).
+- **Context budget**: tổng token injected phải nằm trong budget định trước; nếu DiagnosisHistory dài → nén bằng summary (lấy ý tưởng từ ACON — §3.9). Session conversation history được inject riêng trong slot working memory.
 
 ## 4.8 Domain Plugin Interface
 
