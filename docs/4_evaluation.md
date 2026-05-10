@@ -14,20 +14,38 @@
 
 **Dataset benchmark** (~180 sample):
 
-*Case study CNTT/lập trình (130 sample):*
+*Case study CNTT/lập trình (140 sample):*
 
-| Task         | N   | Input                                | Ground truth                         | Cách tạo GT                              |
-| ------------ | --- | ------------------------------------ | ------------------------------------ | ---------------------------------------- |
-| A: Giáo án   | 50  | `{chủ đề, bloom_target, số buổi}`    | Giáo án mẫu + checklist tiêu chí     | Tự soạn; peer review với 1 giáo viên CS  |
-| B: Bài tập   | 50  | `{topic, difficulty, exercise_type}` | Bài tập + test case + đáp án         | Tự soạn; verify bằng `verify_solution()` |
-| C: Chấm code | 30  | Bài nộp code lỗi (giả lập)           | Feedback chuẩn + misconception label | Tự viết dựa trên error_taxonomy          |
+**UC-ID family:**
 
-*Case study Toán (50 sample):*
+| Task | N | Input | Ground truth | Cách tạo GT |
+| --- | --- | --- | --- | --- |
+| A1: Kế hoạch bài dạy (round-1, không có profile) | 25 | `{chủ đề, bloom_target, số buổi}` | Kế hoạch mẫu + checklist Bloom/constructive alignment | Tự soạn; peer review với 1 giáo viên CS |
+| A2: Kế hoạch bài dạy (round-2, có StudentGroupProfile) | 25 | `{chủ đề, bloom_target, số buổi, student_group_profile}` | Kế hoạch mẫu phân hoá + checklist group-fit | Tự soạn từ cặp A1 tương ứng; bổ sung tiêu chí phân hoá đúng nhóm |
 
-| Task              | N   | Input                                     | Ground truth                              | Cách tạo GT                                 |
-| ----------------- | --- | ----------------------------------------- | ----------------------------------------- | ------------------------------------------- |
-| B': Bài tập Toán  | 30  | `{topic, difficulty, exercise_type}`      | Bài tập + lời giải tham chiếu + hint      | Tự soạn; verify bằng SymPy hoặc thủ công    |
-| C': Chấm lời giải | 20  | Lời giải Toán lỗi (giả lập)               | Feedback chuẩn + error taxonomy label     | Tự viết dựa trên math error taxonomy        |
+**UC-AS family:**
+
+| Task | N | Input | Ground truth | Cách tạo GT |
+| --- | --- | --- | --- | --- |
+| B: Bài tập/đề kiểm tra | 40 | `{topic, difficulty, exercise_type}` (20 có + 20 không có `student_group_profile`) | Bài tập + test case + đáp án | Tự soạn; verify bằng `verify_solution()` |
+| B-rubric: Công cụ đánh giá | 10 | `{topic, assessment_type, bloom_target}` | Rubric/ma trận đề mẫu + tiêu chí phân mức | Tự soạn theo chuẩn đánh giá năng lực |
+| C: Chấm code + feedback | 40 | Bài nộp code lỗi (giả lập); 20 có kèm `student_group_profile` | Feedback chuẩn + misconception label | Tự viết dựa trên error_taxonomy IT |
+
+*Case study Toán (60 sample):*
+
+**UC-ID family:**
+
+| Task | N | Input | Ground truth | Cách tạo GT |
+| --- | --- | --- | --- | --- |
+| A1': Kế hoạch bài dạy Toán (round-1) | 10 | `{chủ đề, bloom_target, số buổi}` | Kế hoạch mẫu + checklist | Tự soạn; peer review với 1 giáo viên Toán |
+| A2': Kế hoạch bài dạy Toán (round-2) | 10 | `{chủ đề, bloom_target, số buổi, student_group_profile}` | Kế hoạch mẫu phân hoá | Tự soạn từ cặp A1' tương ứng |
+
+**UC-AS family:**
+
+| Task | N | Input | Ground truth | Cách tạo GT |
+| --- | --- | --- | --- | --- |
+| B': Bài tập Toán | 25 | `{topic, difficulty, exercise_type}` (12 có + 13 không có `student_group_profile`) | Bài tập + lời giải tham chiếu + hint | Tự soạn; verify bằng SymPy hoặc thủ công |
+| C': Chấm lời giải Toán | 15 | Lời giải Toán lỗi (giả lập); 8 có kèm `student_group_profile` | Feedback chuẩn + error taxonomy label | Tự viết dựa trên math error taxonomy |
 
 ### Thiết kế thực nghiệm cho EQ1
 
@@ -52,7 +70,8 @@ _Tầng 1 — Comparison study_ (trả lời trực tiếp EQ1):
 | **Naive RAG**          | top-k vector search + LLM generate; không agent loop                                                                         | Đo giá trị của retrieval                    |
 | **Generic ReAct ARAG** | 1 ReAct agent tự do, có retrieval/tool access, không typed graph                                                             | Baseline giống agent platform tổng quát     |
 | **Fixed MA-ARAG**      | Pipeline nhiều role cố định: planner/generator/grader/reviewer                                                               | Kiểm tra liệu chia role thủ công đã đủ chưa |
-| **Hệ thống đề xuất**   | Pedagogy Agent Harness với Pedagogy-Constrained Orchestration và domain extension (CNTT hoặc Toán tùy case study)            | Kiến trúc tích hợp đề xuất                  |
+| **Đề xuất − Domain Plugin** | Pedagogy Agent Harness đầy đủ nhưng không load domain plugin (null-plugin) — core UC-ID + UC-AS + IDA Loop hoạt động, không có code verifier / SymPy | Trả lời EQ2 null-plugin contract; đo delta khi thêm plugin |
+| **Hệ thống đề xuất**   | Pedagogy Agent Harness đầy đủ với domain plugin (CNTT hoặc Toán tùy case study) và IDA Loop (Course Memory + Profile Synthesis + Context Injection) | Kiến trúc tích hợp đề xuất — trả lời EQ1, EQ3 |
 
 _Tầng 2 — Ablation study_ (giải thích phần nào trong harness tạo ra khác biệt):
 
@@ -73,13 +92,13 @@ Phân tích interface compliance: so sánh CNTT extension và Toán extension tr
 
 **Metrics per task**:
 
-| Task              | Metric tự động                                                                                         | LLM-as-judge / human-subset rubric                                                               |
-| ----------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| A: Giáo án (IT)   | RAGAS faithfulness/context recall · Bloom violation rate · citation coverage · schema validity         | Bloom alignment · constructive alignment · pedagogical coherence · completeness                  |
-| B: Bài tập IT     | `verify_solution()` pass rate · test coverage proxy · compile/runtime error rate · schema validity     | Exercise clarity · difficulty calibration · rubric consistency · test case adequacy              |
-| C: Chấm code      | pytest pass-rate precision · misconception hit rate · feedback policy violation · citation coverage     | Feedback helpfulness · explanation depth · pedagogical tone · correctness of misconception label |
-| B': Bài tập Toán  | SymPy correctness rate (where applicable) · structural completeness · schema validity                  | Exercise clarity · mathematical correctness · difficulty calibration                             |
-| C': Chấm lời giải | Math error taxonomy hit rate · feedback policy violation · structural completeness                      | Feedback helpfulness · mathematical explanation accuracy · pedagogical tone                      |
+| Task | Metric tự động | LLM-as-judge / human-subset rubric |
+| --- | --- | --- |
+| A1/A1': Kế hoạch bài dạy round-1 | RAGAS faithfulness/context recall · Bloom violation rate · citation coverage · schema validity | Bloom alignment · constructive alignment · pedagogical coherence · completeness |
+| A2/A2': Kế hoạch bài dạy round-2 | Như A1 + **personalization delta** (so với A1 cùng cặp): % hoạt động được tag đúng nhóm · độ phân hoá giữa các nhóm | Group-fit: hoạt động có sát với điểm yếu của nhóm được mô tả trong StudentGroupProfile không? |
+| B/B': Bài tập/đề kiểm tra | `verify_solution()` pass rate (IT) · SymPy correctness rate (Toán) · schema validity · difficulty calibration delta (có vs không có profile) | Exercise clarity · difficulty calibration · rubric consistency · test case adequacy |
+| B-rubric: Công cụ đánh giá | Schema validity · Bloom coverage · số tiêu chí phân mức | Rubric clarity · alignment với chuẩn đầu ra · tính khả thi đánh giá |
+| C/C': Chấm bài + feedback | Misconception hit rate · feedback policy violation · citation coverage · **group-tone alignment** (feedback có nhấn đúng điểm yếu nhóm không, khi có profile) | Feedback helpfulness · explanation depth · pedagogical tone · correctness of misconception label |
 
 Tất cả: latency end-to-end (ms) + số LLM calls + số tool calls + số retry + token usage.
 
@@ -96,7 +115,8 @@ Tất cả: latency end-to-end (ms) + số LLM calls + số tool calls + số re
 
 - Bảng chính: mean ± std per variant × task × metric, tách biệt theo case study.
 - Significance matrix: heatmap p-value giữa các cặp.
-- Per-domain insight: so sánh pattern giữa IT và Toán — harness có lợi thế khác nhau không giữa domain có code verifier và domain không có?
-- Error analysis: ≥ 30 output thất bại phân loại (hallucination, off-Bloom, unsupported citation, code không compile, lời giải Toán sai bước, feedback thiếu giải thích).
-- Ablation contribution chart: bar chart ∆ score khi bỏ typed schemas, verifier, targeted repair, pedagogical constraints; diễn giải như đóng góp thực nghiệm của từng thành phần trong cấu hình, không diễn giải như novelty thuật toán.
-- EQ2 analysis: bảng interface compliance IT extension vs Toán extension; ghi nhận điểm core phải thích nghi (nếu có) và giải thích.
+- Per-domain insight: so sánh pattern giữa IT và Toán — harness có lợi thế khác nhau không giữa domain có plugin verifier và domain không có? (đọc từ ∆ giữa `Đề xuất − Domain Plugin` và `Hệ thống đề xuất`)
+- **EQ3 — Personalization delta analysis**: so sánh trực tiếp cặp (round-1, round-2) cho A/A'; đo personalization delta tự động + LLM-as-judge group-fit; kiểm định Wilcoxon paired; diễn giải: IDA Loop có tạo phân hoá có chủ đích hay chỉ là biến động ngẫu nhiên?
+- Error analysis: ≥ 30 output thất bại phân loại (hallucination, off-Bloom, unsupported citation, code không compile, lời giải Toán sai bước, feedback thiếu giải thích, phân hoá nhóm sai/ngược).
+- Ablation contribution chart: bar chart ∆ score khi bỏ typed schemas, verifier, targeted repair, pedagogical constraints, Course Memory/Context Injection; diễn giải như đóng góp thực nghiệm của từng thành phần, không diễn giải như novelty thuật toán.
+- EQ2 analysis: bảng interface compliance IT extension vs Toán extension; test case null-plugin (core hoạt động khi plugin = null); ghi nhận điểm core phải thích nghi (nếu có) và giải thích.
