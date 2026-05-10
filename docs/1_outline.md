@@ -3,7 +3,7 @@
 ## Chương 1 — Giới thiệu đề tài
 
 - Bối cảnh: giáo viên/giảng viên mất nhiều giờ cho tác vụ sư phạm lặp; LLM thương mại có rủi ro dữ liệu; các agent framework tổng quát chưa tối ưu cho tác vụ sư phạm.
-- Vấn đề: LLM đơn thuần chưa phải agent sư phạm — thiếu một harness kết hợp với LLM để tạo thành Pedagogy Agent có tool layer, pedagogical constraints, HITL và extensibility; tương tự Claude Code/Codex là harness biến LLM thành coding agent, nhưng dành cho giáo viên.
+- Vấn đề: LLM đơn thuần chưa phải agent sư phạm — thiếu một harness kết hợp với LLM để tạo thành Pedagogy Agent có tool layer, pedagogical constraints, HITL, workspace-scoped memory và extensibility. Đặc biệt, vòng lặp thiết kế dạy học–đánh giá cá nhân hoá (IDA Loop) — giáo viên đánh giá nhóm học sinh → thiết kế dạy học phân hoá → đánh giá lại → lặp — đòi hỏi harness có khả năng duy trì hồ sơ nhóm và lịch sử chẩn đoán xuyên suốt khoá học, điều mà LLM stateless và agent framework tổng quát không cung cấp; tương tự Claude Code/Codex là harness biến LLM thành coding agent, nhưng dành cho giáo viên.
 - Phạm vi: Pedagogy Agent Harness thỏa hai ràng buộc thiết kế cứng (pedagogical constraint enforcement xuyên suốt pipeline, domain extensibility qua plugin interface), được validate qua hai case study: CNTT/lập trình và Toán.
 - Định vị đóng góp: không xem từng cơ chế riêng lẻ là mới; nhấn mạnh harness như contribution ở tầng infrastructure, với Multi-Agent và Agentic RAG là implementation bên trong.
 - Mục tiêu và EQ (xem [0_context.md](refs/0_context.md)).
@@ -12,8 +12,10 @@
 ## Chương 2 — Khảo sát và phân tích yêu cầu
 
 - Khảo sát nhu cầu giáo viên (qualitative — phỏng vấn / bảng hỏi nhanh hoặc literature-based).
-- Phân tích use case: soạn giáo án, sinh bài tập/đề, chấm bài + feedback cá nhân hoá.
-- Yêu cầu phi chức năng/ràng buộc thiết kế: HITL bắt buộc, pedagogical constraint enforcement xuyên suốt pipeline, domain extensibility qua plugin interface, LLM là pluggable component.
+- Phân tích use case theo hai UC family: **UC-ID** (soạn kế hoạch bài dạy theo phẩm chất/năng lực, điều chỉnh theo StudentGroupProfile) và **UC-AS** (xây dựng công cụ đánh giá/rubric/ma trận đề, sinh đề/bài tập cá nhân hoá, chấm bài + feedback theo nhóm, tổng hợp StudentGroupProfile). **IDA Loop** là vòng lặp kết nối UC-ID và UC-AS theo nhóm học sinh.
+- Teacher journey: giao diện **chat hội thoại**; `student_group_profile` dual input (nhập tay qua chat + agent tự tổng hợp từ kết quả UC-AS); cá nhân hoá ở mức nhóm học sinh (group-level), không phải per-student.
+- Context scope taxonomy: *global* (giáo viên/user — cá nhân hoá agent xuyên mọi khoá học), *workspace* (một khoá học/môn học cụ thể, chứa tập hợp học viên — phục vụ IDA Loop), *session* (phiên làm việc nằm trong workspace — ephemeral).
+- Yêu cầu phi chức năng/ràng buộc thiết kế: HITL bắt buộc, pedagogical constraint enforcement xuyên suốt pipeline, Workspace Memory duy trì xuyên khoá học, domain extensibility qua optional plugin interface (null-plugin contract), LLM là pluggable component.
 - Benchmarks hiện có trong lĩnh vực (AI in education, agentic RAG, coding agent harness) — xác định gap.
 
 ## Chương 3 — Nền tảng lý thuyết & công nghệ sử dụng
@@ -44,7 +46,19 @@ Tóm tắt cấu trúc (17 subsection):
 
 Xem chi tiết đầy đủ tại [3_system-design.md](refs/3_system-design.md).
 
-Tóm tắt cấu trúc: **(TBD — thiết kế lại từ đầu)**
+Tóm tắt cấu trúc: **(chi tiết sẽ mở rộng trong 3_system-design.md)**
+
+Các thành phần thiết kế cốt lõi cần trình bày:
+
+1. **Kiến trúc tổng thể**: Agent = Model + Harness; IDA Loop là luồng vận hành chính; chat interface là điểm vào của giáo viên.
+2. **Intent Router**: phân loại chat input thành UC-ID / UC-AS / UPDATE_PROFILE / QUERY / FEEDBACK; kích hoạt pipeline tương ứng.
+3. **UC-ID Pipeline**: retrieval từ corpus (scoped theo domain + StudentGroupProfile) → generation với Bloom/constructive alignment constraints → typed schema validation → HITL → output kế hoạch bài dạy phân hoá.
+4. **UC-AS Pipeline**: sinh đề/rubric hoặc chấm bài → domain verifier (optional — từ plugin) → diagnosis generation → Profile Synthesis → HITL → output feedback/diagnosis report.
+5. **Memory Architecture (3 scope)**: *global* (teacher profile — preferences, teaching style); *workspace* (CourseContext, StudentGroupProfiles[], DiagnosisHistory[], ArtifactLog[] — phục vụ IDA Loop, scope = một khoá học, reset khi bắt đầu khoá mới); *session* (conversation history, active task context — ephemeral, commit artifact vào workspace khi session kết thúc).
+6. **Profile Synthesis Pipeline**: parse diagnosis output → structured group update → merge với StudentGroupProfile hiện tại → đề xuất giáo viên confirm (HITL nhẹ).
+7. **Context Injection**: tự động inject StudentGroupProfiles và DiagnosisHistory (N vòng gần nhất) vào retrieval policy và generation prompt cho mọi task — không cần giáo viên nhắc lại.
+8. **Domain Plugin Interface (optional)**: khai báo verifier, error taxonomy, tool interface; null-plugin contract — core chạy đầy đủ khi plugin = null; hai implementation: IT plugin (code verifier + error taxonomy IT) và Toán plugin (SymPy checker + math error taxonomy).
+9. **HITL Governance**: mọi output phải qua approval gate trước khi lưu vào ArtifactLog; giáo viên chỉnh sửa qua chat; rejection reason feed lại làm constraint retry.
 
 ## Chương 5 — Đánh giá hệ thống
 
@@ -53,10 +67,10 @@ Xem chi tiết đầy đủ tại [4_evaluation.md](refs/4_evaluation.md).
 Tóm tắt cấu trúc:
 
 1. Thiết lập thực nghiệm (hardware, mô hình, corpus, hyperparameters)
-2. Bộ dữ liệu đánh giá (~180 sample: CNTT/lập trình + Toán)
-3. Baselines + Ablation (LLM-only → Naive RAG → Generic ReAct ARAG → Fixed MA-ARAG → hệ thống đề xuất)
-4. Metrics (RAGAS, verifier pass rate, schema validity, pedagogical constraint violation, teacher-controlled mutation metrics, LLM-as-judge, latency)
-5. Kết quả, phân tích lỗi, thảo luận
+2. Bộ dữ liệu đánh giá (~200 sample: CNTT/lập trình + Toán, bao gồm IDA round-1 và round-2)
+3. Baselines + Ablation (LLM-only → Naive RAG → Generic ReAct ARAG → Fixed MA-ARAG → Đề xuất-no-plugin → hệ thống đề xuất đầy đủ)
+4. Metrics (RAGAS, verifier pass rate, schema validity, pedagogical constraint violation, **personalization delta**, teacher-controlled mutation metrics, LLM-as-judge, latency)
+5. Kết quả trả lời EQ1, EQ2, EQ3; phân tích lỗi; thảo luận
 
 ## Chương 6 — Giải pháp và đóng góp nổi bật
 
