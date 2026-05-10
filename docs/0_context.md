@@ -2,7 +2,7 @@
 
 ## 1. Định vị đề tài
 
-**Tên đề tài**: "Thiết kế và Hiện thực Pedagogy Agent Harness cho Thiết kế Dạy học và Đánh giá Cá nhân hoá"
+**Tên đề tài**: "Kiến trúc và Hiện thực Pedagogy Agent Harness hỗ trợ Giáo viên trong Thiết kế Giảng dạy và Đánh giá Cá nhân hoá"
 
 Đề tài mang định hướng thiết kế hệ thống, tập trung xây dựng một **Pedagogy Agent Harness** — môi trường thực thi kết hợp với LLM tạo thành Pedagogy Agent có khả năng hỗ trợ thiết kế dạy học và đánh giá cá nhân hoá theo nhóm học sinh trong phạm vi một môn học/khoá học ngắn hạn. Quan hệ cốt lõi: **Agent = Model + Harness**; harness không "điều phối agent" như một thực thể bên ngoài, mà là thứ biến LLM thành agent. Cách tiếp cận này tương tự Claude Code = Claude model + coding harness, hay Codex = GPT + coding harness, nhưng hướng đến giáo viên thay vì lập trình viên.
 
