@@ -1,6 +1,6 @@
 # Thiết kế và triển khai hệ thống — Chương 4
 
-*(Chi tiết từng thành phần — xem phác thảo cấu trúc trong [1_outline.md](1_outline.md) §Chương 4)*
+*(Chi tiết từng thành phần — xem phác thảo cấu trúc trong [0_outlines.md](0_outlines.md) §Chương 4)*
 
 ## 4.1 Kiến trúc tổng thể
 
