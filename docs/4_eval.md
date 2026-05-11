@@ -1,6 +1,6 @@
-# Đánh giá hệ thống — Chương 5
+# Chương 4 — Experimental Setup and Evaluation Protocol
 
-## 5.1 Thực nghiệm & Đánh giá
+## 4.1 Experimental Setup
 
 **Thiết lập**:
 
@@ -12,7 +12,9 @@
   - Tổng ~4.000–8.000 chunk (corpus nội bộ, không có trong training data LLM → RAG có giá trị thật sự).
 - **Lý do không dùng corpus public**: LLM đã được train trên tài liệu public → LLM-only baseline trông mạnh giả tạo → ∆ giữa các variant bé → không chứng minh được giá trị của harness.
 
-**Dataset benchmark** (~180 sample):
+## 4.2 Benchmark Dataset
+
+Benchmark dự kiến gồm khoảng 180 sample, chia theo hai case study và hai use-case family.
 
 *Case study CNTT/lập trình (140 sample):*
 
@@ -47,7 +49,7 @@
 | B': Bài tập Toán | 25 | `{topic, difficulty, exercise_type}` (12 có + 13 không có `student_group_profile`) | Bài tập + lời giải tham chiếu + hint | Tự soạn; verify bằng SymPy hoặc thủ công |
 | C': Chấm lời giải Toán | 15 | Lời giải Toán lỗi (giả lập); 8 có kèm `student_group_profile` | Feedback chuẩn + error taxonomy label | Tự viết dựa trên math error taxonomy |
 
-### Thiết kế thực nghiệm cho EQ1
+## 4.3 Baselines and Comparison Protocol
 
 Controlled comparison: **cùng LLM + cùng corpus + cùng queries**; chỉ thay đổi kiến trúc hệ thống. Mục tiêu là đánh giá giá trị của harness trong bối cảnh sư phạm, không phải chứng minh typed graph, verifier hay pedagogical constraints là kỹ thuật mới độc lập.
 
@@ -62,7 +64,7 @@ Controlled comparison: **cùng LLM + cùng corpus + cùng queries**; chỉ thay 
 | **Temperature**    | 0.2 (generation); 0.0 (judge)                                                                                    |
 | **Số lần retry**   | Tối đa 2 retry per task; riêng ablation sẽ bật/tắt targeted repair                                               |
 
-_Tầng 1 — Comparison study_ (trả lời trực tiếp EQ1):
+_Tầng 1 — Comparison study_ (trả lời trực tiếp RQ1):
 
 | Variant                | Mô tả                                                                                                                        | Mục đích                                    |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
@@ -70,8 +72,8 @@ _Tầng 1 — Comparison study_ (trả lời trực tiếp EQ1):
 | **Naive RAG**          | top-k vector search + LLM generate; không agent loop                                                                         | Đo giá trị của retrieval                    |
 | **Generic ReAct ARAG** | 1 ReAct agent tự do, có retrieval/tool access, không typed graph                                                             | Baseline giống agent platform tổng quát     |
 | **Fixed MA-ARAG**      | Pipeline nhiều role cố định: planner/generator/grader/reviewer                                                               | Kiểm tra liệu chia role thủ công đã đủ chưa |
-| **Đề xuất − Domain Plugin** | Pedagogy Agent Harness đầy đủ nhưng không load domain plugin (null-plugin) — core UC-ID + UC-AS + IDA Loop hoạt động, không có code verifier / SymPy | Trả lời EQ2 null-plugin contract; đo delta khi thêm plugin |
-| **Hệ thống đề xuất**   | Pedagogy Agent Harness đầy đủ với domain plugin (CNTT hoặc Toán tùy case study) và IDA Loop (Course Memory + Profile Synthesis + Context Injection) | Kiến trúc tích hợp đề xuất — trả lời EQ1, EQ3 |
+| **Đề xuất − Domain Plugin** | Pedagogy Agent Harness đầy đủ nhưng không load domain plugin (null-plugin) — core UC-ID + UC-AS + IDA Loop hoạt động, không có code verifier / SymPy | Trả lời RQ2 null-plugin contract; đo delta khi thêm plugin |
+| **Hệ thống đề xuất**   | Pedagogy Agent Harness đầy đủ với domain plugin (CNTT hoặc Toán tùy case study) và IDA Loop (Course Memory + Profile Synthesis + Context Injection) | Kiến trúc tích hợp đề xuất — trả lời RQ1, RQ3 |
 
 _Tầng 2 — Ablation study_ (giải thích phần nào trong harness tạo ra khác biệt):
 
@@ -83,12 +85,14 @@ _Tầng 2 — Ablation study_ (giải thích phần nào trong harness tạo ra 
 | **Đề xuất − Pedagogical Constraints**              | Bỏ Bloom/rubric/misconception/feedback checks                        | Constraint sư phạm cải thiện chất lượng giáo dục bao nhiêu?                                      |
 | **Đề xuất − Teacher-controlled mutation feedback** | Teacher edit/reject reason không được đưa lại thành constraint retry | Phản hồi của giáo viên có giảm lỗi lặp lại và số lần reject không?                               |
 
-### Thiết kế thực nghiệm cho EQ2
+## 4.4 Domain Extensibility Protocol
 
 Phân tích interface compliance: so sánh CNTT extension và Toán extension trên các dimension:
 - Interface completeness: cả hai implement đủ các khai báo bắt buộc của Pedagogy Domain Extension không?
 - Core modification: có phần nào của core phải sửa để accommodate extension thứ hai không?
 - Verifier adaptability: verifier optional/pluggable hoạt động đúng (code verifier cho IT, SymPy/structural cho Toán)?
+
+## 4.5 Metrics
 
 **Metrics per task**:
 
@@ -102,6 +106,8 @@ Phân tích interface compliance: so sánh CNTT extension và Toán extension tr
 
 Tất cả: latency end-to-end (ms) + số LLM calls + số tool calls + số retry + token usage.
 
+## 4.6 LLM-as-Judge and Statistical Tests
+
 **LLM-as-judge setup**: 2 judge độc lập (GPT-4o + Claude Sonnet); rubric gửi blind. Tính Cohen's κ — nếu κ < 0.6 thì thảo luận lại rubric.
 
 **Kiểm định thống kê**:
@@ -111,12 +117,14 @@ Tất cả: latency end-to-end (ms) + số LLM calls + số tool calls + số re
 - Threshold: p < 0.05; report effect size (rank-biserial correlation r).
 - Multiple comparison correction: Bonferroni hoặc Holm–Bonferroni.
 
+## 4.7 Analysis Plan
+
 **Phân tích kết quả**:
 
 - Bảng chính: mean ± std per variant × task × metric, tách biệt theo case study.
 - Significance matrix: heatmap p-value giữa các cặp.
 - Per-domain insight: so sánh pattern giữa IT và Toán — harness có lợi thế khác nhau không giữa domain có plugin verifier và domain không có? (đọc từ ∆ giữa `Đề xuất − Domain Plugin` và `Hệ thống đề xuất`)
-- **EQ3 — Personalization delta analysis**: so sánh trực tiếp cặp (round-1, round-2) cho A/A'; đo personalization delta tự động + LLM-as-judge group-fit; kiểm định Wilcoxon paired; diễn giải: IDA Loop có tạo phân hoá có chủ đích hay chỉ là biến động ngẫu nhiên?
+- **RQ3 — Personalization delta analysis**: so sánh trực tiếp cặp (round-1, round-2) cho A/A'; đo personalization delta tự động + LLM-as-judge group-fit; kiểm định Wilcoxon paired; diễn giải: IDA Loop có tạo phân hoá có chủ đích hay chỉ là biến động ngẫu nhiên?
 - Error analysis: ≥ 30 output thất bại phân loại (hallucination, off-Bloom, unsupported citation, code không compile, lời giải Toán sai bước, feedback thiếu giải thích, phân hoá nhóm sai/ngược).
 - Ablation contribution chart: bar chart ∆ score khi bỏ typed schemas, verifier, targeted repair, pedagogical constraints, Course Memory/Context Injection; diễn giải như đóng góp thực nghiệm của từng thành phần, không diễn giải như novelty thuật toán.
-- EQ2 analysis: bảng interface compliance IT extension vs Toán extension; test case null-plugin (core hoạt động khi plugin = null); ghi nhận điểm core phải thích nghi (nếu có) và giải thích.
+- RQ2 analysis: bảng interface compliance IT extension vs Toán extension; test case null-plugin (core hoạt động khi plugin = null); ghi nhận điểm core phải thích nghi (nếu có) và giải thích.

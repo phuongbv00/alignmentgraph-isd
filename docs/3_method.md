@@ -1,15 +1,13 @@
-# Thiết kế và triển khai hệ thống — Chương 4
+# Chương 3 — Proposed Method: Pedagogy Agent Harness
 
-*(Chi tiết từng thành phần — xem phác thảo cấu trúc trong [0_outlines.md](0_outlines.md) §Chương 4)*
-
-## 4.1 Kiến trúc tổng thể
+## 3.1 Kiến trúc tổng thể
 
 - Quan hệ cốt lõi: **Agent = Model + Harness** — LLM là pluggable component; Pedagogy Agent Harness là execution environment biến LLM thành Pedagogy Agent.
 - Luồng vận hành chính: **IDA Loop** (Instructional Design–Assessment Loop) — giáo viên đánh giá nhóm (UC-AS) → diagnosis tổng hợp StudentGroupProfile → giáo viên thiết kế dạy học phân hoá (UC-ID) → dạy → đánh giá lại → lặp trong phạm vi một môn/khoá học.
 - Điểm vào giáo viên: **giao diện chat hội thoại** — giáo viên gõ yêu cầu tự nhiên; Intent Router phân loại; pipeline tương ứng được kích hoạt trong nền; output stream về chat.
 - Sơ đồ tổng thể: `[Chat UI] ↔ IPC ↔ [Main Process: Intent Router → UC-ID/UC-AS Pipeline → Memory (global/workspace/session) ↔ LLM ↔ Domain Plugin (optional)]`
 
-## 4.2 Intent Router
+## 3.2 Intent Router
 
 Thành phần đầu tiên xử lý mọi chat input từ giáo viên. Phân loại input thành một trong năm intent:
 
@@ -24,7 +22,7 @@ Thành phần đầu tiên xử lý mọi chat input từ giáo viên. Phân lo�
 - Cơ chế phân loại: LLM call nhẹ (classifier prompt) + keyword heuristic fallback.
 - Khi input ambiguous: Router hỏi lại một câu ngắn ("Bạn muốn soạn kế hoạch bài dạy hay tạo đề kiểm tra?") trước khi kích hoạt pipeline.
 
-## 4.3 UC-ID Pipeline — Thiết kế dạy học
+## 3.3 UC-ID Pipeline — Thiết kế dạy học
 
 Input: `{chủ đề, bloom_target, số buổi}` + `student_group_profile` (optional, từ Course Memory hoặc nhập tay).
 
@@ -41,7 +39,7 @@ Context Injection
 - Output phân hoá: kế hoạch bài dạy có section riêng cho từng nhóm học sinh.
 - HITL: giáo viên có thể chỉnh sửa trực tiếp qua chat hoặc reject kèm lý do → rejection reason feed lại làm constraint retry (targeted repair).
 
-## 4.4 UC-AS Pipeline — Kiểm tra, đánh giá
+## 3.4 UC-AS Pipeline — Kiểm tra, đánh giá
 
 Input phân theo sub-task:
 
@@ -64,7 +62,7 @@ Context Injection
 - Khi có `student_group_profile`: feedback nhấn đúng điểm yếu của nhóm; đề bài calibrate độ khó phù hợp nhóm.
 - Domain Verifier: nếu plugin loaded → chạy verifier (code verifier / SymPy checker); nếu plugin = null → pipeline tiếp tục mà không verify (null-plugin contract).
 
-## 4.5 Memory Architecture — 3-scope taxonomy
+## 3.5 Memory Architecture — 3-scope taxonomy
 
 Harness quản lý memory theo ba tầng scope lồng nhau.
 
@@ -135,7 +133,7 @@ Mỗi task invocation nhận context injection theo thứ tự ưu tiên (cao �
 3. `WorkspaceMemory.CourseContext`
 4. `GlobalMemory.preferences` — tone, style của giáo viên (inject nhẹ vào system prompt)
 
-## 4.6 Profile Synthesis Pipeline
+## 3.6 Profile Synthesis Pipeline
 
 Cơ chế **episodic → semantic consolidation**: chuyển hoá DiagnosisHistory (episodic memory — sự kiện đánh giá cụ thể) thành StudentGroupProfiles (semantic memory — tri thức tổng hợp về đặc điểm nhóm). Chạy tự động sau khi UC-AS sinh diagnosis. Gồm 3 bước:
 
@@ -143,17 +141,17 @@ Cơ chế **episodic → semantic consolidation**: chuyển hoá DiagnosisHistor
 2. **Merge**: so sánh với `StudentGroupProfiles` hiện tại; merge theo rule (misconception mới → append; readiness level thay đổi → update nếu confidence > threshold).
 3. **Propose**: trình giáo viên summary ngắn qua chat + confirm/edit option (HITL nhẹ — giáo viên có thể gộp nhóm, tách nhóm, điều chỉnh label).
 
-## 4.7 Context Injection
+## 3.7 Context Injection
 
-Chạy tự động trước mọi task invocation (UC-ID và UC-AS). Thứ tự inject đã mô tả trong §4.5. Không cần giáo viên nhắc lại ngữ cảnh mỗi lần.
+Chạy tự động trước mọi task invocation (UC-ID và UC-AS). Thứ tự inject đã mô tả trong §3.5. Không cần giáo viên nhắc lại ngữ cảnh mỗi lần.
 
 - **Inject vào retrieval policy**: StudentGroupProfiles → ưu tiên chunk phù hợp trình độ nhóm (metadata `difficulty`, `topic` liên quan misconception đã biết trong workspace).
 - **Inject vào generation prompt**: system context = CourseContext summary + StudentGroupProfiles + DiagnosisHistory (N vòng gần nhất từ workspace) + teacher preferences (từ global).
-- **Context budget**: tổng token injected phải nằm trong budget định trước; nếu DiagnosisHistory dài → nén bằng summary (lấy ý tưởng từ ACON — §3.9). Session conversation history được inject riêng trong slot working memory.
+- **Context budget**: tổng token injected phải nằm trong budget định trước; nếu DiagnosisHistory dài → nén bằng summary (lấy ý tưởng từ ACON — §2.9). Session conversation history được inject riêng trong slot working memory.
 
-## 4.8 Domain Plugin Interface
+## 3.8 Domain Plugin Interface
 
-Optional layer. Core (§4.3–§4.7) hoạt động đầy đủ khi không có plugin.
+Optional layer. Core (§3.3–§3.7) hoạt động đầy đủ khi không có plugin.
 
 Mỗi domain plugin implement interface:
 
@@ -164,7 +162,7 @@ interface DomainPlugin {
   taskSchemas: Record<string, JSONSchema>  // schema cho từng UC-ID/UC-AS output
   retrievalPolicy: RetrievalPolicy  // ưu tiên retrieval theo domain
   verifier?: Verifier               // optional — null nếu domain không có
-  errorTaxonomy: ErrorTaxonomy      // bảng phân loại lỗi domain-specific
+  errorTaxonomy: ErrorTaxonomy      // bảng phân loại lỗi đặc thù lĩnh vực
   feedbackTemplates: FeedbackTemplates
   corpusIngestionPipeline: IngestionPipeline
 }
@@ -176,7 +174,7 @@ interface DomainPlugin {
 
 **Toán plugin**: SymPy checker verify tính đúng của phép tính và lời giải; structural completeness check (có đủ các bước không).
 
-## 4.9 HITL Governance
+## 3.9 HITL Governance
 
 Mọi output của UC-ID và UC-AS phải qua HITL Gate trước khi lưu vào ArtifactLog và trước khi Profile Synthesis Pipeline commit update.
 
