@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900" role="img" aria-labelledby="title desc">
+  <title id="title">Pedagogy Agent Harness Overview</title>
+  <desc id="desc">A high-level research-paper-style diagram of the Pedagogy Agent Harness and its IDA loop.</desc>
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0f172a" flood-opacity="0.13"/>
+    </filter>
+    <marker id="arrow-slate" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M1.5,1 L7,4 L1.5,7 Z" fill="#475569"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M1.5,1 L7,4 L1.5,7 Z" fill="#059669"/>
+    </marker>
+    <marker id="arrow-purple" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M1.5,1 L7,4 L1.5,7 Z" fill="#7c3aed"/>
+    </marker>
+    <symbol id="robot-icon" viewBox="0 0 28 28">
+      <rect x="6" y="8" width="16" height="14" rx="4" fill="#ffffff" stroke="#059669" stroke-width="2"/>
+      <path d="M14 4 L14 8" stroke="#059669" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="14" cy="4" r="2" fill="#059669"/>
+      <circle cx="11" cy="15" r="1.8" fill="#059669"/>
+      <circle cx="17" cy="15" r="1.8" fill="#059669"/>
+      <path d="M11 19 L17 19" stroke="#059669" stroke-width="2" stroke-linecap="round"/>
+    </symbol>
+    <style>
+      .bg { fill: #f8fafc; }
+      .title { font: 800 34px Arial, sans-serif; fill: #0f172a; }
+      .subtitle { font: 500 17px Arial, sans-serif; fill: #475569; }
+      .section { font: 800 22px Arial, sans-serif; fill: #0f172a; }
+      .label { font: 800 19px Arial, sans-serif; fill: #0f172a; }
+      .node-label { font: 800 18px Arial, sans-serif; fill: #0f172a; }
+      .small { font: 500 15px Arial, sans-serif; fill: #475569; }
+      .tiny { font: 700 13px Arial, sans-serif; fill: #64748b; }
+      .actor { fill: #fff7ed; stroke: #f97316; stroke-width: 3; }
+      .ui { fill: #eff6ff; stroke: #2563eb; stroke-width: 3; }
+      .harness { fill: #ffffff; stroke: #7c3aed; stroke-width: 4; }
+      .control { fill: #f5f3ff; stroke: #7c3aed; stroke-width: 3; }
+      .agent { fill: #ecfdf5; stroke: #059669; stroke-width: 3; }
+      .profile { fill: #fefce8; stroke: #ca8a04; stroke-width: 3; }
+      .memory { fill: #fffbeb; stroke: #d97706; stroke-width: 3; }
+      .plugin { fill: #eef2ff; stroke: #4f46e5; stroke-width: 3; }
+      .gate { fill: #fff1f2; stroke: #e11d48; stroke-width: 2.5; }
+      .model { fill: #f8fafc; stroke: #475569; stroke-width: 3; }
+      .arrow { fill: none; stroke: #475569; stroke-width: 2.4; marker-end: url(#arrow-slate); }
+      .arrow-green { fill: none; stroke: #059669; stroke-width: 3; marker-end: url(#arrow-green); }
+      .arrow-purple { fill: none; stroke: #7c3aed; stroke-width: 3; marker-end: url(#arrow-purple); }
+      .dash { fill: none; stroke: #94a3b8; stroke-width: 2.2; stroke-dasharray: 9 8; marker-end: url(#arrow-slate); }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1400" height="900"/>
+  <text class="title" x="72" y="66">Pedagogy Agent Harness</text>
+  <text class="subtitle" x="72" y="96">A controlled IDA loop for group-level personalization</text>
+
+  <rect x="68" y="158" width="188" height="118" rx="28" class="actor" filter="url(#shadow)"/>
+  <text class="label" x="162" y="202" text-anchor="middle">Teacher</text>
+  <text class="small" x="162" y="230" text-anchor="middle">request, review</text>
+  <text class="small" x="162" y="253" text-anchor="middle">edit, approve</text>
+
+  <rect x="310" y="158" width="178" height="118" rx="24" class="ui" filter="url(#shadow)"/>
+  <text class="label" x="399" y="209" text-anchor="middle">Application</text>
+  <text class="small" x="399" y="238" text-anchor="middle">teacher-facing</text>
+
+  <path class="arrow" d="M256 217 C274 217, 292 217, 310 217"/>
+  <text class="tiny" x="282" y="201" text-anchor="middle">chat</text>
+
+  <rect x="540" y="128" width="630" height="616" rx="40" class="harness" filter="url(#shadow)"/>
+  <text class="section" x="855" y="170" text-anchor="middle">Harness Runtime</text>
+  <text class="small" x="855" y="198" text-anchor="middle">orchestration, tools, constraints, and typed artifacts</text>
+
+  <rect x="595" y="234" width="218" height="86" rx="24" class="control"/>
+  <text class="label" x="704" y="269" text-anchor="middle">Intent Router</text>
+  <text class="small" x="704" y="295" text-anchor="middle">intent + task slots</text>
+
+  <rect x="897" y="234" width="218" height="86" rx="24" class="control"/>
+  <text class="label" x="1006" y="269" text-anchor="middle">Orchestrator</text>
+  <text class="small" x="1006" y="295" text-anchor="middle">selects the next step</text>
+
+  <path class="arrow-purple" d="M488 217 C532 217, 548 263, 595 277"/>
+  <path class="arrow-purple" d="M813 277 C840 277, 869 277, 897 277"/>
+
+  <rect x="596" y="378" width="518" height="288" rx="36" fill="#f0fdf4" stroke="#22c55e" stroke-width="3"/>
+  <text class="section" x="855" y="416" text-anchor="middle">IDA Loop</text>
+
+  <rect x="626" y="450" width="210" height="84" rx="22" class="agent"/>
+  <use href="#robot-icon" x="643" y="480" width="24" height="24"/>
+  <text class="node-label" x="752" y="486" text-anchor="middle">Assessment</text>
+  <text class="small" x="752" y="514" text-anchor="middle">rubric, grading</text>
+
+  <rect x="874" y="450" width="210" height="84" rx="22" class="agent"/>
+  <use href="#robot-icon" x="891" y="480" width="24" height="24"/>
+  <text class="node-label" x="1000" y="486" text-anchor="middle">Diagnosis</text>
+  <text class="small" x="1000" y="514" text-anchor="middle">error patterns</text>
+
+  <rect x="874" y="564" width="210" height="84" rx="22" class="profile"/>
+  <text class="node-label" x="979" y="599" text-anchor="middle">Group Profile</text>
+  <text class="small" x="979" y="627" text-anchor="middle">readiness, gaps</text>
+
+  <rect x="626" y="564" width="210" height="84" rx="22" class="agent"/>
+  <use href="#robot-icon" x="637" y="594" width="24" height="24"/>
+  <text class="node-label" x="755" y="594" text-anchor="middle">Instructional</text>
+  <text class="node-label" x="755" y="616" text-anchor="middle">Design</text>
+  <text class="small" x="755" y="641" text-anchor="middle">lesson plan, activities</text>
+
+  <path class="arrow-green" d="M836 492 C848 492, 862 492, 874 492"/>
+  <path class="arrow-green" d="M979 534 C979 545, 979 553, 979 564"/>
+  <path class="arrow-green" d="M874 606 C862 606, 848 606, 836 606"/>
+  <path class="arrow-green" d="M731 564 C731 553, 731 545, 731 534"/>
+
+  <path class="arrow-purple" d="M1006 320 C1006 346, 1006 360, 1006 378"/>
+
+  <rect x="72" y="364" width="360" height="146" rx="28" class="memory" filter="url(#shadow)"/>
+  <text class="label" x="252" y="406" text-anchor="middle">Memory Layer</text>
+  <text class="small" x="252" y="436" text-anchor="middle">teacher preferences</text>
+  <text class="small" x="252" y="461" text-anchor="middle">course context, diagnosis history</text>
+  <text class="small" x="252" y="486" text-anchor="middle">group profiles, artifacts</text>
+
+  <rect x="72" y="578" width="360" height="130" rx="28" class="plugin" filter="url(#shadow)"/>
+  <text class="label" x="252" y="620" text-anchor="middle">Domain Plugin</text>
+  <text class="small" x="252" y="650" text-anchor="middle">retrieval policy, verifier</text>
+  <text class="small" x="252" y="675" text-anchor="middle">error taxonomy, feedback templates</text>
+
+  <rect x="548" y="790" width="612" height="70" rx="24" class="model" filter="url(#shadow)"/>
+  <text class="label" x="854" y="818" text-anchor="middle">LLM Provider</text>
+  <text class="small" x="854" y="845" text-anchor="middle">local model or API; the harness remains model-agnostic</text>
+
+  <path class="dash" d="M854 744 C854 758, 854 775, 854 790"/>
+  <text class="tiny" x="890" y="770">LLM calls</text>
+
+  <path class="dash" d="M596 446 C520 446, 478 438, 432 438"/>
+
+  <path class="dash" d="M596 618 C520 618, 478 642, 432 642"/>
+
+  <rect x="614" y="686" width="484" height="42" rx="21" class="gate"/>
+  <text class="tiny" x="856" y="711" text-anchor="middle">HITL governance constraint: teacher approval before memory commit</text>
+</svg>

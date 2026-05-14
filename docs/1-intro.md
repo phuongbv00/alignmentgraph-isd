@@ -14,7 +14,7 @@ Trong lĩnh vực sư phạm, cá nhân hoá đang là một trong những xu h�
 
 Luận văn đề xuất **Pedagogy Agent Harness**: một execution environment được thiết kế riêng cho bối cảnh sư phạm, kết hợp với LLM để tạo thành Pedagogy Agent theo công thức `Agent = Model + Harness`. Khác với harness tổng quát, harness này được thiết kế theo từng lớp của kiến trúc:
 - **Memory layer**: ánh xạ scope sư phạm lên memory taxonomy — chuẩn chương trình, kiến thức môn học và preferences của giáo viên lên semantic memory; lịch sử chẩn đoán và hồ sơ nhóm tích luỹ theo khoá học lên episodic memory; ngữ cảnh tác vụ hiện tại lên working memory; harness tự động inject đúng tầng vào từng lần gọi, thay vì conversation history đơn thuần
-- **Orchestration logic**: vận hành IDA Loop với workflow có cấu trúc — handoff rõ ràng giữa diagnosis, instructional design và assessment — thay vì để agent tự do ReAct qua prompt
+- **Orchestration mechanism**: vận hành IDA Loop với workflow có cấu trúc — handoff rõ ràng giữa diagnosis, instructional design và assessment — thay vì để agent tự do ReAct qua prompt. Harness triển khai bốn sub-agent đặc thù: (1) **Orchestrator** điều phối toàn bộ vòng lặp, định tuyến task và quản lý HITL checkpoint; (2) **Diagnosis Agent** nhận kết quả đánh giá đầu vào và tổng hợp `StudentGroupProfile` xác định điểm mạnh, điểm yếu và misconception của từng nhóm; (3) **Instructional Design Agent** nhận `StudentGroupProfile` và sinh kế hoạch bài dạy, hoạt động phân hoá phù hợp với từng nhóm; (4) **Assessment Agent** xây dựng rubric, sinh đề và chấm bài theo nhóm, rồi trả kết quả về cho Diagnosis Agent ở vòng tiếp theo
 - **Tools & sandbox**: trang bị tool sư phạm chuyên biệt (retriever có Bloom-aligned metadata, profile synthesizer, domain verifier) và hỗ trợ mở rộng qua pedagogy domain plugin — plugin có thể đưa tool mới vào và thực thi trong sandbox an toàn, thay vì bị giới hạn bởi built-in tool set
 - **Hooks & HITL governance**: chạy pedagogical constraint checks tất định trước khi output được trình giáo viên; và đảm bảo giáo viên luôn phải tham gia tại các điểm quyết định — phê duyệt, chỉnh sửa hoặc từ chối — thuận theo nguyên tắc sư phạm rằng trách nhiệm chuyên môn không thể uỷ thác hoàn toàn cho hệ thống
 
@@ -44,7 +44,17 @@ Cá nhân hoá được giới hạn ở mức **group-level personalization**. 
 - **RQ1**: Pedagogy-specific harness có hiệu quả hơn các kiến trúc harness tổng quát — từ không có harness (LLM-only), harness tối giản (Naive RAG), general-purpose agent harness (Generic ReAct ARAG) đến structured agent harness (Fixed MA-ARAG) — trên các tác vụ UC-ID và UC-AS của case study CNTT/lập trình không?
 - **RQ2**: IDA Loop có tạo ra phân hoá có chủ đích theo nhóm học sinh không? Output UC-ID/UC-AS ở vòng 2 có StudentGroupProfile có khác biệt đo được so với vòng 1 không có profile theo chiều phù hợp với nhóm không?
 
-## 1.5 Contributions
+## 1.5 Evaluation Approach
+
+Để trả lời hai câu hỏi nghiên cứu, luận văn dùng hai phương thức đánh giá bổ trợ nhau:
+
+**Comparison study (RQ1)**: Pedagogy Agent Harness được so sánh với bốn baseline tăng dần độ phức tạp — LLM-only, Naive RAG, Generic ReAct ARAG và Fixed MA-ARAG — trên cùng tập tác vụ UC-ID và UC-AS trong case study CNTT/lập trình. Các metric kỹ thuật bao gồm schema validity, verifier pass rate, số lần retry, tool-call correctness, latency và token usage, được trích xuất từ `WorkflowTrace` ghi lại bởi harness runtime. Ngoài ra, plugin compliance check đo mức độ core harness hoạt động đúng khi có và không có domain plugin.
+
+**Personalization delta analysis (RQ2)**: Cùng một tác vụ UC-ID/UC-AS được chạy hai lần — vòng 1 không có `StudentGroupProfile`, vòng 2 có profile tổng hợp từ kết quả vòng 1. Delta giữa hai output được đo trên các chiều: độ khớp Bloom target với nhóm, mức độ phân hoá hoạt động và alignment giữa feedback và misconception đã chẩn đoán.
+
+Chi tiết thiết lập thực nghiệm và protocol đánh giá được trình bày trong Chương 4; kết quả trong Chương 5.
+
+## 1.6 Contributions
 
 Luận văn có ba đóng góp chính:
 
@@ -52,7 +62,7 @@ Luận văn có ba đóng góp chính:
 2. **End-to-end prototype**: prototype Pedagogy Agent Harness chạy local trên case study CNTT/lập trình, bao gồm domain plugin implementation cho lĩnh vực này.
 3. **Technical benchmark**: benchmark kỹ thuật với comparison study (LLM-only, Naive RAG, Generic ReAct Agentic RAG, Fixed MA-ARAG), interface compliance, plugin delta và personalization delta analysis.
 
-## 1.6 Scope and Limitations
+## 1.7 Scope and Limitations
 
 Không xây dựng LMS hoàn chỉnh.
 Không cá nhân hoá tới từng học sinh.
@@ -60,7 +70,7 @@ Không đánh giá hiệu quả học tập thực tế qua nhiều tuần/lớp
 Không claim novelty thuật toán cho từng thành phần như RAG hay Multi-Agent.
 Đóng góp nằm ở cấu hình tích hợp của harness cho bối cảnh sư phạm, cùng bằng chứng kỹ thuật trên case study CNTT/lập trình.
 
-## 1.7 Thesis Outlines
+## 1.8 Thesis Outlines
 
 Chương 1 giới thiệu
 Chương 2 trình bày nền tảng và công trình liên quan.
