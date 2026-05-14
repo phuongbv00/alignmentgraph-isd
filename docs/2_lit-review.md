@@ -37,7 +37,7 @@ Mục này làm nền lý thuyết trực tiếp cho contribution của luận v
   6. *Hooks for deterministic behavior enforcement* — HITL, guardrails, constraint checks được thực thi tại các điểm xác định trong pipeline
 - **Harness vs framework**: framework là thư viện/API developer gọi từ code; harness là execution environment bao quanh model — bao gồm runtime, policy enforcement và extension mechanism. Phân biệt quan trọng để định vị contribution: harness là infrastructure-level, không phải application-level.
 - **Harness engineering như infrastructure contribution**: thiết kế harness cho lĩnh vực cụ thể tương tự platform engineering (OS, compiler, database engine) — contribution là môi trường biến model thành agent có năng lực đặc thù lĩnh vực, không phải model mới hay algorithm mới.
-- **Ánh xạ lên Pedagogy Agent Harness**: ba ràng buộc thiết kế cứng map trực tiếp lên 6 capability: (1) pedagogical constraint enforcement map lên capability #6 (hooks for deterministic behavior enforcement); (2) mở rộng đa lĩnh vực sư phạm qua optional plugin interface (null-plugin contract) map lên capability #4 (orchestration + extension mechanism); (3) IDA Loop memory continuity map lên capability #1 (durable storage — Workspace Memory duy trì xuyên suốt khoá học; Global Memory duy trì xuyên mọi khoá học), #3 (memory & context injection — Context Injection tự động inject workspace + global memory) và #4 (orchestration — Intent Router và Profile Synthesis Pipeline). Ví dụ thực tế xem §2.4.
+- **Ánh xạ lên Pedagogy Agent Harness**: ba ràng buộc thiết kế cứng map trực tiếp lên 6 capability: (1) pedagogical constraint enforcement map lên capability #6 (hooks for deterministic behavior enforcement); (2) mở rộng đa lĩnh vực sư phạm qua pedagogy domain plugin map lên capability #4 (orchestration + extension mechanism); (3) IDA Loop memory continuity map lên capability #1 (durable storage — Workspace Memory duy trì xuyên suốt khoá học; Global Memory duy trì xuyên mọi khoá học), #3 (memory & context injection — Context Injection tự động inject workspace + global memory) và #4 (orchestration — Intent Router và Profile Synthesis Pipeline). Ví dụ thực tế xem §2.4.
 
 ## 2.4 Agentic AI trong thực tế — domain harness analogy với Pedagogy Agent Harness
 
@@ -63,7 +63,7 @@ Mục này làm nền lý thuyết trực tiếp cho contribution của luận v
 | Deterministic enforcement | hooks for permission, sandbox, artifact export/revision | teacher-in-the-loop, schema validation, pedagogical constraints |
 | Memory | project/session memory, local memory, preferences | 3-scope: *global* (teacher profile — xuyên mọi khoá học), *workspace* (CourseContext, StudentGroupProfiles, DiagnosisHistory, ArtifactLog — phục vụ IDA Loop), *session* (conversation + active task — ephemeral) |
 | Personalization loop | tuỳ tool, thường theo user/project | IDA Loop: UC-AS diagnosis → StudentGroupProfile → UC-ID phân hoá → lặp |
-| Extensibility | MCP servers, skills, channels, design systems | optional domain plugin interface (null-plugin contract) |
+| Extensibility | MCP servers, skills, channels, design systems | pedagogy domain plugin |
 | User | Developer, designer, knowledge worker, cá nhân | Teacher |
 
 ## 2.5 Human-in-the-loop & Human-Agent Collaboration
@@ -168,7 +168,7 @@ Phần này làm nền cho thiết kế thực nghiệm ở Chương 4: không c
 - AI-assisted feedback: Ba et al., 2025 — systematic review trên 129 nghiên cứu, phân loại feedback theo task/process/self-regulation/self và mức độ complexity; dùng để đặt nền cho feedback sư phạm có rubric, không chỉ sinh lời giải.
 - Rủi ro & ethics: academic integrity, bias, over-reliance (Baidoo-Anu & Owusu Ansah, 2023).
 - **LLM grading assessment** (Saez, Garcia, Mochon & Isasi, *Scientific Reports*, published 18 Apr 2026 \[`Saez2026LLMGrading`\]): "Evaluating large language models for AI-assisted grading: a framework and case study in higher education" — DOI 10.1038/s41598-026-48656-3; hợp đề tài nếu hệ thống có rubric/feedback.
-- **Gap**: nhiều hệ thống giáo dục dùng commercial LLM hoặc chatbot/RAG tổng quát; các thành phần như retrieval, agent workflow, verifier, HITL và ràng buộc sư phạm đã có tiền lệ riêng lẻ. Khoảng trống của đề tài là thiếu (1) một harness tích hợp được đánh giá có kiểm soát — kết hợp với LLM tạo thành Pedagogy Agent — dùng dữ liệu giáo viên nội bộ, hỗ trợ nhiều domain qua optional plugin interface và có ablation để tách đóng góp của typed workflow, verifier/repair và pedagogical constraints; và (2) một **vòng lặp thiết kế dạy học–đánh giá cá nhân hoá liên tục** (IDA Loop) vận hành được trong phạm vi một khoá học — với Workspace Memory duy trì hồ sơ nhóm học sinh (group-level personalization), tự động tổng hợp profile từ kết quả đánh giá và inject vào thiết kế dạy học tiếp theo mà không cần giáo viên nhắc lại.
+- **Gap**: nhiều hệ thống giáo dục dùng commercial LLM hoặc chatbot/RAG tổng quát; các thành phần như retrieval, agent workflow, verifier, HITL và ràng buộc sư phạm đã có tiền lệ riêng lẻ. Khoảng trống của đề tài là thiếu (1) một harness tích hợp được đánh giá có kiểm soát — kết hợp với LLM tạo thành Pedagogy Agent — dùng dữ liệu giáo viên nội bộ, hỗ trợ nhiều domain qua pedagogy domain plugin và có ablation để tách đóng góp của typed workflow, verifier/repair và pedagogical constraints; và (2) một **vòng lặp thiết kế dạy học–đánh giá cá nhân hoá liên tục** (IDA Loop) vận hành được trong phạm vi một khoá học — với Workspace Memory duy trì hồ sơ nhóm học sinh (group-level personalization), tự động tổng hợp profile từ kết quả đánh giá và inject vào thiết kế dạy học tiếp theo mà không cần giáo viên nhắc lại.
 
 ## 2.15 Privacy & Local-first Deployment trong giáo dục
 
@@ -187,7 +187,6 @@ Phần này chuyển động lực "local" từ lựa chọn triển khai thành
 - **Differentiated Instruction** (Tomlinson, 2001; 2014) — phân hoá dạy học theo profile học sinh: readiness, interest, learning profile. StudentGroupProfile và cơ chế phân hoá UC-ID/UC-AS theo nhóm là hiện thực hoá nguyên tắc này ở mức group-level (không phải per-student).
 - **Learning objectives well-formed** (Mager, 1962) — SMART objectives dùng action verb theo Bloom. Dùng trong prompt template UC-ID.
 - **CS education misconceptions** (Sorva, 2012 — *Visual Program Simulation*; Qian & Lehman, 2017) — cơ sở cho `error_taxonomy` của CNTT plugin.
-- **Math misconceptions** (literature-based) — cơ sở cho `error_taxonomy` của Toán plugin (computation error, wrong method, missing step, conceptual error).
 
 ## 2.17 Khoảng trống & định vị hệ thống
 
@@ -196,7 +195,7 @@ Bảng so sánh tổng hợp: Pedagogy Agent Harness đề xuất vs các công 
 Ba chiều differentiation chính:
 1. **Harness framing (Agent = Model + Harness)**: hệ thống định vị là harness — kết hợp với LLM tạo thành Pedagogy Agent — thay vì application. Contribution là thiết kế harness (tool layer, constraints, HITL, Workspace Memory, IDA Loop), không phải LLM hay tính năng sư phạm cụ thể.
 2. **IDA Loop với group-level personalization**: vòng lặp thiết kế dạy học–đánh giá cá nhân hoá liên tục theo nhóm học sinh trong phạm vi một khoá học — Workspace Memory duy trì StudentGroupProfile và DiagnosisHistory; Profile Synthesis Pipeline tự động tổng hợp profile từ kết quả đánh giá; Context Injection inject profile vào mọi task. Thiếu trong tất cả các hệ thống AI in education hiện tại.
-3. **Mở rộng đa lĩnh vực sư phạm với optional plugin và null-plugin contract**: CNTT và Toán cùng implement domain plugin interface → bằng chứng thực nghiệm về tính tổng quát của interface; null-plugin contract đảm bảo core UC-ID/UC-AS hoạt động đầy đủ khi không có plugin — không chỉ là design claim.
+3. **Mở rộng đa lĩnh vực sư phạm qua pedagogy domain plugin**: CNTT extension implement plugin interface mà không thay đổi core → bằng chứng thực nghiệm về tính tổng quát của interface; core UC-ID/UC-AS hoạt động đầy đủ khi không có plugin — không chỉ là design claim.
 
 Phần này phải nêu rõ: đề tài không claim từng chiều trong bảng là mới; đóng góp nằm ở cấu hình tích hợp của harness cho bối cảnh sư phạm và bằng chứng thực nghiệm qua controlled comparison + ablation trên hai domain.
 

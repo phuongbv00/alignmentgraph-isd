@@ -60,7 +60,7 @@ Context Injection
 ```
 
 - Khi có `student_group_profile`: feedback nhấn đúng điểm yếu của nhóm; đề bài calibrate độ khó phù hợp nhóm.
-- Domain Verifier: nếu plugin loaded → chạy verifier (code verifier / SymPy checker); nếu plugin = null → pipeline tiếp tục mà không verify (null-plugin contract).
+- Domain Verifier: nếu plugin được load → chạy verifier; nếu không có plugin → pipeline tiếp tục mà không verify.
 
 ## 3.5 Memory Architecture — 3-scope taxonomy
 
@@ -157,7 +157,7 @@ Mỗi domain plugin implement interface:
 
 ```typescript
 interface DomainPlugin {
-  domain: string                    // "it" | "math" | ...
+  domain: string                    // "it" | ...
   metadataSchema: JSONSchema        // schema cho corpus chunk metadata
   taskSchemas: Record<string, JSONSchema>  // schema cho từng UC-ID/UC-AS output
   retrievalPolicy: RetrievalPolicy  // ưu tiên retrieval theo domain
@@ -168,11 +168,9 @@ interface DomainPlugin {
 }
 ```
 
-**Null-plugin contract**: nếu `verifier` là null hoặc plugin không được load, UC-AS Pipeline bỏ qua bước Domain Verifier và tiếp tục — không ném lỗi, không thay đổi core logic.
+Khi không có plugin, UC-AS Pipeline bỏ qua bước Domain Verifier và tiếp tục — không ném lỗi, không thay đổi core logic.
 
 **IT plugin**: code verifier chạy test case (pytest / JUnit sandbox), báo compile error / runtime error / test failure → diagnosis chi tiết đến từng dòng code.
-
-**Toán plugin**: SymPy checker verify tính đúng của phép tính và lời giải; structural completeness check (có đủ các bước không).
 
 ## 3.9 HITL Governance
 

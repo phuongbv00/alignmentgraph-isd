@@ -7,8 +7,7 @@
 Kết quả cần được trình bày theo thứ tự trả lời trực tiếp các research questions:
 
 1. **RQ1 — Comparison study**: so sánh hệ thống đề xuất với LLM-only, Naive RAG, Generic ReAct Agentic RAG và Fixed MA-ARAG.
-2. **RQ2 — Mở rộng đa lĩnh vực sư phạm**: báo cáo interface compliance của CNTT/lập trình và Toán, cùng test null-plugin contract.
-3. **RQ3 — Personalization delta**: so sánh paired round-1 và round-2 để kiểm tra IDA Loop có tạo phân hoá theo nhóm hay không.
+2. **RQ2 — Personalization delta**: so sánh paired round-1 và round-2 để kiểm tra IDA Loop có tạo phân hoá theo nhóm hay không.
 
 ## 5.2 Main Comparison Results
 
@@ -49,35 +48,13 @@ Template ablation:
 
 Phần này không nên diễn giải từng thành phần như một thuật toán mới. Cách viết phù hợp là: ablation cho thấy mỗi thành phần đóng góp thế nào vào chất lượng của **cấu hình harness tích hợp**.
 
-## 5.4 Domain Extensibility and Null-Plugin Contract
-
-Template interface compliance:
-
-| Interface dimension | CNTT/lập trình plugin | Toán plugin | Core modification needed? |
-| --- | --- | --- | --- |
-| Metadata schema | TBD | TBD | TBD |
-| Task schemas | TBD | TBD | TBD |
-| Retrieval policy | TBD | TBD | TBD |
-| Verifier | Code verifier/test runner | SymPy/structural checker | TBD |
-| Error taxonomy | Programming misconceptions/errors | Math misconceptions/errors | TBD |
-| Feedback templates | TBD | TBD | TBD |
-| Corpus ingestion pipeline | TBD | TBD | TBD |
-
-Null-plugin test cần báo cáo rõ:
-
-- UC-ID có chạy đầy đủ khi không load plugin không?
-- UC-AS có bỏ qua verifier mà không làm hỏng pipeline không?
-- Output có còn schema-valid và HITL-governed không?
-- Chất lượng giảm ở metrics nào khi thiếu verifier đặc thù domain?
-
-## 5.5 Personalization Delta Analysis
+## 5.4 Personalization Delta Analysis
 
 Template paired analysis:
 
 | Pair | Round-1 output | Round-2 output with StudentGroupProfile | Personalization delta | Group-fit score |
 | --- | --- | --- | --- | --- |
 | IT-A1/A2 | TBD | TBD | TBD | TBD |
-| Math-A1/A2 | TBD | TBD | TBD | TBD |
 
 Các dấu hiệu cần tìm:
 
@@ -86,21 +63,21 @@ Các dấu hiệu cần tìm:
 - Độ khó bài tập có dịch chuyển hợp lý theo readiness level không?
 - Round-2 có chỉ thêm nhãn nhóm hình thức, hay thật sự thay đổi hoạt động/đánh giá?
 
-## 5.6 Error Analysis
+## 5.5 Error Analysis
 
 Phân loại tối thiểu 30 output thất bại theo taxonomy:
 
 - Hallucination hoặc unsupported citation.
 - Off-Bloom hoặc sai constructive alignment.
 - Schema invalid hoặc thiếu field bắt buộc.
-- Code không compile, test case sai hoặc lời giải Toán sai bước.
+- Code không compile hoặc test case sai.
 - Feedback thiếu giải thích, sai misconception label hoặc tone không phù hợp.
 - Phân hoá nhóm sai, ngược profile hoặc quá chung chung.
 - Retrieval thất bại do query không đúng domain hoặc chunk metadata kém.
 
 Mỗi nhóm lỗi cần có: mô tả, ví dụ rút gọn, nguyên nhân khả dĩ, thành phần harness liên quan và hướng sửa.
 
-## 5.7 Threats to Validity
+## 5.6 Threats to Validity
 
 **Internal validity**:
 
@@ -110,7 +87,7 @@ Mỗi nhóm lỗi cần có: mô tả, ví dụ rút gọn, nguyên nhân khả 
 
 **External validity**:
 
-- Chỉ có hai domain CNTT/lập trình và Toán.
+- Chỉ có một case study CNTT/lập trình; chưa kiểm chứng trên domain khác.
 - Corpus nội bộ tiếng Việt có thể không đại diện cho mọi trường học.
 - Prototype local-first chưa phản ánh deployment LMS quy mô lớn.
 
@@ -120,7 +97,7 @@ Mỗi nhóm lỗi cần có: mô tả, ví dụ rút gọn, nguyên nhân khả 
 - Verifier pass rate không bao quát toàn bộ chất lượng sư phạm.
 - Latency/token cost phụ thuộc model và hạ tầng.
 
-## 5.8 Discussion
+## 5.7 Discussion
 
 Các điểm cần chốt trong phần thảo luận:
 

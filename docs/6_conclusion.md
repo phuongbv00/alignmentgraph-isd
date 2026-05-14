@@ -6,20 +6,18 @@ Luận văn đề xuất **Pedagogy Agent Harness**, một execution environment
 
 Kiến trúc đề xuất tập trung vào **IDA Loop**: assessment tạo diagnosis, diagnosis được tổng hợp thành StudentGroupProfile, profile được inject vào các tác vụ instructional design và assessment tiếp theo, sau đó vòng lặp được lặp lại trong phạm vi một khoá học. Cách tiếp cận này hướng tới group-level personalization thay vì per-student adaptive learning.
 
-Đóng góp của luận văn nằm ở tầng thiết kế hệ thống và bằng chứng kỹ thuật: một harness có ràng buộc sư phạm xuyên suốt pipeline, memory architecture ba scope, Profile Synthesis Pipeline, Context Injection, HITL governance và optional Domain Plugin Interface cho mở rộng đa lĩnh vực sư phạm với null-plugin contract.
+Đóng góp của luận văn nằm ở ba khía cạnh: (1) kiến trúc Pedagogy Agent Harness vận hành IDA Loop làm lõi group-level personalization, hỗ trợ mở rộng đa lĩnh vực sư phạm qua pedagogy domain plugin và enforce ràng buộc sư phạm xuyên suốt pipeline với HITL governance; (2) prototype end-to-end trên case study CNTT/lập trình; (3) benchmark kỹ thuật có comparison study, ablation và personalization delta analysis.
 
 ## 6.2 Trả lời câu hỏi nghiên cứu
 
 **RQ1**: Kết luận cần tóm tắt hệ thống đề xuất có vượt các baseline hay không, vượt ở task/metric nào, và có trade-off latency/cost nào đáng kể.
 
-**RQ2**: Kết luận cần xác nhận CNTT/lập trình và Toán có cùng implement được Domain Plugin Interface không, có cần sửa core không, và null-plugin contract có pass không.
-
-**RQ3**: Kết luận cần nêu IDA Loop có tạo ra personalization delta có ý nghĩa không, đặc biệt ở group-fit, activity differentiation, difficulty calibration và feedback alignment.
+**RQ2**: Kết luận cần nêu IDA Loop có tạo ra personalization delta có ý nghĩa không, đặc biệt ở group-fit, activity differentiation, difficulty calibration và feedback alignment.
 
 ## 6.3 Limitations
 
 - Chưa có human evaluation diện rộng trên lớp học thật.
-- Chỉ đánh giá hai domain là CNTT/lập trình và Toán.
+- Chỉ đánh giá trên một case study CNTT/lập trình; chưa kiểm chứng trên domain khác.
 - Cá nhân hoá ở mức nhóm học sinh, chưa hỗ trợ per-student adaptive learning.
 - LLM-as-judge và benchmark tự xây có rủi ro bias.
 - Kết quả phụ thuộc model, corpus, verifier và chất lượng metadata.
