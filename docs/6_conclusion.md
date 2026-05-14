@@ -6,7 +6,7 @@ Luận văn đề xuất **Pedagogy Agent Harness**, một execution environment
 
 Kiến trúc đề xuất tập trung vào **IDA Loop**: assessment tạo diagnosis, diagnosis được tổng hợp thành StudentGroupProfile, profile được inject vào các tác vụ instructional design và assessment tiếp theo, sau đó vòng lặp được lặp lại trong phạm vi một khoá học. Cách tiếp cận này hướng tới group-level personalization thay vì per-student adaptive learning.
 
-Đóng góp của luận văn nằm ở ba khía cạnh: (1) kiến trúc Pedagogy Agent Harness vận hành IDA Loop làm lõi group-level personalization, hỗ trợ mở rộng đa lĩnh vực sư phạm qua pedagogy domain plugin và enforce ràng buộc sư phạm xuyên suốt pipeline với HITL governance; (2) prototype end-to-end trên case study CNTT/lập trình; (3) benchmark kỹ thuật có comparison study, ablation và personalization delta analysis.
+Đóng góp của luận văn nằm ở ba khía cạnh: (1) kiến trúc Pedagogy Agent Harness vận hành IDA Loop làm lõi group-level personalization, hỗ trợ mở rộng đa lĩnh vực sư phạm qua pedagogy domain plugin và enforce ràng buộc sư phạm xuyên suốt pipeline với HITL governance; (2) prototype end-to-end trên case study CNTT/lập trình; (3) benchmark kỹ thuật có comparison study, plugin delta, interface compliance và personalization delta analysis.
 
 ## 6.2 Trả lời câu hỏi nghiên cứu
 
@@ -21,6 +21,7 @@ Kiến trúc đề xuất tập trung vào **IDA Loop**: assessment tạo diagno
 - Cá nhân hoá ở mức nhóm học sinh, chưa hỗ trợ per-student adaptive learning.
 - LLM-as-judge và benchmark tự xây có rủi ro bias.
 - Kết quả phụ thuộc model, corpus, verifier và chất lượng metadata.
+- Chưa thực hiện ablation định lượng chi tiết cho từng thành phần của harness; luận văn chỉ phân tích cơ chế đóng góp thông qua comparison study, plugin delta, log vận hành và phân tích lỗi.
 - Prototype tập trung vào local/local-first workflow, chưa đánh giá tích hợp LMS hoặc deployment nhiều người dùng.
 
 ## 6.4 Future Work

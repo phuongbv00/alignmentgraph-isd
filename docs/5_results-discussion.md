@@ -31,22 +31,24 @@ Template bảng chính:
 Diễn giải cần tập trung vào các câu hỏi:
 
 - Harness cải thiện rõ nhất ở task nào: lesson planning, exercise generation, rubric construction hay grading/feedback?
-- Lợi ích đến từ retrieval, typed workflow, verifier, pedagogical constraints hay memory/context injection?
+- Lợi ích quan sát rõ nhất ở retrieval, workflow có cấu trúc, verifier/repair, pedagogical constraints hay memory/context injection?
 - Có trade-off latency hoặc số LLM/tool calls đáng kể không?
 
-## 5.3 Ablation Results
+## 5.3 Plugin and Mechanism Analysis
 
-Template ablation:
+Không báo cáo ablation study riêng. Phần này dùng plugin delta, log vận hành và phân tích lỗi để giải thích cơ chế tạo khác biệt của harness.
 
-| Ablation | Removed component | Expected impact | Observed delta |
-| --- | --- | --- | --- |
-| Proposed - Typed schemas | Typed input/output validation | Tăng lỗi định dạng và giảm consistency | TBD |
-| Proposed - Verifier | Domain/citation/Bloom checks | Giảm correctness và tăng violation | TBD |
-| Proposed - Targeted Repair | Node-level repair | Tăng latency hoặc lỗi lặp lại | TBD |
-| Proposed - Pedagogical Constraints | Bloom/rubric/misconception checks | Giảm pedagogical alignment | TBD |
-| Proposed - Teacher-controlled mutation feedback | Teacher edit/reject reason feedback | Tăng số lần reject lặp lại | TBD |
+Template phân tích:
 
-Phần này không nên diễn giải từng thành phần như một thuật toán mới. Cách viết phù hợp là: ablation cho thấy mỗi thành phần đóng góp thế nào vào chất lượng của **cấu hình harness tích hợp**.
+| Analysis item | Evidence | Interpretation |
+| --- | --- | --- |
+| Domain plugin delta | `Proposed - Domain Plugin` vs `Full Proposed System` | Plugin CNTT cải thiện verifier/code-related tasks ở mức nào? |
+| Schema/interface compliance | Schema validity, missing-field rate, malformed output rate | Workflow có cấu trúc có giảm lỗi giao diện không? |
+| Verifier/repair behavior | Pass rate, retry count, repaired issue types | Verifier giúp bắt loại lỗi nào thường xuyên nhất? |
+| Pedagogical violation pattern | Bloom violation, rubric mismatch, feedback policy violation | Constraint sư phạm giúp kiểm soát chất lượng giáo dục ở điểm nào? |
+| Cost/latency trade-off | LLM calls, tool calls, token usage, latency | Chất lượng tăng có đi kèm chi phí vận hành chấp nhận được không? |
+
+Cách viết phù hợp là diễn giải các tín hiệu này như bằng chứng hỗ trợ cho **cấu hình harness tích hợp**, không kết luận định lượng rằng từng thành phần riêng lẻ gây ra mức cải thiện cụ thể.
 
 ## 5.4 Personalization Delta Analysis
 

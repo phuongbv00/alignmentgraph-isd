@@ -150,7 +150,7 @@ Phần này làm nền cho thiết kế thực nghiệm ở Chương 4: không c
 - **Agent evaluation survey** (Yehudai et al., ACL Findings 2025 — arXiv 2503.16416 \[`Yehudai2025AgentEval`\]): tổng quan benchmark/framework cho planning, tool use, self-reflection, memory, web/software/scientific agents; nhấn khoảng trống về cost-efficiency, safety, robustness và fine-grained scalable evaluation.
 - **TRAJECT-Bench** (He et al., arXiv 2510.04550 \[`He2025TRAJECTBench`\]): đánh giá tool-use trajectory thay vì chỉ output cuối — tool selection, argument correctness, dependency/order satisfaction; hữu ích cho đánh giá AgenticRetriever/Tool invocations.
 - **Agent evaluation**: task success rate, tool-call correctness, trajectory quality, cost/latency, số vòng repair, và failure mode taxonomy — phù hợp để đánh giá agentic workflow thay vì chỉ đánh giá câu trả lời cuối.
-- **Ablation study**: so sánh baseline RAG/ReAct với Pedagogy Agent Harness; tách đóng góp của typed workflow, verifier-guided repair, pedagogical constraints và HITL.
+- **Controlled comparison**: so sánh baseline LLM-only/RAG/ReAct với Pedagogy Agent Harness trong cùng model, corpus và query set; kết hợp metric tự động, LLM-as-judge, human/rubric alignment và phân tích lỗi để đánh giá giá trị của harness trong bối cảnh sư phạm.
 - **Human/rubric alignment**: dùng rubric giáo viên và kiểm tra độ khớp giữa automated judge với human evaluation; liên hệ với các nghiên cứu AI-assisted grading ở §2.14.
 
 ## 2.13 Desktop app tích hợp AI (Electron + in-process agent)
@@ -168,7 +168,7 @@ Phần này làm nền cho thiết kế thực nghiệm ở Chương 4: không c
 - AI-assisted feedback: Ba et al., 2025 — systematic review trên 129 nghiên cứu, phân loại feedback theo task/process/self-regulation/self và mức độ complexity; dùng để đặt nền cho feedback sư phạm có rubric, không chỉ sinh lời giải.
 - Rủi ro & ethics: academic integrity, bias, over-reliance (Baidoo-Anu & Owusu Ansah, 2023).
 - **LLM grading assessment** (Saez, Garcia, Mochon & Isasi, *Scientific Reports*, published 18 Apr 2026 \[`Saez2026LLMGrading`\]): "Evaluating large language models for AI-assisted grading: a framework and case study in higher education" — DOI 10.1038/s41598-026-48656-3; hợp đề tài nếu hệ thống có rubric/feedback.
-- **Gap**: nhiều hệ thống giáo dục dùng commercial LLM hoặc chatbot/RAG tổng quát; các thành phần như retrieval, agent workflow, verifier, HITL và ràng buộc sư phạm đã có tiền lệ riêng lẻ. Khoảng trống của đề tài là thiếu (1) một harness tích hợp được đánh giá có kiểm soát — kết hợp với LLM tạo thành Pedagogy Agent — dùng dữ liệu giáo viên nội bộ, hỗ trợ nhiều domain qua pedagogy domain plugin và có ablation để tách đóng góp của typed workflow, verifier/repair và pedagogical constraints; và (2) một **vòng lặp thiết kế dạy học–đánh giá cá nhân hoá liên tục** (IDA Loop) vận hành được trong phạm vi một khoá học — với Workspace Memory duy trì hồ sơ nhóm học sinh (group-level personalization), tự động tổng hợp profile từ kết quả đánh giá và inject vào thiết kế dạy học tiếp theo mà không cần giáo viên nhắc lại.
+- **Gap**: nhiều hệ thống giáo dục dùng commercial LLM hoặc chatbot/RAG tổng quát; các thành phần như retrieval, agent workflow, verifier, HITL và ràng buộc sư phạm đã có tiền lệ riêng lẻ. Khoảng trống của đề tài là thiếu (1) một harness tích hợp được đánh giá có kiểm soát — kết hợp với LLM tạo thành Pedagogy Agent — dùng dữ liệu giáo viên nội bộ, hỗ trợ nhiều domain qua pedagogy domain plugin và đo được khác biệt so với các kiến trúc harness tổng quát; và (2) một **vòng lặp thiết kế dạy học–đánh giá cá nhân hoá liên tục** (IDA Loop) vận hành được trong phạm vi một khoá học — với Workspace Memory duy trì hồ sơ nhóm học sinh (group-level personalization), tự động tổng hợp profile từ kết quả đánh giá và inject vào thiết kế dạy học tiếp theo mà không cần giáo viên nhắc lại.
 
 ## 2.15 Privacy & Local-first Deployment trong giáo dục
 
@@ -197,7 +197,7 @@ Ba chiều differentiation chính:
 2. **IDA Loop với group-level personalization**: vòng lặp thiết kế dạy học–đánh giá cá nhân hoá liên tục theo nhóm học sinh trong phạm vi một khoá học — Workspace Memory duy trì StudentGroupProfile và DiagnosisHistory; Profile Synthesis Pipeline tự động tổng hợp profile từ kết quả đánh giá; Context Injection inject profile vào mọi task. Thiếu trong tất cả các hệ thống AI in education hiện tại.
 3. **Mở rộng đa lĩnh vực sư phạm qua pedagogy domain plugin**: CNTT extension implement plugin interface mà không thay đổi core → bằng chứng thực nghiệm về tính tổng quát của interface; core UC-ID/UC-AS hoạt động đầy đủ khi không có plugin — không chỉ là design claim.
 
-Phần này phải nêu rõ: đề tài không claim từng chiều trong bảng là mới; đóng góp nằm ở cấu hình tích hợp của harness cho bối cảnh sư phạm và bằng chứng thực nghiệm qua controlled comparison + ablation trên hai domain.
+Phần này phải nêu rõ: đề tài không claim từng chiều trong bảng là mới; đóng góp nằm ở cấu hình tích hợp của harness cho bối cảnh sư phạm và bằng chứng thực nghiệm qua controlled comparison, plugin delta, personalization delta và phân tích lỗi.
 
 ---
 

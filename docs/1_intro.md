@@ -50,7 +50,7 @@ Luận văn có ba đóng góp chính:
 
 1. **Pedagogy Agent Harness**: một execution environment biến LLM thành Pedagogy Agent, vận hành IDA Loop (Instructional Design–Assessment Loop) làm lõi chính cho group-level personalization, hỗ trợ mở rộng đa lĩnh vực sư phạm qua pedagogy domain plugin, và enforce ràng buộc sư phạm xuyên suốt pipeline cùng với HITL governance.
 2. **End-to-end prototype**: prototype Pedagogy Agent Harness chạy local trên case study CNTT/lập trình, bao gồm domain plugin implementation cho lĩnh vực này.
-3. **Technical benchmark**: benchmark kỹ thuật với comparison study (LLM-only, Naive RAG, Generic ReAct Agentic RAG, Fixed MA-ARAG), ablation, interface compliance và personalization delta analysis.
+3. **Technical benchmark**: benchmark kỹ thuật với comparison study (LLM-only, Naive RAG, Generic ReAct Agentic RAG, Fixed MA-ARAG), interface compliance, plugin delta và personalization delta analysis.
 
 ## 1.6 Scope and Limitations
 
@@ -66,5 +66,5 @@ Chương 1 giới thiệu
 Chương 2 trình bày nền tảng và công trình liên quan.
 Chương 3 mô tả kiến trúc Pedagogy Agent Harness.
 Chương 4 trình bày thiết lập thực nghiệm và protocol đánh giá. 
-Chương 5 báo cáo kết quả, ablation, thảo luận và threat to validity.
+Chương 5 báo cáo kết quả comparison study, personalization delta, phân tích lỗi, thảo luận và threat to validity.
 Chương 6 kết luận và nêu hướng phát triển.

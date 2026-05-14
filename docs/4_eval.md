@@ -43,7 +43,7 @@ Controlled comparison: **cùng LLM + cùng corpus + cùng queries**; chỉ thay 
 | **Retriever**      | bge-m3 embedding + bge-reranker-v2-m3; top-k = 5                                                                 |
 | **Tool access**    | LLM-only: không tool; Naive RAG: không tool; các variant agentic dùng cùng tool set nếu variant đó cho phép tool |
 | **Temperature**    | 0.2 (generation); 0.0 (judge)                                                                                    |
-| **Số lần retry**   | Tối đa 2 retry per task; riêng ablation sẽ bật/tắt targeted repair                                               |
+| **Số lần retry**   | Tối đa 2 retry per task; các variant dùng cùng policy retry khi chức năng đó tồn tại                            |
 
 _Tầng 1 — Comparison study_ (trả lời trực tiếp RQ1):
 
@@ -55,16 +55,6 @@ _Tầng 1 — Comparison study_ (trả lời trực tiếp RQ1):
 | **Fixed MA-ARAG** | Structured agent harness | Pipeline nhiều role cố định: planner/generator/grader/reviewer; không IDA Loop, không memory, không plugin | Harness có cấu trúc cố định vs harness sư phạm |
 | **Đề xuất − Domain Plugin** | Pedagogy harness (core only) | Pedagogy Agent Harness đầy đủ nhưng không load domain plugin — UC-ID + UC-AS + IDA Loop, không có code verifier | Đo delta của domain plugin |
 | **Hệ thống đề xuất** | Pedagogy harness (đầy đủ) | Pedagogy Agent Harness với CNTT domain plugin và IDA Loop (Course Memory + Profile Synthesis + Context Injection) | Kiến trúc đề xuất — trả lời RQ1, RQ2 |
-
-_Tầng 2 — Ablation study_ (giải thích phần nào trong harness tạo ra khác biệt):
-
-| Variant                                            | Thành phần bỏ/thay đổi                                               | Câu hỏi ablation                                                                                 |
-| -------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| **Đề xuất − Typed schemas**                        | Node vẫn theo graph nhưng input/output free-form                     | Schema có giúp giảm lỗi định dạng và hallucination không?                                        |
-| **Đề xuất − Verifier**                             | Không chạy verifier/citation/Bloom checks trước output               | Verifier đóng góp bao nhiêu vào correctness?                                                     |
-| **Đề xuất − Targeted Repair**                      | Có verifier nhưng retry regenerate toàn bộ output                    | Sửa đúng component lỗi có tốt hơn retry toàn cục không?                                          |
-| **Đề xuất − Pedagogical Constraints**              | Bỏ Bloom/rubric/misconception/feedback checks                        | Constraint sư phạm cải thiện chất lượng giáo dục bao nhiêu?                                      |
-| **Đề xuất − Teacher-controlled mutation feedback** | Teacher edit/reject reason không được đưa lại thành constraint retry | Phản hồi của giáo viên có giảm lỗi lặp lại và số lần reject không?                               |
 
 ## 4.4 Metrics
 
@@ -100,4 +90,4 @@ Tất cả: latency end-to-end (ms) + số LLM calls + số tool calls + số re
 - Plugin delta: đọc ∆ giữa `Đề xuất − Domain Plugin` và `Hệ thống đề xuất` để đánh giá mức độ đóng góp của code verifier.
 - **RQ2 — Personalization delta analysis**: so sánh trực tiếp cặp (round-1, round-2) cho A1/A2; đo personalization delta tự động + LLM-as-judge group-fit; kiểm định Wilcoxon paired; diễn giải: IDA Loop có tạo phân hoá có chủ đích hay chỉ là biến động ngẫu nhiên?
 - Error analysis: ≥ 30 output thất bại phân loại (hallucination, off-Bloom, unsupported citation, code không compile, feedback thiếu giải thích, phân hoá nhóm sai/ngược).
-- Ablation contribution chart: bar chart ∆ score khi bỏ typed schemas, verifier, targeted repair, pedagogical constraints, Course Memory/Context Injection; diễn giải như đóng góp thực nghiệm của từng thành phần, không diễn giải như novelty thuật toán.
+- Mechanism analysis: đọc log tool-call, verifier/repair, schema validity, violation rate và failure taxonomy để giải thích vì sao hệ thống đề xuất tốt/kém hơn từng baseline; không diễn giải như ablation định lượng của từng thành phần.
