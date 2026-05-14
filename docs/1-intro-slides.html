@@ -425,10 +425,18 @@ const slides = [
       <div class="two-col">
         <div>
           <span class="badge badge-rose">Comparison Study · RQ1</span>
-          <div class="pill-list" style="margin-top:8px">
+          <div style="margin-top:8px;margin-bottom:10px">
+            <div class="card-row" style="gap:8px">
+              <div class="card rose" style="flex:1 1 auto;padding:8px 12px"><div class="card-label">B1</div><div class="card-text" style="font-size:0.88rem">LLM-only</div></div>
+              <div class="card amber" style="flex:1 1 auto;padding:8px 12px"><div class="card-label">B2</div><div class="card-text" style="font-size:0.88rem">Naive RAG</div></div>
+              <div class="card blue" style="flex:1 1 auto;padding:8px 12px"><div class="card-label">B3</div><div class="card-text" style="font-size:0.88rem">Generic ReAct ARAG</div></div>
+              <div class="card indigo" style="flex:1 1 auto;padding:8px 12px"><div class="card-label">B4</div><div class="card-text" style="font-size:0.88rem">Fixed MA-ARAG</div></div>
+            </div>
+          </div>
+          <div class="pill-list">
             <div class="pill rose"><div class="pill-dot"></div><div>Schema validity, verifier pass rate, retry count, tool-call correctness</div></div>
             <div class="pill rose"><div class="pill-dot"></div><div>Latency, token usage — trích từ <code>WorkflowTrace</code></div></div>
-            <div class="pill rose"><div class="pill-dot"></div><div>Plugin compliance check: core harness hoạt động đúng khi có / không có domain plugin</div></div>
+            <div class="pill rose"><div class="pill-dot"></div><div>Plugin compliance check: core harness vs harness + domain plugin</div></div>
           </div>
         </div>
         <div>
@@ -437,6 +445,27 @@ const slides = [
             <div class="pill ind"><div class="pill-dot"></div><div>Vòng 1 — không có <code>StudentGroupProfile</code></div></div>
             <div class="pill ind"><div class="pill-dot"></div><div>Vòng 2 — có profile tổng hợp từ vòng 1</div></div>
             <div class="pill ind"><div class="pill-dot"></div><div>Delta: độ khớp Bloom · mức phân hoá · alignment feedback–misconception</div></div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:4px">
+        <span class="badge badge-teal">Benchmark Data</span>
+        <div class="card-row" style="margin-top:6px;gap:6px">
+          <div class="card teal" style="flex:1 1 auto;padding:10px 14px">
+            <div class="card-label">Domain</div>
+            <div class="card-text" style="font-size:0.88rem">CNTT / lập trình — case study duy nhất của prototype</div>
+          </div>
+          <div class="card teal" style="flex:1 1 auto;padding:10px 14px">
+            <div class="card-label">Task set</div>
+            <div class="card-text" style="font-size:0.88rem">Tập tác vụ UC-ID &amp; UC-AS được thiết kế thủ công, bao phủ các mức Bloom</div>
+          </div>
+          <div class="card teal" style="flex:1 1 auto;padding:10px 14px">
+            <div class="card-label">Profile</div>
+            <div class="card-text" style="font-size:0.88rem"><code>StudentGroupProfile</code> tổng hợp sẵn cho RQ2 (vòng 2)</div>
+          </div>
+          <div class="card teal" style="flex:1 1 auto;padding:10px 14px">
+            <div class="card-label">Trace</div>
+            <div class="card-text" style="font-size:0.88rem"><code>WorkflowTrace</code> ghi lại bởi harness runtime — nguồn trích metric</div>
           </div>
         </div>
       </div>
