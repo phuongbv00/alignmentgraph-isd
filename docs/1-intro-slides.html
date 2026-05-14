@@ -434,9 +434,8 @@ const slides = [
             </div>
           </div>
           <div class="pill-list">
-            <div class="pill rose"><div class="pill-dot"></div><div>Schema validity, verifier pass rate, retry count, tool-call correctness</div></div>
-            <div class="pill rose"><div class="pill-dot"></div><div>Latency, token usage — trích từ <code>WorkflowTrace</code></div></div>
-            <div class="pill rose"><div class="pill-dot"></div><div>Plugin compliance check: core harness vs harness + domain plugin</div></div>
+            <div class="pill rose"><div class="pill-dot"></div><div>Schema validity, verifier pass rate, retry count, tool-call correctness, latency, token usage</div></div>
+            <div class="pill rose"><div class="pill-dot"></div><div>Plugin compliance check</div></div>
           </div>
         </div>
         <div>
@@ -457,7 +456,7 @@ const slides = [
           </div>
           <div class="card teal" style="flex:1 1 auto;padding:10px 14px">
             <div class="card-label">Task set</div>
-            <div class="card-text" style="font-size:0.88rem">Tập tác vụ UC-ID &amp; UC-AS được thiết kế thủ công, bao phủ các mức Bloom</div>
+            <div class="card-text" style="font-size:0.88rem">Tập tác vụ UC-ID &amp; UC-AS: các mẫu đại diện được thiết kế thủ công, sau đó dùng LLM để augment số lượng lớn — LLM dùng cho augmentation là riêng biệt, không trùng với model thực nghiệm</div>
           </div>
           <div class="card teal" style="flex:1 1 auto;padding:10px 14px">
             <div class="card-label">Profile</div>
@@ -465,7 +464,7 @@ const slides = [
           </div>
           <div class="card teal" style="flex:1 1 auto;padding:10px 14px">
             <div class="card-label">Trace</div>
-            <div class="card-text" style="font-size:0.88rem"><code>WorkflowTrace</code> ghi lại bởi harness runtime — nguồn trích metric</div>
+            <div class="card-text" style="font-size:0.88rem"><code>WorkflowTrace</code> ghi lại bởi harness runtime — nguồn trích metrics</div>
           </div>
         </div>
       </div>
