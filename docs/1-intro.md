@@ -50,7 +50,7 @@ Cá nhân hoá được giới hạn ở mức **group-level personalization**. 
 
 **Comparison study (RQ1)**: Pedagogy Agent Harness được so sánh với bốn baseline tăng dần độ phức tạp — LLM-only, Naive RAG, Generic ReAct ARAG và Fixed MA-ARAG — trên cùng tập tác vụ UC-ID và UC-AS trong case study CNTT/lập trình. Các metric kỹ thuật bao gồm schema validity, verifier pass rate, số lần retry, tool-call correctness, latency và token usage, được trích xuất từ `WorkflowTrace` ghi lại bởi harness runtime. Ngoài ra, plugin compliance check đo mức độ core harness hoạt động đúng khi có và không có domain plugin.
 
-**Personalization delta analysis (RQ2)**: Cùng một tác vụ UC-ID/UC-AS được chạy hai lần — vòng 1 không có `StudentGroupProfile`, vòng 2 có profile tổng hợp từ kết quả vòng 1. Delta giữa hai output được đo trên các chiều: độ khớp Bloom target với nhóm, mức độ phân hoá hoạt động và alignment giữa feedback và misconception đã chẩn đoán.
+**Personalization delta analysis (RQ2)**: Cùng một tác vụ UC-ID/UC-AS được chạy theo cặp — condition không có `StudentGroupProfile` và condition có profile được đóng băng trong benchmark hoặc được tổng hợp từ kết quả đánh giá trước đó theo protocol IDA Loop. Delta giữa hai output được đo trên các chiều: độ khớp với readiness/misconception của nhóm, mức độ phân hoá hoạt động, mức sử dụng evidence từ profile và khả năng tránh cá nhân hoá hình thức.
 
 Chi tiết thiết lập thực nghiệm và protocol đánh giá được trình bày trong Chương 4; kết quả trong Chương 5.
 

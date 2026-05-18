@@ -179,15 +179,6 @@
   /* ── two-col layout ── */
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 
-  /* ── counter ── */
-  #counter {
-    margin-top: 10px;
-    font-size: 0.78rem;
-    color: #94a3b8;
-    letter-spacing: 1px;
-    font-weight: 600;
-  }
-
   /* ── TOC special ── */
   .toc-grid {
     display: grid;
@@ -226,6 +217,46 @@
   .n7 { background: #64748b; }
   .n8 { background: #0ea5e9; }
 
+  /* ── nav bar ── */
+  #nav {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  #nav button {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border: 1.5px solid #e2e8f0;
+    background: #fff;
+    color: #334155;
+    font-size: 1rem;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  #nav button:hover:not(:disabled) {
+    background: #eef2ff;
+    border-color: #6366f1;
+    color: #4f46e5;
+  }
+
+  #nav button:disabled {
+    opacity: 0.3;
+    cursor: default;
+  }
+
+  #counter {
+    font-size: 0.78rem;
+    color: #94a3b8;
+    letter-spacing: 1px;
+    font-weight: 600;
+    min-width: 48px;
+    text-align: center;
+  }
+
   /* scrollbar */
   #slide::-webkit-scrollbar { width: 4px; }
   #slide::-webkit-scrollbar-track { background: transparent; }
@@ -234,7 +265,11 @@
 </head>
 <body>
 <div id="slide"></div>
-<div id="counter"></div>
+<div id="nav">
+  <button id="btn-prev" onclick="go(-1)">&#8592;</button>
+  <div id="counter"></div>
+  <button id="btn-next" onclick="go(1)">&#8594;</button>
+</div>
 
 <script>
 const slides = [
@@ -539,12 +574,19 @@ let current = Math.min(Math.max((parseInt(params.get('slide')) || 1) - 1, 0), sl
 function render() {
   document.getElementById('slide').innerHTML = slides[current].content;
   document.getElementById('counter').textContent = `${current + 1} / ${slides.length}`;
+  document.getElementById('btn-prev').disabled = current === 0;
+  document.getElementById('btn-next').disabled = current === slides.length - 1;
   history.replaceState(null, '', `?slide=${current + 1}`);
 }
 
+function go(dir) {
+  const next = current + dir;
+  if (next >= 0 && next < slides.length) { current = next; render(); }
+}
+
 document.addEventListener('keydown', e => {
-  if (e.key === 'ArrowRight' && current < slides.length - 1) { current++; render(); }
-  if (e.key === 'ArrowLeft'  && current > 0)                 { current--; render(); }
+  if (e.key === 'ArrowRight') go(1);
+  if (e.key === 'ArrowLeft')  go(-1);
 });
 
 render();
