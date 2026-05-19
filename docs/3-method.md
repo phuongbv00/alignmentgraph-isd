@@ -67,6 +67,41 @@ Hình 3.1 là figure chính của phương pháp đề xuất. Thay vì trình b
 
 **Diễn giải hình**: vòng xanh lá là IDA Loop, nơi assessment tạo diagnosis, diagnosis cập nhật profile nhóm, và profile dẫn dắt instructional design ở vòng sau. Khối vàng là memory duy trì continuity; khối tím là orchestration; khối xanh lam là domain plugin; dải đỏ là HITL governance như một ràng buộc xuyên suốt, bảo đảm giáo viên giữ quyền quyết định cuối cùng trước khi commit vào memory.
 
+### 3.2.1 Standalone deployment model
+
+Để benchmark có thể chạy độc lập so với ứng dụng (xem Chương 4), harness core được thiết kế theo **Headless Core + Transport Adapter pattern**. Toàn bộ logic orchestration, memory, tool và graph nằm trong một module TypeScript thuần, không phụ thuộc Electron hay UI. Giao tiếp ra ngoài đi qua một interface mỏng duy nhất:
+
+```typescript
+interface HarnessTransport {
+  send(event: HarnessEvent, payload: unknown): void
+  onRequest(handler: (req: TeacherRequest) => void): void
+}
+```
+
+`HarnessRuntime` nhận một `HarnessTransport` khi khởi tạo. Ứng dụng Electron cài `ElectronAdapter` — bridge IPC sang interface này. Benchmark runner cài `BenchmarkAdapter` — đọc fixture từ file, ghi raw output và `WorkflowTrace` ra JSON sau mỗi sample, không cần UI hay event loop của Electron.
+
+```
+src/
+  harness/                  ← Harness Core (không import electron)
+    orchestrator.ts
+    nodes/
+    memory/
+    tools/
+    workflow-state.ts
+    trace-logger.ts
+  adapters/
+    electron-adapter.ts     ← IPC ↔ HarnessTransport
+    benchmark-adapter.ts    ← file/stdin ↔ HarnessTransport
+  benchmark/
+    runner.ts               ← entry point độc lập
+    fixtures/               ← 140 sample (Chương 4)
+    scorer.ts
+```
+
+Điều kiện bắt buộc để pattern này hoạt động là harness core không chứa bất kỳ import nào từ `electron`, `ipcMain` hay UI layer. Mọi side effect ra ngoài — streaming token, status update, HITL prompt — đều đi qua `transport.send()`; mọi input vào — teacher request, fixture payload — đều đi qua `transport.onRequest()`. Nhờ đó, benchmark runner có thể khởi tạo harness bằng lệnh `npx ts-node benchmark/runner.ts` không cần khởi động Electron, không mock IPC, không bị ảnh hưởng bởi UI state.
+
+Biên giới giữa core và adapter cũng là biên giới đo lường: `WorkflowTrace` được emit bởi core, thu thập bởi adapter, và dùng để tính toàn bộ metric ở Chương 4 mà không cần can thiệp thủ công.
+
 ## 3.3 Orchestration mechanism
 
 ### 3.3.1 Nguyên tắc thiết kế

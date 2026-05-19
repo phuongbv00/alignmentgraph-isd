@@ -213,7 +213,26 @@ HITL là một cơ chế governance của hệ thống đề xuất, nhưng benc
 
 ## 4.6 Protocol chạy thực nghiệm
 
-Quy trình chạy cho mỗi sample:
+### 4.6.1 Headless benchmark runner
+
+Benchmark được chạy hoàn toàn độc lập so với ứng dụng Electron, nhờ standalone deployment model đã mô tả ở mục 3.2.1. Entry point là `benchmark/runner.ts`, sử dụng `BenchmarkAdapter` để giao tiếp với harness core qua `HarnessTransport` interface:
+
+```typescript
+const adapter = new BenchmarkAdapter({ outputDir, runId })
+const harness = new HarnessRuntime(adapter, runConfig)
+
+for (const sample of fixtures) {
+  adapter.injectRequest(sample.input_payload)
+  const trace = await harness.run()
+  results.push({ sample_id: sample.sample_id, trace, output: adapter.lastOutput })
+}
+```
+
+`BenchmarkAdapter` không gửi streaming token về UI; nó ghi raw output và `WorkflowTrace` ra file JSON sau mỗi sample. Mỗi variant trong bảng 4.5.2 được khởi tạo bằng cách thay `runConfig` — model, retrieval policy, orchestration mode, memory injection flag — mà không thay code trong harness core. Output được lưu theo convention `results/{run_id}/{variant}/{sample_id}.json`.
+
+Thiết kế này đảm bảo điều kiện controlled comparison: cùng fixture, cùng code path qua schema validation và verifier, chỉ khác cấu hình kiến trúc ở `runConfig`. Kết quả có thể đối chiếu theo `pair_id` cho các task A1/A2, B1/B2 và C1/C2 mà không cần can thiệp thủ công vào quá trình chạy.
+
+### 4.6.2 Quy trình chạy từng sample
 
 1. Load `input_payload`, profile condition và output schema.
 2. Chạy cùng sample qua sáu variant theo thứ tự randomize.
