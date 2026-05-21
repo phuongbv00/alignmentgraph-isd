@@ -102,6 +102,38 @@ src/
 
 Biên giới giữa core và adapter cũng là biên giới đo lường: `WorkflowTrace` được emit bởi core, thu thập bởi adapter, và dùng để tính toàn bộ metric ở Chương 4 mà không cần can thiệp thủ công.
 
+### 3.2.2 Session lifecycle trong IDA Loop
+
+Mỗi **phiên làm việc** (session) là một iteration — hoặc một phần iteration — của IDA Loop. Phiên không tự khép kín: nó bắt đầu bằng cách đọc checkpoint từ `ClassMemory` của phiên trước và kết thúc bằng cách commit kết quả trở lại `ClassMemory` để phiên sau kế thừa.
+
+```
+ClassMemory (checkpoint N)
+    ↓  ContextInjection
+Session N
+    ↓  IntentRouter
+    ├── UC_ID_GRAPH   (nếu intent = thiết kế dạy học)
+    ├── UC_AS_GRAPH   (nếu intent = kiểm tra / chấm bài)
+    └── ... (các intent khác: QUERY, UPDATE_PROFILE, ...)
+    ↓  HITL → commit
+ClassMemory (checkpoint N+1)
+    ↓
+Session N+1 ...
+```
+
+Một phiên có thể trigger **một hoặc nhiều** graph execution tùy theo intent trong teacher input. Điều quan trọng là dù phiên chạy graph nào, **ClassMemory luôn là nguồn checkpoint đầu vào và điểm commit đầu ra**. Nhờ vậy, continuity của IDA Loop được duy trì qua nhiều phiên mà không phụ thuộc vào conversation history.
+
+Trong một phiên điển hình:
+
+| Bước | Thành phần | Mô tả |
+| --- | --- | --- |
+| 1 | `ContextInjection` | Load `StudentGroupProfiles`, `DiagnosisHistory` gần nhất, `CurriculumSpec` từ `ClassMemory` và `CourseMemory` |
+| 2 | `IntentRouter` | Phân loại teacher input thành intent và slot |
+| 3 | Graph execution | Chạy `UC_ID_GRAPH` hoặc `UC_AS_GRAPH` (hoặc cả hai nếu có nhiều intent) |
+| 4 | HITL Gate | Giáo viên approve / edit / reject artifact và profile patch |
+| 5 | Memory commit | Artifact và profile patch đã duyệt được ghi vào `ClassMemory`; `SessionMemory` bị giải phóng |
+
+Artifact hoặc profile patch chưa qua HITL không được commit và không trở thành checkpoint cho phiên sau. Điều này bảo đảm IDA Loop chỉ tích lũy thông tin đã được giáo viên xác nhận.
+
 ## 3.3 Orchestration mechanism
 
 ### 3.3.1 Nguyên tắc thiết kế
