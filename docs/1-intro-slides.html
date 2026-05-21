@@ -179,6 +179,80 @@
   /* ── two-col layout ── */
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 
+  .harness-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .harness-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .harness-copy p { font-size: 0.95rem; line-height: 1.5; }
+
+  .harness-copy .formula {
+    padding: 14px 24px;
+    font-size: 1.25rem;
+  }
+
+  .harness-figure {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(240px, 0.85fr);
+    align-items: center;
+    gap: 18px;
+    min-width: 0;
+  }
+
+  .harness-figure img {
+    width: 100%;
+    max-height: 280px;
+    object-fit: contain;
+    border-radius: 12px;
+    border: 1.5px solid #e2e8f0;
+    background: #f8fafc;
+    box-shadow: 0 14px 30px rgba(15,23,42,0.08);
+  }
+
+  .harness-examples {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .harness-example {
+    border-radius: 10px;
+    border: 1.5px solid #e2e8f0;
+    background: #f8fafc;
+    padding: 8px 12px;
+    min-width: 0;
+  }
+
+  .harness-example strong {
+    display: block;
+    color: #475569;
+    font-size: 0.68rem;
+    letter-spacing: 0.8px;
+    line-height: 1.25;
+    text-transform: uppercase;
+  }
+
+  .harness-example span {
+    display: block;
+    color: #1e293b;
+    font-size: 0.76rem;
+    line-height: 1.25;
+    margin-top: 3px;
+  }
+
+  @media (max-width: 900px) {
+    .harness-figure { grid-template-columns: 1fr; }
+    .harness-figure img { max-height: 240px; }
+  }
+
   /* ── TOC special ── */
   .toc-grid {
     display: grid;
@@ -307,28 +381,21 @@ const slides = [
   {content: `
     <div class="s-label">1 · Motivation · 2 / 3</div>
     <div class="s-title">Xu hướng: <span class="accent">Harness</span></div>
-    <div class="s-body">
-      <p>Các công cụ chuyên dụng bọc LLM bằng một <strong>execution environment</strong> phù hợp với từng domain — còn gọi là <em>harness</em> (thuật ngữ 2026).</p>
-      <p>Harness tích hợp: prompt/context engineering · RAG · tool use · agentic loop · memory · multi-agent orchestration.</p>
-      <div class="card-row" style="margin-top:8px">
-        <div class="card indigo">
-          <div class="card-icon">💻</div>
-          <div class="card-label">Claude Code / Codex</div>
-          <div class="card-text">LLM + file system, terminal, coding workflow</div>
-        </div>
-        <div class="card blue">
-          <div class="card-icon">🎨</div>
-          <div class="card-label">Claude Design</div>
-          <div class="card-text">LLM + design canvas, design system</div>
-        </div>
-        <div class="card teal">
-          <div class="card-icon">🔬</div>
-          <div class="card-label">NotebookLM / Perplexity</div>
-          <div class="card-text">LLM + grounding, citation</div>
+    <div class="s-body harness-layout">
+      <div class="harness-copy">
+        <p>Các công cụ chuyên dụng bọc LLM bằng một <strong>execution environment</strong> phù hợp với từng domain — còn gọi là <em>harness</em> (thuật ngữ 2026).</p>
+        <p>Harness tích hợp: prompt/context engineering · RAG · tool use · agentic loop · memory · multi-agent orchestration.</p>
+        <p>Mỗi công cụ mạnh không vì LLM tốt hơn, mà vì <strong>harness khớp đặc thù lĩnh vực</strong>.</p>
+        <div class="formula">Agent = Model + Harness</div>
+      </div>
+      <div class="harness-figure">
+        <img src="assets/harness-anatomy.jpeg" alt="Harness anatomy diagram">
+        <div class="harness-examples">
+          <div class="harness-example"><strong>Claude Code / Codex</strong><span>LLM + file system, terminal, coding workflow</span></div>
+          <div class="harness-example"><strong>Claude Design</strong><span>LLM + design canvas, design system</span></div>
+          <div class="harness-example"><strong>NotebookLM / Perplexity</strong><span>LLM + grounding, citation</span></div>
         </div>
       </div>
-      <p>Mỗi công cụ mạnh không vì LLM tốt hơn, mà vì <strong>harness khớp đặc thù lĩnh vực</strong>.</p>
-      <div class="formula">Agent = Model + Harness</div>
     </div>
   `},
 
@@ -383,7 +450,7 @@ const slides = [
     <div class="s-body" style="gap:12px">
       <img src="assets/arch.svg"
            alt="Pedagogy Agent Harness Overview"
-           style="width:65%;border-radius:10px;border:1.5px solid #e2e8f0;flex-shrink:0;margin:auto">
+           style="width:80%;border-radius:10px;border:1.5px solid #e2e8f0;flex-shrink:0;margin:auto">
     </div>
   `},
 
@@ -393,15 +460,17 @@ const slides = [
     <div class="s-title">Memory &amp; Orchestration</div>
     <div class="s-body">
       <div class="pill-list">
-        <div class="pill ind"><div class="pill-dot"></div><div>
-          <strong>Memory layer</strong> — ánh xạ scope sư phạm lên memory taxonomy:<br>
-          <em>Semantic</em>: chuẩn chương trình, kiến thức môn học, preferences giáo viên.<br>
-          <em>Episodic</em>: lịch sử chẩn đoán, hồ sơ nhóm tích luỹ theo khoá học.<br>
-          <em>Working</em>: ngữ cảnh tác vụ hiện tại. Harness tự động inject đúng tầng.
+        <div class="pill amber"><div class="pill-dot"></div><div>
+          <strong>Memory layer</strong> — bốn scope ánh xạ cognitive taxonomy, harness tự động inject đúng tầng:<br>
+          <code>Session/Working</code>: ngữ cảnh tác vụ hiện tại.<br>
+          <code>Class/Episodic</code>: lịch sử chẩn đoán, hồ sơ nhóm tích lũy theo lớp học.<br>
+          <code>Program/Semantic</code>: curriculum và học liệu ổn định cho toàn chương trình đào tạo.<br>
+          <code>Global/Procedural</code>: preferences và phong cách dạy dài hạn của giáo viên.
         </div></div>
         <div class="pill teal"><div class="pill-dot"></div><div>
-          <strong>Orchestration</strong> — vận hành IDA Loop với workflow có cấu trúc. Bốn sub-agent:<br>
-          Orchestrator · Diagnosis Agent · Instructional Design Agent · Assessment Agent
+          <strong>Orchestration</strong> — <em>Graph-based</em> Plan-and-Execute Orchestrator điều phối:<br>
+          <code>Instructional Design Agent</code> · <code>Assessment Agent</code> · <code>Synthesis Agent</code><br>
+          <code>Pedagogical Verifier</code> kiểm tra constraint trước mỗi HITL checkpoint.
         </div></div>
       </div>
     </div>
@@ -410,17 +479,21 @@ const slides = [
   /* ── 7 — Proposed Method 3/3 ── */
   {content: `
     <div class="s-label">3 · Proposed Method · 3 / 3</div>
-    <div class="s-title">Tools, Sandbox<br>&amp; HITL Governance</div>
+    <div class="s-title">Tools / Sub-agents,<br>Plugin &amp; HITL</div>
     <div class="s-body">
       <div class="pill-list">
         <div class="pill blue"><div class="pill-dot"></div><div>
-          <strong>Tools &amp; sandbox</strong> — retriever có Bloom-aligned metadata, profile synthesizer, domain verifier.<br>
-          Mở rộng qua <em>pedagogy domain plugin</em> — plugin đưa tool mới vào và thực thi trong sandbox an toàn.
+          <strong>Tools / Sub-agents</strong> — tích hợp sẵn trong harness:<br>
+          <code>Retrieval Agents</code> · <code>Writing Tools</code> · <code>Context Compactor</code> · <code>MCP Client</code>
         </div></div>
         <div class="pill violet"><div class="pill-dot"></div><div>
-          <strong>Hooks &amp; HITL governance</strong> — pedagogical constraint checks tất định trước khi output trình giáo viên.<br>
-          Giáo viên luôn tham gia tại điểm quyết định: phê duyệt · chỉnh sửa · từ chối.<br>
-          Trách nhiệm chuyên môn không thể uỷ thác hoàn toàn cho hệ thống.
+          <strong>Domain Plugin</strong> — mở rộng domain-specific qua interface chuẩn:<br>
+          Agents · Tools · Sandbox · Policies · Corpus · Metadata<br>
+          Plugin inject vào harness, không sửa core — harness vẫn chạy được khi không có plugin.
+        </div></div>
+        <div class="pill rose"><div class="pill-dot"></div><div>
+          <strong>HITL Governance</strong> — giáo viên tham gia tại mọi điểm quyết định: phê duyệt · chỉnh sửa · từ chối.<br>
+          Không có artifact nào được commit vào memory nếu chưa qua HITL Gate.
         </div></div>
       </div>
       <div class="card-row">

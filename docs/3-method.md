@@ -12,8 +12,8 @@ Trong đó, LLM cung cấp năng lực ngôn ngữ, reasoning và generation; c�
 
 Thiết kế của harness bám theo bốn lớp đã nêu ở Chương 1:
 
-1. **Memory layer**: quản lý ngữ cảnh theo bốn phạm vi `GlobalMemory`, `CourseMemory`, `ClassMemory` và `SessionMemory`.
-2. **Orchestration mechanism**: vận hành IDA Loop bằng typed workflow graph với bốn role/sub-agent: `Orchestrator`, `Diagnosis Agent`, `Instructional Design Agent` và `Assessment Agent`.
+1. **Memory layer**: quản lý ngữ cảnh theo bốn phạm vi `GlobalMemory`, `ProgramMemory`, `ClassMemory` và `SessionMemory`.
+2. **Orchestration mechanism**: vận hành IDA Loop bằng graph-based workflow với bốn role/sub-agent: `Plan-and-Execute Orchestrator`, `Instructional Design Agent`, `Assessment Agent` và `Synthesis Agent`.
 3. **Tools & sandbox**: cung cấp retriever, profile synthesizer, schema validator, verifier và domain plugin chạy trong môi trường kiểm soát.
 4. **Hooks & HITL governance**: đặt checkpoint tất định tại các điểm sinh artifact, cập nhật profile, retry và commit memory.
 
@@ -33,7 +33,7 @@ Assessment
   -> ...
 ```
 
-Trong phạm vi prototype, giáo viên tương tác với hệ thống qua giao diện chat. Mọi input từ giáo viên đi qua `IntentRouter`, sau đó được `Orchestrator` chuyển thành một graph execution tương ứng. Graph execution có thể tạo kế hoạch bài dạy, sinh đề, tạo rubric, chấm bài, tổng hợp diagnosis, đề xuất cập nhật profile hoặc trả lời truy vấn về memory.
+Trong phạm vi prototype, giáo viên tương tác với hệ thống qua giao diện chat. Mọi input từ giáo viên đi vào `Plan-and-Execute Orchestrator` — Orchestrator tích hợp module `IntentRouter` để phân loại intent trước khi dispatch graph execution tương ứng. Graph execution có thể tạo kế hoạch bài dạy, sinh đề, tạo rubric, chấm bài, tổng hợp diagnosis, đề xuất cập nhật profile hoặc trả lời truy vấn về memory.
 
 Sơ đồ logic:
 
@@ -41,11 +41,10 @@ Sơ đồ logic:
 [Chat UI]
     <-> IPC
 [Main Process / Harness Runtime]
-    -> IntentRouter
-    -> Orchestrator
-    -> Typed Workflow Graph
-         -> ContextInjection
-         -> Retrieval / Tool Use
+    -> Plan-and-Execute Orchestrator
+         [IntentRouter module → graph dispatch]
+    -> Graph-based Workflow
+         -> Retrieval Agents   (context injection + retrieval)
          -> Role-specific Agent Node
          -> SchemaValidation
          -> PedagogicalVerifier
@@ -108,9 +107,9 @@ Mỗi **phiên làm việc** (session) là một iteration — hoặc một ph�
 
 ```
 ClassMemory (checkpoint N)
-    ↓  ContextInjection
+    ↓
 Session N
-    ↓  IntentRouter
+    ↓  Orchestrator [IntentRouter → graph dispatch]
     ├── UC_ID_GRAPH   (nếu intent = thiết kế dạy học)
     ├── UC_AS_GRAPH   (nếu intent = kiểm tra / chấm bài)
     └── ... (các intent khác: QUERY, UPDATE_PROFILE, ...)
@@ -126,8 +125,8 @@ Trong một phiên điển hình:
 
 | Bước | Thành phần | Mô tả |
 | --- | --- | --- |
-| 1 | `ContextInjection` | Load `StudentGroupProfiles`, `DiagnosisHistory` gần nhất, `CurriculumSpec` từ `ClassMemory` và `CourseMemory` |
-| 2 | `IntentRouter` | Phân loại teacher input thành intent và slot |
+| 1 | `Orchestrator` [IntentRouter] | Phân loại teacher input thành intent và slot; dispatch graph tương ứng |
+| 2 | `Retrieval Agents` | Load context từ memory (profiles, diagnosis, curriculum spec) và truy vấn corpus; tạo `ContextPack` cho agent node |
 | 3 | Graph execution | Chạy `UC_ID_GRAPH` hoặc `UC_AS_GRAPH` (hoặc cả hai nếu có nhiều intent) |
 | 4 | HITL Gate | Giáo viên approve / edit / reject artifact và profile patch |
 | 5 | Memory commit | Artifact và profile patch đã duyệt được ghi vào `ClassMemory`; `SessionMemory` bị giải phóng |
@@ -150,7 +149,7 @@ Nếu session lifecycle mô tả một iteration đơn lẻ, thì **class lifecy
 
 Khi giáo viên mở một lớp mới, harness tạo `ClassMemory` với trạng thái ban đầu:
 
-- `CurriculumSpec` được load từ `CourseMemory` của môn học tương ứng.
+- `ClassMemory` được liên kết với `program_id` để biết lớp này đang theo chương trình nào; `CurriculumSpec` của từng môn sẽ được tra cứu từ `ProgramMemory.syllabi` theo `course_id` của mỗi phiên.
 - `StudentGroupProfiles` được khởi tạo thủ công bởi giáo viên hoặc tổng hợp từ `CrossClassInsights` của các lớp trước (nếu có). Đây là prior knowledge về nhóm học sinh trước khi có bất kỳ assessment nào.
 - `DiagnosisHistory` và `ArtifactLog` bắt đầu rỗng.
 
@@ -162,29 +161,29 @@ Giai đoạn này không có graph execution; đây là bước cấu hình đ�
 
 - `ArtifactLog` lưu lesson plan, đề, rubric, grading result đã được HITL approve.
 - `DiagnosisHistory` lưu các lần chẩn đoán nhóm học sinh.
-- `StudentGroupProfiles` được cập nhật qua `ProfileSynthesis` sau mỗi vòng assessment.
+- `StudentGroupProfiles` được cập nhật qua `SynthesisAgent` sau mỗi vòng assessment.
 
 IDA Loop không có điểm kết thúc tự động — nó tiếp tục cho đến khi giáo viên kết thúc lớp học.
 
 **Giai đoạn 3 — Kết thúc class (sau IDA Loop)**
 
-Khi lớp học kết thúc, harness thực hiện **end-of-class synthesis**: tổng hợp những gì đã tích lũy trong `ClassMemory` để cải thiện `CourseMemory` cho các lớp sau.
+Khi lớp học kết thúc, harness thực hiện **end-of-class synthesis**: tổng hợp những gì đã tích lũy trong `ClassMemory` để cải thiện `ProgramMemory` cho các lớp sau.
 
-| Nguồn (`ClassMemory`) | Đích (`CourseMemory`) | Điều kiện |
+| Nguồn (`ClassMemory`) | Đích (`ProgramMemory`) | Điều kiện |
 | --- | --- | --- |
 | Artifact đã approve trong `ArtifactLog` | `MaterialLibrary` | Giáo viên chọn promote qua HITL |
 | Pattern lỗi phổ biến trong `DiagnosisHistory` | `CrossClassInsights.common_misconceptions` | Tự động đề xuất, giáo viên xác nhận |
 | Chiến lược hiệu quả trong `ArtifactLog` | `CrossClassInsights.effective_strategies` | Tự động đề xuất, giáo viên xác nhận |
 
-Sau bước này, `ClassMemory` được đóng (archive) và không còn là checkpoint cho phiên mới. Các lớp mở sau đó sẽ tạo `ClassMemory` mới, nhưng hưởng lợi từ `CourseMemory` đã được làm giàu qua end-of-class synthesis.
+Sau bước này, `ClassMemory` được đóng (archive) và không còn là checkpoint cho phiên mới. Các lớp mở sau đó sẽ tạo `ClassMemory` mới, nhưng hưởng lợi từ `ProgramMemory` đã được làm giàu qua end-of-class synthesis.
 
-Nhờ cơ chế này, IDA Loop không chỉ cải thiện việc dạy học trong một lớp mà còn tạo ra vòng lặp cải thiện dài hạn theo chiều: `SessionMemory → ClassMemory → CourseMemory → GlobalMemory`.
+Nhờ cơ chế này, IDA Loop không chỉ cải thiện việc dạy học trong một lớp mà còn tạo ra vòng lặp cải thiện dài hạn theo chiều: `SessionMemory → ClassMemory → ProgramMemory → GlobalMemory`.
 
 ## 3.3 Orchestration mechanism
 
 ### 3.3.1 Nguyên tắc thiết kế
 
-Orchestration mechanism không để một ReAct agent tự do quyết định toàn bộ quá trình bằng prompt. Thay vào đó, harness dùng một **typed workflow graph**: mỗi node có input schema, output schema, tool quyền hạn, checkpoint và transition rule rõ ràng.
+Orchestration mechanism không để một ReAct agent tự do quyết định toàn bộ quá trình bằng prompt. Thay vào đó, harness dùng một **graph-based workflow** kiểu Plan-and-Execute: mỗi node có input schema, output schema, tool quyền hạn, checkpoint và transition rule rõ ràng.
 
 Thiết kế này có bốn mục tiêu:
 
@@ -199,12 +198,12 @@ Harness triển khai bốn role chính. Các role này có thể dùng cùng m�
 
 | Role | Trách nhiệm | Input chính | Output chính | Tool quyền hạn |
 | --- | --- | --- | --- | --- |
-| `Orchestrator` | Điều phối graph, định tuyến intent, chọn node kế tiếp, quản lý HITL và commit | Teacher input, graph state, validation/verifier result | Next node, HITL request, commit decision | Memory read/write có kiểm soát, router, validators |
-| `Diagnosis Agent` | Chuyển kết quả đánh giá thành chẩn đoán nhóm học sinh | Grading result, rubric, submissions, old profiles | `GroupDiagnosis`, misconception labels, profile update proposal | Error taxonomy, profile synthesizer |
-| `Instructional Design Agent` | Sinh kế hoạch bài dạy và hoạt động phân hoá | Topic, Bloom target, course context, student profiles | Lesson plan, differentiated activities | Retriever, pedagogical templates |
-| `Assessment Agent` | Sinh rubric, đề, bài tập, chấm bài và feedback | Topic, difficulty, submissions, profiles | Assessment artifact, grading result, feedback | Retriever, rubric templates, domain verifier nếu có |
+| `Plan-and-Execute Orchestrator` | Điều phối graph, định tuyến intent, chọn node kế tiếp, quản lý HITL và commit | Teacher input, graph state, validation/verifier result | Next node, HITL request, commit decision | Memory read/write có kiểm soát, router, validators |
+| `Instructional Design Agent` | Sinh kế hoạch bài dạy và hoạt động phân hoá | Topic, Bloom target, program context, student profiles | Lesson plan, differentiated activities | Retrieval Agents, Writing Tools |
+| `Assessment Agent` | Sinh rubric, đề, bài tập, chấm bài và feedback | Topic, difficulty, submissions, profiles | Assessment artifact, grading result, feedback | Retrieval Agents, Writing Tools, domain verifier nếu có |
+| `Synthesis Agent` | Chuyển grading result thành diagnosis nhóm và đề xuất profile patch | Grading result, rubric, old profiles, error taxonomy | `GroupDiagnosis`, `StudentGroupProfilePatch` | Context Compactor, error taxonomy từ plugin |
 
-Điểm quan trọng là `Orchestrator` không phải agent sinh nội dung sư phạm chính. Nó là controller của graph: nhận trạng thái hiện tại, kiểm tra output từ các node, quyết định transition, mở HITL checkpoint, retry node lỗi hoặc commit artifact đã được duyệt.
+Điểm quan trọng là `Plan-and-Execute Orchestrator` không phải agent sinh nội dung sư phạm chính. Nó là controller của graph: nhận trạng thái hiện tại, kiểm tra output từ các node, quyết định transition, mở HITL checkpoint, retry node lỗi hoặc commit artifact đã được duyệt.
 
 ### 3.3.3 Graph state
 
@@ -246,8 +245,7 @@ Graph được mô tả ở mức logic như sau:
 
 ```text
 TeacherInput
-  -> IntentRouter
-  -> Orchestrator
+  -> Orchestrator [IntentRouter module]
        -> NEED_CLARIFICATION
        -> QUERY_MEMORY
        -> UPDATE_PROFILE
@@ -256,8 +254,7 @@ TeacherInput
        -> FEEDBACK_REVISION
 
 UC_ID_GRAPH
-  -> ContextInjection
-  -> Retrieval
+  -> RetrievalAgents   (load context + query corpus)
   -> InstructionalDesignAgent
   -> SchemaValidation
   -> PedagogicalVerifier
@@ -265,16 +262,17 @@ UC_ID_GRAPH
   -> MemoryCommit
 
 UC_AS_GRAPH
-  -> ContextInjection
+  -> RetrievalAgents   (load context + query corpus)
   -> AssessmentAgent
   -> SchemaValidation
   -> DomainVerifier?
   -> PedagogicalVerifier
-  -> DiagnosisAgent
-  -> ProfileSynthesis
+  -> SynthesisAgent
   -> HITLGate
   -> MemoryCommit
 ```
+
+Trong graph, `PedagogicalVerifier` là node tường minh — không phải tool được gọi ngầm. Nếu verifier fail, `Orchestrator` retry node sinh output trước đó với violation reason làm constraint, chứ không bỏ qua.
 
 Transition rule chính:
 
@@ -293,7 +291,9 @@ Nhờ vậy, orchestration mechanism có tính tất định ở phần điều 
 
 ## 3.4 Intent Router
 
-`IntentRouter` là node đầu tiên xử lý mọi chat input. Router phân loại input thành một trong sáu intent:
+`IntentRouter` là module bên trong `Plan-and-Execute Orchestrator`, không phải node độc lập trong graph. Mỗi khi nhận teacher input, Orchestrator chạy IntentRouter trước để phân loại intent và trích xuất slot, rồi mới dispatch graph tương ứng.
+
+Router nhận diện sáu intent:
 
 | Intent | Ví dụ trigger | Graph kích hoạt |
 | --- | --- | --- |
@@ -304,7 +304,7 @@ Nhờ vậy, orchestration mechanism có tính tất định ở phần điều 
 | `FEEDBACK` | "Chỉnh lại hoạt động 2" | Artifact revision |
 | `NEED_CLARIFICATION` | Input thiếu mục tiêu hoặc lẫn nhiều tác vụ | Clarifying question |
 
-Router dùng LLM classifier nhẹ kết hợp keyword heuristic fallback. Output của router gồm `{intent, confidence, extracted_slots, missing_slots}`. Nếu confidence thấp hoặc thiếu slot quan trọng, `Orchestrator` không chạy pipeline ngay mà hỏi lại một câu ngắn.
+Router dùng LLM classifier nhẹ kết hợp keyword heuristic fallback. Output của router gồm `{intent, confidence, extracted_slots, missing_slots}`. Nếu confidence thấp hoặc thiếu slot quan trọng, Orchestrator không dispatch graph mà hỏi lại một câu ngắn trước.
 
 Ví dụ:
 
@@ -340,8 +340,7 @@ interface UCIDInput {
 Luồng xử lý:
 
 ```text
-ContextInjection
-  -> Retrieval
+RetrievalAgents
   -> InstructionalDesignAgent
   -> SchemaValidation
   -> PedagogicalVerifier
@@ -349,7 +348,7 @@ ContextInjection
   -> MemoryCommit
 ```
 
-`ContextInjection` lấy `CurriculumSpec` từ `CourseMemory`, `StudentGroupProfiles` và `DiagnosisHistory` gần nhất từ `ClassMemory`, cùng preference của giáo viên từ `GlobalMemory`. `Retrieval` truy vấn corpus theo topic, Bloom target và readiness/misconception của nhóm học sinh. `InstructionalDesignAgent` sinh artifact có cấu trúc:
+`RetrievalAgents` đảm nhận hai việc: load context từ memory (`CurriculumSpec` của môn từ `ProgramMemory.syllabi`, `StudentGroupProfiles` và `DiagnosisHistory` gần nhất từ `ClassMemory`, preference từ `GlobalMemory`) và truy vấn corpus theo topic, Bloom target, readiness/misconception nhóm. Kết quả được đóng gói thành `ContextPack` truyền cho `InstructionalDesignAgent`. `InstructionalDesignAgent` sinh artifact có cấu trúc:
 
 ```typescript
 interface LessonPlanArtifact {
@@ -386,13 +385,12 @@ UC-AS graph phục vụ ba nhóm tác vụ: sinh bài tập/đề kiểm tra, x�
 Luồng xử lý:
 
 ```text
-ContextInjection
+RetrievalAgents
   -> AssessmentAgent
   -> SchemaValidation
   -> DomainVerifier?
   -> PedagogicalVerifier
-  -> DiagnosisAgent
-  -> ProfileSynthesis
+  -> SynthesisAgent
   -> HITLGate
   -> MemoryCommit
 ```
@@ -413,7 +411,19 @@ interface GradingArtifact {
 }
 ```
 
-Sau khi có grading artifact, `DiagnosisAgent` tổng hợp pattern lỗi theo nhóm:
+Sau khi có grading artifact, `SynthesisAgent` nhận vào và thực hiện hai bước liên tiếp trong cùng một node.
+
+## 3.7 Synthesis Agent
+
+`SynthesisAgent` là cầu nối giữa assessment và personalization. Nó thực hiện cơ chế **episodic → semantic consolidation** trong một node duy nhất: chuyển grading result thành diagnosis nhóm, rồi ngay lập tức đề xuất profile patch để trình giáo viên qua HITL.
+
+Ba bước bên trong agent:
+
+1. **Diagnose**: tổng hợp pattern lỗi từ grading artifact thành `GroupDiagnosis` cho từng nhóm.
+2. **Merge**: so sánh diagnosis mới với profile hiện tại; thêm misconception mới, cập nhật readiness level nếu đủ confidence, ghi nhận strength và intervention đề xuất.
+3. **Propose**: tạo `StudentGroupProfilePatch` và trình giáo viên approve/edit/reject qua HITL Gate.
+
+Output của bước Diagnose:
 
 ```typescript
 interface GroupDiagnosis {
@@ -426,19 +436,7 @@ interface GroupDiagnosis {
 }
 ```
 
-Diagnosis không tự động ghi đè profile. Nó được chuyển sang `ProfileSynthesis` để tạo proposal, sau đó trình giáo viên qua HITL.
-
-## 3.7 Profile Synthesis Pipeline
-
-`ProfileSynthesis` là cầu nối giữa assessment và personalization. Nó thực hiện cơ chế **episodic → semantic consolidation**: chuyển các sự kiện đánh giá cụ thể trong `DiagnosisHistory` thành tri thức ổn định hơn trong `StudentGroupProfiles`.
-
-Pipeline gồm ba bước:
-
-1. **Parse**: chuẩn hoá output của `DiagnosisAgent` thành `GroupDiagnosis`.
-2. **Merge**: so sánh diagnosis mới với profile hiện tại; thêm misconception mới, cập nhật readiness level nếu đủ confidence, ghi nhận strength hoặc intervention đề xuất.
-3. **Propose**: tạo `StudentGroupProfilePatch` và trình giáo viên approve/edit/reject.
-
-Ví dụ patch:
+Output của bước Propose:
 
 ```typescript
 interface StudentGroupProfilePatch {
@@ -465,17 +463,17 @@ Harness quản lý memory theo bốn tầng scope lồng nhau, ánh xạ với c
 
 | Scope | Cognitive type | Vai trò |
 | --- | --- | --- |
-| Global | Procedural | Hành vi và phong cách dạy tích lũy xuyên suốt nhiều khoá học |
-| Course | Semantic | Curriculum và học liệu ổn định, cải thiện qua nhiều lớp |
+| Global | Procedural | Hành vi và phong cách dạy tích lũy xuyên suốt nhiều chương trình |
+| Program | Semantic | Curriculum và học liệu ổn định cho cả chương trình, cải thiện qua nhiều lớp |
 | Class | Episodic | Sự kiện và hồ sơ nhóm gắn với một lớp học cụ thể |
 | Session | Working | Ngữ cảnh tức thời đang xử lý |
 
 Consolidation diễn ra theo chiều từ dưới lên:
 
 ```
-Session  →(HITL commit)→          ClassMemory
-Class    →(end-of-class synthesis)→ CourseMemory
-Course   →(implicit, qua thời gian)→ GlobalMemory
+Session  →(HITL commit)→           ClassMemory
+Class    →(end-of-class synthesis)→ ProgramMemory
+Program  →(implicit, qua thời gian)→ GlobalMemory
 ```
 
 ### Global scope — Procedural memory
@@ -495,37 +493,38 @@ GlobalMemory
 
 Global memory được inject nhẹ vào system context, chủ yếu để điều chỉnh tone, style và preference dài hạn. Nó không chứa dữ liệu nhạy cảm cấp submission nếu không cần thiết.
 
-### Course scope — Semantic memory
+### Program scope — Semantic memory
 
-Một `CourseMemory` gắn với một môn học cụ thể và tồn tại qua nhiều lớp. Đây là nơi tích lũy curriculum gốc và học liệu đã được tinh chỉnh qua thực tế giảng dạy.
+Một `ProgramMemory` gắn với một chương trình đào tạo cụ thể và tồn tại qua nhiều lớp, nhiều môn học trong chương trình đó. Đây là nơi tích lũy curriculum gốc cho toàn bộ chương trình và học liệu đã được tinh chỉnh qua thực tế giảng dạy.
 
 ```text
-CourseMemory
-├── course_id, teacher_id
-├── CurriculumSpec
+ProgramMemory
+├── program_id, teacher_id
+├── syllabi[]
+│   ├── course_id
 │   ├── subject
-│   ├── syllabus
 │   ├── learning_outcomes
 │   └── domain
 ├── MaterialLibrary[]
-│   ├── material_id, type
+│   ├── material_id, course_id, type
 │   ├── version
 │   └── effectiveness_notes
 └── CrossClassInsights[]
+    ├── course_id
     ├── common_misconceptions[]
     ├── effective_strategies[]
     └── last_updated
 ```
 
-`MaterialLibrary` chứa artifact tái sử dụng được (rubric, lesson plan template, assessment) đã qua HITL và được giáo viên chọn promote từ các lớp trước. `CrossClassInsights` tích lũy pattern chẩn đoán phổ biến, phục vụ retrieval và verifier ở các lớp sau.
+`syllabi` chứa `CurriculumSpec` của từng môn học trong chương trình; khi khởi tạo lớp hoặc inject context, harness tra cứu syllabus theo `course_id` tương ứng. `MaterialLibrary` chứa artifact tái sử dụng được (rubric, lesson plan template, assessment) đã qua HITL và được giáo viên chọn promote từ các lớp trước. `CrossClassInsights` tích lũy pattern chẩn đoán phổ biến theo từng môn, phục vụ retrieval và verifier ở các lớp sau.
 
 ### Class scope — Episodic memory
 
-Một `ClassMemory` tương ứng với một lớp học sinh cụ thể đang được dạy trong một khoá học. Đây là lõi của IDA Loop.
+Một `ClassMemory` tương ứng với một lớp học sinh xuyên suốt toàn bộ chương trình đào tạo — lớp này học nhiều môn theo thứ tự của `ProgramMemory.syllabi`. Đây là lõi của IDA Loop.
 
 ```text
 ClassMemory
-├── class_id, course_id, teacher_id
+├── class_id, program_id, teacher_id
 │
 ├── StudentGroupProfiles[]
 │   ├── group_id, group_name, size
@@ -535,21 +534,21 @@ ClassMemory
 │   └── last_updated
 │
 ├── DiagnosisHistory[]
-│   ├── diagnosis_id, round_id, timestamp
+│   ├── diagnosis_id, course_id, round_id, timestamp
 │   ├── source_artifact_id
 │   └── group_diagnoses[]
 │
 └── ArtifactLog[]
-    ├── artifact_id, type
+    ├── artifact_id, course_id, type
     ├── session_id
     ├── status
     ├── hitl_notes
     └── citations
 ```
 
-`DiagnosisHistory` và `ArtifactLog` là episodic thuần — sự kiện cụ thể gắn với thời điểm và nhóm học sinh. `StudentGroupProfiles` là kết quả consolidation từ episodic: sau khi qua `ProfileSynthesis` và HITL, chúng trở thành tri thức semantic ổn định hơn trong phạm vi lớp này.
+`DiagnosisHistory` và `ArtifactLog` là episodic thuần — sự kiện cụ thể gắn với thời điểm, môn học và nhóm học sinh. Mỗi entry mang `course_id` để phân biệt lịch sử theo từng môn trong chương trình. `StudentGroupProfiles` là kết quả consolidation từ episodic: sau khi qua `SynthesisAgent` và HITL, chúng trở thành tri thức semantic ổn định hơn trong phạm vi lớp này.
 
-Class memory là lõi của IDA Loop. `StudentGroupProfiles` và `DiagnosisHistory` được dùng lại ở các vòng UC-ID/UC-AS sau để tạo group-level personalization.
+Class memory là lõi của IDA Loop. `StudentGroupProfiles` và `DiagnosisHistory` (lọc theo `course_id` hiện tại) được dùng lại ở các vòng UC-ID/UC-AS sau để tạo group-level personalization.
 
 ### Session scope — Working memory
 
@@ -565,42 +564,45 @@ SessionMemory
 
 Các artifact chưa được approve nằm trong `pending_artifacts`. Khi session kết thúc, chỉ artifact/profile patch đã qua HITL mới được commit vào `ClassMemory`; phần còn lại giữ ở trạng thái draft hoặc bị loại theo quyết định của giáo viên.
 
-## 3.9 Context Injection
+## 3.9 Retrieval Agents — Context & Retrieval
 
-`ContextInjection` chạy trước mỗi node sinh nội dung chính. Nó tạo `ContextPack` có giới hạn token thay vì truyền toàn bộ memory vào prompt.
+`Retrieval Agents` là node đầu tiên trong mỗi UC graph. Thay vì truyền toàn bộ memory vào prompt, Retrieval Agents tổng hợp `ContextPack` có giới hạn token gồm hai phần: context từ memory và chunks từ corpus.
 
-Thứ tự ưu tiên:
+**Phần 1 — Load context từ memory** (thứ tự ưu tiên):
 
 1. `SessionMemory.active_workflow_state`
 2. `ClassMemory.StudentGroupProfiles`
 3. `ClassMemory.DiagnosisHistory` trong N vòng gần nhất, mặc định N = 3
-4. `CourseMemory.CurriculumSpec`
+4. `ProgramMemory.syllabi[course_id]` (CurriculumSpec của môn học trong phiên hiện tại)
 5. `GlobalMemory.preferences`
-6. Retrieved chunks từ corpus (bao gồm `CourseMemory.MaterialLibrary`)
 
-Context pack có hai kênh sử dụng:
+**Phần 2 — Retrieval từ corpus**:
+
+- Query được expand dựa trên topic, Bloom target và misconception nhóm từ profile.
+- Metadata filter và reranking áp dụng theo `RetrievalPolicy` của plugin (nếu có).
+- Retrieved chunks bao gồm cả `ProgramMemory.MaterialLibrary`.
+
+`ContextPack` có hai kênh sử dụng:
 
 - **Retrieval policy**: profile nhóm ảnh hưởng đến query expansion, metadata filter và reranking.
 - **Generation prompt**: profile, diagnosis, curriculum spec và preference được đưa vào prompt theo slot cố định.
 
-Nếu context vượt budget, harness ưu tiên giữ profile hiện tại, diagnosis gần nhất và learning outcomes từ `CurriculumSpec`; diagnosis cũ được nén thành summary. Việc này giúp giảm rủi ro mất thông tin quan trọng do context dài và tránh biến conversation history thành nguồn ngữ cảnh duy nhất.
+Nếu context vượt budget, Retrieval Agents ưu tiên giữ profile hiện tại, diagnosis gần nhất và learning outcomes từ `CurriculumSpec`; diagnosis cũ được nén qua `Context Compactor`. Việc này tránh biến conversation history thành nguồn ngữ cảnh duy nhất.
 
-## 3.10 Tools, verifier và sandbox
+## 3.10 Tools / Sub-agents
 
-Harness cung cấp một tập tool lõi:
+Harness cung cấp bốn nhóm tool/sub-agent dùng chung cho các agent node trong graph:
 
-| Tool | Chức năng | Dùng trong graph |
+| Nhóm | Chức năng | Agent sử dụng |
 | --- | --- | --- |
-| `Retriever` | Tìm chunk từ corpus theo topic, Bloom, difficulty, misconception | UC-ID, UC-AS |
-| `SchemaValidator` | Kiểm tra artifact theo JSON Schema | Tất cả artifact |
-| `PedagogicalVerifier` | Kiểm tra Bloom, constructive alignment, rubric consistency, feedback policy | UC-ID, UC-AS |
-| `ProfileSynthesizer` | Merge diagnosis thành profile patch | UC-AS |
-| `ArtifactStore` | Lưu draft/approved artifact và trace | HITL, commit |
-| `DomainVerifier` | Kiểm tra đặc thù domain nếu plugin cung cấp | Optional |
+| `Retrieval Agents` | Tìm chunk từ corpus theo topic, Bloom, difficulty, misconception; hỗ trợ query expansion và reranking | UC-ID, UC-AS |
+| `Writing Tools` | Hỗ trợ sinh và chỉnh sửa artifact có cấu trúc (lesson plan, rubric, feedback) | ID Agent, Assessment Agent |
+| `Context Compactor` | Nén conversation history và diagnosis cũ thành summary khi context vượt budget | Tất cả agent node |
+| `MCP Client` | Giao tiếp với external tool server qua Model Context Protocol | Tất cả agent node |
 
-Tool có thể được gọi bởi agent node nhưng quyền hạn được giới hạn theo role. Ví dụ `InstructionalDesignAgent` được dùng retriever và pedagogical templates, nhưng không được commit trực tiếp vào memory. `AssessmentAgent` có thể gọi domain verifier, nhưng verifier result phải quay về graph để `Orchestrator` quyết định retry hoặc HITL.
+Tool có thể được gọi bởi agent node nhưng quyền hạn được giới hạn theo role. `InstructionalDesignAgent` và `AssessmentAgent` có quyền dùng Retrieval Agents và Writing Tools, nhưng không được commit trực tiếp vào memory. Schema validation và artifact commit là trách nhiệm của graph (node `SchemaValidation` và `MemoryCommit`), không phải của tool.
 
-Với case study CNTT/lập trình, verifier chạy trong sandbox để giảm rủi ro khi xử lý code submission. Verifier chỉ nhận input đã được chuẩn hoá và trả về result có cấu trúc, không được ghi trực tiếp vào memory.
+Với case study CNTT/lập trình, domain verifier từ plugin chạy trong sandbox để giảm rủi ro khi xử lý code submission. Verifier chỉ nhận input đã được chuẩn hoá và trả về result có cấu trúc; `Orchestrator` quyết định retry hay chuyển HITL dựa trên result đó.
 
 ## 3.11 Domain Plugin Interface
 
@@ -609,24 +611,21 @@ Domain plugin là lớp mở rộng optional. Core harness vẫn hoạt động 
 ```typescript
 interface DomainPlugin {
   domain: string
-  metadataSchema: JSONSchema
-  taskSchemas: Record<string, JSONSchema>
-  retrievalPolicy: RetrievalPolicy
-  verifier?: Verifier
-  errorTaxonomy: ErrorTaxonomy
-  feedbackTemplates: FeedbackTemplates
-  corpusIngestionPipeline: IngestionPipeline
+  agents?: AgentDefinition[]       // sub-agent bổ sung đặc thù domain
+  tools?: ToolDefinition[]         // tool bổ sung, có thể chạy trong sandbox
+  sandbox?: SandboxConfig          // cấu hình sandbox cho verifier/code execution
+  policies?: PolicyDefinition[]    // ràng buộc domain-specific cho Orchestrator
+  corpus?: CorpusConfig            // cấu hình ingestion và metadata cho corpus domain
+  metadata?: MetadataSchema        // schema metadata của chunk trong corpus domain
 }
 ```
 
 Khi plugin được load:
 
-- `metadataSchema` kiểm soát metadata của corpus chunk;
-- `retrievalPolicy` điều chỉnh cách truy vấn và rerank;
-- `taskSchemas` bổ sung schema cho artifact đặc thù domain;
-- `verifier` được chèn vào UC-AS graph;
-- `errorTaxonomy` hỗ trợ `DiagnosisAgent` gán misconception label;
-- `feedbackTemplates` giúp feedback nhất quán với domain.
+- `agents` và `tools` được inject vào harness — agent node trong graph có thể gọi;
+- `sandbox` cấu hình môi trường thực thi cho verifier (ví dụ: chạy test case code submission);
+- `policies` bổ sung ràng buộc domain-specific mà `Orchestrator` kiểm tra khi transition;
+- `corpus` và `metadata` điều chỉnh pipeline ingestion và cách Retrieval Agents truy vấn corpus domain.
 
 Khi không có plugin, graph bỏ qua `DomainVerifier` nhưng vẫn chạy `SchemaValidation`, `PedagogicalVerifier`, HITL và memory commit. Điều này bảo đảm core harness không phụ thuộc cứng vào một domain cụ thể.
 
@@ -646,9 +645,9 @@ Các quyết định HITL:
 HITL xuất hiện ở bốn điểm chính:
 
 1. Sau khi sinh lesson plan, assessment, rubric hoặc feedback.
-2. Sau khi `ProfileSynthesis` đề xuất cập nhật `StudentGroupProfile`.
+2. Sau khi `SynthesisAgent` đề xuất cập nhật `StudentGroupProfile`.
 3. Khi verifier hoặc schema validation thất bại quá số retry và cần giáo viên quyết định tiếp tục.
-4. Cuối khoá học (end-of-class synthesis): giáo viên chọn artifact nào từ `ClassMemory.ArtifactLog` được promote lên `CourseMemory.MaterialLibrary` và insight nào được tích lũy vào `CrossClassInsights`.
+4. Cuối khoá học (end-of-class synthesis): giáo viên chọn artifact nào từ `ClassMemory.ArtifactLog` được promote lên `ProgramMemory.MaterialLibrary` và insight nào được tích lũy vào `CrossClassInsights`.
 
 Nhờ HITL, giáo viên giữ quyền chuyên môn cuối cùng. Harness chỉ đề xuất, kiểm tra, ghi nhớ và hỗ trợ retry có mục tiêu.
 
@@ -686,6 +685,6 @@ Do đó, orchestration mechanism không chỉ là thiết kế runtime, mà còn
 
 ## 3.14 Tóm tắt
 
-Chương này mô tả Pedagogy Agent Harness như một kiến trúc có bốn lớp: memory, orchestration, tools/plugin và HITL. Điểm lõi của phương pháp là typed workflow graph vận hành IDA Loop với bốn role/sub-agent. `AssessmentAgent` tạo hoặc chấm assessment; `DiagnosisAgent` chuyển kết quả đánh giá thành diagnosis; `ProfileSynthesis` đề xuất cập nhật `StudentGroupProfile`; `InstructionalDesignAgent` dùng profile đó để sinh kế hoạch bài dạy phân hoá; `Orchestrator` kiểm soát transition, validation, verifier, HITL và commit memory. Memory được tổ chức theo bốn scope ánh xạ với cognitive taxonomy: `GlobalMemory` (procedural), `CourseMemory` (semantic), `ClassMemory` (episodic) và `SessionMemory` (working) — consolidation diễn ra từ dưới lên, đảm bảo insight từ mỗi lớp học được tích lũy cải thiện curriculum cho các lớp sau.
+Chương này mô tả Pedagogy Agent Harness như một kiến trúc có bốn lớp: memory, orchestration, tools/sub-agents và HITL. Điểm lõi của phương pháp là graph-based IDA Loop với bốn role/sub-agent. `AssessmentAgent` tạo hoặc chấm assessment; `PedagogicalVerifier` kiểm tra constraint là một node tường minh trong graph; `SynthesisAgent` chuyển grading result thành diagnosis và đề xuất profile patch trong một bước duy nhất; `InstructionalDesignAgent` dùng profile đó để sinh kế hoạch bài dạy phân hoá; `Plan-and-Execute Orchestrator` kiểm soát transition, HITL và commit memory. Tool layer gồm bốn nhóm dùng chung: Retrieval Agents, Writing Tools, Context Compactor và MCP Client. Plugin mở rộng domain-specific qua sáu thành phần: Agents, Tools, Sandbox, Policies, Corpus, Metadata. Memory được tổ chức theo bốn scope ánh xạ cognitive taxonomy: `GlobalMemory` (procedural), `ProgramMemory` (semantic), `ClassMemory` (episodic) và `SessionMemory` (working) — consolidation diễn ra từ dưới lên, đảm bảo insight từ mỗi lớp học được tích lũy cải thiện curriculum cho toàn bộ chương trình đào tạo.
 
 Cách thiết kế này biến cá nhân hoá theo nhóm học sinh từ một prompt đơn lẻ thành một vòng lặp có trạng thái, có kiểm soát và có thể đánh giá được.
