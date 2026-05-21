@@ -12,7 +12,7 @@ Trong đó, LLM cung cấp năng lực ngôn ngữ, reasoning và generation; c�
 
 Thiết kế của harness bám theo bốn lớp đã nêu ở Chương 1:
 
-1. **Memory layer**: quản lý ngữ cảnh theo ba phạm vi `GlobalMemory`, `WorkspaceMemory` và `SessionMemory`.
+1. **Memory layer**: quản lý ngữ cảnh theo bốn phạm vi `GlobalMemory`, `CourseMemory`, `ClassMemory` và `SessionMemory`.
 2. **Orchestration mechanism**: vận hành IDA Loop bằng typed workflow graph với bốn role/sub-agent: `Orchestrator`, `Diagnosis Agent`, `Instructional Design Agent` và `Assessment Agent`.
 3. **Tools & sandbox**: cung cấp retriever, profile synthesizer, schema validator, verifier và domain plugin chạy trong môi trường kiểm soát.
 4. **Hooks & HITL governance**: đặt checkpoint tất định tại các điểm sinh artifact, cập nhật profile, retry và commit memory.
@@ -135,7 +135,7 @@ Mỗi lần xử lý một request của giáo viên, harness tạo một `Workf
 ```typescript
 interface WorkflowState {
   workflow_id: string
-  workspace_id: string
+  class_id: string
   session_id: string
   teacher_id: string
 
@@ -160,7 +160,7 @@ interface WorkflowState {
 }
 ```
 
-Các artifact được sinh ra trong graph ở trạng thái `draft`. Chúng chỉ được ghi vào `WorkspaceMemory.ArtifactLog` sau khi qua HITL Gate. Tương tự, `StudentGroupProfile` chỉ được cập nhật sau khi giáo viên approve hoặc edit proposal.
+Các artifact được sinh ra trong graph ở trạng thái `draft`. Chúng chỉ được ghi vào `ClassMemory.ArtifactLog` sau khi qua HITL Gate. Tương tự, `StudentGroupProfile` chỉ được cập nhật sau khi giáo viên approve hoặc edit proposal.
 
 ### 3.3.4 Node và transition
 
@@ -271,7 +271,7 @@ ContextInjection
   -> MemoryCommit
 ```
 
-`ContextInjection` lấy `CourseContext`, `StudentGroupProfiles`, `DiagnosisHistory` gần nhất và preference của giáo viên. `Retrieval` truy vấn corpus theo topic, Bloom target và readiness/misconception của nhóm học sinh. `InstructionalDesignAgent` sinh artifact có cấu trúc:
+`ContextInjection` lấy `CurriculumSpec` từ `CourseMemory`, `StudentGroupProfiles` và `DiagnosisHistory` gần nhất từ `ClassMemory`, cùng preference của giáo viên từ `GlobalMemory`. `Retrieval` truy vấn corpus theo topic, Bloom target và readiness/misconception của nhóm học sinh. `InstructionalDesignAgent` sinh artifact có cấu trúc:
 
 ```typescript
 interface LessonPlanArtifact {
@@ -383,11 +383,26 @@ Quy tắc commit:
 
 ## 3.8 Memory Architecture
 
-Harness quản lý memory theo ba tầng scope lồng nhau. Mục tiêu là tránh việc toàn bộ lịch sử hội thoại bị nhồi tuyến tính vào prompt, đồng thời giữ được continuity của IDA Loop trong phạm vi khoá học.
+Harness quản lý memory theo bốn tầng scope lồng nhau, ánh xạ với cognitive taxonomy của Sumers et al. (2024). Mục tiêu là tránh việc toàn bộ lịch sử hội thoại bị nhồi tuyến tính vào prompt, đồng thời duy trì continuity của IDA Loop trong phạm vi một lớp học và tích lũy cải thiện học liệu qua nhiều lớp.
 
-### Global scope — cá nhân hoá giáo viên
+| Scope | Cognitive type | Vai trò |
+| --- | --- | --- |
+| Global | Procedural | Hành vi và phong cách dạy tích lũy xuyên suốt nhiều khoá học |
+| Course | Semantic | Curriculum và học liệu ổn định, cải thiện qua nhiều lớp |
+| Class | Episodic | Sự kiện và hồ sơ nhóm gắn với một lớp học cụ thể |
+| Session | Working | Ngữ cảnh tức thời đang xử lý |
 
-Duy trì xuyên suốt nhiều workspace và nhiều phiên làm việc.
+Consolidation diễn ra theo chiều từ dưới lên:
+
+```
+Session  →(HITL commit)→          ClassMemory
+Class    →(end-of-class synthesis)→ CourseMemory
+Course   →(implicit, qua thời gian)→ GlobalMemory
+```
+
+### Global scope — Procedural memory
+
+Duy trì xuyên suốt nhiều khoá học và nhiều phiên làm việc.
 
 ```text
 GlobalMemory
@@ -402,18 +417,37 @@ GlobalMemory
 
 Global memory được inject nhẹ vào system context, chủ yếu để điều chỉnh tone, style và preference dài hạn. Nó không chứa dữ liệu nhạy cảm cấp submission nếu không cần thiết.
 
-### Workspace scope — ngữ cảnh khoá học
+### Course scope — Semantic memory
 
-Một workspace tương ứng với một môn học/khoá học cụ thể.
+Một `CourseMemory` gắn với một môn học cụ thể và tồn tại qua nhiều lớp. Đây là nơi tích lũy curriculum gốc và học liệu đã được tinh chỉnh qua thực tế giảng dạy.
 
 ```text
-WorkspaceMemory
-├── workspace_id, teacher_id
-├── CourseContext
+CourseMemory
+├── course_id, teacher_id
+├── CurriculumSpec
 │   ├── subject
 │   ├── syllabus
 │   ├── learning_outcomes
 │   └── domain
+├── MaterialLibrary[]
+│   ├── material_id, type
+│   ├── version
+│   └── effectiveness_notes
+└── CrossClassInsights[]
+    ├── common_misconceptions[]
+    ├── effective_strategies[]
+    └── last_updated
+```
+
+`MaterialLibrary` chứa artifact tái sử dụng được (rubric, lesson plan template, assessment) đã qua HITL và được giáo viên chọn promote từ các lớp trước. `CrossClassInsights` tích lũy pattern chẩn đoán phổ biến, phục vụ retrieval và verifier ở các lớp sau.
+
+### Class scope — Episodic memory
+
+Một `ClassMemory` tương ứng với một lớp học sinh cụ thể đang được dạy trong một khoá học. Đây là lõi của IDA Loop.
+
+```text
+ClassMemory
+├── class_id, course_id, teacher_id
 │
 ├── StudentGroupProfiles[]
 │   ├── group_id, group_name, size
@@ -435,21 +469,23 @@ WorkspaceMemory
     └── citations
 ```
 
-Workspace memory là lõi của IDA Loop. `StudentGroupProfiles` và `DiagnosisHistory` được dùng lại ở các vòng UC-ID/UC-AS sau để tạo group-level personalization.
+`DiagnosisHistory` và `ArtifactLog` là episodic thuần — sự kiện cụ thể gắn với thời điểm và nhóm học sinh. `StudentGroupProfiles` là kết quả consolidation từ episodic: sau khi qua `ProfileSynthesis` và HITL, chúng trở thành tri thức semantic ổn định hơn trong phạm vi lớp này.
 
-### Session scope — working memory
+Class memory là lõi của IDA Loop. `StudentGroupProfiles` và `DiagnosisHistory` được dùng lại ở các vòng UC-ID/UC-AS sau để tạo group-level personalization.
+
+### Session scope — Working memory
 
 Session memory tồn tại trong một phiên làm việc.
 
 ```text
 SessionMemory
-├── session_id, workspace_id, teacher_id
+├── session_id, class_id, teacher_id
 ├── conversation_history[]
 ├── active_workflow_state
 └── pending_artifacts[]
 ```
 
-Các artifact chưa được approve nằm trong `pending_artifacts`. Khi session kết thúc, chỉ artifact/profile patch đã qua HITL mới được commit vào `WorkspaceMemory`; phần còn lại giữ ở trạng thái draft hoặc bị loại theo quyết định của giáo viên.
+Các artifact chưa được approve nằm trong `pending_artifacts`. Khi session kết thúc, chỉ artifact/profile patch đã qua HITL mới được commit vào `ClassMemory`; phần còn lại giữ ở trạng thái draft hoặc bị loại theo quyết định của giáo viên.
 
 ## 3.9 Context Injection
 
@@ -458,18 +494,18 @@ Các artifact chưa được approve nằm trong `pending_artifacts`. Khi sessio
 Thứ tự ưu tiên:
 
 1. `SessionMemory.active_workflow_state`
-2. `WorkspaceMemory.StudentGroupProfiles`
-3. `WorkspaceMemory.DiagnosisHistory` trong N vòng gần nhất, mặc định N = 3
-4. `WorkspaceMemory.CourseContext`
+2. `ClassMemory.StudentGroupProfiles`
+3. `ClassMemory.DiagnosisHistory` trong N vòng gần nhất, mặc định N = 3
+4. `CourseMemory.CurriculumSpec`
 5. `GlobalMemory.preferences`
-6. Retrieved chunks từ corpus
+6. Retrieved chunks từ corpus (bao gồm `CourseMemory.MaterialLibrary`)
 
 Context pack có hai kênh sử dụng:
 
 - **Retrieval policy**: profile nhóm ảnh hưởng đến query expansion, metadata filter và reranking.
-- **Generation prompt**: profile, diagnosis, course context và preference được đưa vào prompt theo slot cố định.
+- **Generation prompt**: profile, diagnosis, curriculum spec và preference được đưa vào prompt theo slot cố định.
 
-Nếu context vượt budget, harness ưu tiên giữ profile hiện tại, diagnosis gần nhất và course objective; diagnosis cũ được nén thành summary. Việc này giúp giảm rủi ro mất thông tin quan trọng do context dài và tránh biến conversation history thành nguồn ngữ cảnh duy nhất.
+Nếu context vượt budget, harness ưu tiên giữ profile hiện tại, diagnosis gần nhất và learning outcomes từ `CurriculumSpec`; diagnosis cũ được nén thành summary. Việc này giúp giảm rủi ro mất thông tin quan trọng do context dài và tránh biến conversation history thành nguồn ngữ cảnh duy nhất.
 
 ## 3.10 Tools, verifier và sandbox
 
@@ -524,16 +560,17 @@ Các quyết định HITL:
 
 | Quyết định | Hành động của harness |
 | --- | --- |
-| `Approve` | Commit artifact/profile patch vào `WorkspaceMemory` |
+| `Approve` | Commit artifact/profile patch vào `ClassMemory` |
 | `Edit` | Merge chỉnh sửa, validate lại phần liên quan, sau đó commit |
 | `Reject` | Ghi rejection reason, targeted repair node liên quan |
 | `Skip/Timeout` | Giữ artifact ở `draft`, không dùng cho vòng IDA kế tiếp |
 
-HITL xuất hiện ở ba điểm chính:
+HITL xuất hiện ở bốn điểm chính:
 
 1. Sau khi sinh lesson plan, assessment, rubric hoặc feedback.
 2. Sau khi `ProfileSynthesis` đề xuất cập nhật `StudentGroupProfile`.
 3. Khi verifier hoặc schema validation thất bại quá số retry và cần giáo viên quyết định tiếp tục.
+4. Cuối khoá học (end-of-class synthesis): giáo viên chọn artifact nào từ `ClassMemory.ArtifactLog` được promote lên `CourseMemory.MaterialLibrary` và insight nào được tích lũy vào `CrossClassInsights`.
 
 Nhờ HITL, giáo viên giữ quyền chuyên môn cuối cùng. Harness chỉ đề xuất, kiểm tra, ghi nhớ và hỗ trợ retry có mục tiêu.
 
@@ -571,6 +608,6 @@ Do đó, orchestration mechanism không chỉ là thiết kế runtime, mà còn
 
 ## 3.14 Tóm tắt
 
-Chương này mô tả Pedagogy Agent Harness như một kiến trúc có bốn lớp: memory, orchestration, tools/plugin và HITL. Điểm lõi của phương pháp là typed workflow graph vận hành IDA Loop với bốn role/sub-agent. `AssessmentAgent` tạo hoặc chấm assessment; `DiagnosisAgent` chuyển kết quả đánh giá thành diagnosis; `ProfileSynthesis` đề xuất cập nhật `StudentGroupProfile`; `InstructionalDesignAgent` dùng profile đó để sinh kế hoạch bài dạy phân hoá; `Orchestrator` kiểm soát transition, validation, verifier, HITL và commit memory.
+Chương này mô tả Pedagogy Agent Harness như một kiến trúc có bốn lớp: memory, orchestration, tools/plugin và HITL. Điểm lõi của phương pháp là typed workflow graph vận hành IDA Loop với bốn role/sub-agent. `AssessmentAgent` tạo hoặc chấm assessment; `DiagnosisAgent` chuyển kết quả đánh giá thành diagnosis; `ProfileSynthesis` đề xuất cập nhật `StudentGroupProfile`; `InstructionalDesignAgent` dùng profile đó để sinh kế hoạch bài dạy phân hoá; `Orchestrator` kiểm soát transition, validation, verifier, HITL và commit memory. Memory được tổ chức theo bốn scope ánh xạ với cognitive taxonomy: `GlobalMemory` (procedural), `CourseMemory` (semantic), `ClassMemory` (episodic) và `SessionMemory` (working) — consolidation diễn ra từ dưới lên, đảm bảo insight từ mỗi lớp học được tích lũy cải thiện curriculum cho các lớp sau.
 
 Cách thiết kế này biến cá nhân hoá theo nhóm học sinh từ một prompt đơn lẻ thành một vòng lặp có trạng thái, có kiểm soát và có thể đánh giá được.
