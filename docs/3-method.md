@@ -102,6 +102,84 @@ src/
 
 Biên giới giữa core và adapter cũng là biên giới đo lường: `WorkflowTrace` được emit bởi core, thu thập bởi adapter, và dùng để tính toàn bộ metric ở Chương 4 mà không cần can thiệp thủ công.
 
+### 3.2.2 Session lifecycle trong IDA Loop
+
+Mỗi **phiên làm việc** (session) là một iteration — hoặc một phần iteration — của IDA Loop. Phiên không tự khép kín: nó bắt đầu bằng cách đọc checkpoint từ `ClassMemory` của phiên trước và kết thúc bằng cách commit kết quả trở lại `ClassMemory` để phiên sau kế thừa.
+
+```
+ClassMemory (checkpoint N)
+    ↓  ContextInjection
+Session N
+    ↓  IntentRouter
+    ├── UC_ID_GRAPH   (nếu intent = thiết kế dạy học)
+    ├── UC_AS_GRAPH   (nếu intent = kiểm tra / chấm bài)
+    └── ... (các intent khác: QUERY, UPDATE_PROFILE, ...)
+    ↓  HITL → commit
+ClassMemory (checkpoint N+1)
+    ↓
+Session N+1 ...
+```
+
+Một phiên có thể trigger **một hoặc nhiều** graph execution tùy theo intent trong teacher input. Điều quan trọng là dù phiên chạy graph nào, **ClassMemory luôn là nguồn checkpoint đầu vào và điểm commit đầu ra**. Nhờ vậy, continuity của IDA Loop được duy trì qua nhiều phiên mà không phụ thuộc vào conversation history.
+
+Trong một phiên điển hình:
+
+| Bước | Thành phần | Mô tả |
+| --- | --- | --- |
+| 1 | `ContextInjection` | Load `StudentGroupProfiles`, `DiagnosisHistory` gần nhất, `CurriculumSpec` từ `ClassMemory` và `CourseMemory` |
+| 2 | `IntentRouter` | Phân loại teacher input thành intent và slot |
+| 3 | Graph execution | Chạy `UC_ID_GRAPH` hoặc `UC_AS_GRAPH` (hoặc cả hai nếu có nhiều intent) |
+| 4 | HITL Gate | Giáo viên approve / edit / reject artifact và profile patch |
+| 5 | Memory commit | Artifact và profile patch đã duyệt được ghi vào `ClassMemory`; `SessionMemory` bị giải phóng |
+
+Artifact hoặc profile patch chưa qua HITL không được commit và không trở thành checkpoint cho phiên sau. Điều này bảo đảm IDA Loop chỉ tích lũy thông tin đã được giáo viên xác nhận.
+
+### 3.2.3 Class lifecycle — trước, trong và sau IDA Loop
+
+Nếu session lifecycle mô tả một iteration đơn lẻ, thì **class lifecycle** mô tả toàn bộ vòng đời của một lớp học từ khi mở đến khi đóng. Class lifecycle gồm ba giai đoạn:
+
+```
+[Khởi tạo class]
+    ↓
+[Vận hành IDA Loop — nhiều phiên]
+    ↓
+[Kết thúc class — end-of-class synthesis]
+```
+
+**Giai đoạn 1 — Khởi tạo class (trước IDA Loop)**
+
+Khi giáo viên mở một lớp mới, harness tạo `ClassMemory` với trạng thái ban đầu:
+
+- `CurriculumSpec` được load từ `CourseMemory` của môn học tương ứng.
+- `StudentGroupProfiles` được khởi tạo thủ công bởi giáo viên hoặc tổng hợp từ `CrossClassInsights` của các lớp trước (nếu có). Đây là prior knowledge về nhóm học sinh trước khi có bất kỳ assessment nào.
+- `DiagnosisHistory` và `ArtifactLog` bắt đầu rỗng.
+
+Giai đoạn này không có graph execution; đây là bước cấu hình để IDA Loop có đủ ngữ cảnh ban đầu để vận hành.
+
+**Giai đoạn 2 — Vận hành IDA Loop (trong)**
+
+Đây là giai đoạn chính, gồm nhiều phiên làm việc liên tiếp, mỗi phiên theo session lifecycle ở mục 3.2.2. Qua từng phiên, `ClassMemory` tích lũy dần:
+
+- `ArtifactLog` lưu lesson plan, đề, rubric, grading result đã được HITL approve.
+- `DiagnosisHistory` lưu các lần chẩn đoán nhóm học sinh.
+- `StudentGroupProfiles` được cập nhật qua `ProfileSynthesis` sau mỗi vòng assessment.
+
+IDA Loop không có điểm kết thúc tự động — nó tiếp tục cho đến khi giáo viên kết thúc lớp học.
+
+**Giai đoạn 3 — Kết thúc class (sau IDA Loop)**
+
+Khi lớp học kết thúc, harness thực hiện **end-of-class synthesis**: tổng hợp những gì đã tích lũy trong `ClassMemory` để cải thiện `CourseMemory` cho các lớp sau.
+
+| Nguồn (`ClassMemory`) | Đích (`CourseMemory`) | Điều kiện |
+| --- | --- | --- |
+| Artifact đã approve trong `ArtifactLog` | `MaterialLibrary` | Giáo viên chọn promote qua HITL |
+| Pattern lỗi phổ biến trong `DiagnosisHistory` | `CrossClassInsights.common_misconceptions` | Tự động đề xuất, giáo viên xác nhận |
+| Chiến lược hiệu quả trong `ArtifactLog` | `CrossClassInsights.effective_strategies` | Tự động đề xuất, giáo viên xác nhận |
+
+Sau bước này, `ClassMemory` được đóng (archive) và không còn là checkpoint cho phiên mới. Các lớp mở sau đó sẽ tạo `ClassMemory` mới, nhưng hưởng lợi từ `CourseMemory` đã được làm giàu qua end-of-class synthesis.
+
+Nhờ cơ chế này, IDA Loop không chỉ cải thiện việc dạy học trong một lớp mà còn tạo ra vòng lặp cải thiện dài hạn theo chiều: `SessionMemory → ClassMemory → CourseMemory → GlobalMemory`.
+
 ## 3.3 Orchestration mechanism
 
 ### 3.3.1 Nguyên tắc thiết kế
