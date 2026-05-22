@@ -13,6 +13,7 @@ Mở đầu chương cần báo cáo ngắn gọn `run_manifest` để người 
 | Model          | model/checkpoint, runtime, decoding config                                      |
 | Retrieval      | embedding, reranker, top-k, metadata filter                                     |
 | Judge          | judge model, rubric version, human subset size                                  |
+| SOTA anchors   | literature snapshot date, anchor papers, rubric mapping version                 |
 | Sample         | số sample hợp lệ/tổng số, số output failure sau retry                           |
 
 Nếu corpus là tài liệu mở, phần này phải ghi rõ nguồn và phiên bản. Nếu corpus là tài liệu nội bộ, phần này phải mô tả mức truy cập và cách bảo vệ dữ liệu, không cần công bố nội dung nhạy cảm.
@@ -21,20 +22,20 @@ Nếu corpus là tài liệu mở, phần này phải ghi rõ nguồn và phiên
 
 Bảng chính báo cáo kết quả theo task family và variant. Các điểm số rubric được chuẩn hoá 0-100; binary metric báo cáo theo tỷ lệ phần trăm.
 
-| Task family | Variant                  | Quality score | Schema validity | Citation coverage | Verifier pass | Pedagogical violation | Latency p50 |
-| ----------- | ------------------------ | ------------: | --------------: | ----------------: | ------------: | --------------------: | ----------: |
-| UC-ID       | LLM-only                 |           TBD |             TBD |               N/A |           N/A |                   TBD |         TBD |
-| UC-ID       | Naive RAG                |           TBD |             TBD |               TBD |           N/A |                   TBD |         TBD |
-| UC-ID       | Generic ReAct ARAG       |           TBD |             TBD |               TBD |           N/A |                   TBD |         TBD |
-| UC-ID       | Fixed MA-ARAG            |           TBD |             TBD |               TBD |           N/A |                   TBD |         TBD |
-| UC-ID       | Proposed - Domain Plugin |           TBD |             TBD |               TBD |           N/A |                   TBD |         TBD |
-| UC-ID       | Full Proposed System     |           TBD |             TBD |               TBD |           N/A |                   TBD |         TBD |
-| UC-AS       | LLM-only                 |           TBD |             TBD |               N/A |           TBD |                   TBD |         TBD |
-| UC-AS       | Naive RAG                |           TBD |             TBD |               TBD |           TBD |                   TBD |         TBD |
-| UC-AS       | Generic ReAct ARAG       |           TBD |             TBD |               TBD |           TBD |                   TBD |         TBD |
-| UC-AS       | Fixed MA-ARAG            |           TBD |             TBD |               TBD |           TBD |                   TBD |         TBD |
-| UC-AS       | Proposed - Domain Plugin |           TBD |             TBD |               TBD |       N/A/TBD |                   TBD |         TBD |
-| UC-AS       | Full Proposed System     |           TBD |             TBD |               TBD |           TBD |                   TBD |         TBD |
+| Task family | Variant                  | Quality score | SOTA-mapped quality | Schema validity | Citation coverage | Verifier pass | Pedagogical violation | Latency p50 |
+| ----------- | ------------------------ | ------------: | ------------------: | --------------: | ----------------: | ------------: | --------------------: | ----------: |
+| UC-ID       | LLM-only                 |           TBD |                 TBD |             TBD |               N/A |           N/A |                   TBD |         TBD |
+| UC-ID       | Naive RAG                |           TBD |                 TBD |             TBD |               TBD |           N/A |                   TBD |         TBD |
+| UC-ID       | Generic ReAct ARAG       |           TBD |                 TBD |             TBD |               TBD |           N/A |                   TBD |         TBD |
+| UC-ID       | Fixed MA-ARAG            |           TBD |                 TBD |             TBD |               TBD |           N/A |                   TBD |         TBD |
+| UC-ID       | Proposed - Domain Plugin |           TBD |                 TBD |             TBD |               TBD |           N/A |                   TBD |         TBD |
+| UC-ID       | Full Proposed System     |           TBD |                 TBD |             TBD |               TBD |           N/A |                   TBD |         TBD |
+| UC-AS       | LLM-only                 |           TBD |                 TBD |             TBD |               N/A |           TBD |                   TBD |         TBD |
+| UC-AS       | Naive RAG                |           TBD |                 TBD |             TBD |               TBD |           TBD |                   TBD |         TBD |
+| UC-AS       | Generic ReAct ARAG       |           TBD |                 TBD |             TBD |               TBD |           TBD |                   TBD |         TBD |
+| UC-AS       | Fixed MA-ARAG            |           TBD |                 TBD |             TBD |               TBD |           TBD |                   TBD |         TBD |
+| UC-AS       | Proposed - Domain Plugin |           TBD |                 TBD |             TBD |               TBD |       N/A/TBD |                   TBD |         TBD |
+| UC-AS       | Full Proposed System     |           TBD |                 TBD |             TBD |               TBD |           TBD |                   TBD |         TBD |
 
 Diễn giải cần trả lời trực tiếp:
 
@@ -51,6 +52,7 @@ Bảng này chỉ báo cáo các so sánh chính đã định nghĩa trước tr
 | ----------------------------------------- | ------------- | -------- | ----: | ----------: | ------: | ----------: | -------------- |
 | Full Proposed vs Generic ReAct            | quality_score | Wilcoxon |   TBD |         TBD |     TBD |         TBD | TBD            |
 | Full Proposed vs Fixed MA-ARAG            | quality_score | Wilcoxon |   TBD |         TBD |     TBD |         TBD | TBD            |
+| Full Proposed vs Generic ReAct            | sota_mapped_quality | Wilcoxon |   TBD |         TBD |     TBD |         TBD | SOTA anchors   |
 | Full Proposed vs Proposed - Domain Plugin | verifier_pass | McNemar  |   TBD |         TBD |     TBD |         TBD | plugin delta   |
 | With-profile vs no-profile                | group_fit     | Wilcoxon |   TBD |         TBD |     TBD |         TBD | RQ2            |
 
@@ -70,7 +72,7 @@ Nếu judge agreement thấp, Chương 5 phải hạ mức khẳng định. Ví 
 
 ## 5.5 RQ2 — Personalization delta analysis
 
-Phần này báo cáo paired analysis cho A1/A2, B1/B2 và C1/C2. Cần tách rõ khác biệt có ý nghĩa sư phạm khỏi khác biệt bề mặt.
+Phần này báo cáo paired analysis cho A1/A2, B1/B2 và C1/C2. Cần tách rõ khác biệt có ý nghĩa sư phạm khỏi khác biệt bề mặt. Đây là bằng chứng cho **profile injection** trong IDA Loop.
 
 | Pair group        | Variant       | Group-fit delta | Specificity delta | Misconception alignment | Non-harmful adaptation | Interpretation |
 | ----------------- | ------------- | --------------: | ----------------: | ----------------------: | ---------------------: | -------------- |
@@ -85,7 +87,41 @@ Khi diễn giải, cần chỉ ra ví dụ cụ thể:
 - Có trường hợp cá nhân hoá sai hướng, gán nhãn nhóm hình thức hoặc hạ thấp kỳ vọng học sinh không?
 - Profile giúp nhiều nhất ở lesson planning, exercise generation hay feedback?
 
-## 5.6 Plugin and mechanism analysis
+### 5.5.1 Profile synthesis check
+
+Phần này báo cáo đánh giá phụ cho `SynthesisAgent`: liệu assessment/grading result có được tổng hợp thành `GroupDiagnosis` và `StudentGroupProfilePatch` đúng hay không.
+
+| Metric | Value | Threshold/expectation | Interpretation |
+| ------ | ----: | --------------------: | -------------- |
+| profile_patch_validity | TBD | TBD | TBD |
+| misconception_extraction_f1 | TBD | TBD | TBD |
+| evidence_faithfulness | TBD | TBD | TBD |
+| patch_precision | TBD | TBD | TBD |
+| patch_recall | TBD | TBD | TBD |
+
+Nếu profile synthesis không đạt nhưng with-profile delta đạt, kết luận phải hạ xuống: hệ thống chứng minh được giá trị của profile-aware artifact generation, nhưng chưa chứng minh toàn bộ IDA Loop tự động từ assessment sang profile update.
+
+## 5.6 Teacher-facing SOTA research-paper anchoring
+
+Phần này trả lời trực tiếp câu hỏi "so với SOTA research papers thì sao?" theo đúng user của hệ thống: giáo viên. Không viết "vượt SOTA" nếu không chạy cùng dataset/protocol của các paper đó; thay vào đó báo cáo coverage theo construct teacher-facing.
+
+| Teacher-facing SOTA anchor | Construct | Metric trong luận văn | Full Proposed | Best baseline | Interpretation |
+| -------------------------- | --------- | --------------------- | ------------: | ------------: | -------------- |
+| LessonPlanner | pedagogy-driven lesson planning / teacher usability | lesson_plan_quality, teacher_usability | TBD | TBD | TBD |
+| Lesson-plan generation + self-critique | educator-rubric lesson quality | Bloom alignment, constructive_alignment, completeness | TBD | TBD | TBD |
+| Teaching-plan enhancement through simulation | plan refinement / anticipated learner response | pedagogical coherence, scaffold_quality | TBD | TBD | TBD |
+| Small Models Big Support | teacher-centric content creation and assessment | actionability, cost/latency, citation coverage | TBD | TBD | TBD |
+| AI-assisted grading framework | grading accuracy / explainability | grading_accuracy, grading_explainability | TBD | TBD | TBD |
+| Automatic feedback generation evaluation | feedback quality / specificity | feedback_helpfulness, feedback policy violation | TBD | TBD | TBD |
+| Pedagogy Benchmark | pedagogical knowledge / assessment concepts | Bloom alignment, pedagogical_violation_rate | TBD | TBD | TBD |
+
+Diễn giải cần nêu rõ:
+
+- Construct teacher-facing nào được hệ thống đề xuất cải thiện rõ so với generic agent baseline?
+- Construct nào vẫn yếu, ví dụ teacher usability còn thấp, grading explanation chưa đủ rõ, hoặc personalization còn hình thức?
+- Khác biệt task surface: hệ thống này là teacher-facing artifact harness, không phải dialogue tutor benchmark; các tutor benchmarks chỉ được dùng phụ cho feedback/adaptivity.
+
+## 5.7 Plugin and mechanism analysis
 
 Không báo cáo đây là ablation study nếu chưa có ablation đầy đủ. Phần này dùng plugin delta, trace và phân tích lỗi để giải thích cơ chế.
 
@@ -98,7 +134,7 @@ Không báo cáo đây là ablation study nếu chưa có ablation đầy đủ.
 | Retrieval/grounding         | citation coverage, unsupported citation, retrieval miss     | RAG giúp đúng nguồn hay gây nhiễu                        |
 | Cost/latency                | LLM calls, tool calls, token usage, latency                 | chất lượng tăng có đổi bằng chi phí chấp nhận được không |
 
-## 5.7 Error analysis
+## 5.8 Error analysis
 
 Phân tích tối thiểu 30 output thất bại, stratified theo task và variant.
 
@@ -113,7 +149,7 @@ Phân tích tối thiểu 30 output thất bại, stratified theo task và varia
 
 Mỗi ví dụ nên được rút gọn vừa đủ: input, lỗi chính, output fragment, trace liên quan và cách hệ thống nên sửa.
 
-## 5.8 Threats to validity
+## 5.9 Threats to validity
 
 **Internal validity**:
 
@@ -130,10 +166,11 @@ Mỗi ví dụ nên được rút gọn vừa đủ: input, lỗi chính, output
 **Construct validity**:
 
 - `personalization_delta` đo chất lượng artifact theo profile, chưa chứng minh học sinh học tốt hơn.
+- `sota_mapped_quality` chỉ ánh xạ construct từ teacher-facing SOTA papers sang benchmark của luận văn; nó không phải leaderboard score và không chứng minh hệ thống vượt các paper đó.
 - `verifier_pass_rate` bao quát correctness kỹ thuật của bài lập trình, không bao quát toàn bộ chất lượng sư phạm.
 - Human subset nếu nhỏ sẽ chỉ đủ kiểm tra xu hướng judge, chưa thay thế đánh giá giáo viên diện rộng.
 
-## 5.9 Discussion
+## 5.10 Discussion
 
 Các điểm cần chốt trong phần thảo luận:
 
@@ -143,3 +180,4 @@ Các điểm cần chốt trong phần thảo luận:
 - Teacher-in-the-loop nên nằm ở đâu để cân bằng autonomy, accountability và UX?
 - Với domain ít verifier hình thức như Văn, Lịch sử hoặc Địa lý, metric nào cần thay thế verifier pass rate?
 - Kết quả có đủ để claim giá trị sư phạm không, hay mới đủ claim giá trị kỹ thuật trong sinh artifact?
+- SOTA anchoring cho thấy hệ thống đang gần với construct nào của teacher-support literature, và còn xa ở construct nào?

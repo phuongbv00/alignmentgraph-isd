@@ -62,7 +62,7 @@ Về triển khai, harness có thể được hiện thực bằng LangGraph.js 
 
 Hình 3.1 là figure chính của phương pháp đề xuất. Thay vì trình bày toàn bộ node kỹ thuật, hình này nhấn mạnh trực giác thiết kế: giáo viên làm việc với một harness sư phạm; `Orchestrator` điều phối IDA Loop; assessment tạo diagnosis; diagnosis cập nhật `StudentGroupProfile`; profile quay lại dẫn dắt thiết kế dạy học và đánh giá ở vòng sau. Memory, domain plugin, verifier và HITL là các lớp kiểm soát bao quanh vòng lặp này.
 
-![Figure 3.1 — Pedagogy Agent Harness overview](assets/pedagogy-agent-harness-overview.svg)
+![Figure 3.1 — Pedagogy Agent Harness overview](assets/arch.svg)
 
 **Diễn giải hình**: vòng xanh lá là IDA Loop, nơi assessment tạo diagnosis, diagnosis cập nhật profile nhóm, và profile dẫn dắt instructional design ở vòng sau. Khối vàng là memory duy trì continuity; khối tím là orchestration; khối xanh lam là domain plugin; dải đỏ là HITL governance như một ràng buộc xuyên suốt, bảo đảm giáo viên giữ quyền quyết định cuối cùng trước khi commit vào memory.
 

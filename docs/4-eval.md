@@ -6,10 +6,10 @@ Chương này mô tả protocol đánh giá được dùng để trả lời hai
 
 Luận văn đánh giá **Pedagogy Agent Harness** như một execution environment cho LLM trong bối cảnh sư phạm. Vì vậy, đánh giá không tập trung vào việc chứng minh LLM sinh văn bản hay hơn nói chung, mà kiểm tra liệu các thành phần harness như retrieval, typed workflow graph, verifier, memory/context injection và domain plugin có tạo khác biệt đo được trong các tác vụ thiết kế dạy học và đánh giá hay không.
 
-| Câu hỏi nghiên cứu                                                                                            | Claim cần kiểm tra                                                                                                                                             | Bằng chứng chính                                                                                                                           |
-| ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| **RQ1**: Pedagogy-specific harness có hiệu quả hơn các kiến trúc harness tổng quát trên UC-ID và UC-AS không? | Hệ thống đề xuất đạt chất lượng sư phạm, tính hợp lệ schema, grounding và verifier pass rate tốt hơn các baseline, với chi phí vận hành chấp nhận được.        | Controlled comparison trên cùng model, corpus, query set và output schema.                                                                 |
-| **RQ2**: IDA Loop có tạo phân hoá có chủ đích theo nhóm học sinh không?                                       | Khi có `StudentGroupProfile`, output vòng 2 thay đổi theo đúng điểm mạnh, điểm yếu, readiness và misconception của nhóm, thay vì chỉ thêm nhãn nhóm hình thức. | Paired comparison giữa output không có profile và có profile; chấm `group-fit`, `differentiation specificity` và `profile evidence usage`. |
+| Câu hỏi nghiên cứu                                                                                            | Claim cần kiểm tra                                                                                                                                             | Bằng chứng chính                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **RQ1**: Pedagogy Agent Harness đạt hiệu quả như thế nào so với baseline và SOTA teacher-facing AI support systems? | Hệ thống đề xuất đạt chất lượng sư phạm, tính hợp lệ schema, grounding và verifier pass rate tốt hơn các baseline, với chi phí vận hành chấp nhận được; đồng thời được đánh giá trên các construct tương thích với teacher-facing SOTA. | Controlled comparison trên cùng model, corpus, query set và output schema; thêm SOTA research-paper anchoring với các teacher-facing papers về lesson planning, content creation, assessment, grading và feedback. |
+| **RQ2**: Pedagogy Agent Harness có cá nhân hoá output theo hồ sơ nhóm học sinh trên UC-ID và UC-AS không? | Khi có hồ sơ nhóm học sinh, output vòng 2 thay đổi theo đúng điểm mạnh, điểm yếu, readiness và misconception của nhóm, thay vì chỉ thêm nhãn nhóm hình thức. | Paired comparison giữa output không có profile và có profile; chấm `group-fit`, `differentiation specificity` và `profile evidence usage`; đánh giá phụ `SynthesisAgent` cho assessment → profile update. |
 
 Phạm vi đánh giá là **technical and pedagogical artifact evaluation** trên case study CNTT/lập trình. Luận văn không đo learning outcome dài hạn trên lớp học thật; giới hạn này được thảo luận ở Chương 5.
 
@@ -25,6 +25,7 @@ Mỗi lần chạy thực nghiệm tạo một `run_manifest` để đóng băng
 | Retrieval        | embedding model, reranker, chunking config, top-k, metadata filter policy                                                   |
 | Baseline prompts | prompt template id, output schema version, retry policy                                                                     |
 | Judge setup      | judge model id, judge prompt version, rubric version, randomization order                                                   |
+| SOTA anchors     | danh sách paper anchor, mapping rubric dimension, ngày chốt literature snapshot                                             |
 | Cost trace       | số LLM call, số tool call, token input/output, latency end-to-end                                                           |
 
 Các biến thể hệ thống dùng cùng một `run_manifest`, trừ những thành phần là đối tượng so sánh trực tiếp như orchestration, memory, verifier hoặc domain plugin.
@@ -197,8 +198,8 @@ Không variant nào được nhận feedback từ kết quả chấm trong cùng
 | **Naive RAG**                | có        | không    | không                                              | không                               | không                | không                            | đo lợi ích retrieval đơn thuần                 |
 | **Generic ReAct ARAG**       | có        | có       | không, agent tự do ReAct                           | không có memory sư phạm             | không                | tool chung, không plugin sư phạm | harness tổng quát vs harness domain-specific   |
 | **Fixed MA-ARAG**            | có        | có       | pipeline planner/generator/grader/reviewer cố định | không có IDA Loop/profile synthesis | generic review       | không domain plugin              | multi-agent có cấu trúc nhưng không sư phạm    |
-| **Proposed w/o Domain Plugin** | có        | có       | UC-ID/UC-AS typed graph                            | có CourseContext/Profile injection  | có                   | không                            | đo core pedagogy harness khi thiếu plugin CNTT |
-| **Full Proposed System**     | có        | có       | UC-ID/UC-AS typed graph                            | có CourseContext/Profile injection  | có                   | có CNTT plugin/verifier          | hệ thống đề xuất đầy đủ                        |
+| **Proposed w/o Domain Plugin** | có        | có       | UC-ID/UC-AS typed graph                            | có `ProgramMemory`/`ClassMemory` injection | có                   | không                            | đo core pedagogy harness khi thiếu plugin CNTT |
+| **Full Proposed System**     | có        | có       | UC-ID/UC-AS typed graph                            | có `ProgramMemory`/`ClassMemory` injection | có                   | có CNTT plugin/verifier          | hệ thống đề xuất đầy đủ                        |
 
 Prompt template của từng variant được lưu trong phụ lục hoặc repository kèm id phiên bản. Với các baseline không có workflow/harness, prompt vẫn được cung cấp task instruction và output schema để tránh đánh giá thấp baseline chỉ vì format.
 
@@ -209,7 +210,26 @@ HITL là một cơ chế governance của hệ thống đề xuất, nhưng benc
 - output được chấm là bản artifact sau automated validation/repair, trước mọi teacher edit;
 - HITL checkpoint được log như một metric governance: có yêu cầu approve/edit/reject hay không, lý do là gì;
 - với IDA Loop, profile dùng trong paired sample được lấy từ benchmark reference package, không phải từ chỉnh sửa thủ công trong lúc chạy;
-- một experiment phụ có thể báo cáo chất lượng `ProfileSynthesis`, nhưng không trộn điểm đó vào comparison chính nếu có can thiệp của người.
+- đánh giá phụ cho `SynthesisAgent` được báo cáo riêng ở mục 4.7.6, nhưng không trộn điểm đó vào comparison chính nếu có can thiệp của người.
+
+### 4.5.4 SOTA research-paper anchoring
+
+Câu hỏi của luận văn không hoàn toàn trùng với các leaderboard LLM tutor hiện có, vì Pedagogy Agent Harness là hệ thống **teacher-facing**: sinh lesson plan, exercise, rubric, grading result, feedback và `StudentGroupProfilePatch` cho giáo viên. Vì vậy, SOTA anchoring chính dùng các paper teacher-facing về lesson planning, content creation, assessment, grading và feedback; tutor/student-facing benchmarks chỉ dùng phụ cho construct về guidance/adaptivity trong feedback.
+
+1. **Runnable baseline comparison**: so sánh trực tiếp sáu variant ở bảng 4.5.2 trên cùng benchmark v1.
+2. **SOTA anchor comparison**: ánh xạ các construct đánh giá từ research papers vào rubric của benchmark v1 để cho thấy hệ thống đề xuất được đánh giá trên những chiều tương thích với SOTA, dù không chạy cùng dataset leaderboard.
+
+| Teacher-facing SOTA anchor | Construct được lấy làm tham chiếu | Metric/rubric trong luận văn | Task áp dụng |
+| --- | --- | --- | --- |
+| LessonPlanner | pedagogy-driven lesson planning, teacher usability | `pedagogical_coherence`, `actionability`, feasibility | A1/A2 |
+| Automatic Lesson Plan Generation + self-critique | lesson-plan quality, educator rubric alignment | Bloom alignment, constructive alignment, completeness | A1/A2 |
+| Teaching-plan enhancement through simulation | plan refinement, reflection, anticipated learner response | `scaffold_quality`, pedagogical coherence, activity sequencing | A1/A2 |
+| Small Models Big Support | teacher-centric content creation/assessment, local/privacy support | `quality_score`, `citation_coverage`, latency/cost, HITL suitability | A1/A2, B1/B2, B3 |
+| AI-assisted grading framework | grading accuracy, rubric consistency, explainability of grading report | `grading_accuracy`, rubric consistency, explanation depth | C1/C2 |
+| Automatic feedback generation evaluation | feedback helpfulness, specificity, alignment with task/process | feedback helpfulness, `guidance_quality`, feedback policy violation | C1/C2 |
+| Pedagogy Benchmark | cross-domain pedagogical knowledge and assessment concepts | Bloom alignment, constructive alignment, pedagogical violation rate | A1/A2, B3 |
+
+Phần này không dùng điểm số từ paper SOTA như một baseline số học, vì khác dataset, domain, model, task surface và evaluation unit. Thay vào đó, Chương 5 báo cáo một bảng **teacher-facing SOTA-mapped rubric coverage**: mỗi construct SOTA được đo bằng dimension nào trong benchmark, variant nào đạt tốt nhất, và failure mode nào còn khác biệt so với kỳ vọng của literature.
 
 ## 4.6 Protocol chạy thực nghiệm
 
@@ -255,6 +275,7 @@ Thiết kế này đảm bảo điều kiện controlled comparison: cùng fixtu
 | `citation_coverage`                      | tỷ lệ claim cần grounding có citation hợp lệ tới chunk liên quan                            | A1, A2, B3  |
 | `unsupported_citation_rate`              | tỷ lệ citation không hỗ trợ claim được trích                                                | A1, A2, B3  |
 | `pedagogical_violation_rate`             | tỷ lệ output vi phạm Bloom, constructive alignment, rubric consistency hoặc feedback policy | tất cả task |
+| `sota_mapped_quality`                    | trung bình các dimension được ánh xạ từ teacher-facing SOTA anchors như lesson-plan quality, actionability, teacher usability, grading explainability và feedback helpfulness | tất cả task |
 | `latency_ms`                             | thời gian end-to-end từ input tới final artifact                                            | tất cả task |
 | `llm_calls`, `tool_calls`, `token_usage` | lấy từ `WorkflowTrace`/runtime log                                                          | tất cả task |
 
@@ -267,6 +288,8 @@ Thiết kế này đảm bảo điều kiện controlled comparison: cùng fixtu
 | Bloom alignment        | 0-3        | mục tiêu, hoạt động và assessment có khớp Bloom target không                     |
 | Constructive alignment | 0-3        | learning objectives, teaching activities và assessment có liên kết rõ không      |
 | Pedagogical coherence  | 0-3        | trình tự dạy học có hợp lý, khả thi, tránh nhảy bước không                       |
+| Scaffold quality       | 0-3        | hoạt động có tạo scaffold vừa đủ, hướng dẫn từng bước khi cần, không thay thế hoàn toàn effort của học sinh |
+| Actionability          | 0-3        | giáo viên có thể dùng trực tiếp hoặc chỉnh ít để triển khai trong lớp            |
 | Completeness           | 0-3        | có đủ mục tiêu, hoạt động, thời lượng, assessment, citation nếu yêu cầu          |
 | Feasibility            | 0-3        | giáo viên có thể triển khai trong thời lượng và điều kiện lớp học giả định không |
 
@@ -276,7 +299,7 @@ Thiết kế này đảm bảo điều kiện controlled comparison: cùng fixtu
 | ------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
 | B1/B2 Exercise generation | `verify_solution_pass_rate`, `test_case_validity`, `schema_validity`           | clarity, difficulty calibration, coverage of edge cases, rubric consistency   |
 | B3 Rubric/assessment tool | `bloom_coverage`, `criteria_count`, `schema_validity`                          | rubric clarity, level discrimination, alignment với chuẩn đầu ra, feasibility |
-| C1/C2 Grading + feedback  | `misconception_label_f1`, `feedback_policy_violation_rate`, `grading_accuracy` | feedback helpfulness, explanation depth, correctness, pedagogical tone        |
+| C1/C2 Grading + feedback  | `misconception_label_f1`, `feedback_policy_violation_rate`, `grading_accuracy` | feedback helpfulness, explanation depth, correctness, pedagogical tone, guidance quality |
 
 `grading_accuracy` được tính bằng độ lệch tuyệt đối giữa điểm hệ thống và điểm reference, sau đó chuẩn hoá về 0-100. `misconception_label_f1` so sánh nhãn hệ thống với expected labels trong reference package.
 
@@ -309,6 +332,41 @@ specificity_delta_i =
 
 Một output vòng 2 chỉ được xem là cá nhân hoá có ý nghĩa nếu tăng `group_fit` hoặc `specificity` mà không làm giảm `Bloom alignment`, `correctness` hoặc `non_harmful_adaptation`.
 
+### 4.7.5 SOTA-mapped rubric dimensions
+
+Để trả lời yêu cầu so sánh với research-paper SOTA, benchmark v1 gắn thêm một lớp rubric không thay đổi output schema. Lớp này ưu tiên các construct xuất hiện trong teacher-facing papers về lesson planning, content creation, assessment, grading và feedback; các tutor benchmarks chỉ bổ sung construct phụ cho guidance/adaptivity trong feedback:
+
+| Dimension | Thang điểm | Nguồn anchor | Cách diễn giải trong UC-ID/UC-AS |
+| --- | --- | --- | --- |
+| `lesson_plan_quality` | 0-3 | LessonPlanner; lesson-plan generation papers | lesson plan có mục tiêu, activities, assessment và timing hợp lý không |
+| `constructive_alignment` | 0-3 | lesson-plan generation; Pedagogy Benchmark | objectives, activities và assessment có liên kết rõ không |
+| `actionability` | 0-3 | teacher-centric content creation papers | artifact có đủ cụ thể để giáo viên dùng trong lớp, không chỉ là lời khuyên khái quát không |
+| `teacher_usability` | 0-3 | LessonPlanner; Small Models Big Support | output có giảm effort chỉnh sửa và phù hợp workflow giáo viên không |
+| `grading_explainability` | 0-3 | AI-assisted grading framework | grading/feedback có giải thích căn cứ rubric và lỗi chính không |
+| `feedback_helpfulness` | 0-3 | automatic feedback generation literature | feedback có cụ thể, đúng trọng tâm task/process và giúp sửa lỗi không |
+| `group_adaptation` | 0-3 | differentiated instruction; secondary tutor/adaptivity anchors | output có điều chỉnh hoạt động, độ khó hoặc feedback theo `StudentGroupProfile` không |
+| `misconception_handling` | 0-3 | grading/feedback literature; secondary tutor/adaptivity anchors | output có nhận diện và xử lý misconception chính xác, không chỉ nhắc lại nhãn lỗi không |
+
+`sota_mapped_quality` được tính bằng trung bình có trọng số của các dimension này. Với UC-ID, trọng số cao hơn cho `lesson_plan_quality`, `constructive_alignment`, `actionability` và `teacher_usability`. Với UC-AS, trọng số cao hơn cho `grading_explainability`, `feedback_helpfulness`, `misconception_handling` và correctness-related metric như `grading_accuracy`.
+
+Khi báo cáo, `sota_mapped_quality` không thay thế `quality_score`; nó là cầu nối diễn giải giúp đặt kết quả của hệ thống vào cùng không gian khái niệm với các paper SOTA.
+
+### 4.7.6 Profile synthesis evaluation
+
+Để kiểm tra phần assessment → synthesis/profile update của IDA Loop, luận văn chạy thêm một đánh giá phụ cho `SynthesisAgent`. Đánh giá này không trộn vào comparison chính của RQ1, nhưng là bằng chứng phụ cho RQ2 vì RQ2 phụ thuộc vào việc `StudentGroupProfile` có thể được tạo từ kết quả đánh giá chứ không chỉ được nhập tay.
+
+Input của bài kiểm tra là grading result đã chuẩn hoá từ C1/C2 hoặc reference grading package. `SynthesisAgent` phải sinh `GroupDiagnosis` và `StudentGroupProfilePatch`; output được so với reference package và chấm các metric:
+
+| Metric | Cách tính | Ý nghĩa |
+| --- | --- | --- |
+| `profile_patch_validity` | tỷ lệ patch parse được, đúng schema, không có operation nguy hiểm | kiểm tra interface và commit safety |
+| `misconception_extraction_f1` | F1 giữa misconception do agent trích xuất và expected misconception labels | kiểm tra khả năng tổng hợp lỗi thành diagnosis |
+| `evidence_faithfulness` | tỷ lệ profile update có evidence trỏ về grading result/diagnosis phù hợp | tránh profile patch bịa hoặc suy diễn quá mức |
+| `patch_precision` | tỷ lệ update được reviewer/reference xem là đúng và cần thiết | tránh cập nhật quá tay |
+| `patch_recall` | tỷ lệ điểm quan trọng trong reference profile patch được agent đề xuất | tránh bỏ sót nhu cầu can thiệp chính |
+
+Nếu profile synthesis yếu nhưng paired with-profile vẫn cải thiện, luận văn chỉ được kết luận rằng **profile injection** có giá trị; chưa đủ để kết luận toàn bộ IDA Loop tự động vận hành tốt. Nếu cả profile synthesis và with-profile delta đều tốt, RQ2 có bằng chứng mạnh hơn.
+
 ## 4.8 LLM-as-judge và human evaluation
 
 ### 4.8.1 Blind judging
@@ -318,6 +376,7 @@ Output gửi cho judge được chuẩn hoá theo cùng format và ẩn hoàn to
 - task input;
 - profile nếu sample thuộc condition có profile;
 - rubric chấm điểm;
+- SOTA-mapped rubric dimension nếu sample thuộc nhóm cần chấm anchor;
 - output đã ẩn tên variant;
 - retrieved citations nếu metric cần kiểm tra grounding.
 
@@ -361,6 +420,7 @@ So sánh chính cho RQ1:
 1. Full Proposed System vs Generic ReAct ARAG.
 2. Full Proposed System vs Fixed MA-ARAG.
 3. Full Proposed System vs Proposed - Domain Plugin, để đo plugin delta trên task CNTT.
+4. Full Proposed System vs Generic ReAct ARAG trên `sota_mapped_quality`, để kiểm tra liệu cải thiện có xuất hiện trên các construct lấy từ teacher-facing SOTA papers hay chỉ xuất hiện ở metric kỹ thuật.
 
 So sánh chính cho RQ2:
 
@@ -387,6 +447,8 @@ Với mỗi nhóm lỗi, Chương 5 báo cáo ví dụ rút gọn, nguyên nhân
 ## 4.11 Tiêu chí diễn giải kết quả
 
 RQ1 được xem là có bằng chứng ủng hộ nếu Full Proposed System cải thiện có ý nghĩa trên các metric chất lượng chính so với Generic ReAct ARAG và Fixed MA-ARAG, đồng thời không tạo trade-off chi phí/latency vượt mức làm hệ thống khó sử dụng trong bối cảnh giáo viên.
+
+Với phần SOTA anchoring, luận văn chỉ được kết luận rằng hệ thống "được đánh giá trên các construct tương thích với teacher-facing SOTA papers" nếu `sota_mapped_quality` và các dimension thành phần được báo cáo minh bạch. Luận văn không được kết luận "vượt SOTA" nếu không chạy trực tiếp cùng dataset/protocol của các paper đó.
 
 RQ2 được xem là có bằng chứng ủng hộ nếu condition có `StudentGroupProfile` tăng `group_fit` và `differentiation_specificity` trên paired sample, trong khi không làm giảm correctness, Bloom alignment hoặc non-harmful adaptation.
 
