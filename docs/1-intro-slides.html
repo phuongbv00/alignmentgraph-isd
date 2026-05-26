@@ -350,8 +350,8 @@ const slides = [
   /* ── 0 — Title ── */
   {content: `
     <div class="s-label">Master Thesis · 2026</div>
-    <div class="s-title">Ứng dụng mô hình Multi-Agent Agentic RAG<br>trong <span class="accent">đào tạo và hướng dẫn kỹ thuật</span></div>
-    <p style="font-size:1.25rem;color:#64748b;margin:-18px 0 18px;font-style:italic">Phụ đề: Kiến trúc và Hiện thực Pedagogy Agent Harness hỗ trợ Giáo viên trong Thiết kế Giảng dạy và Đánh giá</p>
+    <div class="s-title">Adaptive Instructional Design<br><span class="accent">Agent Harness</span></div>
+    <p style="font-size:1.25rem;color:#64748b;margin:-18px 0 18px;font-style:italic">AI-mediated Instructional Systems · Subject-domain-agnostic harness for adaptive instructional workflows</p>
     <div class="toc-grid">
       <div class="toc-item"><div class="toc-num n1">1</div><div class="toc-text">Motivation & Problem Statement</div></div>
       <div class="toc-item"><div class="toc-num n2">2</div><div class="toc-text">Use Cases</div></div>
@@ -367,12 +367,12 @@ const slides = [
   /* ── 1 — Motivation 1/3 ── */
   {content: `
     <div class="s-label">1 · Motivation · 1 / 3</div>
-    <div class="s-title">Vấn đề: LLM đơn thuần<br>không đủ cho sư phạm</div>
+    <div class="s-title">Vấn đề: instruction cần<br>closed-loop orchestration</div>
     <div class="s-body">
       <div class="pill-list">
-        <div class="pill rose"><div class="pill-dot"></div><div>Giáo viên dành phần lớn thời gian ngoài giờ lên lớp cho tác vụ lặp lại: soạn kế hoạch bài dạy, xây dựng rubric, tạo đề, chấm bài và viết feedback.</div></div>
-        <div class="pill amber"><div class="pill-dot"></div><div>LLM có năng lực ngôn ngữ đủ mạnh, nhưng đơn thuần là <strong>stateless</strong> — mỗi phiên làm việc bắt đầu lại từ đầu; hiệu quả phụ thuộc vào khả năng viết prompt, không phải năng lực sư phạm.</div></div>
-        <div class="pill blue"><div class="pill-dot"></div><div>ChatGPT, Gemini bổ sung lịch sử hội thoại nhưng vẫn tối ưu cho <strong>Q&A tổng quát</strong> — không có khái niệm khoá học, nhóm học sinh hay tiến trình dạy học.</div></div>
+        <div class="pill rose"><div class="pill-dot"></div><div>Kế hoạch bài dạy, rubric, bài tập, grading và feedback phải thay đổi theo learner state, misconception và evidence từ assessment gần nhất.</div></div>
+        <div class="pill amber"><div class="pill-dot"></div><div>LLM có năng lực ngôn ngữ đủ mạnh, nhưng đơn thuần là <strong>stateless</strong> — mỗi phiên làm việc bắt đầu lại từ đầu; không có learner-state-aware memory hay instructional lifecycle.</div></div>
+        <div class="pill blue"><div class="pill-dot"></div><div>ChatGPT, Gemini bổ sung lịch sử hội thoại nhưng vẫn tối ưu cho <strong>Q&A tổng quát</strong> — không có khái niệm chương trình, lớp học, class learning profile hay alignment objective–activity–assessment.</div></div>
       </div>
     </div>
   `},
@@ -384,7 +384,7 @@ const slides = [
     <div class="s-body harness-layout">
       <div class="harness-copy">
         <p>Các công cụ chuyên dụng bọc LLM bằng một <strong>execution environment</strong> phù hợp với từng domain — còn gọi là <em>harness</em> (thuật ngữ 2026).</p>
-        <p>Harness tích hợp: prompt/context engineering · RAG · tool use · agentic loop · memory · multi-agent orchestration.</p>
+        <p>Harness tích hợp: state · memory · context engineering · retrieval · tool use · workflow graph · verifier · HITL governance.</p>
         <p>Mỗi công cụ mạnh không vì LLM tốt hơn, mà vì <strong>harness khớp đặc thù lĩnh vực</strong>.</p>
         <div class="formula">Agent = Model + Harness</div>
       </div>
@@ -402,45 +402,45 @@ const slides = [
   /* ── 3 — Motivation 3/3 ── */
   {content: `
     <div class="s-label">1 · Motivation · 3 / 3</div>
-    <div class="s-title">Khoảng trống: sư phạm cần<br><span class="accent">IDA Loop</span></div>
+    <div class="s-title">Khoảng trống: adaptive systems cần<br><span class="accent">AID Loop</span></div>
     <div class="s-body">
-      <p>Cá nhân hoá trong sư phạm là một <strong>vòng lặp có chủ đích</strong>, không phải tác vụ đơn lẻ:</p>
+      <p>Adaptive instructional design là một <strong>vòng lặp có chủ đích</strong>, không phải tác vụ tạo sinh đơn lẻ:</p>
       <div class="card-row">
         <div class="card rose"><div class="card-icon">📊</div><div class="card-text">1. Đánh giá học sinh</div></div>
-        <div class="card amber"><div class="card-icon">🔍</div><div class="card-text">2. Phát hiện điểm mạnh / yếu</div></div>
-        <div class="card indigo"><div class="card-icon">📝</div><div class="card-text">3. Điều chỉnh kế hoạch dạy học</div></div>
-        <div class="card teal"><div class="card-icon">🚀</div><div class="card-text">4. Triển khai → đánh giá lại</div></div>
+        <div class="card amber"><div class="card-icon">🔍</div><div class="card-text">2. Diagnosis learner state</div></div>
+        <div class="card indigo"><div class="card-icon">📝</div><div class="card-text">3. Điều chỉnh intervention</div></div>
+        <div class="card teal"><div class="card-icon">🚀</div><div class="card-text">4. Reassessment</div></div>
       </div>
-      <div class="formula">IDA Loop — Instructional Design–Assessment Loop</div>
-      <p>Harness tổng quát không được thiết kế cho đặc thù sư phạm và không đạt mức cần thiết. <strong>Đó là khoảng trống luận văn này giải quyết.</strong></p>
+      <div class="formula">AID Loop — Assessment → Diagnosis → Intervention → Reassessment</div>
+      <p>Harness tổng quát không được thiết kế cho instructional workflow và learner-state refinement. <strong>Đó là khoảng trống luận văn này giải quyết.</strong></p>
     </div>
   `},
 
   /* ── 4 — Use Cases ── */
   {content: `
     <div class="s-label">2 · Use Cases</div>
-    <div class="s-title">UC-ID &amp; UC-AS</div>
+    <div class="s-title">UC-ID &amp; UC-FB</div>
     <div class="s-body">
       <div class="two-col">
         <div>
           <span class="badge badge-indigo">UC-ID — Instructional Design</span>
           <div class="pill-list" style="margin-top:8px">
             <div class="pill ind"><div class="pill-dot"></div><div>Soạn kế hoạch bài dạy theo mục tiêu phẩm chất / năng lực</div></div>
-            <div class="pill ind"><div class="pill-dot"></div><div>Điều chỉnh kế hoạch theo <code>StudentGroupProfile</code></div></div>
+            <div class="pill ind"><div class="pill-dot"></div><div>Điều chỉnh kế hoạch theo <code>ClassLearningProfile</code></div></div>
             <div class="pill ind"><div class="pill-dot"></div><div>Phân hoá hoạt động: nhóm nâng cao · nhóm bổ trợ · nhóm có misconception</div></div>
           </div>
         </div>
         <div>
-          <span class="badge badge-teal">UC-AS — Assessment</span>
+          <span class="badge badge-teal">UC-FB — Feedback</span>
           <div class="pill-list" style="margin-top:8px">
-            <div class="pill teal"><div class="pill-dot"></div><div>Xây dựng rubric, ma trận đề, tiêu chí phân mức</div></div>
-            <div class="pill teal"><div class="pill-dot"></div><div>Sinh đề / bài tập cá nhân hoá theo nhóm</div></div>
-            <div class="pill teal"><div class="pill-dot"></div><div>Chấm bài & sinh feedback theo nhóm</div></div>
-            <div class="pill teal"><div class="pill-dot"></div><div>Tổng hợp → <code>StudentGroupProfile</code></div></div>
+            <div class="pill teal"><div class="pill-dot"></div><div>Chấm bài / đánh giá submission theo rubric</div></div>
+            <div class="pill teal"><div class="pill-dot"></div><div>Điều phối domain evaluators nếu có</div></div>
+            <div class="pill teal"><div class="pill-dot"></div><div>Tạo feedback & adaptive signal theo learner state của lớp</div></div>
+            <div class="pill teal"><div class="pill-dot"></div><div>Cung cấp evidence cho <code>ClassLearningProfile</code></div></div>
           </div>
         </div>
       </div>
-      <p style="margin-top:4px">Cá nhân hoá giới hạn ở mức <strong>group-level personalization</strong>. Profile từ giáo viên nhập tay hoặc agent tổng hợp từ UC-AS và trình giáo viên xác nhận.</p>
+      <p style="margin-top:4px">Learner-state adaptation giới hạn ở mức <strong>class-level</strong>. Profile từ giáo viên nhập tay hoặc agent tổng hợp từ UC-FB và trình giáo viên xác nhận.</p>
     </div>
   `},
 
@@ -449,7 +449,7 @@ const slides = [
     <div class="s-label">3 · Proposed Method · 1 / 3</div>
     <div class="s-body" style="gap:12px">
       <img src="assets/arch.svg"
-           alt="Pedagogy Agent Harness Overview"
+           alt="Adaptive Instructional Design Agent Harness Overview"
            style="width:80%;border-radius:10px;border:1.5px solid #e2e8f0;flex-shrink:0;margin:auto">
     </div>
   `},
@@ -463,13 +463,13 @@ const slides = [
         <div class="pill amber"><div class="pill-dot"></div><div>
           <strong>Memory layer</strong> — bốn scope ánh xạ cognitive taxonomy, harness tự động inject đúng tầng:<br>
           <code>Session/Working</code>: ngữ cảnh tác vụ hiện tại.<br>
-          <code>Class/Episodic</code>: lịch sử chẩn đoán, hồ sơ nhóm tích lũy theo lớp học.<br>
+          <code>Class/Episodic</code>: lịch sử chẩn đoán, learner-state profile tích lũy theo lớp học.<br>
           <code>Program/Semantic</code>: curriculum và học liệu ổn định cho toàn chương trình đào tạo.<br>
           <code>Global/Procedural</code>: preferences và phong cách dạy dài hạn của giáo viên.
         </div></div>
         <div class="pill teal"><div class="pill-dot"></div><div>
           <strong>Orchestration</strong> — <em>Graph-based</em> Plan-and-Execute Orchestrator điều phối:<br>
-          <code>Instructional Design Agent</code> · <code>Assessment Agent</code> · <code>Synthesis Agent</code><br>
+          <code>Instructional Design Agent</code> · <code>Feedback Agent</code> · <code>Profile Agent</code><br>
           <code>Pedagogical Verifier</code> kiểm tra constraint trước mỗi HITL checkpoint.
         </div></div>
       </div>
@@ -479,7 +479,7 @@ const slides = [
   /* ── 7 — Proposed Method 3/3 ── */
   {content: `
     <div class="s-label">3 · Proposed Method · 3 / 3</div>
-    <div class="s-title">Tools / Sub-agents,<br>Plugin &amp; HITL</div>
+    <div class="s-title">Tools / Sub-agents,<br>Domain Plugin &amp; HITL</div>
     <div class="s-body">
       <div class="pill-list">
         <div class="pill blue"><div class="pill-dot"></div><div>
@@ -489,7 +489,7 @@ const slides = [
         <div class="pill violet"><div class="pill-dot"></div><div>
           <strong>Domain Plugin</strong> — mở rộng domain-specific qua interface chuẩn:<br>
           Agents · Tools · Sandbox · Policies · Corpus · Metadata<br>
-          Plugin inject vào harness, không sửa core — harness vẫn chạy được khi không có plugin.
+          Plugin được load vào harness, không sửa core — harness vẫn chạy được khi không có plugin.
         </div></div>
         <div class="pill rose"><div class="pill-dot"></div><div>
           <strong>HITL Governance</strong> — giáo viên tham gia tại mọi điểm quyết định: phê duyệt · chỉnh sửa · từ chối.<br>
@@ -497,7 +497,7 @@ const slides = [
         </div></div>
       </div>
       <div class="card-row">
-        <div class="card amber"><div class="card-icon">🧪</div><div class="card-label">Case study</div><div class="card-text">Prototype validate trên CNTT / lập trình</div></div>
+        <div class="card amber"><div class="card-icon">🧪</div><div class="card-label">Case study</div><div class="card-text">Computer Science triển khai minh hoạ, không phải benchmark</div></div>
       </div>
     </div>
   `},
@@ -509,18 +509,16 @@ const slides = [
     <div class="s-body">
       <div class="pill rose" style="flex-direction:column; gap:10px; border-radius:12px; padding:18px 20px">
         <div style="font-size:0.8rem;font-weight:800;color:#e11d48;letter-spacing:1px">RQ1</div>
-        <div style="font-size:1rem;color:#1e293b;line-height:1.65">Pedagogy-specific harness có hiệu quả hơn các kiến trúc tổng quát trên tác vụ UC-ID &amp; UC-AS?</div>
+        <div style="font-size:1rem;color:#1e293b;line-height:1.65">Trên các benchmark instructional-design hiện có, Adaptive Instructional Design Agent Harness có cải thiện artifact quality và workflow/trajectory so với baseline?</div>
         <div class="card-row" style="margin-top:2px">
           <div class="card" style="flex:0 1 auto;padding:8px 14px"><div class="card-text" style="font-size:0.85rem">① LLM-only</div></div>
-          <div class="card" style="flex:0 1 auto;padding:8px 14px"><div class="card-text" style="font-size:0.85rem">② Naive RAG</div></div>
-          <div class="card" style="flex:0 1 auto;padding:8px 14px"><div class="card-text" style="font-size:0.85rem">③ Generic ReAct ARAG</div></div>
-          <div class="card" style="flex:0 1 auto;padding:8px 14px"><div class="card-text" style="font-size:0.85rem">④ Fixed MA-ARAG</div></div>
+          <div class="card" style="flex:0 1 auto;padding:8px 14px"><div class="card-text" style="font-size:0.85rem">② Theory-grounded prompting</div></div>
+          <div class="card" style="flex:0 1 auto;padding:8px 14px"><div class="card-text" style="font-size:0.85rem">③ ReAct/general agent</div></div>
         </div>
       </div>
       <div class="pill ind" style="flex-direction:column; gap:8px; border-radius:12px; padding:18px 20px">
         <div style="font-size:0.8rem;font-weight:800;color:#4f46e5;letter-spacing:1px">RQ2</div>
-        <div style="font-size:1rem;color:#1e293b;line-height:1.65">IDA Loop có tạo ra phân hoá có chủ đích theo nhóm học sinh không?<br>
-        Output UC-ID/UC-AS ở <em>vòng 2 có profile</em> có khác biệt đo được so với <em>vòng 1 không có profile</em>?</div>
+        <div style="font-size:1rem;color:#1e293b;line-height:1.65">Learner-state-aware orchestration có cải thiện adaptivity, scaffolding, feedback helpfulness và misconception handling trên benchmark adaptive tutoring/feedback không?</div>
       </div>
     </div>
   `},
@@ -532,50 +530,49 @@ const slides = [
     <div class="s-body">
       <div class="two-col">
         <div>
-          <span class="badge badge-rose">Comparison Study · RQ1</span>
+          <span class="badge badge-rose">Benchmark Adapter · RQ1</span>
           <div style="margin-top:8px;margin-bottom:10px">
             <div class="card-row" style="gap:8px">
               <div class="card rose" style="flex:1 1 auto;padding:8px 12px"><div class="card-label">B1</div><div class="card-text" style="font-size:0.88rem">LLM-only</div></div>
-              <div class="card amber" style="flex:1 1 auto;padding:8px 12px"><div class="card-label">B2</div><div class="card-text" style="font-size:0.88rem">Naive RAG</div></div>
-              <div class="card blue" style="flex:1 1 auto;padding:8px 12px"><div class="card-label">B3</div><div class="card-text" style="font-size:0.88rem">Generic ReAct ARAG</div></div>
-              <div class="card indigo" style="flex:1 1 auto;padding:8px 12px"><div class="card-label">B4</div><div class="card-text" style="font-size:0.88rem">Fixed MA-ARAG</div></div>
+              <div class="card amber" style="flex:1 1 auto;padding:8px 12px"><div class="card-label">B2</div><div class="card-text" style="font-size:0.88rem">Theory-grounded prompting</div></div>
+              <div class="card blue" style="flex:1 1 auto;padding:8px 12px"><div class="card-label">B3</div><div class="card-text" style="font-size:0.88rem">ReAct/general agent</div></div>
             </div>
           </div>
           <div class="pill-list">
-            <div class="pill rose"><div class="pill-dot"></div><div>Schema validity, verifier pass rate, retry count, tool-call correctness, latency, token usage</div></div>
-            <div class="pill rose"><div class="pill-dot"></div><div>Plugin compliance check</div></div>
+            <div class="pill rose"><div class="pill-dot"></div><div>ISD-Agent-Bench / instructional-design benchmark adapter</div></div>
+            <div class="pill rose"><div class="pill-dot"></div><div>Quality, alignment, actionability, trajectory, schema validity, latency</div></div>
           </div>
         </div>
         <div>
-          <span class="badge badge-indigo">Personalization Delta · RQ2</span>
+          <span class="badge badge-indigo">Learner-state Adaptation · RQ2</span>
           <div class="pill-list" style="margin-top:8px">
-            <div class="pill ind"><div class="pill-dot"></div><div>Vòng 1 — không có <code>StudentGroupProfile</code></div></div>
-            <div class="pill ind"><div class="pill-dot"></div><div>Vòng 2 — có profile tổng hợp từ vòng 1</div></div>
-            <div class="pill ind"><div class="pill-dot"></div><div>Delta: độ khớp Bloom · mức phân hoá · alignment feedback–misconception</div></div>
+            <div class="pill ind"><div class="pill-dot"></div><div>Adaptive tutoring / feedback benchmark adapter</div></div>
+            <div class="pill ind"><div class="pill-dot"></div><div>So sánh full harness với harness without learner-state injection</div></div>
+            <div class="pill ind"><div class="pill-dot"></div><div>Adaptivity · scaffold quality · feedback helpfulness · misconception handling · non-harmful adaptation</div></div>
           </div>
         </div>
       </div>
       <div style="margin-top:4px">
-        <span class="badge badge-teal">Benchmark</span>
+        <span class="badge badge-teal">Case Study</span>
         <div style="margin-top:6px;display:flex;flex-direction:column;gap:8px">
           <div class="card-row" style="gap:8px;flex-wrap:nowrap">
             <div class="card teal" style="flex:1 1 0;min-width:0;padding:10px 14px">
-              <div class="card-label">Task set</div>
-              <div class="card-text" style="font-size:0.88rem">Tập tác vụ UC-ID &amp; UC-AS: các mẫu đại diện được thiết kế thủ công, sau đó dùng LLM để augment số lượng lớn</div>
+              <div class="card-label">Computer Science</div>
+              <div class="card-text" style="font-size:0.88rem">Case study triển khai: assessment evidence, diagnosis, learner profile và intervention plan</div>
             </div>
             <div class="card teal" style="flex:1 1 0;min-width:0;padding:10px 14px">
-              <div class="card-label">LLM-as-Judge</div>
-              <div class="card-text" style="font-size:0.88rem">LLM riêng biệt đánh giá chất lượng output — tách biệt với model thực nghiệm và model augment</div>
+              <div class="card-label">Không benchmark</div>
+              <div class="card-text" style="font-size:0.88rem">Dùng để minh hoạ feasibility và workflow trace, không dùng cho statistical comparison</div>
             </div>
           </div>
           <div class="card-row" style="gap:8px;flex-wrap:nowrap">
             <div class="card teal" style="flex:1 1 0;min-width:0;padding:10px 14px">
-              <div class="card-label">Domain</div>
-              <div class="card-text" style="font-size:0.88rem">CNTT / lập trình — case study duy nhất của prototype</div>
+              <div class="card-label">Domain plugin</div>
+              <div class="card-text" style="font-size:0.88rem">Domain material, policy và verifier được cắm vào core harness</div>
             </div>
             <div class="card teal" style="flex:1 1 0;min-width:0;padding:10px 14px">
               <div class="card-label">Profile</div>
-              <div class="card-text" style="font-size:0.88rem"><code>StudentGroupProfile</code> tổng hợp sẵn cho RQ2 (vòng 2)</div>
+              <div class="card-text" style="font-size:0.88rem"><code>ClassLearningProfile</code> dùng để điều chỉnh instructional workflow</div>
             </div>
             <div class="card teal" style="flex:1 1 0;min-width:0;padding:10px 14px">
               <div class="card-label">Trace</div>
@@ -589,21 +586,21 @@ const slides = [
 
   /* ── 9 — Contributions ── */
   {content: `
-    <div class="s-label">6 · Contributions</div>
-    <div class="s-title">Đóng góp dự kiến</div>
+    <div class="s-label">6 · Contribution</div>
+    <div class="s-title">Đóng góp chính</div>
     <div class="s-body">
       <div class="pill-list">
         <div class="pill ind"><div class="pill-dot"></div><div>
-          <strong>Pedagogy Agent Harness</strong><br>
-          Execution environment biến LLM thành Pedagogy Agent — vận hành IDA Loop, group-level personalization, pedagogy domain plugin, HITL governance &amp; pedagogical constraint enforcement.
+          <strong>Adaptive Instructional Design Agent Harness</strong><br>
+          Harness điều phối agent cho thiết kế dạy học thích ứng — instructional workflow, learner-state-aware memory, schema-constrained artifact generation, trace, HITL governance &amp; benchmark adapters.
         </div></div>
         <div class="pill teal"><div class="pill-dot"></div><div>
-          <strong>End-to-end prototype</strong><br>
-          Chạy local trên case study CNTT/lập trình, bao gồm domain plugin implementation cho lĩnh vực này.
+          <strong>Benchmark để đo</strong><br>
+          Tái sử dụng benchmark instructional design và adaptive tutoring/feedback qua adapter, không xây benchmark CS riêng.
         </div></div>
         <div class="pill amber"><div class="pill-dot"></div><div>
-          <strong>Technical benchmark</strong><br>
-          Comparison study (LLM-only · Naive RAG · Generic ReAct ARAG · Fixed MA-ARAG), interface compliance, plugin delta, personalization delta analysis.
+          <strong>Case study để kể chuyện triển khai</strong><br>
+          Computer Science case study minh hoạ cách harness subject-domain-agnostic được instantiate vào một domain cụ thể.
         </div></div>
       </div>
     </div>
@@ -616,11 +613,11 @@ const slides = [
     <div class="s-body">
       <div class="card-row">
         <div class="card rose"><div class="card-icon">✗</div><div class="card-label">Không xây dựng</div><div class="card-text">LMS hoàn chỉnh</div></div>
-        <div class="card rose"><div class="card-icon">✗</div><div class="card-label">Không cá nhân hoá</div><div class="card-text">tới từng học sinh</div></div>
+        <div class="card rose"><div class="card-icon">✗</div><div class="card-label">Không adaptive</div><div class="card-text">tới từng học sinh</div></div>
         <div class="card rose"><div class="card-icon">✗</div><div class="card-label">Không đánh giá</div><div class="card-text">hiệu quả học tập thực tế nhiều tuần / lớp thật</div></div>
-        <div class="card rose"><div class="card-icon">✗</div><div class="card-label">Không claim novelty</div><div class="card-text">thuật toán cho từng thành phần (RAG, Multi-Agent…)</div></div>
+        <div class="card rose"><div class="card-icon">✗</div><div class="card-label">Không claim novelty</div><div class="card-text">thuật toán riêng lẻ cho RAG, MAS hoặc LLM</div></div>
       </div>
-      <div class="pill green"><div class="pill-dot"></div><div>Đóng góp nằm ở <strong>kiến trúc của harness cho bối cảnh sư phạm</strong>, cùng bằng chứng kỹ thuật trên case study CNTT/lập trình.</div></div>
+      <div class="pill green"><div class="pill-dot"></div><div>Đóng góp nằm ở <strong>Adaptive Instructional Design Agent Harness</strong>; benchmark dùng để đo, case study CS dùng để minh hoạ hệ thống vận hành trong bối cảnh thật.</div></div>
     </div>
   `},
 
@@ -632,8 +629,8 @@ const slides = [
       <div class="toc-grid">
         <div class="toc-item"><div class="toc-num n1">1</div><div class="toc-text">Giới thiệu đề tài</div></div>
         <div class="toc-item"><div class="toc-num n2">2</div><div class="toc-text">Cơ sở lý thuyết &amp; Công trình liên quan</div></div>
-        <div class="toc-item"><div class="toc-num n3">3</div><div class="toc-text">Phương pháp đề xuất: Kiến trúc Pedagogy Agent Harness</div></div>
-        <div class="toc-item"><div class="toc-num n4">4</div><div class="toc-text">Thiết lập thực nghiệm &amp; Phương pháp đánh giá</div></div>
+        <div class="toc-item"><div class="toc-num n3">3</div><div class="toc-text">Phương pháp đề xuất: Adaptive Instructional Design Agent Harness</div></div>
+        <div class="toc-item"><div class="toc-num n4">4</div><div class="toc-text">Benchmark adapters &amp; Computer Science case study</div></div>
         <div class="toc-item"><div class="toc-num n5">5</div><div class="toc-text">Kết quả &amp; Thảo luận</div></div>
         <div class="toc-item"><div class="toc-num n6">6</div><div class="toc-text">Kết luận &amp; Hướng phát triển</div></div>
       </div>

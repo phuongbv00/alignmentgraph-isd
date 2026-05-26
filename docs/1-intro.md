@@ -2,32 +2,38 @@
 
 ## 1.1 Motivation and Problem Statement
 
-Giáo viên dành phần lớn thời gian ngoài giờ lên lớp cho các tác vụ lặp lại: soạn kế hoạch bài dạy, xây dựng rubric, tạo đề, chấm bài và viết feedback. LLM có năng lực ngôn ngữ đủ mạnh để hỗ trợ các tác vụ này, nhưng LLM đơn thuần là stateless — mỗi phiên làm việc bắt đầu lại từ đầu, hiệu quả phụ thuộc vào khả năng viết prompt của từng người chứ không phải năng lực sư phạm của họ.
+Luận văn này không định vị như một nghiên cứu về "ứng dụng AI trong giáo dục", một hệ thống "multi-agent RAG cho học tập", hay một công cụ "LLM hỗ trợ đào tạo" theo nghĩa sinh nội dung rời rạc. Định vị trung tâm của luận văn là **Adaptive Instructional Design Agent Harness**: một harness chuyên cho thiết kế dạy học thích ứng, độc lập với subject domain cụ thể, dùng agentic AI để điều phối các quyết định dạy học trong một vòng lặp đánh giá, chẩn đoán, can thiệp và tái đánh giá có trạng thái.
 
-Các ứng dụng phổ biến như ChatGPT hay Gemini bổ sung thêm lịch sử hội thoại và giao diện thân thiện hơn, nhưng về bản chất vẫn được tối ưu cho Q&A tổng quát. Chúng không có khái niệm về khoá học, nhóm học sinh hay tiến trình dạy học — mỗi câu hỏi vẫn được xử lý độc lập, không tích luỹ ngữ cảnh sư phạm qua thời gian.
+Trong thực tế giảng dạy, instructional design không phải là hoạt động một lần. Kế hoạch bài dạy, hoạt động học tập, rubric, bài tập, đề kiểm tra và feedback cần được điều chỉnh liên tục theo learner state của từng lớp: nền tảng đầu vào, misconception đang nổi lên, nhịp tiếp thu, kết quả đánh giá gần nhất và bằng chứng từ các lần can thiệp trước đó. Vấn đề vì vậy không chỉ là sinh một lesson plan hay một rubric tốt tại một thời điểm, mà là duy trì một **closed-loop instructional workflow**:
 
-Trong khi đó, một xu hướng rõ nét đang hình thành ở các lĩnh vực khác: các công cụ chuyên dụng bọc LLM bằng một execution environment phù hợp với từng domain, hay còn được gọi là **harness** — lớp phần mềm bao quanh model để quản lý prompt/context engineering, RAG, tool use, agentic loop, memory, permission và orchestration. Có thể kể đến các ví dụ điển hình như Claude Code và Codex biến LLM thành cộng sự lập trình bằng cách tích hợp file system, terminal và coding workflow; NotebookLM và Perplexity tối ưu LLM cho nghiên cứu tài liệu với grounding và citation. Mỗi công cụ đó không mạnh hơn chỉ vì dùng LLM tốt hơn, mà vì harness của chúng phù hợp với đặc thù của lĩnh vực.
+```text
+Assessment -> Diagnosis -> Intervention -> Reassessment
+```
 
-Trong lĩnh vực sư phạm, cá nhân hoá đang là một trong những xu hướng trọng tâm: từ differentiated instruction đến adaptive learning, nghiên cứu giáo dục ngày càng cho thấy việc điều chỉnh nội dung, độ khó và phản hồi theo đặc điểm từng nhóm học sinh cải thiện rõ rệt kết quả học tập. Nhưng để cá nhân hoá có chủ đích, không phải một tác vụ đơn lẻ mà là một vòng lặp: đánh giá học sinh → phát hiện điểm mạnh/yếu → điều chỉnh kế hoạch dạy học → triển khai → đánh giá lại. Luận văn gọi vòng lặp này là **IDA Loop** (Instructional Design–Assessment Loop). Các harness tổng quát có thể đáp ứng một phần nhu cầu này thông qua prompt engineering, skill hay MCP — nhưng không được thiết kế cho đặc thù sư phạm và không thể đạt mức độ cần thiết. Đó là khoảng trống mà luận văn này giải quyết.
+Các công cụ LLM hiện tại có thể hỗ trợ từng tác vụ riêng lẻ như tạo câu hỏi, gợi ý feedback hoặc soạn kế hoạch bài dạy. Tuy nhiên, chúng thường xử lý mỗi yêu cầu như một tác vụ độc lập, tách khỏi lịch sử của lớp học và khỏi lifecycle thiết kế dạy học. LLM thuần là stateless; các chatbot phổ biến bổ sung lịch sử hội thoại nhưng vẫn không có khái niệm bền vững về chương trình, lớp học, learner state, artifact đã triển khai, quyết định đánh giá trước đó và ràng buộc alignment giữa objective, activity và assessment. Các general-purpose agent tiến xa hơn nhờ tool use và memory, nhưng memory/project context của chúng không được tổ chức theo semantics của instructional systems.
+
+Bối cảnh công việc của tác giả minh hoạ cụ thể cho khoảng trống này. Trong vai trò giảng viên nội bộ tại FPT Software, phụ trách đào tạo chuyên môn cho nhân viên mới và nhân viên trong các khoá ngắn hạn 1-3 tháng, mỗi lớp học có đặc điểm riêng: khác biệt về nền tảng kỹ thuật, nhịp tiếp thu không đồng đều giữa các nhóm, và kết quả đánh giá giữa khoá thường đòi hỏi điều chỉnh instruction. Bối cảnh Computer Science này được dùng trong luận văn như một **case study triển khai**, không phải benchmark chính.
+
+Về mặt lý thuyết, Instructional Systems Design (ISD) đã cung cấp lifecycle và semantics cho thiết kế dạy học: phân tích nhu cầu, xác định mục tiêu, thiết kế instruction, triển khai, đánh giá và refinement. Adaptive Learning và Intelligent Tutoring Systems mở rộng hướng này bằng learner modeling, adaptive sequencing và remediation. Tuy nhiên, các hệ thống hiện có vẫn còn khoảng trống khi đặt trong bối cảnh agentic AI hiện đại: thiếu learner-state-aware memory ở cấp lớp, thiếu longitudinal adaptation qua nhiều phiên, thiếu closed-loop pedagogical refinement, và thiếu một kiến trúc agent orchestration được grounded bằng lý thuyết instructional design.
+
+Luận văn đề xuất **Adaptive Instructional Design Agent Harness** như một bước tiếp theo của adaptive instructional systems: không phải một chatbot tutor, không phải một công cụ sinh nội dung, mà là một execution framework đặt LLM trong instructional workflow có memory, schema, trace, learner state và governance. Harness này là **instructional-design-specific** nhưng **subject-domain-agnostic**: nó không được neo vào Computer Science, Math hay một môn học cụ thể, dù có thể được instantiate bằng corpus, tool và policy riêng của từng domain.
 
 ## 1.2 Contributions
 
-Luận văn có ba đóng góp chính:
-
-1. **Pedagogy Agent Harness**: một execution environment biến LLM thành Pedagogy Agent, vận hành IDA Loop (Instructional Design–Assessment Loop) làm lõi chính cho group-level personalization, hỗ trợ mở rộng đa lĩnh vực sư phạm qua pedagogy domain plugin, và enforce ràng buộc sư phạm xuyên suốt pipeline cùng với HITL governance. Harness tập trung vào hai use-case family: **UC-ID — Instructional Design** (soạn kế hoạch bài dạy, điều chỉnh kế hoạch theo `StudentGroupProfile`, phân hoá hoạt động theo nhóm) và **UC-AS — Assessment** (xây dựng rubric/ma trận đề, sinh bài tập hoặc đề kiểm tra, chấm bài, sinh feedback và tổng hợp kết quả đánh giá thành `StudentGroupProfile`). Cá nhân hoá được giới hạn ở mức **group-level personalization**.
-2. **End-to-end prototype**: prototype Pedagogy Agent Harness chạy local trên case study CNTT/lập trình, bao gồm domain plugin implementation cho lĩnh vực này.
-3. **Technical benchmark**: benchmark kỹ thuật với comparison study (LLM-only, Naive RAG, Generic ReAct Agentic RAG, Fixed MA-ARAG), interface compliance, plugin delta, personalization delta analysis và SOTA research-paper anchoring với các teacher-facing papers.
+Luận văn có một đóng góp chính: **Adaptive Instructional Design Agent Harness**. Đây là một harness điều phối agent cho thiết kế dạy học thích ứng, tích hợp instructional workflow, learner-state-aware memory, schema-constrained artifact generation, workflow trace, HITL governance và benchmark adapters thành một execution framework thống nhất. Các thành phần như graph orchestration, profile-conditioned context injection, verifier/checkpoint và domain plugin được xem là cơ chế triển khai của contribution này, không phải các đóng góp tách rời.
 
 ## 1.3 Research Questions
 
-- **RQ1**: Pedagogy Agent Harness đạt hiệu quả như thế nào so với các baseline kiến trúc LLM/agent tổng quát và các SOTA teacher-facing AI support systems trên các tác vụ UC-ID và UC-AS?
-- **RQ2**: Pedagogy Agent Harness có cá nhân hoá output theo hồ sơ nhóm học sinh trên các tác vụ UC-ID và UC-AS không?
+- **RQ1**: Trên các benchmark instructional-design hiện có, **Adaptive Instructional Design Agent Harness** cải thiện chất lượng thiết kế dạy học và workflow/trajectory như thế nào so với LLM-only, ReAct/general-agent và theory-grounded prompting baselines?
+- **RQ2**: Learner-state-aware orchestration trong harness có cải thiện adaptivity, scaffolding, feedback helpfulness và misconception handling trên các benchmark adaptive tutoring/feedback hiện có không?
+
+Hai câu hỏi nghiên cứu kiểm tra contribution ở tầng harness và orchestration bằng benchmark có sẵn. Computer Science được dùng như case study định tính để minh hoạ cách harness được instantiate trong một subject domain cụ thể; case study này không được dùng như benchmark thống kê và không phải một RQ độc lập.
 
 ## 1.4 Thesis Outlines
 
-Chương 1 giới thiệu
-Chương 2 trình bày nền tảng và công trình liên quan.
-Chương 3 mô tả kiến trúc Pedagogy Agent Harness.
-Chương 4 trình bày thiết lập thực nghiệm và protocol đánh giá. 
-Chương 5 báo cáo kết quả comparison study, personalization delta, phân tích lỗi, thảo luận và threat to validity.
+Chương 1 giới thiệu định vị luận văn và câu hỏi nghiên cứu.
+Chương 2 trình bày nền tảng và công trình liên quan theo mạch Learning Theory -> Instructional Systems -> Adaptive Learning -> Educational Agents -> Agentic Orchestration -> Research Gap.
+Chương 3 mô tả kiến trúc Adaptive Instructional Design Agent Harness.
+Chương 4 trình bày protocol đánh giá dựa trên benchmark adapters và case study Computer Science.
+Chương 5 báo cáo kết quả benchmark comparison, learner-state adaptation analysis, case study, phân tích lỗi, thảo luận và threats to validity.
 Chương 6 kết luận và nêu hướng phát triển.
