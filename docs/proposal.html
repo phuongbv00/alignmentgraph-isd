@@ -331,6 +331,15 @@
     text-align: center;
   }
 
+  /* ── keyword highlight for presenter ── */
+  .kw {
+    background: #fef9c3;
+    color: #78350f;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-weight: 700;
+  }
+
   /* scrollbar */
   #slide::-webkit-scrollbar { width: 4px; }
   #slide::-webkit-scrollbar-track { background: transparent; }
@@ -370,10 +379,10 @@ const slides = [
     <div class="s-title">Khoá học không kết thúc<br>ở lần thiết kế đầu tiên</div>
     <div class="s-body">
       <div class="pill-list">
-        <div class="pill rose"><div class="pill-dot"></div><div>Khoá học đào tạo nhân viên, fresher hoặc kỹ sư chuyển vai trò phải được cập nhật liên tục: theo thay đổi công nghệ, yêu cầu dự án, năng lực đầu vào và phản hồi sau mỗi batch.</div></div>
-        <div class="pill amber"><div class="pill-dot"></div><div>Instructional design là một <strong>vòng lặp</strong>, không phải tác vụ đơn lẻ: <em>Analysis → Design → Development → Implementation → Evaluation</em> — rồi lặp lại sau mỗi lần triển khai.</div></div>
-        <div class="pill blue"><div class="pill-dot"></div><div>Mỗi vòng lặp đòi hỏi: mục tiêu học tập rõ hơn · bài tập sát thực tế hơn · rubric nhất quán hơn · hoạt động khả thi hơn · hướng dẫn dễ triển khai hơn.</div></div>
-        <div class="pill green"><div class="pill-dot"></div><div>Khối lượng công việc không nằm ở một tác vụ — người thiết kế phải phân tích bối cảnh, xác định mục tiêu, thiết kế hoạt động, tạo tài liệu, viết rubric và thu thập phản hồi để sửa chương trình.</div></div>
+        <div class="pill rose"><div class="pill-dot"></div><div>Khoá học đào tạo nhân viên, fresher hoặc kỹ sư chuyển vai trò phải được <span class="kw">cập nhật liên tục</span>: theo thay đổi công nghệ, yêu cầu dự án, năng lực đầu vào và phản hồi sau mỗi batch.</div></div>
+        <div class="pill amber"><div class="pill-dot"></div><div>Instructional design là một <span class="kw">vòng lặp</span>, không phải tác vụ đơn lẻ: <em><span class="kw">Analysis → Design → Development → Implementation → Evaluation</span></em> — rồi lặp lại sau mỗi lần triển khai.</div></div>
+        <div class="pill blue"><div class="pill-dot"></div><div>Mỗi vòng lặp đòi hỏi: <span class="kw">mục tiêu học tập rõ hơn</span> · <span class="kw">bài tập sát thực tế hơn</span> · <span class="kw">rubric nhất quán hơn</span> · hoạt động khả thi hơn · hướng dẫn dễ triển khai hơn.</div></div>
+        <div class="pill green"><div class="pill-dot"></div><div>Khối lượng công việc không nằm ở một tác vụ — người thiết kế phải <span class="kw">phân tích bối cảnh</span>, <span class="kw">xác định mục tiêu</span>, <span class="kw">thiết kế hoạt động</span>, tạo tài liệu, viết rubric và thu thập phản hồi để sửa chương trình.</div></div>
       </div>
     </div>
   `},
@@ -384,10 +393,10 @@ const slides = [
     <div class="s-title">LLM như chatbot chưa đủ<br>cho <span class="accent">ISD lifecycle</span></div>
     <div class="s-body">
       <div class="pill-list">
-        <div class="pill rose"><div class="pill-dot"></div><div>LLM hỗ trợ tốt từng tác vụ đơn lẻ như sinh lesson plan, viết quiz, tạo rubric — nhưng dùng như chatbot độc lập thì thiếu cơ chế điều phối theo <strong>ISD lifecycle</strong>.</div></div>
-        <div class="pill amber"><div class="pill-dot"></div><div>Output không theo schema ổn định → các pha Analysis, Design, Development, Implementation và Evaluation có thể lệch nhau, không align.</div></div>
-        <div class="pill blue"><div class="pill-dot"></div><div>Reasoning và tool-use khó truy vết → lỗi ở một pha không được <strong>phát hiện rồi sửa có mục tiêu</strong> trước khi chuyển sang pha tiếp theo.</div></div>
-        <div class="pill violet"><div class="pill-dot"></div><div>Các ISD agents hiện có trong ISD-Agent-Bench đại diện cho từng chiến lược đơn lẻ. Luận văn đặt vấn đề ở <strong>tầng harness</strong>: làm thế nào xây dựng môi trường thực thi điều phối được workflow, kiểm tra được chất lượng và đánh giá được bằng benchmark.</div></div>
+        <div class="pill rose"><div class="pill-dot"></div><div>LLM hỗ trợ tốt từng tác vụ đơn lẻ như sinh lesson plan, viết quiz, tạo rubric — nhưng dùng như chatbot độc lập thì thiếu <span class="kw">cơ chế điều phối theo ISD lifecycle</span>.</div></div>
+        <div class="pill amber"><div class="pill-dot"></div><div>Output <span class="kw">không theo schema ổn định</span> → các pha Analysis, Design, Development, Implementation và Evaluation có thể <span class="kw">lệch nhau</span>, không align.</div></div>
+        <div class="pill blue"><div class="pill-dot"></div><div>Reasoning và tool-use <span class="kw">khó truy vết</span> → lỗi ở một pha không được <span class="kw">phát hiện rồi sửa có mục tiêu</span> trước khi chuyển sang pha tiếp theo.</div></div>
+        <div class="pill violet"><div class="pill-dot"></div><div>Các ISD agents hiện có đại diện cho từng chiến lược đơn lẻ. Luận văn đặt vấn đề ở <span class="kw">tầng harness</span>: xây dựng <span class="kw">môi trường thực thi</span> điều phối được workflow, kiểm tra được chất lượng và đánh giá được bằng benchmark.</div></div>
       </div>
     </div>
   `},
@@ -398,8 +407,8 @@ const slides = [
     <div class="s-title">ISD Agent = <span class="accent">Harness</span> + Model</div>
     <div class="s-body harness-layout">
       <div class="harness-copy">
-        <p>Harness cung cấp <strong>môi trường thực thi chuyên cho ISD</strong>; model cung cấp năng lực ngôn ngữ, reasoning và generation bên trong môi trường đó.</p>
-        <p>Harness không gắn cứng với một mô hình ISD duy nhất. ADDIE chỉ là <strong>output contract</strong> để tương thích với ISD-Agent-Bench; các chiến lược backward design, constructive alignment, Gagne sequencing được dùng như policy/verifier bên trong.</p>
+        <p>Harness cung cấp <span class="kw">môi trường thực thi chuyên cho ISD</span>; model cung cấp năng lực ngôn ngữ, reasoning và generation bên trong môi trường đó.</p>
+        <p>Harness không gắn cứng với một mô hình ISD duy nhất. ADDIE chỉ là <span class="kw">output contract</span> để tương thích với ISD-Agent-Bench; các chiến lược <span class="kw">backward design</span>, <span class="kw">constructive alignment</span>, <span class="kw">Gagne sequencing</span> được dùng như policy/verifier bên trong.</p>
         <div class="formula">ISD Agent = ISD Agent Harness + Model</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
@@ -426,7 +435,45 @@ const slides = [
     </div>
   `},
 
-  /* ── 5 — Method 1/3: Multi-agent ── */
+  /* ── 5 — Comparison ── */
+  {content: `
+    <div class="s-label">3 · Architectural Comparison</div>
+    <div class="s-title">So sánh với ISD-Agent-Bench</div>
+    <div class="s-body" style="gap:8px">
+      <div style="display:grid;grid-template-columns:110px 1fr 1fr;gap:0;border:1.5px solid #e2e8f0;border-radius:12px;overflow:hidden;font-size:0.78rem">
+        <div style="background:#f1f5f9;padding:6px 10px;font-weight:700;color:#64748b;font-size:0.68rem;letter-spacing:1px;text-transform:uppercase">Agent</div>
+        <div style="background:#f1f5f9;padding:6px 10px;font-weight:700;color:#64748b;font-size:0.68rem;letter-spacing:1px;text-transform:uppercase;border-left:1px solid #e2e8f0">Giới hạn chính</div>
+        <div style="background:#f1f5f9;padding:6px 10px;font-weight:700;color:#64748b;font-size:0.68rem;letter-spacing:1px;text-transform:uppercase;border-left:1px solid #e2e8f0">Harness khác biệt</div>
+
+        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;font-weight:700;color:#1e293b"><code style="font-size:0.75rem">baseline</code></div>
+        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.45">Không có workflow trace, không kiểm tra pha; lỗi khó sửa có mục tiêu</div>
+        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#4f46e5;line-height:1.45">Chia <span class="kw">node/phase</span>, <span class="kw">validate từng phần</span>, log <span class="kw">trajectory</span></div>
+
+        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;font-weight:700;color:#1e293b"><code style="font-size:0.75rem">react-isd</code></div>
+        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.45">Tool choice phụ thuộc mạnh vào model; <span class="kw">thứ tự ISD khó kiểm soát</span> tất định</div>
+        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#4f46e5;line-height:1.45"><span class="kw">Graph policy</span> kiểm soát transition, tool permission và <span class="kw">phase contract</span></div>
+
+        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;font-weight:700;color:#1e293b"><code style="font-size:0.75rem">addie-agent</code></div>
+        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.45"><span class="kw">Tuyến tính cứng</span>; ít cơ chế repair/verifier; ít linh hoạt với domain/corpus</div>
+        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#4f46e5;line-height:1.45">Giữ ADDIE contract nhưng <span class="kw">dynamic orchestration</span>, verifier và <span class="kw">targeted repair</span></div>
+
+        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;font-weight:700;color:#1e293b"><code style="font-size:0.75rem">dick-carey</code></div>
+        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.45">Bám <span class="kw">một process model cụ thể</span>; mapping về ADDIE là lớp chuyển đổi thêm</div>
+        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#4f46e5;line-height:1.45"><span class="kw">Không gắn cứng</span> một model ISD; <span class="kw">policy/verifier kết hợp nhiều nguyên tắc</span></div>
+
+        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;font-weight:700;color:#1e293b"><code style="font-size:0.75rem">rpisd-agent</code></div>
+        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.45">Phức tạp, cần nhiều giả định feedback; <span class="kw">không phải mọi scenario cần prototyping</span></div>
+        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#4f46e5;line-height:1.45">Bật/tắt <span class="kw">repair loop theo verifier result</span>, không ép mọi task vào prototyping</div>
+
+        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;font-weight:700;color:#1e293b"><code style="font-size:0.75rem">eduplanner</code></div>
+        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.45">Chưa nhấn mạnh <span class="kw">agentic RAG</span>, <span class="kw">schema contract</span> và <span class="kw">trace chuẩn hoá</span> ở mọi node</div>
+        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#4f46e5;line-height:1.45">Multi-agent theo <span class="kw">role ISD</span>, <span class="kw">context pack theo pha</span>, verifier/repair, <span class="kw">trace thống nhất</span></div>
+      </div>
+      <div class="pill ind" style="padding:8px 14px"><div class="pill-dot"></div><div><strong>ISD Agent Harness</strong> không chỉ là một agent strategy — đây là <strong>runtime</strong> điều phối nhiều role, nhiều nguồn tri thức, nhiều checkpoint và nhiều cơ chế kiểm tra có thể đo lường.</div></div>
+    </div>
+  `},
+
+  /* ── 6 — Method 1/3: Multi-agent ── */
   {content: `
     <div class="s-label">3 · Proposed Method · 1 / 3</div>
     <div class="s-title">Multi-agent Orchestration<br>&amp; <span class="accent">AlignmentCore</span></div>
@@ -438,9 +485,9 @@ const slides = [
         <div class="card amber"><div class="card-label">RepairAgent</div><div class="card-text">Sửa có mục tiêu artifact fragment vi phạm schema hoặc verifier policy</div></div>
       </div>
       <div class="pill-list" style="margin-top:4px">
-        <div class="pill ind"><div class="pill-dot"></div><div><strong>6 role agents</strong> làm việc trên artifact fragments qua AlignmentCore: <code>NeedsContext</code> · <code>ObjectiveDesign</code> · <code>AssessmentDesign</code> · <code>ActivityMaterial</code> · <code>ImplementationConstraint</code> · <code>EvaluationRevision</code></div></div>
-        <div class="pill teal"><div class="pill-dot"></div><div>Không tuyến tính cứng: <code>AssessmentDesignAgent</code> có thể buộc <code>ObjectiveDesignAgent</code> sửa mục tiêu; <code>ImplementationConstraintAgent</code> đẩy constraint ngược về <code>ActivityMaterialAgent</code>.</div></div>
-        <div class="pill violet"><div class="pill-dot"></div><div><code>ADDIEOutputAggregator</code> map artifact graph cuối vào schema <code>addie_output</code> để ISD-Agent-Bench có thể đánh giá.</div></div>
+        <div class="pill ind"><div class="pill-dot"></div><div><span class="kw">6 role agents</span> làm việc trên <span class="kw">artifact fragments</span> qua AlignmentCore: <code>NeedsContext</code> · <code>ObjectiveDesign</code> · <code>AssessmentDesign</code> · <code>ActivityMaterial</code> · <code>ImplementationConstraint</code> · <code>EvaluationRevision</code></div></div>
+        <div class="pill teal"><div class="pill-dot"></div><div><span class="kw">Không tuyến tính cứng</span>: <code>AssessmentDesignAgent</code> có thể buộc <code>ObjectiveDesignAgent</code> sửa mục tiêu; <code>ImplementationConstraintAgent</code> <span class="kw">đẩy constraint ngược về</span> <code>ActivityMaterialAgent</code>.</div></div>
+        <div class="pill violet"><div class="pill-dot"></div><div><code>ADDIEOutputAggregator</code> map artifact graph cuối vào schema <code>addie_output</code> — <span class="kw">ADDIE chỉ là output contract</span>, không phải execution order.</div></div>
       </div>
     </div>
   `},
@@ -451,9 +498,9 @@ const slides = [
     <div class="s-title">Agentic RAG</div>
     <div class="s-body">
       <div class="pill-list">
-        <div class="pill blue"><div class="pill-dot"></div><div><strong>RetrievalPlanner</strong> quyết định cần truy xuất gì cho từng pha ISD — không dùng một query chung cho toàn bộ workflow. Mỗi agent nhận <code>ContextPack</code> riêng theo task.</div></div>
-        <div class="pill amber"><div class="pill-dot"></div><div><strong>Nguồn tri thức:</strong> scenario context từ ISD-Agent-Bench · ISD theory notes, Bloom verbs, constructive alignment checklist · material/rubric templates · IT/SE corpus (coding exercise, rubric lập trình, guideline code review, testing, OOP, software process).</div></div>
-        <div class="pill teal"><div class="pill-dot"></div><div><strong>Ví dụ:</strong> khoá Software Testing 2 tuần cho fresher → <code>NeedsContextAgent</code> nhận learner background, <code>ObjectiveDesignAgent</code> nhận Bloom/action verbs, <code>AssessmentDesignAgent</code> nhận rubric mẫu cho test plan/bug report/unit test, <code>ActivityMaterialAgent</code> nhận exercise templates.</div></div>
+        <div class="pill blue"><div class="pill-dot"></div><div><span class="kw">RetrievalPlanner</span> quyết định cần truy xuất gì cho từng pha ISD — không dùng một query chung. Mỗi agent nhận <span class="kw">ContextPack riêng theo task</span>.</div></div>
+        <div class="pill amber"><div class="pill-dot"></div><div><strong>Nguồn tri thức:</strong> scenario context · <span class="kw">ISD theory notes</span>, Bloom verbs, constructive alignment checklist · <span class="kw">material/rubric templates</span> · <span class="kw">IT/SE corpus</span> (coding exercise, rubric lập trình, guideline code review, testing, OOP, software process).</div></div>
+        <div class="pill teal"><div class="pill-dot"></div><div><strong>Ví dụ — Software Testing 2 tuần cho fresher:</strong> <code>NeedsContextAgent</code> nhận <span class="kw">learner background</span> · <code>ObjectiveDesignAgent</code> nhận <span class="kw">Bloom/action verbs</span> · <code>AssessmentDesignAgent</code> nhận <span class="kw">rubric mẫu</span> test plan/bug report/unit test · <code>ActivityMaterialAgent</code> nhận <span class="kw">exercise templates</span>.</div></div>
       </div>
       <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:12px 18px;font-family:'Cascadia Code','Fira Code',monospace;font-size:0.78rem;color:#334155;line-height:2;margin-top:4px">
         Request → <span style="color:#4f46e5">RetrievalPlanner</span> → Query decomposition by ISD task<br>
@@ -472,21 +519,21 @@ const slides = [
         <div>
           <span class="badge badge-indigo">Schema Validation</span>
           <div class="pill-list" style="margin-top:8px">
-            <div class="pill ind"><div class="pill-dot"></div><div>JSON parseability, required fields, type, enum, ID format và field completeness</div></div>
-            <div class="pill ind"><div class="pill-dot"></div><div>Output cuối map vào <code>addie_output.analysis/design/development/implementation/evaluation</code></div></div>
+            <div class="pill ind"><div class="pill-dot"></div><div><span class="kw">JSON parseability</span>, required fields, type, enum, ID format và field completeness</div></div>
+            <div class="pill ind"><div class="pill-dot"></div><div>Output cuối map vào <code>addie_output.<span class="kw">analysis/design/development/implementation/evaluation</span></code></div></div>
           </div>
         </div>
         <div>
           <span class="badge badge-teal">Pedagogical Verification</span>
           <div class="pill-list" style="margin-top:8px">
-            <div class="pill teal"><div class="pill-dot"></div><div>Measurable/action verbs trong learning objectives</div></div>
-            <div class="pill teal"><div class="pill-dot"></div><div>Objective–activity–assessment alignment · rubric consistency · feasibility theo duration/resources</div></div>
+            <div class="pill teal"><div class="pill-dot"></div><div><span class="kw">Measurable/action verbs</span> trong learning objectives</div></div>
+            <div class="pill teal"><div class="pill-dot"></div><div><span class="kw">Objective–activity–assessment alignment</span> · rubric consistency · feasibility theo duration/resources</div></div>
           </div>
         </div>
       </div>
       <div class="pill-list" style="margin-top:8px">
-        <div class="pill amber"><div class="pill-dot"></div><div><strong>Targeted Repair:</strong> schema lỗi → <code>RepairAgent</code> nhận validation error + fragment → sửa cấu trúc. Pedagogy lỗi → nhận verifier report → chỉ sửa phần liên quan.</div></div>
-        <div class="pill rose"><div class="pill-dot"></div><div><strong>Trajectory:</strong> ghi rõ retry count, violation type, repaired fields → evaluation không chỉ nhìn output cuối mà còn thấy quá trình phát hiện và sửa lỗi.</div></div>
+        <div class="pill amber"><div class="pill-dot"></div><div><strong>Targeted Repair:</strong> schema lỗi → <code>RepairAgent</code> nhận <span class="kw">validation error + fragment</span> → sửa cấu trúc. Pedagogy lỗi → nhận <span class="kw">verifier report</span> → <span class="kw">chỉ sửa phần liên quan</span>.</div></div>
+        <div class="pill rose"><div class="pill-dot"></div><div><strong>Trajectory:</strong> ghi rõ <span class="kw">retry count</span>, <span class="kw">violation type</span>, <span class="kw">repaired fields</span> → evaluation không chỉ nhìn output cuối mà còn thấy <span class="kw">quá trình phát hiện và sửa lỗi</span>.</div></div>
       </div>
     </div>
   `},
@@ -525,7 +572,7 @@ const slides = [
     <div class="s-body">
       <div class="pill rose" style="flex-direction:column; gap:10px; border-radius:12px; padding:18px 20px">
         <div style="font-size:0.8rem;font-weight:800;color:#e11d48;letter-spacing:1px">RQ1 — Benchmark Quality</div>
-        <div style="font-size:1rem;color:#1e293b;line-height:1.65">Trên ISD-Agent-Bench, ISD Agent Harness cải thiện chất lượng artifact instructional design như thế nào so với các agent baseline và ISD agents hiện có?</div>
+        <div style="font-size:1rem;color:#1e293b;line-height:1.65">Trên <span class="kw">ISD-Agent-Bench</span>, ISD Agent Harness cải thiện <span class="kw">chất lượng artifact instructional design</span> như thế nào so với các agent baseline và ISD agents hiện có?</div>
         <div class="card-row" style="margin-top:2px">
           <div class="card" style="flex:0 1 auto;padding:8px 14px"><div class="card-text" style="font-size:0.85rem">baseline</div></div>
           <div class="card" style="flex:0 1 auto;padding:8px 14px"><div class="card-text" style="font-size:0.85rem">react-isd</div></div>
@@ -535,7 +582,7 @@ const slides = [
       </div>
       <div class="pill ind" style="flex-direction:column; gap:8px; border-radius:12px; padding:18px 20px">
         <div style="font-size:0.8rem;font-weight:800;color:#4f46e5;letter-spacing:1px">RQ2 — Component Impact</div>
-        <div style="font-size:1rem;color:#1e293b;line-height:1.65">Các thành phần harness — multi-agent orchestration, agentic RAG, schema validation, pedagogical verifier và targeted repair — ảnh hưởng như thế nào đến trajectory quality, schema validity, failure rate, latency và token/tool cost?</div>
+        <div style="font-size:1rem;color:#1e293b;line-height:1.65">Các thành phần harness — <span class="kw">multi-agent orchestration</span>, <span class="kw">agentic RAG</span>, <span class="kw">schema validation</span>, <span class="kw">pedagogical verifier</span> và <span class="kw">targeted repair</span> — ảnh hưởng như thế nào đến <span class="kw">trajectory quality</span>, <span class="kw">schema validity</span>, <span class="kw">failure rate</span>, latency và token/tool cost?</div>
       </div>
     </div>
   `},
@@ -581,8 +628,8 @@ const slides = [
       <div class="pill-list">
         <div class="pill ind"><div class="pill-dot"></div><div>
           <strong>ISD Agent Harness</strong> — harness thực thi chuyên cho Instructional Systems Design, gồm:<br>
-          Multi-agent orchestration · Agentic RAG · Schema-constrained generation · Pedagogical verifier · Targeted repair · Workflow trace<br>
-          Dùng ADDIE như output contract để tương thích với ISD-Agent-Bench; execution bên trong là non-linear ISD orchestration.
+          <span class="kw">Multi-agent orchestration</span> · <span class="kw">Agentic RAG</span> · <span class="kw">Schema-constrained generation</span> · <span class="kw">Pedagogical verifier</span> · <span class="kw">Targeted repair</span> · <span class="kw">Workflow trace</span><br>
+          Dùng ADDIE như <span class="kw">output contract</span> để tương thích với ISD-Agent-Bench; execution bên trong là <span class="kw">non-linear ISD orchestration</span>.
         </div></div>
         <div class="pill teal"><div class="pill-dot"></div><div>
           <strong>IT/SE Prototype</strong> — teacher-facing prototype cho miền IT/Software Engineering, minh hoạ harness vận hành như sản phẩm thực tế trong bối cảnh đào tạo nội bộ phần mềm.
