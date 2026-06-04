@@ -376,10 +376,10 @@ const slides = [
   /* ── 1 — Problem 1/2 ── */
   {content: `
     <div class="s-label">1 · Problem Statement · 1 / 2</div>
-    <div class="s-title">Khoá học không kết thúc<br>ở lần thiết kế đầu tiên</div>
+    <div class="s-title">Thiết kế khoá học<br/><span class="accent">không kết thúc ở lần đầu tiên</span></div>
     <div class="s-body">
       <div class="pill-list">
-        <div class="pill rose"><div class="pill-dot"></div><div>Khoá học đào tạo nhân viên, fresher hoặc kỹ sư chuyển vai trò phải được <span class="kw">cập nhật liên tục</span>: theo thay đổi công nghệ, yêu cầu dự án, năng lực đầu vào và phản hồi sau mỗi batch.</div></div>
+        <div class="pill rose"><div class="pill-dot"></div><div>Trong <span class="kw">môi trường enteprise</span>, các khoá học đào tạo nhân viên, fresher hoặc kỹ sư chuyển vai trò phải được <span class="kw">cập nhật liên tục</span>: theo thay đổi công nghệ, yêu cầu dự án, năng lực đầu vào và phản hồi sau mỗi batch.</div></div>
         <div class="pill amber"><div class="pill-dot"></div><div>Instructional design là một <span class="kw">vòng lặp</span>, không phải tác vụ đơn lẻ: <em><span class="kw">Analysis → Design → Development → Implementation → Evaluation</span></em> — rồi lặp lại sau mỗi lần triển khai.</div></div>
         <div class="pill blue"><div class="pill-dot"></div><div>Mỗi vòng lặp đòi hỏi: <span class="kw">mục tiêu học tập rõ hơn</span> · <span class="kw">bài tập sát thực tế hơn</span> · <span class="kw">rubric nhất quán hơn</span> · hoạt động khả thi hơn · hướng dẫn dễ triển khai hơn.</div></div>
         <div class="pill green"><div class="pill-dot"></div><div>Khối lượng công việc không nằm ở một tác vụ — người thiết kế phải <span class="kw">phân tích bối cảnh</span>, <span class="kw">xác định mục tiêu</span>, <span class="kw">thiết kế hoạt động</span>, tạo tài liệu, viết rubric và thu thập phản hồi để sửa chương trình.</div></div>
@@ -404,23 +404,16 @@ const slides = [
   /* ── 3 — Harness Concept ── */
   {content: `
     <div class="s-label">2 · Harness Concept</div>
-    <div class="s-title">ISD Agent = <span class="accent">Harness</span> + Model</div>
-    <div class="s-body harness-layout">
-      <div class="harness-copy">
+    <div class="s-title">Agent = <span class="accent">Harness</span> + Model</div>
+    <div class="s-body" style="flex-direction:row;gap:24px;align-items:center">
+      <div style="flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:12px">
         <p>Harness cung cấp <span class="kw">môi trường thực thi chuyên cho ISD</span>; model cung cấp năng lực ngôn ngữ, reasoning và generation bên trong môi trường đó.</p>
         <p>Harness không gắn cứng với một mô hình ISD duy nhất. ADDIE chỉ là <span class="kw">output contract</span> để tương thích với ISD-Agent-Bench; các chiến lược <span class="kw">backward design</span>, <span class="kw">constructive alignment</span>, <span class="kw">Gagne sequencing</span> được dùng như policy/verifier bên trong.</p>
-        <div class="formula">ISD Agent = ISD Agent Harness + Model</div>
+        <div class="formula">ISD Agent = ISD Harness + Model</div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
-        <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:14px 18px;font-family:'Cascadia Code','Fira Code',monospace;font-size:0.78rem;color:#334155;line-height:2">
-          Scenario / Teacher Request<br>
-          &nbsp;&nbsp;→ <span style="color:#4f46e5;font-weight:700">Orchestrator</span><br>
-          &nbsp;&nbsp;→ <span style="color:#0d9488;font-weight:700">Dynamic ISD Task Graph</span><br>
-          &nbsp;&nbsp;→ <span style="color:#2563eb;font-weight:700">Agentic RAG &amp; Tool Layer</span><br>
-          &nbsp;&nbsp;→ <span style="color:#d97706;font-weight:700">Schema Validation + Verifier + Repair</span><br>
-          &nbsp;&nbsp;→ <span style="color:#7c3aed;font-weight:700">ADDIE Output + Trajectory</span>
-        </div>
-      </div>
+      <img src="assets/harness-anatomy.jpeg"
+           alt="Harness anatomy"
+           style="flex:0 0 50%;max-height:calc(88vh - 260px);object-fit:contain;border-radius:12px;border:1.5px solid #e2e8f0;background:#f8fafc;box-shadow:0 4px 16px rgba(15,23,42,0.08)">
     </div>
   `},
 
@@ -607,7 +600,35 @@ const slides = [
     </div>
   `},
 
-  /* ── 9 — Evaluation ── */
+  /* ── 9 — ISD-Agent-Bench intro ── */
+  {content: `
+    <div class="s-label">5 · Evaluation · ISD-Agent-Bench</div>
+    <div class="s-title"><span class="accent">ISD-Agent-Bench</span></div>
+    <div class="s-body" style="flex-direction:row;gap:20px;align-items:flex-start">
+      <div style="flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:10px">
+        <div class="card-row">
+          <div class="card indigo"><div class="card-label">Scenarios</div><div class="card-text">Đa dạng theo domain, difficulty, duration, learning environment và class size</div></div>
+          <div class="card teal"><div class="card-label">Schema</div><div class="card-text"><code>scenario.json</code> → <code>addie_output</code> + <code>trajectory</code></div></div>
+        </div>
+        <div class="card-row">
+          <div class="card blue"><div class="card-label">Agents</div><div class="card-text">6 baselines &amp; SOTA: <code>baseline</code> · <code>react-isd</code> · <code>addie-agent</code> · <code>dick-carey</code> · <code>rpisd</code> · <code>eduplanner</code></div></div>
+          <div class="card amber"><div class="card-label">Evaluator</div><div class="card-text">LLM-as-judge: <span class="kw">ADDIE rubric</span> + <span class="kw">trajectory scoring</span></div></div>
+        </div>
+        <div class="pill-list">
+          <div class="pill ind"><div class="pill-dot"></div><div>Harness nhận cùng <span class="kw">scenario JSON</span>, trả về cùng <span class="kw">output schema</span> — không sửa benchmark pipeline.</div></div>
+          <div class="pill teal"><div class="pill-dot"></div><div><span class="kw">total_score</span> · <span class="kw">addie_score</span> · <span class="kw">trajectory_score</span> · <span class="kw">schema_validity</span> · <span class="kw">alignment_score</span> · <span class="kw">repair_success_rate</span> · latency · token_usage</div></div>
+        </div>
+        <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:8px 14px;font-family:'Cascadia Code','Fira Code',monospace;font-size:0.75rem;color:#475569">
+          isd-harness-agent run --input <span style="color:#4f46e5">scenario.json</span> --output <span style="color:#0d9488">result.json</span> --trajectory <span style="color:#d97706">trajectory.json</span>
+        </div>
+      </div>
+      <img src="assets/isd-agent-bench.png"
+           alt="ISD-Agent-Bench overview"
+           style="flex:0 0 auto;width:42%;max-height:calc(88vh - 160px);object-fit:contain;border-radius:12px;border:1.5px solid #e2e8f0;background:#f8fafc;box-shadow:0 4px 16px rgba(15,23,42,0.08)">
+    </div>
+  `},
+
+  /* ── 10 — Evaluation ── */
   {content: `
     <div class="s-label">5 · Evaluation</div>
     <div class="s-title">Kế hoạch đánh giá</div>
