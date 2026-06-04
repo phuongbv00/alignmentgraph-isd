@@ -1,0 +1,3 @@
+[submodule "isd-agent-benchmark"]
+	path = isd-agent-benchmark
+	url = git@github.com:phuongbv00/isd-agent-benchmark.git
