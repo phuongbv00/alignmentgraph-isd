@@ -427,7 +427,7 @@ const slides = [
   /* ── 4 — Architecture Overview ── */
   {content: `
     <div class="s-label">3 · Proposed Method · Overview</div>
-    <div class="s-title">Kiến trúc tổng thể</div>
+    <div class="s-title">Mô hình kiến trúc</div>
     <div class="s-body" style="align-items:center;justify-content:center">
       <img src="assets/arch.svg"
            alt="ISD Agent Harness Architecture"
@@ -438,38 +438,58 @@ const slides = [
   /* ── 5 — Comparison ── */
   {content: `
     <div class="s-label">3 · Architectural Comparison</div>
-    <div class="s-title">So sánh với ISD-Agent-Bench</div>
+    <div class="s-title">So sánh với <span class="accent">baselines &amp; SOTA methods</span></div>
     <div class="s-body" style="gap:8px">
-      <div style="display:grid;grid-template-columns:110px 1fr 1fr;gap:0;border:1.5px solid #e2e8f0;border-radius:12px;overflow:hidden;font-size:0.78rem">
-        <div style="background:#f1f5f9;padding:6px 10px;font-weight:700;color:#64748b;font-size:0.68rem;letter-spacing:1px;text-transform:uppercase">Agent</div>
-        <div style="background:#f1f5f9;padding:6px 10px;font-weight:700;color:#64748b;font-size:0.68rem;letter-spacing:1px;text-transform:uppercase;border-left:1px solid #e2e8f0">Giới hạn chính</div>
-        <div style="background:#f1f5f9;padding:6px 10px;font-weight:700;color:#64748b;font-size:0.68rem;letter-spacing:1px;text-transform:uppercase;border-left:1px solid #e2e8f0">Harness khác biệt</div>
+      <div style="display:grid;grid-template-columns:100px 1.1fr 0.85fr 1.1fr 1.3fr;gap:0;border:1.5px solid #e2e8f0;border-radius:12px;overflow:hidden;font-size:0.72rem">
 
-        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;font-weight:700;color:#1e293b"><code style="font-size:0.75rem">baseline</code></div>
-        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.45">Không có workflow trace, không kiểm tra pha; lỗi khó sửa có mục tiêu</div>
-        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#4f46e5;line-height:1.45">Chia <span class="kw">node/phase</span>, <span class="kw">validate từng phần</span>, log <span class="kw">trajectory</span></div>
+        <div style="background:#f1f5f9;padding:6px 9px;font-weight:700;color:#64748b;font-size:0.65rem;letter-spacing:1px;text-transform:uppercase">Agent</div>
+        <div style="background:#f1f5f9;padding:6px 9px;font-weight:700;color:#64748b;font-size:0.65rem;letter-spacing:1px;text-transform:uppercase;border-left:1px solid #e2e8f0">Kiến trúc lõi</div>
+        <div style="background:#f1f5f9;padding:6px 9px;font-weight:700;color:#64748b;font-size:0.65rem;letter-spacing:1px;text-transform:uppercase;border-left:1px solid #e2e8f0">Điểm mạnh</div>
+        <div style="background:#f1f5f9;padding:6px 9px;font-weight:700;color:#64748b;font-size:0.65rem;letter-spacing:1px;text-transform:uppercase;border-left:1px solid #e2e8f0">Giới hạn chính</div>
+        <div style="background:#f1f5f9;padding:6px 9px;font-weight:700;color:#64748b;font-size:0.65rem;letter-spacing:1px;text-transform:uppercase;border-left:1px solid #e2e8f0">Khác biệt của kiến trúc đề xuất</div>
 
-        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;font-weight:700;color:#1e293b"><code style="font-size:0.75rem">react-isd</code></div>
-        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.45">Tool choice phụ thuộc mạnh vào model; <span class="kw">thứ tự ISD khó kiểm soát</span> tất định</div>
-        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#4f46e5;line-height:1.45"><span class="kw">Graph policy</span> kiểm soát transition, tool permission và <span class="kw">phase contract</span></div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;font-weight:700;color:#1e293b"><code style="font-size:0.7rem">baseline</code></div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.4">Một prompt sinh toàn bộ ADDIE output</div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.4">Đơn giản, chi phí thấp, dễ chạy</div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.4"><span class="kw">Không workflow trace</span>, không kiểm tra pha; lỗi khó sửa có mục tiêu</div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#4f46e5;line-height:1.4">Chia <span class="kw">node/phase</span>, <span class="kw">validate từng phần</span>, log <span class="kw">trajectory</span></div>
 
-        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;font-weight:700;color:#1e293b"><code style="font-size:0.75rem">addie-agent</code></div>
-        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.45"><span class="kw">Tuyến tính cứng</span>; ít cơ chế repair/verifier; ít linh hoạt với domain/corpus</div>
-        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#4f46e5;line-height:1.45">Giữ ADDIE contract nhưng <span class="kw">dynamic orchestration</span>, verifier và <span class="kw">targeted repair</span></div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;font-weight:700;color:#1e293b"><code style="font-size:0.7rem">react-isd</code></div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.4">ReAct agent dùng các ISD tools</div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.4">Linh hoạt, tool-use, gần agentic pattern phổ biến</div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.4">Tool choice phụ thuộc model; <span class="kw">thứ tự ISD khó kiểm soát tất định</span></div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#4f46e5;line-height:1.4"><span class="kw">Graph policy</span> kiểm soát transition, tool permission và <span class="kw">phase contract</span></div>
 
-        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;font-weight:700;color:#1e293b"><code style="font-size:0.75rem">dick-carey</code></div>
-        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.45">Bám <span class="kw">một process model cụ thể</span>; mapping về ADDIE là lớp chuyển đổi thêm</div>
-        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#4f46e5;line-height:1.45"><span class="kw">Không gắn cứng</span> một model ISD; <span class="kw">policy/verifier kết hợp nhiều nguyên tắc</span></div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;font-weight:700;color:#1e293b"><code style="font-size:0.7rem">addie-agent</code></div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.4">StateGraph <span class="kw">tuyến tính 5 pha</span> ADDIE</div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.4">Rõ lifecycle, dễ tương thích output schema</div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.4"><span class="kw">Tuyến tính cứng</span>; ít repair/verifier; ít linh hoạt domain/corpus</div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#4f46e5;line-height:1.4">Giữ ADDIE contract + <span class="kw">dynamic orchestration</span>, verifier, <span class="kw">targeted repair</span></div>
 
-        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;font-weight:700;color:#1e293b"><code style="font-size:0.75rem">rpisd-agent</code></div>
-        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.45">Phức tạp, cần nhiều giả định feedback; <span class="kw">không phải mọi scenario cần prototyping</span></div>
-        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#4f46e5;line-height:1.45">Bật/tắt <span class="kw">repair loop theo verifier result</span>, không ép mọi task vào prototyping</div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;font-weight:700;color:#1e293b"><code style="font-size:0.7rem">dick-carey</code></div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.4">Dick &amp; Carey + <span class="kw">formative-evaluation loop</span></div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.4">Mạnh ở systems approach và revision</div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.4"><span class="kw">Bám một process model</span>; mapping ADDIE là lớp chuyển đổi thêm</div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#4f46e5;line-height:1.4"><span class="kw">Không gắn cứng</span> một model ISD; policy/verifier <span class="kw">kết hợp nhiều nguyên tắc</span></div>
 
-        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;font-weight:700;color:#1e293b"><code style="font-size:0.75rem">eduplanner</code></div>
-        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.45">Chưa nhấn mạnh <span class="kw">agentic RAG</span>, <span class="kw">schema contract</span> và <span class="kw">trace chuẩn hoá</span> ở mọi node</div>
-        <div style="padding:7px 10px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#4f46e5;line-height:1.45">Multi-agent theo <span class="kw">role ISD</span>, <span class="kw">context pack theo pha</span>, verifier/repair, <span class="kw">trace thống nhất</span></div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;font-weight:700;color:#1e293b"><code style="font-size:0.7rem">rpisd-agent</code></div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.4"><span class="kw">Rapid prototyping</span> + feedback nhiều phía</div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.4">Cải tiến prototype, usability feedback</div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.4">Cần nhiều <span class="kw">giả định feedback</span>; không phải mọi scenario cần prototyping</div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#4f46e5;line-height:1.4">Bật/tắt <span class="kw">repair loop theo verifier result</span>, không ép mọi task vào prototyping</div>
+
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;font-weight:700;color:#1e293b"><code style="font-size:0.7rem">eduplanner</code></div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.4"><span class="kw">Multi-agent</span> generate-evaluate-optimize</div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.4">Evaluator/optimizer loop, cải thiện artifact qua phản hồi</div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.4">Chưa nhấn mạnh <span class="kw">agentic RAG</span>, <span class="kw">schema contract</span>, <span class="kw">trace chuẩn hoá</span></div>
+        <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#4f46e5;line-height:1.4">Multi-agent theo <span class="kw">role ISD</span>, <span class="kw">context pack theo pha</span>, verifier/repair, <span class="kw">trace thống nhất</span></div>
+
+        <div style="padding:6px 9px;border-top:2px solid #6366f1;font-weight:800;color:#4f46e5;background:#eef2ff"><strong>ISD Harness</strong><br><span style="font-weight:400;color:#818cf8;font-size:0.65rem">(đề xuất)</span></div>
+        <div style="padding:6px 9px;border-top:2px solid #6366f1;border-left:1px solid #c7d2fe;color:#374151;line-height:1.4;background:#eef2ff">Orchestrator + <span class="kw">dynamic task graph</span> + role agents + <span class="kw">agentic RAG</span> + schema/verifier/repair + trace</div>
+        <div style="padding:6px 9px;border-top:2px solid #6366f1;border-left:1px solid #c7d2fe;color:#374151;line-height:1.4;background:#eef2ff">Kiểm soát workflow, <span class="kw">sửa lỗi có mục tiêu</span>, đánh giá cả <span class="kw">output &amp; process</span></div>
+        <div style="padding:6px 9px;border-top:2px solid #6366f1;border-left:1px solid #c7d2fe;color:#374151;line-height:1.4;background:#eef2ff">Latency/token cao hơn; cần thiết kế <span class="kw">policy và corpus</span> cẩn thận</div>
+        <div style="padding:6px 9px;border-top:2px solid #6366f1;border-left:1px solid #c7d2fe;color:#4f46e5;line-height:1.4;background:#eef2ff"><span class="kw">ADDIE = output contract</span>; execution bên trong là <span class="kw">non-linear ISD orchestration</span></div>
       </div>
-      <div class="pill ind" style="padding:8px 14px"><div class="pill-dot"></div><div><strong>ISD Agent Harness</strong> không chỉ là một agent strategy — đây là <strong>runtime</strong> điều phối nhiều role, nhiều nguồn tri thức, nhiều checkpoint và nhiều cơ chế kiểm tra có thể đo lường.</div></div>
     </div>
   `},
 
