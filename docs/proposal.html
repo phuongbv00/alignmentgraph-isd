@@ -359,11 +359,11 @@ const slides = [
   /* ── 0 — Title ── */
   {content: `
     <div class="s-label">Master Thesis · 2026</div>
-    <div class="s-title">ISD Agent Harness<br><span class="accent">for Continuous Instructional Design</span></div>
-    <p style="font-size:1.15rem;color:#64748b;margin:-18px 0 18px;font-style:italic">Harness thực thi cho ISD agents · Đào tạo nội bộ phần mềm · ADDIE-compatible · ISD-Agent-Bench</p>
+    <div class="s-title"><span class="accent">AlignmentGraph-ISD</span><br>for Continuous Instructional Design</div>
+    <p style="font-size:1.15rem;color:#64748b;margin:-18px 0 18px;font-style:italic">Alignment-graph harness cho ISD agents · Đào tạo nội bộ phần mềm · ADDIE-compatible · ISD-Agent-Bench</p>
     <div class="toc-grid">
       <div class="toc-item"><div class="toc-num n1">1</div><div class="toc-text">Problem Statement</div></div>
-      <div class="toc-item"><div class="toc-num n2">2</div><div class="toc-text">Harness Concept</div></div>
+      <div class="toc-item"><div class="toc-num n2">2</div><div class="toc-text">AlignmentGraph-ISD Concept</div></div>
       <div class="toc-item"><div class="toc-num n3">3</div><div class="toc-text">Proposed Method</div></div>
       <div class="toc-item"><div class="toc-num n4">4</div><div class="toc-text">Research Questions</div></div>
       <div class="toc-item"><div class="toc-num n5">5</div><div class="toc-text">Evaluation</div></div>
@@ -379,7 +379,7 @@ const slides = [
     <div class="s-title">Thiết kế khoá học<br/><span class="accent">không kết thúc ở lần đầu tiên</span></div>
     <div class="s-body">
       <div class="pill-list">
-        <div class="pill rose"><div class="pill-dot"></div><div>Trong <span class="kw">môi trường enteprise</span>, các khoá học đào tạo nhân viên, fresher hoặc kỹ sư chuyển vai trò phải được <span class="kw">cập nhật liên tục</span>: theo thay đổi công nghệ, yêu cầu dự án, năng lực đầu vào và phản hồi sau mỗi batch.</div></div>
+        <div class="pill rose"><div class="pill-dot"></div><div>Trong <span class="kw">môi trường corporate training</span>, các khoá đào tạo phải luôn được <span class="kw">cập nhật liên tục</span> theo thay đổi công nghệ, yêu cầu dự án, năng lực đầu vào và phản hồi sau mỗi batch.</div></div>
         <div class="pill amber"><div class="pill-dot"></div><div>Instructional design là một <span class="kw">vòng lặp</span>, không phải tác vụ đơn lẻ: <em><span class="kw">Analysis → Design → Development → Implementation → Evaluation</span></em> — rồi lặp lại sau mỗi lần triển khai.</div></div>
         <div class="pill blue"><div class="pill-dot"></div><div>Mỗi vòng lặp đòi hỏi: <span class="kw">mục tiêu học tập rõ hơn</span> · <span class="kw">bài tập sát thực tế hơn</span> · <span class="kw">rubric nhất quán hơn</span> · hoạt động khả thi hơn · hướng dẫn dễ triển khai hơn.</div></div>
         <div class="pill green"><div class="pill-dot"></div><div>Khối lượng công việc không nằm ở một tác vụ — người thiết kế phải <span class="kw">phân tích bối cảnh</span>, <span class="kw">xác định mục tiêu</span>, <span class="kw">thiết kế hoạt động</span>, tạo tài liệu, viết rubric và thu thập phản hồi để sửa chương trình.</div></div>
@@ -396,24 +396,50 @@ const slides = [
         <div class="pill rose"><div class="pill-dot"></div><div>LLM hỗ trợ tốt từng tác vụ đơn lẻ như sinh lesson plan, viết quiz, tạo rubric — nhưng dùng như chatbot độc lập thì thiếu <span class="kw">cơ chế điều phối theo ISD lifecycle</span>.</div></div>
         <div class="pill amber"><div class="pill-dot"></div><div>Output <span class="kw">không theo schema ổn định</span> → các pha Analysis, Design, Development, Implementation và Evaluation có thể <span class="kw">lệch nhau</span>, không align.</div></div>
         <div class="pill blue"><div class="pill-dot"></div><div>Reasoning và tool-use <span class="kw">khó truy vết</span> → lỗi ở một pha không được <span class="kw">phát hiện rồi sửa có mục tiêu</span> trước khi chuyển sang pha tiếp theo.</div></div>
-        <div class="pill violet"><div class="pill-dot"></div><div>Các ISD agents hiện có đại diện cho từng chiến lược đơn lẻ. Luận văn đặt vấn đề ở <span class="kw">tầng harness</span>: xây dựng <span class="kw">môi trường thực thi</span> điều phối được workflow, kiểm tra được chất lượng và đánh giá được bằng benchmark.</div></div>
+        <div class="pill violet"><div class="pill-dot"></div><div>Các kiến trúc hiện có xem ISD như quá trình sinh artifact ADDIE, nhưng chưa đặt <span class="kw">mức độ khớp nhau giữa các thành phần thiết kế</span> như một trạng thái trung tâm có thể <span class="kw">truy xét, kiểm tra và sửa có mục tiêu</span>.</div></div>
       </div>
     </div>
   `},
 
   /* ── 3 — Harness Concept ── */
   {content: `
-    <div class="s-label">2 · Harness Concept</div>
-    <div class="s-title">Agent = <span class="accent">Harness</span> + Model</div>
+    <div class="s-label">2 · AlignmentGraph-ISD Concept</div>
+    <div class="s-title"><span class="accent">Agent</span> = Harness + Model</div>
     <div class="s-body" style="flex-direction:row;gap:24px;align-items:center">
       <div style="flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:12px">
-        <p>Harness cung cấp <span class="kw">môi trường thực thi chuyên cho ISD</span>; model cung cấp năng lực ngôn ngữ, reasoning và generation bên trong môi trường đó.</p>
-        <p>Harness không gắn cứng với một mô hình ISD duy nhất. ADDIE chỉ là <span class="kw">output contract</span> để tương thích với ISD-Agent-Bench; các chiến lược <span class="kw">backward design</span>, <span class="kw">constructive alignment</span>, <span class="kw">Gagne sequencing</span> được dùng như policy/verifier bên trong.</p>
-        <div class="formula">ISD Agent = ISD Harness + Model</div>
+        <p><span class="kw">AlignmentGraph-ISD Harness</span> cung cấp môi trường thực thi chuyên cho ISD; model cung cấp năng lực ngôn ngữ, reasoning và generation bên trong môi trường đó.</p>
+        <p>Harness biểu diễn ISD workflow như một <span class="kw">alignment graph</span>. ADDIE chỉ là <span class="kw">output contract</span> để tương thích với ISD-Agent-Bench; các chiến lược <span class="kw">backward design</span>, <span class="kw">constructive alignment</span>, <span class="kw">Gagne sequencing</span> được dùng như policy/verifier bên trong.</p>
+        <div class="formula">AlignmentGraph-ISD Agent = AlignmentGraph-ISD Harness + Model</div>
       </div>
       <img src="assets/harness-anatomy.jpeg"
            alt="Harness anatomy"
            style="flex:0 0 50%;max-height:calc(88vh - 260px);object-fit:contain;border-radius:12px;border:1.5px solid #e2e8f0;background:#f8fafc;box-shadow:0 4px 16px rgba(15,23,42,0.08)">
+    </div>
+  `},
+
+  /* ── 3b — Why Alignment Graph ── */
+  {content: `
+    <div class="s-label">2 · AlignmentGraph-ISD · Why Alignment Graph?</div>
+    <div class="s-title">Tại sao lại là <span class="accent">Alignment Graph</span>?</div>
+    <div class="s-body">
+      <div class="pill rose" style="padding:10px 16px"><div class="pill-dot"></div><div>Chất lượng ISD không chỉ ở việc sinh đủ 5 mục ADDIE — mà ở việc các thành phần <span class="kw">khớp với nhau</span>: objective nào được đo bởi assessment nào, activity nào hỗ trợ outcome nào, constraint nào làm plan không khả thi.</div></div>
+      <div class="two-col" style="gap:14px">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:12px 16px;font-family:'Cascadia Code','Fira Code',monospace;font-size:0.75rem;color:#334155;line-height:1.9">
+            G<sub>t</sub> = (V<sub>t</sub>, E<sub>t</sub>)<br><br>
+            V<sub>t</sub> = <span style="color:#4f46e5">V_objective</span> ∪ <span style="color:#0d9488">V_assessment</span> ∪ <span style="color:#2563eb">V_activity</span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;∪ <span style="color:#d97706">V_material</span> ∪ <span style="color:#7c3aed">V_constraint</span> ∪ <span style="color:#16a34a">V_evaluation</span><br><br>
+            E<sub>t</sub> = {<span style="color:#e11d48">measures</span>, <span style="color:#0891b2">supports</span>, requires,<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#7c3aed">constrains</span>, evaluates, revises, depends_on}
+          </div>
+        </div>
+        <div class="pill-list">
+          <div class="pill ind"><div class="pill-dot"></div><div>Verifier kiểm tra <span class="kw">alignment ở cấp edge</span> — assessment có thật sự đo objective không, activity có thật sự hỗ trợ outcome không.</div></div>
+          <div class="pill teal"><div class="pill-dot"></div><div><span class="kw">Targeted repair</span>: khi rubric không đo đúng objective, chỉ sửa assessment node hoặc <code>measures</code> edge — không sinh lại toàn bộ.</div></div>
+          <div class="pill blue"><div class="pill-dot"></div><div><span class="kw">Non-linear orchestration</span>: MetaAgent nhìn trạng thái graph, missing edge hoặc failed node để quyết định bước tiếp theo.</div></div>
+          <div class="pill amber"><div class="pill-dot"></div><div><span class="kw">Trajectory đánh giá được</span>: mỗi thao tác thêm/sửa/kiểm tra/repair node/edge đều được log cùng agent, verifier result, token/cost, latency.</div></div>
+        </div>
+      </div>
     </div>
   `},
 
@@ -477,11 +503,11 @@ const slides = [
         <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#475569;line-height:1.4">Chưa nhấn mạnh <span class="kw">agentic RAG</span>, <span class="kw">schema contract</span>, <span class="kw">trace chuẩn hoá</span></div>
         <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#4f46e5;line-height:1.4">Multi-agent theo <span class="kw">role ISD</span>, <span class="kw">context pack theo pha</span>, verifier/repair, <span class="kw">trace thống nhất</span></div>
 
-        <div style="padding:6px 9px;border-top:2px solid #6366f1;font-weight:800;color:#4f46e5;background:#eef2ff"><strong>ISD Harness</strong><br><span style="font-weight:400;color:#818cf8;font-size:0.65rem">(đề xuất)</span></div>
-        <div style="padding:6px 9px;border-top:2px solid #6366f1;border-left:1px solid #c7d2fe;color:#374151;line-height:1.4;background:#eef2ff">Orchestrator + <span class="kw">dynamic task graph</span> + role agents + <span class="kw">agentic RAG</span> + schema/verifier/repair + trace</div>
+        <div style="padding:6px 9px;border-top:2px solid #6366f1;font-weight:800;color:#4f46e5;background:#eef2ff"><strong>AlignmentGraph-ISD</strong><br><span style="font-weight:400;color:#818cf8;font-size:0.65rem">(đề xuất)</span></div>
+        <div style="padding:6px 9px;border-top:2px solid #6366f1;border-left:1px solid #c7d2fe;color:#374151;line-height:1.4;background:#eef2ff">MetaAgent + <span class="kw">AlignmentGraph</span> (nodes/edges) + role agents + <span class="kw">agentic RAG</span> + schema/verifier/repair + trace</div>
         <div style="padding:6px 9px;border-top:2px solid #6366f1;border-left:1px solid #c7d2fe;color:#374151;line-height:1.4;background:#eef2ff">Kiểm soát workflow, <span class="kw">sửa lỗi có mục tiêu</span>, đánh giá cả <span class="kw">output &amp; process</span></div>
         <div style="padding:6px 9px;border-top:2px solid #6366f1;border-left:1px solid #c7d2fe;color:#374151;line-height:1.4;background:#eef2ff">Latency/token cao hơn; cần thiết kế <span class="kw">policy và corpus</span> cẩn thận</div>
-        <div style="padding:6px 9px;border-top:2px solid #6366f1;border-left:1px solid #c7d2fe;color:#4f46e5;line-height:1.4;background:#eef2ff"><span class="kw">ADDIE = output contract</span>; execution bên trong là <span class="kw">non-linear ISD orchestration</span></div>
+        <div style="padding:6px 9px;border-top:2px solid #6366f1;border-left:1px solid #c7d2fe;color:#4f46e5;line-height:1.4;background:#eef2ff"><span class="kw">ADDIE = output contract</span>; execution state bên trong là <span class="kw">AlignmentGraph</span></div>
       </div>
     </div>
   `},
@@ -489,18 +515,18 @@ const slides = [
   /* ── 6 — Method 1/3: Multi-agent ── */
   {content: `
     <div class="s-label">3 · Proposed Method · 1 / 3</div>
-    <div class="s-title">Multi-agent Orchestration<br>&amp; <span class="accent">AlignmentCore</span></div>
+    <div class="s-title">Multi-agent Orchestration<br>&amp; <span class="accent">AlignmentGraph</span></div>
     <div class="s-body">
       <div class="card-row">
-        <div class="card indigo"><div class="card-label">WorkflowOrchestrator</div><div class="card-text">Tạo dynamic task graph, chọn policy, điều phối retry và ghi trace</div></div>
-        <div class="card teal"><div class="card-label">AlignmentCore</div><div class="card-text">Đồng bộ objectives ↔ assessment ↔ activities ↔ implementation constraints</div></div>
-        <div class="card blue"><div class="card-label">PedagogicalVerifier</div><div class="card-text">Kiểm tra Bloom alignment, constructive alignment, coverage và actionability</div></div>
-        <div class="card amber"><div class="card-label">RepairAgent</div><div class="card-text">Sửa có mục tiêu artifact fragment vi phạm schema hoặc verifier policy</div></div>
+        <div class="card indigo"><div class="card-label">MetaAgent</div><div class="card-text">Phân tích request, tạo dynamic task graph, chọn policy, điều phối retry và ghi trace</div></div>
+        <div class="card teal"><div class="card-label">AlignmentGraph</div><div class="card-text">Trạng thái làm việc chung: artifact nodes + alignment edges giữa objectives ↔ assessment ↔ activities ↔ constraints</div></div>
+        <div class="card blue"><div class="card-label">PedagogicalVerifier</div><div class="card-text">Kiểm tra Bloom alignment, constructive alignment, coverage và actionability ở cấp edge</div></div>
+        <div class="card amber"><div class="card-label">RepairAgent</div><div class="card-text">Sửa có mục tiêu node/edge vi phạm schema hoặc verifier policy</div></div>
       </div>
       <div class="pill-list" style="margin-top:4px">
-        <div class="pill ind"><div class="pill-dot"></div><div><span class="kw">6 role agents</span> làm việc trên <span class="kw">artifact fragments</span> qua AlignmentCore: <code>NeedsContext</code> · <code>ObjectiveDesign</code> · <code>AssessmentDesign</code> · <code>ActivityMaterial</code> · <code>ImplementationConstraint</code> · <code>EvaluationRevision</code></div></div>
-        <div class="pill teal"><div class="pill-dot"></div><div><span class="kw">Không tuyến tính cứng</span>: <code>AssessmentDesignAgent</code> có thể buộc <code>ObjectiveDesignAgent</code> sửa mục tiêu; <code>ImplementationConstraintAgent</code> <span class="kw">đẩy constraint ngược về</span> <code>ActivityMaterialAgent</code>.</div></div>
-        <div class="pill violet"><div class="pill-dot"></div><div><code>ADDIEOutputAggregator</code> map artifact graph cuối vào schema <code>addie_output</code> — <span class="kw">ADDIE chỉ là output contract</span>, không phải execution order.</div></div>
+        <div class="pill ind"><div class="pill-dot"></div><div><span class="kw">6 role agents</span> thêm/sửa/liên kết <span class="kw">nodes và edges</span> trong AlignmentGraph: <code>NeedsContext</code> · <code>ObjectiveDesign</code> · <code>AssessmentDesign</code> · <code>ActivityMaterial</code> · <code>ImplementationConstraint</code> · <code>EvaluationRevision</code></div></div>
+        <div class="pill teal"><div class="pill-dot"></div><div><span class="kw">Không tuyến tính cứng</span>: <code>AssessmentDesignAgent</code> có thể buộc sửa objective node nếu không có evidence đo được; <code>ImplementationConstraintAgent</code> <span class="kw">đẩy constraint node ngược về</span> <code>ActivityMaterialAgent</code>.</div></div>
+        <div class="pill violet"><div class="pill-dot"></div><div><code>ADDIEOutputAggregator</code> serialize AlignmentGraph đã kiểm tra vào schema <code>addie_output</code> — <span class="kw">ADDIE chỉ là output contract</span>, không phải execution order.</div></div>
       </div>
     </div>
   `},
@@ -545,7 +571,7 @@ const slides = [
         </div>
       </div>
       <div class="pill-list" style="margin-top:8px">
-        <div class="pill amber"><div class="pill-dot"></div><div><strong>Targeted Repair:</strong> schema lỗi → <code>RepairAgent</code> nhận <span class="kw">validation error + fragment</span> → sửa cấu trúc. Pedagogy lỗi → nhận <span class="kw">verifier report</span> → <span class="kw">chỉ sửa phần liên quan</span>.</div></div>
+        <div class="pill amber"><div class="pill-dot"></div><div><strong>Targeted Repair:</strong> schema lỗi → <code>RepairAgent</code> nhận <span class="kw">validation error + graph element</span> → sửa cấu trúc. Pedagogy lỗi → nhận <span class="kw">verifier report</span> → <span class="kw">chỉ sửa node/edge liên quan</span>.</div></div>
         <div class="pill rose"><div class="pill-dot"></div><div><strong>Trajectory:</strong> ghi rõ <span class="kw">retry count</span>, <span class="kw">violation type</span>, <span class="kw">repaired fields</span> → evaluation không chỉ nhìn output cuối mà còn thấy <span class="kw">quá trình phát hiện và sửa lỗi</span>.</div></div>
       </div>
     </div>
@@ -585,7 +611,7 @@ const slides = [
     <div class="s-body">
       <div class="pill rose" style="flex-direction:column; gap:10px; border-radius:12px; padding:18px 20px">
         <div style="font-size:0.8rem;font-weight:800;color:#e11d48;letter-spacing:1px">RQ1 — Benchmark Quality</div>
-        <div style="font-size:1rem;color:#1e293b;line-height:1.65">Trên <span class="kw">ISD-Agent-Bench</span>, ISD Agent Harness cải thiện <span class="kw">chất lượng artifact instructional design</span> như thế nào so với các agent baseline và ISD agents hiện có?</div>
+        <div style="font-size:1rem;color:#1e293b;line-height:1.65">Trên <span class="kw">ISD-Agent-Bench</span>, <span class="kw">AlignmentGraph-ISD</span> cải thiện <span class="kw">chất lượng artifact instructional design</span> như thế nào so với các agent baseline và ISD agents hiện có?</div>
         <div class="card-row" style="margin-top:2px">
           <div class="card" style="flex:0 1 auto;padding:8px 14px"><div class="card-text" style="font-size:0.85rem">baseline</div></div>
           <div class="card" style="flex:0 1 auto;padding:8px 14px"><div class="card-text" style="font-size:0.85rem">react-isd</div></div>
@@ -595,7 +621,7 @@ const slides = [
       </div>
       <div class="pill ind" style="flex-direction:column; gap:8px; border-radius:12px; padding:18px 20px">
         <div style="font-size:0.8rem;font-weight:800;color:#4f46e5;letter-spacing:1px">RQ2 — Component Impact</div>
-        <div style="font-size:1rem;color:#1e293b;line-height:1.65">Các thành phần harness — <span class="kw">multi-agent orchestration</span>, <span class="kw">agentic RAG</span>, <span class="kw">schema validation</span>, <span class="kw">pedagogical verifier</span> và <span class="kw">targeted repair</span> — ảnh hưởng như thế nào đến <span class="kw">trajectory quality</span>, <span class="kw">schema validity</span>, <span class="kw">failure rate</span>, latency và token/tool cost?</div>
+        <div style="font-size:1rem;color:#1e293b;line-height:1.65">Các thành phần của <span class="kw">AlignmentGraph-ISD</span> — <span class="kw">dynamic task graph</span>, <span class="kw">multi-agent orchestration</span>, <span class="kw">agentic RAG</span>, <span class="kw">schema validation</span>, <span class="kw">pedagogical verifier</span> và <span class="kw">targeted repair</span> — ảnh hưởng như thế nào đến <span class="kw">trajectory quality</span>, <span class="kw">schema validity</span>, <span class="kw">failure rate</span>, latency và token/tool cost?</div>
       </div>
     </div>
   `},
@@ -619,7 +645,7 @@ const slides = [
           <div class="pill teal"><div class="pill-dot"></div><div><span class="kw">total_score</span> · <span class="kw">addie_score</span> · <span class="kw">trajectory_score</span> · <span class="kw">schema_validity</span> · <span class="kw">alignment_score</span> · <span class="kw">repair_success_rate</span> · latency · token_usage</div></div>
         </div>
         <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:8px 14px;font-family:'Cascadia Code','Fira Code',monospace;font-size:0.75rem;color:#475569">
-          isd-harness-agent run --input <span style="color:#4f46e5">scenario.json</span> --output <span style="color:#0d9488">result.json</span> --trajectory <span style="color:#d97706">trajectory.json</span>
+          alignmentgraph-isd run --input <span style="color:#4f46e5">scenario.json</span> --output <span style="color:#0d9488">result.json</span> --trajectory <span style="color:#d97706">trajectory.json</span>
         </div>
       </div>
       <img src="assets/isd-agent-bench.png"
@@ -668,9 +694,9 @@ const slides = [
     <div class="s-body">
       <div class="pill-list">
         <div class="pill ind"><div class="pill-dot"></div><div>
-          <strong>ISD Agent Harness</strong> — harness thực thi chuyên cho Instructional Systems Design, gồm:<br>
-          <span class="kw">Multi-agent orchestration</span> · <span class="kw">Agentic RAG</span> · <span class="kw">Schema-constrained generation</span> · <span class="kw">Pedagogical verifier</span> · <span class="kw">Targeted repair</span> · <span class="kw">Workflow trace</span><br>
-          Dùng ADDIE như <span class="kw">output contract</span> để tương thích với ISD-Agent-Bench; execution bên trong là <span class="kw">non-linear ISD orchestration</span>.
+          <strong>AlignmentGraph-ISD</strong> — alignment-graph harness cho ISD agents, gồm:<br>
+          <span class="kw">AlignmentGraph</span> (nodes/edges) · <span class="kw">Multi-agent orchestration</span> · <span class="kw">Agentic RAG</span> · <span class="kw">Schema-constrained generation</span> · <span class="kw">Pedagogical verifier</span> · <span class="kw">Targeted repair</span> · <span class="kw">Workflow trace</span><br>
+          Dùng ADDIE như <span class="kw">output contract</span>; execution state bên trong là <span class="kw">AlignmentGraph</span> với artifact nodes và alignment edges.
         </div></div>
         <div class="pill teal"><div class="pill-dot"></div><div>
           <strong>IT/SE Prototype</strong> — teacher-facing prototype cho miền IT/Software Engineering, minh hoạ harness vận hành như sản phẩm thực tế trong bối cảnh đào tạo nội bộ phần mềm.
@@ -690,7 +716,7 @@ const slides = [
         <div class="card rose"><div class="card-icon">✗</div><div class="card-label">Case study</div><div class="card-text">chỉ minh hoạ miền IT/SE, không claim hiệu quả tương đương trên mọi môn học</div></div>
         <div class="card rose"><div class="card-icon">✗</div><div class="card-label">Trade-off</div><div class="card-text">multi-agent + agentic RAG tăng latency/token cost — cần báo cáo rõ</div></div>
       </div>
-      <div class="pill green"><div class="pill-dot"></div><div>Đóng góp nằm ở <strong>ISD Agent Harness</strong>: kiểm soát được workflow, truy xuất tri thức theo task, sửa lỗi có mục tiêu và đánh giá được cả output lẫn process.</div></div>
+      <div class="pill green"><div class="pill-dot"></div><div>Đóng góp nằm ở <strong>AlignmentGraph-ISD</strong>: biểu diễn alignment tường minh, kiểm soát workflow, sửa lỗi có mục tiêu và đánh giá được cả output lẫn process.</div></div>
     </div>
   `},
 
@@ -702,7 +728,7 @@ const slides = [
       <div class="toc-grid">
         <div class="toc-item"><div class="toc-num n1">1</div><div class="toc-text">Giới thiệu đề tài</div></div>
         <div class="toc-item"><div class="toc-num n2">2</div><div class="toc-text">Cơ sở lý thuyết &amp; Công trình liên quan</div></div>
-        <div class="toc-item"><div class="toc-num n3">3</div><div class="toc-text">ISD Agent Harness — Phương pháp đề xuất</div></div>
+        <div class="toc-item"><div class="toc-num n3">3</div><div class="toc-text">AlignmentGraph-ISD — Phương pháp đề xuất</div></div>
         <div class="toc-item"><div class="toc-num n4">4</div><div class="toc-text">IT/SE Prototype &amp; Case Study</div></div>
         <div class="toc-item"><div class="toc-num n5">5</div><div class="toc-text">Kết quả &amp; Thảo luận</div></div>
         <div class="toc-item"><div class="toc-num n6">6</div><div class="toc-text">Kết luận &amp; Hướng phát triển</div></div>
