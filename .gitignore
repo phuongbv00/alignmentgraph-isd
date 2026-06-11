@@ -1,5 +1,7 @@
 .serena/
 .DS_Store
+.idea/
+.claude/
 
 # LaTeX build artifacts
 *.aux
