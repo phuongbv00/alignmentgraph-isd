@@ -1,0 +1,79 @@
+from __future__ import annotations
+from .base import BaseISDAgent, _format_scenario, parse_json_response
+
+_SYSTEM = """\
+You are an expert instructional designer planning the Evaluation phase of ADDIE.
+
+Given a training scenario, produce ONLY valid JSON with this EXACT schema:
+{
+  "formative": {
+    "data_collection": {
+      "methods": ["<method1>", "<method2>", "<method3>"],
+      "learner_feedback": ["<feedback1>", "<feedback2>", "<feedback3>"],
+      "performance_data": {"metric1": "<metric1 description>", "metric2": "<metric2 description>"},
+      "observations": ["<observation1>", "<observation2>"]
+    },
+    "improvements": [
+      {"issue_identified": "<issue1>", "improvement_action": "<action1>", "priority": "high"},
+      {"issue_identified": "<issue2>", "improvement_action": "<action2>", "priority": "medium"},
+      {"issue_identified": "<issue3>", "improvement_action": "<action3>", "priority": "low"}
+    ]
+  },
+  "summative": {
+    "assessment_tools": [
+      {"item_id": "SA-01", "type": "comprehensive", "question": "<question>", "scoring_rubric": "<rubric>"},
+      {"item_id": "SA-02", "type": "comprehensive", "question": "<question>", "scoring_rubric": "<rubric>"},
+      {"item_id": "SA-03", "type": "comprehensive", "question": "<question>", "scoring_rubric": "<rubric>"},
+      {"item_id": "SA-04", "type": "performance", "question": "<question>", "scoring_rubric": "<rubric>"},
+      {"item_id": "SA-05", "type": "performance", "question": "<question>", "scoring_rubric": "<rubric>"}
+    ],
+    "effectiveness_analysis": {
+      "learning_outcomes": {"achievement_rate": "85%", "details": "<outcome analysis>"},
+      "goal_achievement_rate": "<rate>",
+      "statistical_analysis": "<statistical analysis description>",
+      "recommendations": ["<rec1>", "<rec2>", "<rec3>"]
+    },
+    "adoption_decision": {
+      "decision": "adopt",
+      "rationale": "<decision rationale in 2-3 sentences>",
+      "conditions": ["<condition1>", "<condition2>"],
+      "stakeholder_approval": "<stakeholder approval status>"
+    }
+  },
+  "improvement_plan": {
+    "feedback_summary": "<feedback summary>",
+    "improvement_areas": ["<area1>", "<area2>", "<area3>"],
+    "action_items": ["<action1>", "<action2>", "<action3>"],
+    "feedback_loop": "<feedback loop description>",
+    "next_iteration_goals": ["<goal1>", "<goal2>"]
+  }
+}
+
+Output ONLY the JSON object, no markdown, no explanation.\
+"""
+
+
+
+
+class EvaluationRevisionAgent(BaseISDAgent):
+    def run(self, scenario: dict, context_pack: dict) -> None:
+        prompt = _format_scenario(scenario)
+        # Graph-subgraph RAG: inject prior G_t nodes into this agent's prompt
+        prior_ctx = self._graph_context(['objective', 'assessment', 'activity'])
+        user_content = prompt
+        if prior_ctx:
+            user_content = f"=== DESIGN + DEVELOPMENT RESULTS (from prior agents) ===\n{prior_ctx}\n\n=== SCENARIO ===\n{prompt}"
+        messages = [
+            {"role": "system", "content": _SYSTEM},
+            {"role": "user", "content": user_content},
+        ]
+        response = self._call_llm(messages)
+        parsed = parse_json_response(response)
+        node_id = "evaluation_0"
+        self.graph.add_node("evaluation", node_id, parsed)
+        self.trajectory.log_node_edit("add", node_id, "evaluation")
+        if self.graph.get_nodes("objective"):
+            obj_id = self.graph.get_nodes("objective")[0]["id"]
+            self.graph.add_edge("evaluates", node_id, obj_id)
+            self.trajectory.log_edge_edit("add", node_id, obj_id, "evaluates")
+        self.trajectory.log_step("EvaluationRevisionAgent", "plan_evaluation", prompt[:200], response[:200] if response else "")
