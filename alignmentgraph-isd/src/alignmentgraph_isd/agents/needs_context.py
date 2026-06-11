@@ -46,9 +46,13 @@ Output ONLY the JSON object, no markdown, no explanation.\
 class NeedsContextAgent(BaseISDAgent):
     def run(self, scenario: dict, context_pack: dict) -> None:
         prompt = _format_scenario(scenario)
+        user_content = prompt
+        rag_ctx = self._context_pack_text(context_pack)
+        if rag_ctx:
+            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{rag_ctx}\n\n=== SCENARIO ===\n{prompt}"
         messages = [
             {"role": "system", "content": _SYSTEM},
-            {"role": "user", "content": prompt},
+            {"role": "user", "content": user_content},
         ]
         response = self._call_llm(messages)
         parsed = parse_json_response(response)
@@ -56,5 +60,4 @@ class NeedsContextAgent(BaseISDAgent):
         self.graph.add_node("needs_context", node_id, parsed)
         self.trajectory.log_node_edit("add", node_id, "needs_context")
         self.trajectory.log_step("NeedsContextAgent", "needs_analysis", prompt[:200], response[:200] if response else "")
-
 

@@ -62,6 +62,7 @@ Given a training scenario, produce ONLY valid JSON for the design section with t
 }
 
 Must include ALL 9 Gagné events. Must have at least 5 learning objectives spanning multiple Bloom's levels.
+Use only these Bloom verbs in bloom_verb: Recall, Explain, Apply, Analyze, Evaluate, Design.
 Output ONLY the JSON object, no markdown, no explanation.\
 """
 
@@ -76,6 +77,9 @@ class ObjectiveDesignAgent(BaseISDAgent):
         user_content = prompt
         if prior_ctx:
             user_content = f"=== ANALYSIS RESULTS (from NeedsContextAgent) ===\n{prior_ctx}\n\n=== SCENARIO ===\n{prompt}"
+        rag_ctx = self._context_pack_text(context_pack)
+        if rag_ctx:
+            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{rag_ctx}\n\n{user_content}"
         messages = [
             {"role": "system", "content": _SYSTEM},
             {"role": "user", "content": user_content},

@@ -110,7 +110,15 @@ def _build_graph_for_run(
         try:
             violations = PedagogicalVerifierAgent(*_args()).verify()
             return {"violations": [
-                {"node_id": v.node_id, "type": v.violation_type, "msg": v.message, "severity": v.severity}
+                {
+                    "node_id": v.node_id,
+                    "edge_type": v.edge_type,
+                    "type": v.violation_type,
+                    "msg": v.message,
+                    "severity": v.severity,
+                    "repair_hint": v.repair_hint,
+                    "metadata": v.metadata,
+                }
                 for v in violations
             ]}
         except Exception as exc:
@@ -124,10 +132,12 @@ def _build_graph_for_run(
             violations = [
                 VerifierViolation(
                     node_id=v["node_id"],
-                    edge_type="",
+                    edge_type=v.get("edge_type", ""),
                     message=v["msg"],
                     violation_type=v["type"],
                     severity=v["severity"],
+                    repair_hint=v.get("repair_hint", ""),
+                    metadata=v.get("metadata", {}),
                 )
                 for v in state.get("violations", [])
             ]
@@ -237,7 +247,7 @@ class MetaAgent:
             "metadata": {
                 "ablation": self.config.ablation.model_dump(),
                 "llm": self.config.llm.model_dump(),
-                "scenario_id": scenario.get("id", "unknown"),
+                "scenario_id": scenario.get("scenario_id") or scenario.get("id", "unknown"),
                 "violations": final_state.get("violations", []),
                 "errors": final_state.get("errors", []),
             },

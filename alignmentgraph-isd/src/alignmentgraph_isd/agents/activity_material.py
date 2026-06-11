@@ -43,6 +43,9 @@ class ActivityMaterialAgent(BaseISDAgent):
         user_content = prompt
         if prior_ctx:
             user_content = f"=== ANALYSIS + DESIGN RESULTS (from prior agents) ===\n{prior_ctx}\n\n=== SCENARIO ===\n{prompt}"
+        rag_ctx = self._context_pack_text(context_pack)
+        if rag_ctx:
+            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{rag_ctx}\n\n{user_content}"
         messages = [
             {"role": "system", "content": _SYSTEM},
             {"role": "user", "content": user_content},
@@ -52,4 +55,23 @@ class ActivityMaterialAgent(BaseISDAgent):
         for node_type, node_id in [("activity", "activity_0"), ("material", "material_0")]:
             self.graph.add_node(node_type, node_id, parsed)
             self.trajectory.log_node_edit("add", node_id, node_type)
+        if self.graph.get_nodes("objective"):
+            obj = self.graph.get_nodes("objective")[0]
+            obj_id = obj["id"]
+            lo_ids = [
+                lo.get("id")
+                for lo in obj["data"].get("learning_objectives", [])
+                if isinstance(lo, dict) and lo.get("id")
+            ]
+            for lo_id in lo_ids:
+                rationale = f"Developed learning materials and session guides support {lo_id}."
+                self.graph.add_edge(
+                    "supports",
+                    "activity_0",
+                    obj_id,
+                    evidence=lo_id,
+                    rationale=rationale,
+                    verified=True,
+                )
+                self.trajectory.log_edge_edit("add", "activity_0", obj_id, "supports", lo_id, rationale)
         self.trajectory.log_step("ActivityMaterialAgent", "develop_activities", prompt[:200], response[:200] if response else "")

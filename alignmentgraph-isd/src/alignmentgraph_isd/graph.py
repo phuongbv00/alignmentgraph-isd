@@ -45,14 +45,16 @@ class AlignmentGraph:
         rationale: str = "",
         verified: bool = False,
     ) -> None:
-        self._edges.append({
+        edge = {
             "type": edge_type,
             "source": source_id,
             "target": target_id,
             "evidence": evidence,
             "rationale": rationale,
             "verified": verified,
-        })
+        }
+        if edge not in self._edges:
+            self._edges.append(edge)
 
     def get_nodes(self, node_type: str | None = None) -> list[dict]:
         if node_type is None:

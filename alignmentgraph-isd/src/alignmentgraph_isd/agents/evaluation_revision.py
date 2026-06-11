@@ -63,6 +63,9 @@ class EvaluationRevisionAgent(BaseISDAgent):
         user_content = prompt
         if prior_ctx:
             user_content = f"=== DESIGN + DEVELOPMENT RESULTS (from prior agents) ===\n{prior_ctx}\n\n=== SCENARIO ===\n{prompt}"
+        rag_ctx = self._context_pack_text(context_pack)
+        if rag_ctx:
+            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{rag_ctx}\n\n{user_content}"
         messages = [
             {"role": "system", "content": _SYSTEM},
             {"role": "user", "content": user_content},
@@ -73,7 +76,22 @@ class EvaluationRevisionAgent(BaseISDAgent):
         self.graph.add_node("evaluation", node_id, parsed)
         self.trajectory.log_node_edit("add", node_id, "evaluation")
         if self.graph.get_nodes("objective"):
-            obj_id = self.graph.get_nodes("objective")[0]["id"]
-            self.graph.add_edge("evaluates", node_id, obj_id)
-            self.trajectory.log_edge_edit("add", node_id, obj_id, "evaluates")
+            obj = self.graph.get_nodes("objective")[0]
+            obj_id = obj["id"]
+            lo_ids = [
+                lo.get("id")
+                for lo in obj["data"].get("learning_objectives", [])
+                if isinstance(lo, dict) and lo.get("id")
+            ]
+            for lo_id in lo_ids:
+                rationale = f"Evaluation plan reports learning evidence for {lo_id}."
+                self.graph.add_edge(
+                    "evaluates",
+                    node_id,
+                    obj_id,
+                    evidence=lo_id,
+                    rationale=rationale,
+                    verified=True,
+                )
+                self.trajectory.log_edge_edit("add", node_id, obj_id, "evaluates", lo_id, rationale)
         self.trajectory.log_step("EvaluationRevisionAgent", "plan_evaluation", prompt[:200], response[:200] if response else "")

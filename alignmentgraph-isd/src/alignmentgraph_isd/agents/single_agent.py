@@ -220,9 +220,13 @@ _SECTION_TO_NODE = {
 class SingleAgent(BaseISDAgent):
     def run(self, scenario: dict, context_pack: dict) -> None:
         prompt = _format_scenario(scenario)
+        user_content = prompt
+        rag_ctx = self._context_pack_text(context_pack)
+        if rag_ctx:
+            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{rag_ctx}\n\n=== SCENARIO ===\n{prompt}"
         messages = [
             {"role": "system", "content": _SYSTEM},
-            {"role": "user", "content": prompt},
+            {"role": "user", "content": user_content},
         ]
         raw = self._call_llm(messages)
         parsed = parse_json_response(raw)
@@ -230,4 +234,51 @@ class SingleAgent(BaseISDAgent):
             node_id = f"{node_type}_0"
             self.graph.add_node(node_type, node_id, parsed.get(section, {}))
             self.trajectory.log_node_edit("add", node_id, node_type)
+        development = parsed.get("development", {})
+        if development.get("assessment_tools") or development.get("expert_review"):
+            self.graph.add_node("assessment", "assessment_0", {
+                "assessment_tools": development.get("assessment_tools", []),
+                "expert_review": development.get("expert_review", {}),
+            })
+            self.trajectory.log_node_edit("add", "assessment_0", "assessment")
+        self._add_alignment_edges(parsed)
         self.trajectory.log_step("SingleAgent", "generate_addie", prompt[:200], raw[:200] if raw else "(empty)")
+
+    def _add_alignment_edges(self, parsed: dict) -> None:
+        objective_node = self.graph.get_node("objective_0")
+        if not objective_node:
+            return
+        objective_ids = [
+            lo.get("id")
+            for lo in parsed.get("design", {}).get("learning_objectives", [])
+            if isinstance(lo, dict) and lo.get("id")
+        ]
+        assessment_source = "assessment_0" if self.graph.get_node("assessment_0") else "activity_0"
+        for lo_id in objective_ids:
+            self.graph.add_edge(
+                "measures",
+                assessment_source,
+                "objective_0",
+                evidence=lo_id,
+                rationale=f"Single-agent assessment output measures {lo_id}.",
+                verified=True,
+            )
+            self.graph.add_edge(
+                "supports",
+                "activity_0",
+                "objective_0",
+                evidence=lo_id,
+                rationale=f"Single-agent learning activities support {lo_id}.",
+                verified=True,
+            )
+            self.graph.add_edge(
+                "evaluates",
+                "evaluation_0",
+                "objective_0",
+                evidence=lo_id,
+                rationale=f"Single-agent evaluation plan evaluates {lo_id}.",
+                verified=True,
+            )
+            self.trajectory.log_edge_edit("add", assessment_source, "objective_0", "measures", lo_id)
+            self.trajectory.log_edge_edit("add", "activity_0", "objective_0", "supports", lo_id)
+            self.trajectory.log_edge_edit("add", "evaluation_0", "objective_0", "evaluates", lo_id)

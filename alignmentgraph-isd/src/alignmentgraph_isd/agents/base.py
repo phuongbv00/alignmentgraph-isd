@@ -157,6 +157,14 @@ class BaseISDAgent(ABC):
         """
         return self.graph.get_node_context(node_types, max_chars_per_node=max_chars)
 
+    def _context_pack_text(self, context_pack: dict, max_chars: int = 1600) -> str:
+        if not context_pack:
+            return ""
+        text = json.dumps(context_pack, ensure_ascii=False, indent=2)
+        if len(text) > max_chars:
+            text = text[:max_chars] + "…"
+        return text
+
     def _call_llm(self, messages: list[dict], max_retries: int = 1) -> str:
         """Call LLM with automatic retry on empty/invalid response.
 

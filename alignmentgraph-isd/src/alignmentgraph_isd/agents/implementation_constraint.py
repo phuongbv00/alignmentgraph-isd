@@ -31,6 +31,11 @@ Given a training scenario, produce ONLY valid JSON with this EXACT schema:
   }
 }
 
+Implementation requirements:
+- instructor_orientation must be for instructors/operators, not learner learning objectives.
+- system_check must include concrete VR headset, tablet, app login, network, audio, analytics/data capture, accessibility, and fallback checks.
+- prototype_execution must describe a realistic pilot, participant sample, execution records, issues, success criteria, and data collection.
+- monitoring must include operational support, issue resolution, and real-time instructional adjustments.
 Output ONLY the JSON object, no markdown, no explanation.\
 """
 
@@ -45,6 +50,9 @@ class ImplementationConstraintAgent(BaseISDAgent):
         user_content = prompt
         if prior_ctx:
             user_content = f"=== DESIGN + DEVELOPMENT RESULTS (from prior agents) ===\n{prior_ctx}\n\n=== SCENARIO ===\n{prompt}"
+        rag_ctx = self._context_pack_text(context_pack)
+        if rag_ctx:
+            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{rag_ctx}\n\n{user_content}"
         messages = [
             {"role": "system", "content": _SYSTEM},
             {"role": "user", "content": user_content},
