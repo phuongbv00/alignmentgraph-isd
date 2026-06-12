@@ -50,7 +50,7 @@ class HarnessPolicy:
     min_objectives: int = 5
     max_task_attempts: int = 2
     max_verifier_attempts: int = 3
-    max_repair_rounds: int = 2
+    max_repair_rounds: int = 4
     max_policy_steps: int = 30
 
     @classmethod
@@ -90,6 +90,18 @@ class HarnessPolicy:
                 should_stop=True,
             )
 
+        unowned_violations = self._unowned_violation_count(audit)
+        if config.ablation.use_repair and unowned_violations:
+            return PolicyDecision(
+                next_task="aggregate",
+                reason=(
+                    f"{unowned_violations} verifier violation(s) have no specialist repair owner; "
+                    "aggregate with residual violations"
+                ),
+                pending_tasks=[],
+                should_stop=True,
+            )
+
         return PolicyDecision(
             next_task="aggregate",
             reason="audit reports graph is ready or no policy task remains",
@@ -117,9 +129,22 @@ class HarnessPolicy:
         verifier_task = self._verifier_task_if_needed(audit, state, config, attempts)
         if verifier_task and self._can_run(verifier_task, attempts, state):
             return PolicyDecision("verifier", verifier_task.reason, verifier_task, [verifier_task])
-        repair_task = self._repair_task_if_needed(audit, state, config, attempts)
-        if repair_task and self._can_run(repair_task, attempts, state):
-            return PolicyDecision("repair", repair_task.reason, repair_task, [repair_task])
+        repair_tasks = self._repair_tasks_if_needed(audit, state, config, attempts)
+        runnable_repairs = [task for task in repair_tasks if self._can_run(task, attempts, state)]
+        if runnable_repairs:
+            runnable_repairs.sort(key=lambda task: task.priority, reverse=True)
+            selected = runnable_repairs[0]
+            return PolicyDecision(selected.type, selected.reason, selected, repair_tasks)
+        unowned_violations = self._unowned_violation_count(audit)
+        if config.ablation.use_repair and unowned_violations:
+            return PolicyDecision(
+                "aggregate",
+                (
+                    f"{unowned_violations} verifier violation(s) have no specialist repair owner; "
+                    "aggregate single_agent output with residual violations"
+                ),
+                should_stop=True,
+            )
         return PolicyDecision("aggregate", "single_agent output is ready to aggregate", should_stop=True)
 
     def _build_tasks(
@@ -131,12 +156,16 @@ class HarnessPolicy:
     ) -> list[Task]:
         tasks: list[Task] = []
 
-        repair_task = self._repair_task_if_needed(audit, state, config, attempts)
-        if repair_task:
-            tasks.append(repair_task)
+        repair_tasks = self._repair_tasks_if_needed(audit, state, config, attempts)
+        if repair_tasks:
+            tasks.extend(repair_tasks)
             return tasks
 
-        if "needs_context" in audit.missing_node_types or audit.missing_section_keys.get("needs_context"):
+        if (
+            "needs_context" in audit.missing_node_types
+            or "needs_context" in audit.stale_node_types
+            or audit.missing_section_keys.get("needs_context")
+        ):
             tasks.append(self._task(
                 "needs-context",
                 "needs_context",
@@ -148,6 +177,7 @@ class HarnessPolicy:
 
         if (
             "objective" in audit.missing_node_types
+            or "objective" in audit.stale_node_types
             or audit.objective_count < self.min_objectives
             or audit.missing_section_keys.get("objective")
         ):
@@ -160,6 +190,7 @@ class HarnessPolicy:
 
         if (
             "assessment" in audit.missing_node_types
+            or "assessment" in audit.stale_node_types
             or audit.missing_section_keys.get("assessment")
             or audit.unmeasured_objectives
         ):
@@ -174,6 +205,8 @@ class HarnessPolicy:
         if (
             "activity" in audit.missing_node_types
             or "material" in audit.missing_node_types
+            or "activity" in audit.stale_node_types
+            or "material" in audit.stale_node_types
             or audit.missing_section_keys.get("activity")
             or audit.missing_section_keys.get("material")
             or audit.unsupported_objectives
@@ -186,7 +219,11 @@ class HarnessPolicy:
             )
             tasks.append(self._task("activity-material", "activity_material", target, reason, 80, attempts))
 
-        if "constraint" in audit.missing_node_types or audit.missing_section_keys.get("constraint"):
+        if (
+            "constraint" in audit.missing_node_types
+            or "constraint" in audit.stale_node_types
+            or audit.missing_section_keys.get("constraint")
+        ):
             tasks.append(self._task(
                 "implementation-constraint",
                 "implementation_constraint",
@@ -198,6 +235,7 @@ class HarnessPolicy:
 
         if (
             "evaluation" in audit.missing_node_types
+            or "evaluation" in audit.stale_node_types
             or audit.missing_section_keys.get("evaluation")
             or audit.unevaluated_objectives
         ):
@@ -233,24 +271,62 @@ class HarnessPolicy:
             attempts=attempts.get(task_type, 0),
         )
 
-    def _repair_task_if_needed(
+    def _repair_tasks_if_needed(
         self,
         audit: GraphAuditResult,
         state: dict,
         config: HarnessRunConfig,
         attempts: dict[str, int],
-    ) -> Task | None:
+    ) -> list[Task]:
         if not config.ablation.use_repair or not audit.verifier_violations:
-            return None
+            return []
         repair_rounds = int(state.get("repair_rounds", 0) or 0)
-        return Task(
-            id=f"repair-round-{repair_rounds + 1}",
-            type="repair",
-            target=";".join(v.get("node_id", "") for v in audit.verifier_violations),
-            reason=f"verifier reported {len(audit.verifier_violations)} violation(s)",
-            priority=100,
-            attempts=attempts.get("repair", 0),
-        )
+        tasks: list[Task] = []
+        seen: set[str] = set()
+        for violation in audit.verifier_violations:
+            task_type = self._repair_owner(violation)
+            if task_type is None or task_type in seen:
+                continue
+            seen.add(task_type)
+            owned = [v for v in audit.verifier_violations if self._repair_owner(v) == task_type]
+            target = ";".join(v.get("node_id", "") for v in owned)
+            priority = self._repair_priority(task_type)
+            tasks.append(Task(
+                id=f"{task_type}-round-{repair_rounds + 1}",
+                type=task_type,
+                target=target,
+                reason=f"{task_type} owns {len(owned)} verifier violation(s)",
+                priority=priority,
+                attempts=attempts.get(task_type, 0),
+            ))
+        return tasks
+
+    def _repair_owner(self, violation: dict) -> str | None:
+        violation_type = violation.get("type", "")
+        edge_type = violation.get("edge_type", "")
+        if violation_type == "bloom":
+            return "objective_repair"
+        if violation_type == "activity_support" or edge_type == "supports":
+            return "activity_repair"
+        if violation_type == "feasibility" or edge_type == "constrains":
+            return "implementation_repair"
+        if edge_type == "evaluates":
+            return "evaluation_repair"
+        if violation_type == "coverage" or edge_type == "measures":
+            return "assessment_repair"
+        return None
+
+    def _repair_priority(self, task_type: str) -> int:
+        return {
+            "objective_repair": 100,
+            "assessment_repair": 98,
+            "activity_repair": 96,
+            "implementation_repair": 94,
+            "evaluation_repair": 92,
+        }.get(task_type, 80)
+
+    def _unowned_violation_count(self, audit: GraphAuditResult) -> int:
+        return sum(1 for violation in audit.verifier_violations if self._repair_owner(violation) is None)
 
     def _verifier_task_if_needed(
         self,
@@ -279,6 +355,6 @@ class HarnessPolicy:
     def _can_run(self, task: Task, attempts: dict[str, int], state: dict) -> bool:
         if task.type == "verifier":
             return attempts.get(task.type, 0) < self.max_verifier_attempts
-        if task.type == "repair":
+        if task.type.endswith("_repair"):
             return int(state.get("repair_rounds", 0) or 0) < self.max_repair_rounds
         return attempts.get(task.type, 0) < self.max_task_attempts

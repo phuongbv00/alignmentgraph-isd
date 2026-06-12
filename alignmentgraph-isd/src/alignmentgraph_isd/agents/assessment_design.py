@@ -83,6 +83,19 @@ class AssessmentDesignAgent(BaseISDAgent):
                 self.trajectory.log_edge_edit("add", node_id, obj_id, "measures", lo_id, rationale)
         self.trajectory.log_step("AssessmentDesignAgent", "design_assessments", prompt[:200], response[:200] if response else "")
 
+    def repair(self, violations: list) -> list:
+        remaining = []
+        for violation in violations:
+            is_owner = (
+                getattr(violation, "violation_type", "") == "coverage"
+                or getattr(violation, "edge_type", "") == "measures"
+            )
+            if not is_owner:
+                remaining.append(violation)
+                continue
+            self._repair_assessment_coverage(violation)
+        return remaining
+
     def _ensure_assessment_coverage(self, parsed: dict, objectives: list) -> None:
         tools = parsed.setdefault("assessment_tools", [])
         if not isinstance(tools, list):
@@ -111,3 +124,75 @@ class AssessmentDesignAgent(BaseISDAgent):
                 "coverage_repair": True,
             })
             covered.add(lo_id)
+
+    def _repair_assessment_coverage(self, violation) -> None:
+        objective = self.graph.get_node(violation.node_id)
+        if not objective:
+            return
+
+        assessment = self.graph.get_node("assessment_0")
+        if assessment:
+            assessment_data = assessment["data"]
+        else:
+            assessment_data = {"assessment_tools": [], "expert_review": {}, "repaired": True}
+            self.graph.add_node("assessment", "assessment_0", assessment_data, repair_history=[violation.message])
+            self.trajectory.log_node_edit("add", "assessment_0", "assessment")
+
+        assessment_tools = assessment_data.setdefault("assessment_tools", [])
+        if not isinstance(assessment_tools, list):
+            assessment_data["assessment_tools"] = []
+            assessment_tools = assessment_data["assessment_tools"]
+
+        covered = {
+            item.get("aligned_objective")
+            for item in assessment_tools
+            if isinstance(item, dict) and item.get("aligned_objective")
+        }
+        repaired_ids: list[str] = []
+        for lo in objective["data"].get("learning_objectives", []):
+            if not isinstance(lo, dict):
+                continue
+            lo_id = lo.get("id")
+            if not lo_id or lo_id in covered:
+                continue
+            item_id = f"AT-R-{lo_id}"
+            assessment_tools.append({
+                "item_id": item_id,
+                "type": "performance_task",
+                "question": f"Demonstrate the target skill for {lo_id}: {lo.get('statement', '')}",
+                "aligned_objective": lo_id,
+                "scoring_criteria": "Score accuracy, context appropriateness, learner independence, and evidence of transfer.",
+                "difficulty": "hard",
+                "repaired": True,
+            })
+            rationale = f"AssessmentDesignAgent repair added {item_id} to measure {lo_id}."
+            self.graph.add_edge(
+                "measures",
+                "assessment_0",
+                violation.node_id,
+                evidence=lo_id,
+                rationale=rationale,
+                verified=True,
+            )
+            self.trajectory.log_edge_edit("add", "assessment_0", violation.node_id, "measures", lo_id, rationale)
+            covered.add(lo_id)
+            repaired_ids.append(lo_id)
+
+        self.graph.update_node("assessment_0", {"assessment_tools": assessment_tools, "repaired": True})
+        self.graph.clear_stale("assessment_0")
+        self.graph.mark_repaired("assessment_0", violation.message)
+        impact = self._invalidate_impacted(
+            "assessment_0",
+            "Assessment repair changed evidence coverage; dependent practice and evaluation plans must be refreshed.",
+            action="repair_cascade",
+            changed_fields=["assessment_tools", "measures_edges"],
+        )
+        self.trajectory.log_step(
+            "AssessmentDesignAgent",
+            "repair_assessment_coverage",
+            violation.message,
+            (
+                f"Added assessment coverage for {', '.join(repaired_ids) or 'existing objectives'}; "
+                f"invalidated nodes={len(impact['nodes'])} edges={len(impact['edges'])}."
+            ),
+        )

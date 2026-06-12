@@ -31,6 +31,7 @@ REQUIRED_SECTION_KEYS = {
 class GraphAuditResult:
     node_counts: dict[str, int]
     missing_node_types: list[str]
+    stale_node_types: list[str]
     missing_section_keys: dict[str, list[str]]
     objective_node_id: str = ""
     objective_ids: list[str] = field(default_factory=list)
@@ -45,6 +46,7 @@ class GraphAuditResult:
         return {
             "node_counts": self.node_counts,
             "missing_node_types": self.missing_node_types,
+            "stale_node_types": self.stale_node_types,
             "missing_section_keys": self.missing_section_keys,
             "objective_node_id": self.objective_node_id,
             "objective_ids": self.objective_ids,
@@ -70,6 +72,8 @@ class GraphAuditResult:
         parts: list[str] = []
         if self.missing_node_types:
             parts.append(f"missing_nodes={','.join(self.missing_node_types)}")
+        if self.stale_node_types:
+            parts.append(f"stale_nodes={','.join(self.stale_node_types)}")
         if self.unmeasured_objectives:
             parts.append(f"unmeasured={','.join(self.unmeasured_objectives)}")
         if self.unsupported_objectives:
@@ -92,6 +96,11 @@ class GraphAuditor:
             for node_type, count in node_counts.items()
             if count == 0 or self.graph.is_empty(node_type)
         ]
+        stale_node_types = [
+            node_type
+            for node_type in REQUIRED_NODE_TYPES
+            if any(node.get("stale") for node in self.graph.get_nodes(node_type))
+        ]
         missing_section_keys = self._missing_section_keys()
 
         objective_node = self._first_node("objective")
@@ -105,6 +114,7 @@ class GraphAuditor:
 
         ready = (
             not missing_node_types
+            and not stale_node_types
             and not any(missing_section_keys.values())
             and bool(objective_ids)
             and not unmeasured
@@ -116,6 +126,7 @@ class GraphAuditor:
         return GraphAuditResult(
             node_counts=node_counts,
             missing_node_types=missing_node_types,
+            stale_node_types=stale_node_types,
             missing_section_keys=missing_section_keys,
             objective_node_id=objective_node_id,
             objective_ids=objective_ids,
@@ -166,7 +177,11 @@ class GraphAuditor:
         covered = {
             edge.get("evidence")
             for edge in self.graph.get_edges(edge_type)
-            if edge.get("target") == objective_node_id and edge.get("evidence")
+            if (
+                edge.get("target") == objective_node_id
+                and edge.get("evidence")
+                and not edge.get("stale")
+            )
         }
         return [objective_id for objective_id in objective_ids if objective_id not in covered]
 

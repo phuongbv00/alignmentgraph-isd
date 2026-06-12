@@ -19,7 +19,6 @@ from .agents.implementation_constraint import ImplementationConstraintAgent
 from .agents.evaluation_revision import EvaluationRevisionAgent
 from .agents.single_agent import SingleAgent
 from .agents.pedagogical_verifier import PedagogicalVerifierAgent
-from .agents.repair import RepairAgent
 from .agents.addie_aggregator import ADDIEOutputAggregator
 
 _SCHEMA_PATH = Path(__file__).parent / "schema" / "addie_output.json"
@@ -72,6 +71,56 @@ def _build_graph_for_run(
     def _generation_done(state: ISDState, task_name: str) -> dict:
         return {
             "task_attempts": _bump_attempt(state, task_name),
+            "needs_verification": True,
+        }
+
+    def _violations_from_state(state: ISDState):
+        from .agents.pedagogical_verifier import VerifierViolation
+        return [
+            VerifierViolation(
+                node_id=v["node_id"],
+                edge_type=v.get("edge_type", ""),
+                message=v["msg"],
+                violation_type=v["type"],
+                severity=v["severity"],
+                repair_hint=v.get("repair_hint", ""),
+                metadata=v.get("metadata", {}),
+            )
+            for v in state.get("violations", [])
+        ]
+
+    def _violations_to_state(violations) -> list[dict]:
+        return [
+            {
+                "node_id": v.node_id,
+                "edge_type": v.edge_type,
+                "type": v.violation_type,
+                "msg": v.message,
+                "severity": v.severity,
+                "repair_hint": v.repair_hint,
+                "metadata": v.metadata,
+            }
+            for v in violations
+        ]
+
+    def _specialist_repair_node(state: ISDState, agent_cls, task_name: str) -> dict:
+        if not config.ablation.use_repair:
+            return {
+                "task_attempts": _bump_attempt(state, task_name),
+                "needs_verification": False,
+            }
+        try:
+            remaining = agent_cls(*_args()).repair(_violations_from_state(state))
+        except Exception as exc:
+            return {
+                "errors": [f"{agent_cls.__name__}: {exc}"],
+                "task_attempts": _bump_attempt(state, task_name),
+                "repair_rounds": int(state.get("repair_rounds", 0) or 0) + 1,
+            }
+        return {
+            "violations": _violations_to_state(remaining),
+            "task_attempts": _bump_attempt(state, task_name),
+            "repair_rounds": int(state.get("repair_rounds", 0) or 0) + 1,
             "needs_verification": True,
         }
 
@@ -197,39 +246,20 @@ def _build_graph_for_run(
                 "errors": [f"PedagogicalVerifier: {exc}"],
             }
 
-    def _repair_node(state: ISDState) -> dict:
-        if not config.ablation.use_repair:
-            return {
-                "task_attempts": _bump_attempt(state, "repair"),
-                "needs_verification": False,
-            }
-        try:
-            from .agents.pedagogical_verifier import VerifierViolation
-            violations = [
-                VerifierViolation(
-                    node_id=v["node_id"],
-                    edge_type=v.get("edge_type", ""),
-                    message=v["msg"],
-                    violation_type=v["type"],
-                    severity=v["severity"],
-                    repair_hint=v.get("repair_hint", ""),
-                    metadata=v.get("metadata", {}),
-                )
-                for v in state.get("violations", [])
-            ]
-            RepairAgent(*_args()).repair(violations)
-        except Exception as exc:
-            return {
-                "errors": [f"RepairAgent: {exc}"],
-                "task_attempts": _bump_attempt(state, "repair"),
-                "repair_rounds": int(state.get("repair_rounds", 0) or 0) + 1,
-            }
-        return {
-            "violations": [],
-            "task_attempts": _bump_attempt(state, "repair"),
-            "repair_rounds": int(state.get("repair_rounds", 0) or 0) + 1,
-            "needs_verification": True,
-        }
+    def _objective_repair_node(state: ISDState) -> dict:
+        return _specialist_repair_node(state, ObjectiveDesignAgent, "objective_repair")
+
+    def _assessment_repair_node(state: ISDState) -> dict:
+        return _specialist_repair_node(state, AssessmentDesignAgent, "assessment_repair")
+
+    def _activity_repair_node(state: ISDState) -> dict:
+        return _specialist_repair_node(state, ActivityMaterialAgent, "activity_repair")
+
+    def _implementation_repair_node(state: ISDState) -> dict:
+        return _specialist_repair_node(state, ImplementationConstraintAgent, "implementation_repair")
+
+    def _evaluation_repair_node(state: ISDState) -> dict:
+        return _specialist_repair_node(state, EvaluationRevisionAgent, "evaluation_repair")
 
     def _aggregate_node(state: ISDState) -> dict:
         try:
@@ -243,11 +273,6 @@ def _build_graph_for_run(
 
     def _route_orchestration(state: ISDState) -> str:
         return "multi_agent" if config.ablation.multi_agent else "single_agent"
-
-    def _route_after_verifier(state: ISDState) -> str:
-        if state.get("violations") and config.ablation.use_repair:
-            return "repair"
-        return "aggregate"
 
     # ── Wire the graph ─────────────────────────────────────────────────────────
 
@@ -264,7 +289,11 @@ def _build_graph_for_run(
     wf.add_node("evaluation_revision", _evaluation_revision_node)
     wf.add_node("single_agent", _single_agent_node)
     wf.add_node("verifier", _verifier_node)
-    wf.add_node("repair", _repair_node)
+    wf.add_node("objective_repair", _objective_repair_node)
+    wf.add_node("assessment_repair", _assessment_repair_node)
+    wf.add_node("activity_repair", _activity_repair_node)
+    wf.add_node("implementation_repair", _implementation_repair_node)
+    wf.add_node("evaluation_repair", _evaluation_repair_node)
     wf.add_node("aggregate", _aggregate_node)
 
     if config.ablation.dynamic_graph:
@@ -282,7 +311,11 @@ def _build_graph_for_run(
                 "evaluation_revision": "evaluation_revision",
                 "single_agent": "single_agent",
                 "verifier": "verifier",
-                "repair": "repair",
+                "objective_repair": "objective_repair",
+                "assessment_repair": "assessment_repair",
+                "activity_repair": "activity_repair",
+                "implementation_repair": "implementation_repair",
+                "evaluation_repair": "evaluation_repair",
                 "aggregate": "aggregate",
             },
         )
@@ -295,7 +328,11 @@ def _build_graph_for_run(
             "evaluation_revision",
             "single_agent",
             "verifier",
-            "repair",
+            "objective_repair",
+            "assessment_repair",
+            "activity_repair",
+            "implementation_repair",
+            "evaluation_repair",
         ):
             wf.add_edge(node_name, "audit")
         wf.add_edge("aggregate", END)
@@ -316,13 +353,7 @@ def _build_graph_for_run(
     wf.add_edge("implementation_constraint", "evaluation_revision")
     wf.add_edge("evaluation_revision", "verifier")
     wf.add_edge("single_agent", "verifier")
-
-    wf.add_conditional_edges(
-        "verifier",
-        _route_after_verifier,
-        {"repair": "repair", "aggregate": "aggregate"},
-    )
-    wf.add_edge("repair", "aggregate")
+    wf.add_edge("verifier", "aggregate")
     wf.add_edge("aggregate", END)
     return wf.compile()
 

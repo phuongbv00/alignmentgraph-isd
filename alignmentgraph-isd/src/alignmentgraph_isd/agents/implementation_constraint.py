@@ -68,3 +68,56 @@ class ImplementationConstraintAgent(BaseISDAgent):
             prompt[:200],
             f"[PARSE={'OK' if parse_ok else 'FAILED'} len={len(response)}] " + response[:400],
         )
+
+    def repair(self, violations: list) -> list:
+        remaining = []
+        owned = []
+        for violation in violations:
+            is_owner = (
+                getattr(violation, "violation_type", "") == "feasibility"
+                or getattr(violation, "edge_type", "") == "constrains"
+            )
+            if is_owner:
+                owned.append(violation)
+            else:
+                remaining.append(violation)
+
+        if not owned:
+            return remaining
+
+        node = self.graph.get_node("constraint_0")
+        if not node:
+            self.graph.add_node("constraint", "constraint_0", {
+                "instructor_orientation": {},
+                "system_check": {},
+                "prototype_execution": {},
+                "monitoring": {},
+                "repaired": True,
+            })
+            self.trajectory.log_node_edit("add", "constraint_0", "constraint")
+        constraint = self.graph.get_node("constraint_0")
+        data = constraint["data"] if constraint else {}
+        monitoring = data.setdefault("monitoring", {})
+        if isinstance(monitoring, dict):
+            adjustments = monitoring.setdefault("real_time_adjustments", [])
+            if isinstance(adjustments, list):
+                adjustments.append("Re-scope delivery constraints after verifier feasibility warning.")
+        self.graph.update_node("constraint_0", {"monitoring": monitoring, "repaired": True})
+        self.graph.clear_stale("constraint_0")
+        self.graph.mark_repaired("constraint_0", "; ".join(v.message for v in owned))
+        impact = self._invalidate_impacted(
+            "constraint_0",
+            "Implementation constraint repair changed delivery feasibility; impacted design and evaluation sections must be refreshed.",
+            action="repair_cascade",
+            changed_fields=["monitoring", "delivery_constraints"],
+        )
+        self.trajectory.log_step(
+            "ImplementationConstraintAgent",
+            "repair_feasibility",
+            "; ".join(v.message for v in owned),
+            (
+                "Updated implementation monitoring and contingency adjustment notes; "
+                f"invalidated nodes={len(impact['nodes'])} edges={len(impact['edges'])}."
+            ),
+        )
+        return remaining

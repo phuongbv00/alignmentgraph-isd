@@ -165,6 +165,30 @@ class BaseISDAgent(ABC):
             text = text[:max_chars] + "…"
         return text
 
+    def _invalidate_impacted(
+        self,
+        node_id: str,
+        reason: str,
+        *,
+        action: str = "cascade_invalidation",
+        changed_fields: list[str] | None = None,
+        evidence: str = "",
+    ) -> dict[str, list]:
+        impact = self.graph.invalidate_impacted(
+            node_id,
+            changed_fields=changed_fields,
+            evidence=evidence,
+            reason=reason,
+        )
+        if impact["nodes"] or impact["edges"]:
+            self.trajectory.log_step(
+                type(self).__name__,
+                action,
+                node_id,
+                f"Marked stale nodes={len(impact['nodes'])} edges={len(impact['edges'])}.",
+            )
+        return impact
+
     def _call_llm(self, messages: list[dict], max_retries: int = 1) -> str:
         """Call LLM with automatic retry on empty/invalid response.
 

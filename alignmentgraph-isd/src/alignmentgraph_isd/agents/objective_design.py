@@ -1,5 +1,23 @@
 from __future__ import annotations
+import re
 from .base import BaseISDAgent, _format_scenario, parse_json_response
+
+_BLOOM_VERB_BY_LEVEL = {
+    "Remember": "Recall",
+    "Understand": "Explain",
+    "Apply": "Apply",
+    "Analyze": "Analyze",
+    "Evaluate": "Evaluate",
+    "Create": "Design",
+}
+
+_VERB_REPLACEMENTS = {
+    "comprehend": "Explain",
+    "understand": "Explain",
+    "grasp": "Explain",
+    "learn": "Identify",
+    "know": "Identify",
+}
 
 _SYSTEM = """\
 You are an expert instructional designer working on the Design phase of ADDIE.
@@ -90,3 +108,71 @@ class ObjectiveDesignAgent(BaseISDAgent):
         self.graph.add_node("objective", node_id, parsed)
         self.trajectory.log_node_edit("add", node_id, "objective")
         self.trajectory.log_step("ObjectiveDesignAgent", "design_objectives", prompt[:200], response[:200] if response else "")
+
+    def repair(self, violations: list) -> list:
+        remaining = []
+        for violation in violations:
+            if getattr(violation, "violation_type", "") != "bloom":
+                remaining.append(violation)
+                continue
+            self._repair_bloom_verb(violation)
+        return remaining
+
+    def _repair_bloom_verb(self, violation) -> None:
+        obj = self.graph.get_node(violation.node_id)
+        if not obj:
+            return
+
+        lo_id = str(violation.metadata.get("lo_id", "") or "")
+        objectives = list(obj["data"].get("learning_objectives", []))
+        repaired = False
+
+        for lo in objectives:
+            if not isinstance(lo, dict):
+                continue
+            if lo_id and lo.get("id") != lo_id:
+                continue
+            old_verb = str(lo.get("bloom_verb", "")).strip()
+            replacement = (
+                _VERB_REPLACEMENTS.get(old_verb.lower())
+                or _BLOOM_VERB_BY_LEVEL.get(lo.get("level"), "Explain")
+            )
+            lo["bloom_verb"] = replacement
+            statement = str(lo.get("statement", ""))
+            if old_verb and re.search(re.escape(old_verb), statement, flags=re.IGNORECASE):
+                lo["statement"] = re.sub(
+                    re.escape(old_verb),
+                    replacement.lower(),
+                    statement,
+                    count=1,
+                    flags=re.IGNORECASE,
+                )
+            elif replacement.lower() not in statement.lower():
+                lo["statement"] = (
+                    f"{statement} This is measured by asking learners to "
+                    f"{replacement.lower()} the target skill in context."
+                )
+            repaired = True
+
+        if not repaired:
+            return
+
+        self.graph.update_node(violation.node_id, {"learning_objectives": objectives})
+        self.graph.mark_repaired(violation.node_id, violation.message)
+        impact = self._invalidate_impacted(
+            violation.node_id,
+            f"Objective repair changed {lo_id or violation.node_id}; downstream alignment must be refreshed.",
+            action="repair_cascade",
+            changed_fields=["learning_objectives", "bloom_verb"],
+            evidence=lo_id,
+        )
+        self.trajectory.log_node_edit("update", violation.node_id, "objective")
+        self.trajectory.log_step(
+            "ObjectiveDesignAgent",
+            "repair_objective",
+            violation.message,
+            (
+                f"Updated Bloom verb for {lo_id or violation.node_id}; "
+                f"invalidated nodes={len(impact['nodes'])} edges={len(impact['edges'])}."
+            ),
+        )

@@ -95,3 +95,66 @@ class EvaluationRevisionAgent(BaseISDAgent):
                 )
                 self.trajectory.log_edge_edit("add", node_id, obj_id, "evaluates", lo_id, rationale)
         self.trajectory.log_step("EvaluationRevisionAgent", "plan_evaluation", prompt[:200], response[:200] if response else "")
+
+    def repair(self, violations: list) -> list:
+        remaining = []
+        for violation in violations:
+            if getattr(violation, "edge_type", "") != "evaluates":
+                remaining.append(violation)
+                continue
+            self._repair_evaluation_alignment(violation)
+        return remaining
+
+    def _repair_evaluation_alignment(self, violation) -> None:
+        objective = self.graph.get_node(violation.node_id)
+        if not objective:
+            return
+
+        evaluation = self.graph.get_node("evaluation_0")
+        if evaluation:
+            evaluation_data = evaluation["data"]
+        else:
+            evaluation_data = {"formative": {}, "summative": {}, "improvement_plan": {}, "repaired": True}
+            self.graph.add_node("evaluation", "evaluation_0", evaluation_data, repair_history=[violation.message])
+            self.trajectory.log_node_edit("add", "evaluation_0", "evaluation")
+
+        repaired_ids: list[str] = []
+        for lo in objective["data"].get("learning_objectives", []):
+            if not isinstance(lo, dict) or not lo.get("id"):
+                continue
+            lo_id = lo["id"]
+            rationale = f"EvaluationRevisionAgent repair adds evaluation evidence for {lo_id}."
+            self.graph.add_edge(
+                "evaluates",
+                "evaluation_0",
+                violation.node_id,
+                evidence=lo_id,
+                rationale=rationale,
+                verified=True,
+            )
+            self.trajectory.log_edge_edit("add", "evaluation_0", violation.node_id, "evaluates", lo_id, rationale)
+            repaired_ids.append(lo_id)
+
+        improvement = evaluation_data.setdefault("improvement_plan", {})
+        if isinstance(improvement, dict):
+            action_items = improvement.setdefault("action_items", [])
+            if isinstance(action_items, list):
+                action_items.append("Re-check evaluation evidence after upstream repair cascade.")
+        self.graph.update_node("evaluation_0", {"improvement_plan": improvement, "repaired": True})
+        self.graph.clear_stale("evaluation_0")
+        self.graph.mark_repaired("evaluation_0", violation.message)
+        impact = self._invalidate_impacted(
+            "evaluation_0",
+            "Evaluation repair changed evidence plan; assessment evidence should be rechecked for consistency.",
+            action="repair_cascade",
+            changed_fields=["improvement_plan", "evaluates_edges"],
+        )
+        self.trajectory.log_step(
+            "EvaluationRevisionAgent",
+            "repair_evaluation_alignment",
+            violation.message,
+            (
+                f"Added evaluates edges for {', '.join(repaired_ids) or 'existing objectives'}; "
+                f"invalidated nodes={len(impact['nodes'])} edges={len(impact['edges'])}."
+            ),
+        )

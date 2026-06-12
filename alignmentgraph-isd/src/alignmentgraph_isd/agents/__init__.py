@@ -6,7 +6,6 @@ from .implementation_constraint import ImplementationConstraintAgent
 from .evaluation_revision import EvaluationRevisionAgent
 from .single_agent import SingleAgent
 from .pedagogical_verifier import PedagogicalVerifierAgent, VerifierViolation
-from .repair import RepairAgent
 from .addie_aggregator import ADDIEOutputAggregator
 
 __all__ = [
@@ -19,6 +18,5 @@ __all__ = [
     "SingleAgent",
     "PedagogicalVerifierAgent",
     "VerifierViolation",
-    "RepairAgent",
     "ADDIEOutputAggregator",
 ]

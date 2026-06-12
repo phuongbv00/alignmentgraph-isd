@@ -521,7 +521,7 @@ const slides = [
         <div class="card indigo"><div class="card-label">MetaAgent</div><div class="card-text">Phân tích request, tạo dynamic task graph, chọn policy, điều phối retry và ghi trace</div></div>
         <div class="card teal"><div class="card-label">AlignmentGraph</div><div class="card-text">Trạng thái làm việc chung: artifact nodes + alignment edges giữa objectives ↔ assessment ↔ activities ↔ constraints</div></div>
         <div class="card blue"><div class="card-label">PedagogicalVerifier</div><div class="card-text">Kiểm tra Bloom alignment, constructive alignment, coverage và actionability ở cấp edge</div></div>
-        <div class="card amber"><div class="card-label">RepairAgent</div><div class="card-text">Sửa có mục tiêu node/edge vi phạm schema hoặc verifier policy</div></div>
+        <div class="card amber"><div class="card-label">Specialist Repair</div><div class="card-text">Policy route lỗi về đúng role agent và kích hoạt cascade invalidation cho downstream</div></div>
       </div>
       <div class="pill-list" style="margin-top:4px">
         <div class="pill ind"><div class="pill-dot"></div><div><span class="kw">6 role agents</span> thêm/sửa/liên kết <span class="kw">nodes và edges</span> trong AlignmentGraph: <code>NeedsContext</code> · <code>ObjectiveDesign</code> · <code>AssessmentDesign</code> · <code>ActivityMaterial</code> · <code>ImplementationConstraint</code> · <code>EvaluationRevision</code></div></div>
@@ -571,7 +571,7 @@ const slides = [
         </div>
       </div>
       <div class="pill-list" style="margin-top:8px">
-        <div class="pill amber"><div class="pill-dot"></div><div><strong>Targeted Repair:</strong> schema lỗi → <code>RepairAgent</code> nhận <span class="kw">validation error + graph element</span> → sửa cấu trúc. Pedagogy lỗi → nhận <span class="kw">verifier report</span> → <span class="kw">chỉ sửa node/edge liên quan</span>.</div></div>
+        <div class="pill amber"><div class="pill-dot"></div><div><strong>Targeted Repair + Cascade:</strong> schema/verifier lỗi → policy route về <span class="kw">owner agent</span>. Node vừa sửa kích hoạt <code>AlignmentGraph.IMPACT_POLICY</code>: objective → assessment/activity/material/evaluation; assessment → activity/material/evaluation; activity/material → assessment/constraint/evaluation; constraint → design/development/evaluation. Downstream edge/node bị đánh dấu <span class="kw">stale</span> để specialist agent phía sau refresh alignment.</div></div>
         <div class="pill rose"><div class="pill-dot"></div><div><strong>Trajectory:</strong> ghi rõ <span class="kw">retry count</span>, <span class="kw">violation type</span>, <span class="kw">repaired fields</span> → evaluation không chỉ nhìn output cuối mà còn thấy <span class="kw">quá trình phát hiện và sửa lỗi</span>.</div></div>
       </div>
     </div>

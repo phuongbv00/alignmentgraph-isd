@@ -285,9 +285,9 @@ def _build_alignment_matrix(
     storyboard: list,
     graph,
 ) -> list[dict]:
-    measures = graph.get_edges("measures")
-    supports = graph.get_edges("supports")
-    evaluates = graph.get_edges("evaluates")
+    measures = _fresh_edges(graph.get_edges("measures"))
+    supports = _fresh_edges(graph.get_edges("supports"))
+    evaluates = _fresh_edges(graph.get_edges("evaluates"))
     matrix = []
 
     for index, lo_id in enumerate(objective_ids):
@@ -315,6 +315,10 @@ def _edge_evidence(edges: list[dict], lo_id: str) -> list[str]:
         for edge in edges
         if edge.get("evidence") == lo_id
     ]
+
+
+def _fresh_edges(edges: list[dict]) -> list[dict]:
+    return [edge for edge in edges if not edge.get("stale")]
 
 
 def _pick_name(items: list, index: int, key: str):

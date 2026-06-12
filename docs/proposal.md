@@ -109,7 +109,7 @@ flowchart TD
     G --> N["Validated Graph Elements"]
     N --> O["SchemaValidation"]
     O --> P{"Schema valid?"}
-    P -- "No" --> Q["RepairAgent"]
+    P -- "No" --> Q["Policy-routed specialist repair + cascade invalidation"]
     Q --> G
     P -- "Yes" --> R["PedagogicalVerifierAgent"]
     R --> S{"Aligned and feasible?"}
@@ -132,9 +132,9 @@ AlignmentGraph-ISD dùng multi-agent workflow gồm các role sau:
 | `ActivityMaterialAgent` | Tạo learning activities, materials, exercises, examples và facilitator notes | activity/material nodes and `supports` edges |
 | `ImplementationConstraintAgent` | Phân tích duration, resource, delivery mode, risk và deployment constraints; đẩy constraint ngược về design | constraint nodes and `constrained_by` edges |
 | `EvaluationRevisionAgent` | Thiết kế evaluation plan, feedback loop và revision strategy | evaluation nodes and `evaluated_by` edges |
-| `AlignmentGraph` | Đồng bộ objectives, assessment, activities, implementation constraints và evaluation criteria | aligned artifact graph |
+| `AlignmentGraph` | Đồng bộ objectives, assessment, activities, implementation constraints và evaluation criteria; quản lý stale cascade khi node thay đổi | aligned artifact graph + stale impact state |
 | `PedagogicalVerifierAgent` | Kiểm tra Bloom alignment, constructive alignment, coverage, actionability và consistency | verifier report |
-| `RepairAgent` | Sửa có mục tiêu graph element vi phạm schema hoặc verifier policy | repaired node/edge patch |
+| Specialist repair methods | Mỗi role agent tự sửa graph element thuộc chuyên môn của mình khi schema hoặc verifier policy báo lỗi | repaired node/edge patch |
 | `ADDIEOutputAggregator` | Map artifact graph cuối vào schema `addie_output` của ISD-Agent-Bench | ADDIE-compatible output |
 
 Các role có thể dùng cùng một model backend nhưng khác system prompt, tool permission, context pack và output schema. `MetaAgent` không sinh toàn bộ nội dung thay các agent khác; nó giữ vai trò controller. Khác với ADDIE tuyến tính, các agent làm việc trên graph elements: thêm, sửa hoặc liên kết artifact nodes và alignment edges trong `AlignmentGraph`. Ví dụ, `AssessmentDesignAgent` có thể buộc `ObjectiveDesignAgent` sửa objective node nếu không có evidence đo được; `ImplementationConstraintAgent` có thể đẩy constraint node ngược lại để `ActivityMaterialAgent` điều chỉnh activity nodes. Điều này giúp AlignmentGraph-ISD giữ ADDIE-compatible output mà không bị ràng buộc vào execution order của `addie-agent`.
@@ -184,7 +184,20 @@ Mỗi graph element có schema nội bộ chi tiết hơn schema cuối. Sau khi
 1. **Schema validation**: kiểm tra JSON parseability, required fields, type, enum, ID format và field completeness.
 2. **Pedagogical verification**: kiểm tra learning objectives có measurable/action verbs, objective-activity-assessment alignment, coverage giữa goals và artifacts, rubric consistency, feasibility theo duration/resources, và actionability cho người dạy.
 
-Nếu lỗi thuộc schema, `RepairAgent` nhận validation error và graph element liên quan để sửa cấu trúc. Nếu lỗi thuộc pedagogy, `RepairAgent` nhận verifier report và chỉ sửa node hoặc edge liên quan. AlignmentGraph-ISD ghi rõ retry count, violation type và repaired fields vào trajectory. Nhờ đó, evaluation không chỉ nhìn output cuối mà còn thấy quá trình hệ thống phát hiện và sửa lỗi.
+Nếu lỗi thuộc schema, policy route validation error và graph element liên quan về đúng owner agent để sửa cấu trúc. Nếu lỗi thuộc pedagogy, verifier report được route theo loại violation: objective/Bloom về `ObjectiveDesignAgent`, coverage về `AssessmentDesignAgent`, activity support về `ActivityMaterialAgent`, feasibility về `ImplementationConstraintAgent`, evaluation alignment về `EvaluationRevisionAgent`.
+
+Sau mỗi targeted repair, AlignmentGraph chạy cascade invalidation thay vì chỉ sửa cục bộ. Impact matrix hiện tại:
+
+| Node thay đổi | Node downstream cần refresh |
+| --- | --- |
+| `needs_context` | `objective`, `assessment`, `activity`, `material`, `constraint`, `evaluation` |
+| `objective` | `assessment`, `activity`, `material`, `evaluation` |
+| `assessment` | `activity`, `material`, `evaluation` |
+| `activity` / `material` | peer development node, `assessment`, `constraint`, `evaluation` |
+| `constraint` | `objective`, `assessment`, `activity`, `material`, `evaluation` |
+| `evaluation` | `assessment` |
+
+Các node/edge bị ảnh hưởng được đánh dấu `stale`; stale edge không được tính là coverage hợp lệ và không được đưa vào alignment evidence cuối. `GraphAuditor` biến stale state thành task mới, rồi `HarnessPolicy` route task đó về specialist agent tương ứng. AlignmentGraph-ISD ghi rõ retry count, violation type, repaired fields và cascade count vào trajectory. Nhờ đó, evaluation không chỉ nhìn output cuối mà còn thấy quá trình hệ thống phát hiện, sửa lỗi và xử lý hiệu ứng downstream.
 
 ### 2.8 Prototype for IT/Software Engineering Case Study
 
