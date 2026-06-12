@@ -11,6 +11,7 @@ from .trajectory import TrajectoryLogger
 from .audit import GraphAuditor
 from .policy import HarnessPolicy
 from .memory import HarnessMemory
+from .schema import TaskRequest, as_payload
 from .rag.planner import RetrievalPlanner
 from .agents.needs_context import NeedsContextAgent
 from .agents.objective_design import ObjectiveDesignAgent
@@ -365,7 +366,8 @@ class MetaAgent:
     def __init__(self, config: HarnessRunConfig) -> None:
         self.config = config
 
-    def run(self, scenario: dict) -> dict:
+    def run(self, scenario: TaskRequest | dict) -> dict:
+        scenario = as_payload(scenario)
         memory = HarnessMemory(self.config)
         memory_session = memory.begin_session(scenario)
         graph = memory_session.graph

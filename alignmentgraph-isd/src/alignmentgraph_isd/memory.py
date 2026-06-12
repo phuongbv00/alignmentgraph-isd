@@ -48,12 +48,17 @@ class MemorySession:
 
     def augment_context_pack(self, context_pack: dict) -> dict:
         augmented = dict(context_pack or {})
-        augmented["memory_context"] = {
+        memory_context = {
             "working": self.working,
-            "semantic": self.semantic,
             "episodic": self.episodic,
             "procedural": self.procedural,
         }
+        # The semantic layer is global stable knowledge — i.e. the RAG role — so it
+        # must follow the use_rag ablation; otherwise the no_rag arm still receives
+        # pedagogical knowledge in-prompt and the ablation comparison is invalid.
+        if self.store.config.ablation.use_rag:
+            memory_context["semantic"] = self.semantic
+        augmented["memory_context"] = memory_context
         return augmented
 
     def commit(
@@ -434,10 +439,11 @@ def _scenario_id(scenario: dict) -> str:
 
 
 def _scenario_messages(scenario: dict) -> list[dict[str, Any]]:
-    for key in ("messages", "message_history"):
-        value = scenario.get(key)
-        if isinstance(value, list):
-            return [item for item in value if isinstance(item, dict)]
+    """Extract this turn's input as a single user message.
+
+    Conversation history is loaded from working memory, not re-sent by the
+    caller, so only the current-turn ``user_message`` is read here.
+    """
     user_message = scenario.get("user_message") or scenario.get("message")
     if isinstance(user_message, str) and user_message.strip():
         return [{"role": "user", "content": user_message.strip()}]
