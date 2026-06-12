@@ -10,6 +10,7 @@ from .graph import AlignmentGraph
 from .trajectory import TrajectoryLogger
 from .audit import GraphAuditor
 from .policy import HarnessPolicy
+from .memory import HarnessMemory
 from .rag.planner import RetrievalPlanner
 from .agents.needs_context import NeedsContextAgent
 from .agents.objective_design import ObjectiveDesignAgent
@@ -365,13 +366,16 @@ class MetaAgent:
         self.config = config
 
     def run(self, scenario: dict) -> dict:
-        graph = AlignmentGraph()
+        memory = HarnessMemory(self.config)
+        memory_session = memory.begin_session(scenario)
+        graph = memory_session.graph
         trajectory = TrajectoryLogger()
         planner = RetrievalPlanner(self.config)
         try:
             context_pack = planner.retrieve(scenario)
         except Exception:
             context_pack = {}
+        context_pack = memory_session.augment_context_pack(context_pack)
 
         compiled = _build_graph_for_run(self.config, graph, trajectory, context_pack)
 
@@ -395,12 +399,21 @@ class MetaAgent:
         final_state = compiled.invoke(initial_state, invoke_config)
 
         addie_output = final_state.get("addie_output") or _empty_addie()
+        trajectory_payload = trajectory.finalize()
+        memory_metadata = memory_session.commit(
+            scenario=scenario,
+            graph=graph,
+            trajectory=trajectory_payload,
+            final_state=final_state,
+            addie_output=addie_output,
+        )
         return {
             "addie_output": addie_output,
-            "trajectory": trajectory.finalize(),
+            "trajectory": trajectory_payload,
             "metadata": {
                 "ablation": self.config.ablation.model_dump(),
                 "llm": self.config.llm.model_dump(),
+                "memory": memory_metadata,
                 "scenario_id": scenario.get("scenario_id") or scenario.get("id", "unknown"),
                 "violations": final_state.get("violations", []),
                 "errors": final_state.get("errors", []),

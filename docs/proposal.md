@@ -16,7 +16,7 @@ Từ khoảng trống này, luận văn đề xuất **AlignmentGraph-ISD**, m�
 
 ### 1.2 Contributions
 
-Luận văn đề xuất một đóng góp chính: **AlignmentGraph-ISD**, một alignment-graph harness cho Instructional Systems Design agents. Harness này đặt model trong một execution framework chuyên cho ISD, gồm dynamic task graph, multi-agent orchestration, agentic RAG, schema-constrained generation, pedagogical verification, targeted repair và workflow trace. Thay vì chỉ sinh một artifact cuối, AlignmentGraph-ISD tổ chức quá trình thiết kế dạy học thành các artifact nodes và alignment edges có quan hệ rõ ràng, cho phép kiểm soát chất lượng, tái chạy phần lỗi và thu thập dữ liệu đánh giá quá trình.
+Luận văn đề xuất một đóng góp chính: **AlignmentGraph-ISD**, một alignment-graph harness cho Instructional Systems Design agents. Harness này đặt model trong một execution framework chuyên cho ISD, gồm dynamic task graph, multi-agent orchestration, four-layer memory, agentic RAG, schema-constrained generation, pedagogical verification, targeted repair và workflow trace. Thay vì chỉ sinh một artifact cuối, AlignmentGraph-ISD tổ chức quá trình thiết kế dạy học thành các artifact nodes và alignment edges có quan hệ rõ ràng, cho phép kiểm soát chất lượng, tái chạy phần lỗi và thu thập dữ liệu đánh giá quá trình.
 
 Đóng góp thứ hai là một **prototype sản phẩm** cho case study trong miền IT/Software Engineering. Prototype minh hoạ cách AlignmentGraph-ISD được dùng trong một workflow thực tế: nhận yêu cầu thiết kế hoặc cải tiến một module đào tạo, truy xuất tài liệu miền phần mềm, tạo ADDIE-compatible artifact, kiểm tra alignment giữa mục tiêu-hoạt động-đánh giá, sinh rubric/bài tập, ghi trajectory và xuất kết quả theo format có thể đưa vào pipeline đánh giá. Case study không nhằm chứng minh hiệu quả học tập dài hạn, mà nhằm cho thấy AlignmentGraph-ISD có thể trở thành một công cụ hỗ trợ instructional designer/giảng viên nội bộ trong bối cảnh đào tạo phần mềm.
 
@@ -44,7 +44,7 @@ Kiến trúc tổng thể gồm năm lớp:
 Scenario / Teacher Request
   -> Orchestrator
   -> Dynamic ISD Task Graph
-  -> Agentic RAG and Tool Layer
+  -> Four-layer Memory + Agentic RAG and Tool Layer
   -> Schema Validation + Pedagogical Verification + Targeted Repair
   -> ADDIE Output Aggregator + Trajectory + Prototype UI Artifact
 ```
@@ -199,7 +199,55 @@ Sau mỗi targeted repair, AlignmentGraph chạy cascade invalidation thay vì c
 
 Các node/edge bị ảnh hưởng được đánh dấu `stale`; stale edge không được tính là coverage hợp lệ và không được đưa vào alignment evidence cuối. `GraphAuditor` biến stale state thành task mới, rồi `HarnessPolicy` route task đó về specialist agent tương ứng. AlignmentGraph-ISD ghi rõ retry count, violation type, repaired fields và cascade count vào trajectory. Nhờ đó, evaluation không chỉ nhìn output cuối mà còn thấy quá trình hệ thống phát hiện, sửa lỗi và xử lý hiệu ứng downstream.
 
-### 2.8 Prototype for IT/Software Engineering Case Study
+### 2.8 Four-layer Memory and Session Lifecycle
+
+Trong app thực tế, `AlignmentGraph` không chỉ là working state tạm thời của một lần chạy. Nó là training-program-level living artifact: phiên đầu tạo graph, các phiên sau tuning graph đó bằng specialist patch và cascade invalidation. Harness tổ chức memory thành bốn layer:
+
+| Layer | Scope | Nội dung |
+| --- | --- | --- |
+| Working | active session | user intent hiện tại, `entrypoint_mode`, graph version đang mở, message history, audit state, pending tasks, verifier violations |
+| Semantic | global stable knowledge | ADDIE, Bloom, constructive alignment, rubric templates, domain corpus IT/SE |
+| Episodic | training program/session history | session events, accepted/rejected patches, repair/cascade history, metric summaries |
+| Procedural | versioned policy | agent protocols, repair owner map, verifier rules, `IMPACT_POLICY`, ablation policy |
+
+Vì vậy, benchmark run được xem như **pure new run**: nó mô phỏng lượt build graph đầu tiên nhưng chưa attach vào persisted training program:
+
+```text
+ISD-Agent-Bench scenario
+  -> pure_new_run
+  -> AlignmentGraph v1
+  -> self-check + specialist repair
+  -> ADDIE artifact + trajectory + memory metadata
+```
+
+Prototype app mở rộng cùng core đó thành nhiều phiên:
+
+```text
+Session 1: init AlignmentGraph v1
+Session 2..N: load vN, apply user tuning request, cascade stale downstream nodes, commit vN+1
+```
+
+Trong benchmark, adapter không truyền `training_program_id` hoặc `session_id`, nên mỗi run là `pure_new_run`: graph mới trong memory tạm, không load graph cũ và không persist session. Trong app, API runtime dùng `training_program_id` làm khóa bền vững của graph; `session_id` chỉ truyền khi muốn tiếp tục working memory/message history của một phiên cụ thể:
+
+```python
+# Benchmark/default.
+MemoryConfig()
+
+# App: new session on a training program graph.
+MemoryConfig(
+    training_program_id="java-oop-training-v1",
+)
+
+# App: resume an existing session.
+MemoryConfig(
+    training_program_id="java-oop-training-v1",
+    session_id="tuning-session-002",
+)
+```
+
+Harness tự load latest graph nếu `training_program_id` đã tồn tại, tự sinh `session_id` cho phiên mới, và tự gán `session_type=init` hoặc `session_type=tuning` theo graph version hiện có. Nếu có cả `training_program_id` và `session_id`, harness thêm `entrypoint_mode=resume_session` và load working memory của session. Nếu chạy `no_rag`, semantic/episodic memory context không được inject vào prompt để ablation vẫn đo đúng retrieval/context grounding.
+
+### 2.9 Prototype for IT/Software Engineering Case Study
 
 Prototype là một sản phẩm teacher-facing cho miền IT/Software Engineering. Giao diện tối thiểu gồm:
 
@@ -222,6 +270,8 @@ Evaluation của luận văn tập trung vào hai câu hỏi nghiên cứu: Alig
 ### 3.2 Quantitative Evaluation on ISD-Agent-Bench
 
 AlignmentGraph-ISD được tích hợp như một agent mới trong pipeline ISD-Agent-Bench. Nó nhận cùng scenario JSON với các agent khác và trả về cùng output schema.
+
+Trong diễn giải session lifecycle, mỗi benchmark run tương đương lượt build graph đầu tiên: scenario tạo `alignment_graph_v1`, chạy self-check/repair trước khi aggregate, rồi trả metadata. Benchmark không attach graph vào persisted training program và không đo toàn bộ quá trình tuning dài hạn; phần đó thuộc case study/prototype evaluation.
 
 ```bash
 alignmentgraph-isd run \

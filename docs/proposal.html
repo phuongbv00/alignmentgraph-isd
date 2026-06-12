@@ -504,7 +504,7 @@ const slides = [
         <div style="padding:6px 9px;border-top:1px solid #e2e8f0;border-left:1px solid #e2e8f0;color:#4f46e5;line-height:1.4">Multi-agent theo <span class="kw">role ISD</span>, <span class="kw">context pack theo pha</span>, verifier/repair, <span class="kw">trace thống nhất</span></div>
 
         <div style="padding:6px 9px;border-top:2px solid #6366f1;font-weight:800;color:#4f46e5;background:#eef2ff"><strong>AlignmentGraph-ISD</strong><br><span style="font-weight:400;color:#818cf8;font-size:0.65rem">(đề xuất)</span></div>
-        <div style="padding:6px 9px;border-top:2px solid #6366f1;border-left:1px solid #c7d2fe;color:#374151;line-height:1.4;background:#eef2ff">MetaAgent + <span class="kw">AlignmentGraph</span> (nodes/edges) + role agents + <span class="kw">agentic RAG</span> + schema/verifier/repair + trace</div>
+        <div style="padding:6px 9px;border-top:2px solid #6366f1;border-left:1px solid #c7d2fe;color:#374151;line-height:1.4;background:#eef2ff">MetaAgent + <span class="kw">AlignmentGraph</span> (nodes/edges) + role agents + <span class="kw">four-layer memory</span> + agentic RAG + schema/verifier/repair + trace</div>
         <div style="padding:6px 9px;border-top:2px solid #6366f1;border-left:1px solid #c7d2fe;color:#374151;line-height:1.4;background:#eef2ff">Kiểm soát workflow, <span class="kw">sửa lỗi có mục tiêu</span>, đánh giá cả <span class="kw">output &amp; process</span></div>
         <div style="padding:6px 9px;border-top:2px solid #6366f1;border-left:1px solid #c7d2fe;color:#374151;line-height:1.4;background:#eef2ff">Latency/token cao hơn; cần thiết kế <span class="kw">policy và corpus</span> cẩn thận</div>
         <div style="padding:6px 9px;border-top:2px solid #6366f1;border-left:1px solid #c7d2fe;color:#4f46e5;line-height:1.4;background:#eef2ff"><span class="kw">ADDIE = output contract</span>; execution state bên trong là <span class="kw">AlignmentGraph</span></div>
@@ -621,7 +621,7 @@ const slides = [
       </div>
       <div class="pill ind" style="flex-direction:column; gap:8px; border-radius:12px; padding:18px 20px">
         <div style="font-size:0.8rem;font-weight:800;color:#4f46e5;letter-spacing:1px">RQ2 — Component Impact</div>
-        <div style="font-size:1rem;color:#1e293b;line-height:1.65">Các thành phần của <span class="kw">AlignmentGraph-ISD</span> — <span class="kw">dynamic task graph</span>, <span class="kw">multi-agent orchestration</span>, <span class="kw">agentic RAG</span>, <span class="kw">schema validation</span>, <span class="kw">pedagogical verifier</span> và <span class="kw">targeted repair</span> — ảnh hưởng như thế nào đến <span class="kw">trajectory quality</span>, <span class="kw">schema validity</span>, <span class="kw">failure rate</span>, latency và token/tool cost?</div>
+        <div style="font-size:1rem;color:#1e293b;line-height:1.65">Các thành phần của <span class="kw">AlignmentGraph-ISD</span> — <span class="kw">dynamic task graph</span>, <span class="kw">multi-agent orchestration</span>, <span class="kw">four-layer memory</span>, <span class="kw">agentic RAG</span>, <span class="kw">schema validation</span>, <span class="kw">pedagogical verifier</span> và <span class="kw">targeted repair</span> — ảnh hưởng như thế nào đến <span class="kw">trajectory quality</span>, <span class="kw">schema validity</span>, <span class="kw">failure rate</span>, latency và token/tool cost?</div>
       </div>
     </div>
   `},
@@ -641,7 +641,7 @@ const slides = [
           <div class="card amber"><div class="card-label">Evaluator</div><div class="card-text">LLM-as-judge: <span class="kw">ADDIE rubric</span> + <span class="kw">trajectory scoring</span></div></div>
         </div>
         <div class="pill-list">
-          <div class="pill ind"><div class="pill-dot"></div><div>Harness nhận cùng <span class="kw">scenario JSON</span>, trả về cùng <span class="kw">output schema</span> — không sửa benchmark pipeline.</div></div>
+          <div class="pill ind"><div class="pill-dot"></div><div>Harness nhận cùng <span class="kw">scenario JSON</span>, trả về cùng <span class="kw">output schema</span> — không sửa benchmark pipeline; benchmark không truyền memory id nên chạy <span class="kw">pure_new_run</span>. Trong app, nhiều phiên dùng lại <code>training_program_id</code>; <code>session_id</code> chỉ truyền khi resume working memory của phiên cũ.</div></div>
           <div class="pill teal"><div class="pill-dot"></div><div><span class="kw">total_score</span> · <span class="kw">addie_score</span> · <span class="kw">trajectory_score</span> · <span class="kw">schema_validity</span> · <span class="kw">alignment_score</span> · <span class="kw">repair_success_rate</span> · latency · token_usage</div></div>
         </div>
         <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:8px 14px;font-family:'Cascadia Code','Fira Code',monospace;font-size:0.75rem;color:#475569">
@@ -695,7 +695,7 @@ const slides = [
       <div class="pill-list">
         <div class="pill ind"><div class="pill-dot"></div><div>
           <strong>AlignmentGraph-ISD</strong> — alignment-graph harness cho ISD agents, gồm:<br>
-          <span class="kw">AlignmentGraph</span> (nodes/edges) · <span class="kw">Multi-agent orchestration</span> · <span class="kw">Agentic RAG</span> · <span class="kw">Schema-constrained generation</span> · <span class="kw">Pedagogical verifier</span> · <span class="kw">Targeted repair</span> · <span class="kw">Workflow trace</span><br>
+          <span class="kw">AlignmentGraph</span> (nodes/edges) · <span class="kw">Multi-agent orchestration</span> · <span class="kw">Four-layer memory</span> · <span class="kw">Agentic RAG</span> · <span class="kw">Schema-constrained generation</span> · <span class="kw">Pedagogical verifier</span> · <span class="kw">Targeted repair</span> · <span class="kw">Workflow trace</span><br>
           Dùng ADDIE như <span class="kw">output contract</span>; execution state bên trong là <span class="kw">AlignmentGraph</span> với artifact nodes và alignment edges.
         </div></div>
         <div class="pill teal"><div class="pill-dot"></div><div>

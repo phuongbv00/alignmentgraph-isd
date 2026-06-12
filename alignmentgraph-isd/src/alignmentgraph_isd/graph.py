@@ -177,3 +177,42 @@ class AlignmentGraph:
 
     def to_dict(self) -> dict:
         return {"nodes": list(self._nodes.values()), "edges": list(self._edges)}
+
+    @classmethod
+    def from_dict(cls, payload: dict) -> "AlignmentGraph":
+        graph = cls()
+        for node in payload.get("nodes", []):
+            if not isinstance(node, dict):
+                continue
+            node_id = node.get("id")
+            node_type = node.get("type")
+            if not node_id or not node_type:
+                continue
+            # Preserve any unknown fields, then normalise the known ones so callers
+            # can rely on their presence/type.
+            restored = dict(node)
+            restored.update({
+                "type": node_type,
+                "id": node_id,
+                "data": node.get("data", {}),
+                "verified": bool(node.get("verified", False)),
+                "repair_history": list(node.get("repair_history", [])),
+                "stale": bool(node.get("stale", False)),
+                "stale_reasons": list(node.get("stale_reasons", [])),
+            })
+            graph._nodes[node_id] = restored
+        for edge in payload.get("edges", []):
+            if isinstance(edge, dict):
+                restored_edge = dict(edge)
+                restored_edge.update({
+                    "type": edge.get("type", ""),
+                    "source": edge.get("source", ""),
+                    "target": edge.get("target", ""),
+                    "evidence": edge.get("evidence", ""),
+                    "rationale": edge.get("rationale", ""),
+                    "verified": bool(edge.get("verified", False)),
+                    "stale": bool(edge.get("stale", False)),
+                    "stale_reasons": list(edge.get("stale_reasons", [])),
+                })
+                graph._edges.append(restored_edge)
+        return graph

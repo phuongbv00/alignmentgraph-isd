@@ -32,16 +32,33 @@ class LLMConfig(BaseModel):
     max_tokens: int = 4096
 
 
+class MemoryConfig(BaseModel):
+    enabled: bool = True
+    persist: bool | None = None
+    root_dir: str = "alignmentgraph-isd/memory"
+    training_program_id: str = ""
+    session_id: str = ""
+    max_episodic_events: int = 5
+
+
 class HarnessRunConfig(BaseModel):
     ablation: AblationConfig = AblationConfig()
     llm: LLMConfig = LLMConfig()
+    memory: MemoryConfig = MemoryConfig()
     bench_llm_config: Any = None  # holds the raw shared.llm.LLMConfig passed in from benchmark
 
     model_config = {"arbitrary_types_allowed": True}
 
     @classmethod
-    def from_ablation(cls, key: str = "full", **llm_kwargs) -> "HarnessRunConfig":
+    def from_ablation(
+        cls,
+        key: str = "full",
+        memory: MemoryConfig | dict | None = None,
+        **llm_kwargs,
+    ) -> "HarnessRunConfig":
+        memory_config = memory if isinstance(memory, MemoryConfig) else MemoryConfig(**(memory or {}))
         return cls(
             ablation=AblationConfig.from_key(key),
             llm=LLMConfig(**llm_kwargs) if llm_kwargs else LLMConfig(),
+            memory=memory_config,
         )

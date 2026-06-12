@@ -22,6 +22,7 @@ master-thesis/
         ├── __init__.py
         ├── orchestrator.py            # MetaAgent, dynamic task graph
         ├── graph.py                   # AlignmentGraph: G_t = (V_t, E_t)
+        ├── memory.py                  # Semantic/Episodic/Procedural/Working memory
         ├── agents/                    # các role agent
         │   ├── needs_context.py       # → need/context nodes and edges
         │   ├── objective_design.py    # → objective nodes and prerequisite edges
@@ -30,7 +31,7 @@ master-thesis/
         │   ├── implementation_constraint.py  # → constraint nodes and `constrained_by` edges
         │   ├── evaluation_revision.py # → evaluation nodes and `evaluated_by` edges
         │   ├── pedagogical_verifier.py
-        │   ├── repair.py              # sửa node/edge vi phạm
+        │   ├── *_design.py::repair    # specialist repair methods trong owner agents
         │   └── addie_aggregator.py    # serialize AlignmentGraph → addie_output
         ├── rag/                       # agentic RAG layer
         │   ├── planner.py             # RetrievalPlanner
@@ -196,6 +197,7 @@ Mỗi variant tạo run directory riêng theo naming convention `test_benchmark_
 - **Ablation bypass, không xoá.** Khi một flag bị tắt, component tương ứng bị skip; code path vẫn tồn tại để bật lại mà không cần viết lại.
 - **AlignmentGraph là nguồn sự thật duy nhất.** Mọi agent đọc và ghi vào `G_t`; không truyền fragments rời giữa agents. `ADDIEOutputAggregator` serialize `G_t` cuối, không gộp từng agent output riêng lẻ.
 - **Cascade invalidation là policy tường minh.** Khi một owner agent sửa node, `AlignmentGraph.IMPACT_POLICY` đánh dấu stale các node/edge downstream bị ảnh hưởng; policy router sẽ rerun specialist agent tương ứng. Stale edge không được tính là coverage hợp lệ và không được đưa vào alignment evidence cuối.
+- **Benchmark là pure new run.** Mỗi benchmark run tạo `alignment_graph_v1` trong memory tạm, không truyền `training_program_id/session_id`; app thực tế mới mở nhiều tuning sessions trên cùng training program graph.
 - **Trajectory ghi ở mọi mode.** Ngay cả `single_agent` và `no_rag` vẫn log đủ `agent_steps`, `node_edits`, `edge_edits`, `llm_calls`, `token_usage`, `latency_ms` để so sánh chi phí.
 - **Run manifest bắt buộc.** Mỗi run ghi `manifest.json` gồm `model`, `ablation_key`, `prompt_version`, `commit_hash`, `temperature`, `max_tokens`, `sample_list`, `seed`. Không so sánh hai run có manifest khác nhau trừ khi đó là biến ablation có chủ đích.
 
@@ -220,3 +222,96 @@ Luồng xử lý:
 3. `GraphAuditor` xem stale node như graph gap và bỏ qua stale edge khi tính `measures/supports/evaluates`.
 4. `HarnessPolicy` route task refresh về agent chuyên môn kế tiếp.
 5. `ADDIEOutputAggregator` chỉ dùng fresh edge làm alignment evidence cuối.
+
+## 8. Four-layer Memory and Session Lifecycle
+
+Harness quản lý memory theo bốn layer:
+
+| Layer | Scope | Nội dung trong implementation |
+| --- | --- | --- |
+| Working | active session | `training_program_id`, `session_id`, `entrypoint_mode`, derived `session_type`, graph version đang mở, message history, audit/pending state trong LangGraph |
+| Semantic | global stable knowledge | ADDIE contract, Bloom verbs, constructive alignment checklist, rubric/template knowledge; được inject vào context pack khi `use_rag=True` |
+| Episodic | training program/session history | `session_events.jsonl`, repair cases, graph summaries, accepted training program graph versions |
+| Procedural | versioned harness policy | ablation config, repair owner map, `AlignmentGraph.IMPACT_POLICY`, benchmark/app session policy |
+
+`AlignmentGraph` là training-program-level living artifact. Entrypoint memory được quyết định bởi hai id:
+
+| Entrypoint input | Mode | Hành vi |
+| --- | --- | --- |
+| không có `training_program_id`, không có `session_id` | `pure_new_run` | benchmark/default; tạo graph mới trong memory tạm, không load hoặc persist graph/session |
+| có `training_program_id`, không có `session_id` | `new_session` | app mở phiên mới trên latest graph của training program; harness tự sinh `session_id` |
+| có `training_program_id` và `session_id` | `resume_session` | app tiếp tục phiên cũ; load latest graph và `sessions/{session_id}/working_memory.json` |
+
+Trong benchmark, adapter không truyền cả hai id nên luôn chạy `pure_new_run`, tránh train/test leakage và giữ protocol sạch. Trong app, chỉ cần dùng cùng một `training_program_id` cho cùng một training program graph; `session_id` chỉ truyền khi muốn resume working memory/message history của phiên đó.
+
+```python
+# Benchmark/default: no memory ids.
+HarnessRunConfig.from_ablation("full")
+
+# App: start a new session on an existing/new training program graph.
+HarnessRunConfig.from_ablation(
+    "full",
+    memory={
+        "training_program_id": "java-oop-training-v1",
+    },
+)
+
+# App: resume an existing session and its working memory.
+HarnessRunConfig.from_ablation(
+    "full",
+    memory={
+        "training_program_id": "java-oop-training-v1",
+        "session_id": "tuning-session-002",
+    },
+)
+```
+
+Nếu caller truyền `session_id` mà không truyền `training_program_id`, harness fail fast vì session không có training program graph để attach. `persist` là override nâng cao: mặc định `None`, nghĩa là tự bật persistence khi có `training_program_id` và tự tắt khi không có id nào. Không cần truyền riêng `project_id`, `session_type`, `execution_context`, hay `load_latest_graph`.
+
+Memory store được lưu theo safe version của `training_program_id`:
+
+```text
+memory/
+  semantic/semantic_index.json
+  procedural/harness_policy.json
+  programs/{safe_training_program_id}/
+    program.json
+    graph_versions/alignment_graph_v0001.json
+    graph_versions/alignment_graph_v0002.json
+    episodic/session_events.jsonl
+    episodic/repair_cases.jsonl
+    sessions/{safe_session_id}/working_memory.json
+```
+
+Session lifecycle:
+
+```text
+Benchmark run
+  -> no training_program_id, no session_id
+  -> pure_new_run
+  -> build AlignmentGraph v1
+  -> self-check + specialist repair
+  -> aggregate ADDIE output
+  -> return metadata.memory without loading/persisting graph memory
+
+App new tuning session
+  -> use same training_program_id
+  -> omit session_id
+  -> load latest AlignmentGraph vN
+  -> harness creates a new session_id
+  -> interpret user tuning request
+  -> specialist patch + cascade invalidation
+  -> refresh stale downstream nodes
+  -> commit AlignmentGraph vN+1
+
+App resume tuning session
+  -> use same training_program_id and session_id
+  -> load latest AlignmentGraph vN
+  -> load working_memory.json message history
+  -> interpret user tuning request
+  -> specialist patch + cascade invalidation
+  -> refresh stale downstream nodes
+  -> commit AlignmentGraph vN+1
+```
+
+Khi `HARNESS_ABLATION=no_rag`, memory context không được inject vào prompt; memory metadata vẫn được ghi để trace session nhưng không tạo lợi thế retrieval/context grounding.
