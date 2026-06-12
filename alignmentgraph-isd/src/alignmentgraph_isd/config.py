@@ -16,7 +16,7 @@ class AblationConfig(BaseModel):
         "no_verifier": dict(use_rag=True, use_verifier=False, use_repair=True, multi_agent=True, dynamic_graph=True),
         "no_repair": dict(use_rag=True, use_verifier=True, use_repair=False, multi_agent=True, dynamic_graph=True),
         "single_agent": dict(use_rag=True, use_verifier=True, use_repair=True, multi_agent=False, dynamic_graph=True),
-        "linear_addie_only": dict(use_rag=False, use_verifier=False, use_repair=False, multi_agent=False, dynamic_graph=False),
+        "linear_addie_only": dict(use_rag=False, use_verifier=False, use_repair=False, multi_agent=True, dynamic_graph=False),
     }
 
     @classmethod

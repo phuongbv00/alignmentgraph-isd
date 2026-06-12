@@ -12,6 +12,7 @@ class TrajectoryLogger:
         self.tool_calls: list[dict] = []
         self.reasoning_steps: list[str] = []
         self.agent_interactions: list[dict] = []
+        self.policy_decisions: list[dict] = []
         self.llm_calls: int = 0
         self.token_usage: dict = {"prompt_tokens": 0, "completion_tokens": 0}
         self.latency_ms: float = 0.0
@@ -90,6 +91,15 @@ class TrajectoryLogger:
         self.token_usage["prompt_tokens"] += prompt_tokens
         self.token_usage["completion_tokens"] += completion_tokens
 
+    def log_policy_decision(self, decision: dict) -> None:
+        self.policy_decisions.append(decision)
+        self.log_step(
+            "HarnessPolicy",
+            "route",
+            decision.get("reason", ""),
+            decision.get("next_task", ""),
+        )
+
     def finalize(self) -> dict:
         self.latency_ms = (time.time() - self._start) * 1000
         return self.to_dict()
@@ -102,6 +112,7 @@ class TrajectoryLogger:
             "agent_steps": self.agent_steps,
             "node_edits": self.node_edits,
             "edge_edits": self.edge_edits,
+            "policy_decisions": self.policy_decisions,
             "llm_calls": self.llm_calls,
             "token_usage": self.token_usage,
             "latency_ms": self.latency_ms,

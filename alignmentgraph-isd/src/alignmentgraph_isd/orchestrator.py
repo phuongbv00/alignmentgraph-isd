@@ -8,6 +8,8 @@ import operator
 from .config import HarnessRunConfig
 from .graph import AlignmentGraph
 from .trajectory import TrajectoryLogger
+from .audit import GraphAuditor
+from .policy import HarnessPolicy
 from .rag.planner import RetrievalPlanner
 from .agents.needs_context import NeedsContextAgent
 from .agents.objective_design import ObjectiveDesignAgent
@@ -32,6 +34,13 @@ class ISDState(TypedDict):
     violations: list[dict]          # serialized VerifierViolation dicts
     addie_output: dict
     errors: Annotated[list[str], operator.add]
+    audit: dict
+    pending_tasks: list[dict]
+    next_task: str
+    task_attempts: dict[str, int]
+    policy_decisions: Annotated[list[dict], operator.add]
+    needs_verification: bool
+    repair_rounds: int
 
 
 # ── Graph builder (called once per run, captures per-run objects as closures) ──
@@ -53,80 +62,147 @@ def _build_graph_for_run(
     def _args():
         return config, graph, trajectory
 
+    policy = HarnessPolicy.from_config(config)
+
+    def _bump_attempt(state: ISDState, task_name: str) -> dict[str, int]:
+        attempts = dict(state.get("task_attempts", {}) or {})
+        attempts[task_name] = attempts.get(task_name, 0) + 1
+        return attempts
+
+    def _generation_done(state: ISDState, task_name: str) -> dict:
+        return {
+            "task_attempts": _bump_attempt(state, task_name),
+            "needs_verification": True,
+        }
+
     # ── Node functions ─────────────────────────────────────────────────────────
+
+    def _audit_node(state: ISDState) -> dict:
+        audit = GraphAuditor(graph).audit(state.get("violations", []))
+        return {"audit": audit.to_dict()}
+
+    def _policy_node(state: ISDState) -> dict:
+        audit = GraphAuditor(graph).audit(state.get("violations", []))
+        decision = policy.decide(audit, state, config)
+        decision_dict = decision.to_dict()
+        decision_dict["audit_summary"] = audit.summary
+        trajectory.log_policy_decision(decision_dict)
+        return {
+            "audit": audit.to_dict(),
+            "next_task": decision.next_task,
+            "pending_tasks": [task.to_dict() for task in decision.pending_tasks],
+            "policy_decisions": [decision_dict],
+        }
 
     def _needs_context_node(state: ISDState) -> dict:
         try:
             NeedsContextAgent(*_args()).run(state["scenario"], context_pack)
         except Exception as exc:
-            return {"errors": [f"NeedsContextAgent: {exc}"]}
-        return {}
+            return {
+                "errors": [f"NeedsContextAgent: {exc}"],
+                "task_attempts": _bump_attempt(state, "needs_context"),
+            }
+        return _generation_done(state, "needs_context")
 
     def _objective_design_node(state: ISDState) -> dict:
         try:
             ObjectiveDesignAgent(*_args()).run(state["scenario"], context_pack)
         except Exception as exc:
-            return {"errors": [f"ObjectiveDesignAgent: {exc}"]}
-        return {}
+            return {
+                "errors": [f"ObjectiveDesignAgent: {exc}"],
+                "task_attempts": _bump_attempt(state, "objective_design"),
+            }
+        return _generation_done(state, "objective_design")
 
     def _assessment_design_node(state: ISDState) -> dict:
         try:
             AssessmentDesignAgent(*_args()).run(state["scenario"], context_pack)
         except Exception as exc:
-            return {"errors": [f"AssessmentDesignAgent: {exc}"]}
-        return {}
+            return {
+                "errors": [f"AssessmentDesignAgent: {exc}"],
+                "task_attempts": _bump_attempt(state, "assessment_design"),
+            }
+        return _generation_done(state, "assessment_design")
 
     def _activity_material_node(state: ISDState) -> dict:
         try:
             ActivityMaterialAgent(*_args()).run(state["scenario"], context_pack)
         except Exception as exc:
-            return {"errors": [f"ActivityMaterialAgent: {exc}"]}
-        return {}
+            return {
+                "errors": [f"ActivityMaterialAgent: {exc}"],
+                "task_attempts": _bump_attempt(state, "activity_material"),
+            }
+        return _generation_done(state, "activity_material")
 
     def _implementation_constraint_node(state: ISDState) -> dict:
         try:
             ImplementationConstraintAgent(*_args()).run(state["scenario"], context_pack)
         except Exception as exc:
-            return {"errors": [f"ImplementationConstraintAgent: {exc}"]}
-        return {}
+            return {
+                "errors": [f"ImplementationConstraintAgent: {exc}"],
+                "task_attempts": _bump_attempt(state, "implementation_constraint"),
+            }
+        return _generation_done(state, "implementation_constraint")
 
     def _evaluation_revision_node(state: ISDState) -> dict:
         try:
             EvaluationRevisionAgent(*_args()).run(state["scenario"], context_pack)
         except Exception as exc:
-            return {"errors": [f"EvaluationRevisionAgent: {exc}"]}
-        return {}
+            return {
+                "errors": [f"EvaluationRevisionAgent: {exc}"],
+                "task_attempts": _bump_attempt(state, "evaluation_revision"),
+            }
+        return _generation_done(state, "evaluation_revision")
 
     def _single_agent_node(state: ISDState) -> dict:
         try:
             SingleAgent(*_args()).run(state["scenario"], context_pack)
         except Exception as exc:
-            return {"errors": [f"SingleAgent: {exc}"]}
-        return {}
+            return {
+                "errors": [f"SingleAgent: {exc}"],
+                "task_attempts": _bump_attempt(state, "single_agent"),
+            }
+        return _generation_done(state, "single_agent")
 
     def _verifier_node(state: ISDState) -> dict:
         if not config.ablation.use_verifier:
-            return {"violations": []}
+            return {
+                "violations": [],
+                "needs_verification": False,
+                "task_attempts": _bump_attempt(state, "verifier"),
+            }
         try:
             violations = PedagogicalVerifierAgent(*_args()).verify()
-            return {"violations": [
-                {
-                    "node_id": v.node_id,
-                    "edge_type": v.edge_type,
-                    "type": v.violation_type,
-                    "msg": v.message,
-                    "severity": v.severity,
-                    "repair_hint": v.repair_hint,
-                    "metadata": v.metadata,
-                }
-                for v in violations
-            ]}
+            return {
+                "violations": [
+                    {
+                        "node_id": v.node_id,
+                        "edge_type": v.edge_type,
+                        "type": v.violation_type,
+                        "msg": v.message,
+                        "severity": v.severity,
+                        "repair_hint": v.repair_hint,
+                        "metadata": v.metadata,
+                    }
+                    for v in violations
+                ],
+                "needs_verification": False,
+                "task_attempts": _bump_attempt(state, "verifier"),
+            }
         except Exception as exc:
-            return {"violations": [], "errors": [f"PedagogicalVerifier: {exc}"]}
+            return {
+                "violations": [],
+                "needs_verification": False,
+                "task_attempts": _bump_attempt(state, "verifier"),
+                "errors": [f"PedagogicalVerifier: {exc}"],
+            }
 
     def _repair_node(state: ISDState) -> dict:
         if not config.ablation.use_repair:
-            return {}
+            return {
+                "task_attempts": _bump_attempt(state, "repair"),
+                "needs_verification": False,
+            }
         try:
             from .agents.pedagogical_verifier import VerifierViolation
             violations = [
@@ -143,8 +219,17 @@ def _build_graph_for_run(
             ]
             RepairAgent(*_args()).repair(violations)
         except Exception as exc:
-            return {"errors": [f"RepairAgent: {exc}"]}
-        return {}
+            return {
+                "errors": [f"RepairAgent: {exc}"],
+                "task_attempts": _bump_attempt(state, "repair"),
+                "repair_rounds": int(state.get("repair_rounds", 0) or 0) + 1,
+            }
+        return {
+            "violations": [],
+            "task_attempts": _bump_attempt(state, "repair"),
+            "repair_rounds": int(state.get("repair_rounds", 0) or 0) + 1,
+            "needs_verification": True,
+        }
 
     def _aggregate_node(state: ISDState) -> dict:
         try:
@@ -169,6 +254,8 @@ def _build_graph_for_run(
     wf = StateGraph(ISDState)
 
     wf.add_node("router", lambda _: {})
+    wf.add_node("audit", _audit_node)
+    wf.add_node("policy", _policy_node)
     wf.add_node("needs_context", _needs_context_node)
     wf.add_node("objective_design", _objective_design_node)
     wf.add_node("assessment_design", _assessment_design_node)
@@ -179,6 +266,41 @@ def _build_graph_for_run(
     wf.add_node("verifier", _verifier_node)
     wf.add_node("repair", _repair_node)
     wf.add_node("aggregate", _aggregate_node)
+
+    if config.ablation.dynamic_graph:
+        wf.add_edge(START, "audit")
+        wf.add_edge("audit", "policy")
+        wf.add_conditional_edges(
+            "policy",
+            lambda state: state.get("next_task", "aggregate"),
+            {
+                "needs_context": "needs_context",
+                "objective_design": "objective_design",
+                "assessment_design": "assessment_design",
+                "activity_material": "activity_material",
+                "implementation_constraint": "implementation_constraint",
+                "evaluation_revision": "evaluation_revision",
+                "single_agent": "single_agent",
+                "verifier": "verifier",
+                "repair": "repair",
+                "aggregate": "aggregate",
+            },
+        )
+        for node_name in (
+            "needs_context",
+            "objective_design",
+            "assessment_design",
+            "activity_material",
+            "implementation_constraint",
+            "evaluation_revision",
+            "single_agent",
+            "verifier",
+            "repair",
+        ):
+            wf.add_edge(node_name, "audit")
+        wf.add_edge("aggregate", END)
+        from langgraph.checkpoint.memory import MemorySaver
+        return wf.compile(checkpointer=MemorySaver())
 
     wf.add_edge(START, "router")
     wf.add_conditional_edges(
@@ -202,10 +324,6 @@ def _build_graph_for_run(
     )
     wf.add_edge("repair", "aggregate")
     wf.add_edge("aggregate", END)
-
-    if config.ablation.dynamic_graph:
-        from langgraph.checkpoint.memory import MemorySaver
-        return wf.compile(checkpointer=MemorySaver())
     return wf.compile()
 
 
@@ -231,13 +349,18 @@ class MetaAgent:
             "violations": [],
             "addie_output": {},
             "errors": [],
+            "audit": {},
+            "pending_tasks": [],
+            "next_task": "",
+            "task_attempts": {},
+            "policy_decisions": [],
+            "needs_verification": True,
+            "repair_rounds": 0,
         }
 
-        invoke_config = (
-            {"configurable": {"thread_id": str(uuid.uuid4())}}
-            if self.config.ablation.dynamic_graph
-            else {}
-        )
+        invoke_config = {"recursion_limit": 80}
+        if self.config.ablation.dynamic_graph:
+            invoke_config["configurable"] = {"thread_id": str(uuid.uuid4())}
         final_state = compiled.invoke(initial_state, invoke_config)
 
         addie_output = final_state.get("addie_output") or _empty_addie()
@@ -250,6 +373,11 @@ class MetaAgent:
                 "scenario_id": scenario.get("scenario_id") or scenario.get("id", "unknown"),
                 "violations": final_state.get("violations", []),
                 "errors": final_state.get("errors", []),
+                "audit": final_state.get("audit", {}),
+                "pending_tasks": final_state.get("pending_tasks", []),
+                "task_attempts": final_state.get("task_attempts", {}),
+                "policy_decisions": final_state.get("policy_decisions", []),
+                "repair_rounds": final_state.get("repair_rounds", 0),
             },
         }
 
