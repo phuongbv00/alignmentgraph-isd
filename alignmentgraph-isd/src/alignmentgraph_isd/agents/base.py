@@ -37,7 +37,40 @@ def _fix_json_control_chars(s: str) -> str:
     return "".join(result)
 
 
-def parse_json_response(raw: str) -> dict:
+def _close_unbalanced_json(s: str) -> str:
+    """Append missing closing JSON delimiters when a response stops too early."""
+    stack: list[str] = []
+    in_string = False
+    escape_next = False
+
+    for ch in s:
+        if escape_next:
+            escape_next = False
+            continue
+        if in_string and ch == "\\":
+            escape_next = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            stack.append("}")
+        elif ch == "[":
+            stack.append("]")
+        elif ch in "}]":
+            if stack and stack[-1] == ch:
+                stack.pop()
+            else:
+                return s
+
+    if in_string or not stack:
+        return s
+    return s + "".join(reversed(stack))
+
+
+def parse_json_response(raw: str, *, warn: bool = True) -> dict:
     """Robustly parse a JSON dict from an LLM response.
 
     Handles: markdown fences, leading/trailing prose, literal control
@@ -89,6 +122,18 @@ def parse_json_response(raw: str) -> dict:
                 return result
         except json.JSONDecodeError as e:
             last_err = e
+
+        # Try 5: append missing closing braces/brackets for truncated JSON.
+        try:
+            balanced = _close_unbalanced_json(no_trailing)
+            result = json.loads(_fix_json_control_chars(balanced))
+            if isinstance(result, dict):
+                return result
+        except json.JSONDecodeError as e:
+            last_err = e
+
+    if not warn:
+        return {}
 
     import warnings
     err_ctx = ""
@@ -225,7 +270,7 @@ class BaseISDAgent(ABC):
             getattr(usage, "input_tokens", 0) if usage else 0,
             getattr(usage, "output_tokens", 0) if usage else 0,
         )
-        if max_retries > 0 and not parse_json_response(content):
+        if max_retries > 0 and not parse_json_response(content, warn=False):
             # Output was not valid JSON — send a correction turn
             self.trajectory.log_step(type(self).__name__, "retry", "empty/invalid JSON", content[:100])
             correction_messages = messages + [
