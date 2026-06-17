@@ -1,7 +1,7 @@
 from __future__ import annotations
-from ..schema import TaskRequest
+from ..schema import DesignBrief
 import re
-from .base import BaseISDAgent, _format_task, parse_json_response
+from .base import BaseISDAgent, _format_design_brief, parse_json_response
 
 _BLOOM_VERB_BY_LEVEL = {
     "Remember": "Recall",
@@ -89,8 +89,8 @@ Output ONLY the JSON object, no markdown, no explanation.\
 
 
 class ObjectiveDesignAgent(BaseISDAgent):
-    def run(self, task: TaskRequest, context_pack: dict) -> None:
-        prompt = _format_task(task)
+    def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
+        prompt = _format_design_brief(design_brief)
         # Graph-subgraph RAG: inject prior G_t nodes into this agent's prompt
         prior_ctx = self._graph_context(['needs_context'])
         user_content = prompt

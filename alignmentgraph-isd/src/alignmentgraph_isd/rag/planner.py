@@ -1,32 +1,32 @@
 from __future__ import annotations
 from ..config import HarnessRunConfig
-from ..schema import TaskRequest
+from ..schema import DesignBrief
 
 
 class RetrievalPlanner:
     def __init__(self, config: HarnessRunConfig) -> None:
         self.config = config
 
-    def retrieve(self, task: TaskRequest) -> dict:
+    def retrieve(self, design_brief: DesignBrief) -> dict:
         """Return a compact context pack for downstream ADDIE agents.
 
-        This is deterministic local retrieval over the task itself plus the
+        This is deterministic local retrieval over the design brief itself plus the
         rubric focus. It gives the "full" ablation a real context object without
         adding external dependencies or network calls.
         """
         if not self.config.ablation.use_rag:
             return {}
 
-        context = task.context
-        constraints = task.constraints
+        context = design_brief.context
+        constraints = design_brief.constraints
         resources = constraints.resources if isinstance(constraints.resources, list) else [constraints.resources]
 
         return {
-            "task_focus": {
-                "title": task.title,
-                "domain": task.domain,
-                "difficulty": task.difficulty,
-                "duration": context.duration or task.duration,
+            "design_brief_focus": {
+                "title": design_brief.title,
+                "domain": design_brief.domain,
+                "difficulty": design_brief.difficulty,
+                "duration": context.duration or design_brief.duration,
                 "learning_environment": context.learning_environment,
                 "class_size": context.class_size,
                 "learner_profile": {
@@ -47,7 +47,7 @@ class RetrievalPlanner:
             },
             "alignment_requirements": [
                 f"Every objective must be measured by at least one assessment item: {goal}"
-                for goal in task.learning_goals
+                for goal in design_brief.learning_goals
             ],
             "rubric_focus": [
                 "Cover all 33 ADDIE sub-items explicitly.",

@@ -4,7 +4,7 @@ import re
 from abc import ABC, abstractmethod
 from ..config import HarnessRunConfig
 from ..graph import AlignmentGraph
-from ..schema import TaskRequest
+from ..schema import DesignBrief
 from ..trajectory import TrajectoryLogger
 
 
@@ -149,31 +149,31 @@ def parse_json_response(raw: str, *, warn: bool = True) -> dict:
     return {}
 
 
-def _format_task(task: TaskRequest) -> str:
-    """Serialize a TaskRequest into a clean string suitable as an LLM user message."""
+def _format_design_brief(design_brief: DesignBrief) -> str:
+    """Serialize a DesignBrief into a clean string suitable as an LLM user message."""
     lines: list[str] = []
-    if task.title:
-        lines.append(f"Title: {task.title}")
-    context = {k: v for k, v in task.context.model_dump().items() if v not in ("", None, [], {})}
+    if design_brief.title:
+        lines.append(f"Title: {design_brief.title}")
+    context = {k: v for k, v in design_brief.context.model_dump().items() if v not in ("", None, [], {})}
     if context:
         lines.append("Context:")
         for k, v in context.items():
             lines.append(f"  {k}: {v if not isinstance(v, (dict, list)) else json.dumps(v, ensure_ascii=False)}")
-    if task.learning_goals:
+    if design_brief.learning_goals:
         lines.append("Learning goals:")
-        for g in task.learning_goals:
+        for g in design_brief.learning_goals:
             lines.append(f"  - {g}")
-    constraints = {k: v for k, v in task.constraints.model_dump().items() if v not in ("", None, [], {})}
+    constraints = {k: v for k, v in design_brief.constraints.model_dump().items() if v not in ("", None, [], {})}
     if constraints:
         lines.append("Constraints:")
         for k, v in constraints.items():
             lines.append(f"  {k}: {v if not isinstance(v, (dict, list)) else json.dumps(v, ensure_ascii=False)}")
     for key in ("difficulty", "domain", "duration", "target_audience"):
-        val = getattr(task, key, "")
+        val = getattr(design_brief, key, "")
         if val:
             lines.append(f"{key.replace('_', ' ').title()}: {val}")
     if not lines:
-        lines.append(json.dumps(task.model_dump(), ensure_ascii=False))
+        lines.append(json.dumps(design_brief.model_dump(), ensure_ascii=False))
     return "\n".join(lines)
 
 
@@ -184,7 +184,7 @@ class BaseISDAgent(ABC):
         self.trajectory = trajectory
 
     @abstractmethod
-    def run(self, task: TaskRequest, context_pack: dict) -> None:
+    def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
         ...
 
     def _graph_context(self, node_types: list[str], max_chars: int = 600) -> str:

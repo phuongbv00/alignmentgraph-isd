@@ -10,7 +10,7 @@ from typing import Any
 
 from .config import HarnessRunConfig
 from .graph import AlignmentGraph
-from .schema import TaskRequest
+from .schema import DesignBrief
 
 
 REPAIR_OWNER_MAP = {
@@ -40,6 +40,8 @@ class MemorySession:
     persist: bool
     base_graph_version: int
     graph: AlignmentGraph
+    design_brief: dict[str, Any]
+    current_messages: list[dict[str, Any]]
     message_history: list[dict[str, Any]]
     working: dict[str, Any]
     semantic: dict[str, Any]
@@ -65,7 +67,7 @@ class MemorySession:
     def commit(
         self,
         *,
-        task: TaskRequest,
+        design_brief: DesignBrief,
         graph: AlignmentGraph,
         trajectory: dict,
         final_state: dict,
@@ -73,7 +75,7 @@ class MemorySession:
     ) -> dict:
         return self.store.commit_session(
             self,
-            task=task,
+            design_brief=design_brief,
             graph=graph,
             trajectory=trajectory,
             final_state=final_state,
@@ -89,7 +91,7 @@ class HarnessMemory:
         self.memory_config = config.memory
         self.root_dir = Path(self.memory_config.root_dir)
 
-    def begin_session(self, task: TaskRequest) -> MemorySession:
+    def begin_session(self, design_brief: DesignBrief) -> MemorySession:
         training_program_id = self._training_program_id()
         configured_session_id = self._session_id()
         if configured_session_id and not training_program_id:
@@ -105,14 +107,18 @@ class HarnessMemory:
 
         graph, base_graph_version = self._initial_graph(storage_id, persist)
         session_type = "tuning" if base_graph_version > 0 else "init"
+        design_brief_snapshot = _design_brief_snapshot(design_brief)
+        current_messages = _messages_from_design_brief(design_brief)
         message_history = self._working_message_history(
             storage_id,
             session_id,
             persist,
-            task,
+            current_messages,
         )
         working = self._working_layer(
-            task,
+            design_brief,
+            design_brief_snapshot,
+            current_messages,
             training_program_id,
             storage_id,
             session_id,
@@ -137,6 +143,8 @@ class HarnessMemory:
             persist=persist,
             base_graph_version=base_graph_version,
             graph=graph,
+            design_brief=design_brief_snapshot,
+            current_messages=current_messages,
             message_history=message_history,
             working=working,
             semantic=semantic,
@@ -149,7 +157,7 @@ class HarnessMemory:
         self,
         session: MemorySession,
         *,
-        task: TaskRequest,
+        design_brief: DesignBrief,
         graph: AlignmentGraph,
         trajectory: dict,
         final_state: dict,
@@ -165,13 +173,15 @@ class HarnessMemory:
             "entrypoint_mode": session.entrypoint_mode,
             "session_type": session.session_type,
             "execution_context": session.execution_context,
-            "task_id": task.id,
+            "design_brief_id": design_brief.id,
+            "design_brief": session.design_brief,
+            "current_messages": session.current_messages,
             "base_graph_version": session.base_graph_version,
             "committed_graph_version": committed_version,
             "graph_summary": _graph_summary(graph),
             "audit_summary": final_state.get("audit", {}).get("summary", ""),
             "violations": final_state.get("violations", []),
-            "policy_decisions": final_state.get("policy_decisions", []),
+            "planner_decisions": final_state.get("planner_decisions", []),
             "repair_rounds": final_state.get("repair_rounds", 0),
             "trajectory_summary": _trajectory_summary(trajectory),
         }
@@ -237,7 +247,9 @@ class HarnessMemory:
 
     def _working_layer(
         self,
-        task: TaskRequest,
+        design_brief: DesignBrief,
+        design_brief_snapshot: dict[str, Any],
+        current_messages: list[dict[str, Any]],
         training_program_id: str,
         storage_id: str,
         session_id: str,
@@ -256,9 +268,12 @@ class HarnessMemory:
             "session_type": session_type,
             "execution_context": execution_context,
             "persist": persist,
-            "task_id": task.id,
+            "design_brief_id": design_brief.id,
+            "design_brief": design_brief_snapshot,
+            "current_messages": current_messages,
             "base_graph_version": base_graph_version,
             "message_history": message_history,
+            "current_message_count": len(current_messages),
             "message_count": len(message_history),
             "current_graph_role": "working graph for this session; committed as training program graph after aggregate",
         }
@@ -359,7 +374,7 @@ class HarnessMemory:
         storage_id: str,
         session_id: str,
         persist: bool,
-        task: TaskRequest,
+        current_messages: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         history: list[dict[str, Any]] = []
         if persist and storage_id and session_id:
@@ -373,7 +388,7 @@ class HarnessMemory:
                 except Exception:
                     history = []
 
-        for message in task.messages():
+        for message in current_messages:
             if message not in history:
                 history.append(message)
         return history
@@ -418,10 +433,12 @@ class HarnessMemory:
             "session_id": session.session_id,
             "entrypoint_mode": session.entrypoint_mode,
             "session_type": session.session_type,
+            "design_brief": session.design_brief,
+            "current_messages": session.current_messages,
             "message_history": session.message_history,
             "base_graph_version": session.base_graph_version,
             "latest_graph_version": version,
-            "last_task_id": event["task_id"],
+            "last_design_brief_id": event["design_brief_id"],
             "updated_at": utc_now(),
         })
         _append_jsonl(episodic_dir / "session_events.jsonl", event)
@@ -443,6 +460,29 @@ def _parse_version(filename: str) -> int | None:
 def _safe_id(value: str) -> str:
     safe = re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-")
     return safe or "alignment-program"
+
+
+def _design_brief_snapshot(design_brief: DesignBrief) -> dict[str, Any]:
+    payload = design_brief.model_dump(exclude={"user_message", "message"})
+    return _drop_empty(payload)
+
+
+def _messages_from_design_brief(design_brief: DesignBrief) -> list[dict[str, str]]:
+    text = (design_brief.user_message or getattr(design_brief, "message", "") or "").strip()
+    return [{"role": "user", "content": text}] if text else []
+
+
+def _drop_empty(value: Any) -> Any:
+    if isinstance(value, dict):
+        cleaned = {
+            key: _drop_empty(item)
+            for key, item in value.items()
+            if item not in ("", None, [], {})
+        }
+        return {key: item for key, item in cleaned.items() if item not in ("", None, [], {})}
+    if isinstance(value, list):
+        return [_drop_empty(item) for item in value if item not in ("", None, [], {})]
+    return value
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -486,7 +526,7 @@ def _trajectory_summary(trajectory: dict) -> dict:
         "agent_steps": len(trajectory.get("agent_steps", [])),
         "node_edits": len(trajectory.get("node_edits", [])),
         "edge_edits": len(trajectory.get("edge_edits", [])),
-        "policy_decisions": len(trajectory.get("policy_decisions", [])),
+        "planner_decisions": len(trajectory.get("planner_decisions", [])),
         "llm_calls": trajectory.get("llm_calls", 0),
         "token_usage": trajectory.get("token_usage", {}),
         "latency_ms": trajectory.get("latency_ms", 0),
@@ -495,7 +535,7 @@ def _trajectory_summary(trajectory: dict) -> dict:
 
 def _repair_events(event: dict) -> list[dict]:
     repair_events: list[dict] = []
-    for decision in event.get("policy_decisions", []):
+    for decision in event.get("planner_decisions", []):
         selected = decision.get("selected_task") or {}
         task_type = selected.get("type", "")
         if task_type.endswith("_repair"):

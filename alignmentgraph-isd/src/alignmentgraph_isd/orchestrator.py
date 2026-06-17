@@ -9,9 +9,9 @@ from .config import HarnessRunConfig
 from .graph import AlignmentGraph
 from .trajectory import TrajectoryLogger
 from .audit import GraphAuditor
-from .policy import HarnessPolicy
+from .planner import ISDTaskPlanner
 from .memory import HarnessMemory
-from .schema import TaskRequest
+from .schema import DesignBrief
 from .rag.planner import RetrievalPlanner
 from .agents.needs_context import NeedsContextAgent
 from .agents.objective_design import ObjectiveDesignAgent
@@ -27,7 +27,7 @@ _SCHEMA_PATH = Path(__file__).parent / "schema" / "addie_output.json"
 
 # ── LangGraph state ────────────────────────────────────────────────────────────
 # Only plain JSON-serializable types live here so MemorySaver can checkpoint them.
-# Non-serializable objects (config, AlignmentGraph, TrajectoryLogger, the TaskRequest)
+# Non-serializable objects (config, AlignmentGraph, TrajectoryLogger, the DesignBrief)
 # are captured as closures at graph-build time and never placed in state.
 
 class ISDState(TypedDict):
@@ -38,7 +38,7 @@ class ISDState(TypedDict):
     pending_tasks: list[dict]
     next_task: str
     task_attempts: dict[str, int]
-    policy_decisions: Annotated[list[dict], operator.add]
+    planner_decisions: Annotated[list[dict], operator.add]
     needs_verification: bool
     repair_rounds: int
 
@@ -50,21 +50,21 @@ def _build_graph_for_run(
     graph: AlignmentGraph,
     trajectory: TrajectoryLogger,
     context_pack: dict,
-    task: TaskRequest,
+    design_brief: DesignBrief,
 ):
-    """Build and compile a fresh LangGraph StateGraph for one task run.
+    """Build and compile a fresh LangGraph StateGraph for one design brief run.
 
-    Non-serializable objects (config, graph, trajectory, task) are captured in
+    Non-serializable objects (config, graph, trajectory, design_brief) are captured in
     closures so they never touch the LangGraph state — allowing MemorySaver to
-    checkpoint the state without serialization errors. The task is constant for
-    the run, so it lives as a closure rather than in state.
+    checkpoint the state without serialization errors. The design brief is
+    constant for the run, so it lives as a closure rather than in state.
     """
     from langgraph.graph import StateGraph, START, END
 
     def _args():
         return config, graph, trajectory
 
-    policy = HarnessPolicy.from_config(config)
+    task_planner = ISDTaskPlanner.from_config(config)
 
     def _bump_attempt(state: ISDState, task_name: str) -> dict[str, int]:
         attempts = dict(state.get("task_attempts", {}) or {})
@@ -133,22 +133,22 @@ def _build_graph_for_run(
         audit = GraphAuditor(graph).audit(state.get("violations", []))
         return {"audit": audit.to_dict()}
 
-    def _policy_node(state: ISDState) -> dict:
+    def _task_planner_node(state: ISDState) -> dict:
         audit = GraphAuditor(graph).audit(state.get("violations", []))
-        decision = policy.decide(audit, state, config)
+        decision = task_planner.decide(audit, state, config)
         decision_dict = decision.to_dict()
         decision_dict["audit_summary"] = audit.summary
-        trajectory.log_policy_decision(decision_dict)
+        trajectory.log_planner_decision(decision_dict)
         return {
             "audit": audit.to_dict(),
             "next_task": decision.next_task,
-            "pending_tasks": [task.to_dict() for task in decision.pending_tasks],
-            "policy_decisions": [decision_dict],
+            "pending_tasks": [planned_task.to_dict() for planned_task in decision.pending_tasks],
+            "planner_decisions": [decision_dict],
         }
 
     def _needs_context_node(state: ISDState) -> dict:
         try:
-            NeedsContextAgent(*_args()).run(task, context_pack)
+            NeedsContextAgent(*_args()).run(design_brief, context_pack)
         except Exception as exc:
             return {
                 "errors": [f"NeedsContextAgent: {exc}"],
@@ -158,7 +158,7 @@ def _build_graph_for_run(
 
     def _objective_design_node(state: ISDState) -> dict:
         try:
-            ObjectiveDesignAgent(*_args()).run(task, context_pack)
+            ObjectiveDesignAgent(*_args()).run(design_brief, context_pack)
         except Exception as exc:
             return {
                 "errors": [f"ObjectiveDesignAgent: {exc}"],
@@ -168,7 +168,7 @@ def _build_graph_for_run(
 
     def _assessment_design_node(state: ISDState) -> dict:
         try:
-            AssessmentDesignAgent(*_args()).run(task, context_pack)
+            AssessmentDesignAgent(*_args()).run(design_brief, context_pack)
         except Exception as exc:
             return {
                 "errors": [f"AssessmentDesignAgent: {exc}"],
@@ -178,7 +178,7 @@ def _build_graph_for_run(
 
     def _activity_material_node(state: ISDState) -> dict:
         try:
-            ActivityMaterialAgent(*_args()).run(task, context_pack)
+            ActivityMaterialAgent(*_args()).run(design_brief, context_pack)
         except Exception as exc:
             return {
                 "errors": [f"ActivityMaterialAgent: {exc}"],
@@ -188,7 +188,7 @@ def _build_graph_for_run(
 
     def _implementation_constraint_node(state: ISDState) -> dict:
         try:
-            ImplementationConstraintAgent(*_args()).run(task, context_pack)
+            ImplementationConstraintAgent(*_args()).run(design_brief, context_pack)
         except Exception as exc:
             return {
                 "errors": [f"ImplementationConstraintAgent: {exc}"],
@@ -198,7 +198,7 @@ def _build_graph_for_run(
 
     def _evaluation_revision_node(state: ISDState) -> dict:
         try:
-            EvaluationRevisionAgent(*_args()).run(task, context_pack)
+            EvaluationRevisionAgent(*_args()).run(design_brief, context_pack)
         except Exception as exc:
             return {
                 "errors": [f"EvaluationRevisionAgent: {exc}"],
@@ -208,7 +208,7 @@ def _build_graph_for_run(
 
     def _single_agent_node(state: ISDState) -> dict:
         try:
-            SingleAgent(*_args()).run(task, context_pack)
+            SingleAgent(*_args()).run(design_brief, context_pack)
         except Exception as exc:
             return {
                 "errors": [f"SingleAgent: {exc}"],
@@ -283,7 +283,7 @@ def _build_graph_for_run(
 
     wf.add_node("router", lambda _: {})
     wf.add_node("audit", _audit_node)
-    wf.add_node("policy", _policy_node)
+    wf.add_node("task_planner", _task_planner_node)
     wf.add_node("needs_context", _needs_context_node)
     wf.add_node("objective_design", _objective_design_node)
     wf.add_node("assessment_design", _assessment_design_node)
@@ -301,9 +301,9 @@ def _build_graph_for_run(
 
     if config.ablation.dynamic_graph:
         wf.add_edge(START, "audit")
-        wf.add_edge("audit", "policy")
+        wf.add_edge("audit", "task_planner")
         wf.add_conditional_edges(
-            "policy",
+            "task_planner",
             lambda state: state.get("next_task", "aggregate"),
             {
                 "needs_context": "needs_context",
@@ -367,19 +367,19 @@ class MetaAgent:
     def __init__(self, config: HarnessRunConfig) -> None:
         self.config = config
 
-    def run(self, task: TaskRequest) -> dict:
+    def run(self, design_brief: DesignBrief) -> dict:
         memory = HarnessMemory(self.config)
-        memory_session = memory.begin_session(task)
+        memory_session = memory.begin_session(design_brief)
         graph = memory_session.graph
         trajectory = TrajectoryLogger()
         planner = RetrievalPlanner(self.config)
         try:
-            context_pack = planner.retrieve(task)
+            context_pack = planner.retrieve(design_brief)
         except Exception:
             context_pack = {}
         context_pack = memory_session.augment_context_pack(context_pack)
 
-        compiled = _build_graph_for_run(self.config, graph, trajectory, context_pack, task)
+        compiled = _build_graph_for_run(self.config, graph, trajectory, context_pack, design_brief)
 
         initial_state: ISDState = {
             "violations": [],
@@ -389,7 +389,7 @@ class MetaAgent:
             "pending_tasks": [],
             "next_task": "",
             "task_attempts": {},
-            "policy_decisions": [],
+            "planner_decisions": [],
             "needs_verification": True,
             "repair_rounds": 0,
         }
@@ -402,7 +402,7 @@ class MetaAgent:
         addie_output = final_state.get("addie_output") or _empty_addie()
         trajectory_payload = trajectory.finalize()
         memory_metadata = memory_session.commit(
-            task=task,
+            design_brief=design_brief,
             graph=graph,
             trajectory=trajectory_payload,
             final_state=final_state,
@@ -415,13 +415,13 @@ class MetaAgent:
                 "ablation": self.config.ablation.model_dump(),
                 "llm": self.config.llm.model_dump(),
                 "memory": memory_metadata,
-                "task_id": task.id,
+                "design_brief_id": design_brief.id,
                 "violations": final_state.get("violations", []),
                 "errors": final_state.get("errors", []),
                 "audit": final_state.get("audit", {}),
                 "pending_tasks": final_state.get("pending_tasks", []),
                 "task_attempts": final_state.get("task_attempts", {}),
-                "policy_decisions": final_state.get("policy_decisions", []),
+                "planner_decisions": final_state.get("planner_decisions", []),
                 "repair_rounds": final_state.get("repair_rounds", 0),
             },
         }

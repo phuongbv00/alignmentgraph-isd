@@ -73,7 +73,7 @@ class AlignmentGraph:
 
         This is the generic "oil spill" mechanism: any node that acts as a
         source of truth can force dependent nodes and their alignment edges to
-        be recomputed by the policy router.
+        be recomputed by the ISD task planner.
         """
         changed_node = self.get_node(changed_node_id)
         if not changed_node:

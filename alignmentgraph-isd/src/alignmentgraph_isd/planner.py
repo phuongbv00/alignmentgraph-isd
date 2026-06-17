@@ -8,7 +8,7 @@ from .config import HarnessRunConfig
 
 
 @dataclass
-class Task:
+class PlannedTask:
     id: str
     type: str
     target: str
@@ -28,11 +28,11 @@ class Task:
 
 
 @dataclass
-class PolicyDecision:
+class TaskPlanDecision:
     next_task: str
     reason: str
-    selected_task: Task | None = None
-    pending_tasks: list[Task] = field(default_factory=list)
+    selected_task: PlannedTask | None = None
+    pending_tasks: list[PlannedTask] = field(default_factory=list)
     should_stop: bool = False
 
     def to_dict(self) -> dict[str, Any]:
@@ -40,30 +40,37 @@ class PolicyDecision:
             "next_task": self.next_task,
             "reason": self.reason,
             "selected_task": self.selected_task.to_dict() if self.selected_task else None,
-            "pending_tasks": [task.to_dict() for task in self.pending_tasks],
+            "pending_tasks": [planned_task.to_dict() for planned_task in self.pending_tasks],
             "should_stop": self.should_stop,
         }
 
 
 @dataclass
-class HarnessPolicy:
+class ISDTaskPlanner:
+    """Audit-driven router that selects the next internal PlannedTask.
+
+    This component does not decompose a DesignBrief into a complete upfront
+    plan. It inspects the current graph audit, builds the currently relevant
+    candidate tasks, and routes execution to the highest-priority runnable one.
+    """
+
     min_objectives: int = 5
     max_task_attempts: int = 2
     max_verifier_attempts: int = 3
     max_repair_rounds: int = 4
-    max_policy_steps: int = 30
+    max_planner_steps: int = 30
 
     @classmethod
-    def from_config(cls, config: HarnessRunConfig) -> "HarnessPolicy":
+    def from_config(cls, config: HarnessRunConfig) -> "ISDTaskPlanner":
         return cls()
 
-    def decide(self, audit: GraphAuditResult, state: dict, config: HarnessRunConfig) -> PolicyDecision:
+    def decide(self, audit: GraphAuditResult, state: dict, config: HarnessRunConfig) -> TaskPlanDecision:
         attempts = dict(state.get("task_attempts", {}) or {})
-        decisions_so_far = len(state.get("policy_decisions", []) or [])
-        if decisions_so_far >= self.max_policy_steps:
-            return PolicyDecision(
+        decisions_so_far = len(state.get("planner_decisions", []) or [])
+        if decisions_so_far >= self.max_planner_steps:
+            return TaskPlanDecision(
                 next_task="aggregate",
-                reason=f"max_policy_steps reached ({self.max_policy_steps}); aggregate best available graph",
+                reason=f"max_planner_steps reached ({self.max_planner_steps}); aggregate best available graph",
                 should_stop=True,
             )
 
@@ -71,11 +78,11 @@ class HarnessPolicy:
             return self._decide_single_agent(audit, state, config, attempts)
 
         pending = self._build_tasks(audit, state, config, attempts)
-        runnable = [task for task in pending if self._can_run(task, attempts, state)]
+        runnable = [planned_task for planned_task in pending if self._can_run(planned_task, attempts, state)]
         if runnable:
-            runnable.sort(key=lambda task: task.priority, reverse=True)
+            runnable.sort(key=lambda planned_task: planned_task.priority, reverse=True)
             selected = runnable[0]
-            return PolicyDecision(
+            return TaskPlanDecision(
                 next_task=selected.type,
                 reason=selected.reason,
                 selected_task=selected,
@@ -83,16 +90,16 @@ class HarnessPolicy:
             )
 
         if pending:
-            return PolicyDecision(
+            return TaskPlanDecision(
                 next_task="aggregate",
-                reason="pending tasks exceeded attempt policy; aggregate best available graph",
+                reason="pending tasks exceeded planner attempt limits; aggregate best available graph",
                 pending_tasks=pending,
                 should_stop=True,
             )
 
         unowned_violations = self._unowned_violation_count(audit)
         if config.ablation.use_repair and unowned_violations:
-            return PolicyDecision(
+            return TaskPlanDecision(
                 next_task="aggregate",
                 reason=(
                     f"{unowned_violations} verifier violation(s) have no specialist repair owner; "
@@ -102,9 +109,9 @@ class HarnessPolicy:
                 should_stop=True,
             )
 
-        return PolicyDecision(
+        return TaskPlanDecision(
             next_task="aggregate",
-            reason="audit reports graph is ready or no policy task remains",
+            reason="audit reports graph is ready or no planner task remains",
             pending_tasks=[],
             should_stop=True,
         )
@@ -115,9 +122,9 @@ class HarnessPolicy:
         state: dict,
         config: HarnessRunConfig,
         attempts: dict[str, int],
-    ) -> PolicyDecision:
+    ) -> TaskPlanDecision:
         if attempts.get("single_agent", 0) < 1:
-            task = Task(
+            planned_task = PlannedTask(
                 id="single-agent-generate",
                 type="single_agent",
                 target="addie_output",
@@ -125,19 +132,21 @@ class HarnessPolicy:
                 priority=100,
                 attempts=attempts.get("single_agent", 0),
             )
-            return PolicyDecision("single_agent", task.reason, task, [task])
+            return TaskPlanDecision("single_agent", planned_task.reason, planned_task, [planned_task])
         verifier_task = self._verifier_task_if_needed(audit, state, config, attempts)
         if verifier_task and self._can_run(verifier_task, attempts, state):
-            return PolicyDecision("verifier", verifier_task.reason, verifier_task, [verifier_task])
+            return TaskPlanDecision("verifier", verifier_task.reason, verifier_task, [verifier_task])
         repair_tasks = self._repair_tasks_if_needed(audit, state, config, attempts)
-        runnable_repairs = [task for task in repair_tasks if self._can_run(task, attempts, state)]
+        runnable_repairs = [
+            planned_task for planned_task in repair_tasks if self._can_run(planned_task, attempts, state)
+        ]
         if runnable_repairs:
-            runnable_repairs.sort(key=lambda task: task.priority, reverse=True)
+            runnable_repairs.sort(key=lambda planned_task: planned_task.priority, reverse=True)
             selected = runnable_repairs[0]
-            return PolicyDecision(selected.type, selected.reason, selected, repair_tasks)
+            return TaskPlanDecision(selected.type, selected.reason, selected, repair_tasks)
         unowned_violations = self._unowned_violation_count(audit)
         if config.ablation.use_repair and unowned_violations:
-            return PolicyDecision(
+            return TaskPlanDecision(
                 "aggregate",
                 (
                     f"{unowned_violations} verifier violation(s) have no specialist repair owner; "
@@ -145,7 +154,7 @@ class HarnessPolicy:
                 ),
                 should_stop=True,
             )
-        return PolicyDecision("aggregate", "single_agent output is ready to aggregate", should_stop=True)
+        return TaskPlanDecision("aggregate", "single_agent output is ready to aggregate", should_stop=True)
 
     def _build_tasks(
         self,
@@ -153,8 +162,8 @@ class HarnessPolicy:
         state: dict,
         config: HarnessRunConfig,
         attempts: dict[str, int],
-    ) -> list[Task]:
-        tasks: list[Task] = []
+    ) -> list[PlannedTask]:
+        tasks: list[PlannedTask] = []
 
         repair_tasks = self._repair_tasks_if_needed(audit, state, config, attempts)
         if repair_tasks:
@@ -261,8 +270,8 @@ class HarnessPolicy:
         reason: str,
         priority: int,
         attempts: dict[str, int],
-    ) -> Task:
-        return Task(
+    ) -> PlannedTask:
+        return PlannedTask(
             id=task_id,
             type=task_type,
             target=target,
@@ -277,11 +286,11 @@ class HarnessPolicy:
         state: dict,
         config: HarnessRunConfig,
         attempts: dict[str, int],
-    ) -> list[Task]:
+    ) -> list[PlannedTask]:
         if not config.ablation.use_repair or not audit.verifier_violations:
             return []
         repair_rounds = int(state.get("repair_rounds", 0) or 0)
-        tasks: list[Task] = []
+        tasks: list[PlannedTask] = []
         seen: set[str] = set()
         for violation in audit.verifier_violations:
             task_type = self._repair_owner(violation)
@@ -291,7 +300,7 @@ class HarnessPolicy:
             owned = [v for v in audit.verifier_violations if self._repair_owner(v) == task_type]
             target = ";".join(v.get("node_id", "") for v in owned)
             priority = self._repair_priority(task_type)
-            tasks.append(Task(
+            tasks.append(PlannedTask(
                 id=f"{task_type}-round-{repair_rounds + 1}",
                 type=task_type,
                 target=target,
@@ -334,7 +343,7 @@ class HarnessPolicy:
         state: dict,
         config: HarnessRunConfig,
         attempts: dict[str, int],
-    ) -> Task | None:
+    ) -> PlannedTask | None:
         if not config.ablation.use_verifier:
             return None
         if not state.get("needs_verification", True):
@@ -343,7 +352,7 @@ class HarnessPolicy:
             return None
         if audit.unmeasured_objectives or audit.unsupported_objectives or audit.unevaluated_objectives:
             return None
-        return Task(
+        return PlannedTask(
             id="pedagogical-verification",
             type="verifier",
             target="alignment_graph",
@@ -352,9 +361,9 @@ class HarnessPolicy:
             attempts=attempts.get("verifier", 0),
         )
 
-    def _can_run(self, task: Task, attempts: dict[str, int], state: dict) -> bool:
-        if task.type == "verifier":
-            return attempts.get(task.type, 0) < self.max_verifier_attempts
-        if task.type.endswith("_repair"):
+    def _can_run(self, planned_task: PlannedTask, attempts: dict[str, int], state: dict) -> bool:
+        if planned_task.type == "verifier":
+            return attempts.get(planned_task.type, 0) < self.max_verifier_attempts
+        if planned_task.type.endswith("_repair"):
             return int(state.get("repair_rounds", 0) or 0) < self.max_repair_rounds
-        return attempts.get(task.type, 0) < self.max_task_attempts
+        return attempts.get(planned_task.type, 0) < self.max_task_attempts

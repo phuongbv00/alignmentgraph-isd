@@ -1,6 +1,6 @@
 from __future__ import annotations
-from ..schema import TaskRequest
-from .base import BaseISDAgent, _format_task, parse_json_response
+from ..schema import DesignBrief
+from .base import BaseISDAgent, _format_design_brief, parse_json_response
 
 _SYSTEM = """\
 You are an expert instructional designer creating assessment instruments (ADDIE Development phase).
@@ -36,8 +36,8 @@ Output ONLY the JSON object, no markdown, no explanation.\
 
 
 class AssessmentDesignAgent(BaseISDAgent):
-    def run(self, task: TaskRequest, context_pack: dict) -> None:
-        prompt = _format_task(task)
+    def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
+        prompt = _format_design_brief(design_brief)
         # Graph-subgraph RAG: inject prior G_t nodes into this agent's prompt
         prior_ctx = self._graph_context(['needs_context', 'objective'])
         user_content = prompt
