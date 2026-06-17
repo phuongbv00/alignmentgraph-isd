@@ -1,6 +1,16 @@
 from __future__ import annotations
-from typing import Any, ClassVar, Dict
+from collections.abc import Callable
+from typing import Any, ClassVar, Dict, TYPE_CHECKING
+
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from langchain_anthropic import ChatAnthropic
+    from langchain_openai import ChatOpenAI
+
+    ChatModelFactory = Callable[[], ChatAnthropic | ChatOpenAI]
+else:
+    ChatModelFactory = Callable[[], Any]
 
 
 class AblationConfig(BaseModel):
@@ -45,7 +55,7 @@ class HarnessRunConfig(BaseModel):
     ablation: AblationConfig = AblationConfig()
     llm: LLMConfig = LLMConfig()
     memory: MemoryConfig = MemoryConfig()
-    bench_llm_config: Any = None  # holds the raw shared.llm.LLMConfig passed in from benchmark
+    llm_factory: ChatModelFactory | None = None
 
     model_config = {"arbitrary_types_allowed": True}
 

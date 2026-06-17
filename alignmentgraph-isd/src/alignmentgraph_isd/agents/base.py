@@ -241,19 +241,13 @@ class BaseISDAgent(ABC):
         no parseable JSON, send a correction turn and try once more.
         """
         try:
-            from shared.llm import create_chat_model  # type: ignore
-            bench_cfg = self.config.bench_llm_config
-            if bench_cfg is None:
-                raise RuntimeError("bench_llm_config not set — cannot call LLM")
-            if getattr(bench_cfg, "max_tokens", None) and bench_cfg.max_tokens < 8192:
-                bench_cfg = bench_cfg.copy_with(max_tokens=16384)
-            llm = create_chat_model(bench_cfg)
-            provider = getattr(bench_cfg, "provider_type", "").lower()
-            if provider in {"openai", "openai_compatible"}:
-                try:
-                    llm = llm.bind(response_format={"type": "json_object"})
-                except Exception:
-                    pass
+            if self.config.llm_factory is None:
+                raise RuntimeError("llm_factory not set — cannot call LLM")
+            llm = self.config.llm_factory()
+            try:
+                llm = llm.bind(response_format={"type": "json_object"})
+            except Exception:
+                pass
             content = self._invoke_with_retry(llm, messages, max_retries)
             return content
         except Exception as exc:
