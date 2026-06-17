@@ -4,6 +4,7 @@ import re
 from abc import ABC, abstractmethod
 from ..config import HarnessRunConfig
 from ..graph import AlignmentGraph
+from ..schema import TaskRequest
 from ..trajectory import TrajectoryLogger
 
 
@@ -148,38 +149,31 @@ def parse_json_response(raw: str, *, warn: bool = True) -> dict:
     return {}
 
 
-def _format_scenario(scenario: dict) -> str:
-    """Serialize scenario dict to a clean string suitable as LLM user message."""
-    lines = []
-    title = scenario.get("title", "")
-    if title:
-        lines.append(f"Title: {title}")
-    context = scenario.get("context", "")
-    if isinstance(context, dict):
+def _format_task(task: TaskRequest) -> str:
+    """Serialize a TaskRequest into a clean string suitable as an LLM user message."""
+    lines: list[str] = []
+    if task.title:
+        lines.append(f"Title: {task.title}")
+    context = {k: v for k, v in task.context.model_dump().items() if v not in ("", None, [], {})}
+    if context:
         lines.append("Context:")
         for k, v in context.items():
             lines.append(f"  {k}: {v if not isinstance(v, (dict, list)) else json.dumps(v, ensure_ascii=False)}")
-    elif context:
-        lines.append(f"Context: {context}")
-    goals = scenario.get("learning_goals", [])
-    if goals:
+    if task.learning_goals:
         lines.append("Learning goals:")
-        for g in (goals if isinstance(goals, list) else [goals]):
+        for g in task.learning_goals:
             lines.append(f"  - {g}")
-    constraints = scenario.get("constraints", {})
+    constraints = {k: v for k, v in task.constraints.model_dump().items() if v not in ("", None, [], {})}
     if constraints:
-        if isinstance(constraints, dict):
-            lines.append("Constraints:")
-            for k, v in constraints.items():
-                lines.append(f"  {k}: {v if not isinstance(v, (dict, list)) else json.dumps(v, ensure_ascii=False)}")
-        else:
-            lines.append(f"Constraints: {constraints}")
+        lines.append("Constraints:")
+        for k, v in constraints.items():
+            lines.append(f"  {k}: {v if not isinstance(v, (dict, list)) else json.dumps(v, ensure_ascii=False)}")
     for key in ("difficulty", "domain", "duration", "target_audience"):
-        val = scenario.get(key)
+        val = getattr(task, key, "")
         if val:
             lines.append(f"{key.replace('_', ' ').title()}: {val}")
     if not lines:
-        lines.append(json.dumps(scenario, ensure_ascii=False))
+        lines.append(json.dumps(task.model_dump(), ensure_ascii=False))
     return "\n".join(lines)
 
 
@@ -190,7 +184,7 @@ class BaseISDAgent(ABC):
         self.trajectory = trajectory
 
     @abstractmethod
-    def run(self, scenario: dict, context_pack: dict) -> None:
+    def run(self, task: TaskRequest, context_pack: dict) -> None:
         ...
 
     def _graph_context(self, node_types: list[str], max_chars: int = 600) -> str:

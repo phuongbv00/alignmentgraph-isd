@@ -1,5 +1,6 @@
 from __future__ import annotations
-from .base import BaseISDAgent, _format_scenario, parse_json_response
+from ..schema import TaskRequest
+from .base import BaseISDAgent, _format_task, parse_json_response
 
 _SYSTEM = """\
 You are an expert instructional designer planning the Implementation phase of ADDIE.
@@ -43,8 +44,8 @@ Output ONLY the JSON object, no markdown, no explanation.\
 
 
 class ImplementationConstraintAgent(BaseISDAgent):
-    def run(self, scenario: dict, context_pack: dict) -> None:
-        prompt = _format_scenario(scenario)
+    def run(self, task: TaskRequest, context_pack: dict) -> None:
+        prompt = _format_task(task)
         # Graph-subgraph RAG: inject prior G_t nodes into this agent's prompt
         prior_ctx = self._graph_context(['objective', 'activity'])
         user_content = prompt

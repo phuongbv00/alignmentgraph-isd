@@ -10,6 +10,7 @@ from typing import Any
 
 from .config import HarnessRunConfig
 from .graph import AlignmentGraph
+from .schema import TaskRequest
 
 
 REPAIR_OWNER_MAP = {
@@ -64,7 +65,7 @@ class MemorySession:
     def commit(
         self,
         *,
-        scenario: dict,
+        task: TaskRequest,
         graph: AlignmentGraph,
         trajectory: dict,
         final_state: dict,
@@ -72,7 +73,7 @@ class MemorySession:
     ) -> dict:
         return self.store.commit_session(
             self,
-            scenario=scenario,
+            task=task,
             graph=graph,
             trajectory=trajectory,
             final_state=final_state,
@@ -88,7 +89,7 @@ class HarnessMemory:
         self.memory_config = config.memory
         self.root_dir = Path(self.memory_config.root_dir)
 
-    def begin_session(self, scenario: dict) -> MemorySession:
+    def begin_session(self, task: TaskRequest) -> MemorySession:
         training_program_id = self._training_program_id()
         configured_session_id = self._session_id()
         if configured_session_id and not training_program_id:
@@ -108,10 +109,10 @@ class HarnessMemory:
             storage_id,
             session_id,
             persist,
-            scenario,
+            task,
         )
         working = self._working_layer(
-            scenario,
+            task,
             training_program_id,
             storage_id,
             session_id,
@@ -148,7 +149,7 @@ class HarnessMemory:
         self,
         session: MemorySession,
         *,
-        scenario: dict,
+        task: TaskRequest,
         graph: AlignmentGraph,
         trajectory: dict,
         final_state: dict,
@@ -164,7 +165,7 @@ class HarnessMemory:
             "entrypoint_mode": session.entrypoint_mode,
             "session_type": session.session_type,
             "execution_context": session.execution_context,
-            "scenario_id": _scenario_id(scenario),
+            "task_id": task.identifier,
             "base_graph_version": session.base_graph_version,
             "committed_graph_version": committed_version,
             "graph_summary": _graph_summary(graph),
@@ -236,7 +237,7 @@ class HarnessMemory:
 
     def _working_layer(
         self,
-        scenario: dict,
+        task: TaskRequest,
         training_program_id: str,
         storage_id: str,
         session_id: str,
@@ -255,7 +256,7 @@ class HarnessMemory:
             "session_type": session_type,
             "execution_context": execution_context,
             "persist": persist,
-            "scenario_id": _scenario_id(scenario),
+            "task_id": task.identifier,
             "base_graph_version": base_graph_version,
             "message_history": message_history,
             "message_count": len(message_history),
@@ -358,7 +359,7 @@ class HarnessMemory:
         storage_id: str,
         session_id: str,
         persist: bool,
-        scenario: dict,
+        task: TaskRequest,
     ) -> list[dict[str, Any]]:
         history: list[dict[str, Any]] = []
         if persist and storage_id and session_id:
@@ -372,7 +373,7 @@ class HarnessMemory:
                 except Exception:
                     history = []
 
-        for message in _scenario_messages(scenario):
+        for message in task.messages():
             if message not in history:
                 history.append(message)
         return history
@@ -420,7 +421,7 @@ class HarnessMemory:
             "message_history": session.message_history,
             "base_graph_version": session.base_graph_version,
             "latest_graph_version": version,
-            "last_scenario_id": event["scenario_id"],
+            "last_task_id": event["task_id"],
             "updated_at": utc_now(),
         })
         _append_jsonl(episodic_dir / "session_events.jsonl", event)
@@ -432,22 +433,6 @@ class HarnessMemory:
             repair_path = episodic_dir / "repair_cases.jsonl"
             for repair_event in repair_events:
                 _append_jsonl(repair_path, repair_event)
-
-
-def _scenario_id(scenario: dict) -> str:
-    return str(scenario.get("scenario_id") or scenario.get("id") or scenario.get("title") or "unknown")
-
-
-def _scenario_messages(scenario: dict) -> list[dict[str, Any]]:
-    """Extract this turn's input as a single user message.
-
-    Conversation history is loaded from working memory, not re-sent by the
-    caller, so only the current-turn ``user_message`` is read here.
-    """
-    user_message = scenario.get("user_message") or scenario.get("message")
-    if isinstance(user_message, str) and user_message.strip():
-        return [{"role": "user", "content": user_message.strip()}]
-    return []
 
 
 def _parse_version(filename: str) -> int | None:

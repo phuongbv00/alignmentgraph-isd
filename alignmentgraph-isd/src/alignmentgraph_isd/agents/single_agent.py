@@ -1,5 +1,6 @@
 from __future__ import annotations
-from .base import BaseISDAgent, _format_scenario, parse_json_response
+from ..schema import TaskRequest
+from .base import BaseISDAgent, _format_task, parse_json_response
 
 _SYSTEM = """\
 You are an expert instructional designer. Given a training scenario, produce a COMPLETE, DETAILED ADDIE instructional design.
@@ -218,8 +219,8 @@ _SECTION_TO_NODE = {
 
 
 class SingleAgent(BaseISDAgent):
-    def run(self, scenario: dict, context_pack: dict) -> None:
-        prompt = _format_scenario(scenario)
+    def run(self, task: TaskRequest, context_pack: dict) -> None:
+        prompt = _format_task(task)
         user_content = prompt
         rag_ctx = self._context_pack_text(context_pack)
         if rag_ctx:

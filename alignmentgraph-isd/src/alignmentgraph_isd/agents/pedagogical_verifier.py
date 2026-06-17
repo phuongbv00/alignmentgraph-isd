@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ..schema import TaskRequest
 from dataclasses import dataclass, field
 from .base import BaseISDAgent
 
@@ -26,7 +27,7 @@ class VerifierViolation:
 
 
 class PedagogicalVerifierAgent(BaseISDAgent):
-    def run(self, scenario: dict, context_pack: dict) -> None:
+    def run(self, task: TaskRequest, context_pack: dict) -> None:
         pass  # not used directly; call verify()
 
     def verify(self) -> list[VerifierViolation]:

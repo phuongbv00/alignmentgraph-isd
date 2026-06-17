@@ -1,10 +1,11 @@
 from __future__ import annotations
+from ..schema import TaskRequest
 from copy import deepcopy
 from .base import BaseISDAgent
 
 
 class ADDIEOutputAggregator(BaseISDAgent):
-    def run(self, scenario: dict, context_pack: dict) -> None:
+    def run(self, task: TaskRequest, context_pack: dict) -> None:
         pass  # call aggregate() directly
 
     def aggregate(self) -> dict:

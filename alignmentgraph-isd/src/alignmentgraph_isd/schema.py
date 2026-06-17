@@ -1,9 +1,29 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
-class ScenarioContext(BaseModel):
+class _LenientModel(BaseModel):
+    """Base for the task-input contract: tolerant of messy upstream JSON.
+
+    ``extra="allow"`` keeps unmodelled fields valid, and the before-validator
+    drops explicit ``null``s so a JSON ``null`` falls back to the typed default
+    ("" / []) instead of failing validation. Normalising here is the whole
+    point — callers downstream get a clean typed object instead of a dict that
+    may carry ``None`` anywhere.
+    """
+
+    model_config = {"extra": "allow"}
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_nulls(cls, data: object) -> object:
+        if isinstance(data, dict):
+            return {key: value for key, value in data.items() if value is not None}
+        return data
+
+
+class TaskContext(_LenientModel):
     """Learner/environment context. Fields match what RetrievalPlanner reads."""
 
     duration: str = ""
@@ -15,10 +35,8 @@ class ScenarioContext(BaseModel):
     domain_expertise: str = ""
     prior_knowledge: str = ""
 
-    model_config = {"extra": "allow"}
 
-
-class ScenarioConstraints(BaseModel):
+class TaskConstraints(_LenientModel):
     resources: list[str] = []
     budget: str = ""
     tech_requirements: str = ""
@@ -26,23 +44,20 @@ class ScenarioConstraints(BaseModel):
     accessibility: str = ""
     language: str = ""
 
-    model_config = {"extra": "allow"}
 
+class TaskRequest(_LenientModel):
+    """The single input contract for one harness run.
 
-class TaskRequest(BaseModel):
-    """Documented input contract for a single harness run.
-
-    Benchmark scenarios are rich (title/domain/learning_goals/...); an app call
-    can be as sparse as a single ``user_message``. Both share this envelope, so
-    integrators have one typed shape to target instead of an opaque dict.
-
-    ``extra="allow"`` keeps benchmark scenarios with extra fields valid; the
-    pipeline still consumes a plain dict, so this model is a contract/validation
-    gateway, not a new internal data structure.
+    ``alignmentgraph-isd`` speaks only in terms of a *task*: a rich design task
+    (title/domain/learning_goals/...) or, on the sparse app path, just a
+    ``user_message``. Callers that come from other vocabularies (e.g. the
+    benchmark's "scenario") map their fields onto this envelope at the boundary;
+    inside the package there is only ``TaskRequest``. It is both the
+    validation/normalisation gateway and the internal data structure.
     """
 
     # identity
-    scenario_id: str = ""
+    task_id: str = ""
     id: str = ""
     title: str = ""
 
@@ -50,26 +65,25 @@ class TaskRequest(BaseModel):
     # internally from working memory on a resumed session, never re-sent here.
     user_message: str = ""
 
-    # structured design inputs (benchmark / app, all optional)
+    # structured design inputs (all optional)
     domain: str = ""
     difficulty: str = ""
     duration: str = ""
     target_audience: str = ""
     learning_goals: list[str] = []
-    context: ScenarioContext = ScenarioContext()
-    constraints: ScenarioConstraints = ScenarioConstraints()
+    context: TaskContext = TaskContext()
+    constraints: TaskConstraints = TaskConstraints()
 
-    model_config = {"extra": "allow"}
+    def messages(self) -> list[dict[str, str]]:
+        """This turn's input as chat messages (sparse app path).
 
+        Conversation history is loaded from working memory, not re-sent by the
+        caller, so only the current-turn ``user_message`` is surfaced here.
+        """
+        text = (self.user_message or getattr(self, "message", "") or "").strip()
+        return [{"role": "user", "content": text}] if text else []
 
-def as_payload(request: "TaskRequest | dict") -> dict:
-    """Normalise a run input to the plain dict the pipeline consumes.
-
-    A ``TaskRequest`` is validated/dumped; a raw dict is passed through unchanged
-    so existing benchmark scenarios keep working without re-validation.
-    """
-    if isinstance(request, TaskRequest):
-        return request.model_dump()
-    if isinstance(request, dict):
-        return request
-    raise TypeError(f"run() expects a dict or TaskRequest, got {type(request).__name__}")
+    @property
+    def identifier(self) -> str:
+        """Stable id for this task, preferring explicit ids over the title."""
+        return self.task_id or self.id or self.title or "unknown"

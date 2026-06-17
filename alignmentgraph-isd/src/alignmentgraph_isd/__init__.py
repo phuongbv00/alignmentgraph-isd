@@ -2,7 +2,7 @@ from .orchestrator import MetaAgent
 from .graph import AlignmentGraph
 from .config import AblationConfig, MemoryConfig
 from .memory import HarnessMemory
-from .schema import TaskRequest, ScenarioContext, ScenarioConstraints
+from .schema import TaskRequest, TaskContext, TaskConstraints
 
 __all__ = [
     "MetaAgent",
@@ -11,6 +11,6 @@ __all__ = [
     "MemoryConfig",
     "HarnessMemory",
     "TaskRequest",
-    "ScenarioContext",
-    "ScenarioConstraints",
+    "TaskContext",
+    "TaskConstraints",
 ]

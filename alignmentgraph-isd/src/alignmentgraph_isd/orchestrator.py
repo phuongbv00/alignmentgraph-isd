@@ -11,7 +11,7 @@ from .trajectory import TrajectoryLogger
 from .audit import GraphAuditor
 from .policy import HarnessPolicy
 from .memory import HarnessMemory
-from .schema import TaskRequest, as_payload
+from .schema import TaskRequest
 from .rag.planner import RetrievalPlanner
 from .agents.needs_context import NeedsContextAgent
 from .agents.objective_design import ObjectiveDesignAgent
@@ -27,11 +27,10 @@ _SCHEMA_PATH = Path(__file__).parent / "schema" / "addie_output.json"
 
 # ── LangGraph state ────────────────────────────────────────────────────────────
 # Only plain JSON-serializable types live here so MemorySaver can checkpoint them.
-# Non-serializable objects (config, AlignmentGraph, TrajectoryLogger) are captured
-# as closures at graph-build time and never placed in state.
+# Non-serializable objects (config, AlignmentGraph, TrajectoryLogger, the TaskRequest)
+# are captured as closures at graph-build time and never placed in state.
 
 class ISDState(TypedDict):
-    scenario: dict
     violations: list[dict]          # serialized VerifierViolation dicts
     addie_output: dict
     errors: Annotated[list[str], operator.add]
@@ -51,12 +50,14 @@ def _build_graph_for_run(
     graph: AlignmentGraph,
     trajectory: TrajectoryLogger,
     context_pack: dict,
+    task: TaskRequest,
 ):
-    """Build and compile a fresh LangGraph StateGraph for one scenario run.
+    """Build and compile a fresh LangGraph StateGraph for one task run.
 
-    Non-serializable objects (config, graph, trajectory) are captured in
+    Non-serializable objects (config, graph, trajectory, task) are captured in
     closures so they never touch the LangGraph state — allowing MemorySaver to
-    checkpoint the state without serialization errors.
+    checkpoint the state without serialization errors. The task is constant for
+    the run, so it lives as a closure rather than in state.
     """
     from langgraph.graph import StateGraph, START, END
 
@@ -147,7 +148,7 @@ def _build_graph_for_run(
 
     def _needs_context_node(state: ISDState) -> dict:
         try:
-            NeedsContextAgent(*_args()).run(state["scenario"], context_pack)
+            NeedsContextAgent(*_args()).run(task, context_pack)
         except Exception as exc:
             return {
                 "errors": [f"NeedsContextAgent: {exc}"],
@@ -157,7 +158,7 @@ def _build_graph_for_run(
 
     def _objective_design_node(state: ISDState) -> dict:
         try:
-            ObjectiveDesignAgent(*_args()).run(state["scenario"], context_pack)
+            ObjectiveDesignAgent(*_args()).run(task, context_pack)
         except Exception as exc:
             return {
                 "errors": [f"ObjectiveDesignAgent: {exc}"],
@@ -167,7 +168,7 @@ def _build_graph_for_run(
 
     def _assessment_design_node(state: ISDState) -> dict:
         try:
-            AssessmentDesignAgent(*_args()).run(state["scenario"], context_pack)
+            AssessmentDesignAgent(*_args()).run(task, context_pack)
         except Exception as exc:
             return {
                 "errors": [f"AssessmentDesignAgent: {exc}"],
@@ -177,7 +178,7 @@ def _build_graph_for_run(
 
     def _activity_material_node(state: ISDState) -> dict:
         try:
-            ActivityMaterialAgent(*_args()).run(state["scenario"], context_pack)
+            ActivityMaterialAgent(*_args()).run(task, context_pack)
         except Exception as exc:
             return {
                 "errors": [f"ActivityMaterialAgent: {exc}"],
@@ -187,7 +188,7 @@ def _build_graph_for_run(
 
     def _implementation_constraint_node(state: ISDState) -> dict:
         try:
-            ImplementationConstraintAgent(*_args()).run(state["scenario"], context_pack)
+            ImplementationConstraintAgent(*_args()).run(task, context_pack)
         except Exception as exc:
             return {
                 "errors": [f"ImplementationConstraintAgent: {exc}"],
@@ -197,7 +198,7 @@ def _build_graph_for_run(
 
     def _evaluation_revision_node(state: ISDState) -> dict:
         try:
-            EvaluationRevisionAgent(*_args()).run(state["scenario"], context_pack)
+            EvaluationRevisionAgent(*_args()).run(task, context_pack)
         except Exception as exc:
             return {
                 "errors": [f"EvaluationRevisionAgent: {exc}"],
@@ -207,7 +208,7 @@ def _build_graph_for_run(
 
     def _single_agent_node(state: ISDState) -> dict:
         try:
-            SingleAgent(*_args()).run(state["scenario"], context_pack)
+            SingleAgent(*_args()).run(task, context_pack)
         except Exception as exc:
             return {
                 "errors": [f"SingleAgent: {exc}"],
@@ -366,23 +367,21 @@ class MetaAgent:
     def __init__(self, config: HarnessRunConfig) -> None:
         self.config = config
 
-    def run(self, scenario: TaskRequest | dict) -> dict:
-        scenario = as_payload(scenario)
+    def run(self, task: TaskRequest) -> dict:
         memory = HarnessMemory(self.config)
-        memory_session = memory.begin_session(scenario)
+        memory_session = memory.begin_session(task)
         graph = memory_session.graph
         trajectory = TrajectoryLogger()
         planner = RetrievalPlanner(self.config)
         try:
-            context_pack = planner.retrieve(scenario)
+            context_pack = planner.retrieve(task)
         except Exception:
             context_pack = {}
         context_pack = memory_session.augment_context_pack(context_pack)
 
-        compiled = _build_graph_for_run(self.config, graph, trajectory, context_pack)
+        compiled = _build_graph_for_run(self.config, graph, trajectory, context_pack, task)
 
         initial_state: ISDState = {
-            "scenario": scenario,
             "violations": [],
             "addie_output": {},
             "errors": [],
@@ -403,7 +402,7 @@ class MetaAgent:
         addie_output = final_state.get("addie_output") or _empty_addie()
         trajectory_payload = trajectory.finalize()
         memory_metadata = memory_session.commit(
-            scenario=scenario,
+            task=task,
             graph=graph,
             trajectory=trajectory_payload,
             final_state=final_state,
@@ -416,7 +415,7 @@ class MetaAgent:
                 "ablation": self.config.ablation.model_dump(),
                 "llm": self.config.llm.model_dump(),
                 "memory": memory_metadata,
-                "scenario_id": scenario.get("scenario_id") or scenario.get("id", "unknown"),
+                "task_id": task.identifier,
                 "violations": final_state.get("violations", []),
                 "errors": final_state.get("errors", []),
                 "audit": final_state.get("audit", {}),
