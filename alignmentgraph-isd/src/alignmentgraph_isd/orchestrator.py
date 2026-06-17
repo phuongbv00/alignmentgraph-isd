@@ -415,7 +415,7 @@ class MetaAgent:
                 "ablation": self.config.ablation.model_dump(),
                 "llm": self.config.llm.model_dump(),
                 "memory": memory_metadata,
-                "task_id": task.identifier,
+                "task_id": task.id,
                 "violations": final_state.get("violations", []),
                 "errors": final_state.get("errors", []),
                 "audit": final_state.get("audit", {}),

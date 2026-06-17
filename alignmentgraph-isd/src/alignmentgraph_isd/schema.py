@@ -57,7 +57,6 @@ class TaskRequest(_LenientModel):
     """
 
     # identity
-    task_id: str = ""
     id: str = ""
     title: str = ""
 
@@ -82,8 +81,3 @@ class TaskRequest(_LenientModel):
         """
         text = (self.user_message or getattr(self, "message", "") or "").strip()
         return [{"role": "user", "content": text}] if text else []
-
-    @property
-    def identifier(self) -> str:
-        """Stable id for this task, preferring explicit ids over the title."""
-        return self.task_id or self.id or self.title or "unknown"
