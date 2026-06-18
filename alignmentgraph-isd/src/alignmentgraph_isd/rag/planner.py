@@ -10,13 +10,10 @@ class RetrievalPlanner:
     def retrieve(self, design_brief: DesignBrief) -> dict:
         """Return a compact context pack for downstream ADDIE agents.
 
-        This is deterministic local retrieval over the design brief itself plus the
-        rubric focus. It gives the "full" ablation a real context object without
-        adding external dependencies or network calls.
+        This core planner always returns internal context derived from the design
+        brief. ``use_ext_corpus`` only controls optional external corpus retrieval
+        add-ons; internal graph/memory context is a core harness behavior.
         """
-        if not self.config.ablation.use_rag:
-            return {}
-
         context = design_brief.context
         constraints = design_brief.constraints
         resources = constraints.resources if isinstance(constraints.resources, list) else [constraints.resources]
@@ -55,4 +52,8 @@ class RetrievalPlanner:
                 "Preserve objective-assessment-activity alignment with explicit objective IDs.",
                 "Include pilot execution evidence, data collection, monitoring, and revision loops.",
             ],
+            "external_corpus": {
+                "enabled": self.config.ablation.use_ext_corpus,
+                "sources": [],
+            },
         }

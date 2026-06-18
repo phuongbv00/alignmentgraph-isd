@@ -16,9 +16,9 @@ Từ khoảng trống này, luận văn đề xuất **AlignmentGraph-ISD**, m�
 
 ### 1.2 Contributions
 
-Luận văn đề xuất một đóng góp chính: **AlignmentGraph-ISD**, một alignment-graph harness cho Instructional Systems Design agents. Harness này đặt model trong một execution framework chuyên cho ISD, gồm dynamic task graph, multi-agent orchestration, four-layer memory, agentic RAG, schema-constrained generation, pedagogical verification, targeted repair và workflow trace. Thay vì chỉ sinh một artifact cuối, AlignmentGraph-ISD tổ chức quá trình thiết kế dạy học thành các artifact nodes và alignment edges có quan hệ rõ ràng, cho phép kiểm soát chất lượng, tái chạy phần lỗi và thu thập dữ liệu đánh giá quá trình.
+Luận văn đề xuất 1 đóng góp chính: **AlignmentGraph-ISD**, một alignment-graph harness cho Instructional Systems Design agents. Harness này đặt model trong một execution framework chuyên cho ISD, gồm dynamic task graph, multi-agent orchestration, four-layer memory, agentic RAG, schema-constrained generation, pedagogical verification, targeted repair và workflow trace. Thay vì chỉ sinh một artifact cuối, AlignmentGraph-ISD tổ chức quá trình thiết kế dạy học thành các artifact nodes và alignment edges có quan hệ rõ ràng, cho phép kiểm soát chất lượng, tái chạy phần lỗi và thu thập dữ liệu đánh giá quá trình.
 
-Đóng góp thứ hai là một **prototype sản phẩm** cho case study trong miền IT/Software Engineering. Prototype minh hoạ cách AlignmentGraph-ISD được dùng trong một workflow thực tế: nhận yêu cầu thiết kế hoặc cải tiến một module đào tạo, truy xuất tài liệu miền phần mềm, tạo ADDIE-compatible artifact, kiểm tra alignment giữa mục tiêu-hoạt động-đánh giá, sinh rubric/bài tập, ghi trajectory và xuất kết quả theo format có thể đưa vào pipeline đánh giá. Case study không nhằm chứng minh hiệu quả học tập dài hạn, mà nhằm cho thấy AlignmentGraph-ISD có thể trở thành một công cụ hỗ trợ instructional designer/giảng viên nội bộ trong bối cảnh đào tạo phần mềm.
+Bên cạnh đóng góp chính là case study trong miền IT/Software Engineering, minh hoạ cách AlignmentGraph-ISD được dùng trong một workflow thực tế: nhận yêu cầu thiết kế hoặc cải tiến một module đào tạo, truy xuất tài liệu miền phần mềm, tạo ADDIE-compatible artifact, kiểm tra alignment giữa mục tiêu-hoạt động-đánh giá, sinh rubric/bài tập, ghi trajectory và xuất kết quả theo format có thể đưa vào pipeline đánh giá. Case study không nhằm chứng minh hiệu quả học tập dài hạn, mà nhằm cho thấy AlignmentGraph-ISD có thể trở thành một công cụ hỗ trợ instructional designer/giảng viên nội bộ trong bối cảnh đào tạo phần mềm.
 
 ### 1.3 Research Questions
 
@@ -130,8 +130,8 @@ AlignmentGraph-ISD dùng multi-agent workflow gồm các role sau:
 | `ObjectiveDesignAgent` | Thiết kế mục tiêu học tập, Bloom level, measurable criteria và prerequisite assumptions | objective nodes and prerequisite edges |
 | `AssessmentDesignAgent` | Thiết kế evidence, rubric, formative/summative assessment và success criteria | assessment/rubric nodes and `measures` edges |
 | `ActivityMaterialAgent` | Tạo learning activities, materials, exercises, examples và facilitator notes | activity/material nodes and `supports` edges |
-| `ImplementationConstraintAgent` | Phân tích duration, resource, delivery mode, risk và deployment constraints; đẩy constraint ngược về design | constraint nodes and `constrained_by` edges |
-| `EvaluationRevisionAgent` | Thiết kế evaluation plan, feedback loop và revision strategy | evaluation nodes and `evaluated_by` edges |
+| `ImplementationConstraintAgent` | Phân tích duration, resource, delivery mode, risk và deployment constraints; đẩy constraint ngược về design | constraint nodes and `constrains` edges |
+| `EvaluationRevisionAgent` | Thiết kế evaluation plan, feedback loop và revision strategy | evaluation nodes and `evaluates` edges |
 | `AlignmentGraph` | Đồng bộ objectives, assessment, activities, implementation constraints và evaluation criteria; quản lý stale cascade khi node thay đổi | aligned artifact graph + stale impact state |
 | `PedagogicalVerifierAgent` | Kiểm tra Bloom alignment, constructive alignment, coverage, actionability và consistency | verifier report |
 | Specialist repair methods | Mỗi role agent tự sửa graph element thuộc chuyên môn của mình khi schema hoặc verifier policy báo lỗi | repaired node/edge patch |
@@ -245,7 +245,7 @@ MemoryConfig(
 )
 ```
 
-Harness tự load latest graph nếu `training_program_id` đã tồn tại, tự sinh `session_id` cho phiên mới, và tự gán `session_type=init` hoặc `session_type=tuning` theo graph version hiện có. Nếu có cả `training_program_id` và `session_id`, harness thêm `entrypoint_mode=resume_session` và load working memory của session. Nếu chạy `no_rag`, semantic/episodic memory context không được inject vào prompt để ablation vẫn đo đúng retrieval/context grounding.
+Harness tự load latest graph nếu `training_program_id` đã tồn tại, tự sinh `session_id` cho phiên mới, và tự gán `session_type=init` hoặc `session_type=tuning` theo graph version hiện có. Nếu có cả `training_program_id` và `session_id`, harness thêm `entrypoint_mode=resume_session` và load working memory của session. Internal graph/memory retrieval là core behavior và luôn bật; flag `use_ext_corpus` chỉ điều khiển external corpus retrieval add-ons cho case study.
 
 ### 2.9 Prototype for IT/Software Engineering Case Study
 
@@ -307,13 +307,53 @@ Các metric chính:
 
 Kết quả được báo cáo theo toàn bộ test split hoặc một subset cân bằng nếu giới hạn chi phí. Subset phải được chọn trước khi chạy, stratified theo domain, difficulty, duration, learning environment và class size. Mỗi run cần có manifest ghi rõ model, judge, prompt version, commit hash, sample list, seed, temperature, max tokens và adapter version.
 
-### 3.3 Ablation Study
+### 3.3 Preliminary Benchmark Result on `test_30` (18/06/2026)
+
+Một benchmark sơ bộ đã được chạy ngày **18/06/2026** trên subset `test_30`, dùng agent model **Gemma 4 26B A4B**. Kết quả được lưu tại:
+
+```text
+isd-agent-benchmark/results/test_30_benchmark_gemma-4-26b-a4b-it-nitro_20260618_193248/aggregate_table.md
+```
+
+Kết quả này được dùng như checkpoint kỹ thuật để xem proposed agent đang đứng ở đâu trước khi hoàn thiện các phần còn thiếu của system design. Vì subset chỉ có 30 scenarios, kết quả chưa được dùng để claim statistical superiority.
+
+**Thành phần subset so với full testset.** `test_30` gồm 30/1202 scenarios (≈ 2.5%) của full test split, lấy mẫu stratified ngẫu nhiên có seed (`seed=42`) theo **10 domain × 3 mức difficulty × 1 scenario**, và lồng nhau `test_30 ⊂ test_90 ⊂ test`. Theo trục **difficulty**, subset gần khớp full test (≈ 33% mỗi mức Easy/Moderate/Hard so với 33.0 / 33.7 / 33.3 của full test). Theo trục **domain**, subset cố ý phủ đều 10% mỗi domain, khác với full test vốn lệch mạnh về 4 domain lớn — Language, Mathematics, Science, Social Studies chiếm ≈ 78% — trong khi mỗi domain chuyên biệt (gồm Software Development/IT) chỉ ≈ 3.5%. Nói cách khác, `test_30` ưu tiên **độ phủ cân bằng giữa các domain** thay vì khớp tỉ lệ tự nhiên của full test, nên kết quả mang tính smoke-test đa domain (đại diện theo difficulty nhưng over-sample các domain chuyên biệt) chứ chưa phản ánh phân phối domain thật của 1202 scenarios.
+
+| Agent | GPT | Gemini | Avg |
+| --- | ---: | ---: | ---: |
+| React-ADDIE | 85.40 | **88.96** | **87.18** |
+| AlignmentGraph-ISD (proposed) | **85.63** | 85.70 | 85.67 |
+| EduPlanner | 83.68 | 86.10 | 84.89 |
+| RPISD-Agent | 83.43 | 83.23 | 83.33 |
+| ADDIE-Agent | 82.78 | 83.57 | 83.18 |
+| Dick-Carey-Agent | 80.86 | 81.33 | 81.09 |
+| Baseline | 79.97 | 82.13 | 81.05 |
+
+Các điểm đáng chú ý:
+
+- AlignmentGraph-ISD đạt **85.67 Avg**, đứng thứ hai sau React-ADDIE (**87.18**).
+- AlignmentGraph-ISD đạt điểm cao nhất theo evaluator GPT (**85.63**).
+- Theo phase-wise average, AlignmentGraph-ISD đang dẫn ở **Implementation** (**82.3**) và **Evaluation** (**85.0**).
+- Khoảng cách lớn nhất hiện nằm ở **Trajectory**: AlignmentGraph-ISD đạt **88.38**, thấp hơn React-ADDIE (**93.08**), cho thấy cần tiếp tục hoàn thiện logging, repair trace và dynamic orchestration.
+
+Kế hoạch tiếp theo là tiếp tục implement các phần còn gap so với proposed system design, gồm:
+
+- schema validation chi tiết và routing lỗi về owner agent;
+- verifier mở rộng cho rubric consistency, feasibility, actionability và evaluation alignment;
+- element-level AlignmentGraph cho objectives, assessments, activities, materials, constraints và evaluation nodes;
+- Dynamic ISD Task Graph Builder thay cho planner chỉ dựa trên candidate list;
+- retrieval subagent interface cho external corpus trong case study;
+- structured trajectory cho validation, verifier, repair và cascade events.
+
+Sau khi các gap chính được đóng, evaluation sẽ mở rộng từ `test_30` sang `test_90`, sau đó tăng dần độ robust trên các subset lớn hơn trước khi chạy full testset **1202 scenarios**.
+
+### 3.4 Ablation Study
 
 Để trả lời RQ2, luận văn chạy các ablation:
 
 | Ablation | Thành phần bị tắt | Mục tiêu |
 | --- | --- | --- |
-| `no_rag` | bỏ agentic RAG, chỉ dùng scenario input | đo tác động của retrieval/context grounding |
+| `no_ext_corpus` | bỏ external corpus retrieval add-ons, vẫn giữ internal graph/memory retrieval | đo tác động của corpus grounding ngoài scenario/graph state |
 | `no_verifier` | bỏ pedagogical verifier | đo lỗi alignment và rubric consistency |
 | `no_repair` | phát hiện lỗi nhưng không sửa | đo giá trị của targeted repair |
 | `single_agent` | thay multi-agent workflow bằng một agent sinh toàn bộ output | đo giá trị của role decomposition |
@@ -321,7 +361,7 @@ Kết quả được báo cáo theo toàn bộ test split hoặc một subset c�
 
 Ablation không nhằm tạo thêm nhiều claim rời rạc. Nó giúp giải thích contribution chính: AlignmentGraph-ISD tốt hơn vì thành phần nào, trong điều kiện nào, và trade-off chi phí ra sao.
 
-### 3.4 Case Study Evaluation for IT/Software Engineering Prototype
+### 3.5 Case Study Evaluation for IT/Software Engineering Prototype
 
 Case study dùng 3-5 tác vụ thiết kế/cải tiến khoá học trong miền IT/Software Engineering, ví dụ:
 
@@ -343,7 +383,7 @@ Mỗi case study được phân tích theo các tiêu chí:
 
 Phần này có thể dùng expert review nhỏ với 2-3 người có kinh nghiệm đào tạo nội bộ hoặc software engineering education. Nếu chưa đủ điều kiện human evaluation, case study được báo cáo như qualitative analysis, không dùng để claim statistical superiority.
 
-### 3.5 Threats to Validity
+### 3.6 Threats to Validity
 
 **Internal validity.** Prompt, model và judge có thể ảnh hưởng kết quả. Luận văn cần cố định run manifest, chạy cùng model/decoding config cho các variant khi khả thi, randomize order khi dùng LLM-as-judge và báo cáo lỗi connection/schema đầy đủ.
 

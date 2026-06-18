@@ -1,0 +1,137 @@
+\section{\benchmark{}}
+\label{sec:benchmark}
+
+This section presents our benchmark, including the Context Matrix framework for systematic scenario generation and the evaluation methodology.
+
+\subsection{Context Matrix Framework}
+\label{subsec:context-matrix}
+
+The core novelty of our work lies in the Context Matrix, a two-dimensional framework designed to systematically generate comprehensive ISD scenarios. The framework is grounded in a systematic literature review of ISD research, synthesizing contextual factors identified across ISD studies~\cite{branch2009addie,dick1978systematic,morrison2019designing}. The framework combines a Context Axis capturing educational settings with an ISD Axis defining evaluation criteria. Unlike existing educational benchmarks that rely on manually curated scenarios or domain-specific datasets, our framework enables systematic coverage of the ISD space through principled combination of contextual variables.
+
+% TODO: Create context_matrix_overview.pdf and uncomment
+% \begin{figure*}[t]
+%     \centering
+%     \includegraphics[width=\textwidth]{context_matrix_overview.pdf}
+%     \caption{Overview of the Context Matrix framework. The Context Axis (51 items) defines educational scenarios across 5 categories, while the ISD Axis (33 sub-steps) provides ADDIE-based evaluation criteria.}
+%     \label{fig:context-matrix}
+% \end{figure*}
+
+\subsubsection{Context Axis}
+The Context Axis comprises 51 items organized into five categories that collectively define the educational setting for each scenario. Table~\ref{tab:context-axis} summarizes the categories and their item counts.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Context Axis categories and items.}
+\label{tab:context-axis}
+\begin{tabular}{lcp{4.5cm}}
+\toprule
+\textbf{Category} & \textbf{\#} & \textbf{Examples} \\
+\midrule
+Learner Characteristics & 16 & Age groups, education levels, expertise, occupation \\
+Institutional Context & 6 & K-12, university, corporate, vocational \\
+Educational Domain & 10 & Language, math, science, IT, healthcare \\
+Delivery Mode & 7 & Classroom, online, blended, VR/simulation \\
+Constraints & 12 & Class size, duration, technology, assessment \\
+\midrule
+\textbf{Total} & \textbf{51} & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Learner Characteristics capture age groups ranging from teens to adults over 40, education levels from elementary to adult non-degree learners, domain expertise levels, and occupational roles including students, office workers, professionals, and teachers. Institutional Context covers the spectrum of educational institutions from K-12 schools through universities and graduate programs to corporate training and vocational institutions. Educational Domain spans both academic subjects such as language, mathematics, science, and social studies, as well as vocational areas including software development, AI, healthcare, business, and customer service. Delivery Mode encompasses traditional classroom instruction, synchronous and asynchronous online learning, blended approaches, mobile microlearning, simulation/VR-based instruction, and project-based learning. Constraints address practical considerations including class size, assessment requirements, technology availability, and program duration.
+
+\subsubsection{ISD Axis}
+The ISD Axis defines 33 sub-steps derived from the ADDIE model, organized into 13 aggregated evaluation items across the five phases. The Analysis phase encompasses needs analysis (problem identification, gap analysis, performance analysis, needs prioritization), learner and environment analysis, and task and goal analysis including learning objectives, subordinate skills, and entry behaviors. The Design phase covers assessment and goal alignment design, instructional strategy and learning experience design, and prototype structure design. The Development phase includes prototype development for learner materials, instructor manuals, administrator guides, and assessment tools, followed by expert review. The Implementation phase addresses program preparation through orientations and system checks, as well as program execution and monitoring. The Evaluation phase comprises formative evaluation with pilot testing and revision, summative evaluation with effectiveness analysis and adoption decisions, and program improvement feedback loops.
+
+\subsection{Scenario Generation Pipeline}
+\label{subsec:scenario-generation}
+
+Our scenario generation pipeline systematically combines Context Axis variables to create diverse, realistic ISD challenges through five stages. First, we collected 10,577 paper abstracts from SCOPUS-indexed journals using the query ``instructional design'' OR ``learning design'' in educational technology venues. After filtering for abstract length ($\geq$200 characters), removing duplicates by title and DOI, and requiring author keywords, 8,842 papers remained as seed contexts. These papers exhibit domain concentration: language, science, mathematics, and social studies each comprise approximately 24--25\%, while education-specific (1.9\%) and healthcare (0.1\%) domains are underrepresented.
+
+Second, we sample from the cross-product of learner characteristics, institutional context, domain, delivery mode, and constraints to ensure comprehensive coverage of the scenario space. Given the combinatorial explosion of possible combinations ($51^5$ theoretical possibilities), we employ stratified sampling to achieve balanced representation across all categories. Third, for each seed paper, we use GPT-4o to generate scenario content aligned with the extracted context, including educational goals in SMART format, contextual constraints and requirements, prior knowledge specifications, and available resources and limitations. This produces 8,842 seed-based scenarios. To address domain imbalance and context gaps, we generate 16,953 additional scenarios through context variation and targeted synthesis for underrepresented combinations.
+
+Fourth, quality control proceeds through two validation stages: rule-based validation ensures completeness of required fields and consistency of constraint combinations, while LLM-based review checks for logical consistency between context elements and scenario content, filtering out implausible combinations. Finally, to address natural imbalances in context distributions, we employed targeted augmentation strategies, generating additional scenarios for underrepresented categories including teenage learners, large class sizes (30+ students), and adult self-directed learning contexts.
+
+Difficulty levels are computed from a weighted composite of scenario characteristics: number of learning goals (weight 0.25), domain expertise level (0.25), number of resources (0.20), course duration (0.20), and budget constraints (0.10). Easy scenarios typically have $\leq$3 learning goals, beginner-level expertise, and short-term duration; Hard scenarios have $\geq$4 learning goals, advanced expertise, and long-term duration. Scenarios are ranked by composite score and assigned to Easy, Medium, or Hard with target distribution 33:34:33 to ensure balanced evaluation. The following box shows a representative Hard scenario; additional examples are provided in Appendix~\ref{app:examples}.
+
+\begin{tcolorbox}[colback=gray!5!white, colframe=gray!75!black, title=\small\textbf{Example Scenario (Hard)}]
+\small
+\textbf{Task:} Design a game-based business leadership course for corporate professionals (30--40s) in online synchronous environment. \\
+\textbf{Learners:} Mid-level managers with intermediate leadership experience, class size 20--30. \\
+\textbf{Constraints:} Gamification required, real-time interaction, BYOD, project-based assessment, 2--4 weeks duration. \\
+\textbf{Objectives:} Develop strategic decision-making and cross-functional collaboration skills. \\
+\textbf{Evaluation:} 33 ADDIE sub-steps across 5 phases (Analysis, Design, Development, Implementation, Evaluation).
+\end{tcolorbox}
+
+\subsection{Dataset Statistics}
+\label{subsec:dataset-stats}
+
+The final dataset comprises \numscenarios{} scenarios split into training (24,593; 95.3\%) and test (\numtest{}; 4.7\%) sets. Table~\ref{tab:dataset-distribution} presents the distribution across key contextual dimensions. The stratified sampling procedure ensures balanced representation, with learner age ranging from 16.8\% (teens) to 32.4\% (20s), and difficulty levels evenly distributed around 33\% each. The maximum distribution difference between train and test sets remains below 3.54\% for any dimension.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Test dataset distribution across key dimensions (n=\numtest{}).}
+\label{tab:dataset-distribution}
+\begin{tabular}{llrr}
+\toprule
+\textbf{Dimension} & \textbf{Value} & \textbf{Count} & \textbf{\%} \\
+\midrule
+\multirow{4}{*}{Learner Age}
+    & Teens (13-19) & 202 & 16.8 \\
+    & In their 20s & 390 & 32.4 \\
+    & In their 30s & 286 & 23.8 \\
+    & 40s and above & 324 & 27.0 \\
+\midrule
+\multirow{3}{*}{Class Size}
+    & Small (1-10) & 335 & 27.9 \\
+    & Medium (10-30) & 289 & 24.0 \\
+    & Large (30+) & 578 & 48.1 \\
+\midrule
+\multirow{3}{*}{Difficulty}
+    & Easy & 397 & 33.0 \\
+    & Moderate & 405 & 33.7 \\
+    & Hard & 400 & 33.3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Evaluation Methodology}
+\label{subsec:evaluation}
+
+Our evaluation employs a two-stage LLM-as-a-Judge approach using GPT-4o, combining ADDIE rubric assessment (70\%) with trajectory evaluation (30\%).
+
+\subsubsection{ADDIE Rubric Evaluation}
+The ADDIE rubric evaluates output quality across 13 aggregated items mapped from 33 sub-steps. Each item is scored on a 5-level scale from Absent (1-2 points) through Poor (3-4), Satisfactory (5-6), and Good (7-8) to Excellent (9-10). The evaluation proceeds in two stages: first, a status assessment determines whether each component is absent, weak, moderate, good, or excellent; second, numerical scores are assigned within the appropriate range based on the status determination.
+
+Phase weights reflect the relative importance of each ADDIE component: Analysis and Design each receive 25\%, Development receives 20\%, and Implementation and Evaluation each receive 15\%. These weights can be dynamically adjusted based on scenario context, with Development weighted higher for teenage learners or simulation-based delivery, and Analysis weighted higher for adult learners or advanced expertise levels.
+
+\subsubsection{Trajectory Evaluation}
+Following the Berkeley Function-Calling Leaderboard methodology, trajectory evaluation assesses the agent's tool usage patterns across four dimensions. Tool Correctness (25 points) measures whether appropriate tools were selected for each task. Argument Accuracy (25 points) evaluates the correctness of parameters passed to tools. Redundancy Avoidance (25 points) penalizes unnecessary or duplicate tool calls. Result Utilization (25 points) assesses how effectively tool outputs were incorporated into the final design.
+
+The final score combines both components: $\text{Score} = 0.7 \times \text{ADDIE} + 0.3 \times \text{Trajectory}$.
+
+\begin{table*}[!t]
+\centering
+\small
+\caption{Comparison of baseline and theory-based agents on 1,017 test scenarios. React-ADDIE, combining ISD theory with ReAct architecture, achieves the best performance. Best in \textbf{bold}.}
+\label{tab:main-results}
+\begin{tabular}{l cccc ccc ccccc}
+\toprule
+& \multicolumn{4}{c}{\textbf{Evaluator Model}} & \multicolumn{3}{c}{\textbf{Difficulty}} & \multicolumn{5}{c}{\textbf{Phase-wise (3-model avg)}} \\
+\cmidrule(lr){2-5} \cmidrule(lr){6-8} \cmidrule(lr){9-13}
+\textbf{Agent} & \textbf{Gemini} & \textbf{GPT} & \textbf{Solar} & \textbf{Avg} & \textbf{Easy} & \textbf{Med.} & \textbf{Hard} & \textbf{Ana.} & \textbf{Des.} & \textbf{Dev.} & \textbf{Impl.} & \textbf{Eval.} \\
+\midrule
+\multicolumn{13}{l}{\textit{Comparison}} \\
+\quad Baseline & 83.41 & 85.01 & 83.78 & 84.07 & 83.92 & 84.15 & 84.12 & 81.5 & 80.8 & 83.2 & 81.0 & 83.5 \\
+\quad EduPlanner~\cite{zhang2025eduplanner} & 83.23 & 61.43 & 61.46 & 68.70 & 69.12 & 68.54 & 68.45 & 68.2 & 65.4 & 48.5 & 62.8 & 58.0 \\
+\midrule
+\multicolumn{13}{l}{\textit{Theory-based (Ours)}} \\
+\quad ADDIE-Agent & 83.18 & 84.25 & 81.43 & 82.96 & 82.78 & 83.04 & 83.05 & 79.5 & 78.2 & 77.8 & 80.8 & 79.2 \\
+\quad RPISD-Agent & 83.35 & 85.59 & 81.93 & 83.62 & 83.41 & 83.68 & 83.77 & 81.2 & 80.5 & 79.8 & 83.2 & 82.5 \\
+\quad Dick-Carey-Agent & 81.13 & 87.92 & 83.55 & 84.20 & 83.98 & 84.27 & 84.35 & 80.8 & 79.5 & \textbf{84.2} & 81.5 & 80.8 \\
+\quad React-ADDIE & \textbf{87.61} & \textbf{88.43} & \textbf{83.44} & \textbf{86.49} & \textbf{86.21} & \textbf{86.52} & \textbf{86.73} & \textbf{84.2} & \textbf{84.8} & 82.5 & \textbf{84.0} & \textbf{83.0} \\
+\bottomrule
+\end{tabular}
+\end{table*}

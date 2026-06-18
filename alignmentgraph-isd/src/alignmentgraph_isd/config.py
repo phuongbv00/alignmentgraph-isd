@@ -14,19 +14,19 @@ else:
 
 
 class AblationConfig(BaseModel):
-    use_rag: bool = True
+    use_ext_corpus: bool = True
     use_verifier: bool = True
     use_repair: bool = True
     multi_agent: bool = True
     dynamic_graph: bool = True
 
     PRESETS: ClassVar[Dict[str, dict]] = {
-        "full": dict(use_rag=True, use_verifier=True, use_repair=True, multi_agent=True, dynamic_graph=True),
-        "no_rag": dict(use_rag=False, use_verifier=True, use_repair=True, multi_agent=True, dynamic_graph=True),
-        "no_verifier": dict(use_rag=True, use_verifier=False, use_repair=True, multi_agent=True, dynamic_graph=True),
-        "no_repair": dict(use_rag=True, use_verifier=True, use_repair=False, multi_agent=True, dynamic_graph=True),
-        "single_agent": dict(use_rag=True, use_verifier=True, use_repair=True, multi_agent=False, dynamic_graph=True),
-        "linear_addie_only": dict(use_rag=False, use_verifier=False, use_repair=False, multi_agent=True, dynamic_graph=False),
+        "full": dict(use_ext_corpus=True, use_verifier=True, use_repair=True, multi_agent=True, dynamic_graph=True),
+        "no_ext_corpus": dict(use_ext_corpus=False, use_verifier=True, use_repair=True, multi_agent=True, dynamic_graph=True),
+        "no_verifier": dict(use_ext_corpus=True, use_verifier=False, use_repair=True, multi_agent=True, dynamic_graph=True),
+        "no_repair": dict(use_ext_corpus=True, use_verifier=True, use_repair=False, multi_agent=True, dynamic_graph=True),
+        "single_agent": dict(use_ext_corpus=True, use_verifier=True, use_repair=True, multi_agent=False, dynamic_graph=True),
+        "linear_addie_only": dict(use_ext_corpus=False, use_verifier=False, use_repair=False, multi_agent=True, dynamic_graph=False),
     }
 
     @classmethod

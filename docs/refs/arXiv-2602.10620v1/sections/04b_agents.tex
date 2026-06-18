@@ -1,0 +1,76 @@
+\section{ISD Theory-based Agents}
+\label{sec:agents}
+
+This section formalizes the agent architectures evaluated in our benchmark. We first define the general agent framework, then describe four ISD theory-based agents that integrate classical ISD theories with modern LLM agent architectures.
+
+\subsection{Problem Formulation}
+\label{subsec:formulation}
+
+Given an ISD scenario $s \in \mathcal{S}$ containing learner characteristics, institutional context, educational domain, delivery mode, and constraints, an agent $\mathcal{A}$ generates an ISD output $o$ through a sequence of actions:
+\begin{equation}
+o = \mathcal{A}(s) = f_{\text{gen}}(s, \{(a_1, r_1), (a_2, r_2), \ldots, (a_T, r_T)\})
+\end{equation}
+where $a_t$ denotes an action at step $t$, $r_t$ is the corresponding result, and $T$ is the total number of steps. The output $o$ is evaluated against ADDIE criteria to produce a score $\text{Score}(o) \in [0, 100]$.
+
+\subsection{ADDIE-Agent}
+\label{subsec:addie-agent}
+
+ADDIE-Agent implements the classical five-phase sequential workflow~\cite{branson1975addie} with fine-grained tool decomposition. The agent uses 14 specialized tools that break down each ADDIE phase into discrete sub-tasks (e.g., \texttt{analyze\_needs}, \texttt{analyze\_learner}, \texttt{analyze\_context}, \texttt{design\_objectives}, \texttt{design\_assessment}).
+
+Each phase $p \in \{A, D, D', I, E\}$ (Analysis, Design, Development, Implementation, Evaluation) produces an intermediate output $o_p$ through multiple tool calls that condition subsequent phases:
+\begin{equation}
+o_p = f_p(s, \{o_{p'} : p' \prec p\}) = \bigcup_{t \in \mathcal{T}_p} \text{Execute}(t, s, h)
+\end{equation}
+where $\mathcal{T}_p$ denotes the tool subset for phase $p$ and $p' \prec p$ denotes phases preceding $p$ in the ADDIE sequence. Phase transitions occur only after validation:
+\begin{equation}
+\text{Proceed}(p \to p') = \mathbb{1}[\text{Valid}(o_p) = \text{True}]
+\end{equation}
+This fine-grained decomposition provides detailed phase outputs but incurs higher computational overhead.
+
+\subsection{Dick-Carey-Agent}
+\label{subsec:dick-carey-agent}
+
+Dick-Carey-Agent follows the nine-step systematic design model~\cite{dick1978systematic}, emphasizing alignment between objectives, assessments, and instruction. The agent executes steps $\{s_1, \ldots, s_9\}$ with explicit dependency tracking:
+\begin{equation}
+o_{s_i} = f_{s_i}(s, \{o_{s_j} : s_j \in \text{Deps}(s_i)\})
+\end{equation}
+where $\text{Deps}(s_i)$ returns prerequisite steps for $s_i$. Key steps include:
+\begin{itemize}
+    \item $s_1$: Identify instructional goals
+    \item $s_2$: Conduct instructional analysis
+    \item $s_3$: Analyze learners and contexts
+    \item $s_4$: Write performance objectives
+    \item $s_5$: Develop assessment instruments
+    \item $s_6$: Develop instructional strategy
+    \item $s_7$: Develop and select instructional materials
+    \item $s_8$: Design and conduct formative evaluation
+    \item $s_9$: Revise instruction
+\end{itemize}
+The model enforces criterion-referenced assessment by requiring $s_5$ (assessment) to directly derive from $s_4$ (objectives).
+
+\subsection{RPISD-Agent}
+\label{subsec:rpisd-agent}
+
+RPISD-Agent implements Rapid Prototyping ISD~\cite{tripp1990rapid}, prioritizing early prototype generation and iterative refinement over comprehensive upfront analysis. The agent operates in $K$ cycles:
+\begin{equation}
+o^{(k)} = f_{\text{refine}}(o^{(k-1)}, \text{Feedback}(o^{(k-1)})), \quad k = 1, \ldots, K
+\end{equation}
+where $o^{(0)}$ is an initial rapid prototype generated with minimal analysis, and $\text{Feedback}(\cdot)$ simulates stakeholder evaluation. Each cycle applies targeted improvements:
+\begin{equation}
+\Delta o^{(k)} = \text{LLM}(\text{Critique}(o^{(k-1)}), s)
+\end{equation}
+We set $K=3$ cycles, balancing iteration depth with computational efficiency. This approach is optimized for time-constrained scenarios where rapid delivery outweighs exhaustive planning.
+
+\subsection{React-ADDIE Agent}
+\label{subsec:react-addie}
+
+React-ADDIE integrates the classical ADDIE framework with ReAct-style reasoning~\cite{yao2023react}, implementing each ISD phase as a single integrated tool call. Unlike ADDIE-Agent's fine-grained 14-tool approach, React-ADDIE uses 5 phase-level tools $\mathcal{T} = \{t_A, t_D, t_{D'}, t_I, t_E\}$ corresponding to Analysis, Design, Development, Implementation, and Evaluation:
+\begin{equation}
+o_p = \text{ReAct}(s, h_{p-1}, t_p), \quad p \in \{A, D, D', I, E\}
+\end{equation}
+where each tool $t_p$ encapsulates the complete reasoning and action for an entire ADDIE phase within a single LLM call. At each phase, the agent generates a thought $\tau_p$, executes the phase tool $t_p$, and observes the result $r_p$:
+\begin{equation}
+(\tau_p, o_p) = \text{LLM}(s, h_{p-1}, t_p), \quad h_p = h_{p-1} \cup \{(\tau_p, t_p, o_p)\}
+\end{equation}
+This design reduces multi-step decomposition overhead while maintaining theoretical grounding in the ADDIE framework, enabling efficient yet systematic ISD.
+

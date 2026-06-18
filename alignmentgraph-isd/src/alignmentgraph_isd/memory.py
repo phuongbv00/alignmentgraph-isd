@@ -55,12 +55,8 @@ class MemorySession:
             "working": self.working,
             "episodic": self.episodic,
             "procedural": self.procedural,
+            "semantic": self.semantic,
         }
-        # The semantic layer is global stable knowledge — i.e. the RAG role — so it
-        # must follow the use_rag ablation; otherwise the no_rag arm still receives
-        # pedagogical knowledge in-prompt and the ablation comparison is invalid.
-        if self.store.config.ablation.use_rag:
-            memory_context["semantic"] = self.semantic
         augmented["memory_context"] = memory_context
         return augmented
 
@@ -217,21 +213,25 @@ class HarnessMemory:
                 "working": {
                     "scope": "active session",
                     "persisted": False,
+                    "injected": True,
                     "keys": sorted(session.working.keys()),
                 },
                 "semantic": {
                     "scope": "global stable knowledge",
                     "persisted": persisted,
+                    "injected": True,
                     "keys": sorted(session.semantic.keys()),
                 },
                 "episodic": {
                     "scope": "training program/session history",
                     "persisted": persisted,
+                    "injected": True,
                     "recent_event_count": len(session.episodic.get("recent_events", [])),
                 },
                 "procedural": {
                     "scope": "versioned harness policy",
                     "persisted": persisted,
+                    "injected": True,
                     "keys": sorted(session.procedural.keys()),
                 },
             },

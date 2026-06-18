@@ -184,10 +184,10 @@ def _strengthen_alignment(output: dict, graph) -> dict:
         prototype.setdefault("success_criteria", [
             "At least 80% of pilot learners complete the core scenario task.",
             "Learners demonstrate measurable progress on the aligned formative assessment.",
-            "Critical technical issues are resolved before large-group rollout.",
+            "Critical delivery or access issues are resolved before large-group rollout.",
         ])
         prototype.setdefault("data_collection", [
-            "VR/mobile usage logs",
+            "Learning platform or lab access logs",
             "Instructor observation checklist",
             "Learner feedback survey",
         ])
@@ -241,29 +241,29 @@ def _strengthen_implementation(implementation: dict) -> None:
         )
         if learner_facing:
             orientation["orientation_objectives"] = [
-                "Instructors and operators can run the VR/mobile environment, assign learner roles, and start each scenario safely.",
-                "Instructors can facilitate collaborative language practice and apply the scoring rubrics consistently.",
-                "Operators can monitor devices, resolve access issues, and escalate technical incidents during large-group sessions.",
+                "Instructors and support staff can prepare the learning environment, assign learner roles, and start each session safely.",
+                "Instructors can facilitate practice activities and apply the scoring rubrics consistently.",
+                "Support staff can monitor access, resolve resource issues, and escalate delivery incidents during large-group sessions.",
             ]
-        orientation.setdefault("schedule", "90-minute facilitator/operator orientation plus a 30-minute hands-on VR/mobile rehearsal before pilot launch.")
+        orientation.setdefault("schedule", "90-minute facilitator/support orientation plus a 30-minute hands-on delivery rehearsal before pilot launch.")
         orientation.setdefault("materials", [
             "Facilitator runbook",
-            "Operator troubleshooting checklist",
+            "Delivery troubleshooting checklist",
             "Assessment and peer-feedback rubric pack",
         ])
         orientation.setdefault("competency_checklist", [
-            "Launch and reset VR/mobile scenarios without learner data loss.",
-            "Score a sample role-play using the aligned rubric.",
-            "Resolve or escalate headset, tablet, login, and network issues.",
+            "Launch, reset, and recover the learning environment without learner data loss.",
+            "Score a sample learner performance using the aligned rubric.",
+            "Resolve or escalate access, login, resource, and network issues.",
         ])
 
     system_check = implementation.setdefault("system_check", {})
     if isinstance(system_check, dict):
         checklist = list(system_check.get("checklist", []))
         required_checks = [
-            "Verify every VR headset, tablet, app login, microphone, and network connection before each session.",
-            "Confirm scenario database access, learner grouping, data capture, and privacy settings.",
-            "Validate accessibility and motion-sickness alternatives for adult beginner learners.",
+            "Verify learning platform, lab resources, app login, and network access before each session.",
+            "Confirm learner grouping, data capture, submission channels, and privacy settings.",
+            "Validate accessibility alternatives and fallback materials for learners who cannot use the primary environment.",
         ]
         for check in required_checks:
             if check not in checklist:
@@ -271,11 +271,11 @@ def _strengthen_implementation(implementation: dict) -> None:
         system_check["checklist"] = checklist
         system_check.setdefault(
             "technical_validation",
-            "Device, network, scenario database, audio, analytics, accessibility, and data-capture checks are completed before pilot launch.",
+            "Platform, resource access, network, data capture, accessibility, and fallback checks are completed before pilot launch.",
         )
         system_check.setdefault("contingency_plans", [
-            "Switch learners to tablet-based role-play if a VR headset fails.",
-            "Use offline scenario cards and delayed log upload if network connectivity drops.",
+            "Switch learners to offline or low-bandwidth materials if the primary environment fails.",
+            "Use delayed submission or local notes if network connectivity drops.",
         ])
 
 

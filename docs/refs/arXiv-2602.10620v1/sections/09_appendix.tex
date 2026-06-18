@@ -1,0 +1,574 @@
+\section{Benchmark Scenario Examples}
+\label{app:examples}
+
+This section presents representative scenarios from \benchmark{}, illustrating the diversity of instructional contexts and varying performance patterns across different agents. We selected three scenarios representing different difficulty levels (Easy, Medium, Hard) to demonstrate how agent performance varies across complexity levels. Each example includes the complete scenario specification, detailed agent rankings, phase-level performance breakdown, and qualitative analysis of the key differentiating factors between top and bottom performers.
+
+\subsection{Example 1: VR-based Language Learning (Easy)}
+
+The first example represents a relatively straightforward instructional design task involving the development of a mobile-assisted collaborative language learning program in a VR/simulation environment. This scenario was classified as Easy because it involves a well-established pedagogical domain (language learning), targets learners with clear characteristics (university students in their 20s with intermediate proficiency), and imposes minimal operational constraints. The VR/simulation environment, while technologically sophisticated, follows established patterns for immersive language learning that are well-documented in the instructional design literature.
+
+\begin{tcolorbox}[colback=blue!5!white, colframe=blue!50!black, breakable]
+\small
+Mobile-Assisted Collaborative Language Learning Simulation Program (ID BAL-LARGE2-0075). This scenario targets university students in their 20s who are intermediate-level language learners. The institutional context is a university language department with adequate technology infrastructure. The learning environment is VR/simulation-based, enabling immersive conversational practice with virtual native speakers and peer collaboration in simulated real-world contexts such as restaurants, airports, and business meetings. The program duration is mid-term (2--4 weeks), with a medium class size of 15--25 students. Assessment is formative, focusing on conversational fluency improvement and collaborative task completion. Technology requirements specify that VR headsets and mobile devices are provided by the institution. The primary learning objectives include improving conversational confidence, developing cross-cultural communication skills, and building vocabulary through contextual immersion. Budget constraints are moderate, and the difficulty level is Easy due to simple structure and minimal constraints.
+\end{tcolorbox}
+
+Table~\ref{tab:example1} shows the agent rankings for this scenario. Dick-Carey achieves the highest total score (80.3), demonstrating its strength in VR environments through its systematic approach to media selection and detailed learner analysis procedures. The Dick \& Carey model's emphasis on identifying entry behaviors and conducting thorough context analysis proved particularly valuable for designing VR-based instruction, as it ensured the technology choices were grounded in learner characteristics rather than novelty alone.
+
+Notably, the Development phase shows the largest performance variance across agents, with Dick-Carey scoring 81.6 while EduPlanner scores only 45.2. This 36.4-point gap reflects fundamental differences in how agents approach prototype development. Dick-Carey's systematic approach generated detailed storyboards for each VR scenario, complete with branching dialogue trees and specific feedback mechanisms. In contrast, EduPlanner produced generic development plans that failed to address the unique requirements of VR content creation, such as spatial audio design, gesture recognition integration, and motion sickness mitigation strategies.
+
+The Analysis phase scores are notably consistent across all agents (ranging from 74.5 to 75.0), suggesting that the straightforward learner profile and clear institutional context made needs analysis relatively uniform. However, this surface-level similarity masks important qualitative differences. Dick-Carey's analysis included detailed prerequisite skill mapping for VR interaction, while lower-performing agents treated VR as a simple delivery medium rather than an interactive learning environment requiring specific user competencies.
+
+\begin{table}[ht!]
+\centering
+\small
+\caption{Agent rankings for Example 1 (VR Language Learning)}
+\label{tab:example1}
+\begin{tabular}{clcccc}
+\toprule
+\textbf{Rank} & \textbf{Agent} & \textbf{Total} & \textbf{ADDIE} & \textbf{Analysis} & \textbf{Develop.} \\
+\midrule
+1 & Dick-Carey & 80.3 & 77.8 & 74.5 & 81.6 \\
+2 & Baseline & 79.3 & 77.3 & 75.0 & 80.9 \\
+3 & ReAct-ISD & 79.0 & 76.5 & 75.0 & 77.8 \\
+4 & ADDIE & 78.5 & 74.9 & 74.6 & 62.2 \\
+5 & EduPlanner & 76.6 & 73.1 & 75.0 & 45.2 \\
+6 & RPISD & 72.5 & 67.2 & 74.6 & 58.5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Example 2: AI Literacy Assessment (Medium)}
+
+The second example involves designing formative assessment tools for AI literacy education, representing a medium-complexity task that requires balanced attention to both content development and evaluation mechanisms. This scenario presents unique challenges because AI literacy is a rapidly evolving domain where content can become outdated quickly, and assessment must balance technical accuracy with accessibility for non-specialist learners. The medium difficulty classification reflects the need to design assessments that can accurately measure understanding of abstract concepts like algorithmic bias, model interpretability, and ethical AI deployment.
+
+\begin{tcolorbox}[colback=green!5!white, colframe=green!50!black, breakable]
+\small
+Simulation-based Instructional Design for AI Literacy Formative Assessment (ID BAL-LARGE2-0117). This scenario targets adult learners in their 30s working in corporate settings who need to understand AI concepts for professional decision-making without becoming technical practitioners. The institutional context is a corporate training department seeking to upskill employees across multiple business units. The learning environment combines simulation-based activities with VR components, allowing learners to experience the consequences of AI-driven decisions in safe, consequence-free scenarios such as hiring simulations demonstrating algorithmic bias or customer service chatbot deployment scenarios. Program duration is mid-term (2--4 weeks), with a large class size of 50+ participants distributed across multiple cohorts. Assessment is primarily formative, focusing on developing critical evaluation skills for AI systems rather than technical implementation ability. Technology follows a BYOD (Bring Your Own Device) model with web-based simulations accessible on personal laptops and tablets. Learning objectives include understanding fundamental AI concepts, recognizing limitations and biases in AI systems, making informed decisions about AI adoption in business contexts, and communicating AI-related risks to stakeholders. The difficulty level is Medium due to the moderately complex requirement of balancing technical accuracy with business applicability.
+\end{tcolorbox}
+
+As shown in Table~\ref{tab:example2}, Baseline achieves the highest total score (80.0) in this assessment-focused scenario, with particularly strong performance in the Evaluation phase (84.8). This result initially appears counterintuitive, as one might expect theory-grounded agents to outperform the single-shot Baseline. However, closer analysis reveals that the Baseline's comprehensive prompt, which explicitly specifies all 33 ADDIE sub-items including detailed evaluation criteria, provided sufficient structure for this assessment-centric task.
+
+The Baseline's success in this scenario aligns with Finding 5's observation that Evaluation performance often trades off with Implementation. Because this scenario's primary deliverable is formative assessment tools rather than a full instructional program, agents that allocated more attention to evaluation design naturally performed better. The Baseline's holistic approach, which treats all phases with equal attention in a single generation pass, happened to match this scenario's requirements well.
+
+Dick-Carey's second-place finish (79.3) reflects its systematic approach to assessment alignment, though its emphasis on summative evaluation and criterion-referenced testing was less well-suited to the formative, developmental nature of AI literacy assessment. ReAct-ISD (77.3) showed strong Evaluation phase performance (80.9) but lost points in Design due to its iterative approach sometimes producing redundant assessment items across phases. The lower-ranked agents (ADDIE-Agent at 70.9 and RPISD at 70.0) struggled with the abstract nature of AI concepts, producing assessments that tested factual recall rather than critical evaluation skills.
+
+\begin{table}[ht!]
+\centering
+\small
+\caption{Agent rankings for Example 2 (AI Literacy Assessment)}
+\label{tab:example2}
+\begin{tabular}{clcccc}
+\toprule
+\textbf{Rank} & \textbf{Agent} & \textbf{Total} & \textbf{ADDIE} & \textbf{Design} & \textbf{Eval.} \\
+\midrule
+1 & Baseline & 80.0 & 78.3 & 75.5 & 84.8 \\
+2 & Dick-Carey & 79.3 & 76.4 & 76.0 & 75.2 \\
+3 & ReAct-ISD & 77.3 & 74.0 & 75.5 & 80.9 \\
+4 & ADDIE & 70.9 & 63.9 & 73.4 & 67.1 \\
+5 & RPISD & 70.0 & 63.6 & 68.2 & 75.8 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Example 3: Business Leadership Course (Hard)}
+
+The third example represents a highly complex scenario requiring the design of a game-based business language leadership course for synchronous online delivery. This task received a Hard difficulty classification due to multiple intersecting constraints including gamification mechanics, real-time interaction requirements, cross-cultural communication objectives, and professional development outcomes that must demonstrate measurable business impact. The scenario demands integration of game design principles with evidence-based leadership development practices while maintaining engagement in a synchronous online format where technical difficulties and time zone differences can disrupt learning flow.
+
+\begin{tcolorbox}[colback=red!5!white, colframe=red!50!black, breakable]
+\small
+Game-based Business Language Leadership Course (ID BAL-LARGE2-0317). This scenario targets professionals in their 40s and above who hold mid-to-senior management positions in multinational corporations and need to develop leadership communication skills for cross-cultural business contexts. The institutional context is a corporate university within a global organization, with learners distributed across Asia, Europe, and North America time zones. The learning environment is online synchronous, requiring real-time participation in game-based leadership simulations where participants negotiate, present, and collaborate in English as a lingua franca. The game elements include competitive team challenges, leadership point accumulation, scenario-based decision trees with immediate feedback, and leaderboards that track both individual and team performance. Program duration is mid-term (2--4 weeks), with intensive sessions scheduled to accommodate multiple time zones. Class size is medium (20--30 participants) to enable meaningful interaction while maintaining game dynamics. Assessment combines formative elements (in-game performance metrics, peer feedback) with summative evaluation (recorded presentation analysis, 360-degree leadership assessment). Technology requirements include stable high-bandwidth connections, webcams for video interaction, and compatibility with the proprietary game platform. Learning objectives encompass developing executive presence in virtual settings, mastering persuasive communication in cross-cultural contexts, building coalition and consensus through strategic dialogue, and demonstrating measurable improvement in leadership effectiveness ratings. Budget constraints are high, reflecting the executive-level target audience. The difficulty level is Hard due to complex requirements involving multiple interacting constraints, high-stakes professional outcomes, and the technical challenge of maintaining engagement in synchronous game-based learning across global time zones.
+\end{tcolorbox}
+
+Table~\ref{tab:example3} reveals that ReAct-ISD and Dick-Carey tie for the top position with identical total scores (81.1), both achieving exceptional Design phase scores (96.2). This remarkable convergence at the top demonstrates Finding 4's core insight that complex scenarios benefit substantially more from ISD theory-grounded approaches. Both agents' theoretical foundations provided systematic frameworks for decomposing the multi-faceted requirements into manageable design decisions.
+
+ReAct-ISD's success stems from its reflection mechanism, which proved crucial for maintaining consistency across the many interdependent design elements. When designing game mechanics, the agent explicitly referenced earlier Analysis phase findings about learner motivation patterns and time zone constraints. This cross-phase coherence resulted in game elements that reinforced learning objectives rather than competing with them for attention. Dick-Carey's systematic 10-step approach similarly ensured that each design decision built upon previous analysis, with particular strength in aligning game-based assessments with clearly specified performance objectives.
+
+The Baseline agent (78.5) and EduPlanner (77.8) achieved respectable but notably lower scores, demonstrating the performance gap that emerges in complex scenarios. Baseline's single-shot approach, while comprehensive, could not adequately address the interdependencies between game mechanics, synchronous delivery constraints, and cross-cultural communication objectives. EduPlanner's sequential pipeline processed each ADDIE phase independently, missing opportunities for the iterative refinement that complex game-based designs require.
+
+RPISD (75.8) and ADDIE-Agent (73.3) occupied the bottom positions, revealing specific weaknesses in handling gamification. RPISD's rapid prototyping philosophy, while valuable for quick iteration, produced game concepts that were technically feasible but pedagogically shallow. ADDIE-Agent's fine-grained, sub-step-level approach resulted in fragmented game designs where individual elements were well-specified but failed to cohere into an engaging learning experience. The Implementation phase scores show notable uniformity (76.2 across four agents), suggesting that once the challenging Design work was complete, execution planning was relatively straightforward.
+
+\begin{table}[ht!]
+\centering
+\small
+\caption{Agent rankings for Example 3 (Business Leadership)}
+\label{tab:example3}
+\begin{tabular}{clcccc}
+\toprule
+\textbf{Rank} & \textbf{Agent} & \textbf{Total} & \textbf{ADDIE} & \textbf{Design} & \textbf{Impl.} \\
+\midrule
+1 & ReAct-ISD & 81.1 & 79.5 & 96.2 & 76.2 \\
+2 & Dick-Carey & 81.1 & 79.8 & 96.2 & 78.8 \\
+3 & Baseline & 78.5 & 75.3 & 74.7 & 76.2 \\
+4 & EduPlanner & 77.8 & 73.9 & 75.2 & 76.2 \\
+5 & RPISD & 75.8 & 71.9 & 70.2 & 76.2 \\
+6 & ADDIE & 73.3 & 67.4 & 67.9 & 76.2 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%% ==========================================================================
+\section{Context Matrix Complete Specification}
+\label{app:context-matrix}
+
+This section provides the complete specification of the 51 context variables used in scenario generation, explaining the rationale behind each variable's inclusion and how these variables interact to create realistic instructional design challenges.
+
+The Context Axis was developed through extensive review of instructional design literature and consultation with practicing instructional designers to ensure coverage of the factors that most significantly influence design decisions. Variables span four major categories, each capturing different aspects of the instructional design problem space.
+
+The first category, learner characteristics, encompasses variables that describe who the learners are and what they bring to the learning experience. Age affects cognitive load capacity, technology familiarity, and preferred interaction styles. Educational background influences prerequisite knowledge assumptions and appropriate complexity levels. Domain expertise determines starting points and the degree of scaffolding required. Learner role (student, office worker, professional, teacher) shapes motivation patterns and available time for learning activities.
+
+The second category covers institutional and domain factors that define the organizational context and subject matter. Institution type (K-12, university, corporate, vocational, public/non-profit) determines available resources, accountability structures, and stakeholder expectations. Domain selection spans ten fields chosen to represent the breadth of instructional design applications, from traditional academic subjects (Language, Mathematics, Science, Social Studies) to professional and technical domains (Software/IT, AI, Medical, Business/HR, Education, Service).
+
+The third category addresses delivery mode and learning environment specifications. The seven environment types (Offline, Online synchronous, Online asynchronous, Blended, Mobile, VR/Simulation, Project-based learning) represent the full spectrum of contemporary instructional delivery approaches. Class size (Small 1-10, Medium 10-30, Large 30+) significantly impacts interaction design, assessment feasibility, and personalization options. Duration (Short under 1 week, Mid-term 2-4 weeks, Long 1-6 months) affects content chunking, reinforcement scheduling, and assessment frequency.
+
+The fourth category captures operational constraints including assessment type (Formative, Summative, Project-based), technology requirements (Provided, BYOD, Limited), and budget considerations. These practical constraints often determine the feasibility of design choices and require agents to balance ideal pedagogical approaches against real-world limitations.
+
+Table~\ref{tab:context-axis-all} presents the complete Context Axis specification across all four categories. The combinations of these 51 variables create a vast space of possible scenarios, enabling systematic evaluation of agent performance across diverse instructional contexts.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Context Axis: Complete specification (51 items across 4 categories)}
+\label{tab:context-axis-all}
+\begin{tabular}{llll|llll}
+\toprule
+\textbf{Category} & \textbf{Field} & \textbf{Values} & \textbf{N} & \textbf{Category} & \textbf{Field} & \textbf{Values} & \textbf{N} \\
+\midrule
+\multirow{4}{*}{Age} & \multirow{4}{*}{learner\_age} & Teens (13-19) & \multirow{4}{*}{4} & \multirow{6}{*}{Institution} & \multirow{6}{*}{institution\_type} & K-12 school & \multirow{6}{*}{6} \\
+& & In their 20s & & & & University & \\
+& & In their 30s & & & & Graduate school & \\
+& & 40s and above & & & & Corporate & \\
+& & & & & & Vocational & \\
+& & & & & & Public/Non-profit & \\
+\midrule
+\multirow{5}{*}{Education} & \multirow{5}{*}{learner\_education} & Elementary & \multirow{5}{*}{5} & \multirow{7}{*}{Environment} & \multirow{7}{*}{learning\_env} & Offline & \multirow{7}{*}{7} \\
+& & Middle school & & & & Online sync & \\
+& & High school & & & & Online async & \\
+& & University & & & & Blended & \\
+& & Adult learner & & & & Mobile & \\
+& & & & & & VR/Simulation & \\
+& & & & & & PBL & \\
+\midrule
+\multirow{3}{*}{Expertise} & \multirow{3}{*}{domain\_expertise} & Beginner & \multirow{3}{*}{3} & \multirow{3}{*}{Class Size} & \multirow{3}{*}{class\_size} & Small (1-10) & \multirow{3}{*}{3} \\
+& & Intermediate & & & & Medium (10-30) & \\
+& & Advanced & & & & Large (30+) & \\
+\midrule
+\multirow{4}{*}{Role} & \multirow{4}{*}{learner\_role} & Student & \multirow{4}{*}{4} & \multirow{3}{*}{Duration} & \multirow{3}{*}{duration} & Short ($<$1 week) & \multirow{3}{*}{3} \\
+& & Office worker & & & & Mid (2-4 weeks) & \\
+& & Professional & & & & Long (1-6 months) & \\
+& & Teacher & & & & & \\
+\midrule
+\multirow{10}{*}{Domain} & \multirow{10}{*}{domain} & Language & \multirow{10}{*}{10} & \multirow{3}{*}{Assessment} & \multirow{3}{*}{assessment\_type} & Formative & \multirow{3}{*}{3} \\
+& & Mathematics & & & & Summative & \\
+& & Science & & & & Project-based & \\
+& & Social Studies & & \multirow{3}{*}{Technology} & \multirow{3}{*}{tech\_req} & Provided & \multirow{3}{*}{3} \\
+& & Software/IT & & & & BYOD & \\
+& & AI & & & & Limited & \\
+& & Medical & & & & & \\
+& & Business/HR & & & & & \\
+& & Education & & & & & \\
+& & Service & & & & & \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Difficulty Classification}
+\label{app:difficulty}
+
+Scenario difficulty is computed from a weighted composite score based on five characteristics that instructional design practitioners identified as most influential in determining project complexity. The weighting scheme reflects both the frequency with which each factor creates design challenges and the magnitude of impact when that factor is at an extreme level.
+
+Table~\ref{tab:difficulty-weights} presents the scoring criteria for each difficulty factor. Learning goals and domain expertise receive the highest weights (0.25 each) because they most directly determine the cognitive complexity of the design task. A scenario requiring five or more distinct learning objectives demands careful sequencing, multiple assessment strategies, and attention to prerequisite relationships. Similarly, designing for advanced learners requires sophisticated differentiation and assumes deep domain knowledge from the instructional designer.
+
+\begin{table}[ht!]
+\centering
+\small
+\caption{Difficulty scoring weights and criteria}
+\label{tab:difficulty-weights}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Factor} & \textbf{Weight} & \textbf{Low} & \textbf{Mid} & \textbf{High} \\
+\midrule
+Learning goals & 0.25 & $\leq$3 & 4 & $\geq$5 \\
+Domain expertise & 0.25 & Beginner & Intermed. & Advanced \\
+Resources & 0.20 & $\leq$3 & 4 & $\geq$5 \\
+Duration & 0.20 & Short & Mid & Long \\
+Budget & 0.10 & Low & Medium & High \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Resource requirements and duration each receive 0.20 weight. Resource complexity affects the breadth of materials, tools, and support systems that must be integrated. Duration impacts the depth of content coverage and the sophistication of retention and transfer strategies required. Budget receives the lowest weight (0.10) because while it constrains options, skilled instructional designers can often achieve objectives through creative low-cost alternatives.
+
+The composite score is calculated as $\text{Score} = \sum_{i} w_i \times s_i$, where $w_i$ is the weight and $s_i \in \{0, 0.5, 1\}$ is the factor score corresponding to Low, Mid, and High levels respectively. Scenarios are assigned to difficulty levels with a target distribution of Easy:Medium:Hard = 33:34:33, achieved through stratified sampling during dataset generation. This balanced distribution ensures that benchmark results are not skewed toward any particular difficulty level and enables meaningful analysis of how agent performance varies with scenario complexity.
+
+%% ==========================================================================
+\section{ISD Axis: 33 Sub-steps}
+\label{app:isd-axis}
+
+The ISD Axis defines 33 instructional design sub-steps organized hierarchically into 5 ADDIE phases and 13 categories. This taxonomy was synthesized from multiple authoritative ISD models including Dick and Carey's Systems Approach, Morrison, Ross, and Kemp's model, and Gagn\'e's conditions of learning, creating a comprehensive framework that captures the essential activities of professional instructional design practice. The taxonomy provides the foundation for both agent output structure and evaluation rubrics, ensuring that agent outputs can be systematically compared against established professional standards.
+
+The Analysis phase contains 10 sub-items across 3 categories. Category A1 (Needs Analysis) includes Problem Identification, Gap Analysis, Performance Analysis, and Needs Prioritization. These items ensure that instructional interventions address genuine performance gaps rather than assumed deficiencies. Category A2 (Learner and Context) covers Learner Analysis and Context Analysis, capturing the characteristics of the target audience and the environmental factors that will influence learning. Category A3 (Task and Goal) encompasses Initial Learning Goals, Subordinate Skills identification, Entry Behaviors specification, and Task Analysis Review, establishing the foundation for objective-driven design.
+
+The Design phase contains 8 sub-items across 3 categories. Category D1 (Assessment and Objective Alignment) includes Learning Objectives Refinement and Assessment Plan development, ensuring tight alignment between what learners should achieve and how achievement will be measured. Category D2 (Instructional Strategy) is the largest category, covering Content Selection, Instructional Strategy specification, Non-Instructional Strategy consideration (addressing motivational and environmental factors), Media Selection, and Activities and Time allocation. Category D3 (Prototype Structure) contains Storyboard Design, translating strategic decisions into concrete prototype specifications.
+
+The Development phase contains 5 sub-items across 2 categories. Category Dev1 (Prototype Development) covers the creation of Learner Materials, Instructor Manual, Operator Manual, and Assessment Tools. Category Dev2 (Review and Revision) focuses on Expert Review processes that ensure quality before implementation.
+
+The Implementation phase contains 4 sub-items across 2 categories. Category I1 (Preparation) includes Instructor Orientation and System Check activities that ensure readiness for deployment. Category I2 (Execution) covers Prototype Execution and Operations Monitoring during actual delivery.
+
+The Evaluation phase contains 6 sub-items across 3 categories. Category E1 (Formative) addresses Pilot Data Collection and Formative Improvements during development cycles. Category E2 (Summative) includes Summative Assessment, Effectiveness Analysis, and Adoption Decision processes. Category E3 (Improvement) focuses on Program Improvement recommendations for future iterations.
+
+Table~\ref{tab:isd-axis} presents the complete 33 sub-steps specification organized by ADDIE phase and category. Each sub-step has associated evaluation criteria that specify what constitutes adequate, good, and excellent performance, enabling consistent scoring across diverse scenarios.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{ISD Axis: 33 Sub-steps across ADDIE phases}
+\label{tab:isd-axis}
+\begin{tabular}{cl|cl|cl}
+\toprule
+\textbf{\#} & \textbf{Sub-step (Analysis)} & \textbf{\#} & \textbf{Sub-step (Design)} & \textbf{\#} & \textbf{Sub-step (Dev/Impl/Eval)} \\
+\midrule
+1 & Problem Identification (A1) & 11 & Learning Objectives Refinement (D1) & 19 & Learner Materials (Dev1) \\
+2 & Gap Analysis (A1) & 12 & Assessment Plan (D1) & 20 & Instructor Manual (Dev1) \\
+3 & Performance Analysis (A1) & 13 & Content Selection (D2) & 21 & Operator Manual (Dev1) \\
+4 & Needs Prioritization (A1) & 14 & Instructional Strategy (D2) & 22 & Assessment Tools (Dev1) \\
+5 & Learner Analysis (A2) & 15 & Non-Instructional Strategy (D2) & 23 & Expert Review (Dev2) \\
+6 & Context Analysis (A2) & 16 & Media Selection (D2) & 24 & Instructor Orientation (I1) \\
+7 & Initial Learning Goals (A3) & 17 & Activities \& Time (D2) & 25 & System Check (I1) \\
+8 & Subordinate Skills (A3) & 18 & Storyboard Design (D3) & 26 & Prototype Execution (I2) \\
+9 & Entry Behaviors (A3) & & & 27 & Operations Monitoring (I2) \\
+10 & Task Analysis Review (A3) & & & 28 & Pilot Data Collection (E1) \\
+& & & & 29 & Formative Improvements (E1) \\
+& & & & 30 & Summative Assessment (E2) \\
+& & & & 31 & Effectiveness Analysis (E2) \\
+& & & & 32 & Adoption Decision (E2) \\
+& & & & 33 & Program Improvement (E3) \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+%% ==========================================================================
+\section{Evaluation Rubric}
+\label{app:rubric}
+
+This section details the evaluation rubric used for assessing agent outputs, including the scoring scale, two-stage evaluation process, and the rationale behind design decisions that ensure reliable and valid measurement of ISD quality.
+
+\subsection{Scoring Scale}
+
+Each of the 33 sub-items is evaluated on a 0-10 point scale using a 5-level rubric that distinguishes between qualitatively different levels of ISD competence. The scale was calibrated through pilot testing with instructional design experts to ensure that score differences reflect meaningful differences in output quality.
+
+Excellent (9-10) indicates that all required elements are specifically presented with immediate applicability to the given scenario. An excellent Learner Analysis, for example, would include specific demographic data, prior knowledge assessment results, learning style preferences, and motivational factors, all directly tied to design decisions in subsequent phases.
+
+Good (7-8) means most required elements are presented with only minor improvements needed before practical application. A good Assessment Plan would include appropriate item types aligned with objectives, clear scoring criteria, and feasible administration procedures, but might lack detailed rubrics or accommodation specifications.
+
+Satisfactory (5-6) indicates required elements are mentioned but lack the specificity needed for direct implementation. A satisfactory Instructional Strategy might identify appropriate methods (e.g., case-based learning, collaborative activities) without specifying how these would be sequenced, timed, or adapted to learner responses.
+
+Poor (3-4) means some elements are present but the sub-item is mostly incomplete or generic. A poor Media Selection might list technology options without explaining selection rationale or considering learner access constraints.
+
+Absent (0-2) indicates the element is completely missing or only terminology is mentioned without substantive content. An absent Needs Prioritization would either skip the topic entirely or include only a placeholder statement like ``needs will be prioritized based on importance.''
+
+\subsection{Two-Stage Evaluation Process}
+
+To ensure consistent scoring and prevent the well-documented problem of score drift in LLM-based evaluation, we employ a two-stage evaluation process that separates qualitative judgment from numerical scoring.
+
+In the first stage (status determination), the evaluator LLM examines each sub-item and determines its presence status using the five-level categorical scale (absent, weak, moderate, good, excellent). This stage focuses the evaluator on holistic quality assessment without the cognitive burden of precise numerical assignment. The evaluator is prompted to consider whether the content meets professional standards, addresses the specific scenario context, and provides actionable guidance for implementation.
+
+In the second stage (score assignment), numerical scores are assigned within bounded ranges determined by the first-stage status. Absent status constrains scores to exactly 0.0. Weak status allows scores from 1.0 to 3.9. Moderate status permits scores from 4.0 to 6.9. Good status bounds scores between 7.0 and 8.9. Excellent status allows scores from 9.0 to 10.0. This bounded approach prevents the common failure mode where evaluators assign scores that are inconsistent with their qualitative assessments, such as rating content as ``good'' while assigning a score of 5.5.
+
+The two-stage process also enables more nuanced scoring within quality levels. Within the ``good'' range, for instance, the evaluator can distinguish between content that barely meets the good threshold (7.0) versus content that approaches excellence (8.9) based on factors like completeness, specificity, and scenario appropriateness.
+
+\subsection{Phase Weights}
+
+Default phase weights for computing overall ADDIE scores reflect the relative importance and complexity of each phase in typical instructional design projects. Analysis and Design each receive 0.25 weight, reflecting their foundational importance in determining project success. Research in instructional design consistently shows that inadequate front-end analysis is a leading cause of project failure, justifying the substantial weight given to these phases.
+
+Development receives 0.20 weight, reflecting its role in translating design decisions into concrete materials. While Development is essential, its quality is largely determined by the preceding Analysis and Design work. Implementation receives 0.15 weight because, given sound analysis, design, and development, implementation planning is relatively straightforward. Evaluation also receives 0.15 weight, balancing its importance for continuous improvement against the reality that many instructional design projects emphasize formative development over summative evaluation.
+
+These weights can be adjusted for specific evaluation contexts. For example, a study focused on assessment design might increase Design and Evaluation weights while decreasing Development weight.
+
+%% ==========================================================================
+\section{Dataset Statistics}
+\label{app:dataset}
+
+This section presents the complete distribution of test scenarios across all contextual dimensions, providing transparency about the dataset composition and enabling researchers to understand potential biases or gaps in coverage.
+
+The dataset was constructed through stratified sampling to ensure adequate representation across all context variables while maintaining realistic co-occurrence patterns. For example, ``Teens'' age group scenarios are more frequently paired with ``K-12'' institution types and ``Student'' roles, reflecting real-world instructional design contexts. However, we also included deliberately unusual combinations (e.g., teens in corporate training for family business succession) to test agent robustness to atypical scenarios.
+
+Table~\ref{tab:full-distribution} presents the complete distribution across all dimensions. Several patterns merit discussion. The Age distribution shows relatively balanced representation, with learners in their 20s (32.4\%) slightly overrepresented due to their prevalence in higher education and early-career professional development contexts. The Education distribution reflects the full K-12 through adult learning spectrum, with adult learners (27.6\%) and university students (26.2\%) receiving appropriate emphasis given their prominence in instructional design practice.
+
+The Expertise distribution intentionally oversamples Beginner (43.7\%) and Intermediate (41.9\%) levels compared to Advanced (14.4\%), reflecting the reality that most instructional design projects target learners who are developing rather than refining expertise. The Role distribution emphasizes Students (45.4\%) and Office Workers (36.0\%), the two largest populations served by instructional design in practice.
+
+Institution type distribution ensures coverage of the major sectors where instructional design is practiced, from Corporate (23.0\%) and Public/Non-profit (19.6\%) organizations to formal educational institutions. Learning Environment distribution reflects the contemporary shift toward technology-mediated instruction, with Online asynchronous (21.5\%) and Blended (14.1\%) environments well-represented alongside emerging modalities like VR/Simulation (12.6\%) and Mobile (13.6\%).
+
+The Class Size distribution shows Large classes (48.1\%) predominating, reflecting the scalability challenges that drive much instructional design work. Technology requirements are relatively balanced across Provided, BYOD, and Limited categories, enabling evaluation of how agents handle varying resource constraints. The Difficulty distribution achieves the target balance of approximately one-third each for Easy (33.0\%), Moderate (33.7\%), and Hard (33.3\%) scenarios.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Complete test dataset distribution (n=\numtest{})}
+\label{tab:full-distribution}
+\begin{tabular}{llrr@{\hskip 1.5em}llrr@{\hskip 1.5em}llrr}
+\toprule
+\textbf{Dimension} & \textbf{Value} & \textbf{N} & \textbf{\%} & \textbf{Dimension} & \textbf{Value} & \textbf{N} & \textbf{\%} & \textbf{Dimension} & \textbf{Value} & \textbf{N} & \textbf{\%} \\
+\midrule
+Age & Teens & 202 & 16.8 & Institution & Corporate & 277 & 23.0 & Environment & Online async & 258 & 21.5 \\
+ & 20s & 390 & 32.4 &  & Public & 235 & 19.6 &  & Blended & 170 & 14.1 \\
+ & 30s & 286 & 23.8 &  & University & 218 & 18.1 &  & PBL & 164 & 13.6 \\
+ & 40+ & 324 & 27.0 &  & Vocational & 190 & 15.8 &  & Mobile & 163 & 13.6 \\
+\midrule
+Education & Elementary & 119 & 9.9 &  & K-12 & 153 & 12.7 &  & Online sync & 154 & 12.8 \\
+ & Middle & 201 & 16.7 &  & Graduate & 129 & 10.7 &  & VR/Sim & 151 & 12.6 \\
+ & High & 235 & 19.6 & Class Size & Large & 578 & 48.1 &  & Offline & 142 & 11.8 \\
+ & University & 315 & 26.2 &  & Medium & 289 & 24.0 & Difficulty & Easy & 397 & 33.0 \\
+ & Adult & 332 & 27.6 &  & Small & 335 & 27.9 &  & Moderate & 405 & 33.7 \\
+\midrule
+Expertise & Beginner & 525 & 43.7 & Technology & Limited & 421 & 35.0 &  & Hard & 400 & 33.3 \\
+ & Intermediate & 504 & 41.9 &  & Provided & 398 & 33.1 & & & & \\
+ & Advanced & 173 & 14.4 &  & BYOD & 383 & 31.9 & & & & \\
+\midrule
+Role & Student & 546 & 45.4 & & & & & & & & \\
+ & Worker & 433 & 36.0 & & & & & & & & \\
+ & Teacher & 120 & 10.0 & & & & & & & & \\
+ & Professional & 103 & 8.6 & & & & & & & & \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+%% ==========================================================================
+\section{Experimental Details}
+\label{app:experimental}
+
+This section provides detailed information about the experimental setup to ensure full reproducibility of our results. We document computational resources, hyperparameter choices and their rationale, model versions, and procedural details that other researchers would need to replicate or extend this work.
+
+\subsection{Computational Resources}
+
+All experiments were conducted using cloud-based API services between September and November 2024. We chose API-based inference over local deployment to ensure consistent model behavior across the extended experimental period and to leverage the latest model capabilities without hardware constraints.
+
+Agent generation consumed 7,212 API calls to GPT-4o-mini, processing approximately 180 million tokens at an estimated cost of \$270. This phase generated instructional design outputs for all six agent types across the 1,202 test scenarios. Primary evaluation required 36,060 API calls to GPT-4o, processing approximately 720 million tokens at an estimated cost of \$2,160. The evaluation phase assessed all 33 sub-items for each of the 7,212 agent outputs. Multi-judge evaluation for reliability analysis used 108,180 additional API calls distributed across Gemini, Claude, and GPT models, processing approximately 2.16 billion tokens at an estimated cost of \$6,480. The total computational cost was approximately \$8,910, representing a substantial but feasible investment for comprehensive benchmark development.
+
+\subsection{Hyperparameters}
+
+Hyperparameter selection balanced output quality, consistency, and computational efficiency based on preliminary experiments with a held-out development set of 100 scenarios.
+
+Temperature was set to 0.7 for agent generation to enable creative and contextually appropriate responses while avoiding the repetitive or generic outputs observed at lower temperatures. For evaluation, temperature was set to 0.0 (greedy decoding) to maximize scoring consistency and minimize random variation in judgments.
+
+Maximum token limits were set to 8,192 for agent generation, providing sufficient space for comprehensive ISD outputs across all 33 sub-items. Evaluation responses were limited to 3,000 tokens, adequate for detailed scoring justifications without unnecessary verbosity.
+
+Maximum turns was set to 10 for multi-turn agents (Dick-Carey, RPISD, ReAct-ISD, EduPlanner), providing sufficient interaction depth for complex scenarios while preventing infinite loops or excessive API consumption. Preliminary testing showed that agents typically converged within 5-7 turns, with additional turns providing diminishing returns.
+
+Timeout was set to 300 seconds (5 minutes) per API call, accommodating occasional latency spikes while preventing indefinite hangs. Fewer than 0.1\% of calls exceeded this timeout and were automatically retried.
+
+\subsection{Model Versions}
+
+We document exact model versions to enable precise replication and to clarify the capabilities available at experiment time.
+
+The agent backbone model was gpt-4o-mini-2024-07-18 from OpenAI, selected for its balance of capability and cost-efficiency for the large-scale generation required. While larger models might produce marginally better outputs, preliminary testing showed gpt-4o-mini was sufficient to reveal meaningful differences between agent architectures.
+
+The primary evaluator was gpt-4o-2024-08-06 from OpenAI, chosen for its strong instruction-following capabilities and consistent performance on evaluation tasks. This model served as the reference evaluator for main results.
+
+For multi-judge reliability analysis, we employed gemini-1.5-pro-002 from Google, claude-3-5-sonnet-20241022 from Anthropic, and deepseek-chat-v3 from DeepSeek. This diverse set of evaluators from different model families enables assessment of scoring robustness across model architectures and training approaches.
+
+%% ==========================================================================
+\section{Agent Implementation Details}
+\label{app:agents}
+
+This section provides comprehensive documentation of each agent's architecture, prompt design, and operational characteristics. Understanding these implementation details is essential for interpreting performance differences and for researchers seeking to build upon or extend these agent designs.
+
+Table~\ref{tab:agent-tools} summarizes the tool configurations for each agent type, including the number of distinct tools available, typical turn count, and brief architectural description.
+
+\begin{table}[ht!]
+\centering
+\small
+\caption{Agent tool configurations}
+\label{tab:agent-tools}
+\begin{tabular}{lccp{3.5cm}}
+\toprule
+\textbf{Agent} & \textbf{Tools} & \textbf{Turns} & \textbf{Description} \\
+\midrule
+Baseline & 1 & 1 & Single-shot generation \\
+ADDIE-Agent & 14 & 5 & Fine-grained per sub-step \\
+Dick-Carey & 10 & 10 & 10-step systematic design \\
+RPISD & 6 & 5+ & Rapid prototyping \\
+ReAct-ISD & 5 & 5 & Phase-level with reflection \\
+EduPlanner & 5 & 5 & Sequential ADDIE pipeline \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The Baseline Agent serves as the control condition, using a comprehensive single-shot prompt that specifies all 33 ADDIE sub-items in a structured format. The prompt includes reference to Bloom's Taxonomy for objective classification and Gagn\'e's Nine Events of Instruction as a framework for instructional sequence design. Despite its simplicity, the Baseline's detailed prompt provides substantial guidance, making it a strong baseline that some theory-grounded agents fail to exceed. The Baseline's single-turn architecture means it cannot iteratively refine outputs based on intermediate results, but it also avoids the error propagation that can occur in multi-turn agents.
+
+The ADDIE-Agent implements the most fine-grained tool structure, with 14 separate tools corresponding to sub-categories within ADDIE phases. This granular approach was hypothesized to enable precise attention to each design element. However, empirical results showed that excessive decomposition can fragment the design process, producing outputs where individual elements are well-specified but lack coherence across the overall design. The agent typically completes in 5 turns, with each turn addressing 2-3 related sub-items.
+
+The Dick-Carey Agent implements the canonical 10-step Dick and Carey Systems Approach Model, one of the most widely used ISD frameworks in professional practice. Each step has a dedicated tool with prompts that emphasize the step's specific focus while maintaining connections to preceding and subsequent steps. The 10-turn execution mirrors the systematic, sequential nature of the Dick and Carey model. Key strengths include explicit attention to entry behaviors and prerequisite skills (Step 3), detailed assessment instrument development (Step 4), and formative evaluation feedback loops (Step 8). The agent's emphasis on goal-assessment alignment proved particularly valuable in complex scenarios requiring tight criterion-referenced measurement.
+
+The RPISD Agent implements Rapid Prototyping for Instructional Systems Design, an approach that emphasizes early prototyping and iterative refinement over extensive front-end analysis. With 6 tools supporting rapid design-build-test cycles, this agent excels in scenarios where quick iteration is valued over comprehensive initial planning. The variable turn count (5+) reflects the agent's adaptive behavior, continuing iteration until convergence criteria are met or the turn limit is reached. RPISD performed well on simpler scenarios where quick, good-enough solutions outperformed over-engineered designs, but struggled with complex scenarios requiring careful upfront analysis.
+
+The ReAct-ISD Agent, which achieved the best overall performance, combines phase-level tool structure with an explicit reflection mechanism. The 5 tools correspond to ADDIE phases, with each tool's prompt including phase-specific guidance and minimum output requirements. The critical innovation is the reflection step between phases, where the agent reviews its previous phase output and explicitly identifies connections, dependencies, and potential inconsistencies before proceeding. This reflection mechanism proved crucial for maintaining cross-phase coherence, particularly in complex scenarios where design decisions in one phase have cascading implications for subsequent phases. The agent also includes explicit minimum requirements for each sub-item, preventing the superficial coverage that plagued other agents.
+
+The EduPlanner Agent implements a straightforward sequential ADDIE pipeline, with 5 tools executed in fixed order without the reflection mechanism of ReAct-ISD. This agent serves as an ablation condition, demonstrating the value added by ReAct-ISD's reflection step. EduPlanner's consistent underperformance relative to ReAct-ISD (despite identical tool count and similar prompts) provides strong evidence that reflection mechanisms, rather than mere multi-phase structure, drive performance improvements.
+
+%% ==========================================================================
+\section{Evaluation Protocol Details}
+\label{app:eval-protocol}
+
+This section documents the evaluation protocol in detail, including multi-judge configuration, inter-rater reliability analysis, and disagreement resolution procedures. Transparent documentation of evaluation methodology is essential for interpreting benchmark results and for researchers seeking to apply similar evaluation approaches.
+
+\subsection{Multi-Judge Configuration}
+
+We employ three independent LLM judges from different model families to assess scoring reliability and reduce single-model bias. The primary judge is GPT-4o from OpenAI, selected for its strong instruction-following capabilities and consistent performance on evaluation tasks in preliminary testing. The secondary judges are Gemini-1.5-Pro from Google and Claude-3.5-Sonnet from Anthropic, chosen to represent diverse model architectures and training approaches.
+
+Each judge receives identical evaluation prompts containing the scenario specification, agent output, and rubric criteria. Judges score independently without access to other judges' assessments. For main results reporting, we use GPT-4o scores as the primary metric, with multi-judge analysis reserved for reliability assessment. For the most robust analyses, we compute ensemble scores as the mean of all three judges, reducing the impact of any single model's idiosyncratic scoring tendencies.
+
+The multi-judge approach serves multiple purposes beyond reliability assessment. It enables detection of cases where evaluation criteria may be ambiguous (high disagreement suggests unclear rubric language). It also provides robustness against potential biases in individual models, such as the possibility that GPT-4o might systematically favor outputs with stylistic characteristics similar to its own training distribution.
+
+\subsection{Inter-Rater Reliability}
+
+Table~\ref{tab:irr} presents inter-rater reliability metrics computed across all 7,212 agent outputs evaluated by all three judges. We report multiple reliability statistics to enable comparison with different research traditions and to provide a comprehensive picture of agreement patterns.
+
+\begin{table}[ht!]
+\centering
+\small
+\caption{Inter-rater reliability metrics}
+\label{tab:irr}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Metric} & \textbf{Overall} & \textbf{Analysis} & \textbf{Design} & \textbf{Dev.} \\
+\midrule
+Pearson $r$ & 0.847 & 0.862 & 0.831 & 0.819 \\
+Spearman $\rho$ & 0.834 & 0.851 & 0.822 & 0.807 \\
+ICC(2,k) & 0.891 & 0.903 & 0.878 & 0.864 \\
+Krippendorff's $\alpha$ & 0.823 & 0.841 & 0.812 & 0.798 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Pearson correlation coefficients range from 0.819 to 0.862 across phases, indicating strong linear relationships between judge scores. The slightly lower correlations for Development phase (0.819) reflect the greater subjectivity inherent in evaluating prototype materials and instructor guides, where professional preferences may legitimately differ.
+
+Spearman rank correlations are slightly lower than Pearson correlations, suggesting that judges agree more on absolute score levels than on fine-grained rankings. This pattern is expected given the bounded score ranges within quality levels imposed by our two-stage evaluation process.
+
+Intraclass Correlation Coefficients using the ICC(2,k) model, appropriate for ratings from a fixed set of judges applied to all targets, exceed 0.85 for all phases. According to established interpretation guidelines, ICC values above 0.75 indicate excellent reliability. Our ICC values ranging from 0.864 to 0.903 substantially exceed this threshold, providing strong evidence for the reliability of our evaluation protocol.
+
+Krippendorff's alpha, a conservative reliability measure that accounts for chance agreement and handles ordinal data appropriately, ranges from 0.798 to 0.841. Values above 0.80 are generally considered acceptable for drawing conclusions, and values above 0.67 are considered sufficient for exploratory research. Our alpha values meet or approach the 0.80 threshold across all phases, supporting the validity of comparative conclusions drawn from the benchmark results.
+
+\subsection{Disagreement Resolution}
+
+Despite high overall reliability, individual sub-items occasionally receive divergent scores from different judges. We implemented a systematic disagreement resolution protocol to handle these cases transparently.
+
+When judges disagree by more than 2 points on any sub-item, we flag the item for review. For flagged items, we compute the median score rather than the mean to reduce the influence of outlier judgments. All flagged items are logged with full judge scores and justifications to enable post-hoc analysis of disagreement patterns.
+
+Overall, 8.3\% of sub-item evaluations triggered the disagreement flag. The flagging rate varied substantially across phases, with Development phase showing the highest rate (12.1\%) and Analysis phase the lowest (5.7\%). This pattern reflects the relatively objective nature of Analysis outputs (learner characteristics either are or are not specified) compared to the more subjective judgments required for Development materials (instructor guide quality involves stylistic preferences).
+
+Post-hoc analysis of flagged items revealed three common disagreement patterns. First, judges sometimes disagreed on whether context-specific customization was adequate, with some judges accepting generic frameworks as sufficient while others required explicit adaptation to scenario parameters. Second, assessment quality judgments diverged when items were technically correct but pedagogically questionable. Third, judges occasionally applied different standards for emerging topics like AI literacy, where established best practices are still developing.
+
+%% ==========================================================================
+\FloatBarrier
+\section{Extended Results}
+\label{app:extended-results}
+
+This section presents extended statistical analyses that complement the main results, including comprehensive significance testing, effect size estimation, and additional breakdowns that inform interpretation of agent performance differences.
+
+\subsection{Statistical Significance Tests}
+
+We conducted pairwise comparisons using Wilcoxon signed-rank tests, a non-parametric alternative to paired t-tests that does not assume normally distributed differences. This choice was motivated by preliminary analysis showing non-normal score distributions for some agent-scenario combinations. All p-values are Bonferroni-corrected for the 15 pairwise comparisons to control family-wise error rate at 0.05.
+
+Table~\ref{tab:significance} presents the corrected p-values for key agent pairs. The comparison between ReAct-ISD and Dick-Carey yields p=0.234, indicating no statistically significant difference between the top two performers. This non-significant result, combined with their similar mean scores, suggests these agents represent functionally equivalent approaches despite their different theoretical foundations. Both ReAct-ISD's reflection mechanism and Dick-Carey's systematic 10-step process achieve similar outcomes through different means.
+
+\begin{table}[ht!]
+\centering
+\small
+\caption{Pairwise Wilcoxon test p-values (Bonferroni-corrected)}
+\label{tab:significance}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Agent} & \textbf{ReAct} & \textbf{D-C} & \textbf{Base} & \textbf{Edu} \\
+\midrule
+Dick-Carey & .234 & -- & -- & -- \\
+Baseline & .018* & .042* & -- & -- \\
+EduPlanner & $<$.001 & $<$.001 & $<$.001 & -- \\
+RPISD & $<$.001 & $<$.001 & $<$.001 & .089 \\
+\bottomrule
+\multicolumn{5}{l}{\small *p$<$.05, ***p$<$.001}
+\end{tabular}
+\end{table}
+
+Both ReAct-ISD and Dick-Carey significantly outperform Baseline (p=0.018 and p=0.042 respectively), though these differences are modest in magnitude. The relatively small advantage of theory-grounded agents over the well-designed Baseline underscores the importance of prompt engineering even for simple architectures.
+
+The most striking finding is the highly significant underperformance of pipeline agents (EduPlanner and RPISD) compared to all other agents (p$<$0.001 in all comparisons). This consistent pattern suggests that simple sequential pipelines without reflection mechanisms are fundamentally limited in their ability to produce coherent instructional designs. The comparison between EduPlanner and RPISD yields p=0.089, indicating no significant difference between these lower-performing agents.
+
+\subsection{Effect Sizes}
+
+While statistical significance indicates whether observed differences are likely due to chance, effect sizes quantify the magnitude of differences in standardized units. We report Cohen's d with 95\% confidence intervals computed via bootstrapping with 10,000 resamples.
+
+The effect size for ReAct-ISD versus Baseline is d=0.42 with 95\% CI [0.31, 0.53]. According to conventional interpretation guidelines, this represents a small-to-medium effect. The confidence interval excluding zero confirms the reliability of this advantage, while its moderate magnitude suggests substantial room for improvement in agent design.
+
+Dick-Carey versus Baseline yields d=0.38 [0.27, 0.49], a similar small-to-medium effect. The overlapping confidence intervals with ReAct-ISD confirm the statistical equivalence of these top performers.
+
+The contrast between ReAct-ISD and ADDIE-Agent produces d=0.89 [0.77, 1.01], a large effect size. This substantial difference highlights how architectural choices dramatically impact performance even when agents target the same underlying framework. The fine-grained decomposition in ADDIE-Agent, despite seeming theoretically motivated, proved counterproductive compared to ReAct-ISD's phase-level approach with reflection.
+
+The aggregate comparison of theory-based agents (ReAct-ISD, Dick-Carey, Baseline) versus pipeline agents (EduPlanner, RPISD, ADDIE-Agent) yields d=0.71 [0.62, 0.80], a medium-to-large effect. This effect size indicates that agent architecture choice has practically significant implications for ISD quality, with theory-grounded approaches producing meaningfully better outputs than simple pipelines.
+
+%% ==========================================================================
+\FloatBarrier
+\section{Error Analysis}
+\label{app:error-analysis}
+
+This section presents detailed analysis of failure patterns observed across agent outputs, providing actionable insights for improving agent design and identifying persistent challenges in automated ISD. We conducted systematic error coding on a stratified sample of 500 outputs (representing all agents and difficulty levels) to identify recurring patterns.
+
+\subsection{Common Failure Patterns}
+
+We identified five major failure patterns through qualitative analysis, with each pattern's prevalence estimated from the coded sample.
+
+Incomplete sub-item coverage accounts for 38\% of identified failures and represents the most common error type. Agents frequently omit or provide only superficial content for sub-items in the Implementation and Evaluation phases. For example, an agent might specify detailed learning objectives and assessment criteria in Design but then provide only a one-sentence placeholder for Instructor Orientation stating ``instructors will be briefed on course procedures.'' This pattern suggests agents allocate disproportionate attention to early ADDIE phases, possibly due to prompt ordering effects or training data biases toward front-end design documentation.
+
+Generic content represents 27\% of failures, characterized by template-like responses that ignore specific learner characteristics, contextual constraints, or scenario parameters. A typical example is a Learner Analysis that lists generic categories (``learners have diverse backgrounds and varying levels of motivation'') without referencing the specific age, role, expertise level, or institutional context provided in the scenario. This pattern was most pronounced in pipeline agents (EduPlanner, RPISD) where sequential processing without reflection prevented integration of scenario-specific details across phases.
+
+Cross-phase inconsistency accounts for 18\% of failures, occurring when design decisions in one phase contradict or ignore commitments made in earlier phases. Common manifestations include learning objectives specified in Design that differ from goals identified in Analysis, assessment items that test content not covered in the instructional strategy, and implementation plans that assume resources not specified in the context analysis. ReAct-ISD's reflection mechanism substantially reduced this error type, demonstrating the value of explicit cross-phase consistency checking.
+
+Assessment misalignment represents 11\% of failures, specifically involving assessment items that are not properly aligned with stated objectives or that target inappropriate cognitive levels according to Bloom's Taxonomy. For instance, an objective targeting ``evaluation'' level thinking might be assessed with multiple-choice items testing factual recall. This pattern was particularly common in scenarios involving higher-order learning outcomes where agents defaulted to familiar assessment formats regardless of appropriateness.
+
+Structural errors account for the remaining 6\% of failures, including JSON parsing failures, missing required fields, and malformed output formatting. While relatively rare, these errors resulted in complete evaluation failures for affected sub-items. ADDIE-Agent's fine-grained tool structure produced the highest rate of structural errors (9.2\%) due to the complexity of coordinating outputs across 14 separate tools.
+
+\subsection{Phase-Specific Weaknesses}
+
+Beyond general failure patterns, each ADDIE phase exhibits characteristic weaknesses that merit targeted attention in agent development.
+
+In the Analysis phase, Performance Analysis tends to be superficial, often stating that ``learners need to improve performance'' without specifying current performance levels, performance gaps, or root causes of deficiencies. Needs Prioritization frequently lacks justification, with agents listing needs in arbitrary order rather than applying systematic criteria such as urgency, impact, or feasibility. These weaknesses suggest agents struggle with analytical tasks requiring inference beyond explicitly provided scenario information.
+
+In the Design phase, Non-Instructional Strategies are consistently the weakest sub-item, with many agents omitting this element entirely or providing only token mentions of ``motivation will be addressed.'' Professional instructional designers recognize that environmental factors, incentive systems, and job aids often contribute more to performance improvement than instruction alone, but agents rarely demonstrate this understanding. Media Selection rationale is frequently missing, with agents listing media choices without explaining how learner characteristics, content requirements, or contextual constraints informed selections.
+
+In the Development phase, Operator Manuals represent a persistent weakness, likely because training data contains fewer examples of technical documentation compared to learner-facing materials. Slide contents and prototype specifications often lack the specificity needed for actual production, providing general descriptions rather than detailed content outlines, timing specifications, or facilitator notes.
+
+In the Implementation phase, pilot plans tend toward generic descriptions of ``testing with a small group'' without specifying participant selection criteria, data collection instruments, or decision rules for proceeding to full deployment. Monitoring criteria are rarely measurable, with agents specifying that ``implementation will be monitored'' without defining observable indicators, acceptable performance thresholds, or corrective action triggers.
+
+In the Evaluation phase, Summative Assessment items are frequently insufficient in scope, often proposing only end-of-course tests without addressing transfer evaluation, long-term retention assessment, or organizational impact measurement. Adoption Decision documentation consistently lacks the data requirements and decision criteria that professional instructional designers would specify to inform go/no-go decisions.
+
+%% ==========================================================================
+\FloatBarrier
+\section{Limitations and Ethical Considerations}
+\label{app:limitations}
+
+This section provides transparent documentation of benchmark limitations, evaluation constraints, and ethical considerations that users should understand when interpreting results or applying the benchmark to new contexts.
+
+\subsection{Benchmark Limitations}
+
+While \benchmark{} represents a substantial advance in systematic evaluation of ISD agents, several limitations constrain the generalizability of findings.
+
+Domain coverage, while spanning 10 fields, necessarily excludes specialized areas where instructional design practices may differ substantially. Performing arts education, physical education, and trades training involve embodied learning and psychomotor skill development that our current scenario specifications cannot adequately capture. Medical and healthcare education, while included, is represented primarily through knowledge and cognitive skill components rather than the procedural and clinical reasoning aspects central to professional medical training. Researchers applying benchmark results to these specialized domains should exercise appropriate caution.
+
+The benchmark is English-only, which limits generalizability to instructional design practices in other linguistic and cultural contexts. Instructional design is not culturally neutral, and approaches that perform well in Western educational contexts may be inappropriate or ineffective in educational systems with different pedagogical traditions, learner expectations, or institutional structures. Cross-cultural validation studies would be valuable future work.
+
+All scenarios are synthetically generated, which enables systematic control and large-scale evaluation but may not capture the full complexity of real-world instructional design projects. Actual projects involve stakeholder negotiations, budget constraints that emerge mid-project, organizational politics, and iterative refinement cycles that synthetic specifications cannot fully represent. The benchmark evaluates single-pass design outputs rather than the iterative, collaborative process through which professional instructional designs typically evolve.
+
+The static evaluation approach assesses design quality at a single point without evaluating agents' ability to refine designs based on feedback, incorporate formative evaluation results, or adapt to changing requirements. These iterative capabilities are central to professional instructional design practice but would require substantially different evaluation infrastructure to assess.
+
+\subsection{Evaluation Limitations}
+
+LLM-based evaluation, while enabling large-scale assessment, introduces potential biases that warrant acknowledgment. Evaluator LLMs may exhibit systematic preferences for outputs with particular stylistic characteristics, potentially favoring verbose responses over concise ones or preferring familiar frameworks over novel approaches. Our multi-judge design mitigates but cannot eliminate these concerns.
+
+Some aspects of the evaluation rubric necessarily involve subjective judgment where reasonable evaluators might disagree. The distinction between ``good'' and ``excellent'' instructional design often depends on contextual factors and professional experience that LLM evaluators may not fully capture. Our inter-rater reliability analysis demonstrates acceptable agreement levels, but users should interpret fine-grained score differences with appropriate caution.
+
+The current benchmark version lacks human expert validation of the evaluation rubric and scoring outcomes. While the rubric was developed with reference to established ISD frameworks and professional standards, systematic validation by practicing instructional designers would strengthen confidence in the evaluation approach. Future work should include expert review of agent outputs and correlation analysis between LLM scores and expert judgments.
+
+\subsection{Data Statement}
+
+All scenarios in \benchmark{} are synthetically generated through controlled sampling from the context variable space. No human subjects were involved in scenario creation or evaluation, and no personally identifiable information is included in the dataset. Scenario content was reviewed to ensure absence of harmful, biased, or inappropriate material.
+
+The benchmark is intended for research purposes, specifically for developing and comparing automated ISD systems. Generated instructional designs should not be deployed in educational settings without review by qualified instructional design professionals. While agents can produce structurally complete designs, ensuring pedagogical appropriateness, accessibility compliance, and alignment with specific institutional requirements requires human expertise. We release all agent outputs and evaluation scores to enable secondary analysis without requiring recomputation.

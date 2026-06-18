@@ -1,0 +1,43 @@
+\section{Analysis}
+\label{sec:analysis}
+
+Beyond benchmark performance scores, we analyze the theoretical quality of agent outputs using two established ISD frameworks: Merrill's First Principles of Instruction \cite{merrill2002first} (MPI) and Design Coherence (DC), which extends constructive alignment \cite{biggs1996enhancing} to include technology integration. We labeled 5,345 outputs across 9 dimensions (MPI: 5, DC: 4) using GPT-4o-mini with strict rubrics (0-3 scale). This analysis compares theory-based agents (React-ADDIE, ADDIE-Agent, Dick-Carey, RPISD) against non-theory agents (Baseline, EduPlanner).
+
+\subsection{Theoretical Quality Predicts Performance}
+
+As shown in Figure~\ref{fig:findings-1-3} \textit{left}, we find a strong positive correlation between theoretical quality scores and benchmark performance ($r = 0.656$, $p < 0.001$), validating that adherence to ISD principles translates to measurable quality improvements. This correlation holds across all agents, with EduPlanner showing the highest within-agent correlation ($r = 0.312$), suggesting its failures are systematically related to theoretical deficiencies rather than random variation.
+
+The correlation validates two claims: (1) our MPI/DC labeling captures meaningful quality dimensions, and (2) the benchmark effectively measures theoretically-grounded ISD quality. Practitioners can use theoretical quality scores as diagnostic tools to identify specific improvement areas.
+
+\subsection{Theory-based vs Non-theory Agent Comparison}
+
+Figure~\ref{fig:findings-1-3} \textit{middle} compares the two agent groups across all 9 dimensions. Across MPI dimensions, theory-based agents significantly outperform non-theory agents on Problem-centered design (P: $d = 0.28$) and Activation of prior knowledge (A: $d = 0.29$), both $p < 0.001$. These dimensions require explicit consideration of learner context and knowledge scaffolding---precisely where theoretical frameworks provide structured guidance. In contrast, non-theory agents score higher on Demonstration (D: $d = -0.23$, $p < 0.001$), suggesting a tradeoff between systematic coverage and depth in concrete examples.
+
+For DC dimensions, theory-based agents demonstrate significantly better Objective-Assessment alignment (OA: $d = 0.32$, $p < 0.001$), reflecting systematic mapping between learning goals and evaluation. However, Content-Activity alignment (CA) favors non-theory agents ($d = -0.19$, $p < 0.001$), paralleling the MPI-D finding: simpler agents may produce more tightly coupled content-activity pairs. Activity-Technology alignment (AT) remains the weakest dimension across all agents (mean = 2.19), identifying technology integration as a universal challenge.
+
+\subsection{Cross-Framework Dimension Relationships}
+
+The correlation matrix in Figure~\ref{fig:findings-1-3} \textit{right} reveals meaningful pathways between MPI and DC dimensions. The strongest cross-framework correlation appears between Demonstration and Content-Activity alignment ($r = 0.82$), indicating that agents excelling at concrete examples naturally produce activities matching their content. Similarly, Application correlates strongly with Objective-Assessment alignment ($r = 0.85$), suggesting that practice opportunities and valid assessment design emerge together. Integration shows substantial correlation with Objective-Content alignment ($r = 0.80$), where real-world transfer emphasis accompanies coherent goal-material mapping.
+
+These pathways suggest that MPI and DC form an interconnected network rather than independent quality dimensions. Improving one dimension may cascade to related dimensions, offering leverage points for agent optimization. For instance, enhancing demonstration capabilities could simultaneously improve content-activity coherence.
+
+\subsection{Agent-wise Theoretical Quality}
+
+Figure~\ref{fig:findings-4-6} \textit{left} presents agent-wise theoretical quality scores. React-ADDIE achieves the highest scores on both MPI (2.78) and DC (2.80), consistent with its benchmark performance leadership. The ranking largely follows benchmark results, with one notable exception: Baseline (MPI: 2.61, DC: 2.63) outperforms several theory-based agents in DC despite its simpler design.
+
+EduPlanner shows the lowest theoretical quality (MPI: 2.36, DC: 2.24), explaining its poor benchmark performance. Its multi-agent architecture, while innovative, fails to ensure systematic coverage of ISD principles---components may optimize locally without maintaining global coherence.
+
+The strong correlation between agent rankings on theoretical quality and benchmark performance ($\rho = 0.94$) reinforces that ISD theory adherence is a primary driver of output quality.
+
+\subsection{Robustness Across Difficulty Levels}
+
+As shown in Figure~\ref{fig:findings-4-6} \textit{middle}, both theory-based and non-theory agents maintain stable theoretical quality across Easy, Medium, and Hard scenarios. Theory-based agents show consistent scores (Easy: 2.58, Medium: 2.58, Hard: 2.58), as do non-theory agents (Easy: 2.55, Medium: 2.54, Hard: 2.53).
+
+This stability indicates that agent quality is determined by architectural and prompting choices rather than scenario characteristics. Well-designed agents handle complexity gracefully, while poorly designed agents fail consistently regardless of difficulty. For practitioners, this means agent selection matters more than scenario filtering.
+
+\subsection{MPI and DC as Complementary Frameworks}
+
+Figure~\ref{fig:findings-4-6} \textit{right} shows that MPI and DC total scores correlate strongly ($r = 0.892$, $p < 0.001$), yet the shared variance ($r^2 = 0.80$) leaves 20\% unexplained, confirming they capture related but distinct quality aspects. While cross-framework correlations are substantial Figure~\ref{fig:findings-1-3} \textit{right}, each framework contributes unique diagnostic information.
+
+MPI assesses instructional effectiveness principles, while DC evaluates internal alignment coherence. An agent can demonstrate strong instructional principles (high MPI) while lacking tight component alignment (lower DC), or vice versa. We recommend practitioners evaluate outputs on both dimensions, using MPI for pedagogical soundness and DC for structural coherence.
+

@@ -34,7 +34,7 @@ Given a training scenario, produce ONLY valid JSON with this EXACT schema:
 
 Implementation requirements:
 - instructor_orientation must be for instructors/operators, not learner learning objectives.
-- system_check must include concrete VR headset, tablet, app login, network, audio, analytics/data capture, accessibility, and fallback checks.
+- system_check must include concrete learning platform, lab/resource access, login, network, data capture, accessibility, and fallback checks.
 - prototype_execution must describe a realistic pilot, participant sample, execution records, issues, success criteria, and data collection.
 - monitoring must include operational support, issue resolution, and real-time instructional adjustments.
 Output ONLY the JSON object, no markdown, no explanation.\

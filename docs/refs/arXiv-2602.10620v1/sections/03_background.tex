@@ -1,0 +1,43 @@
+\section{Related Work}
+\label{sec:related-work}
+
+\subsection{Agent Benchmark}
+\label{subsec:agent-benchmarks}
+
+LLM-based agent evaluation has advanced rapidly with benchmarks like AgentBench~\cite{liu2023agentbench} for diverse interactive environments, WebArena~\cite{zhou2023webarena} for web navigation, and SWE-bench~\cite{jimenez2024swebench} for software engineering. Berkeley Function-Calling Leaderboard~\cite{yan2024bfcl} and ToolEmu~\cite{ruan2024toolemu} further evaluate tool use and safety considerations.
+
+However, educational agent benchmarks remain limited. Existing benchmarks like OpenLearnLM~\cite{openlearnlm2026}, EduBench~\cite{edubench2025}, MathTutorBench~\cite{mathtutorbench2025}, and TutorBench~\cite{tutorbench2025} evaluate LLMs directly rather than agentic systems. The systematic evaluation of agents for ISD, requiring multi-step planning, contextual adaptation, and iterative refinement, remains unexplored.
+
+\subsection{Instructional Systems Design and LLM Agents}
+\label{subsec:isd-benchmarks}
+
+ISD is a systematic and reflective process for developing instructional materials and experiences. Unlike narrower instructional design (ID) approaches that focus on specific learning tasks, ISD addresses the entire lifecycle of educational program development, from initial needs analysis through implementation and evaluation. The field emerged from military training research in the 1970s and has since become foundational across corporate training, higher education, and K-12 contexts.
+
+Three theoretical frameworks dominate ISD practice. The ADDIE model~\cite{branson1975addie} remains the most widely adopted framework. Dick \& Carey's systematic design~\cite{dick1978systematic} emphasizes alignment between learning objectives, assessments, and instruction through a nine-step procedure. Rapid Prototyping ISD~\cite{tripp1990rapid} prioritizes iterative development over comprehensive upfront analysis.
+
+Recent work has begun applying LLMs to ISD tasks. EduPlanner~\cite{zhang2025eduplanner} employs multi-agent systems for mathematics lesson design, LessonPlanner~\cite{lessonplanner2024} assists teachers in preparing lesson plans, and LearnLM~\cite{learnlm2024} incorporates learning science principles. However, these systems are often limited to specific domains or do not address the full ISD lifecycle.
+
+Table~\ref{tab:benchmark-comparison} compares existing approaches. Two gaps emerge: (1) current benchmarks focus on content knowledge or tutoring skills rather than the full ISD lifecycle, and (2) existing systems lack agents grounded in established ISD theories. \benchmark{} addresses these gaps by providing both a comprehensive benchmark with systematic scenario generation and novel ISD theory-based agents for evaluation.
+
+\begin{table*}[!t]
+\centering
+\small
+\caption{Comparison of \benchmark{} with existing educational AI benchmarks and systems. \checkmark: fully supported, \textcircled{\small P}: partially supported, --: not supported.}
+\label{tab:benchmark-comparison}
+\begin{tabular}{lcccccccc}
+\toprule
+\textbf{Benchmark/System} & \textbf{Focus} & \textbf{\# Items} & \textbf{Domain} & \textbf{\# Dims} & \textbf{Public} & \textbf{Agent} & \textbf{ISD} & \textbf{Evaluation} \\
+\midrule
+OpenLearnLM~\cite{openlearnlm2026} & Knowledge/Skill/Attitude & 124K & Multi & 3 & \checkmark & -- & \textcircled{\small P} & KSA Rubric \\
+EduBench~\cite{edubench2025} & Educational Scenarios & 18.8K & Multi & 9 & \checkmark & -- & -- & Multi-metric \\
+MathTutorBench~\cite{mathtutorbench2025} & Math Tutoring & 4.8K & Math & 1 & \checkmark & -- & -- & Pedagogical \\
+TutorBench~\cite{tutorbench2025} & Tutoring Skills & 1,490 & Math & 2 & \checkmark & -- & -- & Rubric-based \\
+LearnLM~\cite{learnlm2024} & Learning Science & -- & General & -- & -- & -- & \textcircled{\small P} & Principle-based \\
+EduPlanner~\cite{zhang2025eduplanner} & Lesson Planning & -- & Math & 1 & -- & \checkmark & \textcircled{\small P} & CIDDP \\
+LessonPlanner~\cite{lessonplanner2024} & Lesson Planning & -- & General & -- & \checkmark & -- & \textcircled{\small P} & User study \\
+\midrule
+\textbf{\benchmark{} (Ours)} & \textbf{ISD} & \textbf{\numscenarios{}} & \textbf{Multi} & \textbf{51} & \checkmark & \checkmark & \checkmark & \textbf{ADDIE} \\
+\bottomrule
+\end{tabular}
+\end{table*}
+

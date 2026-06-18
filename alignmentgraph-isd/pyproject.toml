@@ -13,5 +13,8 @@ dependencies = [
     "jsonschema>=4",
 ]
 
+[project.scripts]
+alignmentgraph-isd = "alignmentgraph_isd.cli:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/alignmentgraph_isd"]

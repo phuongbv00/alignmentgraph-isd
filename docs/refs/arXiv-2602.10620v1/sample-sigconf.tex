@@ -1,0 +1,211 @@
+%%
+%% ISD-Agent-Bench: A Comprehensive Benchmark for Evaluating LLM-based Instructional Design Agents
+%%
+%% Based on ACM sigconf template
+%%
+
+%% Commands for TeXCount
+%TC:macro \cite [option:text,text]
+%TC:macro \citep [option:text,text]
+%TC:macro \citet [option:text,text]
+%TC:envir table 0 1
+%TC:envir table* 0 1
+%TC:envir tabular [ignore] word
+%TC:envir displaymath 0 word
+%TC:envir math 0 word
+%TC:envir comment 0 0
+
+\documentclass[sigconf,preprint]{acmart}
+
+%% Additional packages
+\usepackage{multirow}
+\usepackage[breakable]{tcolorbox}
+\usepackage{float}  % For [H] table/figure placement in appendix
+\usepackage{placeins}  % For \FloatBarrier to control float placement
+
+%% BibTeX command
+\AtBeginDocument{%
+  \providecommand\BibTeX{{%
+    Bib\TeX}}}
+
+%% Rights management information (to be updated)
+\setcopyright{acmlicensed}
+\copyrightyear{2026}
+\acmYear{2026}
+\acmDOI{XXXXXXX.XXXXXXX}
+
+%% Conference information
+\acmConference[Preprint]{Preprint -- This manuscript is under review and has not yet been published at a venue}{2026}{Anywhere}
+\acmISBN{978-1-4503-XXXX-X/2026/08}
+
+%% Custom commands
+\newcommand{\benchmark}{\textit{ISD-Agent-Bench}}
+\newcommand{\numscenarios}{25,795}
+\newcommand{\numtest}{1,202}
+
+%% Graphics path
+\graphicspath{{figures/}}
+
+%%
+%% end of the preamble, start of the body of the document source.
+\begin{document}
+
+%%
+%% Title
+%%
+\title{ISD-Agent-Bench: A Comprehensive Benchmark for Evaluating LLM-based Instructional Design Agents}
+
+%%
+%% Authors
+%%
+\author{YoungHoon Jeon$^{1}$, Suwan Kim$^{1}$, Haein Son$^{1}$, Sookbun Lee$^{2\dagger}$, Yeil Jeong$^{3\dagger}$, Unggi Lee$^{4\dagger}$}
+\affiliation{%
+  \institution{$^{1}$Upstage, $^{2}$Opentutorials, $^{3}$Indiana University Bloomington, $^{4}$Korea University Sejong Campus}
+  \institution{\{yesica, suwankim, henny\}@upstage.ai, blackdew7@gmail.com \\ yeilj@iu.edu, codingchild@korea.ac.kr}
+  \country{}}
+
+\renewcommand{\shortauthors}{Jeon et al.}
+
+%%
+%% Abstract
+%%
+\input{sections/01_abstract}
+
+%%
+%% CCS Concepts
+%%
+\begin{CCSXML}
+<ccs2012>
+   <concept>
+       <concept_id>10010147.10010178.10010179.10010182</concept_id>
+       <concept_desc>Computing methodologies~Natural language generation</concept_desc>
+       <concept_significance>500</concept_significance>
+   </concept>
+   <concept>
+       <concept_id>10010405.10010489.10010493</concept_id>
+       <concept_desc>Applied computing~Learning management systems</concept_desc>
+       <concept_significance>500</concept_significance>
+   </concept>
+</ccs2012>
+\end{CCSXML}
+
+\ccsdesc[500]{Computing methodologies~Natural language generation}
+\ccsdesc[500]{Applied computing~Learning management systems}
+
+%%
+%% Keywords
+%%
+\keywords{Instructional System Design, Agent Benchmark, ISD Theory-based Agents}
+
+%%
+%% Make title
+%%
+\maketitle
+
+%%
+%% Body - Include section files
+%%
+\input{sections/02_introduction}
+\input{sections/03_background}
+\input{sections/04_methodology}
+\input{sections/04b_agents}
+\input{sections/05_experiments}
+\input{sections/06_results}
+\input{sections/07_analysis}
+\input{sections/08_conclusion}
+
+%%
+%% Acknowledgments (optional, for camera-ready)
+%%
+%\begin{acks}
+%To be added for camera-ready version.
+%\end{acks}
+
+%%
+%% Bibliography
+%%
+\begin{thebibliography}{24}
+
+\bibitem{biggs1996enhancing}
+John Biggs. 1996. Enhancing Teaching through Constructive Alignment. \emph{Higher Education} 32, 3 (1996), 347--364. \url{https://doi.org/10.1007/BF00138871}
+
+\bibitem{branch2009addie}
+Robert Maribe Branch. 2009. \emph{Instructional Design: The ADDIE Approach}. Springer, New York, NY. \url{https://doi.org/10.1007/978-0-387-09506-6}
+
+\bibitem{branson1975addie}
+Robert~K. Branson, Gail~T. Rayner, J~Lamarr Cox, John~P. Furman, and F.J. King. 1975. Interservice Procedures for Instructional Systems Development. Executive Summary and Model.
+
+\bibitem{dick1978systematic}
+Walter Dick and Lou Carey. 1978. \emph{The Systematic Design of Instruction}. Scott, Foresman, Glenview, IL.
+
+\bibitem{edubench2025}
+Bin Xu, Yu Bai, Huashan Sun, Yiguan Lin, Siming Liu, Xinyue Liang, Yaolin Li, Zhuangzhi Dong, Jingren Zhang, Yufan Deng, et~al. 2025. EduBench: A Comprehensive Benchmarking Dataset for Evaluating Large Language Models in Diverse Educational Scenarios. \emph{arXiv preprint arXiv:2505.16160} (2025).
+
+\bibitem{lessonplanner2024}
+Haoxiang Fan, Guanzheng Chen, Xingbo Wang, and Zhenhui Peng. 2024. LessonPlanner: Assisting Novice Teachers to Prepare Pedagogy-Driven Lesson Plans with Large Language Models. In \emph{Proceedings of the 37th Annual ACM Symposium on User Interface Software and Technology}. 1--20.
+
+\bibitem{hu2024teachingplan}
+Bihao Hu, Longwei Zheng, Jiayi Zhu, Lishan Ding, Yilei Wang, and Xiaoqing Gu. 2024. Teaching Plan Generation and Evaluation With GPT-4: Unleashing the Potential of LLM in Instructional Design. \emph{IEEE Transactions on Learning Technologies} 17 (2024), 1445--1459.
+
+\bibitem{jimenez2024swebench}
+Carlos~E. Jimenez, John Yang, Alexander Wettig, Shunyu Yao, Kexin Pei, Ofir Press, and Karthik~R. Narasimhan. 2024. SWE-bench: Can Language Models Resolve Real-World GitHub Issues?. In \emph{International Conference on Learning Representations}. OpenReview.net, Vienna, Austria.
+
+\bibitem{openlearnlm2026}
+Unggi Lee, Sookbun Lee, Heungsoo Choi, Jinseo Lee, Haeun Park, Younghoon Jeon, Sungmin Cho, Minju Kang, Junbo Koh, Jiyeong Bae, et~al. 2026. OpenLearnLM Benchmark: A Unified Framework for Evaluating Knowledge, Skill, and Attitude in Educational Large Language Models. \emph{arXiv preprint arXiv:2601.13882} (2026).
+
+\bibitem{liu2023agentbench}
+Xiao Liu, Hao Yu, Hanchen Zhang, Yifan Xu, Xuanyu Lei, Hanyu Lai, Yu Gu, Hangliang Ding, Kaiwen Men, Kejuan Yang, et~al. 2024. AgentBench: Evaluating LLMs as Agents. In \emph{International Conference on Learning Representations}. OpenReview.net, Vienna, Austria.
+
+\bibitem{mathtutorbench2025}
+Jakub Macina, Nico Daheim, Ido Hakimi, Manu Kapur, Iryna Gurevych, and Mrinmaya Sachan. 2025. MathTutorBench: A Benchmark for Measuring Open-ended Pedagogical Capabilities of LLM Tutors. \emph{arXiv preprint arXiv:2502.18940} (2025).
+
+\bibitem{merrill2002first}
+M.~David Merrill. 2002. First Principles of Instruction. \emph{Educational Technology Research and Development} 50, 3 (2002), 43--59. \url{https://doi.org/10.1007/BF02505024}
+
+\bibitem{learnlm2024}
+Abhinit Modi, Aditya~Srikanth Veerubhotla, Aliya Rysbek, Andrea Huber, Brett Wiltshire, Brian Veprek, Daniel Gillick, Daniel Kasenberg, Derek Ahmed, Irina Jurenka, et~al. 2024. LearnLM: Improving Gemini for Learning. \emph{arXiv preprint arXiv:2412.16429} (2024).
+
+\bibitem{mohammadi2025agenteval}
+Mahmoud Mohammadi, Yipeng Li, Jane Lo, and Wendy Yip. 2025. Evaluation and Benchmarking of LLM Agents: A Survey. In \emph{Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining V.~2}. 6129--6139.
+
+\bibitem{morrison2019designing}
+Gary~R. Morrison, Steven~J. Ross, Jennifer~R. Morrison, and Howard~K. Kalman. 2019. \emph{Designing Effective Instruction} (8th ed.). Wiley, Hoboken, NJ.
+
+\bibitem{yan2024bfcl}
+Shishir~G. Patil, Huanzhi Mao, Fanjia Yan, Charlie Cheng-Jie Ji, Vishnu Suresh, Ion Stoica, and Joseph~E. Gonzalez. 2025. The Berkeley Function Calling Leaderboard (BFCL): From Tool Use to Agentic Evaluation of Large Language Models. In \emph{International Conference on Machine Learning}. PMLR.
+
+\bibitem{ruan2024toolemu}
+Yangjun Ruan, Honghua Dong, Andrew Wang, Silviu Pitis, Yongchao Zhou, Jimmy Ba, Yann Dubois, Chris~J. Maddison, and Tatsunori Hashimoto. 2024. Identifying the Risks of LM Agents with an LM-Emulated Sandbox. In \emph{International Conference on Learning Representations}. OpenReview.net, Vienna, Austria.
+
+\bibitem{tutorbench2025}
+Rakshith~Sharma Srinivasa, Zora Che, Chen~Bo~Calvin Zhang, Diego~A. Mares, Ernesto~Gabriel Hern\'{a}ndez~Montoya, Jayeon Park, et~al. 2025. TutorBench: A Benchmark to Assess Tutoring Capabilities of Large Language Models. \emph{arXiv preprint arXiv:2510.02663} (2025).
+
+\bibitem{tripp1990rapid}
+Steven~D. Tripp and Barbara Bichelmeyer. 1990. Rapid Prototyping: An Alternative Instructional Design Strategy. \emph{Educational Technology Research and Development} 38, 1 (1990), 31--44. \url{https://doi.org/10.1007/BF02298246}
+
+\bibitem{wang2024llmagentsurvey}
+Lei Wang, Chen Ma, Xueyang Feng, Zeyu Zhang, Hao Yang, Jingsen Zhang, Zhiyuan Chen, Jiakai Tang, Xu Chen, Yankai Lin, et~al. 2024. A Survey on Large Language Model Based Autonomous Agents. \emph{Frontiers of Computer Science} 18, 6 (2024), 186345.
+
+\bibitem{yao2023react}
+Shunyu Yao, Jeffrey Zhao, Dian Yu, Izhak Shafran, Karthik~R. Narasimhan, and Yuan Cao. 2022. ReAct: Synergizing Reasoning and Acting in Language Models. In \emph{NeurIPS 2022 Foundation Models for Decision Making Workshop}.
+
+\bibitem{yao2025instructionalagents}
+Huaiyuan Yao, Wanpeng Xu, Justin Turnau, Nadia Kellam, and Hua Wei. 2025. Instructional Agents: LLM Agents on Automated Course Material Generation for Teaching Faculties. \emph{arXiv preprint arXiv:2508.19611} (2025).
+
+\bibitem{zhang2025eduplanner}
+Xueqiao Zhang, Chao Zhang, Jianwen Sun, Jun Xiao, Yi Yang, and Yawei Luo. 2025. EduPlanner: LLM-Based Multi-Agent Systems for Customized and Intelligent Instructional Design. \emph{IEEE Transactions on Learning Technologies} 18 (2025), 416--427. \url{https://doi.org/10.1109/TLT.2025.3561332}
+
+\bibitem{zhou2023webarena}
+Shuyan Zhou, Frank~F. Xu, Hao Zhu, Xuhui Zhou, Robert Lo, Abishek Sridhar, Xianyi Cheng, Tianyue Ou, Yonatan Bisk, Daniel Fried, et~al. 2023. WebArena: A Realistic Web Environment for Building Autonomous Agents. In \emph{NeurIPS 2023 Foundation Models for Decision Making Workshop}.
+
+\end{thebibliography}
+
+%%
+%% Appendix
+%%
+\clearpage
+\appendix
+\input{sections/09_appendix}
+
+\end{document}
+\endinput
