@@ -39,7 +39,7 @@ Output ONLY the JSON object, no markdown, no explanation.\
 class ActivityMaterialAgent(BaseISDAgent):
     def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
         prompt = _format_design_brief(design_brief)
-        # Graph-subgraph RAG: inject prior G_t nodes into this agent's prompt
+        # Graph-context retrieval (core, not RAG): inject prior G_t nodes into this prompt
         prior_ctx = self._graph_context(['needs_context', 'objective'])
         user_content = prompt
         if prior_ctx:
@@ -56,6 +56,12 @@ class ActivityMaterialAgent(BaseISDAgent):
         for node_type, node_id in [("activity", "activity_0"), ("material", "material_0")]:
             self.graph.add_node(node_type, node_id, parsed)
             self.trajectory.log_node_edit("add", node_id, node_type)
+        # Element-level nodes: each learner material is a first-class node.
+        for index, material in enumerate(parsed.get("learner_materials", []) or [], start=1):
+            if isinstance(material, dict):
+                element_key = str(material.get("id") or f"MAT-{index:02d}")
+                element_id = self.graph.add_element_node("material", element_key, dict(material))
+                self.trajectory.log_node_edit("add", element_id, "material")
         if self.graph.get_nodes("objective"):
             obj = self.graph.get_nodes("objective")[0]
             obj_id = obj["id"]
@@ -74,6 +80,7 @@ class ActivityMaterialAgent(BaseISDAgent):
                     rationale=rationale,
                     verified=True,
                 )
+                self._add_element_edge("supports", "activity_0", lo_id, rationale=rationale)
                 self.trajectory.log_edge_edit("add", "activity_0", obj_id, "supports", lo_id, rationale)
         self.trajectory.log_step("ActivityMaterialAgent", "develop_activities", prompt[:200], response[:200] if response else "")
 
@@ -118,6 +125,7 @@ class ActivityMaterialAgent(BaseISDAgent):
                 rationale=rationale,
                 verified=True,
             )
+            self._add_element_edge("supports", "activity_0", lo_id, rationale=rationale)
             self.trajectory.log_edge_edit("add", "activity_0", violation.node_id, "supports", lo_id, rationale)
             alignment_notes.append(rationale)
             repaired_ids.append(lo_id)
@@ -131,6 +139,7 @@ class ActivityMaterialAgent(BaseISDAgent):
             "Activity/material repair changed learning support; dependent assessment, constraints, and evaluation must be refreshed.",
             action="repair_cascade",
             changed_fields=["alignment_notes", "supports_edges"],
+            violation_type=getattr(violation, "violation_type", "activity_support"),
         )
         self.trajectory.log_step(
             "ActivityMaterialAgent",

@@ -190,8 +190,9 @@ class BaseISDAgent(ABC):
     def _graph_context(self, node_types: list[str], max_chars: int = 600) -> str:
         """Pull relevant prior nodes from G_t for injection into this agent's prompt.
 
-        This implements graph-subgraph RAG: each agent reads what earlier agents
-        already deposited in the AlignmentGraph before generating its own section.
+        This is graph-context retrieval (core, not RAG): each agent reads what
+        earlier agents already deposited in the AlignmentGraph before generating
+        its own section.
         Returns empty string when the graph has no relevant content yet.
         """
         return self.graph.get_node_context(node_types, max_chars_per_node=max_chars)
@@ -204,6 +205,28 @@ class BaseISDAgent(ABC):
             text = text[:max_chars] + "…"
         return text
 
+    def _add_element_edge(
+        self,
+        edge_type: str,
+        source_id: str,
+        lo_id: str,
+        *,
+        rationale: str = "",
+        verified: bool = True,
+    ) -> None:
+        """Mirror a section-level alignment edge onto the objective element node.
+
+        Element nodes (``objective:LO-01``) are first-class, so alignment edges
+        point at the specific objective, not only the aggregate ``objective_0``.
+        No-op if the element node does not exist (e.g. before objective design).
+        """
+        element_id = f"objective{self.graph.ELEMENT_SEP}{lo_id}"
+        if self.graph.get_node(element_id):
+            self.graph.add_edge(
+                edge_type, source_id, element_id,
+                evidence=lo_id, rationale=rationale, verified=verified,
+            )
+
     def _invalidate_impacted(
         self,
         node_id: str,
@@ -212,6 +235,7 @@ class BaseISDAgent(ABC):
         action: str = "cascade_invalidation",
         changed_fields: list[str] | None = None,
         evidence: str = "",
+        violation_type: str = "",
     ) -> dict[str, list]:
         impact = self.graph.invalidate_impacted(
             node_id,
@@ -225,6 +249,15 @@ class BaseISDAgent(ABC):
                 action,
                 node_id,
                 f"Marked stale nodes={len(impact['nodes'])} edges={len(impact['edges'])}.",
+            )
+            self.trajectory.log_cascade_event(node_id, impact["nodes"], impact["edges"], reason)
+        if action == "repair_cascade":
+            self.trajectory.log_repair_event(
+                agent=type(self).__name__,
+                violation_type=violation_type,
+                node_id=node_id,
+                repaired_fields=changed_fields or [],
+                cascade={"nodes": len(impact["nodes"]), "edges": len(impact["edges"])},
             )
         return impact
 

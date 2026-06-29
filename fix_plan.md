@@ -85,6 +85,8 @@ Nhưng hướng tích hợp benchmark thực tế là benchmark sẽ gọi code 
 
 ### P0.2 Làm Schema Validation Khớp Với Docs
 
+**Trạng thái:** Done. Thêm `validation.py` (`validate_section`, `validate_addie`) tách schema-validation khỏi pedagogical verification. `GraphAuditor` chạy section-level validation, đẩy lỗi type/id về owner agent qua regeneration trigger và expose `schema_violations`; aggregate node chạy `validate_addie` và ghi `validation_errors` vào state + `metadata.validation_errors`. Schema `addie_output.json` đã thêm required subfields + type/id pattern. Tests: `tests/test_validation.py`.
+
 **Vấn đề**
 
 Docs nói có schema validation cho required fields, type, enum, ID format, field completeness. Code hiện chỉ validate schema ADDIE rất lỏng: required 5 phase, `additionalProperties=true`, không validate subfields. `_validate_addie()` chỉ warning.
@@ -132,6 +134,8 @@ Docs nói có schema validation cho required fields, type, enum, ID format, fiel
 - Docs không còn mô tả validation như future/planned nếu code đã implement.
 
 ### P0.3 Mở Rộng `PedagogicalVerifier`
+
+**Trạng thái:** Done. Thêm các check `rubric_consistency`, `feasibility` (đọc `DesignBrief` duration/resources), `actionability`, `evaluation_alignment` vào `PedagogicalVerifierAgent.verify(design_brief)`. Planner `_repair_owner` và `REPAIR_OWNER_MAP` route các violation mới về đúng owner; coverage tính trên objective element nodes. Tests: `tests/test_verifier.py` (xác nhận ≥5 loại violation).
 
 **Vấn đề**
 
@@ -237,6 +241,8 @@ Docs case study là IT/Software Engineering, nhưng code hard-code VR/mobile và
 
 ### P0.5 Thiết Kế RAG Hai Lớp: Internal AlignmentGraph RAG Và External Corpus Add-ons
 
+**Trạng thái:** Done (terminology revised). **RAG = external corpus retrieval only**; graph-context và memory retrieval là core (always-on), **không** gọi là RAG. Thêm `rag/corpus.py` (`RetrievalSubagent`, `LocalCorpusSubagent`) và `rag/subagents.py` (`RetrievalSubagentRegistry` discover/route theo `can_handle`). `HarnessRunConfig.retrieval_subagents` cho phép đăng ký; `RetrievalPlanner` merge kết quả vào `context_pack["rag"]`. Flag đổi tên `use_ext_corpus` → `use_rag` (default `False`); **benchmark mặc định `no_rag`** (mọi preset benchmark `use_rag=False`), preset `case_study` mới bật RAG. Docs (`proposal.md` §2.6/§3.4 + html slide) cập nhật theo model mới. Tests: `tests/test_rag.py`.
+
 **Vấn đề**
 
 Khi chạy benchmark thì không cần external corpus; benchmark nên đo core harness trên cùng input contract. Nhưng trong case study, external corpus lại cần thiết để đưa tri thức IT/SE, templates, rubric, ví dụ bài tập vào workflow. Vì vậy RAG trong AlignmentGraph-ISD cần được mô tả và implement theo hai lớp:
@@ -307,6 +313,8 @@ class RetrievalSubagent:
 
 ### P1.1 Update Code Theo Ý Tưởng Element-level Graph Trong Docs
 
+**Trạng thái:** Done. Thêm element nodes first-class (`objective:LO-01`, `assessment:AT-01`, `material:MAT-01`) qua `AlignmentGraph.add_element_node` + `section_nodes`/`element_nodes`. Generation/repair agents tạo element nodes và mirror alignment edges (`measures`/`supports`/`evaluates`) vào element nodes (`BaseISDAgent._add_element_edge`). Coverage trong `GraphAuditor` và `PedagogicalVerifier` tính trên objective element nodes (fallback evidence khi chưa có element). Aggregator merge chỉ từ section nodes. Tests: `tests/test_element_graph.py`.
+
 **Vấn đề**
 
 Docs nói mỗi artifact element là node riêng. Code hiện là section-node graph: `objective_0`, `assessment_0`, `activity_0`, ... và per-LO alignment nằm trong edge evidence.
@@ -372,6 +380,8 @@ Docs dùng `constrained_by`, `evaluated_by`, trong khi code dùng `constrains`, 
 
 ### P1.3 Update Code Theo Docs: Dynamic ISD Task Graph Builder
 
+**Trạng thái:** Done. Thêm `task_graph.py` (`TaskGraphBuilder`) build artifact task graph từ audit + planner decision: task nodes có `owner`, `priority`, `status`, `depends_on`; dependency edges; implicit aggregate task. `_task_planner_node` đính `task_graph` vào planner decision; `TrajectoryLogger` lưu `task_graph_snapshots` mỗi vòng. Tests: `tests/test_task_graph.py`.
+
 **Vấn đề**
 
 Docs nói `MetaAgent` tạo dynamic ISD task graph. Code hiện là audit-driven dynamic router: `GraphAuditor` tạo audit, `ISDTaskPlanner` build candidate tasks mỗi vòng và chọn task ưu tiên.
@@ -407,7 +417,7 @@ Docs nói `MetaAgent` tạo dynamic ISD task graph. Code hiện là audit-driven
 
 ### P1.4 Chỉnh Memory/`use_ext_corpus` Semantics
 
-**Trạng thái:** Done. `MemorySession.augment_context_pack()` luôn inject internal memory context vì đây là core graph/memory retrieval. Flag `use_ext_corpus` chỉ dành cho external corpus retrieval add-ons.
+**Trạng thái:** Done. `MemorySession.augment_context_pack()` luôn inject memory context vì đây là core memory retrieval (không phải RAG). Flag `use_rag` (đổi tên từ `use_ext_corpus`) chỉ dành cho RAG = external corpus retrieval; benchmark mặc định `no_rag`.
 
 **Vấn đề**
 
@@ -433,6 +443,8 @@ Tên flag cũ cho retrieval gây nhập nhằng vì internal graph/memory retrie
 - `no_ext_corpus` không tắt internal graph/memory retrieval.
 
 ### P1.5 Update Code Theo Docs: Structured Trajectory Cho Validation/Verifier/Repair/Cascade
+
+**Trạng thái:** Done. `TrajectoryLogger` thêm `log_validation_result`, `log_verifier_result`, `log_repair_event`, `log_cascade_event` + streams `validation_events`/`verifier_events`/`repair_events`/`cascade_events` trong `to_dict()`. `BaseISDAgent._invalidate_impacted` log repair + cascade events tự động. `summary_metrics()` tính `repair_success_rate`, `cascade_count`, `validation_error_count`, `residual_violation_count`; expose qua `metadata.repair_metrics`. Tests: `tests/test_trajectory_metadata.py`.
 
 **Vấn đề**
 
@@ -479,6 +491,8 @@ Docs nói trajectory ghi retry count, violation type, repaired fields, cascade c
 
 ### P2.1 Prototype UI/Export
 
+**Trạng thái:** Done (docs). `proposal.md` §2.9 và slide tương ứng trong `proposal.html` đã đánh dấu prototype UI/Markdown-PDF export là *planned case-study interface*, ghi rõ core harness đã sẵn sàng còn UI chưa implement. Prototype vẫn giữ trong fix plan như scope sau core harness.
+
 **Vấn đề**
 
 Docs mô tả teacher-facing prototype, subject selector, Markdown/PDF export và trace UI. Code trong `alignmentgraph-isd/` chưa có UI/export.
@@ -496,7 +510,7 @@ Docs mô tả teacher-facing prototype, subject selector, Markdown/PDF export v�
 
 ### P2.2 Sync `proposal.html`
 
-**Trạng thái:** Done. Đã thêm slide benchmark `test_30` ngày 18/06/2026 vào phần Evaluation và sync `docs/proposal.html` với `docs/proposal.md`.
+**Trạng thái:** Done. Đã thêm slide benchmark `test_30` ngày 18/06/2026 vào phần Evaluation và sync `docs/proposal.html` với `docs/proposal.md`. Cập nhật thêm: slide Agentic RAG hai lớp, prototype đánh dấu *planned*, sửa nhãn ablation `no_rag` → `no_ext_corpus`, và chuyển slide "việc cần làm" sang trạng thái đã xong cho các hạng mục harness.
 
 **Vấn đề**
 
@@ -513,6 +527,8 @@ Docs có cả `proposal.md` và `proposal.html`. Sửa Markdown xong mà không 
 - Nội dung Markdown/HTML đồng bộ sau khi sửa.
 
 ### P2.3 Thêm Tests/Smoke Fixtures
+
+**Trạng thái:** Done. Thêm `tests/` với fake `llm_factory` network-free (`tests/conftest.py`), fixtures `minimal_brief.json`/`java_oop_brief.json`/`software_testing_brief.json`, và 32 tests phủ public API, mọi ablation, schema validation, verifier, element graph, task graph, RAG, trajectory. Command test ghi trong `alignmentgraph-isd/README.md`. Chạy: `python -m pytest tests/`.
 
 **Hướng sửa**
 
@@ -593,15 +609,15 @@ Test tối thiểu:
 - [x] Benchmark có thể gọi public API trực tiếp, không cần adapter map scenario trong core.
 - [x] CLI command trong docs, nếu giữ, chạy được với `DesignBrief` JSON.
 - [x] `pyproject.toml` có console script nếu docs vẫn giữ CLI smoke.
-- [ ] Schema validation khớp với docs.
-- [ ] Verifier checks khớp với docs.
+- [x] Schema validation khớp với docs.
+- [x] Verifier checks khớp với docs.
 - [x] Không còn VR/mobile/language hard-code trong core output mặc định.
-- [ ] RAG docs phân biệt internal AlignmentGraph RAG và external corpus subagent add-on.
-- [ ] Retrieval planner discover/chọn được retrieval subagents.
-- [ ] Graph granularity được update theo element-level docs.
+- [x] RAG = external corpus retrieval only; graph-context/memory là core (không phải RAG); benchmark mặc định `no_rag`.
+- [x] Retrieval planner discover/chọn được retrieval subagents (chỉ khi `use_rag`).
+- [x] Graph granularity được update theo element-level docs.
 - [x] Edge vocabulary đồng bộ theo code: `constrains`, `evaluates`.
-- [ ] Dynamic ISD task graph builder được implement theo docs.
+- [x] Dynamic ISD task graph builder được implement theo docs.
 - [x] Memory/`use_ext_corpus` semantics đồng bộ theo docs.
-- [ ] Trajectory có structured validation/verifier/repair/cascade events.
-- [ ] Prototype UI/export được ghi là planned case-study interface nếu chưa implement.
-- [ ] `docs/proposal.html` đồng bộ với `docs/proposal.md`.
+- [x] Trajectory có structured validation/verifier/repair/cascade events.
+- [x] Prototype UI/export được ghi là planned case-study interface nếu chưa implement.
+- [x] `docs/proposal.html` đồng bộ với `docs/proposal.md`.

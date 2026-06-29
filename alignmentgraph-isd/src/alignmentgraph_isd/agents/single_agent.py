@@ -242,8 +242,21 @@ class SingleAgent(BaseISDAgent):
                 "expert_review": development.get("expert_review", {}),
             })
             self.trajectory.log_node_edit("add", "assessment_0", "assessment")
+        self._add_element_nodes(parsed)
         self._add_alignment_edges(parsed)
         self.trajectory.log_step("SingleAgent", "generate_addie", prompt[:200], raw[:200] if raw else "(empty)")
+
+    def _add_element_nodes(self, parsed: dict) -> None:
+        for lo in parsed.get("design", {}).get("learning_objectives", []) or []:
+            if isinstance(lo, dict) and lo.get("id"):
+                self.graph.add_element_node("objective", str(lo["id"]), dict(lo))
+        for item in parsed.get("development", {}).get("assessment_tools", []) or []:
+            if isinstance(item, dict) and item.get("item_id"):
+                self.graph.add_element_node("assessment", str(item["item_id"]), dict(item))
+        for index, material in enumerate(parsed.get("development", {}).get("learner_materials", []) or [], start=1):
+            if isinstance(material, dict):
+                element_key = str(material.get("id") or f"MAT-{index:02d}")
+                self.graph.add_element_node("material", element_key, dict(material))
 
     def _add_alignment_edges(self, parsed: dict) -> None:
         objective_node = self.graph.get_node("objective_0")
@@ -280,6 +293,9 @@ class SingleAgent(BaseISDAgent):
                 rationale=f"Single-agent evaluation plan evaluates {lo_id}.",
                 verified=True,
             )
+            self._add_element_edge("measures", assessment_source, lo_id)
+            self._add_element_edge("supports", "activity_0", lo_id)
+            self._add_element_edge("evaluates", "evaluation_0", lo_id)
             self.trajectory.log_edge_edit("add", assessment_source, "objective_0", "measures", lo_id)
             self.trajectory.log_edge_edit("add", "activity_0", "objective_0", "supports", lo_id)
             self.trajectory.log_edge_edit("add", "evaluation_0", "objective_0", "evaluates", lo_id)

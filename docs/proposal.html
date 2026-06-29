@@ -531,20 +531,21 @@ const slides = [
     </div>
   `},
 
-  /* ── 5 — Method 2/3: Agentic RAG ── */
+  /* ── 5 — Method 2/3: Retrieval & RAG ── */
   {content: `
     <div class="s-label">3 · Proposed Method · 2 / 3</div>
-    <div class="s-title">Agentic RAG</div>
+    <div class="s-title">Retrieval <span class="accent">— RAG = external corpus only</span></div>
     <div class="s-body">
       <div class="pill-list">
-        <div class="pill blue"><div class="pill-dot"></div><div><span class="kw">RetrievalPlanner</span> quyết định cần truy xuất gì cho từng pha ISD — không dùng một query chung. Mỗi agent nhận <span class="kw">ContextPack riêng theo task</span>.</div></div>
-        <div class="pill amber"><div class="pill-dot"></div><div><strong>Nguồn tri thức:</strong> scenario context · <span class="kw">ISD theory notes</span>, Bloom verbs, constructive alignment checklist · <span class="kw">material/rubric templates</span> · <span class="kw">IT/SE corpus</span> (coding exercise, rubric lập trình, guideline code review, testing, OOP, software process).</div></div>
-        <div class="pill teal"><div class="pill-dot"></div><div><strong>Ví dụ — Software Testing 2 tuần cho fresher:</strong> <code>NeedsContextAgent</code> nhận <span class="kw">learner background</span> · <code>ObjectiveDesignAgent</code> nhận <span class="kw">Bloom/action verbs</span> · <code>AssessmentDesignAgent</code> nhận <span class="kw">rubric mẫu</span> test plan/bug report/unit test · <code>ActivityMaterialAgent</code> nhận <span class="kw">exercise templates</span>.</div></div>
+        <div class="pill blue"><div class="pill-dot"></div><div><strong>Core, always-on (KHÔNG phải RAG):</strong> <span class="kw">graph-context retrieval</span> (subgraph từ <span class="kw">AlignmentGraph</span>) + <span class="kw">memory retrieval</span> (working/episodic) + design-brief context. Không bị tắt bởi ablation nào.</div></div>
+        <div class="pill amber"><div class="pill-dot"></div><div><strong>RAG = external corpus retrieval — add-on cho case study/app.</strong> Đăng ký <span class="kw">RetrievalSubagent</span> theo corpus source (Java/OOP, Testing, code-review rubric…); <code>RetrievalSubagentRegistry</code> chọn subagents theo task qua <code>can_handle</code>. Chỉ bật khi <code>use_rag</code> (preset <code>case_study</code>) + có subagent.</div></div>
+        <div class="pill teal"><div class="pill-dot"></div><div><strong>Benchmark mặc định <code>no_rag</code>:</strong> không đăng ký subagent nào → benchmark run chỉ dùng core retrieval trên cùng input contract. Đóng góp của RAG minh hoạ định tính qua case study/app.</div></div>
       </div>
       <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:12px 18px;font-family:'Cascadia Code','Fira Code',monospace;font-size:0.78rem;color:#334155;line-height:2;margin-top:4px">
-        Request → <span style="color:#4f46e5">RetrievalPlanner</span> → Query decomposition by ISD task<br>
-        &nbsp;&nbsp;→ Retrieval over ISD corpus + domain corpus + templates<br>
-        &nbsp;&nbsp;→ Reranking by task need → <span style="color:#0d9488">ContextPack per agent</span> → Citation/grounding metadata
+        Request → <span style="color:#4f46e5">MetaAgent</span> lắp ContextPack từ:<br>
+        &nbsp;&nbsp;→ <span style="color:#0d9488">ContextPlanner.build</span> (context prep, KHÔNG phải retrieval) + memory + graph-context <span style="color:#0d9488">(core, always-on)</span><br>
+        &nbsp;&nbsp;→ <span style="color:#b45309">RetrievalPlanner = RAG</span> <span style="color:#b45309">(gated by use_rag, case study/app)</span>: Registry.select(task) → retrieve<br>
+        &nbsp;&nbsp;→ <span style="color:#0d9488">ContextPack per agent</span> → Citation/grounding metadata (RAG)
       </div>
     </div>
   `},
@@ -579,8 +580,8 @@ const slides = [
 
   /* ── 7 — Prototype ── */
   {content: `
-    <div class="s-label">3 · IT / Software Engineering Prototype</div>
-    <div class="s-title">Teacher-facing Prototype<br><span class="accent">for IT/SE Case Study</span></div>
+    <div class="s-label">3 · IT / Software Engineering Prototype · <span style="color:#b45309">planned</span></div>
+    <div class="s-title">Teacher-facing Prototype<br><span class="accent">for IT/SE Case Study</span> <span style="font-size:0.5em;color:#b45309;vertical-align:middle">(planned interface)</span></div>
     <div class="s-body">
       <div class="two-col">
         <div>
@@ -600,7 +601,7 @@ const slides = [
           </div>
         </div>
       </div>
-      <div class="pill amber" style="margin-top:4px"><div class="pill-dot"></div><div>Prototype phục vụ hai mục tiêu: chứng minh harness có thể vận hành như sản phẩm thực tế và cung cấp case study phân tích artifact trong miền phần mềm — nơi có bài tập code, rubric lập trình, test case và feedback vòng lặp.</div></div>
+      <div class="pill amber" style="margin-top:4px"><div class="pill-dot"></div><div><strong>Trạng thái:</strong> core harness (public API + CLI smoke, output ADDIE/trajectory/metadata) đã sẵn sàng; UI teacher-facing và Markdown/PDF export là <span class="kw">planned case-study interface</span>, chưa implement trong repo.</div></div>
     </div>
   `},
 
@@ -621,7 +622,7 @@ const slides = [
       </div>
       <div class="pill ind" style="flex-direction:column; gap:8px; border-radius:12px; padding:18px 20px">
         <div style="font-size:0.8rem;font-weight:800;color:#4f46e5;letter-spacing:1px">RQ2 — Component Impact</div>
-        <div style="font-size:1rem;color:#1e293b;line-height:1.65">Các thành phần của <span class="kw">AlignmentGraph-ISD</span> — <span class="kw">dynamic task graph</span>, <span class="kw">multi-agent orchestration</span>, <span class="kw">four-layer memory</span>, <span class="kw">agentic RAG</span>, <span class="kw">schema validation</span>, <span class="kw">pedagogical verifier</span> và <span class="kw">targeted repair</span> — ảnh hưởng như thế nào đến <span class="kw">trajectory quality</span>, <span class="kw">schema validity</span>, <span class="kw">failure rate</span>, latency và token/tool cost?</div>
+        <div style="font-size:1rem;color:#1e293b;line-height:1.65">Các thành phần của <span class="kw">AlignmentGraph-ISD</span> — <span class="kw">dynamic task graph</span>, <span class="kw">multi-agent orchestration</span>, <span class="kw">four-layer memory</span>, <span class="kw">graph-context/memory retrieval</span>, <span class="kw">schema validation</span>, <span class="kw">pedagogical verifier</span> và <span class="kw">targeted repair</span> — ảnh hưởng như thế nào đến <span class="kw">trajectory quality</span>, <span class="kw">schema validity</span>, <span class="kw">failure rate</span>, latency và token/tool cost? <span style="color:#64748b">(RAG/external corpus đánh giá riêng qua case study)</span></div>
       </div>
     </div>
   `},
@@ -670,10 +671,10 @@ const slides = [
         <div>
           <span class="badge badge-indigo">Ablation Study · RQ2</span>
           <div class="pill-list" style="margin-top:8px">
-            <div class="pill ind"><div class="pill-dot"></div><div><code>no_rag</code> — đo tác động của retrieval/context grounding</div></div>
             <div class="pill ind"><div class="pill-dot"></div><div><code>no_verifier</code> — đo lỗi alignment và rubric consistency</div></div>
             <div class="pill ind"><div class="pill-dot"></div><div><code>no_repair</code> — đo giá trị targeted repair</div></div>
             <div class="pill ind"><div class="pill-dot"></div><div><code>single_agent</code> / <code>linear_addie_only</code> — đo giá trị role decomposition và dynamic orchestration</div></div>
+            <div class="pill ind"><div class="pill-dot"></div><div>Benchmark luôn <code>no_rag</code> — RAG (external corpus) chỉ đánh giá định tính qua case study, không nằm trong grid</div></div>
           </div>
         </div>
       </div>
@@ -841,9 +842,9 @@ const slides = [
         <div>
           <span class="badge badge-indigo">Việc cần làm tiếp</span>
           <div class="pill-list" style="margin-top:8px;gap:6px">
-            <div class="pill ind"><div class="pill-dot"></div><div>Schema validation chi tiết + routing lỗi về owner agent; verifier mở rộng (rubric consistency, feasibility, actionability, evaluation alignment).</div></div>
-            <div class="pill ind"><div class="pill-dot"></div><div>Element-level AlignmentGraph + Dynamic ISD Task Graph Builder; retrieval subagents; structured trajectory cho validation/verifier/repair/cascade.</div></div>
-            <div class="pill ind"><div class="pill-dot"></div><div>Lộ trình benchmark: <code>test_30</code> → <code>test_90</code> → subset lớn hơn → full testset <strong>1202 scenarios</strong>.</div></div>
+            <div class="pill ind"><div class="pill-dot"></div><div><span style="color:#15803d">✓ Đã xong (harness):</span> schema validation + routing lỗi về owner agent; verifier mở rộng (rubric consistency, feasibility, actionability, evaluation alignment).</div></div>
+            <div class="pill ind"><div class="pill-dot"></div><div><span style="color:#15803d">✓ Đã xong (harness):</span> element-level AlignmentGraph + Dynamic ISD Task Graph Builder; retrieval subagents (two-layer RAG); structured trajectory cho validation/verifier/repair/cascade.</div></div>
+            <div class="pill ind"><div class="pill-dot"></div><div>Còn lại: lộ trình benchmark <code>test_30</code> → <code>test_90</code> → subset lớn hơn → full testset <strong>1202 scenarios</strong>; teacher-facing prototype (planned).</div></div>
           </div>
         </div>
       </div>

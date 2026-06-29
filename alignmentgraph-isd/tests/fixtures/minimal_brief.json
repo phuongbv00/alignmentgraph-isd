@@ -1,0 +1,25 @@
+{
+  "id": "brief-minimal",
+  "title": "Java OOP for Fresher Developers",
+  "domain": "Software Engineering",
+  "difficulty": "beginner",
+  "duration": "2 days",
+  "target_audience": "Fresher backend developers",
+  "learning_goals": [
+    "Explain core object-oriented programming concepts",
+    "Apply encapsulation and inheritance in Java",
+    "Design a small class hierarchy for a domain problem"
+  ],
+  "context": {
+    "duration": "2 days",
+    "learning_environment": "Instructor-led classroom with lab machines",
+    "class_size": "16",
+    "learner_role": "Junior software engineer",
+    "prior_knowledge": "Basic Java syntax"
+  },
+  "constraints": {
+    "resources": ["IDE", "Git repository", "Lab machines"],
+    "assessment_type": "performance task",
+    "language": "English"
+  }
+}

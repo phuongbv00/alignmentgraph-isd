@@ -317,11 +317,11 @@ class ISDTaskPlanner:
             return "objective_repair"
         if violation_type == "activity_support" or edge_type == "supports":
             return "activity_repair"
-        if violation_type == "feasibility" or edge_type == "constrains":
+        if violation_type in ("feasibility", "actionability") or edge_type == "constrains":
             return "implementation_repair"
-        if edge_type == "evaluates":
+        if violation_type == "evaluation_alignment" or edge_type == "evaluates":
             return "evaluation_repair"
-        if violation_type == "coverage" or edge_type == "measures":
+        if violation_type in ("coverage", "rubric_consistency") or edge_type == "measures":
             return "assessment_repair"
         return None
 

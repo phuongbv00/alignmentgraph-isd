@@ -10,8 +10,11 @@ from .graph import AlignmentGraph
 from .trajectory import TrajectoryLogger
 from .audit import GraphAuditor
 from .planner import ISDTaskPlanner
+from .task_graph import TaskGraphBuilder
 from .memory import HarnessMemory
 from .schema import DesignBrief
+from .validation import validate_addie
+from .context import ContextPlanner
 from .rag.planner import RetrievalPlanner
 from .agents.needs_context import NeedsContextAgent
 from .agents.objective_design import ObjectiveDesignAgent
@@ -41,6 +44,7 @@ class ISDState(TypedDict):
     planner_decisions: Annotated[list[dict], operator.add]
     needs_verification: bool
     repair_rounds: int
+    validation_errors: list[str]
 
 
 # ── Graph builder (called once per run, captures per-run objects as closures) ──
@@ -138,6 +142,7 @@ def _build_graph_for_run(
         decision = task_planner.decide(audit, state, config)
         decision_dict = decision.to_dict()
         decision_dict["audit_summary"] = audit.summary
+        decision_dict["task_graph"] = TaskGraphBuilder.build(audit, decision, state)
         trajectory.log_planner_decision(decision_dict)
         return {
             "audit": audit.to_dict(),
@@ -224,20 +229,22 @@ def _build_graph_for_run(
                 "task_attempts": _bump_attempt(state, "verifier"),
             }
         try:
-            violations = PedagogicalVerifierAgent(*_args()).verify()
+            violations = PedagogicalVerifierAgent(*_args()).verify(design_brief)
+            violation_dicts = [
+                {
+                    "node_id": v.node_id,
+                    "edge_type": v.edge_type,
+                    "type": v.violation_type,
+                    "msg": v.message,
+                    "severity": v.severity,
+                    "repair_hint": v.repair_hint,
+                    "metadata": v.metadata,
+                }
+                for v in violations
+            ]
+            trajectory.log_verifier_result(violation_dicts)
             return {
-                "violations": [
-                    {
-                        "node_id": v.node_id,
-                        "edge_type": v.edge_type,
-                        "type": v.violation_type,
-                        "msg": v.message,
-                        "severity": v.severity,
-                        "repair_hint": v.repair_hint,
-                        "metadata": v.metadata,
-                    }
-                    for v in violations
-                ],
+                "violations": violation_dicts,
                 "needs_verification": False,
                 "task_attempts": _bump_attempt(state, "verifier"),
             }
@@ -269,8 +276,10 @@ def _build_graph_for_run(
             addie_output = ADDIEOutputAggregator(*_args()).aggregate()
         except Exception:
             addie_output = _empty_addie()
-        _validate_addie(addie_output)
-        return {"addie_output": addie_output}
+        validation_errors = validate_addie(addie_output)
+        _jsonschema_validate_addie(addie_output)
+        trajectory.log_validation_result("addie_output", validation_errors)
+        return {"addie_output": addie_output, "validation_errors": validation_errors}
 
     # ── Conditional routing ────────────────────────────────────────────────────
 
@@ -372,12 +381,16 @@ class MetaAgent:
         memory_session = memory.begin_session(design_brief)
         graph = memory_session.graph
         trajectory = TrajectoryLogger()
-        planner = RetrievalPlanner(self.config)
-        try:
-            context_pack = planner.retrieve(design_brief)
-        except Exception:
-            context_pack = {}
+        # Assemble the context pack from three distinct sources:
+        #   1. brief-derived context preparation (ContextPlanner — not retrieval)
+        #   2. memory retrieval (core, always on)
+        #   3. RAG = external-corpus retrieval (RetrievalPlanner — gated by use_rag)
+        context_pack = ContextPlanner().build(design_brief)
         context_pack = memory_session.augment_context_pack(context_pack)
+        try:
+            context_pack["rag"] = RetrievalPlanner(self.config).retrieve(design_brief)
+        except Exception:
+            context_pack["rag"] = {"enabled": False, "task_name": "full_design", "results": [], "sources": []}
 
         compiled = _build_graph_for_run(self.config, graph, trajectory, context_pack, design_brief)
 
@@ -392,6 +405,7 @@ class MetaAgent:
             "planner_decisions": [],
             "needs_verification": True,
             "repair_rounds": 0,
+            "validation_errors": [],
         }
 
         invoke_config = {"recursion_limit": 80}
@@ -400,6 +414,8 @@ class MetaAgent:
         final_state = compiled.invoke(initial_state, invoke_config)
 
         addie_output = final_state.get("addie_output") or _empty_addie()
+        residual_violation_count = len(final_state.get("violations", []))
+        repair_metrics = trajectory.summary_metrics(residual_violation_count)
         trajectory_payload = trajectory.finalize()
         memory_metadata = memory_session.commit(
             design_brief=design_brief,
@@ -418,18 +434,21 @@ class MetaAgent:
                 "design_brief_id": design_brief.id,
                 "violations": final_state.get("violations", []),
                 "errors": final_state.get("errors", []),
+                "validation_errors": final_state.get("validation_errors", []),
+                "schema_violations": final_state.get("audit", {}).get("schema_violations", {}),
                 "audit": final_state.get("audit", {}),
                 "pending_tasks": final_state.get("pending_tasks", []),
                 "task_attempts": final_state.get("task_attempts", {}),
                 "planner_decisions": final_state.get("planner_decisions", []),
                 "repair_rounds": final_state.get("repair_rounds", 0),
+                "repair_metrics": repair_metrics,
             },
         }
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def _validate_addie(addie_output: dict) -> None:
+def _jsonschema_validate_addie(addie_output: dict) -> None:
     try:
         import jsonschema
         with _SCHEMA_PATH.open() as f:

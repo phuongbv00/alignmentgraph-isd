@@ -142,10 +142,39 @@ class AlignmentGraph:
         if edge not in self._edges:
             self._edges.append(edge)
 
+    # Element node ids are namespaced as "<type>:<element_id>" (e.g. "objective:LO-01").
+    # Section nodes keep the legacy "<type>_0" form. Both share a node type, so
+    # section-level consumers should filter with section_nodes()/element_nodes().
+    ELEMENT_SEP = ":"
+
+    def add_element_node(
+        self,
+        node_type: str,
+        element_id: str,
+        data: dict | None = None,
+        *,
+        verified: bool = False,
+    ) -> str:
+        """Add a first-class element node (one artifact item) and return its id."""
+        node_id = f"{node_type}{self.ELEMENT_SEP}{element_id}"
+        self.add_node(node_type, node_id, data, verified=verified)
+        return node_id
+
+    def is_element(self, node_id: str) -> bool:
+        return self.ELEMENT_SEP in node_id
+
     def get_nodes(self, node_type: str | None = None) -> list[dict]:
         if node_type is None:
             return list(self._nodes.values())
         return [n for n in self._nodes.values() if n["type"] == node_type]
+
+    def section_nodes(self, node_type: str) -> list[dict]:
+        """Section nodes (the aggregate payload), excluding element nodes."""
+        return [n for n in self._nodes.values() if n["type"] == node_type and not self.is_element(n["id"])]
+
+    def element_nodes(self, node_type: str) -> list[dict]:
+        """First-class element nodes for one artifact type."""
+        return [n for n in self._nodes.values() if n["type"] == node_type and self.is_element(n["id"])]
 
     def get_node(self, node_id: str) -> dict | None:
         return self._nodes.get(node_id)
@@ -158,8 +187,9 @@ class AlignmentGraph:
     def get_node_context(self, node_types: list[str], max_chars_per_node: int = 600) -> str:
         """Return a compact text summary of nodes for injection into agent prompts.
 
-        This is the graph-subgraph RAG entry point: later agents call this to
-        see what earlier agents already put in G_t before generating their section.
+        This is the graph-context retrieval entry point (core, not RAG): later
+        agents call this to see what earlier agents already put in G_t before
+        generating their section.
         """
         import json
         lines: list[str] = []

@@ -16,7 +16,7 @@ Từ khoảng trống này, luận văn đề xuất **AlignmentGraph-ISD**, m�
 
 ### 1.2 Contributions
 
-Luận văn đề xuất 1 đóng góp chính: **AlignmentGraph-ISD**, một alignment-graph harness cho Instructional Systems Design agents. Harness này đặt model trong một execution framework chuyên cho ISD, gồm dynamic task graph, multi-agent orchestration, four-layer memory, agentic RAG, schema-constrained generation, pedagogical verification, targeted repair và workflow trace. Thay vì chỉ sinh một artifact cuối, AlignmentGraph-ISD tổ chức quá trình thiết kế dạy học thành các artifact nodes và alignment edges có quan hệ rõ ràng, cho phép kiểm soát chất lượng, tái chạy phần lỗi và thu thập dữ liệu đánh giá quá trình.
+Luận văn đề xuất 1 đóng góp chính: **AlignmentGraph-ISD**, một alignment-graph harness cho Instructional Systems Design agents. Harness này đặt model trong một execution framework chuyên cho ISD, gồm dynamic task graph, multi-agent orchestration, four-layer memory, graph-context retrieval (core) và RAG external corpus (case study), schema-constrained generation, pedagogical verification, targeted repair và workflow trace. Thay vì chỉ sinh một artifact cuối, AlignmentGraph-ISD tổ chức quá trình thiết kế dạy học thành các artifact nodes và alignment edges có quan hệ rõ ràng, cho phép kiểm soát chất lượng, tái chạy phần lỗi và thu thập dữ liệu đánh giá quá trình.
 
 Bên cạnh đóng góp chính là case study trong miền IT/Software Engineering, minh hoạ cách AlignmentGraph-ISD được dùng trong một workflow thực tế: nhận yêu cầu thiết kế hoặc cải tiến một module đào tạo, truy xuất tài liệu miền phần mềm, tạo ADDIE-compatible artifact, kiểm tra alignment giữa mục tiêu-hoạt động-đánh giá, sinh rubric/bài tập, ghi trajectory và xuất kết quả theo format có thể đưa vào pipeline đánh giá. Case study không nhằm chứng minh hiệu quả học tập dài hạn, mà nhằm cho thấy AlignmentGraph-ISD có thể trở thành một công cụ hỗ trợ instructional designer/giảng viên nội bộ trong bối cảnh đào tạo phần mềm.
 
@@ -24,7 +24,7 @@ Bên cạnh đóng góp chính là case study trong miền IT/Software Engineeri
 
 **RQ1.** Trên ISD-Agent-Bench, AlignmentGraph-ISD cải thiện chất lượng artifact instructional design như thế nào so với các agent baseline và ISD agents hiện có?
 
-**RQ2.** Các thành phần của AlignmentGraph-ISD như dynamic task graph, multi-agent orchestration, agentic RAG, schema validation, pedagogical verifier và targeted repair ảnh hưởng như thế nào đến trajectory quality, schema validity, failure rate, latency và token/tool cost?
+**RQ2.** Các thành phần của AlignmentGraph-ISD như dynamic task graph, multi-agent orchestration, graph-context/memory retrieval, schema validation, pedagogical verifier và targeted repair ảnh hưởng như thế nào đến trajectory quality, schema validity, failure rate, latency và token/tool cost? (RAG/external corpus được đánh giá riêng qua case study, không nằm trong ablation grid của benchmark — xem §2.6.)
 
 ## 2. Method
 
@@ -44,7 +44,7 @@ Kiến trúc tổng thể gồm năm lớp:
 Scenario / Teacher Request
   -> Orchestrator
   -> Dynamic ISD Task Graph
-  -> Four-layer Memory + Agentic RAG and Tool Layer
+  -> Four-layer Memory + Graph-context retrieval (core) + RAG external corpus (case study) and Tool Layer
   -> Schema Validation + Pedagogical Verification + Targeted Repair
   -> ADDIE Output Aggregator + Trajectory + Prototype UI Artifact
 ```
@@ -93,9 +93,10 @@ Workflow đề xuất bắt đầu từ scenario của ISD-Agent-Bench hoặc y�
 flowchart TD
     A["ISD-Agent-Bench Scenario or Teacher Request"] --> B["MetaAgent"]
     B --> C["Dynamic ISD Task Graph Builder"]
-    B --> D["RetrievalPlanner"]
-    D --> E["Agentic RAG: ISD corpus, domain corpus, templates"]
-    E --> F["ContextPack by task"]
+    B --> D["ContextPlanner (context prep) + memory/graph-context retrieval (core)"]
+    B --> D2["RetrievalPlanner = RAG external corpus (case study, use_rag)"]
+    D --> F["ContextPack by task"]
+    D2 --> F
 
     C --> G["AlignmentGraph: objectives <-> assessment <-> activities"]
     F --> G
@@ -139,31 +140,32 @@ AlignmentGraph-ISD dùng multi-agent workflow gồm các role sau:
 
 Các role có thể dùng cùng một model backend nhưng khác system prompt, tool permission, context pack và output schema. `MetaAgent` không sinh toàn bộ nội dung thay các agent khác; nó giữ vai trò controller. Khác với ADDIE tuyến tính, các agent làm việc trên graph elements: thêm, sửa hoặc liên kết artifact nodes và alignment edges trong `AlignmentGraph`. Ví dụ, `AssessmentDesignAgent` có thể buộc `ObjectiveDesignAgent` sửa objective node nếu không có evidence đo được; `ImplementationConstraintAgent` có thể đẩy constraint node ngược lại để `ActivityMaterialAgent` điều chỉnh activity nodes. Điều này giúp AlignmentGraph-ISD giữ ADDIE-compatible output mà không bị ràng buộc vào execution order của `addie-agent`.
 
-### 2.6 Agentic RAG
+### 2.6 RAG (External Corpus Retrieval)
 
-Agentic RAG là thành phần bắt buộc của AlignmentGraph-ISD. Khác với retrieval tĩnh, trong đó một query duy nhất được tạo từ topic, harness dùng một `RetrievalPlanner` để quyết định cần truy xuất gì cho từng task ISD.
+Trong AlignmentGraph-ISD, **RAG chỉ đại diện cho external corpus retrieval**. Đây là một add-on cho case study/app, không phải thành phần của benchmark.
 
-Nguồn tri thức gồm:
+Cần phân biệt rõ ba loại truy xuất, trong đó chỉ loại thứ ba được gọi là RAG:
 
-- scenario context từ ISD-Agent-Bench;
-- ISD theory notes, ADDIE rubric, Bloom verbs, constructive alignment checklist;
-- material/rubric templates của prototype;
-- corpus IT/Software Engineering cho case study, ví dụ coding exercise template, rubric chấm bài lập trình, guideline cho code review, testing, OOP, data structures, software process;
-- previous approved artifacts trong prototype, nếu người dùng chọn lưu lại như reusable material.
+1. **Context preparation — `ContextPlanner`, always-on, KHÔNG phải retrieval.** Restructure design brief thành design-brief focus, alignment requirements và rubric focus cho từng agent. Đây chỉ là biến đổi input, không đọc store nào, nên **không** phải retrieval/RAG.
+2. **Graph-context retrieval — core, always-on.** Mỗi agent truy xuất subgraph liên quan từ trạng thái `AlignmentGraph` hiện tại (`BaseISDAgent._graph_context`). Là retrieval nhưng **không** gọi là RAG.
+3. **Memory retrieval — core, always-on.** Working/episodic memory được inject vào context pack (`MemorySession.augment_context_pack`). Là retrieval nhưng **không** phải RAG.
+4. **RAG = external corpus retrieval — add-on.** `RetrievalPlanner` chỉ làm đúng một việc: chạy các *retrieval subagents* (`RetrievalSubagent`) qua `RetrievalSubagentRegistry`, discover/chọn theo task bằng `can_handle`, rồi trả kết quả (`source`, `subagent`, `task_name`, `content`, `citations`). `RetrievalPlanner` **không** dựng context pack nội bộ — đó là việc của `ContextPlanner`.
 
-Quy trình agentic RAG:
+`MetaAgent` lắp context pack từ ba nguồn trên (context prep + memory + RAG). RAG chỉ bật khi `use_rag=True` (preset `case_study`) và có subagents được đăng ký; kết quả merge vào `context_pack["rag"]`. **Benchmark mặc định dùng `no_rag`** (`use_rag=False`, không đăng ký subagent nào), nên `RetrievalPlanner` trả về kết quả rỗng/disabled và mọi agent chỉ dùng context prep + graph-context + memory trên cùng một input contract. Hệ quả: đóng góp của RAG được minh hoạ định tính qua case study/app, không nằm trong ablation grid của benchmark.
+
+Quy trình (lắp trong `MetaAgent.run`):
 
 ```text
 Request/Scenario
-  -> RetrievalPlanner
-  -> Query decomposition by ISD task
-  -> Retrieval over ISD corpus + domain corpus + templates
-  -> Reranking by task need and constraint
+  -> ContextPlanner.build(brief)                 # context prep, KHÔNG phải retrieval
+  -> + memory retrieval (core, always-on)         # MemorySession.augment_context_pack
+  -> + graph-context retrieval (core, in agents)   # BaseISDAgent._graph_context
+  -> + RAG (gated by use_rag): RetrievalPlanner -> Registry.select(task) -> retrieve   # external corpus only
   -> ContextPack per agent
-  -> Citation/grounding metadata in artifact
+  -> Citation/grounding metadata in artifact (cho RAG results)
 ```
 
-Ví dụ, khi scenario yêu cầu một khoá học Software Testing kéo dài hai tuần cho fresher, `NeedsContextAgent` cần context về learner background và training constraints; `ObjectiveDesignAgent` cần Bloom/action verbs và learning outcome patterns; `AssessmentDesignAgent` cần rubric mẫu cho test plan, bug report hoặc unit test assignment; `ActivityMaterialAgent` cần exercise templates và test-case design examples. Mỗi agent nhận context pack khác nhau theo task thay vì dùng một context chung quá dài.
+Ví dụ, trong case study/app khi yêu cầu một khoá Software Testing cho fresher, registry chọn subagent corpus Testing (rubric test plan, unit test assignment, test-case design examples) cho `AssessmentDesignAgent` và `ActivityMaterialAgent`; với một brief Java/OOP thì subagent Testing không được chọn còn subagent OOP được chọn. Khi chạy benchmark (`no_rag`), không có subagent nào nên các agent chỉ dùng graph-context + design-brief context.
 
 ### 2.7 Schema Contracts and Verification
 
@@ -249,7 +251,9 @@ Harness tự load latest graph nếu `training_program_id` đã tồn tại, t�
 
 ### 2.9 Prototype for IT/Software Engineering Case Study
 
-Prototype là một sản phẩm teacher-facing cho miền IT/Software Engineering. Giao diện tối thiểu gồm:
+> **Trạng thái:** *planned case-study interface.* Core harness (`alignmentgraph_isd`) đã sẵn sàng — public API `MetaAgent.run(DesignBrief)`/`run_design_brief`, CLI smoke, output `addie_output`/`trajectory`/`metadata` — nhưng UI teacher-facing và Markdown/PDF export **chưa được implement** trong repo. Phần dưới mô tả giao diện mục tiêu của case study, không phải artifact đã có.
+
+Prototype (planned) là một sản phẩm teacher-facing cho miền IT/Software Engineering. Giao diện tối thiểu dự kiến gồm:
 
 - nhập yêu cầu thiết kế/cải tiến module đào tạo;
 - chọn subject area như Java/OOP, Data Structures, Software Testing, Git, Agile/Scrum hoặc Software Engineering fundamentals;
@@ -351,13 +355,16 @@ Sau khi các gap chính được đóng, evaluation sẽ mở rộng từ `test_
 
 Để trả lời RQ2, luận văn chạy các ablation:
 
+Benchmark luôn chạy `no_rag` (RAG = external corpus chỉ dùng cho case study/app, xem §2.6), nên RAG không nằm trong ablation grid của benchmark. Các ablation trên benchmark:
+
 | Ablation | Thành phần bị tắt | Mục tiêu |
 | --- | --- | --- |
-| `no_ext_corpus` | bỏ external corpus retrieval add-ons, vẫn giữ internal graph/memory retrieval | đo tác động của corpus grounding ngoài scenario/graph state |
 | `no_verifier` | bỏ pedagogical verifier | đo lỗi alignment và rubric consistency |
 | `no_repair` | phát hiện lỗi nhưng không sửa | đo giá trị của targeted repair |
 | `single_agent` | thay multi-agent workflow bằng một agent sinh toàn bộ output | đo giá trị của role decomposition |
 | `linear_addie_only` | giữ graph tuyến tính, bỏ dynamic orchestration policy | so sánh AlignmentGraph-ISD với ADDIE sequential agent |
+
+Lưu ý: graph-context và memory retrieval là core (always-on) nên không có ablation tắt chúng; tác động của RAG được minh hoạ định tính trong case study/app (preset `case_study`, `use_rag=True`).
 
 Ablation không nhằm tạo thêm nhiều claim rời rạc. Nó giúp giải thích contribution chính: AlignmentGraph-ISD tốt hơn vì thành phần nào, trong điều kiện nào, và trade-off chi phí ra sao.
 

@@ -91,7 +91,7 @@ Output ONLY the JSON object, no markdown, no explanation.\
 class ObjectiveDesignAgent(BaseISDAgent):
     def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
         prompt = _format_design_brief(design_brief)
-        # Graph-subgraph RAG: inject prior G_t nodes into this agent's prompt
+        # Graph-context retrieval (core, not RAG): inject prior G_t nodes into this prompt
         prior_ctx = self._graph_context(['needs_context'])
         user_content = prompt
         if prior_ctx:
@@ -108,6 +108,11 @@ class ObjectiveDesignAgent(BaseISDAgent):
         node_id = "objective_0"
         self.graph.add_node("objective", node_id, parsed)
         self.trajectory.log_node_edit("add", node_id, "objective")
+        # Element-level nodes: each learning objective is a first-class node.
+        for lo in parsed.get("learning_objectives", []):
+            if isinstance(lo, dict) and lo.get("id"):
+                element_id = self.graph.add_element_node("objective", str(lo["id"]), dict(lo))
+                self.trajectory.log_node_edit("add", element_id, "objective")
         self.trajectory.log_step("ObjectiveDesignAgent", "design_objectives", prompt[:200], response[:200] if response else "")
 
     def repair(self, violations: list) -> list:
@@ -166,6 +171,7 @@ class ObjectiveDesignAgent(BaseISDAgent):
             action="repair_cascade",
             changed_fields=["learning_objectives", "bloom_verb"],
             evidence=lo_id,
+            violation_type=getattr(violation, "violation_type", "bloom"),
         )
         self.trajectory.log_node_edit("update", violation.node_id, "objective")
         self.trajectory.log_step(

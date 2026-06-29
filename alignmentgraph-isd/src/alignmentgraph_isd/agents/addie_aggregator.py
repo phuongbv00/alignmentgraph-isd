@@ -9,13 +9,15 @@ class ADDIEOutputAggregator(BaseISDAgent):
         pass  # call aggregate() directly
 
     def aggregate(self) -> dict:
-        nc_nodes = self.graph.get_nodes("needs_context")
-        obj_nodes = self.graph.get_nodes("objective")
-        asm_nodes = self.graph.get_nodes("assessment")
-        act_nodes = self.graph.get_nodes("activity")
-        mat_nodes = self.graph.get_nodes("material")
-        con_nodes = self.graph.get_nodes("constraint")
-        ev_nodes = self.graph.get_nodes("evaluation")
+        # Aggregate from section nodes only; element nodes carry single items and
+        # would otherwise pollute the merged section payload.
+        nc_nodes = self.graph.section_nodes("needs_context")
+        obj_nodes = self.graph.section_nodes("objective")
+        asm_nodes = self.graph.section_nodes("assessment")
+        act_nodes = self.graph.section_nodes("activity")
+        mat_nodes = self.graph.section_nodes("material")
+        con_nodes = self.graph.section_nodes("constraint")
+        ev_nodes = self.graph.section_nodes("evaluation")
 
         nc_data = _merge_node_data(nc_nodes)
         obj_data = _merge_node_data(obj_nodes)

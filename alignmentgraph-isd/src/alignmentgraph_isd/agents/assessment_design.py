@@ -38,7 +38,7 @@ Output ONLY the JSON object, no markdown, no explanation.\
 class AssessmentDesignAgent(BaseISDAgent):
     def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
         prompt = _format_design_brief(design_brief)
-        # Graph-subgraph RAG: inject prior G_t nodes into this agent's prompt
+        # Graph-context retrieval (core, not RAG): inject prior G_t nodes into this prompt
         prior_ctx = self._graph_context(['needs_context', 'objective'])
         user_content = prompt
         if prior_ctx:
@@ -58,6 +58,11 @@ class AssessmentDesignAgent(BaseISDAgent):
             self._ensure_assessment_coverage(parsed, objective_data.get("learning_objectives", []))
         self.graph.add_node("assessment", node_id, parsed)
         self.trajectory.log_node_edit("add", node_id, "assessment")
+        # Element-level nodes: each assessment item is a first-class node.
+        for item in parsed.get("assessment_tools", []) or []:
+            if isinstance(item, dict) and item.get("item_id"):
+                element_id = self.graph.add_element_node("assessment", str(item["item_id"]), dict(item))
+                self.trajectory.log_node_edit("add", element_id, "assessment")
         if self.graph.get_nodes("objective"):
             obj_id = self.graph.get_nodes("objective")[0]["id"]
             objective_data = self.graph.get_nodes("objective")[0]["data"]
@@ -81,6 +86,7 @@ class AssessmentDesignAgent(BaseISDAgent):
                     rationale=rationale,
                     verified=True,
                 )
+                self._add_element_edge("measures", node_id, lo_id, rationale=rationale)
                 self.trajectory.log_edge_edit("add", node_id, obj_id, "measures", lo_id, rationale)
         self.trajectory.log_step("AssessmentDesignAgent", "design_assessments", prompt[:200], response[:200] if response else "")
 
@@ -175,6 +181,7 @@ class AssessmentDesignAgent(BaseISDAgent):
                 rationale=rationale,
                 verified=True,
             )
+            self._add_element_edge("measures", "assessment_0", lo_id, rationale=rationale)
             self.trajectory.log_edge_edit("add", "assessment_0", violation.node_id, "measures", lo_id, rationale)
             covered.add(lo_id)
             repaired_ids.append(lo_id)
@@ -187,6 +194,7 @@ class AssessmentDesignAgent(BaseISDAgent):
             "Assessment repair changed evidence coverage; dependent practice and evaluation plans must be refreshed.",
             action="repair_cascade",
             changed_fields=["assessment_tools", "measures_edges"],
+            violation_type=getattr(violation, "violation_type", "coverage"),
         )
         self.trajectory.log_step(
             "AssessmentDesignAgent",

@@ -3,6 +3,8 @@ from .graph import AlignmentGraph
 from .config import AblationConfig, HarnessRunConfig, MemoryConfig
 from .memory import HarnessMemory
 from .schema import DesignBrief, DesignBriefContext, DesignBriefConstraints
+from .rag.corpus import RetrievalSubagent, LocalCorpusSubagent
+from .rag.subagents import RetrievalSubagentRegistry
 
 
 def run_design_brief(design_brief: DesignBrief, config: HarnessRunConfig | None = None) -> dict:
@@ -30,5 +32,8 @@ __all__ = [
     "DesignBrief",
     "DesignBriefContext",
     "DesignBriefConstraints",
+    "RetrievalSubagent",
+    "LocalCorpusSubagent",
+    "RetrievalSubagentRegistry",
     "run_design_brief",
 ]

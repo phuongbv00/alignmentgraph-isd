@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .graph import AlignmentGraph
+from .validation import validate_section
 
 
 REQUIRED_NODE_TYPES = (
@@ -12,6 +13,16 @@ REQUIRED_NODE_TYPES = (
     "assessment",
     "activity",
     "material",
+    "constraint",
+    "evaluation",
+)
+
+# Section node types that carry a structured payload worth schema-validating.
+_SCHEMA_VALIDATED_TYPES = (
+    "needs_context",
+    "objective",
+    "assessment",
+    "activity",
     "constraint",
     "evaluation",
 )
@@ -33,6 +44,7 @@ class GraphAuditResult:
     missing_node_types: list[str]
     stale_node_types: list[str]
     missing_section_keys: dict[str, list[str]]
+    schema_violations: dict[str, list[str]] = field(default_factory=dict)
     objective_node_id: str = ""
     objective_ids: list[str] = field(default_factory=list)
     objective_count: int = 0
@@ -48,6 +60,7 @@ class GraphAuditResult:
             "missing_node_types": self.missing_node_types,
             "stale_node_types": self.stale_node_types,
             "missing_section_keys": self.missing_section_keys,
+            "schema_violations": self.schema_violations,
             "objective_node_id": self.objective_node_id,
             "objective_ids": self.objective_ids,
             "objective_count": self.objective_count,
@@ -80,6 +93,8 @@ class GraphAuditResult:
             parts.append(f"unsupported={','.join(self.unsupported_objectives)}")
         if self.unevaluated_objectives:
             parts.append(f"unevaluated={','.join(self.unevaluated_objectives)}")
+        if self.schema_violations:
+            parts.append(f"schema_invalid={','.join(self.schema_violations)}")
         if self.verifier_violations:
             parts.append(f"violations={len(self.verifier_violations)}")
         return "; ".join(parts) if parts else "graph_ready"
@@ -102,20 +117,28 @@ class GraphAuditor:
             if any(node.get("stale") for node in self.graph.get_nodes(node_type))
         ]
         missing_section_keys = self._missing_section_keys()
+        schema_violations = self._schema_violations(missing_node_types)
+        # Route structural problems (e.g. wrong type, malformed id) back to the
+        # owning specialist by registering them as regeneration triggers, even
+        # when the field is present and non-empty so missing_section_keys is blank.
+        for node_type in schema_violations:
+            if not missing_section_keys.get(node_type):
+                missing_section_keys[node_type] = [f"__schema__:{node_type}"]
 
         objective_node = self._first_node("objective")
         objective_node_id = objective_node.get("id", "") if objective_node else ""
         objective_ids = self._objective_ids(objective_node)
 
-        unmeasured = self._missing_edge_evidence("measures", objective_node_id, objective_ids)
-        unsupported = self._missing_edge_evidence("supports", objective_node_id, objective_ids)
-        unevaluated = self._missing_edge_evidence("evaluates", objective_node_id, objective_ids)
+        unmeasured = self._uncovered_objectives("measures", objective_node_id, objective_ids)
+        unsupported = self._uncovered_objectives("supports", objective_node_id, objective_ids)
+        unevaluated = self._uncovered_objectives("evaluates", objective_node_id, objective_ids)
         violations = verifier_violations or []
 
         ready = (
             not missing_node_types
             and not stale_node_types
             and not any(missing_section_keys.values())
+            and not schema_violations
             and bool(objective_ids)
             and not unmeasured
             and not unsupported
@@ -128,6 +151,7 @@ class GraphAuditor:
             missing_node_types=missing_node_types,
             stale_node_types=stale_node_types,
             missing_section_keys=missing_section_keys,
+            schema_violations=schema_violations,
             objective_node_id=objective_node_id,
             objective_ids=objective_ids,
             objective_count=len(objective_ids),
@@ -139,8 +163,34 @@ class GraphAuditor:
         )
 
     def _first_node(self, node_type: str) -> dict | None:
-        nodes = self.graph.get_nodes(node_type)
+        nodes = self.graph.section_nodes(node_type)
         return nodes[0] if nodes else None
+
+    def _uncovered_objectives(
+        self,
+        edge_type: str,
+        objective_node_id: str,
+        objective_ids: list[str],
+    ) -> list[str]:
+        """Coverage over objective element nodes (first-class), not just objective_0.
+
+        An objective is covered when a non-stale alignment edge of ``edge_type``
+        targets its element node OR carries its LO id as evidence. Falls back to
+        the legacy evidence-on-section check when no element nodes exist yet.
+        """
+        elements = self.graph.element_nodes("objective")
+        edges = [edge for edge in self.graph.get_edges(edge_type) if not edge.get("stale")]
+        covered_targets = {edge.get("target") for edge in edges}
+        covered_evidence = {edge.get("evidence") for edge in edges if edge.get("evidence")}
+        if elements:
+            uncovered: list[str] = []
+            for element in elements:
+                element_id = element["id"]
+                lo_id = str(element["data"].get("id") or element_id.split(self.graph.ELEMENT_SEP, 1)[-1])
+                if element_id not in covered_targets and lo_id not in covered_evidence:
+                    uncovered.append(lo_id)
+            return uncovered
+        return self._missing_edge_evidence(edge_type, objective_node_id, objective_ids)
 
     def _missing_section_keys(self) -> dict[str, list[str]]:
         missing: dict[str, list[str]] = {}
@@ -149,9 +199,19 @@ class GraphAuditor:
             missing[node_type] = [key for key in keys if _is_empty(data.get(key))]
         return missing
 
+    def _schema_violations(self, missing_node_types: list[str]) -> dict[str, list[str]]:
+        violations: dict[str, list[str]] = {}
+        for node_type in _SCHEMA_VALIDATED_TYPES:
+            if node_type in missing_node_types:
+                continue  # absence is already reported via missing_node_types
+            errors = validate_section(node_type, self._merged_data(node_type))
+            if errors:
+                violations[node_type] = errors
+        return violations
+
     def _merged_data(self, node_type: str) -> dict:
         merged: dict = {}
-        for node in self.graph.get_nodes(node_type):
+        for node in self.graph.section_nodes(node_type):
             data = node.get("data", {})
             if isinstance(data, dict):
                 merged.update(data)

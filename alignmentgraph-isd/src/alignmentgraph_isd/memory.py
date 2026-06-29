@@ -16,11 +16,14 @@ from .schema import DesignBrief
 REPAIR_OWNER_MAP = {
     "bloom": "ObjectiveDesignAgent",
     "coverage": "AssessmentDesignAgent",
+    "rubric_consistency": "AssessmentDesignAgent",
     "measures": "AssessmentDesignAgent",
     "activity_support": "ActivityMaterialAgent",
     "supports": "ActivityMaterialAgent",
     "feasibility": "ImplementationConstraintAgent",
+    "actionability": "ImplementationConstraintAgent",
     "constrains": "ImplementationConstraintAgent",
+    "evaluation_alignment": "EvaluationRevisionAgent",
     "evaluates": "EvaluationRevisionAgent",
 }
 

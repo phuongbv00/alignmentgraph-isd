@@ -46,7 +46,7 @@ Output ONLY the JSON object, no markdown, no explanation.\
 class ImplementationConstraintAgent(BaseISDAgent):
     def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
         prompt = _format_design_brief(design_brief)
-        # Graph-subgraph RAG: inject prior G_t nodes into this agent's prompt
+        # Graph-context retrieval (core, not RAG): inject prior G_t nodes into this prompt
         prior_ctx = self._graph_context(['objective', 'activity'])
         user_content = prompt
         if prior_ctx:
@@ -111,6 +111,7 @@ class ImplementationConstraintAgent(BaseISDAgent):
             "Implementation constraint repair changed delivery feasibility; impacted design and evaluation sections must be refreshed.",
             action="repair_cascade",
             changed_fields=["monitoring", "delivery_constraints"],
+            violation_type=(owned[0].violation_type if owned else "feasibility"),
         )
         self.trajectory.log_step(
             "ImplementationConstraintAgent",

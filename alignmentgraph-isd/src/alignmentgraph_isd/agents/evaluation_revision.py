@@ -59,7 +59,7 @@ Output ONLY the JSON object, no markdown, no explanation.\
 class EvaluationRevisionAgent(BaseISDAgent):
     def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
         prompt = _format_design_brief(design_brief)
-        # Graph-subgraph RAG: inject prior G_t nodes into this agent's prompt
+        # Graph-context retrieval (core, not RAG): inject prior G_t nodes into this prompt
         prior_ctx = self._graph_context(['objective', 'assessment', 'activity'])
         user_content = prompt
         if prior_ctx:
@@ -94,6 +94,7 @@ class EvaluationRevisionAgent(BaseISDAgent):
                     rationale=rationale,
                     verified=True,
                 )
+                self._add_element_edge("evaluates", node_id, lo_id, rationale=rationale)
                 self.trajectory.log_edge_edit("add", node_id, obj_id, "evaluates", lo_id, rationale)
         self.trajectory.log_step("EvaluationRevisionAgent", "plan_evaluation", prompt[:200], response[:200] if response else "")
 
@@ -133,6 +134,7 @@ class EvaluationRevisionAgent(BaseISDAgent):
                 rationale=rationale,
                 verified=True,
             )
+            self._add_element_edge("evaluates", "evaluation_0", lo_id, rationale=rationale)
             self.trajectory.log_edge_edit("add", "evaluation_0", violation.node_id, "evaluates", lo_id, rationale)
             repaired_ids.append(lo_id)
 
@@ -149,6 +151,7 @@ class EvaluationRevisionAgent(BaseISDAgent):
             "Evaluation repair changed evidence plan; assessment evidence should be rechecked for consistency.",
             action="repair_cascade",
             changed_fields=["improvement_plan", "evaluates_edges"],
+            violation_type=getattr(violation, "violation_type", "evaluation_alignment"),
         )
         self.trajectory.log_step(
             "EvaluationRevisionAgent",

@@ -1,59 +1,32 @@
 from __future__ import annotations
 from ..config import HarnessRunConfig
 from ..schema import DesignBrief
+from .subagents import RetrievalSubagentRegistry
 
 
 class RetrievalPlanner:
+    """RAG = external-corpus retrieval only.
+
+    This planner does one thing: run registered retrieval subagents over external
+    corpora and return their merged results. It does NOT build the design-brief
+    context pack (that is `ContextPlanner`, not retrieval), and it does not touch
+    graph-context or memory retrieval (those are core and live elsewhere).
+
+    RAG is gated by ``use_rag``. The benchmark defaults to no_rag and registers no
+    subagents, so ``retrieve`` returns a disabled, empty result there.
+    """
+
     def __init__(self, config: HarnessRunConfig) -> None:
         self.config = config
+        self.registry = RetrievalSubagentRegistry(getattr(config, "retrieval_subagents", None) or [])
 
-    def retrieve(self, design_brief: DesignBrief) -> dict:
-        """Return a compact context pack for downstream ADDIE agents.
-
-        This core planner always returns internal context derived from the design
-        brief. ``use_ext_corpus`` only controls optional external corpus retrieval
-        add-ons; internal graph/memory context is a core harness behavior.
-        """
-        context = design_brief.context
-        constraints = design_brief.constraints
-        resources = constraints.resources if isinstance(constraints.resources, list) else [constraints.resources]
-
+    def retrieve(self, design_brief: DesignBrief, task_name: str = "full_design", graph_context: str = "") -> dict:
+        if not self.config.ablation.use_rag or len(self.registry) == 0:
+            return {"enabled": False, "task_name": task_name, "results": [], "sources": []}
+        results = self.registry.retrieve(design_brief, task_name, graph_context)
         return {
-            "design_brief_focus": {
-                "title": design_brief.title,
-                "domain": design_brief.domain,
-                "difficulty": design_brief.difficulty,
-                "duration": context.duration or design_brief.duration,
-                "learning_environment": context.learning_environment,
-                "class_size": context.class_size,
-                "learner_profile": {
-                    "age": context.learner_age,
-                    "education": context.learner_education,
-                    "role": context.learner_role,
-                    "domain_expertise": context.domain_expertise,
-                    "prior_knowledge": context.prior_knowledge,
-                },
-            },
-            "available_resources": resources,
-            "constraints": {
-                "budget": constraints.budget,
-                "technology": constraints.tech_requirements,
-                "assessment_type": constraints.assessment_type,
-                "accessibility": constraints.accessibility,
-                "language": constraints.language,
-            },
-            "alignment_requirements": [
-                f"Every objective must be measured by at least one assessment item: {goal}"
-                for goal in design_brief.learning_goals
-            ],
-            "rubric_focus": [
-                "Cover all 33 ADDIE sub-items explicitly.",
-                "Use measurable Bloom verbs and avoid vague verbs such as know, learn, understand, or comprehend.",
-                "Preserve objective-assessment-activity alignment with explicit objective IDs.",
-                "Include pilot execution evidence, data collection, monitoring, and revision loops.",
-            ],
-            "external_corpus": {
-                "enabled": self.config.ablation.use_ext_corpus,
-                "sources": [],
-            },
+            "enabled": True,
+            "task_name": task_name,
+            "results": results,
+            "sources": sorted({result.get("source", "") for result in results if result.get("source")}),
         }
