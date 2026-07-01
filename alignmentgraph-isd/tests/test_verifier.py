@@ -42,7 +42,7 @@ def test_verifier_reports_at_least_five_check_types():
         ],
     })
     graph.add_node("activity", "activity_0", {"learner_materials": []})
-    graph.add_node("constraint", "constraint_0", {
+    graph.add_node("implementation_plan", "implementation_plan_0", {
         "instructor_orientation": {}, "system_check": {}, "prototype_execution": {}, "monitoring": {},
     })
     brief = DesignBrief.model_validate({"duration": "2 hours", "context": {"duration": "2 hours"}})

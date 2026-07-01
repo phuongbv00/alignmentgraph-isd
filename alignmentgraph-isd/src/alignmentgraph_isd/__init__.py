@@ -5,6 +5,7 @@ from .memory import HarnessMemory
 from .schema import DesignBrief, DesignBriefContext, DesignBriefConstraints
 from .rag.corpus import RetrievalSubagent, LocalCorpusSubagent
 from .rag.subagents import RetrievalSubagentRegistry
+from .llm import llm_factory_from_env
 
 
 def run_design_brief(design_brief: DesignBrief, config: HarnessRunConfig | None = None) -> dict:
@@ -35,5 +36,6 @@ __all__ = [
     "RetrievalSubagent",
     "LocalCorpusSubagent",
     "RetrievalSubagentRegistry",
+    "llm_factory_from_env",
     "run_design_brief",
 ]

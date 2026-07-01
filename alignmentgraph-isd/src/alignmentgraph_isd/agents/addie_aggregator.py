@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ..graph import EdgeType, NodeType
 from ..schema import DesignBrief
 from copy import deepcopy
 from .base import BaseISDAgent
@@ -11,13 +12,13 @@ class ADDIEOutputAggregator(BaseISDAgent):
     def aggregate(self) -> dict:
         # Aggregate from section nodes only; element nodes carry single items and
         # would otherwise pollute the merged section payload.
-        nc_nodes = self.graph.section_nodes("needs_context")
-        obj_nodes = self.graph.section_nodes("objective")
-        asm_nodes = self.graph.section_nodes("assessment")
-        act_nodes = self.graph.section_nodes("activity")
-        mat_nodes = self.graph.section_nodes("material")
-        con_nodes = self.graph.section_nodes("constraint")
-        ev_nodes = self.graph.section_nodes("evaluation")
+        nc_nodes = self.graph.section_nodes(NodeType.NEEDS_CONTEXT)
+        obj_nodes = self.graph.section_nodes(NodeType.OBJECTIVE)
+        asm_nodes = self.graph.section_nodes(NodeType.ASSESSMENT)
+        act_nodes = self.graph.section_nodes(NodeType.ACTIVITY)
+        mat_nodes = self.graph.section_nodes(NodeType.MATERIAL)
+        con_nodes = self.graph.section_nodes(NodeType.IMPLEMENTATION_PLAN)
+        ev_nodes = self.graph.section_nodes(NodeType.EVALUATION)
 
         nc_data = _merge_node_data(nc_nodes)
         obj_data = _merge_node_data(obj_nodes)
@@ -145,7 +146,7 @@ def _strengthen_alignment(output: dict, graph) -> dict:
     design = output.setdefault("design", {})
     development = output.setdefault("development", {})
     implementation = output.setdefault("implementation", {})
-    evaluation = output.setdefault("evaluation", {})
+    evaluation = output.setdefault(NodeType.EVALUATION, {})
 
     objectives = design.get("learning_objectives", []) or []
     assessment_tools = development.get("assessment_tools", []) or []
@@ -205,7 +206,7 @@ def _ensure_assessment_coverage(objectives: list, assessment_tools: list, graph)
         for item in assessment_tools
         if isinstance(item, dict) and item.get("aligned_objective")
     }
-    objective_node_id = "objective_0"
+    objective_node_id = graph.section_id(NodeType.OBJECTIVE)
     for objective in objectives:
         if not isinstance(objective, dict):
             continue
@@ -223,8 +224,8 @@ def _ensure_assessment_coverage(objectives: list, assessment_tools: list, graph)
             "coverage_repair": True,
         })
         graph.add_edge(
-            "measures",
-            "assessment_0",
+            EdgeType.MEASURES,
+            graph.section_id(NodeType.ASSESSMENT),
             objective_node_id,
             evidence=lo_id,
             rationale=f"Aggregator added {item_id} to guarantee assessment coverage for {lo_id}.",
@@ -288,9 +289,9 @@ def _build_alignment_matrix(
     storyboard: list,
     graph,
 ) -> list[dict]:
-    measures = _fresh_edges(graph.get_edges("measures"))
-    supports = _fresh_edges(graph.get_edges("supports"))
-    evaluates = _fresh_edges(graph.get_edges("evaluates"))
+    measures = _fresh_edges(graph.get_edges(EdgeType.MEASURES))
+    supports = _fresh_edges(graph.get_edges(EdgeType.SUPPORTS))
+    evaluates = _fresh_edges(graph.get_edges(EdgeType.EVALUATES))
     matrix = []
 
     for index, lo_id in enumerate(objective_ids):

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ..graph import EdgeType, NodeType
 from ..schema import DesignBrief
 from .base import BaseISDAgent, _format_design_brief, parse_json_response
 
@@ -60,24 +61,24 @@ class EvaluationRevisionAgent(BaseISDAgent):
     def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
         prompt = _format_design_brief(design_brief)
         # Graph-context retrieval (core, not RAG): inject prior G_t nodes into this prompt
-        prior_ctx = self._graph_context(['objective', 'assessment', 'activity'])
+        prior_ctx = self._graph_context([NodeType.OBJECTIVE, NodeType.ASSESSMENT, NodeType.ACTIVITY])
         user_content = prompt
         if prior_ctx:
             user_content = f"=== DESIGN + DEVELOPMENT RESULTS (from prior agents) ===\n{prior_ctx}\n\n=== SCENARIO ===\n{prompt}"
-        rag_ctx = self._context_pack_text(context_pack)
-        if rag_ctx:
-            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{rag_ctx}\n\n{user_content}"
+        pack_ctx = self._context_pack_text(context_pack)
+        if pack_ctx:
+            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{pack_ctx}\n\n{user_content}"
         messages = [
             {"role": "system", "content": _SYSTEM},
             {"role": "user", "content": user_content},
         ]
         response = self._call_llm(messages)
         parsed = parse_json_response(response)
-        node_id = "evaluation_0"
-        self.graph.add_node("evaluation", node_id, parsed)
-        self.trajectory.log_node_edit("add", node_id, "evaluation")
-        if self.graph.get_nodes("objective"):
-            obj = self.graph.get_nodes("objective")[0]
+        node_id = self.graph.section_id(NodeType.EVALUATION)
+        self.graph.add_node(NodeType.EVALUATION, node_id, parsed)
+        self.trajectory.log_node_edit("add", node_id, NodeType.EVALUATION)
+        if self.graph.get_nodes(NodeType.OBJECTIVE):
+            obj = self.graph.get_nodes(NodeType.OBJECTIVE)[0]
             obj_id = obj["id"]
             lo_ids = [
                 lo.get("id")
@@ -87,21 +88,21 @@ class EvaluationRevisionAgent(BaseISDAgent):
             for lo_id in lo_ids:
                 rationale = f"Evaluation plan reports learning evidence for {lo_id}."
                 self.graph.add_edge(
-                    "evaluates",
+                    EdgeType.EVALUATES,
                     node_id,
                     obj_id,
                     evidence=lo_id,
                     rationale=rationale,
                     verified=True,
                 )
-                self._add_element_edge("evaluates", node_id, lo_id, rationale=rationale)
-                self.trajectory.log_edge_edit("add", node_id, obj_id, "evaluates", lo_id, rationale)
+                self._add_element_edge(EdgeType.EVALUATES, node_id, lo_id, rationale=rationale)
+                self.trajectory.log_edge_edit("add", node_id, obj_id, EdgeType.EVALUATES, lo_id, rationale)
         self.trajectory.log_step("EvaluationRevisionAgent", "plan_evaluation", prompt[:200], response[:200] if response else "")
 
     def repair(self, violations: list) -> list:
         remaining = []
         for violation in violations:
-            if getattr(violation, "edge_type", "") != "evaluates":
+            if getattr(violation, "edge_type", "") != EdgeType.EVALUATES:
                 remaining.append(violation)
                 continue
             self._repair_evaluation_alignment(violation)
@@ -112,13 +113,13 @@ class EvaluationRevisionAgent(BaseISDAgent):
         if not objective:
             return
 
-        evaluation = self.graph.get_node("evaluation_0")
+        evaluation = self.graph.get_node(self.graph.section_id(NodeType.EVALUATION))
         if evaluation:
             evaluation_data = evaluation["data"]
         else:
             evaluation_data = {"formative": {}, "summative": {}, "improvement_plan": {}, "repaired": True}
-            self.graph.add_node("evaluation", "evaluation_0", evaluation_data, repair_history=[violation.message])
-            self.trajectory.log_node_edit("add", "evaluation_0", "evaluation")
+            self.graph.add_node(NodeType.EVALUATION, self.graph.section_id(NodeType.EVALUATION), evaluation_data, repair_history=[violation.message])
+            self.trajectory.log_node_edit("add", self.graph.section_id(NodeType.EVALUATION), NodeType.EVALUATION)
 
         repaired_ids: list[str] = []
         for lo in objective["data"].get("learning_objectives", []):
@@ -127,15 +128,15 @@ class EvaluationRevisionAgent(BaseISDAgent):
             lo_id = lo["id"]
             rationale = f"EvaluationRevisionAgent repair adds evaluation evidence for {lo_id}."
             self.graph.add_edge(
-                "evaluates",
-                "evaluation_0",
+                EdgeType.EVALUATES,
+                self.graph.section_id(NodeType.EVALUATION),
                 violation.node_id,
                 evidence=lo_id,
                 rationale=rationale,
                 verified=True,
             )
-            self._add_element_edge("evaluates", "evaluation_0", lo_id, rationale=rationale)
-            self.trajectory.log_edge_edit("add", "evaluation_0", violation.node_id, "evaluates", lo_id, rationale)
+            self._add_element_edge(EdgeType.EVALUATES, self.graph.section_id(NodeType.EVALUATION), lo_id, rationale=rationale)
+            self.trajectory.log_edge_edit("add", self.graph.section_id(NodeType.EVALUATION), violation.node_id, EdgeType.EVALUATES, lo_id, rationale)
             repaired_ids.append(lo_id)
 
         improvement = evaluation_data.setdefault("improvement_plan", {})
@@ -143,11 +144,11 @@ class EvaluationRevisionAgent(BaseISDAgent):
             action_items = improvement.setdefault("action_items", [])
             if isinstance(action_items, list):
                 action_items.append("Re-check evaluation evidence after upstream repair cascade.")
-        self.graph.update_node("evaluation_0", {"improvement_plan": improvement, "repaired": True})
-        self.graph.clear_stale("evaluation_0")
-        self.graph.mark_repaired("evaluation_0", violation.message)
+        self.graph.update_node(self.graph.section_id(NodeType.EVALUATION), {"improvement_plan": improvement, "repaired": True})
+        self.graph.clear_stale(self.graph.section_id(NodeType.EVALUATION))
+        self.graph.mark_repaired(self.graph.section_id(NodeType.EVALUATION), violation.message)
         impact = self._invalidate_impacted(
-            "evaluation_0",
+            self.graph.section_id(NodeType.EVALUATION),
             "Evaluation repair changed evidence plan; assessment evidence should be rechecked for consistency.",
             action="repair_cascade",
             changed_fields=["improvement_plan", "evaluates_edges"],

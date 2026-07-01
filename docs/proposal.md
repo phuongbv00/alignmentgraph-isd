@@ -49,23 +49,60 @@ Scenario / Teacher Request
   -> ADDIE Output Aggregator + Trajectory + Prototype UI Artifact
 ```
 
-### 2.2 Why Alignment Graph?
+### 2.2 The Alignment Graph
 
-AlignmentGraph-ISD chọn alignment graph vì chất lượng của một instructional design artifact không chỉ nằm ở việc sinh đủ năm mục ADDIE, mà nằm ở mức độ các thành phần thiết kế dạy học khớp với nhau. Trong một khoá học, learning objectives, assessments, activities, materials, implementation constraints và evaluation plan không độc lập. Một objective có thể được đo bởi nhiều assessment; một assessment có thể bao phủ nhiều objective; một activity có thể hỗ trợ nhiều objective; một constraint về thời lượng, môi trường lab hoặc năng lực đầu vào có thể làm một activity không còn khả thi. Các quan hệ nhiều-nhiều này phù hợp với biểu diễn graph hơn là một workflow tuyến tính.
+AlignmentGraph-ISD chọn alignment graph vì chất lượng của một instructional design artifact không chỉ nằm ở việc sinh đủ năm mục ADDIE, mà nằm ở mức độ các thành phần thiết kế dạy học khớp với nhau. Trong một khoá học, learning objectives, assessments, activities, materials, implementation constraints và evaluation plan không độc lập. Yêu cầu các thành phần này khớp với nhau chính là nguyên lý **constructive alignment** (Biggs, 1996) `[biggs1996enhancing]`: objectives, learning activities và assessment tasks phải nhất quán với nhau. Một objective có thể được đo bởi nhiều assessment; một assessment có thể bao phủ nhiều objective; một activity có thể hỗ trợ nhiều objective; một constraint về thời lượng, môi trường lab hoặc năng lực đầu vào có thể làm một activity không còn khả thi. Các quan hệ nhiều-nhiều này phù hợp với biểu diễn graph hơn là một workflow tuyến tính.
 
 Trong phương pháp đề xuất, `AlignmentGraph` không chỉ là hình vẽ minh hoạ mà là trạng thái làm việc chung của harness trong suốt quá trình thiết kế:
 
 ```text
-G_t = (V_t, E_t)
+G_t = (V_t, E_t)                          # alignment graph tại bước t
 
-V_t = V_objective union V_assessment union V_activity
-      union V_material union V_constraint union V_evaluation
+V_t = V_needs_context ∪ V_objective ∪ V_assessment ∪ V_activity
+      ∪ V_material ∪ V_implementation_plan ∪ V_evaluation
+      # phủ đủ artifact 5 phase ADDIE: Analysis(needs_context), Design(objective),
+      # Development(assessment/activity/material), Implementation(implementation_plan), Evaluation
 
-E_t = {measures, supports, requires, constrains,
-       evaluates, revises, depends_on}
+# Mỗi edge type là một quan hệ nhiều-nhiều có kiểu giữa hai lớp node:
+measures  ⊆ V_assessment × V_objective
+supports  ⊆ V_activity   × V_objective
+evaluates ⊆ V_evaluation × V_objective
+E_t = measures ∪ supports ∪ evaluates
+
+# Constructive alignment — bất biến verifier kiểm ở cấp từng objective:
+aligned(o) ⇔ (∃ a ∈ V_assessment : (a,o) ∈ measures)
+           ∧ (∃ x ∈ V_activity   : (x,o) ∈ supports)
+           ∧ (∃ e ∈ V_evaluation : (e,o) ∈ evaluates)   , ∀ o ∈ V_objective
+
+# Node không tham gia alignment edge (needs_context, implementation_plan, material) tác động
+# design không qua edge tĩnh mà qua toán tử cascade dựa trên IMPACT_POLICY (xem §2.7);
+# needs_context là source gốc (Analysis) lan tới toàn bộ downstream:
+cascade(n) = { m ∈ V_t : type(m) ∈ IMPACT_POLICY(type(n)) } ↦ stale
 ```
 
-Mỗi node lưu một artifact element có schema riêng, ví dụ objective, rubric item, activity, coding exercise, implementation constraint hoặc evaluation criterion. Mỗi edge lưu quan hệ khớp-nối giữa hai node, gồm relation type, source node, target node, evidence hoặc rationale, verification status và repair history. ADDIE vẫn được giữ như output contract cuối để tương thích với ISD-Agent-Bench, nhưng execution state bên trong là graph.
+![Hình 2.1. AlignmentGraph G_t phủ đủ artifact 5 phase ADDIE: objective làm tâm với ba quan hệ alignment measures/supports/evaluates; needs_context (Analysis) và implementation_plan (Implementation) tác động design qua cascade-invalidation (đứt nét) thay vì cạnh tĩnh; material thuộc V_t nhưng không mang alignment edge.](assets/alignment-graph.svg)
+
+*Hình 2.1. AlignmentGraph `G_t` — bảy lớp node của `V_t` phủ đủ 5 phase ADDIE (tô màu theo phase) và ba edge alignment của `E_t` lấy `objective` làm tâm; đường đứt nét là cascade theo `IMPACT_POLICY` (§2.7), không thuộc `E_t`. Nguồn chỉnh sửa: `assets/alignment-graph.drawio`.*
+
+Mỗi node lưu một artifact element có schema riêng, ví dụ objective, rubric item, activity, coding exercise, implementation plan hoặc evaluation criterion. Mỗi edge lưu quan hệ khớp-nối giữa hai node, gồm relation type, source node, target node, evidence hoặc rationale, verification status và repair history. ADDIE vẫn được giữ như output contract cuối để tương thích với ISD-Agent-Bench, nhưng execution state bên trong là graph.
+
+`E_t` được giữ tối thiểu và có cơ sở lý thuyết tường minh, lấy `objective` làm tâm. Hai cạnh `measures` (assessment đo objective) và `supports` (activity hỗ trợ objective) trực tiếp hiện thực **constructive alignment** — nguyên lý rằng learning activities và assessment tasks phải khớp với intended learning outcomes (Biggs, 1996) `[biggs1996enhancing]`. Cạnh `evaluates` (evaluation plan đánh giá objective) đóng vòng phase Evaluation của ADDIE (Branch, 2009) `[branch2009addie]`, để output 5-phase vẫn được phủ alignment ở cấp đánh giá. Đây cũng đúng là tam giác objective–activity–assessment mà metric `alignment_score` (§3.2) đo. Các quan hệ ISD khác được biểu diễn bằng cơ chế phù hợp hơn cạnh tĩnh, theo systems approach có vòng formative-evaluation/revision (Dick & Carey, 1978) `[dick1978systematic]`: ràng buộc triển khai (feasibility) không tạo cạnh `constrains` mà lan truyền qua **cascade-invalidation** dựa trên `IMPACT_POLICY` (implementation_plan thay đổi → đánh dấu các node design downstream là stale để planner tái sinh); quan hệ prerequisite được lưu trong `node.data` của objective; còn lịch sử chỉnh sửa (revision) được lưu ở `node.repair_history` và trajectory thay vì một cạnh `revises`. Nhờ vậy harness chỉ vật chất hoá những cạnh có người tiêu thụ thật (verifier/auditor đọc để tính coverage) và có nguồn học thuật rõ, thay vì một bộ quan hệ rộng nhưng phần lớn không được dùng.
+
+Cùng nguyên tắc "chỉ mịn khi có consumer" áp dụng cho *độ mịn của node*. Mỗi artifact type có một section node gộp (`<type>_0`) giữ toàn bộ payload của section đó; riêng những type cần suy luận theo từng phần tử mới được tách thêm thành element node (`<type>:<id>`). Cụ thể, `objective` là element-level vì coverage của constructive alignment được kiểm ở cấp *từng* learning outcome — mỗi objective phải có assessment đo và activity hỗ trợ — nên alignment edge cần trỏ tới đúng `objective:LO-xx` chứ không chỉ tới section gộp. Các type còn lại (assessment, activity, material, implementation_plan, evaluation) được giữ ở mức section vì verifier/auditor suy luận theo cả section là đủ; item của chúng đã nằm dạng danh sách trong `node.data` và mapping tới objective (vd `assessment_tools[i].aligned_objective`) được lưu như thuộc tính, không cần vật chất hoá thành cạnh riêng. Độ mịn của graph vì thế đi theo nhu cầu kiểm tra thực tế, giữ trạng thái nhỏ gọn để kiểm soát token/latency cost.
+
+**Node type ≠ artifact type.** Mỗi node type là một *category* artifact ADDIE, không phải một artifact đơn lẻ: toàn bộ nội dung phong phú của một phase (nhiều sub-artifact) nằm trong `node.data`, chứ không tách thành nhiều node. Ví dụ một run điển hình có 7 node type nhưng ~12 node instance (7 section + ~5 element `objective:LO-*`) và hàng chục sub-artifact bên trong `data`. Bảng dưới đặc tả artifact chính mỗi node type mang (theo schema; agent có thể thêm field mô tả như `storyboard`, `media_selection`, `operator_manual`, `pilot_data_collection`):
+
+| Node type | ADDIE phase | Artifact chính trong `node.data` | Element node |
+| --- | --- | --- | --- |
+| `needs_context` | Analysis | `needs_analysis`, `learner_analysis`, `context_analysis`, `task_analysis` | — |
+| `objective` | Design | `learning_objectives[]`, `instructional_strategies` (+ `content_structure`, `assessment_plan`, `storyboard`, `alignment_matrix`) | `objective:LO-*` |
+| `assessment` | Development | `assessment_tools[]`, `expert_review` | — |
+| `activity` | Development | `learner_materials[]`, `instructor_guide` (+ `operator_manual`) | — |
+| `material` | Development | `learner_materials[]` | — |
+| `implementation_plan` | Implementation | `instructor_orientation`, `system_check`, `prototype_execution`, `monitoring` | — |
+| `evaluation` | Evaluation | `formative`, `summative`, `improvement_plan` (+ `pilot_data_collection`) | — |
+
+Nói cách khác, alignment graph là *lớp alignment/control mỏng* (node = điểm neo alignment + đơn vị cascade) phủ lên *payload artifact giàu*; `ADDIEOutputAggregator` serialize các payload này thành 5 phase của `addie_output`. Element node chỉ tách ra ở nơi có consumer cấp phần tử: hiện chỉ `objective` (coverage per-LO); các type còn lại (kể cả `assessment`, `material`) giữ ở mức section vì verifier/auditor suy luận theo cả section là đủ.
 
 Cách biểu diễn này tạo ra bốn lợi ích kiến trúc. Thứ nhất, verifier có thể kiểm tra alignment có cấu trúc ở cấp edge, ví dụ assessment có thật sự đo objective hay activity có thật sự hỗ trợ outcome. Thứ hai, repair trở nên có mục tiêu: khi một rubric không đo đúng objective, harness sửa assessment node hoặc `measures` edge liên quan thay vì sinh lại toàn bộ lesson plan. Thứ ba, orchestration trở nên phi tuyến: `MetaAgent` có thể nhìn trạng thái graph, missing edge hoặc failed node để quyết định bước kế tiếp, thay vì chạy cứng Analysis -> Design -> Development -> Implementation -> Evaluation. Thứ tư, trajectory trở nên đánh giá được vì mỗi thao tác thêm, sửa, kiểm tra hoặc repair node/edge đều có thể được log lại cùng agent, retrieval context, verifier result, token/cost và latency.
 
@@ -87,7 +124,7 @@ Vì vậy, alignment graph là cơ sở để nối ba yêu cầu của luận v
 
 ### 2.4 Proposed Workflow
 
-Workflow đề xuất bắt đầu từ scenario của ISD-Agent-Bench hoặc yêu cầu của giảng viên nội bộ. `MetaAgent` không chạy cứng chuỗi Analysis -> Design -> Development -> Implementation -> Evaluation. Thay vào đó, nó tạo một **dynamic ISD task graph**, trong đó needs/context analysis, objective design, assessment design, activity/material design, implementation constraints và evaluation/revision planning có thể tương tác lặp quanh một `AlignmentGraph`. ADDIE chỉ là output contract ở bước cuối: `ADDIEOutputAggregator` serialize AlignmentGraph đã được kiểm tra vào schema `addie_output` để benchmark có thể đánh giá.
+Workflow đề xuất bắt đầu từ scenario của ISD-Agent-Bench hoặc yêu cầu của giảng viên nội bộ. `MetaAgent` không chạy cứng chuỗi Analysis -> Design -> Development -> Implementation -> Evaluation. Thay vào đó, nó tạo một **dynamic ISD task graph**, trong đó needs/context analysis, objective design, assessment design, activity/material design, implementation planning và evaluation/revision planning có thể tương tác lặp quanh một `AlignmentGraph`. ADDIE chỉ là output contract ở bước cuối: `ADDIEOutputAggregator` serialize AlignmentGraph đã được kiểm tra vào schema `addie_output` để benchmark có thể đánh giá.
 
 ```mermaid
 flowchart TD
@@ -104,7 +141,7 @@ flowchart TD
     G <--> I["Objective Design Agent"]
     G <--> J["Assessment Design Agent"]
     G <--> K["Activity and Material Agent"]
-    G <--> L["Implementation Constraint Agent"]
+    G <--> L["Implementation Plan Agent"]
     G <--> M["Evaluation and Revision Agent"]
 
     G --> N["Validated Graph Elements"]
@@ -131,14 +168,14 @@ AlignmentGraph-ISD dùng multi-agent workflow gồm các role sau:
 | `ObjectiveDesignAgent` | Thiết kế mục tiêu học tập, Bloom level, measurable criteria và prerequisite assumptions | objective nodes and prerequisite edges |
 | `AssessmentDesignAgent` | Thiết kế evidence, rubric, formative/summative assessment và success criteria | assessment/rubric nodes and `measures` edges |
 | `ActivityMaterialAgent` | Tạo learning activities, materials, exercises, examples và facilitator notes | activity/material nodes and `supports` edges |
-| `ImplementationConstraintAgent` | Phân tích duration, resource, delivery mode, risk và deployment constraints; đẩy constraint ngược về design | constraint nodes and `constrains` edges |
+| `ImplementationPlanAgent` | Phân tích duration, resource, delivery mode, risk và deployment constraints; đẩy ràng buộc feasibility ngược về design | implementation_plan nodes |
 | `EvaluationRevisionAgent` | Thiết kế evaluation plan, feedback loop và revision strategy | evaluation nodes and `evaluates` edges |
-| `AlignmentGraph` | Đồng bộ objectives, assessment, activities, implementation constraints và evaluation criteria; quản lý stale cascade khi node thay đổi | aligned artifact graph + stale impact state |
+| `AlignmentGraph` | Đồng bộ objectives, assessment, activities, implementation plan và evaluation criteria; quản lý stale cascade khi node thay đổi | aligned artifact graph + stale impact state |
 | `PedagogicalVerifierAgent` | Kiểm tra Bloom alignment, constructive alignment, coverage, actionability và consistency | verifier report |
 | Specialist repair methods | Mỗi role agent tự sửa graph element thuộc chuyên môn của mình khi schema hoặc verifier policy báo lỗi | repaired node/edge patch |
 | `ADDIEOutputAggregator` | Map artifact graph cuối vào schema `addie_output` của ISD-Agent-Bench | ADDIE-compatible output |
 
-Các role có thể dùng cùng một model backend nhưng khác system prompt, tool permission, context pack và output schema. `MetaAgent` không sinh toàn bộ nội dung thay các agent khác; nó giữ vai trò controller. Khác với ADDIE tuyến tính, các agent làm việc trên graph elements: thêm, sửa hoặc liên kết artifact nodes và alignment edges trong `AlignmentGraph`. Ví dụ, `AssessmentDesignAgent` có thể buộc `ObjectiveDesignAgent` sửa objective node nếu không có evidence đo được; `ImplementationConstraintAgent` có thể đẩy constraint node ngược lại để `ActivityMaterialAgent` điều chỉnh activity nodes. Điều này giúp AlignmentGraph-ISD giữ ADDIE-compatible output mà không bị ràng buộc vào execution order của `addie-agent`.
+Các role có thể dùng cùng một model backend nhưng khác system prompt, tool permission, context pack và output schema. `MetaAgent` không sinh toàn bộ nội dung thay các agent khác; nó giữ vai trò controller. Khác với ADDIE tuyến tính, các agent làm việc trên graph elements: thêm, sửa hoặc liên kết artifact nodes và alignment edges trong `AlignmentGraph`. Ví dụ, `AssessmentDesignAgent` có thể buộc `ObjectiveDesignAgent` sửa objective node nếu không có evidence đo được; `ImplementationPlanAgent` có thể đẩy implementation_plan node ngược lại để `ActivityMaterialAgent` điều chỉnh activity nodes. Điều này giúp AlignmentGraph-ISD giữ ADDIE-compatible output mà không bị ràng buộc vào execution order của `addie-agent`.
 
 ### 2.6 RAG (External Corpus Retrieval)
 
@@ -162,7 +199,7 @@ Request/Scenario
   -> + graph-context retrieval (core, in agents)   # BaseISDAgent._graph_context
   -> + RAG (gated by use_rag): RetrievalPlanner -> Registry.select(task) -> retrieve   # external corpus only
   -> ContextPack per agent
-  -> Citation/grounding metadata in artifact (cho RAG results)
+  -> Citation/grounding metadata trong retrieval result (RetrievalResult.citations; chưa bắt buộc chèn vào final artifact)
 ```
 
 Ví dụ, trong case study/app khi yêu cầu một khoá Software Testing cho fresher, registry chọn subagent corpus Testing (rubric test plan, unit test assignment, test-case design examples) cho `AssessmentDesignAgent` và `ActivityMaterialAgent`; với một brief Java/OOP thì subagent Testing không được chọn còn subagent OOP được chọn. Khi chạy benchmark (`no_rag`), không có subagent nào nên các agent chỉ dùng graph-context + design-brief context.
@@ -186,17 +223,17 @@ Mỗi graph element có schema nội bộ chi tiết hơn schema cuối. Sau khi
 1. **Schema validation**: kiểm tra JSON parseability, required fields, type, enum, ID format và field completeness.
 2. **Pedagogical verification**: kiểm tra learning objectives có measurable/action verbs, objective-activity-assessment alignment, coverage giữa goals và artifacts, rubric consistency, feasibility theo duration/resources, và actionability cho người dạy.
 
-Nếu lỗi thuộc schema, policy route validation error và graph element liên quan về đúng owner agent để sửa cấu trúc. Nếu lỗi thuộc pedagogy, verifier report được route theo loại violation: objective/Bloom về `ObjectiveDesignAgent`, coverage về `AssessmentDesignAgent`, activity support về `ActivityMaterialAgent`, feasibility về `ImplementationConstraintAgent`, evaluation alignment về `EvaluationRevisionAgent`.
+Nếu lỗi thuộc schema, policy route validation error và graph element liên quan về đúng owner agent để sửa cấu trúc. Nếu lỗi thuộc pedagogy, verifier report được route theo loại violation: objective/Bloom về `ObjectiveDesignAgent`, coverage về `AssessmentDesignAgent`, activity support về `ActivityMaterialAgent`, feasibility về `ImplementationPlanAgent`, evaluation alignment về `EvaluationRevisionAgent`.
 
 Sau mỗi targeted repair, AlignmentGraph chạy cascade invalidation thay vì chỉ sửa cục bộ. Impact matrix hiện tại:
 
 | Node thay đổi | Node downstream cần refresh |
 | --- | --- |
-| `needs_context` | `objective`, `assessment`, `activity`, `material`, `constraint`, `evaluation` |
+| `needs_context` | `objective`, `assessment`, `activity`, `material`, `implementation_plan`, `evaluation` |
 | `objective` | `assessment`, `activity`, `material`, `evaluation` |
 | `assessment` | `activity`, `material`, `evaluation` |
-| `activity` / `material` | peer development node, `assessment`, `constraint`, `evaluation` |
-| `constraint` | `objective`, `assessment`, `activity`, `material`, `evaluation` |
+| `activity` / `material` | peer development node, `assessment`, `implementation_plan`, `evaluation` |
+| `implementation_plan` | `objective`, `assessment`, `activity`, `material`, `evaluation` |
 | `evaluation` | `assessment` |
 
 Các node/edge bị ảnh hưởng được đánh dấu `stale`; stale edge không được tính là coverage hợp lệ và không được đưa vào alignment evidence cuối. `GraphAuditor` biến stale state thành task mới, rồi `ISDTaskPlanner` route task đó về specialist agent tương ứng. AlignmentGraph-ISD ghi rõ retry count, violation type, repaired fields và cascade count vào trajectory. Nhờ đó, evaluation không chỉ nhìn output cuối mà còn thấy quá trình hệ thống phát hiện, sửa lỗi và xử lý hiệu ứng downstream.
@@ -247,7 +284,7 @@ MemoryConfig(
 )
 ```
 
-Harness tự load latest graph nếu `training_program_id` đã tồn tại, tự sinh `session_id` cho phiên mới, và tự gán `session_type=init` hoặc `session_type=tuning` theo graph version hiện có. Nếu có cả `training_program_id` và `session_id`, harness thêm `entrypoint_mode=resume_session` và load working memory của session. Internal graph/memory retrieval là core behavior và luôn bật; flag `use_ext_corpus` chỉ điều khiển external corpus retrieval add-ons cho case study.
+Harness tự load latest graph nếu `training_program_id` đã tồn tại, tự sinh `session_id` cho phiên mới, và tự gán `session_type=init` hoặc `session_type=tuning` theo graph version hiện có. Nếu có cả `training_program_id` và `session_id`, harness thêm `entrypoint_mode=resume_session` và load working memory của session. Internal graph/memory retrieval là core behavior và luôn bật; flag `use_rag` (preset `case_study`) chỉ điều khiển external corpus retrieval add-ons cho case study.
 
 ### 2.9 Prototype for IT/Software Engineering Case Study
 
@@ -278,8 +315,10 @@ AlignmentGraph-ISD được tích hợp như một agent mới trong pipeline IS
 Trong diễn giải session lifecycle, mỗi benchmark run tương đương lượt build graph đầu tiên: scenario tạo `alignment_graph_v1`, chạy self-check/repair trước khi aggregate, rồi trả metadata. Benchmark không attach graph vào persisted training program và không đo toàn bộ quá trình tuning dài hạn; phần đó thuộc case study/prototype evaluation.
 
 ```bash
+# Package CLI nhận DesignBrief-shaped JSON (scenario của benchmark được
+# adapter map scenario_id -> id trước khi vào harness).
 alignmentgraph-isd run \
-  --input scenario.json \
+  --input design_brief.json \
   --output result.json \
   --trajectory trajectory.json
 ```
@@ -340,16 +379,16 @@ Các điểm đáng chú ý:
 - Theo phase-wise average, AlignmentGraph-ISD đang dẫn ở **Implementation** (**82.3**) và **Evaluation** (**85.0**).
 - Khoảng cách lớn nhất hiện nằm ở **Trajectory**: AlignmentGraph-ISD đạt **88.38**, thấp hơn React-ADDIE (**93.08**), cho thấy cần tiếp tục hoàn thiện logging, repair trace và dynamic orchestration.
 
-Kế hoạch tiếp theo là tiếp tục implement các phần còn gap so với proposed system design, gồm:
+Tại thời điểm chạy `test_30` (18/06/2026), một số thành phần của proposed system design còn là gap. **Tính đến hiện tại, các gap chính đã được đóng** trong package `alignmentgraph_isd`:
 
-- schema validation chi tiết và routing lỗi về owner agent;
-- verifier mở rộng cho rubric consistency, feasibility, actionability và evaluation alignment;
-- element-level AlignmentGraph cho objectives, assessments, activities, materials, constraints và evaluation nodes;
-- Dynamic ISD Task Graph Builder thay cho planner chỉ dựa trên candidate list;
-- retrieval subagent interface cho external corpus trong case study;
-- structured trajectory cho validation, verifier, repair và cascade events.
+- schema validation chi tiết (`validation.py`) và routing lỗi schema về owner agent qua `GraphAuditor`;
+- verifier mở rộng đủ bảy kiểm tra, gồm rubric consistency, feasibility, actionability và evaluation alignment (`pedagogical_verifier.py`);
+- element-level AlignmentGraph: `objective` được biểu diễn thành first-class element node (`objective:LO-*`), coverage tính trên từng element thay vì chỉ section node (`graph.py`, `audit.py`); các type còn lại (assessment, material, …) giữ ở mức section theo nguyên tắc "chỉ mịn khi có consumer";
+- Dynamic ISD Task Graph Builder (`task_graph.py`) sinh task graph có owner/priority/dependency và snapshot mỗi planner round, thay cho planner chỉ dựa trên candidate list;
+- retrieval subagent interface cho external corpus trong case study (`rag/`), gated bởi `use_rag`;
+- structured trajectory cho validation, verifier, repair và cascade events (`trajectory.py`).
 
-Sau khi các gap chính được đóng, evaluation sẽ mở rộng từ `test_30` sang `test_90`, sau đó tăng dần độ robust trên các subset lớn hơn trước khi chạy full testset **1202 scenarios**.
+Các phần còn lại chủ yếu nằm ở case study/prototype (UI teacher-facing và Markdown/PDF export, xem §2.9) chứ không phải core harness. Sau khi các gap chính được đóng, evaluation sẽ mở rộng từ `test_30` sang `test_90`, sau đó tăng dần độ robust trên các subset lớn hơn trước khi chạy full testset **1202 scenarios**.
 
 ### 3.4 Ablation Study
 

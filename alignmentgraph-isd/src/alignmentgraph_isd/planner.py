@@ -5,6 +5,7 @@ from typing import Any
 
 from .audit import GraphAuditResult
 from .config import HarnessRunConfig
+from .graph import AlignmentGraph, EdgeType, NodeType
 
 
 @dataclass
@@ -171,39 +172,39 @@ class ISDTaskPlanner:
             return tasks
 
         if (
-            "needs_context" in audit.missing_node_types
-            or "needs_context" in audit.stale_node_types
-            or audit.missing_section_keys.get("needs_context")
+            NodeType.NEEDS_CONTEXT in audit.missing_node_types
+            or NodeType.NEEDS_CONTEXT in audit.stale_node_types
+            or audit.missing_section_keys.get(NodeType.NEEDS_CONTEXT)
         ):
             tasks.append(self._task(
                 "needs-context",
                 "needs_context",
-                "needs_context_0",
+                AlignmentGraph.section_id(NodeType.NEEDS_CONTEXT),
                 "analysis/context graph node is missing or incomplete",
                 95,
                 attempts,
             ))
 
         if (
-            "objective" in audit.missing_node_types
-            or "objective" in audit.stale_node_types
+            NodeType.OBJECTIVE in audit.missing_node_types
+            or NodeType.OBJECTIVE in audit.stale_node_types
             or audit.objective_count < self.min_objectives
-            or audit.missing_section_keys.get("objective")
+            or audit.missing_section_keys.get(NodeType.OBJECTIVE)
         ):
             reason = (
                 f"objective graph has {audit.objective_count}/{self.min_objectives} objectives"
                 if audit.objective_count
                 else "objective graph node is missing"
             )
-            tasks.append(self._task("objective-design", "objective_design", "objective_0", reason, 90, attempts))
+            tasks.append(self._task("objective-design", "objective_design", AlignmentGraph.section_id(NodeType.OBJECTIVE), reason, 90, attempts))
 
         if (
-            "assessment" in audit.missing_node_types
-            or "assessment" in audit.stale_node_types
-            or audit.missing_section_keys.get("assessment")
+            NodeType.ASSESSMENT in audit.missing_node_types
+            or NodeType.ASSESSMENT in audit.stale_node_types
+            or audit.missing_section_keys.get(NodeType.ASSESSMENT)
             or audit.unmeasured_objectives
         ):
-            target = ",".join(audit.unmeasured_objectives) or "assessment_0"
+            target = ",".join(audit.unmeasured_objectives) or AlignmentGraph.section_id(NodeType.ASSESSMENT)
             reason = (
                 f"objectives lack measures edges: {target}"
                 if audit.unmeasured_objectives
@@ -212,15 +213,15 @@ class ISDTaskPlanner:
             tasks.append(self._task("assessment-design", "assessment_design", target, reason, 85, attempts))
 
         if (
-            "activity" in audit.missing_node_types
-            or "material" in audit.missing_node_types
-            or "activity" in audit.stale_node_types
-            or "material" in audit.stale_node_types
-            or audit.missing_section_keys.get("activity")
-            or audit.missing_section_keys.get("material")
+            NodeType.ACTIVITY in audit.missing_node_types
+            or NodeType.MATERIAL in audit.missing_node_types
+            or NodeType.ACTIVITY in audit.stale_node_types
+            or NodeType.MATERIAL in audit.stale_node_types
+            or audit.missing_section_keys.get(NodeType.ACTIVITY)
+            or audit.missing_section_keys.get(NodeType.MATERIAL)
             or audit.unsupported_objectives
         ):
-            target = ",".join(audit.unsupported_objectives) or "activity_0"
+            target = ",".join(audit.unsupported_objectives) or AlignmentGraph.section_id(NodeType.ACTIVITY)
             reason = (
                 f"objectives lack supports edges: {target}"
                 if audit.unsupported_objectives
@@ -229,26 +230,26 @@ class ISDTaskPlanner:
             tasks.append(self._task("activity-material", "activity_material", target, reason, 80, attempts))
 
         if (
-            "constraint" in audit.missing_node_types
-            or "constraint" in audit.stale_node_types
-            or audit.missing_section_keys.get("constraint")
+            NodeType.IMPLEMENTATION_PLAN in audit.missing_node_types
+            or NodeType.IMPLEMENTATION_PLAN in audit.stale_node_types
+            or audit.missing_section_keys.get(NodeType.IMPLEMENTATION_PLAN)
         ):
             tasks.append(self._task(
-                "implementation-constraint",
-                "implementation_constraint",
-                "constraint_0",
-                "implementation constraint graph node is missing or incomplete",
+                "implementation-plan",
+                "implementation_plan",
+                AlignmentGraph.section_id(NodeType.IMPLEMENTATION_PLAN),
+                "implementation plan graph node is missing or incomplete",
                 70,
                 attempts,
             ))
 
         if (
-            "evaluation" in audit.missing_node_types
-            or "evaluation" in audit.stale_node_types
-            or audit.missing_section_keys.get("evaluation")
+            NodeType.EVALUATION in audit.missing_node_types
+            or NodeType.EVALUATION in audit.stale_node_types
+            or audit.missing_section_keys.get(NodeType.EVALUATION)
             or audit.unevaluated_objectives
         ):
-            target = ",".join(audit.unevaluated_objectives) or "evaluation_0"
+            target = ",".join(audit.unevaluated_objectives) or AlignmentGraph.section_id(NodeType.EVALUATION)
             reason = (
                 f"objectives lack evaluates edges: {target}"
                 if audit.unevaluated_objectives
@@ -315,13 +316,13 @@ class ISDTaskPlanner:
         edge_type = violation.get("edge_type", "")
         if violation_type == "bloom":
             return "objective_repair"
-        if violation_type == "activity_support" or edge_type == "supports":
+        if violation_type == "activity_support" or edge_type == EdgeType.SUPPORTS:
             return "activity_repair"
         if violation_type in ("feasibility", "actionability") or edge_type == "constrains":
             return "implementation_repair"
-        if violation_type == "evaluation_alignment" or edge_type == "evaluates":
+        if violation_type == "evaluation_alignment" or edge_type == EdgeType.EVALUATES:
             return "evaluation_repair"
-        if violation_type in ("coverage", "rubric_consistency") or edge_type == "measures":
+        if violation_type in ("coverage", "rubric_consistency") or edge_type == EdgeType.MEASURES:
             return "assessment_repair"
         return None
 

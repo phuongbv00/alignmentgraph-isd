@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ..graph import NodeType
 from ..schema import DesignBrief
 from .base import BaseISDAgent, _format_design_brief, parse_json_response
 
@@ -43,29 +44,29 @@ Output ONLY the JSON object, no markdown, no explanation.\
 
 
 
-class ImplementationConstraintAgent(BaseISDAgent):
+class ImplementationPlanAgent(BaseISDAgent):
     def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
         prompt = _format_design_brief(design_brief)
         # Graph-context retrieval (core, not RAG): inject prior G_t nodes into this prompt
-        prior_ctx = self._graph_context(['objective', 'activity'])
+        prior_ctx = self._graph_context([NodeType.OBJECTIVE, NodeType.ACTIVITY])
         user_content = prompt
         if prior_ctx:
             user_content = f"=== DESIGN + DEVELOPMENT RESULTS (from prior agents) ===\n{prior_ctx}\n\n=== SCENARIO ===\n{prompt}"
-        rag_ctx = self._context_pack_text(context_pack)
-        if rag_ctx:
-            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{rag_ctx}\n\n{user_content}"
+        pack_ctx = self._context_pack_text(context_pack)
+        if pack_ctx:
+            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{pack_ctx}\n\n{user_content}"
         messages = [
             {"role": "system", "content": _SYSTEM},
             {"role": "user", "content": user_content},
         ]
         response = self._call_llm(messages)
         parsed = parse_json_response(response)
-        node_id = "constraint_0"
-        self.graph.add_node("constraint", node_id, parsed)
-        self.trajectory.log_node_edit("add", node_id, "constraint")
+        node_id = self.graph.section_id(NodeType.IMPLEMENTATION_PLAN)
+        self.graph.add_node(NodeType.IMPLEMENTATION_PLAN, node_id, parsed)
+        self.trajectory.log_node_edit("add", node_id, NodeType.IMPLEMENTATION_PLAN)
         parse_ok = bool(parsed)
         self.trajectory.log_step(
-            "ImplementationConstraintAgent", "plan_implementation",
+            "ImplementationPlanAgent", "plan_implementation",
             prompt[:200],
             f"[PARSE={'OK' if parse_ok else 'FAILED'} len={len(response)}] " + response[:400],
         )
@@ -86,35 +87,35 @@ class ImplementationConstraintAgent(BaseISDAgent):
         if not owned:
             return remaining
 
-        node = self.graph.get_node("constraint_0")
+        node = self.graph.get_node(self.graph.section_id(NodeType.IMPLEMENTATION_PLAN))
         if not node:
-            self.graph.add_node("constraint", "constraint_0", {
+            self.graph.add_node(NodeType.IMPLEMENTATION_PLAN, self.graph.section_id(NodeType.IMPLEMENTATION_PLAN), {
                 "instructor_orientation": {},
                 "system_check": {},
                 "prototype_execution": {},
                 "monitoring": {},
                 "repaired": True,
             })
-            self.trajectory.log_node_edit("add", "constraint_0", "constraint")
-        constraint = self.graph.get_node("constraint_0")
+            self.trajectory.log_node_edit("add", self.graph.section_id(NodeType.IMPLEMENTATION_PLAN), NodeType.IMPLEMENTATION_PLAN)
+        constraint = self.graph.get_node(self.graph.section_id(NodeType.IMPLEMENTATION_PLAN))
         data = constraint["data"] if constraint else {}
         monitoring = data.setdefault("monitoring", {})
         if isinstance(monitoring, dict):
             adjustments = monitoring.setdefault("real_time_adjustments", [])
             if isinstance(adjustments, list):
                 adjustments.append("Re-scope delivery constraints after verifier feasibility warning.")
-        self.graph.update_node("constraint_0", {"monitoring": monitoring, "repaired": True})
-        self.graph.clear_stale("constraint_0")
-        self.graph.mark_repaired("constraint_0", "; ".join(v.message for v in owned))
+        self.graph.update_node(self.graph.section_id(NodeType.IMPLEMENTATION_PLAN), {"monitoring": monitoring, "repaired": True})
+        self.graph.clear_stale(self.graph.section_id(NodeType.IMPLEMENTATION_PLAN))
+        self.graph.mark_repaired(self.graph.section_id(NodeType.IMPLEMENTATION_PLAN), "; ".join(v.message for v in owned))
         impact = self._invalidate_impacted(
-            "constraint_0",
+            self.graph.section_id(NodeType.IMPLEMENTATION_PLAN),
             "Implementation constraint repair changed delivery feasibility; impacted design and evaluation sections must be refreshed.",
             action="repair_cascade",
             changed_fields=["monitoring", "delivery_constraints"],
             violation_type=(owned[0].violation_type if owned else "feasibility"),
         )
         self.trajectory.log_step(
-            "ImplementationConstraintAgent",
+            "ImplementationPlanAgent",
             "repair_feasibility",
             "; ".join(v.message for v in owned),
             (

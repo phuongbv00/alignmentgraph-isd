@@ -20,9 +20,9 @@ REPAIR_OWNER_MAP = {
     "measures": "AssessmentDesignAgent",
     "activity_support": "ActivityMaterialAgent",
     "supports": "ActivityMaterialAgent",
-    "feasibility": "ImplementationConstraintAgent",
-    "actionability": "ImplementationConstraintAgent",
-    "constrains": "ImplementationConstraintAgent",
+    "feasibility": "ImplementationPlanAgent",
+    "actionability": "ImplementationPlanAgent",
+    "constrains": "ImplementationPlanAgent",
     "evaluation_alignment": "EvaluationRevisionAgent",
     "evaluates": "EvaluationRevisionAgent",
 }

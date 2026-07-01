@@ -20,7 +20,7 @@ OWNER_BY_TASK = {
     "objective_design": "ObjectiveDesignAgent",
     "assessment_design": "AssessmentDesignAgent",
     "activity_material": "ActivityMaterialAgent",
-    "implementation_constraint": "ImplementationConstraintAgent",
+    "implementation_plan": "ImplementationPlanAgent",
     "evaluation_revision": "EvaluationRevisionAgent",
     "single_agent": "SingleAgent",
     "verifier": "PedagogicalVerifierAgent",
@@ -28,7 +28,7 @@ OWNER_BY_TASK = {
     "objective_repair": "ObjectiveDesignAgent",
     "assessment_repair": "AssessmentDesignAgent",
     "activity_repair": "ActivityMaterialAgent",
-    "implementation_repair": "ImplementationConstraintAgent",
+    "implementation_repair": "ImplementationPlanAgent",
     "evaluation_repair": "EvaluationRevisionAgent",
 }
 
@@ -37,11 +37,11 @@ _GENERATION_DEPS = {
     "objective_design": ["needs_context"],
     "assessment_design": ["objective_design"],
     "activity_material": ["objective_design"],
-    "implementation_constraint": ["objective_design", "activity_material"],
+    "implementation_plan": ["objective_design", "activity_material"],
     "evaluation_revision": ["objective_design", "assessment_design", "activity_material"],
     "verifier": [
         "objective_design", "assessment_design", "activity_material",
-        "implementation_constraint", "evaluation_revision",
+        "implementation_plan", "evaluation_revision",
     ],
 }
 

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ..graph import EdgeType, NodeType
 from ..schema import DesignBrief
 from dataclasses import dataclass, field
 from .base import BaseISDAgent
@@ -58,7 +59,7 @@ class PedagogicalVerifierAgent(BaseISDAgent):
     # ── Check 1: every objective has ≥1 assessment measuring it ───────────────
     def _check_assessment_coverage(self) -> list[VerifierViolation]:
         return self._coverage_violations(
-            edge_type="measures",
+            edge_type=EdgeType.MEASURES,
             violation_type="coverage",
             severity="error",
             message_tpl="Objective '{lo}' has no assessment measuring it.",
@@ -83,7 +84,7 @@ class PedagogicalVerifierAgent(BaseISDAgent):
         covered_targets = {e["target"] for e in edges}
         covered_evidence = {e.get("evidence") for e in edges if e.get("evidence")}
 
-        targets = self.graph.element_nodes("objective") or self.graph.section_nodes("objective")
+        targets = self.graph.element_nodes(NodeType.OBJECTIVE) or self.graph.section_nodes(NodeType.OBJECTIVE)
         violations: list[VerifierViolation] = []
         for node in targets:
             lo_id = str(node["data"].get("id") or node["id"])
@@ -103,7 +104,7 @@ class PedagogicalVerifierAgent(BaseISDAgent):
     # ── Check 2: learning objectives use measurable Bloom's verbs ─────────────
     def _check_bloom_verbs(self) -> list[VerifierViolation]:
         violations: list[VerifierViolation] = []
-        for obj in self.graph.section_nodes("objective"):
+        for obj in self.graph.section_nodes(NodeType.OBJECTIVE):
             lo_list = obj["data"].get("learning_objectives", [])
             for lo in lo_list:
                 verb = lo.get("bloom_verb", "").lower().strip(".,;")
@@ -139,10 +140,10 @@ class PedagogicalVerifierAgent(BaseISDAgent):
     def _check_activity_support(self) -> list[VerifierViolation]:
         # Only flag this if we have activity nodes (not in single-agent mode where
         # activities are embedded inside the design section)
-        if not self.graph.get_nodes("activity"):
+        if not self.graph.get_nodes(NodeType.ACTIVITY):
             return []
         return self._coverage_violations(
-            edge_type="supports",
+            edge_type=EdgeType.SUPPORTS,
             violation_type="activity_support",
             severity="warning",
             message_tpl="Objective '{lo}' has no learning activity explicitly supporting it.",
@@ -152,7 +153,7 @@ class PedagogicalVerifierAgent(BaseISDAgent):
     # ── Check 4: assessment rubric consistency ───────────────────────────────
     def _check_rubric_consistency(self) -> list[VerifierViolation]:
         violations: list[VerifierViolation] = []
-        for node in self.graph.section_nodes("assessment"):
+        for node in self.graph.section_nodes(NodeType.ASSESSMENT):
             for item in node["data"].get("assessment_tools", []) or []:
                 if not isinstance(item, dict):
                     continue
@@ -160,7 +161,7 @@ class PedagogicalVerifierAgent(BaseISDAgent):
                 if not item.get("aligned_objective"):
                     violations.append(VerifierViolation(
                         node_id=node["id"],
-                        edge_type="measures",
+                        edge_type=EdgeType.MEASURES,
                         violation_type="rubric_consistency",
                         severity="error",
                         message=f"Assessment item '{item_id}' has no aligned_objective.",
@@ -180,7 +181,7 @@ class PedagogicalVerifierAgent(BaseISDAgent):
                     if is_vague:
                         violations.append(VerifierViolation(
                             node_id=node["id"],
-                            edge_type="measures",
+                            edge_type=EdgeType.MEASURES,
                             violation_type="rubric_consistency",
                             severity="warning",
                             message=f"Performance item '{item_id}' lacks an observable scoring rubric.",
@@ -198,9 +199,9 @@ class PedagogicalVerifierAgent(BaseISDAgent):
             return []
         modules: list = []
         sessions: list = []
-        for node in self.graph.section_nodes("objective"):
+        for node in self.graph.section_nodes(NodeType.OBJECTIVE):
             modules += node["data"].get("content_structure", {}).get("modules", []) or []
-        for node in self.graph.section_nodes("activity") + self.graph.section_nodes("material"):
+        for node in self.graph.section_nodes(NodeType.ACTIVITY) + self.graph.section_nodes(NodeType.MATERIAL):
             guide = node["data"].get("instructor_guide", {})
             if isinstance(guide, dict):
                 sessions += guide.get("session_guides", []) or []
@@ -208,7 +209,7 @@ class PedagogicalVerifierAgent(BaseISDAgent):
         # Heuristic: each module/session needs ~1.5h. Flag only clear overload.
         if load_units and load_units * 1.5 > total_hours * 2:
             return [VerifierViolation(
-                node_id="constraint_0",
+                node_id=self.graph.section_id(NodeType.IMPLEMENTATION_PLAN),
                 edge_type="constrains",
                 violation_type="feasibility",
                 severity="warning",
@@ -224,7 +225,7 @@ class PedagogicalVerifierAgent(BaseISDAgent):
     # ── Check 6: actionability of implementation/development guidance ────────
     def _check_actionability(self) -> list[VerifierViolation]:
         violations: list[VerifierViolation] = []
-        for node in self.graph.section_nodes("constraint"):
+        for node in self.graph.section_nodes(NodeType.IMPLEMENTATION_PLAN):
             data = node["data"]
             orientation = data.get("instructor_orientation", {})
             if isinstance(orientation, dict) and not _has_concrete_items(
@@ -254,14 +255,14 @@ class PedagogicalVerifierAgent(BaseISDAgent):
 
     # ── Check 7: every objective has evaluation evidence ─────────────────────
     def _check_evaluation_alignment(self) -> list[VerifierViolation]:
-        objective_nodes = self.graph.section_nodes("objective")
+        objective_nodes = self.graph.section_nodes(NodeType.OBJECTIVE)
         if not objective_nodes:
             return []
-        evaluates_edges = self.graph.get_edges("evaluates")
+        evaluates_edges = self.graph.get_edges(EdgeType.EVALUATES)
         evaluated_targets = {e["target"] for e in evaluates_edges if not e.get("stale")}
         evaluated_evidence = {e.get("evidence") for e in evaluates_edges if not e.get("stale")}
         # Summative tools that name an aligned objective also count as evidence.
-        for node in self.graph.section_nodes("evaluation"):
+        for node in self.graph.section_nodes(NodeType.EVALUATION):
             for item in node["data"].get("summative", {}).get("assessment_tools", []) or []:
                 if isinstance(item, dict) and item.get("aligned_objective"):
                     evaluated_evidence.add(item["aligned_objective"])
@@ -279,7 +280,7 @@ class PedagogicalVerifierAgent(BaseISDAgent):
             if uncovered or (not lo_ids and obj["id"] not in evaluated_targets):
                 violations.append(VerifierViolation(
                     node_id=obj["id"],
-                    edge_type="evaluates",
+                    edge_type=EdgeType.EVALUATES,
                     violation_type="evaluation_alignment",
                     severity="warning",
                     message=(

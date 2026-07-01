@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ..graph import EdgeType, NodeType
 from ..schema import DesignBrief
 from .base import BaseISDAgent, _format_design_brief, parse_json_response
 
@@ -210,11 +211,11 @@ CRITICAL:
 """
 
 _SECTION_TO_NODE = {
-    "analysis": "needs_context",
-    "design": "objective",
-    "development": "activity",
-    "implementation": "constraint",
-    "evaluation": "evaluation",
+    "analysis": NodeType.NEEDS_CONTEXT,
+    "design": NodeType.OBJECTIVE,
+    "development": NodeType.ACTIVITY,
+    "implementation": NodeType.IMPLEMENTATION_PLAN,
+    "evaluation": NodeType.EVALUATION,
 }
 
 
@@ -222,9 +223,9 @@ class SingleAgent(BaseISDAgent):
     def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
         prompt = _format_design_brief(design_brief)
         user_content = prompt
-        rag_ctx = self._context_pack_text(context_pack)
-        if rag_ctx:
-            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{rag_ctx}\n\n=== SCENARIO ===\n{prompt}"
+        pack_ctx = self._context_pack_text(context_pack)
+        if pack_ctx:
+            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{pack_ctx}\n\n=== SCENARIO ===\n{prompt}"
         messages = [
             {"role": "system", "content": _SYSTEM},
             {"role": "user", "content": user_content},
@@ -232,34 +233,29 @@ class SingleAgent(BaseISDAgent):
         raw = self._call_llm(messages)
         parsed = parse_json_response(raw)
         for section, node_type in _SECTION_TO_NODE.items():
-            node_id = f"{node_type}_0"
+            node_id = self.graph.section_id(node_type)
             self.graph.add_node(node_type, node_id, parsed.get(section, {}))
             self.trajectory.log_node_edit("add", node_id, node_type)
         development = parsed.get("development", {})
         if development.get("assessment_tools") or development.get("expert_review"):
-            self.graph.add_node("assessment", "assessment_0", {
+            self.graph.add_node(NodeType.ASSESSMENT, self.graph.section_id(NodeType.ASSESSMENT), {
                 "assessment_tools": development.get("assessment_tools", []),
                 "expert_review": development.get("expert_review", {}),
             })
-            self.trajectory.log_node_edit("add", "assessment_0", "assessment")
+            self.trajectory.log_node_edit("add", self.graph.section_id(NodeType.ASSESSMENT), NodeType.ASSESSMENT)
         self._add_element_nodes(parsed)
         self._add_alignment_edges(parsed)
         self.trajectory.log_step("SingleAgent", "generate_addie", prompt[:200], raw[:200] if raw else "(empty)")
 
     def _add_element_nodes(self, parsed: dict) -> None:
+        # Only ``objective`` is element-level: coverage is checked per learning
+        # outcome. Other artifact types stay section-level (no per-item consumer).
         for lo in parsed.get("design", {}).get("learning_objectives", []) or []:
             if isinstance(lo, dict) and lo.get("id"):
-                self.graph.add_element_node("objective", str(lo["id"]), dict(lo))
-        for item in parsed.get("development", {}).get("assessment_tools", []) or []:
-            if isinstance(item, dict) and item.get("item_id"):
-                self.graph.add_element_node("assessment", str(item["item_id"]), dict(item))
-        for index, material in enumerate(parsed.get("development", {}).get("learner_materials", []) or [], start=1):
-            if isinstance(material, dict):
-                element_key = str(material.get("id") or f"MAT-{index:02d}")
-                self.graph.add_element_node("material", element_key, dict(material))
+                self.graph.add_element_node(NodeType.OBJECTIVE, str(lo["id"]), dict(lo))
 
     def _add_alignment_edges(self, parsed: dict) -> None:
-        objective_node = self.graph.get_node("objective_0")
+        objective_node = self.graph.get_node(self.graph.section_id(NodeType.OBJECTIVE))
         if not objective_node:
             return
         objective_ids = [
@@ -267,35 +263,35 @@ class SingleAgent(BaseISDAgent):
             for lo in parsed.get("design", {}).get("learning_objectives", [])
             if isinstance(lo, dict) and lo.get("id")
         ]
-        assessment_source = "assessment_0" if self.graph.get_node("assessment_0") else "activity_0"
+        assessment_source = self.graph.section_id(NodeType.ASSESSMENT) if self.graph.get_node(self.graph.section_id(NodeType.ASSESSMENT)) else self.graph.section_id(NodeType.ACTIVITY)
         for lo_id in objective_ids:
             self.graph.add_edge(
-                "measures",
+                EdgeType.MEASURES,
                 assessment_source,
-                "objective_0",
+                self.graph.section_id(NodeType.OBJECTIVE),
                 evidence=lo_id,
                 rationale=f"Single-agent assessment output measures {lo_id}.",
                 verified=True,
             )
             self.graph.add_edge(
-                "supports",
-                "activity_0",
-                "objective_0",
+                EdgeType.SUPPORTS,
+                self.graph.section_id(NodeType.ACTIVITY),
+                self.graph.section_id(NodeType.OBJECTIVE),
                 evidence=lo_id,
                 rationale=f"Single-agent learning activities support {lo_id}.",
                 verified=True,
             )
             self.graph.add_edge(
-                "evaluates",
-                "evaluation_0",
-                "objective_0",
+                EdgeType.EVALUATES,
+                self.graph.section_id(NodeType.EVALUATION),
+                self.graph.section_id(NodeType.OBJECTIVE),
                 evidence=lo_id,
                 rationale=f"Single-agent evaluation plan evaluates {lo_id}.",
                 verified=True,
             )
-            self._add_element_edge("measures", assessment_source, lo_id)
-            self._add_element_edge("supports", "activity_0", lo_id)
-            self._add_element_edge("evaluates", "evaluation_0", lo_id)
-            self.trajectory.log_edge_edit("add", assessment_source, "objective_0", "measures", lo_id)
-            self.trajectory.log_edge_edit("add", "activity_0", "objective_0", "supports", lo_id)
-            self.trajectory.log_edge_edit("add", "evaluation_0", "objective_0", "evaluates", lo_id)
+            self._add_element_edge(EdgeType.MEASURES, assessment_source, lo_id)
+            self._add_element_edge(EdgeType.SUPPORTS, self.graph.section_id(NodeType.ACTIVITY), lo_id)
+            self._add_element_edge(EdgeType.EVALUATES, self.graph.section_id(NodeType.EVALUATION), lo_id)
+            self.trajectory.log_edge_edit("add", assessment_source, self.graph.section_id(NodeType.OBJECTIVE), EdgeType.MEASURES, lo_id)
+            self.trajectory.log_edge_edit("add", self.graph.section_id(NodeType.ACTIVITY), self.graph.section_id(NodeType.OBJECTIVE), EdgeType.SUPPORTS, lo_id)
+            self.trajectory.log_edge_edit("add", self.graph.section_id(NodeType.EVALUATION), self.graph.section_id(NodeType.OBJECTIVE), EdgeType.EVALUATES, lo_id)

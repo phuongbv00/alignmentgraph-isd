@@ -3,38 +3,30 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .graph import AlignmentGraph
+from .graph import AlignmentGraph, EdgeType, NodeType
 from .validation import validate_section
 
 
-REQUIRED_NODE_TYPES = (
-    "needs_context",
-    "objective",
-    "assessment",
-    "activity",
-    "material",
-    "constraint",
-    "evaluation",
-)
+REQUIRED_NODE_TYPES = tuple(NodeType)
 
 # Section node types that carry a structured payload worth schema-validating.
 _SCHEMA_VALIDATED_TYPES = (
-    "needs_context",
-    "objective",
-    "assessment",
-    "activity",
-    "constraint",
-    "evaluation",
+    NodeType.NEEDS_CONTEXT,
+    NodeType.OBJECTIVE,
+    NodeType.ASSESSMENT,
+    NodeType.ACTIVITY,
+    NodeType.IMPLEMENTATION_PLAN,
+    NodeType.EVALUATION,
 )
 
 REQUIRED_SECTION_KEYS = {
-    "needs_context": ("needs_analysis", "learner_analysis", "context_analysis", "task_analysis"),
-    "objective": ("learning_objectives", "instructional_strategies"),
-    "assessment": ("assessment_tools",),
-    "activity": ("learner_materials", "instructor_guide"),
-    "material": ("learner_materials",),
-    "constraint": ("instructor_orientation", "system_check", "prototype_execution", "monitoring"),
-    "evaluation": ("formative", "summative", "improvement_plan"),
+    NodeType.NEEDS_CONTEXT: ("needs_analysis", "learner_analysis", "context_analysis", "task_analysis"),
+    NodeType.OBJECTIVE: ("learning_objectives", "instructional_strategies"),
+    NodeType.ASSESSMENT: ("assessment_tools",),
+    NodeType.ACTIVITY: ("learner_materials", "instructor_guide"),
+    NodeType.MATERIAL: ("learner_materials",),
+    NodeType.IMPLEMENTATION_PLAN: ("instructor_orientation", "system_check", "prototype_execution", "monitoring"),
+    NodeType.EVALUATION: ("formative", "summative", "improvement_plan"),
 }
 
 
@@ -125,13 +117,13 @@ class GraphAuditor:
             if not missing_section_keys.get(node_type):
                 missing_section_keys[node_type] = [f"__schema__:{node_type}"]
 
-        objective_node = self._first_node("objective")
+        objective_node = self._first_node(NodeType.OBJECTIVE)
         objective_node_id = objective_node.get("id", "") if objective_node else ""
         objective_ids = self._objective_ids(objective_node)
 
-        unmeasured = self._uncovered_objectives("measures", objective_node_id, objective_ids)
-        unsupported = self._uncovered_objectives("supports", objective_node_id, objective_ids)
-        unevaluated = self._uncovered_objectives("evaluates", objective_node_id, objective_ids)
+        unmeasured = self._uncovered_objectives(EdgeType.MEASURES, objective_node_id, objective_ids)
+        unsupported = self._uncovered_objectives(EdgeType.SUPPORTS, objective_node_id, objective_ids)
+        unevaluated = self._uncovered_objectives(EdgeType.EVALUATES, objective_node_id, objective_ids)
         violations = verifier_violations or []
 
         ready = (
@@ -178,7 +170,7 @@ class GraphAuditor:
         targets its element node OR carries its LO id as evidence. Falls back to
         the legacy evidence-on-section check when no element nodes exist yet.
         """
-        elements = self.graph.element_nodes("objective")
+        elements = self.graph.element_nodes(NodeType.OBJECTIVE)
         edges = [edge for edge in self.graph.get_edges(edge_type) if not edge.get("stale")]
         covered_targets = {edge.get("target") for edge in edges}
         covered_evidence = {edge.get("evidence") for edge in edges if edge.get("evidence")}

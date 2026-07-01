@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ..graph import EdgeType, NodeType
 from ..schema import DesignBrief
 from .base import BaseISDAgent, _format_design_brief, parse_json_response
 
@@ -40,30 +41,26 @@ class ActivityMaterialAgent(BaseISDAgent):
     def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
         prompt = _format_design_brief(design_brief)
         # Graph-context retrieval (core, not RAG): inject prior G_t nodes into this prompt
-        prior_ctx = self._graph_context(['needs_context', 'objective'])
+        prior_ctx = self._graph_context([NodeType.NEEDS_CONTEXT, NodeType.OBJECTIVE])
         user_content = prompt
         if prior_ctx:
             user_content = f"=== ANALYSIS + DESIGN RESULTS (from prior agents) ===\n{prior_ctx}\n\n=== SCENARIO ===\n{prompt}"
-        rag_ctx = self._context_pack_text(context_pack)
-        if rag_ctx:
-            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{rag_ctx}\n\n{user_content}"
+        pack_ctx = self._context_pack_text(context_pack)
+        if pack_ctx:
+            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{pack_ctx}\n\n{user_content}"
         messages = [
             {"role": "system", "content": _SYSTEM},
             {"role": "user", "content": user_content},
         ]
         response = self._call_llm(messages)
         parsed = parse_json_response(response)
-        for node_type, node_id in [("activity", "activity_0"), ("material", "material_0")]:
+        for node_type, node_id in [(NodeType.ACTIVITY, self.graph.section_id(NodeType.ACTIVITY)), (NodeType.MATERIAL, self.graph.section_id(NodeType.MATERIAL))]:
             self.graph.add_node(node_type, node_id, parsed)
             self.trajectory.log_node_edit("add", node_id, node_type)
-        # Element-level nodes: each learner material is a first-class node.
-        for index, material in enumerate(parsed.get("learner_materials", []) or [], start=1):
-            if isinstance(material, dict):
-                element_key = str(material.get("id") or f"MAT-{index:02d}")
-                element_id = self.graph.add_element_node("material", element_key, dict(material))
-                self.trajectory.log_node_edit("add", element_id, "material")
-        if self.graph.get_nodes("objective"):
-            obj = self.graph.get_nodes("objective")[0]
+        # No per-item element nodes: material stays section-level (no per-item
+        # consumer — only objective is element-level, for coverage).
+        if self.graph.get_nodes(NodeType.OBJECTIVE):
+            obj = self.graph.get_nodes(NodeType.OBJECTIVE)[0]
             obj_id = obj["id"]
             lo_ids = [
                 lo.get("id")
@@ -73,15 +70,15 @@ class ActivityMaterialAgent(BaseISDAgent):
             for lo_id in lo_ids:
                 rationale = f"Developed learning materials and session guides support {lo_id}."
                 self.graph.add_edge(
-                    "supports",
-                    "activity_0",
+                    EdgeType.SUPPORTS,
+                    self.graph.section_id(NodeType.ACTIVITY),
                     obj_id,
                     evidence=lo_id,
                     rationale=rationale,
                     verified=True,
                 )
-                self._add_element_edge("supports", "activity_0", lo_id, rationale=rationale)
-                self.trajectory.log_edge_edit("add", "activity_0", obj_id, "supports", lo_id, rationale)
+                self._add_element_edge(EdgeType.SUPPORTS, self.graph.section_id(NodeType.ACTIVITY), lo_id, rationale=rationale)
+                self.trajectory.log_edge_edit("add", self.graph.section_id(NodeType.ACTIVITY), obj_id, EdgeType.SUPPORTS, lo_id, rationale)
         self.trajectory.log_step("ActivityMaterialAgent", "develop_activities", prompt[:200], response[:200] if response else "")
 
     def repair(self, violations: list) -> list:
@@ -89,7 +86,7 @@ class ActivityMaterialAgent(BaseISDAgent):
         for violation in violations:
             is_owner = (
                 getattr(violation, "violation_type", "") == "activity_support"
-                or getattr(violation, "edge_type", "") == "supports"
+                or getattr(violation, "edge_type", "") == EdgeType.SUPPORTS
             )
             if not is_owner:
                 remaining.append(violation)
@@ -102,13 +99,13 @@ class ActivityMaterialAgent(BaseISDAgent):
         if not objective:
             return
 
-        activity = self.graph.get_node("activity_0")
+        activity = self.graph.get_node(self.graph.section_id(NodeType.ACTIVITY))
         if activity:
             activity_data = activity["data"]
         else:
             activity_data = {"alignment_notes": [], "repaired": True}
-            self.graph.add_node("activity", "activity_0", activity_data, repair_history=[violation.message])
-            self.trajectory.log_node_edit("add", "activity_0", "activity")
+            self.graph.add_node(NodeType.ACTIVITY, self.graph.section_id(NodeType.ACTIVITY), activity_data, repair_history=[violation.message])
+            self.trajectory.log_node_edit("add", self.graph.section_id(NodeType.ACTIVITY), NodeType.ACTIVITY)
 
         alignment_notes = list(activity_data.get("alignment_notes", []))
         repaired_ids: list[str] = []
@@ -118,24 +115,24 @@ class ActivityMaterialAgent(BaseISDAgent):
             lo_id = lo["id"]
             rationale = f"ActivityMaterialAgent repair explicitly supports {lo_id}."
             self.graph.add_edge(
-                "supports",
-                "activity_0",
+                EdgeType.SUPPORTS,
+                self.graph.section_id(NodeType.ACTIVITY),
                 violation.node_id,
                 evidence=lo_id,
                 rationale=rationale,
                 verified=True,
             )
-            self._add_element_edge("supports", "activity_0", lo_id, rationale=rationale)
-            self.trajectory.log_edge_edit("add", "activity_0", violation.node_id, "supports", lo_id, rationale)
+            self._add_element_edge(EdgeType.SUPPORTS, self.graph.section_id(NodeType.ACTIVITY), lo_id, rationale=rationale)
+            self.trajectory.log_edge_edit("add", self.graph.section_id(NodeType.ACTIVITY), violation.node_id, EdgeType.SUPPORTS, lo_id, rationale)
             alignment_notes.append(rationale)
             repaired_ids.append(lo_id)
 
-        self.graph.update_node("activity_0", {"alignment_notes": alignment_notes, "repaired": True})
-        self.graph.clear_stale("activity_0")
-        self.graph.clear_stale("material_0")
-        self.graph.mark_repaired("activity_0", violation.message)
+        self.graph.update_node(self.graph.section_id(NodeType.ACTIVITY), {"alignment_notes": alignment_notes, "repaired": True})
+        self.graph.clear_stale(self.graph.section_id(NodeType.ACTIVITY))
+        self.graph.clear_stale(self.graph.section_id(NodeType.MATERIAL))
+        self.graph.mark_repaired(self.graph.section_id(NodeType.ACTIVITY), violation.message)
         impact = self._invalidate_impacted(
-            "activity_0",
+            self.graph.section_id(NodeType.ACTIVITY),
             "Activity/material repair changed learning support; dependent assessment, constraints, and evaluation must be refreshed.",
             action="repair_cascade",
             changed_fields=["alignment_notes", "supports_edges"],

@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import DesignBrief, HarnessRunConfig, MemoryConfig, run_design_brief
+from . import DesignBrief, HarnessRunConfig, MemoryConfig, llm_factory_from_env, run_design_brief
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -22,6 +22,18 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--ablation", default="full", help="Ablation preset key.")
     run_parser.add_argument("--training-program-id", default="", help="Persistent app graph id.")
     run_parser.add_argument("--session-id", default="", help="Persistent app session id.")
+    # Model selection (falls back to AGENT_MODEL_* env vars). Requires the
+    # optional [llm] extra: pip install 'alignmentgraph-isd[llm]'.
+    run_parser.add_argument("--model-name", default="", help="Chat model name (env: AGENT_MODEL_NAME).")
+    run_parser.add_argument(
+        "--api-spec",
+        default="",
+        help="API contract: openai_compatible | anthropic (env: AGENT_MODEL_API_SPEC, default openai_compatible).",
+    )
+    run_parser.add_argument("--base-url", default="", help="OpenAI-compatible base URL (env: AGENT_MODEL_BASE_URL).")
+    run_parser.add_argument("--api-key", default="", help="API key (env: AGENT_MODEL_API_KEY).")
+    run_parser.add_argument("--temperature", type=float, default=None, help="Sampling temperature (env: AGENT_MODEL_TEMPERATURE).")
+    run_parser.add_argument("--max-tokens", type=int, default=None, help="Max output tokens (env: AGENT_MODEL_MAX_TOKENS).")
 
     args = parser.parse_args(argv)
     if args.command == "run":
@@ -40,12 +52,21 @@ def _run(args: argparse.Namespace) -> int:
             session_id=args.session_id,
         ),
     )
+    config.llm_factory = llm_factory_from_env(
+        model_name=args.model_name,
+        api_spec=args.api_spec,
+        base_url=args.base_url,
+        api_key=args.api_key,
+        temperature=args.temperature,
+        max_tokens=args.max_tokens,
+    )
 
     if config.llm_factory is None:
         sys.stderr.write(
-            "alignmentgraph-isd run requires a configured llm_factory. "
-            "For benchmark integration, map the scenario to DesignBrief outside "
-            "the harness and call run_design_brief(..., config) directly.\n"
+            "alignmentgraph-isd run requires a model. Pass --model-name (and "
+            "--api-key/--base-url as needed) or set AGENT_MODEL_NAME / "
+            "AGENT_MODEL_API_KEY / AGENT_MODEL_BASE_URL. Provider clients install "
+            "with: pip install 'alignmentgraph-isd[llm]'.\n"
         )
         return 2
 

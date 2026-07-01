@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ..graph import EdgeType, NodeType
 from ..schema import DesignBrief
 from .base import BaseISDAgent, _format_design_brief, parse_json_response
 
@@ -39,33 +40,31 @@ class AssessmentDesignAgent(BaseISDAgent):
     def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
         prompt = _format_design_brief(design_brief)
         # Graph-context retrieval (core, not RAG): inject prior G_t nodes into this prompt
-        prior_ctx = self._graph_context(['needs_context', 'objective'])
+        prior_ctx = self._graph_context([NodeType.NEEDS_CONTEXT, NodeType.OBJECTIVE])
         user_content = prompt
         if prior_ctx:
             user_content = f"=== ANALYSIS + DESIGN RESULTS (from prior agents) ===\n{prior_ctx}\n\n=== SCENARIO ===\n{prompt}"
-        rag_ctx = self._context_pack_text(context_pack)
-        if rag_ctx:
-            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{rag_ctx}\n\n{user_content}"
+        pack_ctx = self._context_pack_text(context_pack)
+        if pack_ctx:
+            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{pack_ctx}\n\n{user_content}"
         messages = [
             {"role": "system", "content": _SYSTEM},
             {"role": "user", "content": user_content},
         ]
         response = self._call_llm(messages)
         parsed = parse_json_response(response)
-        node_id = "assessment_0"
-        if self.graph.get_nodes("objective"):
-            objective_data = self.graph.get_nodes("objective")[0]["data"]
+        node_id = self.graph.section_id(NodeType.ASSESSMENT)
+        if self.graph.get_nodes(NodeType.OBJECTIVE):
+            objective_data = self.graph.get_nodes(NodeType.OBJECTIVE)[0]["data"]
             self._ensure_assessment_coverage(parsed, objective_data.get("learning_objectives", []))
-        self.graph.add_node("assessment", node_id, parsed)
-        self.trajectory.log_node_edit("add", node_id, "assessment")
-        # Element-level nodes: each assessment item is a first-class node.
-        for item in parsed.get("assessment_tools", []) or []:
-            if isinstance(item, dict) and item.get("item_id"):
-                element_id = self.graph.add_element_node("assessment", str(item["item_id"]), dict(item))
-                self.trajectory.log_node_edit("add", element_id, "assessment")
-        if self.graph.get_nodes("objective"):
-            obj_id = self.graph.get_nodes("objective")[0]["id"]
-            objective_data = self.graph.get_nodes("objective")[0]["data"]
+        self.graph.add_node(NodeType.ASSESSMENT, node_id, parsed)
+        self.trajectory.log_node_edit("add", node_id, NodeType.ASSESSMENT)
+        # No per-item element nodes: assessment stays section-level. Item→LO mapping
+        # is kept as data (assessment_tools[i].aligned_objective) and coverage is
+        # checked at the objective element node, so assessment:AT-* would be unused.
+        if self.graph.get_nodes(NodeType.OBJECTIVE):
+            obj_id = self.graph.get_nodes(NodeType.OBJECTIVE)[0]["id"]
+            objective_data = self.graph.get_nodes(NodeType.OBJECTIVE)[0]["data"]
             lo_ids = [
                 lo.get("id")
                 for lo in objective_data.get("learning_objectives", [])
@@ -79,15 +78,15 @@ class AssessmentDesignAgent(BaseISDAgent):
             for lo_id in sorted(set(aligned_ids).union(lo_ids)):
                 rationale = f"Assessment tool set includes an item aligned to {lo_id}."
                 self.graph.add_edge(
-                    "measures",
+                    EdgeType.MEASURES,
                     node_id,
                     obj_id,
                     evidence=lo_id,
                     rationale=rationale,
                     verified=True,
                 )
-                self._add_element_edge("measures", node_id, lo_id, rationale=rationale)
-                self.trajectory.log_edge_edit("add", node_id, obj_id, "measures", lo_id, rationale)
+                self._add_element_edge(EdgeType.MEASURES, node_id, lo_id, rationale=rationale)
+                self.trajectory.log_edge_edit("add", node_id, obj_id, EdgeType.MEASURES, lo_id, rationale)
         self.trajectory.log_step("AssessmentDesignAgent", "design_assessments", prompt[:200], response[:200] if response else "")
 
     def repair(self, violations: list) -> list:
@@ -95,7 +94,7 @@ class AssessmentDesignAgent(BaseISDAgent):
         for violation in violations:
             is_owner = (
                 getattr(violation, "violation_type", "") == "coverage"
-                or getattr(violation, "edge_type", "") == "measures"
+                or getattr(violation, "edge_type", "") == EdgeType.MEASURES
             )
             if not is_owner:
                 remaining.append(violation)
@@ -137,13 +136,13 @@ class AssessmentDesignAgent(BaseISDAgent):
         if not objective:
             return
 
-        assessment = self.graph.get_node("assessment_0")
+        assessment = self.graph.get_node(self.graph.section_id(NodeType.ASSESSMENT))
         if assessment:
             assessment_data = assessment["data"]
         else:
             assessment_data = {"assessment_tools": [], "expert_review": {}, "repaired": True}
-            self.graph.add_node("assessment", "assessment_0", assessment_data, repair_history=[violation.message])
-            self.trajectory.log_node_edit("add", "assessment_0", "assessment")
+            self.graph.add_node(NodeType.ASSESSMENT, self.graph.section_id(NodeType.ASSESSMENT), assessment_data, repair_history=[violation.message])
+            self.trajectory.log_node_edit("add", self.graph.section_id(NodeType.ASSESSMENT), NodeType.ASSESSMENT)
 
         assessment_tools = assessment_data.setdefault("assessment_tools", [])
         if not isinstance(assessment_tools, list):
@@ -174,23 +173,23 @@ class AssessmentDesignAgent(BaseISDAgent):
             })
             rationale = f"AssessmentDesignAgent repair added {item_id} to measure {lo_id}."
             self.graph.add_edge(
-                "measures",
-                "assessment_0",
+                EdgeType.MEASURES,
+                self.graph.section_id(NodeType.ASSESSMENT),
                 violation.node_id,
                 evidence=lo_id,
                 rationale=rationale,
                 verified=True,
             )
-            self._add_element_edge("measures", "assessment_0", lo_id, rationale=rationale)
-            self.trajectory.log_edge_edit("add", "assessment_0", violation.node_id, "measures", lo_id, rationale)
+            self._add_element_edge(EdgeType.MEASURES, self.graph.section_id(NodeType.ASSESSMENT), lo_id, rationale=rationale)
+            self.trajectory.log_edge_edit("add", self.graph.section_id(NodeType.ASSESSMENT), violation.node_id, EdgeType.MEASURES, lo_id, rationale)
             covered.add(lo_id)
             repaired_ids.append(lo_id)
 
-        self.graph.update_node("assessment_0", {"assessment_tools": assessment_tools, "repaired": True})
-        self.graph.clear_stale("assessment_0")
-        self.graph.mark_repaired("assessment_0", violation.message)
+        self.graph.update_node(self.graph.section_id(NodeType.ASSESSMENT), {"assessment_tools": assessment_tools, "repaired": True})
+        self.graph.clear_stale(self.graph.section_id(NodeType.ASSESSMENT))
+        self.graph.mark_repaired(self.graph.section_id(NodeType.ASSESSMENT), violation.message)
         impact = self._invalidate_impacted(
-            "assessment_0",
+            self.graph.section_id(NodeType.ASSESSMENT),
             "Assessment repair changed evidence coverage; dependent practice and evaluation plans must be refreshed.",
             action="repair_cascade",
             changed_fields=["assessment_tools", "measures_edges"],

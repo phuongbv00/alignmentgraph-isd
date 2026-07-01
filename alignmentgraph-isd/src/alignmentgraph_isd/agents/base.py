@@ -3,7 +3,7 @@ import json
 import re
 from abc import ABC, abstractmethod
 from ..config import HarnessRunConfig
-from ..graph import AlignmentGraph
+from ..graph import AlignmentGraph, NodeType
 from ..schema import DesignBrief
 from ..trajectory import TrajectoryLogger
 
@@ -220,7 +220,7 @@ class BaseISDAgent(ABC):
         point at the specific objective, not only the aggregate ``objective_0``.
         No-op if the element node does not exist (e.g. before objective design).
         """
-        element_id = f"objective{self.graph.ELEMENT_SEP}{lo_id}"
+        element_id = f"{NodeType.OBJECTIVE}{self.graph.ELEMENT_SEP}{lo_id}"
         if self.graph.get_node(element_id):
             self.graph.add_edge(
                 edge_type, source_id, element_id,

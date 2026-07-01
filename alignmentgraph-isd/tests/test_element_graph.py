@@ -12,7 +12,9 @@ def test_element_nodes_created_during_run(fake_config):
     node_edits = result["trajectory"]["node_edits"]
     element_ids = [edit["node_id"] for edit in node_edits if ":" in edit["node_id"]]
     assert any(nid.startswith("objective:") for nid in element_ids), element_ids
-    assert any(nid.startswith("assessment:") for nid in element_ids), element_ids
+    # Only objective is element-level (coverage is per-LO); other artifact types
+    # have no per-item consumer, so no assessment:/material: element nodes.
+    assert not any(nid.startswith(("assessment:", "material:")) for nid in element_ids), element_ids
 
 
 def test_coverage_clean_after_full_run(fake_config):

@@ -13,6 +13,14 @@ dependencies = [
     "jsonschema>=4",
 ]
 
+[project.optional-dependencies]
+# Provider clients for the standalone CLI / app paths (llm_factory_from_env).
+# Not needed for the benchmark, which injects its own llm_factory.
+llm = [
+    "langchain-openai>=0.1",
+    "langchain-anthropic>=0.1",
+]
+
 [project.scripts]
 alignmentgraph-isd = "alignmentgraph_isd.cli:main"
 

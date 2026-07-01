@@ -36,7 +36,7 @@ _SECTION_FIELDS: dict[str, dict[str, tuple[type | tuple[type, ...], bool]]] = {
     "material": {
         "learner_materials": (list, True),
     },
-    "constraint": {
+    "implementation_plan": {
         "instructor_orientation": (dict, True),
         "system_check": (dict, True),
         "prototype_execution": (dict, True),

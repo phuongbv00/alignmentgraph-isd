@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ..graph import NodeType
 from ..schema import DesignBrief
 from .base import BaseISDAgent, _format_design_brief, parse_json_response
 
@@ -48,17 +49,17 @@ class NeedsContextAgent(BaseISDAgent):
     def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
         prompt = _format_design_brief(design_brief)
         user_content = prompt
-        rag_ctx = self._context_pack_text(context_pack)
-        if rag_ctx:
-            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{rag_ctx}\n\n=== SCENARIO ===\n{prompt}"
+        pack_ctx = self._context_pack_text(context_pack)
+        if pack_ctx:
+            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{pack_ctx}\n\n=== SCENARIO ===\n{prompt}"
         messages = [
             {"role": "system", "content": _SYSTEM},
             {"role": "user", "content": user_content},
         ]
         response = self._call_llm(messages)
         parsed = parse_json_response(response)
-        node_id = "needs_context_0"
-        self.graph.add_node("needs_context", node_id, parsed)
-        self.trajectory.log_node_edit("add", node_id, "needs_context")
+        node_id = self.graph.section_id(NodeType.NEEDS_CONTEXT)
+        self.graph.add_node(NodeType.NEEDS_CONTEXT, node_id, parsed)
+        self.trajectory.log_node_edit("add", node_id, NodeType.NEEDS_CONTEXT)
         self.trajectory.log_step("NeedsContextAgent", "needs_analysis", prompt[:200], response[:200] if response else "")
 

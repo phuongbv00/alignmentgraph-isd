@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ..graph import NodeType
 from ..schema import DesignBrief
 import re
 from .base import BaseISDAgent, _format_design_brief, parse_json_response
@@ -92,27 +93,27 @@ class ObjectiveDesignAgent(BaseISDAgent):
     def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
         prompt = _format_design_brief(design_brief)
         # Graph-context retrieval (core, not RAG): inject prior G_t nodes into this prompt
-        prior_ctx = self._graph_context(['needs_context'])
+        prior_ctx = self._graph_context([NodeType.NEEDS_CONTEXT])
         user_content = prompt
         if prior_ctx:
             user_content = f"=== ANALYSIS RESULTS (from NeedsContextAgent) ===\n{prior_ctx}\n\n=== SCENARIO ===\n{prompt}"
-        rag_ctx = self._context_pack_text(context_pack)
-        if rag_ctx:
-            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{rag_ctx}\n\n{user_content}"
+        pack_ctx = self._context_pack_text(context_pack)
+        if pack_ctx:
+            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{pack_ctx}\n\n{user_content}"
         messages = [
             {"role": "system", "content": _SYSTEM},
             {"role": "user", "content": user_content},
         ]
         response = self._call_llm(messages)
         parsed = parse_json_response(response)
-        node_id = "objective_0"
-        self.graph.add_node("objective", node_id, parsed)
-        self.trajectory.log_node_edit("add", node_id, "objective")
+        node_id = self.graph.section_id(NodeType.OBJECTIVE)
+        self.graph.add_node(NodeType.OBJECTIVE, node_id, parsed)
+        self.trajectory.log_node_edit("add", node_id, NodeType.OBJECTIVE)
         # Element-level nodes: each learning objective is a first-class node.
         for lo in parsed.get("learning_objectives", []):
             if isinstance(lo, dict) and lo.get("id"):
-                element_id = self.graph.add_element_node("objective", str(lo["id"]), dict(lo))
-                self.trajectory.log_node_edit("add", element_id, "objective")
+                element_id = self.graph.add_element_node(NodeType.OBJECTIVE, str(lo["id"]), dict(lo))
+                self.trajectory.log_node_edit("add", element_id, NodeType.OBJECTIVE)
         self.trajectory.log_step("ObjectiveDesignAgent", "design_objectives", prompt[:200], response[:200] if response else "")
 
     def repair(self, violations: list) -> list:
@@ -173,7 +174,7 @@ class ObjectiveDesignAgent(BaseISDAgent):
             evidence=lo_id,
             violation_type=getattr(violation, "violation_type", "bloom"),
         )
-        self.trajectory.log_node_edit("update", violation.node_id, "objective")
+        self.trajectory.log_node_edit("update", violation.node_id, NodeType.OBJECTIVE)
         self.trajectory.log_step(
             "ObjectiveDesignAgent",
             "repair_objective",

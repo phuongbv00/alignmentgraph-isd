@@ -1,18 +1,56 @@
 from __future__ import annotations
 
+from enum import StrEnum
+
+
+class NodeType(StrEnum):
+    """Artifact category of a graph node (one per ADDIE-phase concern).
+
+    ``StrEnum`` members ARE their string value, so they stay JSON-serializable and
+    interoperate with the plain strings that MemorySaver/output deserialization
+    produce (``NodeType.OBJECTIVE == "objective"``).
+    """
+
+    NEEDS_CONTEXT = "needs_context"
+    OBJECTIVE = "objective"
+    ASSESSMENT = "assessment"
+    ACTIVITY = "activity"
+    MATERIAL = "material"
+    IMPLEMENTATION_PLAN = "implementation_plan"
+    EVALUATION = "evaluation"
+
+
+class EdgeType(StrEnum):
+    """Alignment relation between two nodes (objective-centered)."""
+
+    MEASURES = "measures"
+    SUPPORTS = "supports"
+    EVALUATES = "evaluates"
+
 
 class AlignmentGraph:
-    NODE_TYPES = {"objective", "assessment", "activity", "material", "constraint", "evaluation", "needs_context"}
-    EDGE_TYPES = {"measures", "supports", "requires", "constrains", "evaluates", "revises", "depends_on"}
+    NODE_TYPES = frozenset(NodeType)
+    EDGE_TYPES = frozenset(EdgeType)
+    SECTION_SUFFIX = "_0"
     IMPACT_POLICY = {
-        "needs_context": ("objective", "assessment", "activity", "material", "constraint", "evaluation"),
-        "objective": ("assessment", "activity", "material", "evaluation"),
-        "assessment": ("activity", "material", "evaluation"),
-        "activity": ("material", "assessment", "constraint", "evaluation"),
-        "material": ("activity", "assessment", "constraint", "evaluation"),
-        "constraint": ("objective", "assessment", "activity", "material", "evaluation"),
-        "evaluation": ("assessment",),
+        NodeType.NEEDS_CONTEXT: (
+            NodeType.OBJECTIVE, NodeType.ASSESSMENT, NodeType.ACTIVITY,
+            NodeType.MATERIAL, NodeType.IMPLEMENTATION_PLAN, NodeType.EVALUATION,
+        ),
+        NodeType.OBJECTIVE: (NodeType.ASSESSMENT, NodeType.ACTIVITY, NodeType.MATERIAL, NodeType.EVALUATION),
+        NodeType.ASSESSMENT: (NodeType.ACTIVITY, NodeType.MATERIAL, NodeType.EVALUATION),
+        NodeType.ACTIVITY: (NodeType.MATERIAL, NodeType.ASSESSMENT, NodeType.IMPLEMENTATION_PLAN, NodeType.EVALUATION),
+        NodeType.MATERIAL: (NodeType.ACTIVITY, NodeType.ASSESSMENT, NodeType.IMPLEMENTATION_PLAN, NodeType.EVALUATION),
+        NodeType.IMPLEMENTATION_PLAN: (
+            NodeType.OBJECTIVE, NodeType.ASSESSMENT, NodeType.ACTIVITY, NodeType.MATERIAL, NodeType.EVALUATION,
+        ),
+        NodeType.EVALUATION: (NodeType.ASSESSMENT,),
     }
+
+    @classmethod
+    def section_id(cls, node_type: NodeType | str) -> str:
+        """Canonical id of the singleton section node for a type (e.g. ``objective_0``)."""
+        return f"{node_type}{cls.SECTION_SUFFIX}"
 
     def __init__(self) -> None:
         self._nodes: dict[str, dict] = {}
@@ -20,7 +58,7 @@ class AlignmentGraph:
 
     def add_node(
         self,
-        node_type: str,
+        node_type: NodeType | str,
         node_id: str,
         data: dict | None = None,
         *,
@@ -121,7 +159,7 @@ class AlignmentGraph:
 
     def add_edge(
         self,
-        edge_type: str,
+        edge_type: EdgeType | str,
         source_id: str,
         target_id: str,
         *,
@@ -149,7 +187,7 @@ class AlignmentGraph:
 
     def add_element_node(
         self,
-        node_type: str,
+        node_type: NodeType | str,
         element_id: str,
         data: dict | None = None,
         *,
@@ -163,28 +201,28 @@ class AlignmentGraph:
     def is_element(self, node_id: str) -> bool:
         return self.ELEMENT_SEP in node_id
 
-    def get_nodes(self, node_type: str | None = None) -> list[dict]:
+    def get_nodes(self, node_type: NodeType | str | None = None) -> list[dict]:
         if node_type is None:
             return list(self._nodes.values())
         return [n for n in self._nodes.values() if n["type"] == node_type]
 
-    def section_nodes(self, node_type: str) -> list[dict]:
+    def section_nodes(self, node_type: NodeType | str) -> list[dict]:
         """Section nodes (the aggregate payload), excluding element nodes."""
         return [n for n in self._nodes.values() if n["type"] == node_type and not self.is_element(n["id"])]
 
-    def element_nodes(self, node_type: str) -> list[dict]:
+    def element_nodes(self, node_type: NodeType | str) -> list[dict]:
         """First-class element nodes for one artifact type."""
         return [n for n in self._nodes.values() if n["type"] == node_type and self.is_element(n["id"])]
 
     def get_node(self, node_id: str) -> dict | None:
         return self._nodes.get(node_id)
 
-    def get_edges(self, edge_type: str | None = None) -> list[dict]:
+    def get_edges(self, edge_type: EdgeType | str | None = None) -> list[dict]:
         if edge_type is None:
             return list(self._edges)
         return [e for e in self._edges if e["type"] == edge_type]
 
-    def get_node_context(self, node_types: list[str], max_chars_per_node: int = 600) -> str:
+    def get_node_context(self, node_types: list[NodeType | str], max_chars_per_node: int = 600) -> str:
         """Return a compact text summary of nodes for injection into agent prompts.
 
         This is the graph-context retrieval entry point (core, not RAG): later
@@ -201,7 +239,7 @@ class AlignmentGraph:
                 lines.append(f"[{nt.upper()}:{node['id']}]\n{data_str}")
         return "\n\n".join(lines)
 
-    def is_empty(self, node_type: str) -> bool:
+    def is_empty(self, node_type: NodeType | str) -> bool:
         """True if no non-empty node of this type exists."""
         return all(not n["data"] for n in self.get_nodes(node_type))
 

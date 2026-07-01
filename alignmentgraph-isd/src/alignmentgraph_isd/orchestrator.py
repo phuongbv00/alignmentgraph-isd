@@ -20,7 +20,7 @@ from .agents.needs_context import NeedsContextAgent
 from .agents.objective_design import ObjectiveDesignAgent
 from .agents.assessment_design import AssessmentDesignAgent
 from .agents.activity_material import ActivityMaterialAgent
-from .agents.implementation_constraint import ImplementationConstraintAgent
+from .agents.implementation_plan import ImplementationPlanAgent
 from .agents.evaluation_revision import EvaluationRevisionAgent
 from .agents.single_agent import SingleAgent
 from .agents.pedagogical_verifier import PedagogicalVerifierAgent
@@ -191,15 +191,15 @@ def _build_graph_for_run(
             }
         return _generation_done(state, "activity_material")
 
-    def _implementation_constraint_node(state: ISDState) -> dict:
+    def _implementation_plan_node(state: ISDState) -> dict:
         try:
-            ImplementationConstraintAgent(*_args()).run(design_brief, context_pack)
+            ImplementationPlanAgent(*_args()).run(design_brief, context_pack)
         except Exception as exc:
             return {
-                "errors": [f"ImplementationConstraintAgent: {exc}"],
-                "task_attempts": _bump_attempt(state, "implementation_constraint"),
+                "errors": [f"ImplementationPlanAgent: {exc}"],
+                "task_attempts": _bump_attempt(state, "implementation_plan"),
             }
-        return _generation_done(state, "implementation_constraint")
+        return _generation_done(state, "implementation_plan")
 
     def _evaluation_revision_node(state: ISDState) -> dict:
         try:
@@ -266,7 +266,7 @@ def _build_graph_for_run(
         return _specialist_repair_node(state, ActivityMaterialAgent, "activity_repair")
 
     def _implementation_repair_node(state: ISDState) -> dict:
-        return _specialist_repair_node(state, ImplementationConstraintAgent, "implementation_repair")
+        return _specialist_repair_node(state, ImplementationPlanAgent, "implementation_repair")
 
     def _evaluation_repair_node(state: ISDState) -> dict:
         return _specialist_repair_node(state, EvaluationRevisionAgent, "evaluation_repair")
@@ -297,7 +297,7 @@ def _build_graph_for_run(
     wf.add_node("objective_design", _objective_design_node)
     wf.add_node("assessment_design", _assessment_design_node)
     wf.add_node("activity_material", _activity_material_node)
-    wf.add_node("implementation_constraint", _implementation_constraint_node)
+    wf.add_node("implementation_plan", _implementation_plan_node)
     wf.add_node("evaluation_revision", _evaluation_revision_node)
     wf.add_node("single_agent", _single_agent_node)
     wf.add_node("verifier", _verifier_node)
@@ -319,7 +319,7 @@ def _build_graph_for_run(
                 "objective_design": "objective_design",
                 "assessment_design": "assessment_design",
                 "activity_material": "activity_material",
-                "implementation_constraint": "implementation_constraint",
+                "implementation_plan": "implementation_plan",
                 "evaluation_revision": "evaluation_revision",
                 "single_agent": "single_agent",
                 "verifier": "verifier",
@@ -336,7 +336,7 @@ def _build_graph_for_run(
             "objective_design",
             "assessment_design",
             "activity_material",
-            "implementation_constraint",
+            "implementation_plan",
             "evaluation_revision",
             "single_agent",
             "verifier",
@@ -361,8 +361,8 @@ def _build_graph_for_run(
     wf.add_edge("needs_context", "objective_design")
     wf.add_edge("objective_design", "assessment_design")
     wf.add_edge("assessment_design", "activity_material")
-    wf.add_edge("activity_material", "implementation_constraint")
-    wf.add_edge("implementation_constraint", "evaluation_revision")
+    wf.add_edge("activity_material", "implementation_plan")
+    wf.add_edge("implementation_plan", "evaluation_revision")
     wf.add_edge("evaluation_revision", "verifier")
     wf.add_edge("single_agent", "verifier")
     wf.add_edge("verifier", "aggregate")

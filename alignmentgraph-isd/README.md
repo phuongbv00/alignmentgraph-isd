@@ -52,15 +52,30 @@ config.retrieval_subagents = [
 ## CLI (developer smoke / manual runs)
 
 The CLI takes a JSON file already in `DesignBrief` shape (not a raw benchmark
-scenario):
+scenario). It builds a chat model from `--model-*` flags (or `AGENT_MODEL_*`
+env vars), so install the provider clients first:
 
 ```bash
-alignmentgraph-isd run \
+pip install -e '.[llm]'    # langchain-openai + langchain-anthropic
+
+# OpenAI-compatible backend (e.g. OpenRouter):
+AGENT_MODEL_API_KEY="$OPENROUTER_API_KEY" alignmentgraph-isd run \
   --input tests/fixtures/minimal_brief.json \
   --output result.json \
   --trajectory trajectory.json \
-  --ablation full
+  --ablation full \
+  --model-name openai/gpt-4o-mini \
+  --base-url https://openrouter.ai/api/v1
+
+# Anthropic:
+ANTHROPIC=... alignmentgraph-isd run --input brief.json --output result.json \
+  --api-spec anthropic --model-name claude-opus-4-8 --api-key "$ANTHROPIC_API_KEY"
 ```
+
+Flags fall back to env vars: `AGENT_MODEL_NAME`, `AGENT_MODEL_API_SPEC`
+(default `openai_compatible`), `AGENT_MODEL_BASE_URL`, `AGENT_MODEL_API_KEY`,
+`AGENT_MODEL_TEMPERATURE`, `AGENT_MODEL_MAX_TOKENS`. Without a resolvable model
+the CLI exits 2 with a message instead of emitting empty output.
 
 ## Tests
 

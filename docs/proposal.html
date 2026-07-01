@@ -427,10 +427,10 @@ const slides = [
         <div style="display:flex;flex-direction:column;gap:10px">
           <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:12px 16px;font-family:'Cascadia Code','Fira Code',monospace;font-size:0.75rem;color:#334155;line-height:1.9">
             G<sub>t</sub> = (V<sub>t</sub>, E<sub>t</sub>)<br><br>
-            V<sub>t</sub> = <span style="color:#4f46e5">V_objective</span> ∪ <span style="color:#0d9488">V_assessment</span> ∪ <span style="color:#2563eb">V_activity</span><br>
-            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;∪ <span style="color:#d97706">V_material</span> ∪ <span style="color:#7c3aed">V_constraint</span> ∪ <span style="color:#16a34a">V_evaluation</span><br><br>
-            E<sub>t</sub> = {<span style="color:#e11d48">measures</span>, <span style="color:#0891b2">supports</span>, requires,<br>
-            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#7c3aed">constrains</span>, evaluates, revises, depends_on}
+            V<sub>t</sub> = V_needs_context ∪ <span style="color:#4f46e5">V_objective</span> ∪ <span style="color:#0d9488">V_assessment</span> ∪ <span style="color:#2563eb">V_activity</span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;∪ <span style="color:#d97706">V_material</span> ∪ <span style="color:#7c3aed">V_implementation</span> ∪ <span style="color:#16a34a">V_evaluation</span><br><br>
+            E<sub>t</sub> = {<span style="color:#e11d48">measures</span>, <span style="color:#0891b2">supports</span>, <span style="color:#16a34a">evaluates</span>}<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#94a3b8">// objective-centered; ràng buộc/revision qua cascade &amp; node.data</span>
           </div>
         </div>
         <div class="pill-list">
@@ -524,8 +524,8 @@ const slides = [
         <div class="card amber"><div class="card-label">Specialist Repair</div><div class="card-text">Policy route lỗi về đúng role agent và kích hoạt cascade invalidation cho downstream</div></div>
       </div>
       <div class="pill-list" style="margin-top:4px">
-        <div class="pill ind"><div class="pill-dot"></div><div><span class="kw">6 role agents</span> thêm/sửa/liên kết <span class="kw">nodes và edges</span> trong AlignmentGraph: <code>NeedsContext</code> · <code>ObjectiveDesign</code> · <code>AssessmentDesign</code> · <code>ActivityMaterial</code> · <code>ImplementationConstraint</code> · <code>EvaluationRevision</code></div></div>
-        <div class="pill teal"><div class="pill-dot"></div><div><span class="kw">Không tuyến tính cứng</span>: <code>AssessmentDesignAgent</code> có thể buộc sửa objective node nếu không có evidence đo được; <code>ImplementationConstraintAgent</code> <span class="kw">đẩy constraint node ngược về</span> <code>ActivityMaterialAgent</code>.</div></div>
+        <div class="pill ind"><div class="pill-dot"></div><div><span class="kw">6 role agents</span> thêm/sửa/liên kết <span class="kw">nodes và edges</span> trong AlignmentGraph: <code>NeedsContext</code> · <code>ObjectiveDesign</code> · <code>AssessmentDesign</code> · <code>ActivityMaterial</code> · <code>ImplementationPlan</code> · <code>EvaluationRevision</code></div></div>
+        <div class="pill teal"><div class="pill-dot"></div><div><span class="kw">Không tuyến tính cứng</span>: <code>AssessmentDesignAgent</code> có thể buộc sửa objective node nếu không có evidence đo được; <code>ImplementationPlanAgent</code> <span class="kw">đánh dấu design node downstream là stale</span> (cascade-invalidation) khi plan không khả thi, để planner tái sinh.</div></div>
         <div class="pill violet"><div class="pill-dot"></div><div><code>ADDIEOutputAggregator</code> serialize AlignmentGraph đã kiểm tra vào schema <code>addie_output</code> — <span class="kw">ADDIE chỉ là output contract</span>, không phải execution order.</div></div>
       </div>
     </div>
@@ -646,7 +646,7 @@ const slides = [
           <div class="pill teal"><div class="pill-dot"></div><div><span class="kw">total_score</span> · <span class="kw">addie_score</span> · <span class="kw">trajectory_score</span> · <span class="kw">schema_validity</span> · <span class="kw">alignment_score</span> · <span class="kw">repair_success_rate</span> · latency · token_usage</div></div>
         </div>
         <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:8px 14px;font-family:'Cascadia Code','Fira Code',monospace;font-size:0.75rem;color:#475569">
-          alignmentgraph-isd run --input <span style="color:#4f46e5">scenario.json</span> --output <span style="color:#0d9488">result.json</span> --trajectory <span style="color:#d97706">trajectory.json</span>
+          alignmentgraph-isd run --input <span style="color:#4f46e5">design_brief.json</span> --output <span style="color:#0d9488">result.json</span> --trajectory <span style="color:#d97706">trajectory.json</span>
         </div>
       </div>
       <img src="assets/isd-agent-bench.png"
@@ -843,7 +843,7 @@ const slides = [
           <span class="badge badge-indigo">Việc cần làm tiếp</span>
           <div class="pill-list" style="margin-top:8px;gap:6px">
             <div class="pill ind"><div class="pill-dot"></div><div><span style="color:#15803d">✓ Đã xong (harness):</span> schema validation + routing lỗi về owner agent; verifier mở rộng (rubric consistency, feasibility, actionability, evaluation alignment).</div></div>
-            <div class="pill ind"><div class="pill-dot"></div><div><span style="color:#15803d">✓ Đã xong (harness):</span> element-level AlignmentGraph + Dynamic ISD Task Graph Builder; retrieval subagents (two-layer RAG); structured trajectory cho validation/verifier/repair/cascade.</div></div>
+            <div class="pill ind"><div class="pill-dot"></div><div><span style="color:#15803d">✓ Đã xong (harness):</span> element-level AlignmentGraph + Dynamic ISD Task Graph Builder; retrieval subagents (external-corpus RAG, gated bởi <code>use_rag</code>, dùng ở case study); structured trajectory cho validation/verifier/repair/cascade.</div></div>
             <div class="pill ind"><div class="pill-dot"></div><div>Còn lại: lộ trình benchmark <code>test_30</code> → <code>test_90</code> → subset lớn hơn → full testset <strong>1202 scenarios</strong>; teacher-facing prototype (planned).</div></div>
           </div>
         </div>
