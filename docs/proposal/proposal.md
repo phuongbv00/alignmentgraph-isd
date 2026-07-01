@@ -80,7 +80,7 @@ aligned(o) ⇔ (∃ a ∈ V_assessment : (a,o) ∈ measures)
 cascade(n) = { m ∈ V_t : type(m) ∈ IMPACT_POLICY(type(n)) } ↦ stale
 ```
 
-![Hình 2.1. AlignmentGraph G_t phủ đủ artifact 5 phase ADDIE: objective làm tâm với ba quan hệ alignment measures/supports/evaluates; needs_context (Analysis) và implementation_plan (Implementation) tác động design qua cascade-invalidation (đứt nét) thay vì cạnh tĩnh; material thuộc V_t nhưng không mang alignment edge.](assets/alignment-graph.svg)
+![Hình 2.1. AlignmentGraph G_t phủ đủ artifact 5 phase ADDIE: objective làm tâm với ba quan hệ alignment measures/supports/evaluates; needs_context (Analysis) và implementation_plan (Implementation) tác động design qua cascade-invalidation (đứt nét) thay vì cạnh tĩnh; material thuộc V_t nhưng không mang alignment edge.](proposal/assets/alignment-graph.svg)
 
 *Hình 2.1. AlignmentGraph `G_t` — bảy lớp node của `V_t` phủ đủ 5 phase ADDIE (tô màu theo phase) và ba edge alignment của `E_t` lấy `objective` làm tâm; đường đứt nét là cascade theo `IMPACT_POLICY` (§2.7), không thuộc `E_t`. Nguồn chỉnh sửa: `assets/alignment-graph.drawio`.*
 
