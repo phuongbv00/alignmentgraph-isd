@@ -1,20 +1,139 @@
 \documentclass[../main.tex]{subfiles}
 \begin{document}
 
-\textcolor{red}{Chú ý: Chương này là không bắt buộc. Nếu nghiên cứu chỉ có phân tích lý thuyết mà không có thực nghiệm thì sinh viên không cần trình bày chương này }
+Chương 3 đã trình bày kiến trúc AlignmentGraph-ISD như một harness năm lớp xoay quanh alignment graph, và Chương 4 đã mở rộng harness đó thành ứng dụng case study cùng giao thức đo hiệu quả tinh chỉnh. Chương 5 này trình bày kết quả đánh giá cho cả hai câu hỏi nghiên cứu: kết quả định lượng trên ISD-Agent-Bench cho RQ1, và hiện trạng đo lường theo giao thức case study cho RQ2. Nội dung chương đi từ mục tiêu và tham số đánh giá, qua phương pháp mô phỏng (baseline so sánh, thiết kế ablation bổ trợ, quy trình manifest), đến hai lượt kết quả benchmark thật theo thứ tự tăng dần quy mô bằng chứng — kết quả sơ bộ trên subset \texttt{test\_30} và kết quả mở rộng trên subset \texttt{test\_90} — rồi đến hiện trạng kết quả cho RQ2. Chương kết thúc bằng phân tích các threats to validity của toàn bộ quy trình đánh giá.
 
 \section{Evaluation Parameters}
 
-Sinh viên trình bày cụ thể về các tham số dùng trong đánh giá 
+Đánh giá của luận văn tập trung vào hai câu hỏi nghiên cứu đã đặt ra ở Chương 1: AlignmentGraph-ISD có tạo output ISD tốt hơn các agent hiện có hay không (RQ1, đo định lượng trên ISD-Agent-Bench), và AlignmentGraph-ISD có hỗ trợ tinh chỉnh khoá học qua nhiều phiên một cách hiệu quả hay không (RQ2, đo bằng bốn process metric theo giao thức case study ở Chương 4). Bổ trợ cho hai câu hỏi này, luận văn thiết kế thêm các ablation để phân tích đóng góp của từng thành phần harness. Luận văn không tự xây benchmark mới mà dùng ISD-Agent-Bench, vì benchmark này đã có sẵn bộ scenario, schema input/output, nhiều agent baseline và evaluator dựa trên rubric ADDIE cùng trajectory scoring.
+
+AlignmentGraph-ISD được tích hợp như một agent mới, nhận cùng scenario JSON và trả về cùng output schema với các agent khác. Bảng~\ref{tab:metrics} liệt kê các metric chính mà evaluator tính cho mỗi lượt chạy.
+
+\begin{table}[H]
+\centering
+\footnotesize
+\caption{Metric chính dùng để đánh giá trên ISD-Agent-Bench.}
+\label{tab:metrics}
+\begin{tabular}{p{3.6cm}p{9.4cm}}
+\hline
+\textbf{Metric} & \textbf{Ý nghĩa} \\
+\hline
+\texttt{total\_score} & điểm tổng hợp của evaluator \\
+\texttt{addie\_score} & chất lượng artifact theo rubric ADDIE \\
+\texttt{trajectory\_score} & chất lượng quá trình/tool-use theo trajectory \\
+\texttt{schema\_validity} & tỷ lệ output hợp lệ theo schema \\
+\texttt{phase\_coverage} & năm pha ADDIE có đủ nội dung cần thiết không \\
+\texttt{alignment\_score} & mục tiêu, hoạt động, assessment và rubric có nhất quán không \\
+\texttt{repair\_success\_rate} & tỷ lệ lỗi schema/verifier được sửa thành công \\
+\texttt{latency\_ms}, \texttt{llm\_calls}, \texttt{tool\_calls}, \texttt{token\_usage} & chi phí vận hành \\
+\hline
+\end{tabular}
+\end{table}
 
 \section{Simulation Method}
 
-Sinh viên trình bày chi tiết cách thức tiến hành thí nghiệm, ví dụ: các baseline chọn để so sánh là gì? tại sao lại chọn các baseline đấy? Tiến hành bao nhiêu thí nghiệm? mỗi thí nghiệm được thực hiện bao nhiêu lần? Các tham số của thuật toán được chọn như thế nào? Kịch bản thí nghiệm được tạo ra sao? Dữ liệu xử lý thế nào? … Có thể chia  chương này thành các chương nhỏ hơn để tiện trình bày. 
+ISD-Agent-Bench xây dựng bộ scenario theo hai trục, minh hoạ ở Hình~\ref{fig:isd-agent-bench}: trục Context (đặc điểm người học, loại hình tổ chức, domain, hình thức triển khai, ràng buộc) và trục ISD (Analysis, Design, Development, Implementation, Evaluation theo ADDIE). Mỗi scenario kết hợp một điểm trên trục Context với yêu cầu output trên trục ISD, và các agent baseline theo lý thuyết ISD được hiện thực hoá như một vòng lặp ReAct (Thinking, Action, Observation) trên các ISD tool.
 
-\section{Tên của kết quả thí nghiệm 1}
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\linewidth]{Figure/isd-agent-bench.png}
+\caption{Khung ISD-Agent-Bench: trục Context và trục ISD dùng để sinh scenario, cùng vòng lặp ReAct của các agent theo lý thuyết ISD.}
+\label{fig:isd-agent-bench}
+\end{figure}
 
-Các chương tiếp theo sinh viên trình bày các kết quả thí nghiệm thu được. Mỗi kết quả nên cho vào một chương. Đối với mỗi kết quả thí nghiệm, cần trình bày các bảng biểu, đồ thị minh hoạ cho kết quả thí nghiệm. Sinh viên cần nêu nhận xét chi tiết về kết quả thí nghiệm, so sánh các phương pháp với nhau, giải thích tại sao kết quả lại như vậy. 
+Luận văn so sánh AlignmentGraph-ISD với sáu variant đã khảo sát kiến trúc ở Chương 2: \texttt{baseline} (single-prompt, cận dưới), \texttt{react-isd} (ReAct tool-use), \texttt{addie-agent} (sequential ADDIE), \texttt{dick-carey-agent} (systems approach có feedback loop), \texttt{rpisd-agent} (rapid prototyping) và \texttt{eduplanner} (generate-evaluate-optimize multi-agent). Như một phân tích bổ trợ, luận văn còn thiết kế các ablation tắt từng thành phần của harness: \texttt{no\_verifier} (bỏ pedagogical verifier, đo lỗi alignment và rubric consistency), \texttt{no\_repair} (phát hiện lỗi nhưng không sửa, đo giá trị của targeted repair), \texttt{single\_agent} (thay multi-agent bằng một agent sinh toàn bộ output, đo giá trị của role decomposition), và \texttt{linear\_addie\_only} (giữ graph tuyến tính, bỏ dynamic orchestration policy, so sánh với \texttt{addie-agent}). Benchmark luôn chạy ở chế độ \texttt{no\_rag}, vì RAG chỉ là add-on cho case study ở Chương 4 và không thuộc core harness được ablation ở đây; tương tự, graph-context và memory retrieval là core always-on nên không có ablation tắt riêng hai cơ chế này. Mỗi lượt chạy cần có manifest ghi rõ model, judge, phiên bản prompt, commit hash, danh sách scenario, seed, temperature, max token và phiên bản adapter, để đảm bảo có thể tái lập.
 
-\section{Tên của kết quả thí nghiệm 2}
+\section{Preliminary Result on \texttt{test\_30}}
+
+Lượt benchmark sơ bộ đầu tiên được chạy trên subset \texttt{test\_30}, dùng agent model Gemma-4-26B-A4B. Subset này gồm 30 trên 1202 scenario của full test split (khoảng 2,5\%), lấy mẫu stratified ngẫu nhiên có seed cố định theo 10 domain nhân 3 mức difficulty nhân 1 scenario, và lồng nhau \texttt{test\_30} $\subset$ \texttt{test\_90} $\subset$ \texttt{test}. Theo trục difficulty, subset gần khớp full test (khoảng 33\% mỗi mức Easy/Moderate/Hard); theo trục domain, subset cố ý phủ đều 10\% mỗi domain thay vì giữ đúng tỉ lệ tự nhiên của full test, vốn lệch mạnh về bốn domain lớn (Language, Mathematics, Science, Social Studies chiếm khoảng 78\%). Do đó, kết quả trên \texttt{test\_30} mang tính smoke-test đa domain, đại diện theo difficulty nhưng over-sample các domain chuyên biệt, chưa phản ánh đúng phân phối domain thật của 1202 scenario. Bảng~\ref{tab:test30} tóm tắt điểm trung bình theo hai judge model.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Kết quả trên \texttt{test\_30} (agent model Gemma-4-26B-A4B).}
+\label{tab:test30}
+\begin{tabular}{lrrr}
+\hline
+\textbf{Agent} & \textbf{GPT} & \textbf{Gemini} & \textbf{Avg} \\
+\hline
+React-ADDIE & 85.40 & \textbf{88.96} & \textbf{87.18} \\
+AlignmentGraph-ISD (đề xuất) & \textbf{85.63} & 85.70 & 85.67 \\
+EduPlanner & 83.68 & 86.10 & 84.89 \\
+RPISD-Agent & 83.43 & 83.23 & 83.33 \\
+ADDIE-Agent & 82.78 & 83.57 & 83.18 \\
+Dick-Carey-Agent & 80.86 & 81.33 & 81.09 \\
+Baseline & 79.97 & 82.13 & 81.05 \\
+\hline
+\end{tabular}
+\end{table}
+
+Ở lượt chạy này, AlignmentGraph-ISD đạt 85.67 điểm trung bình, đứng thứ hai sau React-ADDIE (87.18), nhưng dẫn đầu theo judge GPT (85.63). Theo phase trung bình, AlignmentGraph-ISD dẫn ở Implementation (82.3) và Evaluation (85.0). Khoảng cách lớn nhất nằm ở trajectory: AlignmentGraph-ISD đạt 88.38, thấp hơn React-ADDIE (93.08), cho thấy tại thời điểm này logging, repair trace và dynamic orchestration còn cần hoàn thiện. Kết quả trên \texttt{test\_30} vì vậy chỉ được dùng như một checkpoint kỹ thuật để xác định vị trí của agent đề xuất, không dùng để khẳng định ưu thế thống kê do cỡ mẫu còn nhỏ.
+
+\section{Extended Result on \texttt{test\_90}}
+
+Để mở rộng bằng chứng vượt ra ngoài phạm vi smoke-test, luận văn chạy thêm một lượt benchmark trên subset \texttt{test\_90} (90 scenario, lồng \texttt{test\_30} $\subset$ \texttt{test\_90}), dùng một agent model khác, DeepSeek-v4-flash-nitro, để kiểm tra xu hướng quan sát được có ổn định qua model khác hay không. Bảng~\ref{tab:test90} tóm tắt điểm tổng hợp, phân rã theo thành phần ADDIE/trajectory, theo difficulty và theo phase.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Kết quả trên \texttt{test\_90} (agent model DeepSeek-v4-flash-nitro) --- điểm tổng hợp theo judge.}
+\label{tab:test90}
+\begin{tabular}{lrrr}
+\hline
+\textbf{Agent} & \textbf{GPT} & \textbf{Gemini} & \textbf{Avg} \\
+\hline
+AlignmentGraph-ISD (đề xuất) & \textbf{86.62} & 81.51 & \textbf{84.07} \\
+Dick-Carey-Agent & 84.97 & 80.42 & 82.70 \\
+Baseline & 84.93 & 79.36 & 82.15 \\
+React-ADDIE & 80.68 & \textbf{81.81} & 81.25 \\
+ADDIE-Agent & 83.10 & 77.22 & 80.16 \\
+RPISD-Agent & 81.21 & 76.97 & 79.09 \\
+EduPlanner & 77.88 & 77.10 & 77.49 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\small
+\caption{Kết quả trên \texttt{test\_90} --- thành phần điểm và độ khó.}
+\label{tab:test90-components}
+\begin{tabular}{lrrrrrr}
+\hline
+& \multicolumn{3}{c}{\textbf{Thành phần điểm}} & \multicolumn{3}{c}{\textbf{Difficulty}} \\
+\textbf{Agent} & Total & ADDIE & Traj. & Easy & Med. & Hard \\
+\hline
+AlignmentGraph-ISD & \textbf{84.07} & \textbf{85.29} & 81.20 & \textbf{83.77} & \textbf{84.25} & \textbf{84.18} \\
+Dick-Carey-Agent & 82.70 & 82.41 & 83.37 & 83.23 & 82.48 & 82.37 \\
+Baseline & 82.15 & 83.93 & 77.99 & 82.26 & 83.23 & 80.95 \\
+React-ADDIE & 81.25 & 78.67 & \textbf{87.26} & 81.50 & 81.14 & 81.10 \\
+ADDIE-Agent & 80.16 & 79.44 & 81.83 & 79.86 & 80.07 & 80.55 \\
+RPISD-Agent & 79.09 & 79.83 & 77.38 & 79.43 & 79.00 & 78.84 \\
+EduPlanner & 77.49 & 76.45 & 79.92 & 78.62 & 77.25 & 76.51 \\
+\hline
+\end{tabular}
+\end{table}
+
+Trên \texttt{test\_90}, AlignmentGraph-ISD dẫn đầu điểm trung bình (84.07), vượt Dick-Carey-Agent (82.70), Baseline (82.15) và React-ADDIE (81.25), đồng thời dẫn đầu ADDIE score (85.29) và cả ba mức difficulty Easy/Medium/Hard. Theo phase (trung bình hai judge), AlignmentGraph-ISD dẫn Design (85.6), Development (86.7) và Implementation (84.3), trong khi Analysis (83.4) và Evaluation (84.0) tương đương nhóm dẫn đầu. Khoảng cách vẫn còn ở trajectory score, nơi AlignmentGraph-ISD đạt 81.20, thấp hơn React-ADDIE (87.26), lặp lại quan sát đã thấy ở \texttt{test\_30} và cho thấy đây là một hạn chế nhất quán chứ không phải nhiễu của một lượt chạy. Về độ ổn định, AlignmentGraph-ISD đạt tỷ lệ thành công 100\% trên 90 scenario, ngang với \texttt{baseline}, \texttt{react-isd}, \texttt{addie-agent} và \texttt{rpisd-agent}, và cao hơn Dick-Carey-Agent (88.9\%, 10 lỗi parse output) cùng EduPlanner (94.4\%, 5 lỗi validation schema).
+
+So với \texttt{test\_30}, lượt \texttt{test\_90} dùng cỡ mẫu lớn hơn và một agent model khác, nên kết quả này được xem là bằng chứng mở rộng củng cố xu hướng quan sát được ở lượt sơ bộ: AlignmentGraph-ISD cải thiện chất lượng artifact (ADDIE score) và độ ổn định (success rate) một cách nhất quán qua hai model khác nhau, trong khi trajectory score vẫn là hướng cần cải thiện tiếp. Ablation study theo thiết kế ở phần Simulation Method, cùng với việc mở rộng đánh giá sang \texttt{test\_90} rồi tiến tới full test 1202 scenario, hiện vẫn là công việc \textbf{chưa hoàn thành}; số liệu tương ứng sẽ được bổ sung khi các lượt chạy đó hoàn tất.
+
+\section{Case Study Results (RQ2)}
+
+Giao thức đo RQ2 — bốn process metric cascade scope, edit locality, cost per tuning round và alignment preservation trên các phiên tinh chỉnh — đã được định nghĩa ở Chương 4 (Bảng~\ref{tab:tuning-metrics}). Tại thời điểm viết luận văn, các phiên tinh chỉnh của case study chưa được thực thi đầy đủ, nên chương này chưa báo cáo số liệu cho bốn metric trên; đây là công việc \textbf{chưa hoàn thành}, tương tự ablation study, và sẽ được bổ sung khi các phiên chạy hoàn tất.
+
+Tuy vậy, hai lượt benchmark ở trên đã cung cấp bằng chứng ở mức cơ chế cho RQ2: chuỗi verifier--repair--cascade mà một phiên tinh chỉnh dựa vào chính là chuỗi đã vận hành bên trong từng lượt chạy benchmark. Khi verifier phát hiện vi phạm, harness sửa đúng node/edge liên quan thay vì sinh lại toàn bộ, và cascade invalidation đánh dấu các node downstream bị ảnh hưởng; các sự kiện này được ghi trong trajectory của từng run và phản ánh gián tiếp qua \texttt{repair\_success\_rate} cùng tỷ lệ thành công 100\% trên \texttt{test\_90}. Nói cách khác, cơ chế nền của tinh chỉnh đã hoạt động ổn định trong phạm vi một phiên; điều còn phải đo là hiệu quả của cơ chế đó khi trải qua nhiều phiên trên cùng một chương trình đào tạo, theo đúng giao thức ở Chương 4.
+
+\section{Threats to Validity}
+
+\textbf{Internal validity.} Prompt, model và judge có thể ảnh hưởng đến kết quả. Luận văn cố định run manifest, chạy cùng model/decoding config cho các variant khi khả thi, ngẫu nhiên hoá thứ tự khi dùng LLM-as-judge, và báo cáo đầy đủ lỗi connection/schema thay vì loại bỏ âm thầm.
+
+\textbf{Construct validity.} ISD-Agent-Bench đánh giá chất lượng artifact và trajectory, không đo trực tiếp hiệu quả học tập của học viên. Vì vậy, kết luận của luận văn chỉ giới hạn ở chất lượng output instructional design và quá trình agentic workflow, không mở rộng thành khẳng định về learning outcome.
+
+\textbf{External validity.} Kết quả trên ISD-Agent-Bench phản ánh một tập scenario tổng hợp đa domain; case study trong miền IT/Software Engineering ở Chương 4 chỉ minh hoạ một miền ứng dụng cụ thể. AlignmentGraph-ISD được thiết kế để mở rộng sang domain khác qua corpus, template và verifier policy, nhưng luận văn không khẳng định hiệu quả tương đương trên mọi môn học.
+
+\textbf{Cost validity.} Multi-agent orchestration và cơ chế repair có thể tăng latency và token cost so với single-prompt baseline. Vì vậy, việc đánh giá cần báo cáo đầy đủ trade-off giữa điểm số, độ ổn định, số lần repair và chi phí vận hành, thay vì chỉ báo cáo chất lượng artifact.
+
+Chương này đã trình bày kết quả đánh giá cho cả hai câu hỏi nghiên cứu: với RQ1, hai lượt benchmark thật cho thấy agent đề xuất dẫn đầu hoặc thuộc nhóm dẫn đầu về chất lượng artifact và độ ổn định, trong khi trajectory score vẫn còn khoảng cách so với React-ADDIE; với RQ2, giao thức đo đã sẵn sàng cùng bằng chứng cơ chế từ chính các lượt chạy benchmark, còn số liệu tuning session thuộc bước thực thi tiếp theo. Chương 6 tiếp theo tổng kết toàn bộ đóng góp của luận văn và đề xuất hướng phát triển.
 
 \end{document}

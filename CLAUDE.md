@@ -2,11 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Tooling
+
+- **Prefer the `serena` MCP tools** (`find_symbol`, `find_referencing_symbols`, `replace_symbol_body`, `search_for_pattern`, etc.) over generic `Read`/`Grep`/`Edit` when navigating or editing code in `alignmentgraph-isd/` or `isd-agent-benchmark/`. Call `mcp__serena__initial_instructions` first if it hasn't been read yet this session.
+- **When editing the thesis manuscript** (anything under `docs/thesis/`), always run `docs/thesis/compile.sh` afterward to confirm it still builds (`main.pdf`). Report any LaTeX errors instead of leaving them unverified.
+
 ## Repository layout
 
 This is a master's thesis monorepo with three top-level parts:
 
-- **`docs/`** — the thesis proposal (`proposal.md` / `proposal.html`), assets, and references. LaTeX build artifacts and `*.pdf` are gitignored.
+- **`docs/`** — proposal, references, and the thesis manuscript itself.
+  - `docs/proposal/` — the thesis proposal (`proposal.md` / `proposal.html`) and its `assets/`.
+  - `docs/refs/` — reference material pulled in from other repos (e.g. `refs/isd-agent-bench/`).
+  - `docs/thesis/` — the LaTeX thesis manuscript. `main.tex` is the entry point; `Chapter/` holds one `.tex` file per chapter (`0_2_Acknowledgment`, `0_3_Abstract`, `1_Introduction`, `2_Literature_review`, `3_Methodology`, `4_Numerical_results`, `5_Case_Study`, `6_Conclusions`, `7_Reference`, `Appendix_A`, `Appendix_B`); `Figure/` holds images; `glossary.tex` and `reference.bib` hold the glossary and bibliography; `compile.sh` runs `pdflatex -> bibtex -> pdflatex -> pdflatex` to produce `main.pdf`. LaTeX build artifacts and `*.pdf` are gitignored.
 - **`alignmentgraph-isd/`** — the **thesis contribution**: a standalone Python package (`alignmentgraph_isd`), a LangGraph-based multi-agent ADDIE instructional-design system. Tracked directly in this repo (not a submodule).
 - **`isd-agent-benchmark/`** — a **git submodule** (`git@github.com:phuongbv00/isd-agent-benchmark.git`, branch `customize`) that benchmarks ISD agents. It contains six baseline/comparison agents plus a thin wrapper that runs `alignmentgraph-isd` as a seventh agent.
 

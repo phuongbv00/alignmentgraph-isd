@@ -1,16 +1,226 @@
 \documentclass[../main.tex]{subfiles}
 \begin{document}
 
+Chương 2 đã khảo sát ba nhóm công trình liên quan và xác định khoảng trống chung: các kiến trúc agent hiện có hoặc không kiểm tra alignment tường minh, hoặc gắn cứng vào một model ISD cụ thể, hoặc chưa chuẩn hoá cơ chế retrieval/schema/trace xuyên suốt. Chương 3 này trình bày phương pháp đề xuất, AlignmentGraph-ISD, giải quyết đồng thời ba hạn chế đó bằng một cấu trúc dữ liệu graph tường minh và một harness thực thi phi tuyến xung quanh cấu trúc đó. Nội dung chương đi từ tổng quan kiến trúc, qua mô hình alignment graph và cách nó được vận hành bởi workflow động và các agent chuyên biệt, đến cơ chế đảm bảo chất lượng (schema validation, pedagogical verification, targeted repair) và cơ chế lưu trạng thái (four-layer memory). Cơ chế agentic RAG — tầng truy xuất tri thức ngoài theo domain, cắm thêm được — được trình bày ở Phần~\ref{sec:agentic-rag}; phần instantiate cho miền IT/Software Engineering cùng giao diện prototype được trình bày ở Chương 4 vì thuộc case study, không thuộc core harness được đánh giá trên benchmark ở Chương 5.
+
 \section{Overview}
 
-Phần này mô tả tổng quan giải pháp gồm những bước chính nào, hoạt động ra sao. Mục tiêu của phần này là cho người đọc một cái nhìn tổng thể về giải pháp. Để cho dễ hiểu thì nên có một biểu đồ mô tả luồng hoạt động của giải pháp đề xuất. 
+AlignmentGraph-ISD là một alignment-graph harness cho ISD agent, theo công thức tổng quát đã giới thiệu ở Chương 1: AlignmentGraph-ISD Agent = AlignmentGraph-ISD Harness + Model, dùng đúng khái niệm harness đã trình bày ở Chương 2 (§2.2, Hình~\ref{fig:harness-anatomy}): một lớp vỏ nhiều tầng bao quanh model, không phải một wrapper gọi API đơn giản. AlignmentGraph-ISD cụ thể hoá khái niệm đó thành năm lớp chuyên cho bài toán ISD: từ scenario hoặc yêu cầu giảng viên, qua orchestrator xây dựng dynamic ISD task graph, qua four-layer memory, graph-context retrieval và agentic RAG cắm thêm được làm tool layer, qua schema validation/pedagogical verification/targeted repair làm lớp đảm bảo chất lượng, đến ADDIE output aggregator sinh ra artifact cuối cùng kèm trajectory. Harness không gắn cứng với một mô hình thiết kế dạy học duy nhất; ADDIE đóng vai trò output contract chung để tương thích với ISD-Agent-Bench, còn các nguyên lý như constructive alignment hay systems approach (đã tóm lược ở Chương 2) được dùng làm policy và verifier bên trong, như trình bày ở các phần tiếp theo.
 
-\section{Tên của nội dung chi tiết thứ 1}
-Tên của các chương này đặt theo nội dung mà sinh viên sẽ trình bày trong từng chương. 
+\section{The Alignment Graph}
 
-Các chương tiếp theo mô tả chi tiết về các bước, các thuật toán trong giải pháp đề xuất. Có thể trình bày pseudocode cho từng bước. Chú ý, pseudocode chỉ có tác dụng làm chi tiết hoá giải thuật chứ không thay thế được phần thuyết minh về giải thuật. Đối với những chi tiết kỹ thuật khó hiểu nên có các hình minh hoạ để người đọc dễ hiểu. Mỗi một thuật toán/bước thực hiện nên tách ra thành một chương. 
+Thành phần trung tâm của harness là \texttt{AlignmentGraph}, một trạng thái làm việc chung xuyên suốt quá trình thiết kế, không chỉ là một sơ đồ minh hoạ. Tại mỗi bước $t$, graph được định nghĩa là $G_t = (V_t, E_t)$, trong đó tập đỉnh $V_t$ phủ đủ artifact của năm pha ADDIE:
 
-\section{Tên của nội dung chi tiết thứ 2}
+\begin{equation}\label{eq:vertices}
+V_t = V_{\text{needs\_context}} \cup V_{\text{objective}} \cup V_{\text{assessment}} \cup V_{\text{activity}} \cup V_{\text{material}} \cup V_{\text{implementation\_plan}} \cup V_{\text{evaluation}}
+\end{equation}
 
+Mỗi loại đỉnh trong \eqref{eq:vertices} tương ứng một pha ADDIE: \texttt{needs\_context} thuộc Analysis, \texttt{objective} thuộc Design, \texttt{assessment}/\texttt{activity}/\texttt{material} thuộc Development, \texttt{implementation\_plan} thuộc Implementation, và \texttt{evaluation} thuộc Evaluation. Tập cạnh $E_t$ được giữ tối thiểu, gồm ba quan hệ nhiều-nhiều lấy \texttt{objective} làm tâm:
+
+\begin{equation}\label{eq:edges}
+\begin{aligned}
+E_{\text{measures}} &\subseteq V_{\text{assessment}} \times V_{\text{objective}} \\
+E_{\text{supports}} &\subseteq V_{\text{activity}} \times V_{\text{objective}} \\
+E_{\text{evaluates}} &\subseteq V_{\text{evaluation}} \times V_{\text{objective}} \\
+E_t &= E_{\text{measures}} \cup E_{\text{supports}} \cup E_{\text{evaluates}}
+\end{aligned}
+\end{equation}
+
+Hai cạnh \texttt{measures} và \texttt{supports} trong \eqref{eq:edges} hiện thực hoá trực tiếp nguyên lý constructive alignment đã nêu ở Chương 2: một objective được coi là aligned khi và chỉ khi tồn tại ít nhất một assessment đo nó, một activity hỗ trợ nó, và một evaluation đánh giá nó, như biểu diễn ở \eqref{eq:aligned}.
+
+\begin{equation}\label{eq:aligned}
+\begin{aligned}
+\text{aligned}(o) \iff \; &\big(\exists a \in V_{\text{assessment}} : (a,o) \in E_{\text{measures}}\big) \\
+\wedge \; &\big(\exists x \in V_{\text{activity}} : (x,o) \in E_{\text{supports}}\big) \\
+\wedge \; &\big(\exists e \in V_{\text{evaluation}} : (e,o) \in E_{\text{evaluates}}\big), \quad \forall o \in V_{\text{objective}}
+\end{aligned}
+\end{equation}
+
+Ba loại node, \texttt{needs\_context}, \texttt{implementation\_plan} và \texttt{material}, không tham gia alignment edge tĩnh. Chúng vẫn tác động đến thiết kế, nhưng qua một toán tử cascade dựa trên \texttt{IMPACT\_POLICY}, thay vì qua một cạnh cố định, như biểu diễn ở \eqref{eq:cascade}. Trong đó, \texttt{needs\_context} đóng vai trò nguồn gốc của Analysis, lan ảnh hưởng tới toàn bộ downstream.
+
+\begin{equation}\label{eq:cascade}
+\text{cascade}(n) = \{ m \in V_t : \text{type}(m) \in \text{IMPACT\_POLICY}(\text{type}(n)) \} \mapsto \text{stale}
+\end{equation}
+
+Bảng~\ref{tab:node-types} liệt kê artifact chính mà mỗi loại đỉnh mang trong trường dữ liệu nội bộ (\texttt{node.data}), cùng ADDIE phase tương ứng. Điểm cần lưu ý là loại đỉnh không đồng nhất với artifact đơn lẻ: mỗi loại đỉnh là một section gộp toàn bộ nội dung phong phú của phase đó; chỉ \texttt{objective} được tách thêm thành element node theo từng learning outcome (\texttt{objective:LO-*}), vì constructive alignment cần được kiểm ở cấp từng mục tiêu học tập cụ thể, còn các loại đỉnh khác được giữ ở mức section vì việc kiểm tra alignment và coverage ở cấp section đã đủ cho mục đích của verifier và auditor.
+
+\begin{table}[H]
+\centering
+\footnotesize
+\caption{Loại đỉnh của AlignmentGraph và artifact chính tương ứng.}
+\label{tab:node-types}
+\begin{tabular}{p{2.4cm}p{2.0cm}p{6.2cm}p{2.2cm}}
+\hline
+\textbf{Loại đỉnh} & \textbf{ADDIE phase} & \textbf{Artifact chính trong \texttt{node.data}} & \textbf{Element node} \\
+\hline
+\texttt{needs\_context} & Analysis & \texttt{needs\_analysis}, \texttt{learner\_analysis}, \texttt{context\_analysis}, \texttt{task\_analysis} & --- \\
+\texttt{objective} & Design & \texttt{learning\_objectives[]}, \texttt{instructional\_strategies} & \texttt{objective:LO-*} \\
+\texttt{assessment} & Development & \texttt{assessment\_tools[]}, \texttt{expert\_review} & --- \\
+\texttt{activity} & Development & \texttt{learner\_materials[]}, \texttt{instructor\_guide} & --- \\
+\texttt{material} & Development & \texttt{learner\_materials[]} & --- \\
+\texttt{implementation\_plan} & Implementation & \texttt{instructor\_orientation}, \texttt{system\_check}, \texttt{monitoring} & --- \\
+\texttt{evaluation} & Evaluation & \texttt{formative}, \texttt{summative}, \texttt{improvement\_plan} & --- \\
+\hline
+\end{tabular}
+\end{table}
+
+Cách biểu diễn này mang lại ba lợi ích kiến trúc trực tiếp. Thứ nhất, verifier có thể kiểm tra alignment có cấu trúc ở cấp từng cạnh, ví dụ một assessment có thật sự đo đúng objective hay không, thay vì chỉ đọc toàn văn artifact rồi suy đoán. Thứ hai, repair trở nên có mục tiêu: khi một rubric không đo đúng objective, harness chỉ cần sửa node \texttt{assessment} hoặc cạnh \texttt{measures} liên quan, không cần sinh lại toàn bộ lesson plan. Thứ ba, orchestration trở nên phi tuyến, vì \texttt{MetaAgent} có thể nhìn trạng thái graph, các cạnh còn thiếu hoặc node lỗi để quyết định bước kế tiếp, thay vì chạy cứng theo thứ tự Analysis, Design, Development, Implementation, Evaluation. Phần tiếp theo trình bày cách workflow đề xuất khai thác ba lợi ích này.
+
+\section{Proposed Workflow}
+
+Workflow đề xuất bắt đầu từ scenario của ISD-Agent-Bench hoặc yêu cầu của giảng viên nội bộ. \texttt{MetaAgent} không chạy cứng chuỗi Analysis, Design, Development, Implementation, Evaluation, mà tạo một dynamic ISD task graph, trong đó các tác vụ needs/context analysis, objective design, assessment design, activity/material design, implementation planning và evaluation/revision planning có thể tương tác lặp quanh \texttt{AlignmentGraph}. Trước khi giao tác vụ cho từng agent chuyên biệt, một \texttt{ContextPlanner} chuẩn bị ngữ cảnh riêng cho từng tác vụ bằng cách tái cấu trúc design brief thành các trọng tâm phù hợp (design-brief focus, alignment requirements, rubric focus); đây là một bước biến đổi input, không đọc bất kỳ external store nào. Mỗi agent chuyên biệt còn tự bổ sung ngữ cảnh bằng cách truy xuất subgraph liên quan trực tiếp từ trạng thái \texttt{AlignmentGraph} hiện tại (graph-context retrieval); cả hai cơ chế này luôn bật (core, always-on) và tách biệt với truy xuất tài liệu miền ngoài (agentic RAG), một tầng add-on được trình bày ở Phần~\ref{sec:agentic-rag}.
+
+Về mặt hình thức, mỗi vòng lặp của workflow là một bước chuyển trạng thái trên $G_t$. \texttt{MetaAgent} duy trì một dynamic task graph $T_t = \{\tau_1, \dots, \tau_k\}$, trong đó mỗi tác vụ $\tau = (\mathrm{type}, \mathrm{owner}, \mathrm{prio}, \mathrm{deps})$ mang loại tác vụ, agent sở hữu, độ ưu tiên và tập tác vụ phụ thuộc. Tại mỗi bước, planner chọn tác vụ khả thi kế tiếp theo trạng thái graph, rồi agent sở hữu thực thi nó trên graph:
+
+\begin{equation}\label{eq:workflow-step}
+\tau^* = \pi(G_t, T_t), \qquad G_{t+1} = A_{\mathrm{owner}(\tau^*)}\big(G_t,\, c_{\tau^*}\big)
+\end{equation}
+
+trong đó $\pi$ là policy chọn tác vụ của \texttt{ISDTaskPlanner} (ưu tiên tác vụ đã hết dependency và có độ ưu tiên cao nhất), $A_i$ là các agent chuyên biệt định nghĩa ở \eqref{eq:agent-scope}, và $c_{\tau^*}$ là context pack của tác vụ, được lắp theo \eqref{eq:context-pack} ở Phần~\ref{sec:agentic-rag}. Vòng lặp dừng khi không còn tác vụ khả thi và không còn vi phạm theo điều kiện dừng \eqref{eq:verify-repair}.
+
+Sau khi một agent thêm hoặc cập nhật một artifact node, harness chạy hai lớp kiểm tra, schema validation và pedagogical verification (trình bày chi tiết ở phần~\ref{sec:schema-verification}), trước khi \texttt{ADDIEOutputAggregator} serialize các node đã được kiểm tra vào schema \texttt{addie\_output} để benchmark có thể đánh giá. Nếu một node hoặc cạnh không đạt yêu cầu, policy route lỗi đó về đúng agent sở hữu chuyên môn để sửa (targeted repair), sau đó \texttt{AlignmentGraph} chạy cascade invalidation theo \texttt{IMPACT\_POLICY} như đã trình bày ở \eqref{eq:cascade}, đánh dấu các node downstream liên quan là stale để được tái sinh ở vòng lặp kế tiếp, thay vì chỉ sửa cục bộ rồi dừng lại.
+
+\section{Multi-agent Orchestration}
+
+Workflow ở trên được cụ thể hoá bởi một tập agent chuyên biệt theo vai trò, tóm tắt ở Bảng~\ref{tab:agent-roles}. Mỗi vai trò có thể dùng chung một model backend nhưng khác system prompt, tool permission, context pack và output schema; \texttt{MetaAgent} không tự sinh nội dung thay các agent khác mà giữ vai trò controller, quyết định thứ tự tác vụ dựa trên trạng thái graph.
+
+\begin{table}[H]
+\centering
+\footnotesize
+\caption{Vai trò các agent trong AlignmentGraph-ISD.}
+\label{tab:agent-roles}
+\begin{tabular}{p{3.3cm}p{6.2cm}p{3.8cm}}
+\hline
+\textbf{Vai trò} & \textbf{Trách nhiệm} & \textbf{Output chính} \\
+\hline
+\texttt{Meta\-Agent} & Phân tích request/scenario, tạo dynamic task graph, chọn policy, điều phối retry, ghi trace & execution graph, transition decision \\
+\texttt{Needs\-Context\-Agent} & Phân tích đối tượng học viên, kiến thức nền, bối cảnh và ràng buộc & need/context node và edge \\
+\texttt{Objective\-Design\-Agent} & Thiết kế mục tiêu học tập, mức Bloom, tiêu chí đo được & objective node và prerequisite edge \\
+\texttt{Assessment\-Design\-Agent} & Thiết kế evidence, rubric, formative/summative assessment & assessment node và cạnh \texttt{measures} \\
+\texttt{Activity\-Material\-Agent} & Tạo hoạt động học tập, tài liệu, bài tập, ví dụ & activity/material node và cạnh \texttt{supports} \\
+\texttt{Implementation\-Plan\-Agent} & Phân tích thời lượng, tài nguyên, hình thức triển khai, rủi ro & implementation\_plan node \\
+\texttt{Evaluation\-Revision\-Agent} & Thiết kế kế hoạch đánh giá, vòng phản hồi, chiến lược cải tiến & evaluation node và cạnh \texttt{evaluates} \\
+\texttt{Pedagogical\-Verifier\-Agent} & Kiểm tra Bloom alignment, constructive alignment, coverage, actionability & verifier report \\
+\texttt{ADDIEOutput\-Aggregator} & Map artifact graph cuối vào schema \texttt{addie\_output} & ADDIE-compatible output \\
+\hline
+\end{tabular}
+\end{table}
+
+Khác với ADDIE tuyến tính, các agent này làm việc trực tiếp trên graph element: thêm, sửa hoặc liên kết node và edge trong \texttt{AlignmentGraph}, và có thể yêu cầu lẫn nhau sửa lại phần liên quan, ví dụ \texttt{AssessmentDesignAgent} có thể buộc \texttt{ObjectiveDesignAgent} sửa lại một objective nếu không có evidence đo được. Về mặt hình thức, mỗi role agent là một toán tử cập nhật graph có phạm vi ghi giới hạn theo chuyên môn:
+
+\begin{equation}\label{eq:agent-scope}
+A_i : (G_t, c) \mapsto G_{t+1}, \qquad \Delta(G_t, G_{t+1}) \subseteq V^{(i)} \cup E^{(i)}
+\end{equation}
+
+trong đó $\Delta(G_t, G_{t+1})$ là tập phần tử được thêm hoặc sửa ở bước đó, còn $V^{(i)}, E^{(i)}$ là các loại node/edge thuộc quyền sở hữu của $A_i$ — ví dụ \texttt{AssessmentDesignAgent} chỉ ghi node \texttt{assessment} và cạnh trong $E_{\text{measures}}$, \texttt{ActivityMaterialAgent} chỉ ghi node \texttt{activity}/\texttt{material} và cạnh trong $E_{\text{supports}}$. \texttt{MetaAgent} không phải một toán tử $A_i$: nó chính là policy $\pi$ trong \eqref{eq:workflow-step}, chỉ quyết định tác vụ kế tiếp chứ không ghi node/edge nội dung. Cơ chế này giúp AlignmentGraph-ISD giữ được ADDIE-compatible output ở đầu ra mà không bị ràng buộc vào thứ tự thực thi tuyến tính như \texttt{addie-agent} đã khảo sát ở Chương 2.
+
+\section{Schema Validation and Pedagogical Verification}
+\label{sec:schema-verification}
+
+Để tương thích với ISD-Agent-Bench, output cuối của AlignmentGraph-ISD tuân thủ schema ADDIE, đóng gói trong trường \texttt{addie\_output} với năm phần con tương ứng năm pha analysis, design, development, implementation và evaluation, kèm hai trường \texttt{trajectory} và \texttt{metadata}. Mỗi graph element còn có schema nội bộ chi tiết hơn schema cuối; sau khi một agent sinh hoặc cập nhật node/edge, harness chạy hai lớp kiểm tra độc lập. Lớp thứ nhất, schema validation, kiểm tra tính parse được của JSON, required field, kiểu dữ liệu, enum, định dạng ID và độ đầy đủ trường. Lớp thứ hai, pedagogical verification, kiểm tra objective có động từ hành động đo được hay không, sự nhất quán giữa objective, activity và assessment, độ phủ (coverage) giữa mục tiêu và artifact, tính nhất quán của rubric, tính khả thi theo thời lượng và tài nguyên, và tính khả dụng cho người dạy.
+
+Nếu lỗi thuộc lớp schema, policy route lỗi validation và graph element liên quan về đúng agent sở hữu để sửa cấu trúc. Nếu lỗi thuộc pedagogy, verifier report được route theo loại vi phạm, tóm tắt ở Bảng~\ref{tab:violation-routing}. Sau mỗi lượt targeted repair, \texttt{AlignmentGraph} chạy cascade invalidation theo Bảng~\ref{tab:impact-matrix} thay vì chỉ sửa cục bộ node vừa repair.
+
+\begin{table}[H]
+\centering
+\footnotesize
+\caption{Route lỗi pedagogical verifier về agent sở hữu chuyên môn.}
+\label{tab:violation-routing}
+\begin{tabular}{p{4.5cm}p{4.0cm}}
+\hline
+\textbf{Loại vi phạm} & \textbf{Agent nhận repair} \\
+\hline
+objective/Bloom & \texttt{ObjectiveDesignAgent} \\
+coverage & \texttt{AssessmentDesignAgent} \\
+activity support & \texttt{ActivityMaterialAgent} \\
+feasibility & \texttt{ImplementationPlanAgent} \\
+evaluation alignment & \texttt{EvaluationRevisionAgent} \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\footnotesize
+\caption{Impact matrix cho cascade invalidation.}
+\label{tab:impact-matrix}
+\begin{tabular}{p{4.0cm}p{9.0cm}}
+\hline
+\textbf{Node thay đổi} & \textbf{Node downstream cần refresh} \\
+\hline
+\texttt{needs\_context} & \texttt{objective}, \texttt{assessment}, \texttt{activity}, \texttt{material}, \texttt{implementation\_plan}, \texttt{evaluation} \\
+\texttt{objective} & \texttt{assessment}, \texttt{activity}, \texttt{material}, \texttt{evaluation} \\
+\texttt{assessment} & \texttt{activity}, \texttt{material}, \texttt{evaluation} \\
+\texttt{activity} / \texttt{material} & node development ngang hàng, \texttt{assessment}, \texttt{implementation\_plan}, \texttt{evaluation} \\
+\texttt{implementation\_plan} & \texttt{objective}, \texttt{assessment}, \texttt{activity}, \texttt{material}, \texttt{evaluation} \\
+\texttt{evaluation} & \texttt{assessment} \\
+\hline
+\end{tabular}
+\end{table}
+
+Các node và cạnh bị ảnh hưởng theo Bảng~\ref{tab:impact-matrix} được đánh dấu stale; cạnh stale không được tính là coverage hợp lệ và không được đưa vào alignment evidence cuối cùng. \texttt{GraphAuditor} biến trạng thái stale thành task mới, rồi \texttt{ISDTaskPlanner} route task đó về đúng specialist agent. Toàn bộ số lần retry, loại vi phạm, trường đã sửa và số lần cascade được ghi vào trajectory, nhờ đó việc đánh giá không chỉ nhìn output cuối mà còn thấy được quá trình hệ thống phát hiện, sửa lỗi và xử lý hiệu ứng downstream.
+
+Toàn bộ vòng verify--repair có thể tóm tắt hình thức như sau. Gọi $\Omega_t = \mathcal{V}(G_t)$ là tập vi phạm mà hai lớp kiểm tra phát hiện trên $G_t$, mỗi vi phạm $\omega = (\mathrm{type}, x)$ gồm loại vi phạm và graph element liên quan; hàm $\mathrm{owner}(\cdot)$ (Bảng~\ref{tab:violation-routing}) route vi phạm về agent chuyên môn. Một lượt repair và điều kiện dừng của vòng lặp là:
+
+\begin{equation}\label{eq:verify-repair}
+G_{t+1} = \mathrm{cascade}\Big(A_{\mathrm{owner}(\mathrm{type}(\omega))}\big(G_t,\, \omega\big)\Big), \quad \omega \in \Omega_t;
+\qquad \text{dừng khi } \Omega_t = \emptyset \;\lor\; t \geq B
+\end{equation}
+
+trong đó $\mathrm{cascade}(\cdot)$ là toán tử lan truyền stale \eqref{eq:cascade} áp lên node vừa sửa, và $B$ là ngân sách retry. Vòng lặp vì vậy hoặc hội tụ về trạng thái không còn vi phạm (điểm bất động của $\mathcal{V}$), hoặc dừng có kiểm soát khi hết ngân sách — trường hợp sau được ghi rõ trong trajectory thay vì che giấu.
+
+\section{Four-layer Memory}
+
+Thành phần cuối cùng của core harness là bộ nhớ, tổ chức thành bốn lớp tóm tắt ở Bảng~\ref{tab:memory-layers}: working memory giữ trạng thái phiên đang hoạt động, semantic memory giữ tri thức ổn định toàn cục về ADDIE/Bloom/constructive alignment, episodic memory giữ lịch sử các sự kiện và lượt repair, và procedural memory giữ policy đã được version hoá như \texttt{IMPACT\_POLICY} hay bảng route lỗi.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Bốn lớp bộ nhớ của harness.}
+\label{tab:memory-layers}
+\begin{tabular}{p{2.2cm}p{3.2cm}p{7.2cm}}
+\hline
+\textbf{Lớp} & \textbf{Phạm vi} & \textbf{Nội dung} \\
+\hline
+Working & phiên đang hoạt động & ý định người dùng hiện tại, graph version đang mở, lịch sử message, trạng thái audit, task đang chờ \\
+Semantic & tri thức ổn định toàn cục & ADDIE, Bloom, constructive alignment, rubric template \\
+Episodic & lịch sử phiên/chương trình đào tạo & sự kiện phiên, patch được chấp nhận/từ chối, lịch sử repair/cascade \\
+Procedural & policy đã version hoá & protocol agent, bảng route lỗi, \texttt{IMPACT\_POLICY} \\
+\hline
+\end{tabular}
+\end{table}
+
+Về mặt hình thức, bộ nhớ là một bộ bốn $M = (M_{\mathrm{w}}, M_{\mathrm{s}}, M_{\mathrm{e}}, M_{\mathrm{p}})$ tương ứng bốn lớp ở Bảng~\ref{tab:memory-layers}, và được inject vào context pack của mỗi tác vụ qua phép chiếu $\mu(M)$ trong \eqref{eq:context-pack}. Trên một chương trình đào tạo, vòng đời phiên là một chuỗi phiên bản graph đã commit — ký hiệu chỉ số trên $G^{(v)}$ để phân biệt với chỉ số dưới $G_t$ đánh dấu bước bên trong một phiên:
+
+\begin{equation}\label{eq:session}
+G^{(1)} = \mathrm{init}(b), \qquad G^{(v+1)} = \mathrm{commit}\Big(\mathrm{cascade}\big(\mathrm{apply}(G^{(v)}, r_v)\big)\Big)
+\end{equation}
+
+trong đó $b$ là design brief ban đầu, $r_v$ là tuning request của phiên thứ $v{+}1$, $\mathrm{apply}$ đưa yêu cầu chỉnh sửa vào đúng node/edge liên quan qua vòng \eqref{eq:workflow-step}--\eqref{eq:verify-repair}, và $\mathrm{cascade}$ lan truyền stale sang các node downstream trước khi commit phiên bản mới. Chính chuỗi \eqref{eq:session} là đối tượng mà bốn process metric của RQ2 (Chương 4) đo trên đó.
+
+Khi được đánh giá trên ISD-Agent-Bench, mỗi lượt chạy được xem là \texttt{pure\_new\_run} — trường hợp đặc biệt của \eqref{eq:session} chỉ gồm $G^{(1)}$: benchmark scenario tạo một \texttt{AlignmentGraph} phiên bản đầu tiên, harness chạy self-check và specialist repair, rồi trả về artifact ADDIE cùng trajectory và metadata, mà không gắn graph vào một chương trình đào tạo đã lưu trữ từ trước và không load lại working memory của phiên nào khác. Cách vận hành nhiều phiên trên cùng một chương trình đào tạo, nơi bốn lớp bộ nhớ này thực sự phát huy vai trò lưu trạng thái dài hạn, là đặc thù của ứng dụng thực tế và được trình bày ở Chương 4.
+
+\section{Agentic RAG and Pluggable Domain Retrieval}\label{sec:agentic-rag}
+
+Trong AlignmentGraph-ISD, RAG được định nghĩa theo nghĩa hẹp: truy xuất tài liệu miền ngoài (external corpus retrieval). Cần phân biệt nó với hai cơ chế bổ sung ngữ cảnh core đã trình bày ở các phần trước — graph-context retrieval (truy xuất subgraph từ \texttt{AlignmentGraph} hiện tại) và memory retrieval (working/episodic memory) — vốn luôn bật và không được gọi là RAG; \texttt{ContextPlanner} cũng chỉ là bước biến đổi input, không đọc store nào. RAG là tầng tri thức thứ ba, dạng add-on, chỉ bật khi cấu hình \texttt{use\_rag=True} và có ít nhất một retrieval subagent được đăng ký.
+
+Tính chất \emph{agentic} của cơ chế này nằm ở khâu chọn nguồn theo tác vụ. Mỗi domain corpus được bọc thành một \texttt{RetrievalSubagent} — một contract trừu tượng chỉ gồm hai thao tác: \texttt{can\_handle(design\_brief, task\_name)} trả lời subagent có tri thức liên quan cho tác vụ hiện tại hay không, và \texttt{retrieve(...)} trả về kết quả gồm nguồn, nội dung và trích dẫn. Tại mỗi tác vụ, \texttt{RetrievalPlanner} hỏi \texttt{RetrievalSubagentRegistry}; registry duyệt các subagent đã đăng ký, chỉ chạy những subagent tự nhận liên quan, rồi merge kết quả vào context pack của agent chuyên biệt tương ứng. Về mặt hình thức, với registry $R = \{s_1, \dots, s_m\}$, phép chọn và truy xuất theo tác vụ là:
+
+\begin{equation}\label{eq:rag-select}
+\sigma(b, \tau) = \{\, s \in R : \mathrm{can\_handle}_s(b, \tau) \,\}, \qquad
+\mathrm{rag}(b, \tau) = \bigcup_{s \in \sigma(b, \tau)} \mathrm{retrieve}_s(b, \tau)
+\end{equation}
+
+với quy ước $\mathrm{rag}(b, \tau) = \emptyset$ khi \texttt{use\_rag} tắt hoặc $R = \emptyset$. Context pack đầy đủ của một tác vụ được lắp từ bốn nguồn:
+
+\begin{equation}\label{eq:context-pack}
+c_\tau = \rho(b) \;\cup\; \gamma(G_t) \;\cup\; \mu(M) \;\cup\; \mathrm{rag}(b, \tau)
+\end{equation}
+
+trong đó $\rho(b)$ là context prep từ design brief (\texttt{ContextPlanner}), $\gamma(G_t)$ là graph-context retrieval từ trạng thái graph hiện tại, và $\mu(M)$ là memory retrieval từ bộ nhớ bốn lớp \eqref{eq:session}. Quyết định truy xuất vì vậy diễn ra theo từng tác vụ và từng design brief, thay vì một pipeline retrieval cố định cho mọi input.
+
+Thiết kế này cho phép cắm thêm (plug-and-play) tri thức domain mà không sửa core harness: hỗ trợ một chuyên đề mới chỉ là phép mở rộng registry $R \leftarrow R \cup \{s_{m+1}\}$ — hiện thực một \texttt{RetrievalSubagent} mới, ví dụ corpus Java/OOP, Software Testing hay code-review rubric, rồi đăng ký — trong khi $\rho$, $\gamma$, $\mu$ và các agent trong \eqref{eq:context-pack} giữ nguyên, không cần đổi prompt hay huấn luyện lại model. Benchmark chạy ở chế độ \texttt{no\_rag} với registry rỗng, nên toàn bộ kết quả ở Chương 5 không phụ thuộc external corpus; các subagent cụ thể cho miền IT/Software Engineering được instantiate trong ứng dụng case study ở Chương 4.
+
+Chương này đã trình bày AlignmentGraph-ISD như một harness năm lớp xoay quanh một cấu trúc dữ liệu graph tường minh: alignment graph biểu diễn artifact và quan hệ khớp nối, workflow động và multi-agent orchestration vận hành graph đó, schema validation/pedagogical verification/targeted repair đảm bảo chất lượng có mục tiêu, four-layer memory lưu trạng thái xuyên suốt phiên làm việc, và agentic RAG như tầng tri thức domain cắm thêm được. Chương 4 tiếp theo trình bày cách harness này được mở rộng thành ứng dụng nhiều phiên cho case study IT/Software Engineering cùng giao thức đo hiệu quả tinh chỉnh; kết quả đánh giá cho cả hai câu hỏi nghiên cứu được trình bày ở Chương 5.
 
 \end{document}

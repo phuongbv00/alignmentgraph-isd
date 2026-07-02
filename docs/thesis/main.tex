@@ -54,7 +54,8 @@
 % \renewcommand{\bibname}{Danh_sach_tai_lieu_tham_khao} 
 \usepackage[backend=bibtex,style=ieee]{biblatex}  %backend=biber is 'better'
 
-\addbibresource{reference.bib} % chèn file chứa danh mục tài liệu tham khảo vào 
+\addbibresource{references.bib} % chèn file chứa danh mục tài liệu tham khảo vào
+\addbibresource{../refs/isd-agent-bench/references.bib}
 
 \include{lstlisting} % Phần này cho phép chèn code và formatting code như C, C++, Python
 
@@ -71,7 +72,7 @@
 
 \setlength{\headheight}{10pt}
 
-\def \TITLE{GRADUATION THESIS}
+\def \TITLE{MASTER'S THESIS}
 \def \AUTHOR{Trần Văn A}
 
 % ===================================================
@@ -274,8 +275,8 @@
 
 \newpage
 %\pagestyle{fancy} % Áp dụng header và footer
-\chapter{THEORETICAL ANALYSIS}
-\subfile{Chapter/4_Theoretical_analysis}
+\chapter{CASE STUDY}
+\subfile{Chapter/4_Case_Study}
 
 \newpage
 %\pagestyle{fancy} % Áp dụng header và footer
@@ -286,17 +287,9 @@
 \chapter{CONCLUSIONS}
 \subfile{Chapter/6_Conclusions}
 
-\newpage
-%\pagestyle{fancy} % Áp dụng header và footer
-\chapter*{SHORT NOTICES ON REFERENCE} %Kết luận và hướng phát triển}
-\label{chapter:reference}
-\subfile{Chapter/7_Reference}
-
 % ===================================================
 \newpage
-\renewcommand\bibname{REFERENCE}
-\printbibliography
-\phantomsection\addcontentsline{toc}{chapter}{REFERENCE}
+\printbibliography[heading=bibintoc,title={REFERENCE}]
 
 \appendixpage
 \appendix
@@ -312,11 +305,7 @@
     {}         % unnumbered format
     {\titlerule*[0.3pc]{.}\contentspage} 
     
-\chapter{GRADUATION THESIS GUIDANCE}
+\chapter{RUN MANIFEST SAMPLE}
 \subfile{Chapter/Appendix_A}
-
-\newpage
-\chapter{USE CASE DESCRIPTIONS}
-\subfile{Chapter/Appendix_B}
 
 \end{document}
