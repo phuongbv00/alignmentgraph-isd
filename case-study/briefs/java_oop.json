@@ -1,0 +1,30 @@
+{
+  "id": "brief-java-oop",
+  "title": "Object-Oriented Programming in Java",
+  "domain": "Software Engineering",
+  "difficulty": "intermediate",
+  "duration": "3 days",
+  "target_audience": "Fresher and junior developers",
+  "learning_goals": [
+    "Explain the four pillars of OOP",
+    "Apply inheritance and polymorphism in Java",
+    "Analyze a class design for SOLID violations",
+    "Evaluate trade-offs between composition and inheritance",
+    "Design a maintainable class hierarchy"
+  ],
+  "context": {
+    "duration": "3 days (18 hours)",
+    "learning_environment": "Hybrid: classroom plus self-paced labs",
+    "class_size": "20",
+    "learner_role": "Junior backend engineer",
+    "domain_expertise": "Some procedural programming experience",
+    "prior_knowledge": "Java syntax, basic data structures"
+  },
+  "constraints": {
+    "resources": ["IDE", "Git repository", "Code review platform", "CI pipeline"],
+    "budget": "internal",
+    "tech_requirements": "JDK 17, IntelliJ or VS Code",
+    "assessment_type": "performance task and code review",
+    "language": "English"
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "program_id": "software-testing",
+  "brief": "briefs/software_testing.json",
+  "rounds": [
+    {
+      "tuning_request": {
+        "id": "TR-test-1",
+        "target_node_id": "needs_context_0",
+        "summary": "Shift audience from mixed QA/dev to developers in CI-heavy teams",
+        "instruction": "The audience changes to backend developers on CI-heavy teams (no dedicated QA); re-analyze needs and adjust the course accordingly.",
+        "changed_fields": [
+          "learner_analysis",
+          "context_analysis"
+        ]
+      },
+      "brief_overlay": {
+        "target_audience": "Backend developers on CI-heavy teams",
+        "context": {
+          "learner_role": "Backend developer",
+          "prior_knowledge": "Comfortable programming, daily CI usage"
+        },
+        "user_message": "The audience changes to backend developers on CI-heavy teams (no dedicated QA); re-analyze needs and adjust the course accordingly."
+      }
+    },
+    {
+      "tuning_request": {
+        "id": "TR-test-2",
+        "target_node_id": "objective_0",
+        "summary": "Add integration testing as a learning objective",
+        "instruction": "Add a learning objective on designing integration tests for service boundaries, with matching assessment coverage.",
+        "changed_fields": [
+          "learning_objectives"
+        ]
+      },
+      "brief_overlay": {
+        "learning_goals_append": [
+          "Design integration tests for service boundaries"
+        ],
+        "user_message": "Add a learning objective on designing integration tests for service boundaries, with matching assessment coverage."
+      }
+    },
+    {
+      "tuning_request": {
+        "id": "TR-test-3",
+        "target_node_id": "evaluation_0",
+        "summary": "Strengthen summative adoption criteria",
+        "instruction": "Strengthen the summative evaluation: adoption decision must cite explicit rubric-score thresholds and a re-pilot condition.",
+        "changed_fields": [
+          "summative"
+        ]
+      },
+      "brief_overlay": {
+        "user_message": "Strengthen the summative evaluation: adoption decision must cite explicit rubric-score thresholds and a re-pilot condition."
+      }
+    }
+  ]
+}

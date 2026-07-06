@@ -20,6 +20,7 @@ class TrajectoryLogger:
         self.verifier_events: list[dict] = []
         self.repair_events: list[dict] = []
         self.cascade_events: list[dict] = []
+        self.retrieval_events: list[dict] = []
         self.llm_calls: int = 0
         self.token_usage: dict = {"prompt_tokens": 0, "completion_tokens": 0}
         self.latency_ms: float = 0.0
@@ -155,6 +156,33 @@ class TrajectoryLogger:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
 
+    def log_retrieval_event(
+        self,
+        agent: str,
+        task_name: str,
+        decision: str,
+        *,
+        strategy: str = "",
+        retrieval_agents: list[str] | None = None,
+        executions: list[dict] | None = None,
+        snippets: int = 0,
+    ) -> None:
+        """One on-demand retrieval decision by a specialist (agentic RAG).
+
+        ``decision`` is "retrieve" / "skip" / "decision_error"; ``executions``
+        carries the per-retrieval-agent sandbox events (status, tool_calls).
+        """
+        self.retrieval_events.append({
+            "agent": agent,
+            "task_name": task_name,
+            "decision": decision,
+            "strategy": strategy,
+            "retrieval_agents": list(retrieval_agents or []),
+            "executions": list(executions or []),
+            "snippets": snippets,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+
     def log_cascade_event(self, source_node: str, nodes: list[str], edges: list, reason: str = "") -> None:
         self.cascade_events.append({
             "source_node": source_node,
@@ -204,6 +232,7 @@ class TrajectoryLogger:
             "verifier_events": self.verifier_events,
             "repair_events": self.repair_events,
             "cascade_events": self.cascade_events,
+            "retrieval_events": self.retrieval_events,
             "llm_calls": self.llm_calls,
             "token_usage": self.token_usage,
             "latency_ms": self.latency_ms,

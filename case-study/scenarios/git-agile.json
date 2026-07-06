@@ -1,0 +1,43 @@
+{
+  "program_id": "git-agile",
+  "brief": "briefs/git_agile.json",
+  "rounds": [
+    {
+      "tuning_request": {
+        "id": "TR-git-1",
+        "target_node_id": "activity_0",
+        "summary": "Replace lecture blocks with a sprint-simulation mini-project",
+        "instruction": "Replace lecture-style activities with a single continuous sprint-simulation mini-project that threads through both days.",
+        "changed_fields": [
+          "learning_activities"
+        ]
+      },
+      "brief_overlay": {
+        "user_message": "Replace lecture-style activities with a single continuous sprint-simulation mini-project that threads through both days."
+      }
+    },
+    {
+      "tuning_request": {
+        "id": "TR-git-2",
+        "target_node_id": "material_0",
+        "summary": "Convert materials to a self-serve online handbook",
+        "instruction": "Convert learner materials into a self-serve online handbook usable after the course for blended delivery; adjust activities that depended on printed handouts.",
+        "changed_fields": [
+          "learner_materials"
+        ]
+      },
+      "brief_overlay": {
+        "constraints": {
+          "resources": [
+            "Git hosting",
+            "Issue tracker",
+            "CI pipeline",
+            "Team board",
+            "Online handbook platform"
+          ]
+        },
+        "user_message": "Convert learner materials into a self-serve online handbook usable after the course for blended delivery; adjust activities that depended on printed handouts."
+      }
+    }
+  ]
+}

@@ -9,13 +9,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository layout
 
-This is a master's thesis monorepo with three top-level parts:
+This is a master's thesis monorepo with these top-level parts:
 
-- **`docs/`** — proposal, references, and the thesis manuscript itself.
+- **`docs/`** — proposal, references, the thesis manuscript, and the research-paper draft.
   - `docs/proposal/` — the thesis proposal (`proposal.md` / `proposal.html`) and its `assets/`.
   - `docs/refs/` — reference material pulled in from other repos (e.g. `refs/isd-agent-bench/`).
   - `docs/thesis/` — the LaTeX thesis manuscript. `main.tex` is the entry point; `Chapter/` holds one `.tex` file per chapter (`0_2_Acknowledgment`, `0_3_Abstract`, `1_Introduction`, `2_Literature_review`, `3_Methodology`, `4_Numerical_results`, `5_Case_Study`, `6_Conclusions`, `7_Reference`, `Appendix_A`, `Appendix_B`); `Figure/` holds images; `glossary.tex` and `reference.bib` hold the glossary and bibliography; `compile.sh` runs `pdflatex -> bibtex -> pdflatex -> pdflatex` to produce `main.pdf`. LaTeX build artifacts and `*.pdf` are gitignored.
-- **`alignmentgraph-isd/`** — the **thesis contribution**: a standalone Python package (`alignmentgraph_isd`), a LangGraph-based multi-agent ADDIE instructional-design system. Tracked directly in this repo (not a submodule).
+  - `docs/paper/draft.md` — the Vietnamese research-paper draft (IMRAD, markdown before a venue template is chosen). Terminology conventions live in the auto-memory index.
+- **`alignmentgraph-isd/`** — the **thesis contribution**: a standalone Python package (`alignmentgraph_isd`), a LangGraph-based multi-agent ADDIE instructional-design system. Core only — experiment harnesses live outside. Tracked directly in this repo (not a submodule).
+- **`case-study/`** — the RQ2 tuning-session experiment harness; a standalone Python project (`pyproject.toml` + `.venv`, managed with uv). Layout: `briefs/` (design briefs), `agents/` (retrieval agent specs — each `<agent_id>/AGENT.md` + `tools/` + `corpus/`), `scenarios/` (per-program tuning round files: `java-oop.json`, `software-testing.json`, `git-agile.json`), `baselines/react-isd/` (English-prompt clone of the benchmark's `react-isd` agent with token accounting and `adjust()` endpoint), `run_case_study.py` (4 conditions: `harness_targeted_tuning`, `harness_full_regen`, `react_full_regen`, `react_targeted_tuning`), `score_alignment.py` (LLM-judge scoring, needs the benchmark venv), `compute_metrics.py`, `elicit_brief.py`. Run with `case-study/.venv/bin/python case-study/<script>` from the repo root; see `case-study/README.md`.
 - **`isd-agent-benchmark/`** — a **git submodule** (`git@github.com:phuongbv00/isd-agent-benchmark.git`, branch `customize`) that benchmarks ISD agents. It contains six baseline/comparison agents plus a thin wrapper that runs `alignmentgraph-isd` as a seventh agent.
 
 The two code parts are coupled: the benchmark agent `agents/alignmentgraph-isd` is a thin adapter (`AlignmentGraphISDAgent`) whose only dependency is the top-level `alignmentgraph-isd` package. The adapter bridges the benchmark's *scenario* vocabulary to the package's *design brief* contract (`scenario_id` → `id`) and injects the benchmark's LLM config as a `ChatModelFactory`.
@@ -38,7 +40,7 @@ Set via `HARNESS_ABLATION` env var or `AblationConfig.from_key(...)`. Valid keys
 
 Each toggles the flags `use_rag`, `use_verifier`, `use_repair`, `multi_agent`, `dynamic_graph`.
 
-**RAG = external-corpus retrieval only.** `use_rag` is **off** in every benchmark preset (the benchmark runs `no_rag`); only `case_study` sets `use_rag=True`, and RAG also needs `HarnessRunConfig.retrieval_subagents` registered. Graph-context retrieval and memory retrieval are core (always on) and are **not** called RAG, so no preset disables them.
+**RAG = external-corpus retrieval only, and it is on-demand.** `use_rag` is **off** in every benchmark preset (the benchmark runs `no_rag`); only the `case_study` preset sets `use_rag=True`, and RAG also needs `HarnessRunConfig.retrieval_subagents` registered. When enabled, retrieval is NOT performed upfront: each specialist decides mid-task whether/how to retrieve (`BaseISDAgent._maybe_retrieve` → decision call → `rag/sandbox.py` executes single/sequential/parallel plans over `rag/agent.py` retrieval agents). Graph-context retrieval and memory retrieval are core (always on) and are **not** called RAG, so no preset disables them.
 
 ## The benchmark (`isd-agent-benchmark/`)
 

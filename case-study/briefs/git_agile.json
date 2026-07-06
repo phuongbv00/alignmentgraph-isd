@@ -1,0 +1,30 @@
+{
+  "id": "brief-git-agile",
+  "title": "Git and Agile Mini-Project for New Team Members",
+  "domain": "Software Engineering",
+  "difficulty": "beginner",
+  "duration": "2 days",
+  "target_audience": "Engineers newly joining a project team",
+  "learning_goals": [
+    "Recall the core Git branching workflow used on the team",
+    "Apply feature-branch development with pull requests",
+    "Apply Scrum ceremonies within a sprint simulation",
+    "Analyze merge conflicts and resolve them safely",
+    "Design a sprint plan for a small feature"
+  ],
+  "context": {
+    "duration": "2 days (12 hours)",
+    "learning_environment": "Team room with shared repository and board",
+    "class_size": "10",
+    "learner_role": "New project team member",
+    "domain_expertise": "General programming background",
+    "prior_knowledge": "Basic command line, some version control exposure"
+  },
+  "constraints": {
+    "resources": ["Git hosting", "Issue tracker", "CI pipeline", "Team board"],
+    "budget": "internal",
+    "tech_requirements": "Git client, project repository access",
+    "assessment_type": "mini-project with peer review",
+    "language": "English"
+  }
+}

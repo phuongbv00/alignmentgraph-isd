@@ -33,7 +33,7 @@ class AblationConfig(BaseModel):
         "no_repair": dict(use_rag=False, use_verifier=True, use_repair=False, multi_agent=True, dynamic_graph=True),
         "single_agent": dict(use_rag=False, use_verifier=True, use_repair=True, multi_agent=False, dynamic_graph=True),
         "linear_addie_only": dict(use_rag=False, use_verifier=False, use_repair=False, multi_agent=True, dynamic_graph=False),
-        # Case-study/app preset: enables RAG (requires registered retrieval subagents).
+        # Case-study/app preset: enables RAG (requires registered RetrievalAgent instances).
         "case_study": dict(use_rag=True, use_verifier=True, use_repair=True, multi_agent=True, dynamic_graph=True),
     }
 
@@ -64,9 +64,9 @@ class HarnessRunConfig(BaseModel):
     llm: LLMConfig = LLMConfig()
     memory: MemoryConfig = MemoryConfig()
     llm_factory: ChatModelFactory | None = None
-    # RAG retrieval subagents (RetrievalSubagent instances) over external corpora.
-    # Empty for the benchmark; case studies/app register domain corpora here.
-    # Graph-context and memory retrieval are core (always on) and do not use this list.
+    # RetrievalAgent instances over external corpora. Empty for the benchmark;
+    # case studies/app register domain agents here. Graph-context and memory
+    # retrieval are core (always on) and do not use this list.
     retrieval_subagents: list[Any] = []
 
     model_config = {"arbitrary_types_allowed": True}

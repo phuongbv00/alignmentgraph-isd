@@ -172,9 +172,40 @@ def _format_design_brief(design_brief: DesignBrief) -> str:
         val = getattr(design_brief, key, "")
         if val:
             lines.append(f"{key.replace('_', ' ').title()}: {val}")
+    if design_brief.user_message:
+        lines.append(f"User request (this session): {design_brief.user_message}")
     if not lines:
         lines.append(json.dumps(design_brief.model_dump(), ensure_ascii=False))
     return "\n".join(lines)
+
+
+# Default execution-strategy hint per ADDIE task for on-demand retrieval. The
+# specialist's decision call can override; broad analysis/creation tasks lean
+# parallel, narrowly-scoped design tasks lean single.
+RETRIEVAL_STRATEGY_HINTS = {
+    "needs_context": "parallel",
+    "objective_design": "single",
+    "assessment_design": "single",
+    "activity_material": "parallel",
+    "implementation_plan": "single",
+    "evaluation_revision": "single",
+    "full_design": "parallel",
+}
+
+_RETRIEVAL_DECISION_SYSTEM = """You are the retrieval coordinator inside an instructional-design agent.
+Decide whether this task needs EXTERNAL domain material beyond the context already available,
+and if so, which retrieval agents to use and how to run them.
+
+Retrieve only when domain-specific conventions, rubrics, templates or examples would
+materially improve the output. Otherwise skip — retrieval costs time and tokens.
+
+Respond with JSON only:
+{"retrieve": false}
+or
+{"retrieve": true,
+ "agents": ["<retrieval agent name>", ...],
+ "strategy": "single" | "sequential" | "parallel",
+ "queries": {"<agent name>": "<what to fetch, specific>"}}"""
 
 
 class BaseISDAgent(ABC):
@@ -204,6 +235,82 @@ class BaseISDAgent(ABC):
         if len(text) > max_chars:
             text = text[:max_chars] + "…"
         return text
+
+    # ── On-demand agentic retrieval (RAG as a tool the specialist decides to use) ──
+
+    def _with_retrieval(self, design_brief: DesignBrief, task_name: str, user_content: str) -> str:
+        """Prepend on-demand domain material to the prompt when the agent asks for it."""
+        material = self._maybe_retrieve(design_brief, task_name, user_content)
+        if material:
+            return f"{material}\n\n{user_content}"
+        return user_content
+
+    def _maybe_retrieve(self, design_brief: DesignBrief, task_name: str, prior_context: str = "") -> str:
+        """Let this specialist decide whether/how to retrieve external domain material.
+
+        Gated hard on ``use_rag`` + a non-empty registry: on the benchmark path
+        this returns immediately with zero LLM calls. When enabled, one small
+        decision call chooses the retrieval agents and execution strategy
+        (single / sequential / parallel — hinted per ADDIE task, decided by the
+        agent), then the retrieval sandbox executes the plan.
+        """
+        from ..rag.planner import RetrievalPlanner
+
+        planner = RetrievalPlanner(self.config)
+        if not planner.enabled():
+            return ""
+        menu = planner.build_menu(design_brief, task_name)
+        if not menu:
+            return ""
+
+        agent_name = type(self).__name__
+        hint = RETRIEVAL_STRATEGY_HINTS.get(task_name, "single")
+        decision_messages = [
+            {"role": "system", "content": _RETRIEVAL_DECISION_SYSTEM},
+            {"role": "user", "content": (
+                f"Task: {task_name}\n"
+                f"Design brief: {design_brief.title} | domain: {design_brief.domain} | "
+                f"goals: {'; '.join(design_brief.learning_goals[:5])}\n"
+                f"Context already available (chars): {len(prior_context)}\n"
+                f"Available retrieval agents:\n{json.dumps(menu, ensure_ascii=False, indent=1)}\n"
+                f"Suggested strategy for this task type: {hint}"
+            )},
+        ]
+        decision = parse_json_response(self._call_llm(decision_messages, max_retries=0), warn=False)
+        if not isinstance(decision, dict) or not decision:
+            self.trajectory.log_retrieval_event(agent_name, task_name, "decision_error")
+            return ""
+        if not decision.get("retrieve"):
+            self.trajectory.log_retrieval_event(agent_name, task_name, "skip")
+            return ""
+
+        menu_names = {entry["name"] for entry in menu}
+        plan = {
+            "agents": [a for a in (decision.get("agents") or []) if a in menu_names] or list(menu_names)[:1],
+            "strategy": decision.get("strategy") or hint,
+            "queries": decision.get("queries") or {},
+        }
+        results, events = planner.execute_plan(
+            design_brief, task_name, plan, log_llm_call=self.trajectory.log_llm_call,
+        )
+        snippets = sum(len(r.get("content", [])) for r in results)
+        self.trajectory.log_retrieval_event(
+            agent_name, task_name, "retrieve",
+            strategy=plan["strategy"], retrieval_agents=plan["agents"],
+            executions=events, snippets=snippets,
+        )
+        if not results:
+            return ""
+
+        lines = ["=== DOMAIN MATERIAL (retrieved on demand) ==="]
+        for result in results:
+            label = result.get("subagent") or result.get("source", "corpus")
+            for snippet in result.get("content", []):
+                lines.append(f"[{label}] {snippet}")
+            citations = result.get("citations") or []
+            if citations:
+                lines.append(f"[{label}] citations: {', '.join(citations)}")
+        return "\n".join(lines)
 
     def _add_element_edge(
         self,

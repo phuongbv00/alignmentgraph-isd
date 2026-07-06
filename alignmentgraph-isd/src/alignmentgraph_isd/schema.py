@@ -64,6 +64,11 @@ class DesignBrief(_LenientModel):
     # internally from working memory on a resumed session, never re-sent here.
     user_message: str = ""
 
+    # tuning session (app path) — an explicit edit request against the loaded
+    # program graph; see tuning.TuningRequest for the shape. Ignored on init
+    # sessions and by the benchmark, which never sets it.
+    tuning_request: dict = {}
+
     # structured design inputs (all optional)
     domain: str = ""
     difficulty: str = ""

@@ -68,6 +68,7 @@ class EvaluationRevisionAgent(BaseISDAgent):
         pack_ctx = self._context_pack_text(context_pack)
         if pack_ctx:
             user_content = f"=== RETRIEVED CONTEXT PACK ===\n{pack_ctx}\n\n{user_content}"
+        user_content = self._with_retrieval(design_brief, "evaluation_revision", user_content)
         messages = [
             {"role": "system", "content": _SYSTEM},
             {"role": "user", "content": user_content},

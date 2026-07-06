@@ -15,7 +15,6 @@ from .memory import HarnessMemory
 from .schema import DesignBrief
 from .validation import validate_addie
 from .context import ContextPlanner
-from .rag.planner import RetrievalPlanner
 from .agents.needs_context import NeedsContextAgent
 from .agents.objective_design import ObjectiveDesignAgent
 from .agents.assessment_design import AssessmentDesignAgent
@@ -381,16 +380,17 @@ class MetaAgent:
         memory_session = memory.begin_session(design_brief)
         graph = memory_session.graph
         trajectory = TrajectoryLogger()
-        # Assemble the context pack from three distinct sources:
+        if design_brief.tuning_request and memory_session.session_type == "tuning":
+            from .tuning import TuningRequest, apply_tuning_request
+            apply_tuning_request(graph, trajectory, TuningRequest.model_validate(design_brief.tuning_request))
+        # Assemble the context pack from two upfront sources:
         #   1. brief-derived context preparation (ContextPlanner — not retrieval)
         #   2. memory retrieval (core, always on)
-        #   3. RAG = external-corpus retrieval (RetrievalPlanner — gated by use_rag)
+        # RAG = external-corpus retrieval is NOT part of the upfront pack: it is
+        # on-demand — each specialist decides mid-task whether/how to retrieve
+        # (see BaseISDAgent._maybe_retrieve; gated by use_rag + registry).
         context_pack = ContextPlanner().build(design_brief)
         context_pack = memory_session.augment_context_pack(context_pack)
-        try:
-            context_pack["rag"] = RetrievalPlanner(self.config).retrieve(design_brief)
-        except Exception:
-            context_pack["rag"] = {"enabled": False, "task_name": "full_design", "results": [], "sources": []}
 
         compiled = _build_graph_for_run(self.config, graph, trajectory, context_pack, design_brief)
 

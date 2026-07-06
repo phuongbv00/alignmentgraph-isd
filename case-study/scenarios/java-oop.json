@@ -1,0 +1,59 @@
+{
+  "program_id": "java-oop",
+  "brief": "briefs/java_oop.json",
+  "rounds": [
+    {
+      "tuning_request": {
+        "id": "TR-java-1",
+        "target_node_id": "objective_0",
+        "summary": "Add unit-testing of class designs as a learning objective",
+        "instruction": "Add a learning objective on writing unit tests that verify class design behavior; assessments and labs must cover it.",
+        "changed_fields": [
+          "learning_objectives"
+        ]
+      },
+      "brief_overlay": {
+        "learning_goals_append": [
+          "Write unit tests that verify class design behavior"
+        ],
+        "user_message": "Add a learning objective on writing unit tests that verify class design behavior; assessments and labs must cover it."
+      }
+    },
+    {
+      "tuning_request": {
+        "id": "TR-java-2",
+        "target_node_id": "assessment_0",
+        "summary": "Tighten rubrics to observable 0-4 anchors",
+        "instruction": "Rework all assessment scoring criteria into observable, behavior-anchored 0-4 rubric levels; remove any vague criteria.",
+        "changed_fields": [
+          "assessment_tools"
+        ]
+      },
+      "brief_overlay": {
+        "constraints": {
+          "assessment_type": "performance task and code review with observable 0-4 rubric anchors"
+        },
+        "user_message": "Rework all assessment scoring criteria into observable, behavior-anchored 0-4 rubric levels; remove any vague criteria."
+      }
+    },
+    {
+      "tuning_request": {
+        "id": "TR-java-3",
+        "target_node_id": "implementation_plan_0",
+        "summary": "Compress duration from 3 days to 2 days",
+        "instruction": "Compress the course from 3 days to 2 days (12 hours); rescope activities and the delivery plan to fit without dropping assessed objectives.",
+        "changed_fields": [
+          "schedule",
+          "duration"
+        ]
+      },
+      "brief_overlay": {
+        "duration": "2 days",
+        "context": {
+          "duration": "2 days (12 hours)"
+        },
+        "user_message": "Compress the course from 3 days to 2 days (12 hours); rescope activities and the delivery plan to fit without dropping assessed objectives."
+      }
+    }
+  ]
+}

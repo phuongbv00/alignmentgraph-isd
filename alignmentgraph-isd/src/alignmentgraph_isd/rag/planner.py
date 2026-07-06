@@ -1,32 +1,54 @@
 from __future__ import annotations
 from ..config import HarnessRunConfig
 from ..schema import DesignBrief
-from .subagents import RetrievalSubagentRegistry
+from .agent import RetrievalAgentRegistry
 
 
 class RetrievalPlanner:
-    """RAG = external-corpus retrieval only.
+    """On-demand retrieval façade used by specialist agents.
 
-    This planner does one thing: run registered retrieval subagents over external
-    corpora and return their merged results. It does NOT build the design-brief
-    context pack (that is `ContextPlanner`, not retrieval), and it does not touch
-    graph-context or memory retrieval (those are core and live elsewhere).
+    Wraps the registry to provide three operations:
+    - ``enabled()`` — gate check (use_rag + non-empty registry);
+    - ``build_menu()`` — compact descriptor list for a specialist's decision prompt;
+    - ``execute_plan()`` — resolve agent names and run them in the sandbox.
 
-    RAG is gated by ``use_rag``. The benchmark defaults to no_rag and registers no
-    subagents, so ``retrieve`` returns a disabled, empty result there.
+    Does NOT handle brief-derived context (that is ``ContextPlanner``) or
+    graph/memory retrieval (those are core and always on).
     """
 
     def __init__(self, config: HarnessRunConfig) -> None:
         self.config = config
-        self.registry = RetrievalSubagentRegistry(getattr(config, "retrieval_subagents", None) or [])
+        self.registry = RetrievalAgentRegistry(getattr(config, "retrieval_subagents", None) or [])
 
-    def retrieve(self, design_brief: DesignBrief, task_name: str = "full_design", graph_context: str = "") -> dict:
-        if not self.config.ablation.use_rag or len(self.registry) == 0:
-            return {"enabled": False, "task_name": task_name, "results": [], "sources": []}
-        results = self.registry.retrieve(design_brief, task_name, graph_context)
-        return {
-            "enabled": True,
-            "task_name": task_name,
-            "results": results,
-            "sources": sorted({result.get("source", "") for result in results if result.get("source")}),
-        }
+    def enabled(self) -> bool:
+        return bool(self.config.ablation.use_rag) and len(self.registry) > 0
+
+    def build_menu(self, design_brief: DesignBrief, task_name: str) -> list[dict]:
+        """Compact menu of relevant retrieval agents for a specialist's decision prompt."""
+        menu: list[dict] = []
+        for subagent in self.registry.select(design_brief, task_name):
+            describe = getattr(subagent, "describe", None)
+            if callable(describe):
+                menu.append(describe())
+            else:
+                menu.append({
+                    "name": getattr(subagent, "name", type(subagent).__name__),
+                    "description": (getattr(subagent, "__doc__", "") or "").strip().split("\n")[0],
+                    "domains": [],
+                })
+        return menu
+
+    def execute_plan(
+        self,
+        design_brief: DesignBrief,
+        task_name: str,
+        plan: dict,
+        *,
+        log_llm_call=None,
+    ) -> tuple[list[dict], list[dict]]:
+        """Resolve the plan's agent names and run them in the retrieval sandbox."""
+        from .sandbox import RetrievalSandbox
+
+        agents = [a for a in (self.registry.get(name) for name in plan.get("agents", [])) if a is not None]
+        sandbox = RetrievalSandbox(self.config.llm_factory, log_llm_call=log_llm_call)
+        return sandbox.execute(design_brief, task_name, plan, agents)
