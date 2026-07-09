@@ -8,10 +8,8 @@ The analysis in \cref{sec:introduction} requires supporting the full lifecycle o
 
 \begin{figure*}[t]
   \centering
-  \fbox{\parbox{0.92\textwidth}{\centering\vspace{6em}
-    [FIGURE PENDING: architecture overview --- elicitation $\rightarrow$ orchestrator and specialist agents $\rightarrow$ alignment graph (center) $\rightarrow$ verifier and cascade-scoped revision $\rightarrow$ four-layer memory; retrieval agents plugged in at the side.]
-  \vspace{6em}}}
-  \caption{Architecture of the AlignmentGraph-ISD harness. All modules read or write the versioned alignment graph at the center.}
+  \includegraphics[width=\textwidth]{figures/architecture}
+  \caption{Architecture of the AlignmentGraph-ISD harness. All modules read or write the versioned alignment graph at the center (shown with a miniature design: objectives LO\,1--2, an assessment AS, an activity ACT, an evaluation EV, and the needs-context node NC). A refinement request $r$ targeting LO\,2 marks it and its dependents stale (dashed orange), and only that scoped set is regenerated. The dashed red path shows a later session re-entering with a refinement request, bypassing elicitation.}
   \label{fig:architecture}
 \end{figure*}
 
@@ -32,7 +30,7 @@ E_{\mathrm{measures}} &\subseteq V_{\mathrm{assessment}} \times V_{\mathrm{objec
 E_{\mathrm{supports}} &\subseteq V_{\mathrm{activity}} \times V_{\mathrm{objective}},\\
 E_{\mathrm{evaluates}} &\subseteq V_{\mathrm{evaluation}} \times V_{\mathrm{objective}}.
 \end{align*}
-An objective is \emph{aligned} if and only if at least one assessment measures it, one activity supports it, and one evaluation evaluates it: for all $o \in V_{\mathrm{objective}}$,
+That is, a \textsl{measures} edge pairs an assessment with an objective it grades, a \textsl{supports} edge pairs an activity with an objective it practices, and an \textsl{evaluates} edge pairs an evaluation item with an objective it appraises. An objective is \emph{aligned} if and only if at least one assessment measures it, one activity supports it, and one evaluation evaluates it: for all $o \in V_{\mathrm{objective}}$,
 \begin{multline*}
 \mathrm{aligned}(o) \iff \big(\exists a\colon (a,o) \in E_{\mathrm{measures}}\big) \\
  \wedge \big(\exists x\colon (x,o) \in E_{\mathrm{supports}}\big) \wedge \big(\exists e\colon (e,o) \in E_{\mathrm{evaluates}}\big).
@@ -51,25 +49,25 @@ Given explicit state, the next question is who operates on it and in what order.
 
 Concretely, each ISD concern has a specialist agent (needs context, objective design, assessment design, activity and material, implementation plan, evaluation and revision), plus a pedagogical verifier and an ADDIE aggregator. The meta-agent maintains a dynamic task graph $T_t = \{\tau_1, \dots, \tau_k\}$ with tasks $\tau = (\mathrm{type}, \mathrm{owner}, \mathrm{prio}, \mathrm{deps})$; at each step the planner policy $\pi$ selects the next feasible task from the graph state, and the owning agent executes it:
 \[
-\tau^* = \pi(G_t, T_t), \qquad G_{t+1} = A_{\mathrm{owner}(\tau^*)}\big(G_t,\, c_{\tau^*}\big).
+\tau^* = \pi(G_t, T_t), \qquad G_{t+1} = A_{\mathrm{owner}(\tau^*)}\big(G_t,\, c_{\tau^*}\big),
 \]
-Each agent is a graph-update operator whose write scope is bounded by its specialty:
+where $\tau^*$ is the task the planner selects at step $t$, $\mathrm{owner}(\tau^*)$ is its assigned specialist, and $c_{\tau^*}$ is that task's context pack (defined in \cref{sec:agentic-rag}), so that executing $\tau^*$ turns $G_t$ into the next graph $G_{t+1}$. Each agent is a graph-update operator whose write scope is bounded by its specialty:
 \[
-A_i : (G_t, c) \mapsto G_{t+1}, \qquad \Delta(G_t, G_{t+1}) \subseteq V^{(i)} \cup E^{(i)}
+A_i : (G_t, c) \mapsto G_{t+1}, \qquad \Delta(G_t, G_{t+1}) \subseteq V^{(i)} \cup E^{(i)},
 \]
-(e.g., the assessment agent writes only \texttt{assessment} nodes and \textsl{measures} edges). The planner creates tasks only for missing, stale, or invalid nodes---a complete, non-stale graph yields zero tasks---so the cost of a session scales with the size of the stale set rather than the size of the program. ADDIE serves only as the output contract for benchmark compatibility, not as an execution-order constraint.
+where $\Delta(G_t, G_{t+1})$ denotes the nodes and edges added or modified between the two graphs, and $V^{(i)}, E^{(i)}$ are the node and edge types that specialist $i$ is permitted to write---e.g., the assessment agent writes only \texttt{assessment} nodes and \textsl{measures} edges. The planner creates tasks only for missing, stale, or invalid nodes---a complete, non-stale graph yields zero tasks---so the cost of a session scales with the size of the stale set rather than the size of the program. ADDIE serves only as the output contract for benchmark compatibility, not as an execution-order constraint.
 
 \subsection{Pedagogical Verification and Cascade-Scoped Revision}
 \label{sec:verification}
 
 The second horn of the dilemma---local edits break alignment---stems from two deficits: alignment violations go undetected, and the ripple effects of a change go unhandled. The remedy must therefore be a closed loop---detect violations, route them to the right specialist, propagate impact, re-verify---which is, in essence, the formative evaluation--revision loop of the systems approach~\cite{dick1978systematic}, automated over the graph structure.
 
-After every generation or repair turn, two independent check layers run: schema validation (JSON structure, required fields, types, identifiers) and pedagogical verification with seven constraint families (objective coverage, Bloom-verb usage~\cite{anderson2001taxonomy}, activity support, rubric consistency, feasibility, actionability, and evaluation alignment). Let $\Omega_t = \mathcal{V}(G_t)$ be the set of violations detected on $G_t$, each violation $\omega = (\mathrm{type}, x)$; the function $\mathrm{owner}(\cdot)$ routes a violation to its specialist. One revision turn, and the termination condition, are
+After every generation or repair turn, two independent check layers run: schema validation (JSON structure, required fields, types, identifiers) and pedagogical verification with seven constraint families (objective coverage, Bloom-verb usage~\cite{anderson2001taxonomy}, activity support, rubric consistency, feasibility, actionability, and evaluation alignment). Let $\mathcal{V}$ denote the pedagogical verifier and $\Omega_t = \mathcal{V}(G_t)$ the set of violations it detects on $G_t$, each violation $\omega = (\mathrm{type}, x)$ pairing a constraint type with the node $x$ that fails it; the function $\mathrm{owner}(\cdot)$ routes a violation to its specialist. One revision turn, and the termination condition, are
 \begin{gather*}
 G_{t+1} = \mathrm{cascade}\Big(A_{\mathrm{owner}(\mathrm{type}(\omega))}\big(G_t,\, \omega\big)\Big), \quad \omega \in \Omega_t,\\
 \text{terminating when } \Omega_t = \emptyset \ \lor\ t \geq B,
 \end{gather*}
-where $B$ is a retry budget: the loop either converges to a violation-free fixed point or stops in a controlled manner recorded in the trajectory. A refinement session enters the same path through the \emph{refinement entrypoint}: a refinement request $r$ (a target node plus a natural-language change request) marks the target stale, applies $\mathrm{cascade}(\cdot)$ to scope the impact, and lets the loop above regenerate exactly the stale set. We call the pair ``scope-determining invalidation + in-scope regeneration'' \emph{cascade-scoped revision}---``revision'' in the systems-approach sense, covering both verifier-detected repairs and user-requested refinements.
+i.e., the owning specialist repairs each violation, the cascade operator marks every dependent node stale again, and $B$ is a retry budget: the loop either converges to a violation-free fixed point or stops in a controlled manner recorded in the trajectory. A refinement session enters the same path through the \emph{refinement entrypoint}: a refinement request $r$ (a target node plus a natural-language change request) marks the target stale, applies $\mathrm{cascade}(\cdot)$ to scope the impact, and lets the loop above regenerate exactly the stale set. We call the pair ``scope-determining invalidation + in-scope regeneration'' \emph{cascade-scoped revision}---``revision'' in the systems-approach sense, covering both verifier-detected repairs and user-requested refinements.
 
 \subsection{Four-Layer Memory and the Session Lifecycle}
 \label{sec:memory}
@@ -79,16 +77,16 @@ The mechanisms above guarantee consistency only within one session, while the li
 G^{(1)} = \mathrm{init}(b), \qquad
 G^{(v+1)} = \mathrm{commit}\Big(\mathrm{cascade}\big(\mathrm{apply}(G^{(v)}, r_v)\big)\Big),
 \]
-where $b$ is the initial design brief and $r_v$ the refinement request of session $v{+}1$. This chain is precisely what the four process metrics of RQ2 measure; an RQ1 benchmark run is the special case consisting only of $G^{(1)}$.
+where $b$ is the initial design brief, $r_v$ is the refinement request of session $v{+}1$, $\mathrm{apply}(G^{(v)}, r_v)$ marks the node(s) targeted by $r_v$ as stale, $\mathrm{cascade}(\cdot)$ propagates that staleness as in \cref{sec:alignment-graph}, and $\mathrm{commit}(\cdot)$ persists the regenerated graph as version $v{+}1$ in episodic memory. This chain is precisely what the four process metrics of RQ2 measure; an RQ1 benchmark run is the special case consisting only of $G^{(1)}$.
 
 \subsection{Brief Elicitation}
 \label{sec:elicitation}
 
 The session chain starts from a design brief---the document that initiates a design project by defining the problem to solve, the goals, and the constraints~\cite{read2012designbrief}, corresponding in ISD terms to the output of needs assessment. In practice the brief does not exist at project start: the need takes shape through brainstorming between the training owner and stakeholders (project managers, mentors, the learners themselves), and designers often cannot articulate it before beginning. A system that only accepts finished briefs abandons its users at exactly the stage where they need support. Because brief formation is a multi-turn human-in-the-loop conversation---fundamentally different from a design run, which is a single complete pass over a settled brief---it is factored out as a module that precedes the design workflow. The elicitation agent maintains a conversation $h$; at each turn with user input $u$ it returns either the next clarifying question or a draft brief:
 \[
-\varepsilon(h, u) \in \{\, \mathrm{ask}(q), \; \mathrm{propose}(\hat{b}) \,\}.
+\varepsilon(h, u) \in \{\, \mathrm{ask}(q), \; \mathrm{propose}(\hat{b}) \,\},
 \]
-Only when the user approves the draft does $b := \hat{b}$ and the init session $G^{(1)} = \mathrm{init}(b)$ start the chain of \cref{sec:memory}; the conversation transcript is stored in working memory so the design session continues with the same context. Restricting the output to two actions (ask / propose) keeps the loop convergent and keeps the final decision with the designer.
+where $q$ is a clarifying question and $\hat{b}$ is a candidate brief awaiting approval. Only when the user approves the draft does $b := \hat{b}$ and the init session $G^{(1)} = \mathrm{init}(b)$ start the chain of \cref{sec:memory}; the conversation transcript is stored in working memory so the design session continues with the same context. Restricting the output to two actions (ask / propose) keeps the loop convergent and keeps the final decision with the designer.
 
 \subsection{Agentic Retrieval}
 \label{sec:agentic-rag}
