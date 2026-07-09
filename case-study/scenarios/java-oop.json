@@ -3,7 +3,7 @@
   "brief": "briefs/java_oop.json",
   "rounds": [
     {
-      "tuning_request": {
+      "refinement_request": {
         "id": "TR-java-1",
         "target_node_id": "objective_0",
         "summary": "Add unit-testing of class designs as a learning objective",
@@ -20,7 +20,7 @@
       }
     },
     {
-      "tuning_request": {
+      "refinement_request": {
         "id": "TR-java-2",
         "target_node_id": "assessment_0",
         "summary": "Tighten rubrics to observable 0-4 anchors",
@@ -37,7 +37,7 @@
       }
     },
     {
-      "tuning_request": {
+      "refinement_request": {
         "id": "TR-java-3",
         "target_node_id": "implementation_plan_0",
         "summary": "Compress duration from 3 days to 2 days",

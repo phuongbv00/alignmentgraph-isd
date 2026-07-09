@@ -1,0 +1,20 @@
+\section{Related Work}
+\label{sec:related-work}
+
+\subsection{LLM Agents for Instructional Design}
+
+The systems closest to ours apply ISD theory to agent architecture. ISD-Agent-Bench~\cite{isdagentbench} implements four theory-grounded agents: ReAct-ADDIE (a ReAct loop over ISD tools~\cite{yao2023react}), ADDIE-Agent (a linear five-phase state graph~\cite{branch2009addie}), Dick-Carey-Agent (the systems approach with a formative-evaluation loop~\cite{dick1978systematic}), and RPISD-Agent (rapid prototyping~\cite{tripp1990rapid}). EduPlanner~\cite{zhang2025eduplanner} uses adversarial generate--evaluate--optimize collaboration among agents; Instructional Agents~\cite{yao2025instructionalagents} simulates role-based faculty collaboration for course material generation; AgentLesson~\cite{agentlesson2026} generates lesson plans with a multi-agent system; LessonPlanner~\cite{lessonplanner2024} and GPT-4 teaching-plan studies~\cite{hu2024teachingplan} improve single artifacts; LearnLM~\cite{learnlm2024} tunes the model itself for pedagogy.
+
+All of these systems accept a fixed brief and optimize the draft produced by \emph{one design pass}. Even architectures with internal loops (Dick-Carey-Agent, EduPlanner) iterate \emph{within} a single generation to polish the draft; none maintains design state \emph{across working sessions} to support later modification. What is missing is an architecture that treats a training program as a living artifact refined over many sessions.
+
+\subsection{Benchmarks and Evaluation}
+
+OpenLearnLM~\cite{openlearnlm2026}, EduBench~\cite{edubench2025}, MathTutorBench~\cite{mathtutorbench2025}, and TutorBench~\cite{tutorbench2025} evaluate educational capabilities at the level of individual tasks. ISD-Agent-Bench~\cite{isdagentbench} goes further by scoring both artifact quality against an ADDIE rubric and the quality of the agent's trajectory---but each scenario is still an independent, from-scratch design round. No existing benchmark measures the \emph{refinement process}: how tightly a refinement request is scoped, what it costs, and whether alignment is preserved. This work proposes four process metrics for precisely that gap, using ISD-Agent-Bench for RQ1 and extending its measurement protocol for RQ2.
+
+\subsection{Consistency Control in Multi-Artifact Generation}
+
+Theoretically, constructive alignment~\cite{biggs1996enhancing} defines the consistency standard among objectives, activities, and assessments, and the systems approach~\cite{dick1978systematic} justifies systematic revision loops. Technically, verifier and self-repair mechanisms such as Self-Refine~\cite{madaan2023selfrefine} and Reflexion~\cite{shinn2023reflexion}, and agentic memory systems~\cite{xu2025amem,zhang2024memorysurvey}, demonstrate the value of checking and correcting model output from outside the model---value that grows as base models saturate and as smaller models are deployed~\cite{cho2026harness,deveci2025ouroboros,shukla2025scalingwall}. In existing ISD systems, however, alignment is only \emph{encouraged} through prompts or \emph{scored} after generation; it is never represented as first-class state---a data structure whose links the system can check individually, whose affected regions it can mark on change, and through which it can propagate repairs under control.
+
+\subsection{Synthesis}
+
+Combining the three strands: current ISD agents optimize a single pass, are evaluated by single-round benchmarks, and lack an explicit representation of alignment for change control. Consequently the refinement dilemma of \cref{sec:introduction} remains unsolved---designers either pay for full regeneration or accept the risk of breaking alignment with local edits. This work fills the gap by making alignment the first-class graph state of the harness and building a controlled refinement mechanism around it.

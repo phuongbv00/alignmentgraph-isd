@@ -380,9 +380,9 @@ class MetaAgent:
         memory_session = memory.begin_session(design_brief)
         graph = memory_session.graph
         trajectory = TrajectoryLogger()
-        if design_brief.tuning_request and memory_session.session_type == "tuning":
-            from .tuning import TuningRequest, apply_tuning_request
-            apply_tuning_request(graph, trajectory, TuningRequest.model_validate(design_brief.tuning_request))
+        if design_brief.refinement_request and memory_session.session_type == "refinement":
+            from .refinement import RefinementRequest, apply_refinement_request
+            apply_refinement_request(graph, trajectory, RefinementRequest.model_validate(design_brief.refinement_request))
         # Assemble the context pack from two upfront sources:
         #   1. brief-derived context preparation (ContextPlanner — not retrieval)
         #   2. memory retrieval (core, always on)

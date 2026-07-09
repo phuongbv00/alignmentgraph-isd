@@ -3,7 +3,7 @@
   "brief": "briefs/git_agile.json",
   "rounds": [
     {
-      "tuning_request": {
+      "refinement_request": {
         "id": "TR-git-1",
         "target_node_id": "activity_0",
         "summary": "Replace lecture blocks with a sprint-simulation mini-project",
@@ -17,7 +17,7 @@
       }
     },
     {
-      "tuning_request": {
+      "refinement_request": {
         "id": "TR-git-2",
         "target_node_id": "material_0",
         "summary": "Convert materials to a self-serve online handbook",

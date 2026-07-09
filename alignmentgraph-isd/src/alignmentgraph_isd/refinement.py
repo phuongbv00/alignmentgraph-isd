@@ -1,9 +1,9 @@
-"""Tuning entrypoint: turn an explicit edit request into targeted graph invalidation.
+"""Refinement entrypoint: turn an explicit edit request into targeted graph invalidation.
 
-A tuning session loads a committed AlignmentGraph and must express "what changed"
+A refinement session loads a committed AlignmentGraph and must express "what changed"
 before the audit → planner → repair loop can regenerate only the affected parts.
-This module is that translation step. The ``tuning_request:`` reason prefix is the
-contract the case-study metrics rely on to tell tuning cascades apart from the
+This module is that translation step. The ``refinement_request:`` reason prefix is the
+contract the case-study metrics rely on to tell refinement cascades apart from the
 cascades that ordinary in-run repairs emit.
 """
 
@@ -13,10 +13,10 @@ from .graph import AlignmentGraph
 from .schema import _LenientModel
 from .trajectory import TrajectoryLogger
 
-TUNING_REASON_PREFIX = "tuning_request:"
+REFINEMENT_REASON_PREFIX = "refinement_request:"
 
 
-class TuningRequest(_LenientModel):
+class RefinementRequest(_LenientModel):
     """One edit request against an existing training-program graph.
 
     ``target_node_id`` names the graph node the request changes (e.g.
@@ -35,18 +35,18 @@ class TuningRequest(_LenientModel):
     scope: str = "targeted"
 
 
-def apply_tuning_request(
+def apply_refinement_request(
     graph: AlignmentGraph,
     trajectory: TrajectoryLogger,
-    request: TuningRequest,
+    request: RefinementRequest,
 ) -> dict[str, list]:
     """Mark the target node and its IMPACT_POLICY downstream as stale.
 
     Returns the impact dict from ``invalidate_impacted`` (empty lists when the
-    target node does not exist, in which case a ``tuning_error`` step is logged
+    target node does not exist, in which case a ``refinement_error`` step is logged
     instead of raising — the run then behaves like a plain re-verify session).
     """
-    reason = f"{TUNING_REASON_PREFIX}{request.id}: {request.summary or request.instruction[:120]}"
+    reason = f"{REFINEMENT_REASON_PREFIX}{request.id}: {request.summary or request.instruction[:120]}"
 
     if request.scope == "regenerate_all":
         stale_nodes = [node["id"] for node in graph.to_dict()["nodes"]]
@@ -54,8 +54,8 @@ def apply_tuning_request(
             graph.mark_stale(node_id, reason)
         trajectory.log_cascade_event(request.target_node_id or "*", stale_nodes, [], reason)
         trajectory.log_step(
-            "TuningEntrypoint",
-            "apply_tuning_request",
+            "RefinementEntrypoint",
+            "apply_refinement_request",
             request.id,
             f"scope=regenerate_all stale nodes={len(stale_nodes)}",
         )
@@ -63,8 +63,8 @@ def apply_tuning_request(
 
     if not graph.mark_stale(request.target_node_id, reason):
         trajectory.log_step(
-            "TuningEntrypoint",
-            "tuning_error",
+            "RefinementEntrypoint",
+            "refinement_error",
             request.id,
             f"target node not found: {request.target_node_id!r}",
         )
@@ -78,8 +78,8 @@ def apply_tuning_request(
     stale_nodes = [request.target_node_id] + impact["nodes"]
     trajectory.log_cascade_event(request.target_node_id, stale_nodes, impact["edges"], reason)
     trajectory.log_step(
-        "TuningEntrypoint",
-        "apply_tuning_request",
+        "RefinementEntrypoint",
+        "apply_refinement_request",
         request.id,
         f"stale nodes={stale_nodes} stale edges={len(impact['edges'])}",
     )

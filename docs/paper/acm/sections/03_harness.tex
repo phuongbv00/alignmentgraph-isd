@@ -1,0 +1,106 @@
+\section{The AlignmentGraph-ISD Harness}
+\label{sec:harness}
+
+\subsection{Overview}
+\label{sec:overview}
+
+The analysis in \cref{sec:introduction} requires supporting the full lifecycle of a training program: turning a vague need into a design brief, generating a complete design from that brief, and turning every later refinement request into a new version of the design without breaking constructive alignment. The observation that drives our design is that everything this lifecycle demands---persistent state, quality control, change scoping, and specialist coordination---is not a capability of the model but a responsibility of the execution environment around it. AlignmentGraph-ISD therefore concentrates these responsibilities in a harness, leaving the model to generate content and reason within that environment. A complete agent is the combination of the two (\emph{agent = harness + model}), and every design decision in this section belongs to the harness, independent of whether the model is an LLM or a low-cost SLM.
+
+\begin{figure*}[t]
+  \centering
+  \fbox{\parbox{0.92\textwidth}{\centering\vspace{6em}
+    [FIGURE PENDING: architecture overview --- elicitation $\rightarrow$ orchestrator and specialist agents $\rightarrow$ alignment graph (center) $\rightarrow$ verifier and cascade-scoped revision $\rightarrow$ four-layer memory; retrieval agents plugged in at the side.]
+  \vspace{6em}}}
+  \caption{Architecture of the AlignmentGraph-ISD harness. All modules read or write the versioned alignment graph at the center.}
+  \label{fig:architecture}
+\end{figure*}
+
+The center of the harness is a versioned \emph{alignment graph} (\cref{sec:alignment-graph}); every other module reads or writes this state. A training program flows through the harness as shown in \cref{fig:architecture}: the designer's need is made concrete through a conversational elicitation loop (\cref{sec:elicitation}); from the approved brief, the orchestrator dispatches tasks to specialist agents that build the graph (\cref{sec:orchestration}), and when domain material is missing, the specialist itself decides to retrieve from pluggable retrieval agents (\cref{sec:agentic-rag}); every change to the graph---whether from initial generation, repair, or a refinement request---is verified and propagated under control (\cref{sec:verification}); the result of each session is committed as a version in multi-session memory (\cref{sec:memory}), which becomes the starting point of the next session. All modules are configuration-controlled; the configurations used in each experiment are stated in \cref{sec:experiments}.
+
+\subsection{Alignment Graph}
+\label{sec:alignment-graph}
+
+The root of the refinement dilemma is that the relations among design components exist only implicitly in text: a reader may \emph{sense} that an assessment measures an objective, but the system has no way to check it, let alone answer what a change affects. Controlled refinement requires alignment to become \emph{data}---each link checkable, each affected region markable. AlignmentGraph-ISD therefore reifies constructive alignment~\cite{biggs1996enhancing} as an explicit data structure: at each step $t$, the design state is a graph $G_t = (V_t, E_t)$ whose vertex set covers the artifacts of all five ADDIE phases:
+\begin{multline*}
+V_t = V_{\mathrm{needs}} \cup V_{\mathrm{objective}} \cup V_{\mathrm{assessment}} \cup V_{\mathrm{activity}} \\
+ \cup V_{\mathrm{material}} \cup V_{\mathrm{implementation}} \cup V_{\mathrm{evaluation}}.
+\end{multline*}
+The edge set is kept minimal: three many-to-many relations centered on objectives,
+\begin{align*}
+E_t &= E_{\mathrm{measures}} \cup E_{\mathrm{supports}} \cup E_{\mathrm{evaluates}},\\
+E_{\mathrm{measures}} &\subseteq V_{\mathrm{assessment}} \times V_{\mathrm{objective}},\\
+E_{\mathrm{supports}} &\subseteq V_{\mathrm{activity}} \times V_{\mathrm{objective}},\\
+E_{\mathrm{evaluates}} &\subseteq V_{\mathrm{evaluation}} \times V_{\mathrm{objective}}.
+\end{align*}
+An objective is \emph{aligned} if and only if at least one assessment measures it, one activity supports it, and one evaluation evaluates it: for all $o \in V_{\mathrm{objective}}$,
+\begin{multline*}
+\mathrm{aligned}(o) \iff \big(\exists a\colon (a,o) \in E_{\mathrm{measures}}\big) \\
+ \wedge \big(\exists x\colon (x,o) \in E_{\mathrm{supports}}\big) \wedge \big(\exists e\colon (e,o) \in E_{\mathrm{evaluates}}\big).
+\end{multline*}
+
+Only objectives are decomposed into element nodes per learning outcome (\texttt{objective:LO-*}), because constructive alignment must be checked per objective; other node types remain at section granularity. Node types that carry no static alignment edges (needs context, implementation plan, material) affect the design through the cascade operator,
+\[
+\mathrm{cascade}(n) = \{\, m \in V_t : \mathrm{type}(m) \in \mathrm{IMPACT}(\mathrm{type}(n)) \,\},
+\]
+where $\mathrm{IMPACT}$ is the impact policy mapping each node type to the set of downstream types that depend on it; every node in $\mathrm{cascade}(n)$ is marked \emph{stale}. Each node carries \texttt{stale} and \texttt{repair\_history} fields and each edge a \texttt{verified} field---these state fields are what make alignment measurable in \cref{sec:experiments}.
+
+\subsection{Multi-Agent Orchestration and Dynamic Workflow}
+\label{sec:orchestration}
+
+Given explicit state, the next question is who operates on it and in what order. Two properties of the problem rule out a fixed pipeline: each ISD artifact type demands different expertise---needs analysis, rubric design, and implementation planning are distinct skills---and in a refinement round the work to be done depends on the \emph{current state} of the design, which a hard-coded ADDIE sequence cannot express (``regenerate only the stale part'' is not a step in any fixed pipeline). Coordination must therefore read the graph state to decide the next task, and each task must be assigned to the right specialist with a bounded write scope.
+
+Concretely, each ISD concern has a specialist agent (needs context, objective design, assessment design, activity and material, implementation plan, evaluation and revision), plus a pedagogical verifier and an ADDIE aggregator. The meta-agent maintains a dynamic task graph $T_t = \{\tau_1, \dots, \tau_k\}$ with tasks $\tau = (\mathrm{type}, \mathrm{owner}, \mathrm{prio}, \mathrm{deps})$; at each step the planner policy $\pi$ selects the next feasible task from the graph state, and the owning agent executes it:
+\[
+\tau^* = \pi(G_t, T_t), \qquad G_{t+1} = A_{\mathrm{owner}(\tau^*)}\big(G_t,\, c_{\tau^*}\big).
+\]
+Each agent is a graph-update operator whose write scope is bounded by its specialty:
+\[
+A_i : (G_t, c) \mapsto G_{t+1}, \qquad \Delta(G_t, G_{t+1}) \subseteq V^{(i)} \cup E^{(i)}
+\]
+(e.g., the assessment agent writes only \texttt{assessment} nodes and \textsl{measures} edges). The planner creates tasks only for missing, stale, or invalid nodes---a complete, non-stale graph yields zero tasks---so the cost of a session scales with the size of the stale set rather than the size of the program. ADDIE serves only as the output contract for benchmark compatibility, not as an execution-order constraint.
+
+\subsection{Pedagogical Verification and Cascade-Scoped Revision}
+\label{sec:verification}
+
+The second horn of the dilemma---local edits break alignment---stems from two deficits: alignment violations go undetected, and the ripple effects of a change go unhandled. The remedy must therefore be a closed loop---detect violations, route them to the right specialist, propagate impact, re-verify---which is, in essence, the formative evaluation--revision loop of the systems approach~\cite{dick1978systematic}, automated over the graph structure.
+
+After every generation or repair turn, two independent check layers run: schema validation (JSON structure, required fields, types, identifiers) and pedagogical verification with seven constraint families (objective coverage, Bloom-verb usage~\cite{anderson2001taxonomy}, activity support, rubric consistency, feasibility, actionability, and evaluation alignment). Let $\Omega_t = \mathcal{V}(G_t)$ be the set of violations detected on $G_t$, each violation $\omega = (\mathrm{type}, x)$; the function $\mathrm{owner}(\cdot)$ routes a violation to its specialist. One revision turn, and the termination condition, are
+\begin{gather*}
+G_{t+1} = \mathrm{cascade}\Big(A_{\mathrm{owner}(\mathrm{type}(\omega))}\big(G_t,\, \omega\big)\Big), \quad \omega \in \Omega_t,\\
+\text{terminating when } \Omega_t = \emptyset \ \lor\ t \geq B,
+\end{gather*}
+where $B$ is a retry budget: the loop either converges to a violation-free fixed point or stops in a controlled manner recorded in the trajectory. A refinement session enters the same path through the \emph{refinement entrypoint}: a refinement request $r$ (a target node plus a natural-language change request) marks the target stale, applies $\mathrm{cascade}(\cdot)$ to scope the impact, and lets the loop above regenerate exactly the stale set. We call the pair ``scope-determining invalidation + in-scope regeneration'' \emph{cascade-scoped revision}---``revision'' in the systems-approach sense, covering both verifier-detected repairs and user-requested refinements.
+
+\subsection{Four-Layer Memory and the Session Lifecycle}
+\label{sec:memory}
+
+The mechanisms above guarantee consistency only within one session, while the lifecycle of \cref{sec:introduction} spans many sessions and the model is stateless---an LLM invocation sees only its own context. Without persistent state, every refinement session degenerates into regeneration from scratch, i.e., back to the first horn of the dilemma. The harness therefore organizes memory as a quadruple $M = (M_{\mathrm{w}}, M_{\mathrm{s}}, M_{\mathrm{e}}, M_{\mathrm{p}})$, partitioned by information lifetime: \emph{working memory} holds open-session state (enabling resume), \emph{semantic memory} holds stable knowledge (ADDIE, Bloom, rubric templates), \emph{episodic memory} holds session history and repair cases, and \emph{procedural memory} holds versioned policies such as the impact policy. Over one training program, the lifecycle is a chain of committed graph versions (superscript $G^{(v)}$ distinguishes versions from within-session steps $G_t$):
+\[
+G^{(1)} = \mathrm{init}(b), \qquad
+G^{(v+1)} = \mathrm{commit}\Big(\mathrm{cascade}\big(\mathrm{apply}(G^{(v)}, r_v)\big)\Big),
+\]
+where $b$ is the initial design brief and $r_v$ the refinement request of session $v{+}1$. This chain is precisely what the four process metrics of RQ2 measure; an RQ1 benchmark run is the special case consisting only of $G^{(1)}$.
+
+\subsection{Brief Elicitation}
+\label{sec:elicitation}
+
+The session chain starts from a design brief---the document that initiates a design project by defining the problem to solve, the goals, and the constraints~\cite{read2012designbrief}, corresponding in ISD terms to the output of needs assessment. In practice the brief does not exist at project start: the need takes shape through brainstorming between the training owner and stakeholders (project managers, mentors, the learners themselves), and designers often cannot articulate it before beginning. A system that only accepts finished briefs abandons its users at exactly the stage where they need support. Because brief formation is a multi-turn human-in-the-loop conversation---fundamentally different from a design run, which is a single complete pass over a settled brief---it is factored out as a module that precedes the design workflow. The elicitation agent maintains a conversation $h$; at each turn with user input $u$ it returns either the next clarifying question or a draft brief:
+\[
+\varepsilon(h, u) \in \{\, \mathrm{ask}(q), \; \mathrm{propose}(\hat{b}) \,\}.
+\]
+Only when the user approves the draft does $b := \hat{b}$ and the init session $G^{(1)} = \mathrm{init}(b)$ start the chain of \cref{sec:memory}; the conversation transcript is stored in working memory so the design session continues with the same context. Restricting the output to two actions (ask / propose) keeps the loop convergent and keeps the final decision with the designer.
+
+\subsection{Agentic Retrieval}
+\label{sec:agentic-rag}
+
+The remaining requirement is domain knowledge: a generic agent cannot absorb the conventions of every domain---internal rubrics, exercise templates, code review standards---through a system prompt, yet hard-coding domain knowledge into prompts destroys the harness's generality. We resolve the tension by making domain knowledge \emph{pluggable}: each domain is packaged as a \emph{retrieval agent} with three deployer-supplied components---a corpus, a system prompt describing what the corpus answers well, and tools operating on that corpus. With registry $R = \{s_1, \dots, s_m\}$, extending to a new domain is just $R \leftarrow R \cup \{s_{m+1}\}$, changing no prompt or core harness code---the basis for the domain-transfer assumption discussed in \cref{sec:discussion}.
+
+The design is \emph{agentic}~\cite{lewis2020rag,singh2025agenticrag} at two decision levels, both owned by agents rather than a fixed pipeline. At the usage level, retrieval is an on-demand tool of the specialist: no retrieval step runs at session start; while executing task $\tau$, the specialist $A_i$---the only party that knows what material is missing---makes the decision
+\[
+\delta_i(\tau, c) \;\in\; \{\varnothing\} \;\cup\; \big(2^R \times \{\text{single}, \text{seq}, \text{par}\} \times Q\big),
+\]
+i.e., either skip retrieval ($\varnothing$---retrieval costs time and tokens, so the default is no) or choose a set of retrieval agents, an execution strategy, and a query $q \in Q$ per agent; a default strategy is suggested by ADDIE task type (broad analytic/creative tasks favor parallel, narrowly scoped design tasks favor single), but the specialist decides. At the execution level, each selected retrieval agent runs its own bounded tool-use loop over its corpus to return exactly the requested material. The whole plan runs in a \emph{retrieval sandbox}: failures of one retrieval agent are isolated (they cannot crash the design session), tool-call budgets and result sizes are capped, and retrieval agents receive only a copy of the query---they never touch the graph or memory. The task's context pack becomes
+\[
+c_\tau = \rho(b) \;\cup\; \gamma(G_t) \;\cup\; \mu(M) \;\cup\; \mathrm{rag}\big(\delta_i(\tau, c)\big), \qquad \mathrm{rag}(\varnothing) = \varnothing,
+\]
+where $\rho(b)$ is context prepared from the brief, $\gamma(G_t)$ is graph-context retrieval, and $\mu(M)$ is memory retrieval---the latter two are always on and are distinct from external-corpus retrieval. Every decision $\delta_i$ and its outcome are logged in the trajectory, so the system's retrieval behavior is itself observable data in the case study.

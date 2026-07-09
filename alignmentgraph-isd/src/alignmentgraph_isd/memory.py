@@ -83,7 +83,7 @@ class MemorySession:
 
 
 class HarnessMemory:
-    """Four-layer memory facade for benchmark init runs and app tuning sessions."""
+    """Four-layer memory facade for benchmark init runs and app refinement sessions."""
 
     def __init__(self, config: HarnessRunConfig) -> None:
         self.config = config
@@ -105,7 +105,7 @@ class HarnessMemory:
         execution_context = "app" if training_program_id else "benchmark"
 
         graph, base_graph_version = self._initial_graph(storage_id, persist)
-        session_type = "tuning" if base_graph_version > 0 else "init"
+        session_type = "refinement" if base_graph_version > 0 else "init"
         design_brief_snapshot = _design_brief_snapshot(design_brief)
         current_messages = _messages_from_design_brief(design_brief)
         message_history = self._working_message_history(

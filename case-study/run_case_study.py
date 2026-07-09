@@ -1,14 +1,14 @@
-"""RQ2 tuning-session runner: 4 conditions over the IT/SE case-study programs.
+"""RQ2 refinement-session runner: 4 conditions over the IT/SE case-study programs.
 
 Conditions (all receive the same prior design + cumulative brief + edit request;
-they differ only in the tuning mechanism):
+they differ only in the refinement mechanism):
 
-* ``harness_targeted_tuning``  — AlignmentGraph-ISD, targeted cascade + repair.
+* ``harness_targeted_refine``  — AlignmentGraph-ISD, targeted cascade + repair.
 * ``harness_full_regen``       — AlignmentGraph-ISD, ``scope=regenerate_all``
                                  (isolates the scoping mechanism within the harness).
 * ``react_full_regen``         — ReAct-ADDIE baseline clone, full ``run()`` on the
                                  cumulative scenario each round (dilemma horn 1).
-* ``react_targeted_tuning``    — ReAct-ADDIE clone's ``adjust()``: previous output +
+* ``react_targeted_refine``    — ReAct-ADDIE clone's ``refine()``: previous output +
                                  edit request, no alignment control (dilemma horn 2).
 
 Artifacts: per-session result JSON under ``results/{condition}/{program}/``,
@@ -36,8 +36,8 @@ from alignmentgraph_isd import (  # noqa: E402
 )
 from alignmentgraph_isd.rag.agent import RetrievalAgent, RetrievalTool  # noqa: E402
 
-HARNESS_CONDITIONS = ("harness_targeted_tuning", "harness_full_regen")
-REACT_CONDITIONS = ("react_full_regen", "react_targeted_tuning")
+HARNESS_CONDITIONS = ("harness_targeted_refine", "harness_full_regen")
+REACT_CONDITIONS = ("react_full_regen", "react_targeted_refine")
 ALL_CONDITIONS = HARNESS_CONDITIONS + REACT_CONDITIONS
 
 
@@ -380,14 +380,14 @@ def run_harness_condition(args, llm_factory, program: dict, condition: str, mani
     ))
     for k, round_spec in enumerate(rounds, start=1):
         brief = cumulative_brief(base_brief, rounds, k)
-        brief["tuning_request"] = dict(round_spec["tuning_request"])
+        brief["refinement_request"] = dict(round_spec["refinement_request"])
         if condition == "harness_full_regen":
-            brief["tuning_request"]["scope"] = "regenerate_all"
+            brief["refinement_request"]["scope"] = "regenerate_all"
         manifest.append(run_harness_session(
             args, llm_factory,
             program_id=pid, condition=condition, round_index=k,
             brief_payload=brief,
-            expected_session_type="tuning", expected_version=k + 1,
+            expected_session_type="refinement", expected_version=k + 1,
         ))
 
 
@@ -422,20 +422,20 @@ def run_react_conditions(args, program: dict, wanted: set[str], manifest: list[d
                 result_path=out_path, args=args, extra={"mode": "run"},
             ))
 
-    if "react_targeted_tuning" in wanted:
+    if "react_targeted_refine" in wanted:
         previous_output = init_result["addie_output"]
         for k, round_spec in enumerate(rounds, start=1):
-            print(f"[react_targeted_tuning] {pid} round {k}", flush=True)
+            print(f"[react_targeted_refine] {pid} round {k}", flush=True)
             # The practitioner flow: the brief the previous output was built from,
             # the previous output itself, and the new edit request.
             scenario = brief_to_react_scenario(cumulative_brief(base_brief, rounds, k - 1))
-            edit_request = round_spec["tuning_request"].get("instruction") or round_spec["tuning_request"].get("summary", "")
-            result = agent.adjust(scenario, previous_output, edit_request)
-            out_path = write_result("react_targeted_tuning", pid, k, result)
+            edit_request = round_spec["refinement_request"].get("instruction") or round_spec["refinement_request"].get("summary", "")
+            result = agent.refine(scenario, previous_output, edit_request)
+            out_path = write_result("react_targeted_refine", pid, k, result)
             manifest.append(manifest_row(
-                condition="react_targeted_tuning", program_id=pid, round_index=k,
+                condition="react_targeted_refine", program_id=pid, round_index=k,
                 result_path=out_path, args=args,
-                extra={"mode": "adjust", "unchanged_phases": result["metadata"].get("unchanged_phases", [])},
+                extra={"mode": "refine", "unchanged_phases": result["metadata"].get("unchanged_phases", [])},
             ))
             previous_output = result["addie_output"]
 
@@ -450,7 +450,7 @@ def main(argv: list[str] | None = None) -> int:
         "--conditions", default="all",
         help=f"Comma-separated conditions or 'all'. Valid: {', '.join(ALL_CONDITIONS)}",
     )
-    parser.add_argument("--rounds-limit", type=int, default=0, help="Run only the first N tuning rounds per program.")
+    parser.add_argument("--rounds-limit", type=int, default=0, help="Run only the first N refinement rounds per program.")
     parser.add_argument("--ablation", default="case_study", help="Harness ablation preset (case_study = full + RAG).")
     parser.add_argument("--fake-llm", action="store_true", help="Use canned fake models (no network).")
     parser.add_argument("--dry-run", action="store_true", help="Print the planned sessions and exit.")

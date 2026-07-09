@@ -8,7 +8,7 @@ language changed (documented as a threat to validity in the thesis/paper).
 
 Two entry points per experiment condition:
 - ``run_<phase>(llm, ...)``      — full generation from the scenario.
-- ``adjust_phase(llm, ...)``     — revision given the phase's previous output and
+- ``refine_phase(llm, ...)``     — revision given the phase's previous output and
                                    a user edit request, with an "unchanged"
                                    short-circuit so untouched phases cost no
                                    completion tokens and pass through verbatim.
@@ -735,10 +735,10 @@ def _fallback_evaluation(learning_goals):
 
 
 # ============================================================
-# Adjust mode (targeted tuning without alignment control)
+# Refine mode (targeted refinement without alignment control)
 # ============================================================
 
-ADJUST_SUFFIX = """
+REFINE_SUFFIX = """
 
 ## PREVIOUS OUTPUT (current version of this phase)
 ```json
@@ -759,20 +759,20 @@ output exactly:
 Output JSON only."""
 
 
-def adjust_phase(llm, base_prompt: str, previous_section: dict, edit_request: str):
-    """One adjust call for one phase.
+def refine_phase(llm, base_prompt: str, previous_section: dict, edit_request: str):
+    """One refine call for one phase.
 
     Returns ``(section_dict, unchanged, fallback_used)``. On any failure the
     previous section is kept — the safe interpretation of a broken edit.
     """
-    prompt = base_prompt + ADJUST_SUFFIX.format(
+    prompt = base_prompt + REFINE_SUFFIX.format(
         previous_output=json.dumps(previous_section, ensure_ascii=False),
         edit_request=edit_request,
     )
     try:
         parsed = parse_json_response(llm.invoke(prompt).content)
     except Exception as e:
-        print(f"[WARN] adjust_phase failed: {e}")
+        print(f"[WARN] refine_phase failed: {e}")
         return previous_section, False, True
     if isinstance(parsed, dict) and parsed.get("unchanged") is True:
         return previous_section, True, False
@@ -785,7 +785,7 @@ __all__ = [
     "run_development",
     "run_implementation",
     "run_evaluation",
-    "adjust_phase",
+    "refine_phase",
     "ANALYSIS_PROMPT",
     "DESIGN_PROMPT",
     "DEVELOPMENT_PROMPT",

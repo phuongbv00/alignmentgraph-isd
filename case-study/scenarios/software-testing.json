@@ -3,7 +3,7 @@
   "brief": "briefs/software_testing.json",
   "rounds": [
     {
-      "tuning_request": {
+      "refinement_request": {
         "id": "TR-test-1",
         "target_node_id": "needs_context_0",
         "summary": "Shift audience from mixed QA/dev to developers in CI-heavy teams",
@@ -23,7 +23,7 @@
       }
     },
     {
-      "tuning_request": {
+      "refinement_request": {
         "id": "TR-test-2",
         "target_node_id": "objective_0",
         "summary": "Add integration testing as a learning objective",
@@ -40,7 +40,7 @@
       }
     },
     {
-      "tuning_request": {
+      "refinement_request": {
         "id": "TR-test-3",
         "target_node_id": "evaluation_0",
         "summary": "Strengthen summative adoption criteria",

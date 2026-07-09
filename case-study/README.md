@@ -1,24 +1,24 @@
-# Case study: RQ2 tuning-session experiment (IT/Software Engineering)
+# Case study: RQ2 refinement-session experiment (IT/Software Engineering)
 
 Measures the four process metrics from the thesis/paper over multi-session
 refinement of three training programs, under **four conditions** that receive
 the same information (prior design + cumulative brief + edit request) and
-differ only in the tuning mechanism:
+differ only in the refinement mechanism:
 
 | Condition | Agent | Mechanism |
 |---|---|---|
-| `harness_targeted_tuning` | AlignmentGraph-ISD | tuning request → IMPACT_POLICY cascade → targeted repair (proposed) |
+| `harness_targeted_refine` | AlignmentGraph-ISD | refinement request → IMPACT_POLICY cascade → targeted repair (proposed) |
 | `harness_full_regen` | AlignmentGraph-ISD | `scope="regenerate_all"` — isolates the scoping mechanism |
 | `react_full_regen` | `baselines/react-isd` | full `run()` on the cumulative scenario — dilemma horn 1 |
-| `react_targeted_tuning` | `baselines/react-isd` `adjust()` | previous output + edit request, no alignment control — dilemma horn 2 |
+| `react_targeted_refine` | `baselines/react-isd` `refine()` | previous output + edit request, no alignment control — dilemma horn 2 |
 
 React round 0 (full generation of the base brief) runs once per program and is
 shared by both react chains.
 
 ## Layout
 
-- `briefs/`, `agents/`, `scenarios/` — programs, retrieval agent specs, per-program scenario files (8 tuning rounds spanning the IMPACT_POLICY spectrum).
-- `baselines/react-isd/` — English-prompt clone of the benchmark's `react-isd` agent with token accounting and `adjust()` (targeted tuning without alignment control).
+- `briefs/`, `agents/`, `scenarios/` — programs, retrieval agent specs, per-program scenario files (8 refinement rounds spanning the IMPACT_POLICY spectrum).
+- `baselines/react-isd/` — English-prompt clone of the benchmark's `react-isd` agent with token accounting and `refine()` (targeted refinement without alignment control).
 - `run_case_study.py` — session runner for all four conditions.
 - `score_alignment.py` — LLM-judge scoring (evaluator ADDIE + Design alignment
   item D1) for every session: the shared cross-agent alignment instrument.
@@ -52,10 +52,10 @@ isd-agent-benchmark/venv/bin/python case-study/score_alignment.py
 $PY case-study/compute_metrics.py
 ```
 
-Useful flags: `--programs java-oop`, `--conditions harness_targeted_tuning,react_targeted_tuning`,
+Useful flags: `--programs java-oop`, `--conditions harness_targeted_refine,react_targeted_refine`,
 `--rounds-limit 1`, `--ablation full` (RAG off), `--dry-run`.
 
-**Reset semantics:** harness conditions assert `init` → v1 then `tuning` → vN+1;
+**Reset semantics:** harness conditions assert `init` → v1 then `refinement` → vN+1;
 a program with existing committed versions fails that assertion, so wipe
 `memory/` and `results/` (or use fresh program ids) before repeating a run.
 `score_alignment.py` skips already-scored sessions unless `--force`.
@@ -64,7 +64,7 @@ a program with existing committed versions fails that assertion, so wipe
 
 | Metric | Instrument | Conditions |
 |---|---|---|
-| cascade_scope | `tuning_request:*` cascade event / nodes in base graph version | harness only |
+| cascade_scope | `refinement_request:*` cascade event / nodes in base graph version | harness only |
 | output_locality | changed `addie_output` subsections (sha256 per phase.sub_key) between consecutive rounds of a chain | all |
 | graph_locality / touched_locality | graph-node hash diff between committed versions / `node_edits` | harness only |
 | cost per round | tokens, llm_calls, latency (unified across result formats) + ratio vs own init | all |
@@ -77,8 +77,8 @@ a program with existing committed versions fails that assertion, so wipe
   identical payloads); use cascade scope, `touched_locality` and
   `unchanged_phases` to check mechanisms in rehearsals.
 - Node totals include objective element nodes (`objective:LO-xx`).
-- If a tuning round changes the LO id set, a stale element node can linger and
+- If a refinement round changes the LO id set, a stale element node can linger and
   depress harness coverage; inspect the session JSON if metric 4 drops.
 - The react baseline uses English-translated prompts (original is Korean) and
-  an author-written adjust prompt — both disclosed as threats to validity; the
+  an author-written refinement prompt — both disclosed as threats to validity; the
   `unchanged` short-circuit deliberately favors the baseline on cost.

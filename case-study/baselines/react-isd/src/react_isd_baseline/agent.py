@@ -1,10 +1,10 @@
-"""ReAct-ADDIE baseline clone for the RQ2 tuning experiment.
+"""ReAct-ADDIE baseline clone for the RQ2 refinement experiment.
 
 English-prompt clone of isd-agent-benchmark/agents/react-isd (v0.5.0) with two
 additions the experiment needs and the original lacks:
 
 * real token accounting (the original hardcodes ``metadata.total_tokens = 0``);
-* an ``adjust`` entry point — the "targeted tuning without alignment control"
+* a ``refine`` entry point — the "targeted refinement without alignment control"
   condition: each phase sees its previous output plus the user's edit request
   and may return ``{"unchanged": true}`` to pass through verbatim.
 
@@ -25,7 +25,7 @@ from react_isd_baseline.tools.phases import (
     DEVELOPMENT_PROMPT,
     EVALUATION_PROMPT,
     IMPLEMENTATION_PROMPT,
-    adjust_phase,
+    refine_phase,
     run_analysis,
     run_design,
     run_development,
@@ -35,7 +35,7 @@ from react_isd_baseline.tools.phases import (
 
 AGENT_ID = "react-isd-baseline"
 AGENT_VERSION = "0.5.0+baseline.1"
-ADJUST_MAX_TOKENS = 16384
+REFINE_MAX_TOKENS = 16384
 
 PHASES = ("analysis", "design", "development", "implementation", "evaluation")
 
@@ -45,10 +45,10 @@ class ReActISDBaselineAgent:
         self.settings = settings or settings_from_env()
         self.tracker = UsageTracker()
         self.llm = create_chat_model(self.settings, self.tracker)
-        # Adjust prompts carry the previous phase output (~thousands of tokens),
+        # Refine prompts carry the previous phase output (~thousands of tokens),
         # so the revision call gets a larger output budget.
-        self._adjust_llm = create_chat_model(
-            self.settings.with_max_tokens(max(self.settings.max_tokens, ADJUST_MAX_TOKENS)),
+        self._refine_llm = create_chat_model(
+            self.settings.with_max_tokens(max(self.settings.max_tokens, REFINE_MAX_TOKENS)),
             self.tracker,
         )
 
@@ -116,9 +116,9 @@ class ReActISDBaselineAgent:
             usage_before=usage_before, mode="run", fallbacks=fallbacks, unchanged_phases=[],
         )
 
-    # ── Targeted tuning without control (react_targeted_tuning condition) ─────
+    # ── Targeted refinement without control (react_targeted_refine condition) ─────
 
-    def adjust(self, scenario: dict, previous_addie_output: dict, edit_request: str) -> dict:
+    def refine(self, scenario: dict, previous_addie_output: dict, edit_request: str) -> dict:
         """Revise a previous ADDIE output per an edit request, one call per phase.
 
         ``scenario`` is the brief the previous output was built from. There is no
@@ -138,8 +138,8 @@ class ReActISDBaselineAgent:
         with ThreadPoolExecutor(max_workers=len(PHASES)) as executor:
             futures = {
                 executor.submit(
-                    adjust_phase,
-                    self._adjust_llm,
+                    refine_phase,
+                    self._refine_llm,
                     base_prompts[phase],
                     previous_addie_output.get(phase, {}),
                     edit_request,
@@ -151,7 +151,7 @@ class ReActISDBaselineAgent:
                 try:
                     section, unchanged, fb = future.result()
                 except Exception as e:
-                    print(f"[WARN] adjust {phase} failed: {e}")
+                    print(f"[WARN] refine {phase} failed: {e}")
                     section, unchanged, fb = previous_addie_output.get(phase, {}), False, True
                 results[phase] = section
                 if unchanged:
@@ -160,12 +160,12 @@ class ReActISDBaselineAgent:
                     fallbacks.append(phase)
         timestamp = datetime.now().isoformat()
         for i, phase in enumerate(PHASES):
-            tool_calls.append({"step": i + 1, "tool": f"adjust_{phase}", "timestamp": timestamp})
+            tool_calls.append({"step": i + 1, "tool": f"refine_{phase}", "timestamp": timestamp})
 
         addie_output = {phase: results[phase] for phase in PHASES}
         return self._assemble_result(
             scenario, addie_output, tool_calls, start_time,
-            usage_before=usage_before, mode="adjust",
+            usage_before=usage_before, mode="refine",
             fallbacks=fallbacks, unchanged_phases=sorted(unchanged_phases),
         )
 

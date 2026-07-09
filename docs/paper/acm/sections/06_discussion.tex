@@ -1,0 +1,14 @@
+\section{Discussion}
+\label{sec:discussion}
+
+\paragraph{Interpretation.}
+RQ1 shows that a refinement-oriented harness does not trade away first-pass quality---on the contrary, it leads both the composite and the ADDIE score in both runs, and is nearly invariant to swapping the LLM for a 9B SLM (84.07 $\rightarrow$ 84.65). The trajectory-score gap to ReAct-ADDIE is consistent (81.20 vs.\ 87.26 on DeepSeek; 86.11 vs.\ 91.66 on Qwen) and reflects a current limitation of our logging and dynamic orchestration: the trace records the outcome of each step more than the decision process behind it. [RQ2 INTERPRETATION PENDING --- to be written from the four-condition table.]
+
+\paragraph{Threats to validity.}
+\emph{Internal:} prompts, models, and judges all influence scores; we fix manifests, use identical decoding configurations, grade with multiple judges, and randomize grading order. The \texttt{react\_targeted\_refine} baseline uses a refinement prompt written by us; we mitigate this by publishing the prompt and designing it as favorably as possible for the baseline (the model may return \texttt{unchanged} per phase to save cost). The ReAct baseline in RQ2 uses an English translation of the benchmark's original Korean prompt (removing the language confound; both versions are published with semantics preserved).
+\emph{Construct:} the benchmark and the process metrics measure artifact and process quality, not learner outcomes; our conclusions are bounded accordingly.
+\emph{External:} benchmark scenarios are synthetic and multi-domain, while the case study covers a single domain (IT/software engineering); transferring domains by swapping corpora, templates, and verifier policies is an assumption that requires further validation.
+\emph{Cost:} multi-agent generation plus repair costs more than a single prompt on the first pass; we report the full quality/cost trade-off rather than quality alone.
+
+\paragraph{Broader implications.}
+The pattern ``typed dependency graph + verifier + cascade-scoped revision'' is not education-specific: any setting that generates many interdependent artifacts (technical documentation, process definitions, curricula) faces the same refinement dilemma. The SLM result---the harness's score essentially unchanged while the single-prompt baseline drops 3.68 points and the paired margin widens from $+1.86$ to $+6.16$---strengthens the harness-over-model argument for low-cost enterprise deployment~\cite{cho2026harness,belcak2025slm}.

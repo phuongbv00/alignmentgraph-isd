@@ -5,7 +5,7 @@ versions (harness conditions), and — when present — judge scores produced by
 ``score_alignment.py`` under ``results/scores/``. Writes ``results/metrics.csv``
 and ``results/metrics.md``. Network-free.
 
-Metrics per tuning round:
+Metrics per refinement round:
 
 1. cascade_scope       stale set / nodes in the base graph version — harness
                        conditions only (react has no graph).
@@ -35,7 +35,7 @@ import json
 from pathlib import Path
 
 CASE_STUDY_DIR = Path(__file__).resolve().parent
-HARNESS_CONDITIONS = ("harness_targeted_tuning", "harness_full_regen")
+HARNESS_CONDITIONS = ("harness_targeted_refine", "harness_full_regen")
 
 
 # ── Shared hashing helpers ─────────────────────────────────────────────────────
@@ -120,10 +120,10 @@ def session_cost(result: dict) -> dict:
     }
 
 
-def tuning_cascade_event(result: dict) -> dict | None:
+def refinement_cascade_event(result: dict) -> dict | None:
     events = [
         e for e in result.get("trajectory", {}).get("cascade_events", [])
-        if e.get("reason", "").startswith("tuning_request:")
+        if e.get("reason", "").startswith("refinement_request:")
     ]
     return events[0] if events else None
 
@@ -159,7 +159,7 @@ def compute_rows(case_study_dir: Path) -> list[dict]:
             "program": pid,
             "condition": condition,
             "round": k,
-            "tuning_id": "",
+            "refinement_id": "",
             **session_cost(result),
             **judge_scores(case_study_dir, entry),
             "residual_violations": len(metadata.get("violations", [])) if condition in HARNESS_CONDITIONS else None,
@@ -187,15 +187,15 @@ def compute_rows(case_study_dir: Path) -> list[dict]:
             diff = diff_hashes(before_out, after_out)
             row["output_locality"] = round(len(diff["changed"]) / diff["total_after"], 4) if diff["total_after"] else None
             row["output_changed_subsections"] = diff["changed"]
-        if entry.get("unchanged_phases") is not None and condition == "react_targeted_tuning":
+        if entry.get("unchanged_phases") is not None and condition == "react_targeted_refine":
             row["unchanged_phases"] = entry.get("unchanged_phases", [])
 
         # Graph-level instruments: harness conditions only.
         if condition in HARNESS_CONDITIONS:
             before = load_graph_version(memory_dir, entry["storage_id"], entry["base_graph_version"])
             after = load_graph_version(memory_dir, entry["storage_id"], entry["committed_graph_version"])
-            event = tuning_cascade_event(result)
-            row["tuning_id"] = (event["reason"].split(":", 2)[1].strip() if event else "")
+            event = refinement_cascade_event(result)
+            row["refinement_id"] = (event["reason"].split(":", 2)[1].strip() if event else "")
             row["cascade_scope"] = round(event["node_count"] / len(before["nodes"]), 4) if event else None
             fp_before, fp_after = graph_node_hashes(before), graph_node_hashes(after)
             gdiff = diff_hashes(fp_before, fp_after)
@@ -209,7 +209,7 @@ def compute_rows(case_study_dir: Path) -> list[dict]:
 # ── Output ─────────────────────────────────────────────────────────────────────
 
 CSV_COLUMNS = [
-    "program", "condition", "round", "tuning_id",
+    "program", "condition", "round", "refinement_id",
     "cascade_scope", "output_locality", "graph_locality", "touched_locality",
     "prompt_tokens", "completion_tokens", "total_tokens", "llm_calls", "latency_ms",
     "token_ratio_vs_init", "latency_ratio_vs_init",

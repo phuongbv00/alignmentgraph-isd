@@ -1,0 +1,77 @@
+\section{Experiments}
+\label{sec:experiments}
+
+\subsection{Experimental Setup}
+\label{sec:setup}
+
+\paragraph{RQ1: single-pass benchmark.}
+We use ISD-Agent-Bench~\cite{isdagentbench}: synthetic scenarios spanning a Context~$\times$~ISD matrix, an evaluator that scores a 100-point ADDIE rubric (33 sub-steps $\rightarrow$ 13 items $\rightarrow$ 5 phases) plus a trajectory score, and multi-judge grading (GPT + Gemini) to reduce self-preference bias. AlignmentGraph-ISD is integrated as a seventh agent under the same input/output schema and compared with six agents: Baseline (single prompt), ReAct-ADDIE, ADDIE-Agent, Dick-Carey-Agent, RPISD-Agent, and EduPlanner. Two runs are executed on the same \texttt{test\_90} split---90 of 1{,}202 test scenarios, stratified over 10 domains $\times$ 3 difficulty levels $\times$ 3 scenarios per cell (seed 42)---with identical configurations except the agent model, covering two distinct points on the model-scale spectrum: \textbf{DeepSeek-v4-flash} (LLM) and \textbf{Qwen3.5-9B} (9B SLM); the judges are held fixed across both runs (GPT-4o-mini + Gemini-2.5-Flash-Lite). For fairness to the baselines, RQ1 runs the harness in its benchmark configuration: elicitation is not applicable (scenarios supply a fixed brief) and external-corpus retrieval is disabled (no agent accesses an external corpus). Each run has a manifest (model, judges, prompt versions, commit, seed, decoding configuration) for reproducibility.
+
+\paragraph{RQ2: multi-session refinement experiment.}
+The three case-study programs and eight refinement requests (\cref{sec:case-study}) run under the four conditions of \cref{tab:rq2-conditions}. All four conditions receive the same information (the previous design plus the refinement request); the only difference is the mechanism. Unlike RQ1, the two harness conditions here run the full architecture, including agentic retrieval over the IT/software-engineering corpora; elicitation is demonstrated in the case study (\cref{sec:case-study}, results in \cref{sec:case-study-results}).
+
+\begin{table*}[t]
+  \caption{The four control conditions of the RQ2 experiment.}
+  \label{tab:rq2-conditions}
+  \begin{tabular}{@{}p{0.22\textwidth}p{0.19\textwidth}p{0.51\textwidth}@{}}
+    \toprule
+    Condition & Agent & Refinement mechanism \\
+    \midrule
+    \texttt{harness\_targeted\_refine} & AlignmentGraph-ISD & refinement request $\rightarrow$ impact-policy cascade $\rightarrow$ targeted repair (proposed) \\
+    \texttt{harness\_full\_regen} & AlignmentGraph-ISD & same information, all nodes invalidated $\rightarrow$ full regeneration (isolates the scoping mechanism) \\
+    \texttt{react\_full\_regen} & ReAct-ADDIE (strongest RQ1 baseline) & full re-run from the updated scenario --- horn (1) of the dilemma \\
+    \texttt{react\_targeted\_refine} & ReAct-ADDIE + \texttt{refine} endpoint & prompt with old scenario + old output + change request, no alignment control --- horn (2) of the dilemma \\
+    \bottomrule
+  \end{tabular}
+\end{table*}
+
+Four \emph{process metrics} are measured with shared output-level tooling so they compare across agents: (1)~\emph{cascade scope}---the fraction of nodes marked as affected (meaningful for the two harness conditions); (2)~\emph{edit locality}---the fraction of ADDIE output subsections that change between consecutive rounds, measured by content hashing (all conditions); (3)~\emph{cost per refinement round}---tokens and latency, absolute and relative to the init session of the same chain; and (4)~\emph{alignment preservation}---the evaluator's alignment rubric item (D1) and the ADDIE score before and after each round, graded by the same judges for all four conditions; the two harness conditions additionally report internal audit coverage (\textsl{measures}/\textsl{supports}/\textsl{evaluates}) as an appendix. The model is the same SLM as in RQ1 (Qwen3.5-9B). Every session records a trajectory and a manifest.
+
+\subsection{RQ1 Results}
+\label{sec:rq1-results}
+
+\Cref{tab:rq1-results} summarizes the two-judge mean scores of the seven agents on \texttt{test\_90} for both model runs.
+
+\begin{table*}[t]
+  \caption{ISD-Agent-Bench results on \texttt{test\_90} (two-judge means; Total = composite, ADDIE = artifact rubric, Traj.\ = trajectory; \textbf{bold} = best in column).}
+  \label{tab:rq1-results}
+  \begin{tabular}{@{}lrrrrrr@{}}
+    \toprule
+    & \multicolumn{3}{c}{DeepSeek-v4-flash (LLM)} & \multicolumn{3}{c}{Qwen3.5-9B (SLM)} \\
+    \cmidrule(lr){2-4} \cmidrule(lr){5-7}
+    Agent & Total & ADDIE & Traj. & Total & ADDIE & Traj. \\
+    \midrule
+    Baseline          & 82.15 & 83.93 & 77.99 & 78.47 & 75.02 & 86.52 \\
+    EduPlanner        & 77.49 & 76.45 & 79.92 & 54.51 & 42.03 & 83.65 \\
+    ADDIE-Agent       & 80.16 & 79.44 & 81.83 & 80.17 & 76.63 & 88.43 \\
+    RPISD-Agent       & 79.09 & 79.83 & 77.38 & 78.77 & 77.16 & 82.54 \\
+    Dick-Carey-Agent  & 82.70 & 82.41 & 83.37 & 82.03 & 79.56 & 87.80 \\
+    ReAct-ADDIE       & 81.25 & 78.67 & \textbf{87.26} & 79.14 & 73.77 & \textbf{91.66} \\
+    \textbf{AlignmentGraph-ISD} (ours) & \textbf{84.07} & \textbf{85.29} & 81.20 & \textbf{84.65} & \textbf{84.02} & 86.11 \\
+    \bottomrule
+  \end{tabular}
+\end{table*}
+
+\paragraph{Overall position.}
+AlignmentGraph-ISD leads both the composite and the ADDIE score in both runs: 84.07 with DeepSeek (runner-up Dick-Carey-Agent, 82.70) and 84.65 with Qwen (runner-up Dick-Carey-Agent, 82.03). On Qwen it leads under both judges (GPT 85.05, Gemini 84.25); on DeepSeek it leads under the GPT judge (86.62), while the Gemini judge ranks ReAct-ADDIE higher by 0.30 points. It also leads at all three difficulty levels in both runs and achieves a 100\% success rate in both (DeepSeek run: Dick-Carey-Agent 88.9\%, EduPlanner 94.4\%, Baseline 97.8\%; Qwen run: Baseline 98.9\%, EduPlanner 97.8\%).
+
+\paragraph{Statistical tests.}
+Wilcoxon signed-rank tests paired by scenario on the composite score (pairs with failed runs excluded), with Holm correction over the six comparisons per run, show AlignmentGraph-ISD above all six baselines in both runs with $p_{\mathrm{Holm}} < 0.01$ for all 12 comparisons. Mean paired differences (bootstrap 95\% CIs excluding zero in every comparison) range from $+1.53$ (vs.\ Dick-Carey-Agent) to $+6.49$ (vs.\ EduPlanner) on DeepSeek, and from $+2.62$ (Dick-Carey-Agent) to $+6.16$ (Baseline) on Qwen, apart from EduPlanner's collapse on the SLM ($+30.11$).
+
+\paragraph{SLM effect.}
+Moving from the LLM to the SLM leaves the harness essentially unchanged (84.07 $\rightarrow$ 84.65), while the single-prompt Baseline loses 3.68 points (82.15 $\rightarrow$ 78.47) and EduPlanner loses 22.98; the paired margin over Baseline accordingly widens from $+1.86$ to $+6.16$. A per-phase decomposition shows where the difference arises: on Qwen, Baseline degrades most in the long-form content phases---Development 66.2 and Implementation 61.3---while the harness holds 85.1 and 82.2, leading four of five phases (Design, Development, Implementation, Evaluation; Analysis trails RPISD-Agent by 0.9). This pattern is consistent with the harness-over-model argument~\cite{cho2026harness}: verification--repair and graph-driven coordination directly compensate for missing model capability.
+
+\paragraph{Consistent weakness.}
+The trajectory score is below ReAct-ADDIE in both runs (81.20 vs.\ 87.26 on DeepSeek; 86.11 vs.\ 91.66 on Qwen); we return to this in \cref{sec:discussion}.
+
+\subsection{RQ2 Results}
+\label{sec:rq2-results}
+
+[RQ2 RESULTS PENDING --- table of 4 conditions $\times$ 4 metrics $\times$ 8 rounds. Mechanism-level expectation validated in a dress rehearsal: cascade scope of \texttt{harness\_targeted\_refine} stratifies from 0.17 to 1.0 by target node type while both full-regeneration conditions stay $\approx$ 1.0; the narrowest round takes 2 LLM calls versus 6 for full regeneration.]
+
+Mechanism-level evidence is already available from RQ1: cascade-scoped revision (verifier detection $\rightarrow$ scoping $\rightarrow$ regeneration) operated inside every benchmark run, is recorded in the trajectories, and is reflected in the repair success rate and the 100\% success rate in both \texttt{test\_90} runs.
+
+\subsection{Case-Study Results}
+\label{sec:case-study-results}
+
+Qualitative demonstration of the full workflow described in \cref{sec:case-study} (elicitation $\rightarrow$ init $\rightarrow$ refinement sessions). [TRANSCRIPT PENDING --- one representative session chain to be selected after the production runs.]

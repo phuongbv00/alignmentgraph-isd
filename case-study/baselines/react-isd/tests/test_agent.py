@@ -1,4 +1,4 @@
-"""Network-free tests: run/adjust contract, token accounting, unchanged short-circuit."""
+"""Network-free tests: run/refine contract, token accounting, unchanged short-circuit."""
 from __future__ import annotations
 
 import json
@@ -28,8 +28,8 @@ SECTION = {"placeholder": "content"}
 class FakeInner:
     """Returns canned JSON with usage metadata; behavior keyed off the prompt."""
 
-    def __init__(self, adjust_changes_design: bool = False) -> None:
-        self.adjust_changes_design = adjust_changes_design
+    def __init__(self, refine_changes_design: bool = False) -> None:
+        self.refine_changes_design = refine_changes_design
         self.prompts: list[str] = []
 
     def invoke(self, prompt):
@@ -40,7 +40,7 @@ class FakeInner:
 
         r = R()
         if "EDIT REQUEST" in prompt:
-            if self.adjust_changes_design and "D-11" in prompt:
+            if self.refine_changes_design and "D-11" in prompt:
                 r.content = json.dumps({"learning_objectives": [{"id": "LO-06"}]})
             else:
                 r.content = json.dumps({"unchanged": True})
@@ -76,25 +76,25 @@ def test_run_contract_and_token_accounting(make_agent):
     assert meta["fallbacks"] == []
 
 
-def test_adjust_unchanged_passthrough(make_agent):
+def test_refine_unchanged_passthrough(make_agent):
     agent, fake = make_agent()
     previous = {p: {"old": p} for p in PHASES}
-    result = agent.adjust(SCENARIO, previous, "No real change needed")
+    result = agent.refine(SCENARIO, previous, "No real change needed")
 
     assert result["addie_output"] == previous
     meta = result["metadata"]
-    assert meta["mode"] == "adjust"
+    assert meta["mode"] == "refine"
     assert meta["unchanged_phases"] == sorted(PHASES)
     assert meta["llm_calls"] == 5  # every phase still pays its (cheap) check call
-    # Each adjust prompt embeds the previous section and the edit request.
+    # Each refine prompt embeds the previous section and the edit request.
     assert all("EDIT REQUEST" in p for p in fake.prompts)
     assert any('"old": "design"' in p for p in fake.prompts)
 
 
-def test_adjust_changes_only_requested_phase(make_agent):
-    agent, _ = make_agent(adjust_changes_design=True)
+def test_refine_changes_only_requested_phase(make_agent):
+    agent, _ = make_agent(refine_changes_design=True)
     previous = {p: {"old": p} for p in PHASES}
-    result = agent.adjust(SCENARIO, previous, "Add objective LO-06")
+    result = agent.refine(SCENARIO, previous, "Add objective LO-06")
 
     assert result["addie_output"]["design"] == {"learning_objectives": [{"id": "LO-06"}]}
     for phase in PHASES:
