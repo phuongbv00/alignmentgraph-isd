@@ -71,6 +71,24 @@ def _close_unbalanced_json(s: str) -> str:
     return s + "".join(reversed(stack))
 
 
+def _json_error_hint(raw: str) -> str:
+    """A short human hint about why ``raw`` is not parseable JSON, for a retry
+    prompt. Empty string if it actually parses or is empty."""
+    if not raw:
+        return "the response was empty"
+    cleaned = re.sub(r"```(?:json)?[ \t]*\n?", "", raw)
+    cleaned = re.sub(r"\n?```[ \t]*$", "", cleaned, flags=re.MULTILINE).strip()
+    start = cleaned.find("{")
+    if start == -1:
+        return "no JSON object was found"
+    try:
+        json.loads(cleaned[start:])
+        return ""
+    except json.JSONDecodeError as e:
+        near = cleaned[start:][max(0, e.pos - 25): e.pos + 15].replace("\n", " ")
+        return f"{e.msg} near ...{near}..."
+
+
 def parse_json_response(raw: str, *, warn: bool = True) -> dict:
     """Robustly parse a JSON dict from an LLM response.
 
@@ -94,6 +112,18 @@ def parse_json_response(raw: str, *, warn: bool = True) -> dict:
             return result
     except json.JSONDecodeError as e:
         last_err = e
+
+    # Try 1b: decode the first complete JSON object and ignore trailing garbage
+    # ("Extra data" — the model emitted valid JSON then kept talking, or closed
+    # the root object early). Also skips any leading prose before the first '{'.
+    brace = cleaned.find("{")
+    if brace != -1:
+        try:
+            obj, _end = json.JSONDecoder().raw_decode(cleaned[brace:])
+            if isinstance(obj, dict):
+                return obj
+        except json.JSONDecodeError as e:
+            last_err = e
 
     # Try 2: extract outermost {} block
     match = re.search(r"\{.*\}", cleaned, re.DOTALL)
@@ -382,11 +412,12 @@ class BaseISDAgent(ABC):
             )
         return impact
 
-    def _call_llm(self, messages: list[dict], max_retries: int = 1) -> str:
+    def _call_llm(self, messages: list[dict], max_retries: int = 2) -> str:
         """Call LLM with automatic retry on empty/invalid response.
 
-        max_retries=1 means: try once normally, if response is empty or produces
-        no parseable JSON, send a correction turn and try once more.
+        max_retries=N means: try once normally, then up to N correction turns if
+        the response is empty or produces no parseable JSON. Generation calls use
+        the default; repair calls that have deterministic fallbacks pass 0.
         """
         try:
             if self.config.llm_factory is None:
@@ -413,13 +444,18 @@ class BaseISDAgent(ABC):
             getattr(usage, "output_tokens", 0) if usage else 0,
         )
         if max_retries > 0 and not parse_json_response(content, warn=False):
-            # Output was not valid JSON — send a correction turn
-            self.trajectory.log_step(type(self).__name__, "retry", "empty/invalid JSON", content[:100])
+            # Output was not valid JSON — send a targeted correction turn quoting
+            # the exact parse error so the model can fix that specific spot.
+            hint = _json_error_hint(content)
+            self.trajectory.log_step(type(self).__name__, "retry", hint or "empty/invalid JSON", content[:100])
             correction_messages = messages + [
                 {"role": "assistant", "content": content},
                 {"role": "user", "content": (
-                    "Your previous response was not valid JSON or was empty. "
-                    "Return ONLY the JSON object with no other text, no markdown fences."
+                    "Your previous response was not valid JSON"
+                    + (f" ({hint})" if hint else "")
+                    + ". Return the COMPLETE corrected object as a SINGLE valid JSON value: "
+                    "every '{' '[' must be closed, no trailing commas, no text or extra "
+                    "objects before or after it, no markdown fences."
                 )},
             ]
             return self._invoke_with_retry(llm, correction_messages, max_retries - 1)
