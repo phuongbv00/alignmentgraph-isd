@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .config import HarnessRunConfig
+from ..config import HarnessRunConfig
 from .graph import AlignmentGraph
 from .schema import DesignBrief
 

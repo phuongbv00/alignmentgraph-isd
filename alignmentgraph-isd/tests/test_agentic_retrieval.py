@@ -4,8 +4,8 @@ from __future__ import annotations
 import json
 
 from alignmentgraph_isd import DesignBrief, HarnessRunConfig, run_design_brief
-from alignmentgraph_isd.rag.agent import RetrievalAgent, RetrievalTool
-from alignmentgraph_isd.rag.sandbox import RetrievalSandbox
+from alignmentgraph_isd.core.rag.agent import RetrievalAgent, RetrievalTool
+from alignmentgraph_isd.core.rag.sandbox import RetrievalSandbox
 
 from conftest import FakeChatModel, _payload_for_system, load_brief
 

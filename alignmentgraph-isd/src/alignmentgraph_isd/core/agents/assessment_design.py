@@ -37,6 +37,8 @@ Output ONLY the JSON object, no markdown, no explanation.\
 
 
 class AssessmentDesignAgent(BaseISDAgent):
+    OWNED_VIOLATION_TYPES = frozenset({"coverage", "rubric_consistency", "bloom_mismatch"})
+
     def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
         prompt = _format_design_brief(design_brief)
         # Graph-context retrieval (core, not RAG): inject prior G_t nodes into this prompt
@@ -92,16 +94,197 @@ class AssessmentDesignAgent(BaseISDAgent):
 
     def repair(self, violations: list) -> list:
         remaining = []
+        item_violations = []
         for violation in violations:
-            is_owner = (
-                getattr(violation, "violation_type", "") == "coverage"
-                or getattr(violation, "edge_type", "") == EdgeType.MEASURES
-            )
-            if not is_owner:
+            vtype = getattr(violation, "violation_type", "")
+            if vtype in ("rubric_consistency", "bloom_mismatch"):
+                item_violations.append(violation)
+            elif vtype == "coverage" or getattr(violation, "edge_type", "") == EdgeType.MEASURES:
+                self._repair_assessment_coverage(violation)
+            else:
                 remaining.append(violation)
-                continue
-            self._repair_assessment_coverage(violation)
+        if item_violations:
+            self._repair_assessment_items(item_violations)
         return remaining
+
+    _OBSERVABLE_RUBRIC = (
+        "Analytic rubric, 4 levels (0-3) per criterion: task completed with at least 80% "
+        "accuracy; target concepts applied correctly; justification cites observable evidence."
+    )
+
+    def _repair_assessment_items(self, violations: list) -> None:
+        """Resolve rubric_consistency / bloom_mismatch findings on assessment items.
+
+        One LLM call revises the flagged items; a deterministic fallback then
+        resolves anything the model left unfixed (dangling references, missing
+        or vague criteria, recognition-only coverage of higher-order LOs), so
+        the verify-repair loop always converges.
+        """
+        node_id = self.graph.section_id(NodeType.ASSESSMENT)
+        assessment = self.graph.get_node(node_id)
+        if not assessment:
+            return
+        from .pedagogical_verifier import (
+            _ITEM_TYPE_CAPABILITY,
+            _OBSERVABLE_TERMS,
+            _RECALL_CAPABILITY_CEILING,
+            _VAGUE_RUBRIC_TERMS,
+        )
+
+        tools = [
+            dict(item) if isinstance(item, dict) else item
+            for item in assessment["data"].get("assessment_tools", []) or []
+        ]
+        objective_node = self.graph.get_node(self.graph.section_id(NodeType.OBJECTIVE))
+        lo_map = {}
+        if objective_node:
+            lo_map = {
+                str(lo["id"]): lo
+                for lo in objective_node["data"].get("learning_objectives", []) or []
+                if isinstance(lo, dict) and lo.get("id")
+            }
+
+        flagged_item_ids = {
+            str(v.metadata.get("item_id"))
+            for v in violations if v.metadata.get("item_id")
+        }
+        for v in violations:
+            flagged_item_ids.update(str(i) for i in v.metadata.get("item_ids", []) or [])
+
+        # LLM pass: revise the flagged items in place.
+        revised = self._llm_item_revision(violations, tools, flagged_item_ids, lo_map)
+        for rev in revised.get("assessment_tools", []) or []:
+            if not isinstance(rev, dict) or str(rev.get("item_id")) not in flagged_item_ids:
+                continue
+            item = next((t for t in tools if isinstance(t, dict) and str(t.get("item_id")) == str(rev["item_id"])), None)
+            if not item:
+                continue
+            for field in ("type", "question", "scoring_criteria"):
+                if rev.get(field):
+                    item[field] = rev[field]
+            if rev.get("aligned_objective") and (not lo_map or str(rev["aligned_objective"]) in lo_map):
+                item["aligned_objective"] = str(rev["aligned_objective"])
+
+        # Deterministic fallback, violation by violation.
+        def _criteria_ok(item: dict) -> bool:
+            criteria = str(item.get("scoring_criteria") or item.get("scoring_rubric") or "").strip()
+            lowered = criteria.lower()
+            if not criteria:
+                return False
+            if str(item.get("type", "")).lower() in ("performance_task", "performance", "project", "rubric"):
+                return len(criteria) >= 40 and not (
+                    any(term in lowered for term in _VAGUE_RUBRIC_TERMS)
+                    and not any(term in lowered for term in _OBSERVABLE_TERMS)
+                )
+            return True
+
+        lo_ids = list(lo_map)
+        for violation in violations:
+            md = violation.metadata
+            if violation.violation_type == "rubric_consistency":
+                item = next(
+                    (t for t in tools if isinstance(t, dict) and str(t.get("item_id")) == str(md.get("item_id"))),
+                    None,
+                )
+                if not item:
+                    continue
+                aligned = str(item.get("aligned_objective") or "")
+                if lo_ids and aligned not in lo_map:
+                    question = str(item.get("question", "")).lower()
+                    item["aligned_objective"] = next(
+                        (lo_id for lo_id in lo_ids if lo_id.lower() in question), lo_ids[0]
+                    )
+                if not _criteria_ok(item):
+                    item["scoring_criteria"] = self._OBSERVABLE_RUBRIC
+                item["repaired"] = True
+            elif violation.violation_type == "bloom_mismatch":
+                lo_id = str(md.get("lo_id") or "")
+                if not lo_id:
+                    continue
+                capability = max(
+                    (
+                        _ITEM_TYPE_CAPABILITY.get(str(t.get("type", "")).lower(), 6)
+                        for t in tools
+                        if isinstance(t, dict) and str(t.get("aligned_objective")) == lo_id
+                    ),
+                    default=0,
+                )
+                if capability > _RECALL_CAPABILITY_CEILING:
+                    continue
+                statement = str(lo_map.get(lo_id, {}).get("statement", ""))
+                tools.append({
+                    "item_id": f"AT-P-{lo_id}",
+                    "type": "performance_task",
+                    "question": f"Perform a realistic task that demonstrates {lo_id}: {statement}",
+                    "aligned_objective": lo_id,
+                    "scoring_criteria": self._OBSERVABLE_RUBRIC,
+                    "difficulty": "hard",
+                    "repaired": True,
+                })
+                rationale = f"AssessmentDesignAgent repair added a performance item for {lo_id}."
+                self._add_element_edge(EdgeType.MEASURES, node_id, lo_id, rationale=rationale)
+
+        self.graph.update_node(node_id, {"assessment_tools": tools, "repaired": True})
+        self.graph.clear_stale(node_id)
+        for violation in violations:
+            self.graph.mark_repaired(node_id, violation.message)
+        impact = self._invalidate_impacted(
+            node_id,
+            "Assessment item repair changed instruments; dependent practice and evaluation plans must be refreshed.",
+            action="repair_cascade",
+            changed_fields=["assessment_tools"],
+            violation_type=violations[0].violation_type,
+        )
+        self.trajectory.log_node_edit("update", node_id, NodeType.ASSESSMENT)
+        self.trajectory.log_step(
+            "AssessmentDesignAgent",
+            "repair_assessment_items",
+            "; ".join(v.message for v in violations)[:200],
+            (
+                f"Revised {len(flagged_item_ids)} flagged item(s); "
+                f"invalidated nodes={len(impact['nodes'])} edges={len(impact['edges'])}."
+            ),
+        )
+
+    def _llm_item_revision(self, violations: list, tools: list, flagged_item_ids: set, lo_map: dict) -> dict:
+        import json
+
+        findings = [
+            {
+                "type": v.violation_type,
+                "item_id": v.metadata.get("item_id"),
+                "lo_id": v.metadata.get("lo_id"),
+                "message": v.message,
+                "hint": v.repair_hint,
+            }
+            for v in violations
+        ]
+        flagged_items = [
+            t for t in tools if isinstance(t, dict) and str(t.get("item_id")) in flagged_item_ids
+        ]
+        objectives = [
+            {"id": lo_id, "level": lo.get("level"), "statement": lo.get("statement")}
+            for lo_id, lo in lo_map.items()
+        ]
+        system = (
+            "You are an expert instructional designer revising assessment items to resolve "
+            "verifier findings. Return ONLY valid JSON with this schema:\n"
+            '{"assessment_tools": [{"item_id": "<existing id>", "type": "<type>", '
+            '"question": "<question>", "aligned_objective": "<LO id>", "scoring_criteria": "<criteria>"}]}\n'
+            "Rules: keep item ids; point every aligned_objective at an existing LO id; write "
+            "observable, scorable criteria (point scales, thresholds, behavior anchors); use a "
+            "constructed-response or performance format when the finding demands a higher-order "
+            "format. Include only the revised items."
+        )
+        user = json.dumps(
+            {"findings": findings, "flagged_items": flagged_items, "objectives": objectives},
+            ensure_ascii=False,
+        )
+        response = self._call_llm(
+            [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            max_retries=0,
+        )
+        return parse_json_response(response, warn=False) or {}
 
     def _ensure_assessment_coverage(self, parsed: dict, objectives: list) -> None:
         tools = parsed.setdefault("assessment_tools", [])

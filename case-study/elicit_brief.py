@@ -18,7 +18,7 @@ from pathlib import Path
 CASE_STUDY_DIR = Path(__file__).resolve().parent
 
 from alignmentgraph_isd import HarnessRunConfig, llm_factory_from_env
-from alignmentgraph_isd.elicitation import BriefElicitationAgent
+from alignmentgraph_isd.core.elicitation import BriefElicitationAgent
 
 
 def main(argv: list[str] | None = None) -> int:

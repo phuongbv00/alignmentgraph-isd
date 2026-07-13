@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from alignmentgraph_isd import run_design_brief
-from alignmentgraph_isd.trajectory import TrajectoryLogger
+from alignmentgraph_isd.core.trajectory import TrajectoryLogger
 
 from conftest import load_brief
 
@@ -30,9 +30,9 @@ def test_metadata_exposes_repair_metrics(fake_config):
 
 def test_repair_logs_structured_repair_and_cascade_events():
     from alignmentgraph_isd import HarnessRunConfig
-    from alignmentgraph_isd.agents.assessment_design import AssessmentDesignAgent
-    from alignmentgraph_isd.agents.pedagogical_verifier import VerifierViolation
-    from alignmentgraph_isd.graph import AlignmentGraph
+    from alignmentgraph_isd.core.agents.assessment_design import AssessmentDesignAgent
+    from alignmentgraph_isd.core.agents.pedagogical_verifier import VerifierViolation
+    from alignmentgraph_isd.core.graph import AlignmentGraph
 
     graph = AlignmentGraph()
     graph.add_node("objective", "objective_0", {"learning_objectives": [{"id": "LO-01", "statement": "Apply X"}]})

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from alignmentgraph_isd import run_design_brief
-from alignmentgraph_isd.graph import AlignmentGraph
+from alignmentgraph_isd.core.graph import AlignmentGraph
 
 from conftest import load_brief
 

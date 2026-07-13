@@ -22,9 +22,9 @@ def _objectives() -> list[dict]:
     return [
         {"id": "LO-01", "level": "Remember", "statement": "List the four pillars of OOP.", "bloom_verb": "list", "measurable": True},
         {"id": "LO-02", "level": "Understand", "statement": "Explain encapsulation with an example.", "bloom_verb": "explain", "measurable": True},
-        {"id": "LO-03", "level": "Apply", "statement": "Apply inheritance to a domain model.", "bloom_verb": "apply", "measurable": True},
-        {"id": "LO-04", "level": "Analyze", "statement": "Analyze a class design for coupling.", "bloom_verb": "analyze", "measurable": True},
-        {"id": "LO-05", "level": "Evaluate", "statement": "Evaluate composition versus inheritance.", "bloom_verb": "evaluate", "measurable": True},
+        {"id": "LO-03", "level": "Apply", "statement": "Apply inheritance to a given domain model with at least 80% of unit tests passing.", "bloom_verb": "apply", "measurable": True},
+        {"id": "LO-04", "level": "Analyze", "statement": "Analyze a provided class design and identify at least three coupling issues.", "bloom_verb": "analyze", "measurable": True},
+        {"id": "LO-05", "level": "Evaluate", "statement": "Evaluate composition versus inheritance for a given scenario, justifying the choice against two criteria.", "bloom_verb": "evaluate", "measurable": True},
     ]
 
 

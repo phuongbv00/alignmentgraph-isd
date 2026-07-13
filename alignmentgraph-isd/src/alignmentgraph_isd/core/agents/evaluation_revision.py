@@ -58,6 +58,8 @@ Output ONLY the JSON object, no markdown, no explanation.\
 
 
 class EvaluationRevisionAgent(BaseISDAgent):
+    OWNED_VIOLATION_TYPES = frozenset({"evaluation_alignment", "evaluation_quality"})
+
     def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
         prompt = _format_design_brief(design_brief)
         # Graph-context retrieval (core, not RAG): inject prior G_t nodes into this prompt
@@ -103,11 +105,88 @@ class EvaluationRevisionAgent(BaseISDAgent):
     def repair(self, violations: list) -> list:
         remaining = []
         for violation in violations:
-            if getattr(violation, "edge_type", "") != EdgeType.EVALUATES:
+            if getattr(violation, "violation_type", "") == "evaluation_quality":
+                self._repair_formative_methods(violation)
+            elif getattr(violation, "edge_type", "") == EdgeType.EVALUATES:
+                self._repair_evaluation_alignment(violation)
+            else:
                 remaining.append(violation)
-                continue
-            self._repair_evaluation_alignment(violation)
         return remaining
+
+    _FALLBACK_METHODS = [
+        "Structured observation during activities using a facilitation checklist",
+        "Exit tickets after each module scored against the objective criteria",
+        "Rubric-scored formative checkpoints with instructor feedback",
+    ]
+
+    def _repair_formative_methods(self, violation) -> None:
+        """Fill in concrete formative data-collection methods (evaluation_quality).
+
+        One LLM call drafts context-specific methods; the deterministic
+        fallback guarantees the finding is resolved either way.
+        """
+        node_id = self.graph.section_id(NodeType.EVALUATION)
+        node = self.graph.get_node(node_id)
+        if not node:
+            return
+        data = node["data"]
+        formative = data.get("formative")
+        if not isinstance(formative, dict):
+            formative = {}
+            data["formative"] = formative
+
+        methods = self._llm_formative_methods(data)
+        if not methods:
+            methods = list(self._FALLBACK_METHODS)
+
+        data_collection = formative.get("data_collection")
+        if isinstance(data_collection, dict):
+            data_collection["methods"] = methods
+        else:
+            formative["methods"] = methods
+
+        self.graph.update_node(node_id, {"formative": formative, "repaired": True})
+        self.graph.clear_stale(node_id)
+        self.graph.mark_repaired(node_id, violation.message)
+        impact = self._invalidate_impacted(
+            node_id,
+            "Evaluation repair added formative data-collection methods.",
+            action="repair_cascade",
+            changed_fields=["formative"],
+            violation_type="evaluation_quality",
+        )
+        self.trajectory.log_node_edit("update", node_id, NodeType.EVALUATION)
+        self.trajectory.log_step(
+            "EvaluationRevisionAgent",
+            "repair_formative_methods",
+            violation.message,
+            (
+                f"Set {len(methods)} formative data-collection method(s); "
+                f"invalidated nodes={len(impact['nodes'])} edges={len(impact['edges'])}."
+            ),
+        )
+
+    def _llm_formative_methods(self, evaluation_data: dict) -> list[str]:
+        import json
+
+        system = (
+            "You are an expert instructional designer fixing a formative evaluation plan that "
+            "names no data-collection method. Return ONLY valid JSON: "
+            '{"methods": ["<concrete method 1>", "<concrete method 2>", "<concrete method 3>"]}\n'
+            "Each method must name an instrument and a cadence (e.g. 'exit tickets after each "
+            "module'), consistent with the evaluation plan provided."
+        )
+        user = json.dumps({"evaluation_plan": evaluation_data}, ensure_ascii=False)[:4000]
+        response = self._call_llm(
+            [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            max_retries=0,
+        )
+        parsed = parse_json_response(response, warn=False) or {}
+        methods = parsed.get("methods")
+        if isinstance(methods, list):
+            cleaned = [str(m).strip() for m in methods if str(m).strip()]
+            return cleaned[:5]
+        return []
 
     def _repair_evaluation_alignment(self, violation) -> None:
         objective = self.graph.get_node(violation.node_id)

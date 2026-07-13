@@ -6,7 +6,7 @@ import json
 import pytest
 
 from alignmentgraph_isd import HarnessRunConfig
-from alignmentgraph_isd.elicitation import BriefElicitationAgent
+from alignmentgraph_isd.core.elicitation import BriefElicitationAgent
 
 
 class _ScriptedModel:

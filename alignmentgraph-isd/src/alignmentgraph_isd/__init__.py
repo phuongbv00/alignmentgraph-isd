@@ -1,10 +1,10 @@
-from .orchestrator import MetaAgent
-from .graph import AlignmentGraph
+from .core.runner import MetaAgent
+from .core.graph import AlignmentGraph
 from .config import AblationConfig, HarnessRunConfig, MemoryConfig
-from .memory import HarnessMemory
-from .schema import DesignBrief, DesignBriefContext, DesignBriefConstraints
-from .rag.agent import RetrievalTool, RetrievalAgent, RetrievalAgentRegistry
-from .llm import llm_factory_from_env
+from .core.memory import HarnessMemory
+from .core.schema import DesignBrief, DesignBriefContext, DesignBriefConstraints
+from .core.rag.agent import RetrievalTool, RetrievalAgent, RetrievalAgentRegistry
+from .core.llm import llm_factory_from_env
 
 
 def run_design_brief(design_brief: DesignBrief, config: HarnessRunConfig | None = None) -> dict:

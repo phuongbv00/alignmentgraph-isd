@@ -17,7 +17,7 @@ PROGRAM_ID = "refinement-test"
 
 
 def _config(tmp_path: Path, fake_llm_factory) -> HarnessRunConfig:
-    config = HarnessRunConfig.from_ablation("full", memory={
+    config = HarnessRunConfig.from_ablation("dynamic_full", memory={
         "enabled": True,
         "persist": True,
         "root_dir": str(tmp_path),

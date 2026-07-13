@@ -24,17 +24,27 @@ class AblationConfig(BaseModel):
     dynamic_graph: bool = True
 
     PRESETS: ClassVar[Dict[str, dict]] = {
-        # Benchmark presets: RAG is always off (no external corpus is registered
-        # for the benchmark; graph/memory retrieval stays on regardless).
-        "full": dict(use_rag=False, use_verifier=True, use_repair=True, multi_agent=True, dynamic_graph=True),
-        # Explicit benchmark default; identical to ``full`` since the benchmark runs no_rag.
-        "no_rag": dict(use_rag=False, use_verifier=True, use_repair=True, multi_agent=True, dynamic_graph=True),
+        # ── Default harness: fixed ADDIE order + multi-agent decomposition, with
+        # verification/repair as tools each specialist runs within its own turn
+        # (dynamic_graph OFF). RAG is always off on the benchmark. ──────────────
+        "full": dict(use_rag=False, use_verifier=True, use_repair=True, multi_agent=True, dynamic_graph=False),
+        "no_rag": dict(use_rag=False, use_verifier=True, use_repair=True, multi_agent=True, dynamic_graph=False),
+        # ── Ablation arms of the default harness (each removes ONE mechanism) ───
+        # full - multi-agent decomposition (single agent generates AND self-repairs):
+        "wo_ma": dict(use_rag=False, use_verifier=True, use_repair=True, multi_agent=False, dynamic_graph=False),
+        # full - per-agent quality-control tools (verify + repair off):
+        "wo_qc": dict(use_rag=False, use_verifier=False, use_repair=False, multi_agent=True, dynamic_graph=False),
+        # ── Dynamic-planning harness (kept for the multi-session refinement work;
+        # drives a global planner-based verify-repair loop, not per-agent QC). ──
+        "dynamic_full": dict(use_rag=False, use_verifier=True, use_repair=True, multi_agent=True, dynamic_graph=True),
+        # Case-study/app preset: enables RAG (requires registered RetrievalAgent instances).
+        "case_study": dict(use_rag=True, use_verifier=True, use_repair=True, multi_agent=True, dynamic_graph=True),
+        # ── Legacy presets (pre per-agent-QC refactor); retained for backward
+        # compatibility and contract tests. ────────────────────────────────────
         "no_verifier": dict(use_rag=False, use_verifier=False, use_repair=True, multi_agent=True, dynamic_graph=True),
         "no_repair": dict(use_rag=False, use_verifier=True, use_repair=False, multi_agent=True, dynamic_graph=True),
         "single_agent": dict(use_rag=False, use_verifier=True, use_repair=True, multi_agent=False, dynamic_graph=True),
         "linear_addie_only": dict(use_rag=False, use_verifier=False, use_repair=False, multi_agent=True, dynamic_graph=False),
-        # Case-study/app preset: enables RAG (requires registered RetrievalAgent instances).
-        "case_study": dict(use_rag=True, use_verifier=True, use_repair=True, multi_agent=True, dynamic_graph=True),
     }
 
     @classmethod
@@ -42,6 +52,18 @@ class AblationConfig(BaseModel):
         if key not in cls.PRESETS:
             raise ValueError(f"Unknown ablation key: {key!r}. Valid: {list(cls.PRESETS)}")
         return cls(**cls.PRESETS[key])
+
+    @property
+    def workflow_name(self) -> str:
+        """Map this config's flags to a workflow in the registry. The flags are a
+        thin shim over the arm-per-workflow design: the runner dispatches on this."""
+        if self.dynamic_graph and self.multi_agent:
+            return "dynamic"          # planner-driven (refinement / dynamic_full / case_study)
+        if not self.multi_agent:
+            return "wo_ma"            # single agent + self-repair
+        if not (self.use_verifier or self.use_repair):
+            return "wo_qc"            # multi-agent, fixed order, no quality control
+        return "full"                 # multi-agent, fixed order, per-agent QC
 
 
 class LLMConfig(BaseModel):

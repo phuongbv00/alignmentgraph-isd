@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re
 from ..graph import EdgeType, NodeType
 from ..schema import DesignBrief
 from dataclasses import dataclass, field
@@ -25,14 +26,58 @@ _OBSERVABLE_TERMS = (
 )
 _PLACEHOLDER_MARKERS = ("<", "tbd", "todo", "placeholder", "lorem ipsum", "n/a")
 
+_BLOOM_LEVEL_INDEX = {"remember": 1, "understand": 2, "apply": 3, "analyze": 4, "evaluate": 5, "create": 6}
+_VERB_LEVELS: dict[str, set[int]] = {}
+for _level, _verbs in _BLOOM_VERBS.items():
+    for _v in _verbs:
+        _VERB_LEVELS.setdefault(_v, set()).add(_BLOOM_LEVEL_INDEX[_level.lower()])
+
+# The highest Bloom level an assessment format can plausibly elicit. Unknown
+# formats default to 6 so only clearly recognition-bound formats can fire.
+_ITEM_TYPE_CAPABILITY = {
+    "true_false": 1,
+    "matching": 1,
+    "multiple_choice": 2,
+    "quiz": 2,
+    "short_answer": 4,
+}
+_RECALL_CAPABILITY_CEILING = 2
+
+# An objective statement is considered measurable when it states a degree
+# (criterion of acceptable performance) or a condition (Mager's ABCD model).
+_DEGREE_PATTERN = re.compile(
+    r"\d|%|percent|at least|at most|or more|or fewer|within|correctly|accurately"
+    r"|without (?:error|reference|assistance)"
+    r"|against (?:the )?(?:rubric|checklist|criteria)"
+    r"|\b(?:one|two|three|four|five|six|seven|eight|nine|ten)\b",
+    re.IGNORECASE,
+)
+_CONDITION_PATTERN = re.compile(
+    r"\bgiven\b|\busing\b|\bprovided\b|\bwith (?:an? )?examples?\b|\bwhen\b"
+    r"|\bin (?:a|an|the) (?:realistic|provided|given|new|team)?\s?(?:scenario|context|case|codebase|project|setting)\b",
+    re.IGNORECASE,
+)
+
+# Activity-format markers used to judge whether higher-order objectives get
+# active practice rather than passive exposure.
+_PASSIVE_ACTIVITY_MARKERS = (
+    "lecture", "presentation", "reading", "video", "overview", "introduction", "briefing", "webinar",
+)
+_ACTIVE_ACTIVITY_MARKERS = (
+    "lab", "exercise", "practice", "hands-on", "workshop", "project", "simulation",
+    "role-play", "roleplay", "case study", "build", "implement", "solve", "cod",
+    "review", "critique", "discussion", "pair", "debate", "apply",
+)
+
 
 @dataclass
 class VerifierViolation:
     node_id: str
     edge_type: str
     message: str
-    # coverage | bloom | activity_support | rubric_consistency | feasibility |
-    # actionability | evaluation_alignment
+    # coverage | bloom | measurability | activity_support | activity_engagement |
+    # rubric_consistency | bloom_mismatch | feasibility | actionability |
+    # evaluation_alignment | evaluation_quality
     violation_type: str = "coverage"
     severity: str = "error"                   # error | warning
     repair_hint: str = ""
@@ -44,16 +89,21 @@ class PedagogicalVerifierAgent(BaseISDAgent):
         pass  # not used directly; call verify()
 
     def verify(self, design_brief: DesignBrief | None = None) -> list[VerifierViolation]:
-        if not self.config.ablation.use_verifier:
-            return []
+        # No ablation gate: the verifier always runs when called. Whether it is
+        # called at all is a workflow decision (full/wo_ma wire QC nodes; wo_qc
+        # does not; the dynamic planner schedules it per its own policy).
         violations: list[VerifierViolation] = []
         violations.extend(self._check_assessment_coverage())
         violations.extend(self._check_bloom_verbs())
+        violations.extend(self._check_measurability())
         violations.extend(self._check_activity_support())
+        violations.extend(self._check_activity_engagement())
         violations.extend(self._check_rubric_consistency())
+        violations.extend(self._check_assessment_bloom_match())
         violations.extend(self._check_feasibility(design_brief))
         violations.extend(self._check_actionability())
         violations.extend(self._check_evaluation_alignment())
+        violations.extend(self._check_evaluation_quality())
         return violations
 
     # ── Check 1: every objective has ≥1 assessment measuring it ───────────────
@@ -134,6 +184,55 @@ class PedagogicalVerifierAgent(BaseISDAgent):
                             repair_hint=f"Use a standard Bloom's verb such as: {', '.join(list(_ALL_BLOOM_VERBS)[:8])}...",
                             metadata={"lo_id": lo_id, "verb": verb},
                         ))
+                else:
+                    # Verb is standard: it must be consistent with the declared level.
+                    level_idx = _BLOOM_LEVEL_INDEX.get(str(lo.get("level", "")).lower().strip())
+                    verb_levels = _VERB_LEVELS.get(verb, set())
+                    if level_idx and verb_levels and level_idx not in verb_levels:
+                        violations.append(VerifierViolation(
+                            node_id=obj["id"],
+                            edge_type="",
+                            violation_type="bloom",
+                            severity="warning",
+                            message=(
+                                f"LO '{lo_id}' declares level '{lo.get('level')}' but uses verb "
+                                f"'{verb}', which belongs to a different Bloom level."
+                            ),
+                            repair_hint="Align the verb with the declared level (or fix the level).",
+                            metadata={"lo_id": lo_id, "verb": verb, "level": lo.get("level")},
+                        ))
+        return violations
+
+    # ── Check 2b: objectives state a measurable degree or condition ──────────
+    def _check_measurability(self) -> list[VerifierViolation]:
+        """Mager-style measurability: a statement needs a criterion (degree) or
+        a performance condition, not just an observable verb."""
+        violations: list[VerifierViolation] = []
+        for obj in self.graph.section_nodes(NodeType.OBJECTIVE):
+            for lo in obj["data"].get("learning_objectives", []) or []:
+                if not isinstance(lo, dict):
+                    continue
+                statement = str(lo.get("statement", ""))
+                lo_id = lo.get("id", obj["id"])
+                if not statement.strip():
+                    continue  # empty statements are a schema concern, not measurability
+                if _DEGREE_PATTERN.search(statement) or _CONDITION_PATTERN.search(statement):
+                    continue
+                violations.append(VerifierViolation(
+                    node_id=obj["id"],
+                    edge_type="",
+                    violation_type="measurability",
+                    severity="warning",
+                    message=(
+                        f"LO '{lo_id}' states no success criterion or condition; "
+                        "achievement cannot be judged objectively."
+                    ),
+                    repair_hint=(
+                        "Add an observable degree and/or condition to the statement, "
+                        "e.g. 'given a starter codebase, ... with at least 80% of unit tests passing'."
+                    ),
+                    metadata={"lo_id": lo_id, "statement": statement},
+                ))
         return violations
 
     # ── Check 3: every objective has ≥1 activity supporting it ───────────────
@@ -150,15 +249,67 @@ class PedagogicalVerifierAgent(BaseISDAgent):
             repair_hint="Create a learning activity that explicitly supports this objective and add a 'supports' edge.",
         )
 
+    # ── Check 3b: higher-order objectives get active practice ────────────────
+    def _check_activity_engagement(self) -> list[VerifierViolation]:
+        """An Apply+ objective practiced only through passive formats (lecture,
+        reading, video) gives learners no chance to perform the target skill."""
+        levels = self._objective_levels()
+        higher = sorted(lo_id for lo_id, idx in levels.items() if idx >= 3)
+        if not higher:
+            return []
+        violations: list[VerifierViolation] = []
+        for obj in self.graph.section_nodes(NodeType.OBJECTIVE):
+            activities = [
+                a for a in obj["data"].get("learning_activities", []) or []
+                if isinstance(a, dict)
+            ]
+            if not activities:
+                continue
+            any_declared = any(a.get("aligned_objectives") for a in activities)
+            for lo_id in higher:
+                relevant = [
+                    a for a in activities
+                    if not any_declared or lo_id in (a.get("aligned_objectives") or [])
+                ]
+                if not relevant:
+                    continue  # missing linkage is the coverage check's concern
+                texts = [
+                    f"{a.get('activity_name', '')} {a.get('description', '')}".lower()
+                    for a in relevant
+                ]
+                if any(marker in text for text in texts for marker in _ACTIVE_ACTIVITY_MARKERS):
+                    continue
+                if not any(marker in text for text in texts for marker in _PASSIVE_ACTIVITY_MARKERS):
+                    continue  # unclassifiable formats: do not guess
+                names = [str(a.get("activity_name", "?")) for a in relevant]
+                violations.append(VerifierViolation(
+                    node_id=obj["id"],
+                    edge_type="",
+                    violation_type="activity_engagement",
+                    severity="warning",
+                    message=(
+                        f"Higher-order objective '{lo_id}' is practiced only through "
+                        f"passive formats ({', '.join(names)})."
+                    ),
+                    repair_hint=(
+                        "Add a hands-on activity (lab, exercise, project, simulation) "
+                        "aligned to this objective."
+                    ),
+                    metadata={"lo_id": lo_id, "passive_activities": names},
+                ))
+        return violations
+
     # ── Check 4: assessment rubric consistency ───────────────────────────────
     def _check_rubric_consistency(self) -> list[VerifierViolation]:
         violations: list[VerifierViolation] = []
+        valid_lo_ids = set(self._objective_levels())
         for node in self.graph.section_nodes(NodeType.ASSESSMENT):
             for item in node["data"].get("assessment_tools", []) or []:
                 if not isinstance(item, dict):
                     continue
                 item_id = item.get("item_id", "?")
-                if not item.get("aligned_objective"):
+                aligned = item.get("aligned_objective")
+                if not aligned:
                     violations.append(VerifierViolation(
                         node_id=node["id"],
                         edge_type=EdgeType.MEASURES,
@@ -168,15 +319,35 @@ class PedagogicalVerifierAgent(BaseISDAgent):
                         repair_hint="Set aligned_objective to the LO id this item measures.",
                         metadata={"item_id": item_id},
                     ))
-                if str(item.get("type", "")).lower() in ("performance_task", "performance", "project", "rubric"):
-                    criteria = str(item.get("scoring_criteria") or item.get("scoring_rubric") or "").strip()
-                    lowered = criteria.lower()
-                    is_vague = (
-                        not criteria
-                        or (
-                            any(term in lowered for term in _VAGUE_RUBRIC_TERMS)
-                            and not any(term in lowered for term in _OBSERVABLE_TERMS)
-                        )
+                elif valid_lo_ids and str(aligned) not in valid_lo_ids:
+                    violations.append(VerifierViolation(
+                        node_id=node["id"],
+                        edge_type=EdgeType.MEASURES,
+                        violation_type="rubric_consistency",
+                        severity="error",
+                        message=(
+                            f"Assessment item '{item_id}' claims to measure '{aligned}', "
+                            "but no such objective exists."
+                        ),
+                        repair_hint="Point aligned_objective at an existing LO id.",
+                        metadata={"item_id": item_id, "aligned_objective": str(aligned), "dangling": True},
+                    ))
+                criteria = str(item.get("scoring_criteria") or item.get("scoring_rubric") or "").strip()
+                lowered = criteria.lower()
+                if not criteria or any(marker in lowered for marker in _PLACEHOLDER_MARKERS):
+                    violations.append(VerifierViolation(
+                        node_id=node["id"],
+                        edge_type=EdgeType.MEASURES,
+                        violation_type="rubric_consistency",
+                        severity="warning",
+                        message=f"Assessment item '{item_id}' has no scoring criteria.",
+                        repair_hint="State how the item is scored (key, point scale, or rubric).",
+                        metadata={"item_id": item_id, "scoring_criteria": criteria},
+                    ))
+                elif str(item.get("type", "")).lower() in ("performance_task", "performance", "project", "rubric"):
+                    is_vague = len(criteria) < 40 or (
+                        any(term in lowered for term in _VAGUE_RUBRIC_TERMS)
+                        and not any(term in lowered for term in _OBSERVABLE_TERMS)
                     )
                     if is_vague:
                         violations.append(VerifierViolation(
@@ -189,6 +360,59 @@ class PedagogicalVerifierAgent(BaseISDAgent):
                             metadata={"item_id": item_id, "scoring_criteria": criteria},
                         ))
         return violations
+
+    # ── Check 4b: assessment formats can elicit the objective's Bloom level ──
+    def _check_assessment_bloom_match(self) -> list[VerifierViolation]:
+        """Constructive alignment at the format level: a higher-order objective
+        (Apply+) measured exclusively by recognition-bound formats (MCQ,
+        true/false) cannot demonstrate the intended cognitive level."""
+        levels = self._objective_levels()
+        violations: list[VerifierViolation] = []
+        for node in self.graph.section_nodes(NodeType.ASSESSMENT):
+            items_by_lo: dict[str, list[dict]] = {}
+            for item in node["data"].get("assessment_tools", []) or []:
+                if isinstance(item, dict) and item.get("aligned_objective"):
+                    items_by_lo.setdefault(str(item["aligned_objective"]), []).append(item)
+            for lo_id, lo_level in levels.items():
+                items = items_by_lo.get(lo_id, [])
+                if lo_level < 3 or not items:
+                    continue
+                capability = max(
+                    _ITEM_TYPE_CAPABILITY.get(str(item.get("type", "")).lower(), 6)
+                    for item in items
+                )
+                if capability <= _RECALL_CAPABILITY_CEILING:
+                    item_ids = [str(item.get("item_id", "?")) for item in items]
+                    violations.append(VerifierViolation(
+                        node_id=node["id"],
+                        edge_type=EdgeType.MEASURES,
+                        violation_type="bloom_mismatch",
+                        severity="error",
+                        message=(
+                            f"Objective '{lo_id}' targets a higher-order level but is measured "
+                            f"only by recognition-level formats ({', '.join(item_ids)})."
+                        ),
+                        repair_hint=(
+                            "Add a constructed-response or performance item for this objective "
+                            "(short answer, performance task, or project)."
+                        ),
+                        metadata={"lo_id": lo_id, "item_ids": item_ids, "lo_level": lo_level},
+                    ))
+        return violations
+
+    def _objective_levels(self) -> dict[str, int]:
+        """LO id -> Bloom level index (1-6), from the declared level or the verb."""
+        levels: dict[str, int] = {}
+        for obj in self.graph.section_nodes(NodeType.OBJECTIVE):
+            for lo in obj["data"].get("learning_objectives", []) or []:
+                if not isinstance(lo, dict) or not lo.get("id"):
+                    continue
+                idx = _BLOOM_LEVEL_INDEX.get(str(lo.get("level", "")).lower().strip())
+                if not idx:
+                    verb = str(lo.get("bloom_verb", "")).lower().strip(".,;")
+                    idx = max(_VERB_LEVELS.get(verb, {0}))
+                levels[str(lo["id"])] = idx
+        return levels
 
     # ── Check 5: delivery feasibility against the brief's constraints ─────────
     def _check_feasibility(self, design_brief: DesignBrief | None) -> list[VerifierViolation]:
@@ -289,6 +513,36 @@ class PedagogicalVerifierAgent(BaseISDAgent):
                     ),
                     repair_hint="Add an 'evaluates' edge or a summative item aligned to each objective.",
                     metadata={"uncovered": uncovered},
+                ))
+        return violations
+
+    # ── Check 7b: the formative evaluation plan is concrete ──────────────────
+    def _check_evaluation_quality(self) -> list[VerifierViolation]:
+        """An evaluation section whose formative plan names no data-collection
+        method cannot drive the revision loop it exists for."""
+        violations: list[VerifierViolation] = []
+        for node in self.graph.section_nodes(NodeType.EVALUATION):
+            formative = node["data"].get("formative")
+            if not isinstance(formative, dict):
+                continue
+            data_collection = formative.get("data_collection")
+            methods = None
+            if isinstance(data_collection, dict):
+                methods = data_collection.get("methods")
+            if methods is None:
+                methods = formative.get("methods")
+            if not _has_concrete_items(methods):
+                violations.append(VerifierViolation(
+                    node_id=node["id"],
+                    edge_type="",
+                    violation_type="evaluation_quality",
+                    severity="warning",
+                    message="Formative evaluation names no concrete data-collection method.",
+                    repair_hint=(
+                        "List concrete formative methods (observation checklist, exit "
+                        "tickets, rubric checkpoints) under formative data collection."
+                    ),
+                    metadata={"section": "formative"},
                 ))
         return violations
 

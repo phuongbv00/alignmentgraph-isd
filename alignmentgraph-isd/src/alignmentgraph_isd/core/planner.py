@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .audit import GraphAuditResult
-from .config import HarnessRunConfig
+from ..config import HarnessRunConfig
 from .graph import AlignmentGraph, EdgeType, NodeType
 
 
@@ -314,15 +314,17 @@ class ISDTaskPlanner:
     def _repair_owner(self, violation: dict) -> str | None:
         violation_type = violation.get("type", "")
         edge_type = violation.get("edge_type", "")
-        if violation_type == "bloom":
+        # measurability and activity_engagement are Design-section content
+        # defects, so they belong to the agent that owns the design payload.
+        if violation_type in ("bloom", "measurability", "activity_engagement"):
             return "objective_repair"
         if violation_type == "activity_support" or edge_type == EdgeType.SUPPORTS:
             return "activity_repair"
         if violation_type in ("feasibility", "actionability") or edge_type == "constrains":
             return "implementation_repair"
-        if violation_type == "evaluation_alignment" or edge_type == EdgeType.EVALUATES:
+        if violation_type in ("evaluation_alignment", "evaluation_quality") or edge_type == EdgeType.EVALUATES:
             return "evaluation_repair"
-        if violation_type in ("coverage", "rubric_consistency") or edge_type == EdgeType.MEASURES:
+        if violation_type in ("coverage", "rubric_consistency", "bloom_mismatch") or edge_type == EdgeType.MEASURES:
             return "assessment_repair"
         return None
 

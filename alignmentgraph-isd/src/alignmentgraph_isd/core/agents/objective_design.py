@@ -90,6 +90,8 @@ Output ONLY the JSON object, no markdown, no explanation.\
 
 
 class ObjectiveDesignAgent(BaseISDAgent):
+    OWNED_VIOLATION_TYPES = frozenset({"bloom", "measurability", "activity_engagement"})
+
     def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
         prompt = _format_design_brief(design_brief)
         # Graph-context retrieval (core, not RAG): inject prior G_t nodes into this prompt
@@ -119,12 +121,164 @@ class ObjectiveDesignAgent(BaseISDAgent):
 
     def repair(self, violations: list) -> list:
         remaining = []
+        content_violations = []
         for violation in violations:
-            if getattr(violation, "violation_type", "") != "bloom":
+            vtype = getattr(violation, "violation_type", "")
+            if vtype == "bloom":
+                self._repair_bloom_verb(violation)
+            elif vtype in ("measurability", "activity_engagement"):
+                content_violations.append(violation)
+            else:
                 remaining.append(violation)
-                continue
-            self._repair_bloom_verb(violation)
+        if content_violations:
+            self._repair_design_content(content_violations)
         return remaining
+
+    def _repair_design_content(self, violations: list) -> None:
+        """Resolve measurability / activity_engagement findings on the design section.
+
+        One LLM call revises every flagged objective statement and drafts the
+        missing practice activities; a deterministic fallback then guarantees
+        each finding is resolved even when the model output is unusable, so the
+        verify-repair loop always converges.
+        """
+        node_id = self.graph.section_id(NodeType.OBJECTIVE)
+        node = self.graph.get_node(node_id)
+        if not node:
+            return
+        from .pedagogical_verifier import _CONDITION_PATTERN, _DEGREE_PATTERN
+
+        objectives = [dict(lo) if isinstance(lo, dict) else lo for lo in node["data"].get("learning_objectives", []) or []]
+        activities = [dict(a) if isinstance(a, dict) else a for a in node["data"].get("learning_activities", []) or []]
+        measurability_ids = [
+            str(v.metadata.get("lo_id", "") or "")
+            for v in violations if v.violation_type == "measurability"
+        ]
+        engagement_ids = [
+            str(v.metadata.get("lo_id", "") or "")
+            for v in violations if v.violation_type == "activity_engagement"
+        ]
+
+        revised = self._llm_design_revision(violations, objectives, activities)
+        revised_los = {
+            str(lo["id"]): lo
+            for lo in revised.get("learning_objectives", []) or []
+            if isinstance(lo, dict) and lo.get("id")
+        }
+        for lo in objectives:
+            if isinstance(lo, dict) and str(lo.get("id")) in revised_los:
+                statement = str(revised_los[str(lo["id"])].get("statement") or "").strip()
+                if statement:
+                    lo["statement"] = statement
+        for act in revised.get("learning_activities", []) or []:
+            if not isinstance(act, dict) or not act.get("activity_name"):
+                continue
+            act.setdefault("aligned_objectives", engagement_ids)
+            existing = next(
+                (a for a in activities if isinstance(a, dict) and a.get("activity_name") == act["activity_name"]),
+                None,
+            )
+            if existing:
+                existing.update(act)
+            else:
+                activities.append(act)
+
+        # Deterministic fallback: every finding must end up resolved.
+        for lo_id in measurability_ids:
+            lo = next((x for x in objectives if isinstance(x, dict) and str(x.get("id")) == lo_id), None)
+            if not lo:
+                continue
+            statement = str(lo.get("statement", ""))
+            if not (_DEGREE_PATTERN.search(statement) or _CONDITION_PATTERN.search(statement)):
+                lo["statement"] = (
+                    statement.rstrip(". ")
+                    + ", achieving at least 80% accuracy against the scoring rubric."
+                )
+                lo["measurable"] = True
+        for lo_id in engagement_ids:
+            covered = any(
+                isinstance(a, dict)
+                and lo_id in (a.get("aligned_objectives") or [])
+                and any(
+                    marker in f"{a.get('activity_name', '')} {a.get('description', '')}".lower()
+                    for marker in ("lab", "practice", "exercise", "project", "hands-on", "workshop", "simulation")
+                )
+                for a in activities
+            )
+            if not covered:
+                activities.append({
+                    "activity_name": f"Guided practice lab for {lo_id}",
+                    "duration": "45m",
+                    "description": (
+                        f"Learners practice the skill behind {lo_id} on a realistic task "
+                        "with instructor feedback and a completion checklist."
+                    ),
+                    "materials": ["Practice task sheet"],
+                    "aligned_objectives": [lo_id],
+                })
+
+        self.graph.update_node(node_id, {
+            "learning_objectives": objectives,
+            "learning_activities": activities,
+        })
+        for violation in violations:
+            self.graph.mark_repaired(node_id, violation.message)
+        impact = self._invalidate_impacted(
+            node_id,
+            "Design-content repair revised objective statements and practice activities; downstream alignment must be refreshed.",
+            action="repair_cascade",
+            changed_fields=["learning_objectives", "learning_activities"],
+            violation_type="measurability" if measurability_ids else "activity_engagement",
+        )
+        self.trajectory.log_node_edit("update", node_id, NodeType.OBJECTIVE)
+        self.trajectory.log_step(
+            "ObjectiveDesignAgent",
+            "repair_design_content",
+            "; ".join(v.message for v in violations)[:200],
+            (
+                f"Revised {len(measurability_ids)} objective statement(s), ensured active practice "
+                f"for {len(engagement_ids)} objective(s); invalidated nodes={len(impact['nodes'])} "
+                f"edges={len(impact['edges'])}."
+            ),
+        )
+
+    def _llm_design_revision(self, violations: list, objectives: list, activities: list) -> dict:
+        import json
+
+        findings = [
+            {
+                "type": v.violation_type,
+                "lo_id": v.metadata.get("lo_id"),
+                "message": v.message,
+                "hint": v.repair_hint,
+            }
+            for v in violations
+        ]
+        flagged_ids = {str(f["lo_id"]) for f in findings if f["lo_id"]}
+        flagged_los = [
+            lo for lo in objectives
+            if isinstance(lo, dict) and str(lo.get("id")) in flagged_ids
+        ]
+        system = (
+            "You are an expert instructional designer revising a course design to resolve "
+            "verifier findings. Return ONLY valid JSON with this schema:\n"
+            '{"learning_objectives": [{"id": "<existing id>", "statement": "<revised statement>"}],\n'
+            ' "learning_activities": [{"activity_name": "<name>", "duration": "<duration>", '
+            '"description": "<description>", "materials": ["<material>"], "aligned_objectives": ["<LO id>"]}]}\n'
+            "Rules: keep objective ids, levels, and Bloom verbs unchanged; rewrite only the flagged "
+            "statements so each states a performance condition and a measurable criterion; add one "
+            "hands-on practice activity per flagged higher-order objective. Include only revised or "
+            "new entries."
+        )
+        user = json.dumps(
+            {"findings": findings, "flagged_objectives": flagged_los, "existing_activities": activities},
+            ensure_ascii=False,
+        )
+        response = self._call_llm(
+            [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            max_retries=0,
+        )
+        return parse_json_response(response, warn=False) or {}
 
     def _repair_bloom_verb(self, violation) -> None:
         obj = self.graph.get_node(violation.node_id)

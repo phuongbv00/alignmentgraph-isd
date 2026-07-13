@@ -34,7 +34,7 @@ from alignmentgraph_isd import (  # noqa: E402
     llm_factory_from_env,
     run_design_brief,
 )
-from alignmentgraph_isd.rag.agent import RetrievalAgent, RetrievalTool  # noqa: E402
+from alignmentgraph_isd.core.rag.agent import RetrievalAgent, RetrievalTool  # noqa: E402
 
 HARNESS_CONDITIONS = ("harness_targeted_refine", "harness_full_regen")
 REACT_CONDITIONS = ("react_full_regen", "react_targeted_refine")

@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from .config import ChatModelFactory
+from ..config import ChatModelFactory
 
 
 def _env(*names: str) -> str:

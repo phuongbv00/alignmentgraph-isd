@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 from alignmentgraph_isd import run_design_brief
-from alignmentgraph_isd.audit import GraphAuditor
-from alignmentgraph_isd.graph import AlignmentGraph
-from alignmentgraph_isd.planner import ISDTaskPlanner
+from alignmentgraph_isd.core.audit import GraphAuditor
+from alignmentgraph_isd.core.graph import AlignmentGraph
+from alignmentgraph_isd.core.planner import ISDTaskPlanner
 from alignmentgraph_isd.config import HarnessRunConfig
-from alignmentgraph_isd.task_graph import TaskGraphBuilder
+from alignmentgraph_isd.core.task_graph import TaskGraphBuilder
 
 from conftest import load_brief
 
@@ -28,8 +28,11 @@ def test_builder_emits_tasks_with_owner_and_dependencies():
         assert edge["from"] in types and edge["to"] in types
 
 
-def test_trajectory_records_task_graph_snapshots(fake_config):
-    result = run_design_brief(load_brief("minimal_brief.json"), fake_config)
+def test_trajectory_records_task_graph_snapshots(fake_llm_factory):
+    # Task-graph snapshots are a dynamic-planner artifact; exercise that branch.
+    config = HarnessRunConfig.from_ablation("dynamic_full", memory={"enabled": False})
+    config.llm_factory = fake_llm_factory
+    result = run_design_brief(load_brief("minimal_brief.json"), config)
     snapshots = result["trajectory"]["task_graph_snapshots"]
     assert snapshots, "expected at least one task-graph snapshot"
     first = snapshots[0]["task_graph"]

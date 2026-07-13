@@ -45,6 +45,8 @@ Output ONLY the JSON object, no markdown, no explanation.\
 
 
 class ImplementationPlanAgent(BaseISDAgent):
+    OWNED_VIOLATION_TYPES = frozenset({"feasibility", "actionability"})
+
     def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
         prompt = _format_design_brief(design_brief)
         # Graph-context retrieval (core, not RAG): inject prior G_t nodes into this prompt

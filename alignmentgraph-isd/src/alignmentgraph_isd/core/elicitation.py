@@ -11,7 +11,7 @@ normal init session.
 from __future__ import annotations
 
 from .agents.base import parse_json_response
-from .config import HarnessRunConfig
+from ..config import HarnessRunConfig
 from .schema import DesignBrief
 
 ELICITATION_SYSTEM_PROMPT = """You are an instructional-design intake assistant for corporate training programs.

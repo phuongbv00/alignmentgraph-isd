@@ -1,9 +1,9 @@
 """P0.2: structural schema validation for sections and the ADDIE aggregate."""
 from __future__ import annotations
 
-from alignmentgraph_isd.audit import GraphAuditor
-from alignmentgraph_isd.graph import AlignmentGraph
-from alignmentgraph_isd.validation import validate_addie, validate_section
+from alignmentgraph_isd.core.audit import GraphAuditor
+from alignmentgraph_isd.core.graph import AlignmentGraph
+from alignmentgraph_isd.core.validation import validate_addie, validate_section
 
 
 def test_validate_section_flags_missing_learning_objectives():

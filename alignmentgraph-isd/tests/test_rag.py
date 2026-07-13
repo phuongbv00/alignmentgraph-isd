@@ -14,8 +14,8 @@ from alignmentgraph_isd import (
     RetrievalAgentRegistry,
     RetrievalTool,
 )
-from alignmentgraph_isd.context import ContextPlanner
-from alignmentgraph_isd.rag.planner import RetrievalPlanner
+from alignmentgraph_isd.core.context import ContextPlanner
+from alignmentgraph_isd.core.rag.planner import RetrievalPlanner
 
 from conftest import load_brief
 

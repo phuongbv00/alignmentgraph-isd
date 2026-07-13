@@ -2,7 +2,7 @@ from __future__ import annotations
 import json
 import re
 from abc import ABC, abstractmethod
-from ..config import HarnessRunConfig
+from ...config import HarnessRunConfig
 from ..graph import AlignmentGraph, NodeType
 from ..schema import DesignBrief
 from ..trajectory import TrajectoryLogger
@@ -209,6 +209,12 @@ or
 
 
 class BaseISDAgent(ABC):
+    # Verifier violation types this specialist is responsible for. Each specialist
+    # self-checks and repairs its own artifact at the end of its turn (a quality
+    # tool it owns), so no separate global verify phase is needed. Overridden per
+    # subclass; empty means "no self-check".
+    OWNED_VIOLATION_TYPES: frozenset[str] = frozenset()
+
     def __init__(self, config: HarnessRunConfig, graph: AlignmentGraph, trajectory: TrajectoryLogger) -> None:
         self.config = config
         self.graph = graph
@@ -217,6 +223,14 @@ class BaseISDAgent(ABC):
     @abstractmethod
     def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
         ...
+
+    # Verifier violation types this specialist owns. A workflow's QC node reads
+    # this to decide which violations the agent should self-repair. Quality
+    # control is driven by the workflow (see core/nodes.py::NodeFactory.qc_node),
+    # not by the agent itself — so the agent stays a pure generation module.
+    def repair(self, violations: list) -> list:  # noqa: D401 - overridden by specialists
+        """Default no-op repair; specialists override to fix owned violations."""
+        return violations
 
     def _graph_context(self, node_types: list[str], max_chars: int = 600) -> str:
         """Pull relevant prior nodes from G_t for injection into this agent's prompt.
