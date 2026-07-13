@@ -90,7 +90,9 @@ Output ONLY the JSON object, no markdown, no explanation.\
 
 
 class ObjectiveDesignAgent(BaseISDAgent):
-    OWNED_VIOLATION_TYPES = frozenset({"bloom", "measurability", "activity_engagement"})
+    # measurability is audit-only (over-strict statement rewrites hurt quality and
+    # the vague verb it targets is already fixed by the bloom repair).
+    OWNED_VIOLATION_TYPES = frozenset({"bloom", "activity_engagement"})
 
     def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
         prompt = _format_design_brief(design_brief)

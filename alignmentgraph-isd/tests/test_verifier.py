@@ -73,23 +73,35 @@ def _types(graph: AlignmentGraph) -> set[str]:
     return {v.violation_type for v in _verifier(graph).verify()}
 
 
-def test_measurability_fires_without_degree_or_condition():
+def test_measurability_fires_only_on_vague_verb_without_criterion():
+    graph = AlignmentGraph()
+    graph.add_node("objective", "objective_0", {
+        "learning_objectives": [
+            {"id": "LO-01", "level": "Understand", "statement": "Understand dependency injection.", "bloom_verb": "understand"},
+        ],
+    })
+    assert "measurability" in _types(graph)
+
+
+def test_measurability_silent_for_observable_verb():
+    # A well-formed objective with an observable Bloom verb is measurable enough
+    # even without a numeric degree — must NOT over-fire.
     graph = AlignmentGraph()
     graph.add_node("objective", "objective_0", {
         "learning_objectives": [
             {"id": "LO-01", "level": "Apply", "statement": "Apply dependency injection.", "bloom_verb": "apply"},
         ],
     })
-    assert "measurability" in _types(graph)
+    assert "measurability" not in _types(graph)
 
 
-def test_measurability_passes_with_degree():
+def test_measurability_passes_vague_verb_with_degree():
     graph = AlignmentGraph()
     graph.add_node("objective", "objective_0", {
         "learning_objectives": [
-            {"id": "LO-01", "level": "Apply",
-             "statement": "Apply dependency injection with at least 80% of unit tests passing.",
-             "bloom_verb": "apply"},
+            {"id": "LO-01", "level": "Understand",
+             "statement": "Understand dependency injection with at least 80% of unit tests passing.",
+             "bloom_verb": "understand"},
         ],
     })
     assert "measurability" not in _types(graph)
@@ -232,11 +244,12 @@ def test_content_violations_repair_to_convergence_without_llm():
     trajectory = TrajectoryLogger()
     before = PedagogicalVerifierAgent(config, graph, trajectory).verify()
     before_types = {v.violation_type for v in before}
-    content_types = {"measurability", "activity_engagement", "rubric_consistency", "bloom_mismatch"}
+    # measurability is audit-only (not repaired); the repairable content findings:
+    content_types = {"activity_engagement", "rubric_consistency", "bloom_mismatch"}
     assert content_types <= before_types, f"expected all content findings, got {before_types}"
 
     ObjectiveDesignAgent(config, graph, trajectory).repair(
-        [v for v in before if v.violation_type in ("bloom", "measurability", "activity_engagement")]
+        [v for v in before if v.violation_type in ("bloom", "activity_engagement")]
     )
     AssessmentDesignAgent(config, graph, trajectory).repair(
         [v for v in before if v.violation_type in ("rubric_consistency", "bloom_mismatch")]

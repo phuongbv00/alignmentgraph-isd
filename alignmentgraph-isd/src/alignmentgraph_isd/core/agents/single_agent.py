@@ -224,9 +224,9 @@ class SingleAgent(BaseISDAgent):
     # coverage (measures/supports/evaluates) is satisfied by construction in
     # _add_alignment_edges, so those types are not listed.
     OWNED_VIOLATION_TYPES = frozenset({
-        "bloom", "measurability", "activity_engagement",
+        "bloom", "activity_engagement",
         "rubric_consistency", "bloom_mismatch", "evaluation_quality",
-    })
+    })  # measurability is audit-only (see PedagogicalVerifierAgent._check_measurability)
 
     def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
         prompt = _format_design_brief(design_brief)

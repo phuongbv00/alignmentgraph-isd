@@ -43,6 +43,15 @@ _ITEM_TYPE_CAPABILITY = {
 }
 _RECALL_CAPABILITY_CEILING = 2
 
+# Non-observable ("fuzzy") objective verbs: these describe an internal state that
+# cannot be directly observed or scored, so an objective built on one needs an
+# explicit criterion to be measurable. A proper observable Bloom verb (analyze,
+# design, apply, ...) is already measurable enough and is NOT flagged.
+_VAGUE_VERBS = frozenset({
+    "understand", "know", "learn", "comprehend", "grasp", "appreciate",
+    "aware", "familiar", "realize", "internalize", "value", "believe",
+})
+
 # An objective statement is considered measurable when it states a degree
 # (criterion of acceptable performance) or a condition (Mager's ABCD model).
 _DEGREE_PATTERN = re.compile(
@@ -205,8 +214,12 @@ class PedagogicalVerifierAgent(BaseISDAgent):
 
     # ── Check 2b: objectives state a measurable degree or condition ──────────
     def _check_measurability(self) -> list[VerifierViolation]:
-        """Mager-style measurability: a statement needs a criterion (degree) or
-        a performance condition, not just an observable verb."""
+        """Measurability, narrowly: only a *non-observable* verb (understand, know,
+        ...) with no criterion is unmeasurable. A well-formed objective with an
+        observable Bloom verb (analyze, design, apply, ...) is measurable enough
+        even without a numeric degree — flagging those over-fires and forces
+        needless rewrites. This check is audit-only (not auto-repaired); the vague
+        verb itself is fixed by the Bloom-verb repair."""
         violations: list[VerifierViolation] = []
         for obj in self.graph.section_nodes(NodeType.OBJECTIVE):
             for lo in obj["data"].get("learning_objectives", []) or []:
@@ -216,6 +229,13 @@ class PedagogicalVerifierAgent(BaseISDAgent):
                 lo_id = lo.get("id", obj["id"])
                 if not statement.strip():
                     continue  # empty statements are a schema concern, not measurability
+                verb = str(lo.get("bloom_verb", "")).lower().strip(".,;")
+                stmt_lower = statement.lower()
+                is_vague = verb in _VAGUE_VERBS or any(
+                    re.search(rf"\b{re.escape(v)}\b", stmt_lower) for v in _VAGUE_VERBS
+                )
+                if not is_vague:
+                    continue  # observable verb → measurable enough, do not flag
                 if _DEGREE_PATTERN.search(statement) or _CONDITION_PATTERN.search(statement):
                     continue
                 violations.append(VerifierViolation(
