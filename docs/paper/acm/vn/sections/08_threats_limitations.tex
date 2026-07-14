@@ -1,0 +1,49 @@
+\section{Nguy cơ đối với Tính hợp lệ}
+\label{sec:threats-limitations}
+
+\paragraph{Internal.}
+Prompt, model và judge đều ảnh hưởng điểm số. Chúng tôi ghim một manifest cho mỗi lượt
+chạy, dùng cấu hình decoding giống nhau qua các arm, chấm bằng nhiều judge để giảm
+self-preference bias, và cấu hình agent model cùng judge model riêng. Các ablation arm
+là các module workflow riêng không có cờ cấu hình dùng chung, nên một cơ chế bị bỏ
+không thể rò rỉ sang arm khác---một thuộc tính chúng tôi đã kiểm trong bộ test của
+harness.
+
+\paragraph{Construct.}
+Rubric và trajectory score của benchmark đo chất lượng artifact và trace, không đo kết
+quả người học, và---như \cref{sec:discussion} cho thấy---không tưởng thưởng trực tiếp
+độ chặt alignment mà verification/repair cưỡng chế. Chúng tôi giảm thiểu bằng cách báo
+cáo một residual-defect audit tất định bên cạnh điểm judge; tuy nhiên, audit offline
+dựng lại graph từ văn bản output mà không có edge, nên các đếm tuyệt đối theo loại chỉ
+là xấp xỉ và chúng tôi dựa vào hoạt động repair trong-lượt cho các khẳng định chính
+xác. Vì vậy các kết luận về verification/repair bị giới hạn ở những gì các proxy này
+đo được.
+
+\paragraph{External.}
+Các scenario là tổng hợp và lấy từ một benchmark duy nhất; kết quả có thể không chuyển
+sang một ISD benchmark khác hay các brief doanh nghiệp thật. Bằng chứng model-scale
+dựa trên hai điểm---một model lớn và một SLM 9B---bao một khoảng rộng nhưng không phủ
+toàn phổ; xu hướng (đóng góp decomposition lớn hơn trên model nhỏ hơn) nhất quán ở cả
+hai nhưng sẽ vững hơn nếu có thêm các cỡ model.
+
+\paragraph{Conclusion.}
+Các hiệu ứng được ước lượng trên $n=90$ scenario ghép cặp với kiểm định phi tham số,
+hiệu chỉnh Holm và khoảng tin cậy bootstrap; hiệu ứng decomposition chủ đạo là lớn và
+rất có ý nghĩa, trong khi hiệu ứng verify/repair được báo cáo như một kết quả null kèm
+khoảng tin cậy, không phải một khẳng định dương.
+
+\section{Hạn chế và Hướng Phát triển}
+\label{sec:future-work}
+
+Công trình này được giới hạn có chủ đích ở sinh \emph{single-pass}, và mỗi hạn chế mở
+ra một mở rộng trực tiếp. (1)~\emph{Multi-session refinement}: các chương trình thật
+được chỉnh sửa suốt vòng đời của chúng; harness giữ lại một biến thể dynamic, dùng
+planner, với cascade-scoped invalidation đúng cho setting này, chúng tôi để lại cho
+đánh giá tương lai. (2)~\emph{Brief elicitation}: chúng tôi giả định một design brief
+được cho trước, trong khi thực tế brief hình thành từ trao đổi với stakeholder; một
+front end elicitation dạng hội thoại là một bổ sung tự nhiên. (3)~\emph{Tri thức
+domain}: các quy ước đặc thù tổ chức (rubric nội bộ, chuẩn code-review) có thể được
+tiêm qua pluggable agentic retrieval, thứ mà kiến trúc đã sẵn sàng nhưng chúng tôi
+không đánh giá ở đây. (4)~\emph{Đánh giá}: khép construct gap---đo chất lượng alignment
+theo cách ghi nhận độ chặt pedagogical, lý tưởng là so với kết quả người học---là bước
+tiếp theo quan trọng nhất để đánh giá công bằng cơ chế verification/repair.

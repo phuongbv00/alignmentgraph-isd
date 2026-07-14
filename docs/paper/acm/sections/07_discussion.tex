@@ -1,0 +1,49 @@
+\section{Discussion}
+\label{sec:discussion}
+
+\paragraph{Interpretation.}
+The results support a specific reading of \emph{how} an agent harness improves
+instructional-design quality. AlignmentGraph-ISD leads all six baselines on the
+benchmark (\cref{sec:rq1}), and the ablation attributes that lead overwhelmingly to
+one mechanism: multi-agent decomposition over the alignment graph
+($+3.90$ composite, $+3.29$ ADDIE, $p_{\mathrm{Holm}}=2.3\times10^{-13}$).
+Decomposing generation among specialists with bounded write scope, over a shared
+graph that forces each alignment edge to be created as part of generation, is what
+turns constructive alignment from prompted prose into an enforced property. This is
+consistent with the harness-over-model thesis~\cite{cho2026harness}: the advantage
+comes from the execution environment, not from asking the model to try harder.
+
+\paragraph{Scientific and practical implications.}
+Representing alignment as first-class graph state is not education-specific: any
+setting that generates many interdependent artifacts with a required correspondence
+among them---technical documentation, process definitions, curricula---faces the
+same invisible-defect problem and can reuse the pattern ``typed dependency graph +
+bounded-scope specialists + owned verification.'' Practically, because the
+advantage is structural rather than capability-driven, it is exactly the kind of
+advantage expected to matter most as deployment shifts to cost-efficient
+SLMs~\cite{belcak2025slm}, and the SLM run confirms this directly: the decomposition
+contribution roughly doubles ($+3.9 \rightarrow +7.9$) while the harness's absolute
+score barely moves and the baselines lose several points---the harness converts a
+structural design into robustness against model scale-down.
+
+\paragraph{Failure analysis: verification/repair does not move the judged score.}
+Our most instructive negative result is that per-agent verification/repair
+contributes essentially nothing to the composite score ($+0.26$, n.s.), even though
+it demonstrably fires and repairs real pedagogical violations (\cref{sec:rq2}). Two
+observations explain this and guard against over-claiming. First, on a capable
+model the generated artifacts are already mostly well-aligned by construction, so
+the quality-control tools have little left to fix---their activation rate is low.
+Second, and more fundamentally, there is a \emph{construct gap}: the checks enforce
+formal pedagogical criteria (cognitive-level match, observable rubrics,
+active-practice coverage) that the ADDIE rubric, as scored by LLM judges, does not
+directly reward; and an earlier, over-strict measurability check that rewrote
+well-formed objective statements actively \emph{lowered} the judged score before we
+narrowed it to genuinely non-observable objectives and made it audit-only. The
+honest conclusion is that verification/repair is a \emph{guarantee} mechanism whose
+value is visible in the residual-defect audit rather than in the judge score; on a
+strong model it is close to a no-op on quality, and its case rests on the SLM
+setting and on deployments where undetected alignment defects carry real cost. We
+also observe a persistent trajectory-score pattern: the harness's structured
+multi-agent trace is scored no higher, sometimes lower, than a clean single ReAct
+loop, reflecting that trajectory judging rewards trace simplicity rather than the
+structural guarantees the trace encodes.

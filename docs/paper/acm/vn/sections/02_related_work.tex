@@ -1,0 +1,79 @@
+\section{Công trình Liên quan}
+\label{sec:related-work}
+
+\subsection{LLM Agent cho Thiết kế Giảng dạy}
+
+Các hệ thống gần nhất với chúng tôi áp dụng lý thuyết ISD vào kiến trúc agent.
+ISD-Agent-Bench~\cite{isdagentbench} hiện thực bốn agent bám lý thuyết: ReAct-ADDIE
+(một vòng ReAct trên các công cụ ISD~\cite{yao2023react}), ADDIE-Agent (một state
+graph năm pha tuyến tính~\cite{branch2009addie}), Dick-Carey-Agent (systems
+approach với vòng formative-evaluation~\cite{dick1978systematic}), và RPISD-Agent
+(rapid prototyping~\cite{tripp1990rapid}). EduPlanner~\cite{zhang2025eduplanner}
+dùng cộng tác đối kháng generate--evaluate--optimize giữa các agent;
+LessonPlanner~\cite{lessonplanner2024} và các nghiên cứu teaching-plan với
+GPT-4~\cite{hu2024teachingplan} cải thiện từng artifact đơn lẻ;
+LearnLM~\cite{learnlm2024} tinh chỉnh chính model cho mục đích sư phạm. Tất cả đều
+nhận một brief và tối ưu bản nháp của một lượt sinh, và đều xem constructive
+alignment là thứ cần \emph{khuyến khích} qua thiết kế prompt hoặc chấm điểm hậu
+kỳ---không hướng nào biểu diễn alignment thành trạng thái mà hệ thống kiểm tra theo
+từng objective và sửa.
+
+\subsection{Benchmark và Đánh giá}
+
+OpenLearnLM~\cite{openlearnlm2026}, EduBench~\cite{edubench2025},
+MathTutorBench~\cite{mathtutorbench2025} và TutorBench~\cite{tutorbench2025} đánh
+giá năng lực giáo dục ở mức từng tác vụ. ISD-Agent-Bench~\cite{isdagentbench} đi xa
+hơn khi chấm cả chất lượng artifact theo một ADDIE rubric lẫn chất lượng trajectory
+của agent, trên các scenario tổng hợp trải một ma trận Context~$\times$~ISD, với
+chấm điểm multi-judge để giảm self-preference bias. Chúng tôi dùng nó làm nền đánh
+giá cho cả hai câu hỏi nghiên cứu, và bổ sung một \emph{residual alignment-defect
+audit} tất định đo một thuộc tính mà rubric không chấm trực tiếp.
+
+\subsection{Kiểm soát Nhất quán trong Sinh Đa-Artifact}
+
+Về lý thuyết, constructive alignment~\cite{biggs1996enhancing} định nghĩa chuẩn
+nhất quán giữa objective, activity và assessment, còn systems
+approach~\cite{dick1978systematic} biện minh cho việc kiểm tra có hệ thống. Bloom's
+taxonomy~\cite{anderson2001taxonomy} cung cấp chuẩn cấp-độ-nhận-thức mà một
+assessment phải khớp. Về kỹ thuật, các cơ chế verifier và self-repair như
+Self-Refine~\cite{madaan2023selfrefine} và Reflexion~\cite{shinn2023reflexion} cho
+thấy giá trị của việc kiểm tra và sửa output từ bên ngoài model---giá trị này tăng
+khi model nền bão hoà và khi các model nhỏ được triển
+khai~\cite{cho2026harness,belcak2025slm}. Tuy nhiên trong các hệ ISD hiện có,
+alignment chỉ được khuyến khích qua prompt hoặc chấm sau khi sinh; nó không bao giờ
+được biểu diễn thành trạng thái hạng nhất---một cấu trúc dữ liệu mà hệ thống có thể
+kiểm tra từng liên kết, đánh dấu vùng bị ảnh hưởng khi thay đổi, và lan truyền sửa
+chữa có kiểm soát.
+
+\subsection{Tổng hợp và Định vị}
+
+\Cref{tab:related} tóm tắt khoảng trống. Các ISD agent hiện tại tối ưu một lượt
+sinh, được đánh giá bằng chất lượng artifact và trajectory, và thiếu một biểu diễn
+tường minh của alignment cho việc kiểm soát; không hệ nào được đánh giá trên setting
+SLM vốn ngày càng chi phối chi phí triển khai. AlignmentGraph-ISD khép khoảng trống
+bằng cách biến alignment thành trạng thái graph hạng nhất của harness, phân rã việc
+sinh xoay quanh nó để alignment đúng by construction, verify và repair các ràng
+buộc pedagogical như công cụ per-agent, và đánh giá kết quả trên cả một LLM lẫn một
+SLM.
+
+\begin{table}[t]
+  \caption{Định vị so với các ISD agent tiêu biểu. AbC = alignment được biểu diễn
+  thành \emph{trạng thái kiểm tra được} (không chỉ prompt); Ver = pedagogical
+  verification theo từng objective; Rep = tự động sửa vi phạm được phát hiện; SLM =
+  được đánh giá trên small language model.}
+  \label{tab:related}
+  \small
+  \begin{tabular}{@{}lcccc@{}}
+    \toprule
+    Agent & AbC & Ver & Rep & SLM \\
+    \midrule
+    Baseline (single prompt)               & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
+    ReAct-ADDIE~\cite{isdagentbench,yao2023react}       & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
+    ADDIE-Agent~\cite{branch2009addie}     & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
+    Dick-Carey-Agent~\cite{dick1978systematic} & \ding{55} & (\ding{51}) & \ding{55} & \ding{55} \\
+    RPISD-Agent~\cite{tripp1990rapid}      & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
+    EduPlanner~\cite{zhang2025eduplanner}  & \ding{55} & (\ding{51}) & (\ding{51}) & \ding{55} \\
+    \textbf{AlignmentGraph-ISD} (đề xuất)  & \ding{51} & \ding{51} & \ding{51} & \ding{51} \\
+    \bottomrule
+  \end{tabular}
+\end{table}

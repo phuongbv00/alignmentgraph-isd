@@ -1,0 +1,81 @@
+\section{Experimental Methodology}
+\label{sec:experimental-methodology}
+
+\subsection{Research Questions}
+\label{sec:rqs}
+
+\begin{itemize}
+  \item \textbf{RQ1 (quality).} On ISD-Agent-Bench, how does AlignmentGraph-ISD
+  compare with representative ISD agents in artifact quality, under both a large
+  model and a small language model?
+  \item \textbf{RQ2 (ablation).} Which harness mechanism drives that quality, and
+  does its contribution change with model scale?
+\end{itemize}
+
+\subsection{Dataset}
+\label{sec:dataset}
+
+We use ISD-Agent-Bench~\cite{isdagentbench}, whose scenarios span a
+Context~$\times$~ISD matrix. Evaluation is run on the \texttt{test\_90} split---90
+of the test scenarios, stratified over 10 domains $\times$ 3 difficulty levels
+$\times$ 3 scenarios per cell (seed 42)---which gives broad, balanced coverage at a
+tractable judging cost.
+
+\subsection{Models and Setup}
+\label{sec:setup}
+
+To probe model independence we run every configuration at two distinct points on
+the model-scale spectrum: \textbf{DeepSeek-v4-flash} (a large LLM) and
+\textbf{Qwen3.5-9B} (a 9B SLM), with identical configurations apart from the agent
+model. Agent and judge models are configured separately to avoid self-preference
+bias; the judges are held fixed across all runs and use the benchmark's default
+multi-judge configuration (\texttt{openai/gpt-4o-mini} and
+\texttt{google/gemini-2.5-flash-lite}). Each run records a manifest (model, judges,
+prompt versions, commit, seed, decoding configuration) for reproducibility.
+
+\subsection{Conditions}
+\label{sec:conditions}
+
+For RQ1, AlignmentGraph-ISD is integrated as a seventh agent under the benchmark's
+input/output schema and compared with six agents: Baseline (single prompt),
+ReAct-ADDIE, ADDIE-Agent, Dick-Carey-Agent, RPISD-Agent, and EduPlanner.
+
+For RQ2, the ablation removes exactly one mechanism at a time from the full
+harness. Each arm is a self-contained workflow (no shared configuration flags), so
+no mechanism can leak between arms:
+\begin{itemize}
+  \item \texttt{full} --- multi-agent decomposition + per-agent verify/repair;
+  \item \texttt{wo-ma} --- decomposition removed: a single agent generates the
+  whole program and repairs itself holistically (verify/repair retained);
+  \item \texttt{wo-qc} --- verify/repair removed: the same fixed-order specialists
+  generate, with no quality-control tools.
+\end{itemize}
+Comparing \texttt{full} against \texttt{wo-ma} isolates multi-agent decomposition;
+against \texttt{wo-qc} isolates per-agent verification/repair.
+
+\subsection{Metrics}
+\label{sec:metrics}
+
+The primary metrics are the benchmark's: a 100-point ADDIE artifact rubric and a
+trajectory score, combined into a composite \emph{Total}, each a two-judge mean.
+We additionally report a deterministic \emph{residual alignment-defect audit}: the
+verifier is replayed over each arm's final output and the surviving content-level
+violations are counted. This measures problem condition~(i) directly, capturing a
+property the rubric does not explicitly reward.
+
+\subsection{Statistical Analysis}
+\label{sec:stats}
+
+Comparisons are paired by scenario. We use the Wilcoxon signed-rank test
+(tie-corrected normal approximation) on the composite score, with Holm correction
+across the comparisons in each run, and report the mean paired difference with a
+bootstrap 95\% confidence interval (10{,}000 resamples). For RQ2 the contribution
+of a mechanism is $\texttt{full} - \texttt{arm}$, paired by scenario.
+
+\subsection{Reproducibility}
+\label{sec:reproducibility}
+
+ISD-Agent-Bench and its six baselines are public. Every run is pinned by a manifest
+(\cref{sec:setup}); the three ablation arms are separate workflow modules selected
+by name; and the analysis scripts (paired tests and the residual audit) are
+released with the paper.

@@ -1,0 +1,23 @@
+\section{Kết luận}
+\label{sec:conclusion}
+
+Khi các tổ chức sinh chương trình giảng dạy ở quy mô lớn và chuyển sang small language
+model chi phí thấp, chất lượng quan trọng nhất---constructive alignment giữa objective,
+activity và assessment---lại là thuộc tính sụp đổ đầu tiên, và nó sụp một cách vô hình.
+Các ISD agent hiện có chỉ khuyến khích alignment qua prompt, để chất lượng phụ thuộc
+vào năng lực thô của model. Chúng tôi đã trình bày AlignmentGraph-ISD, một agent harness
+hiện thực hoá constructive alignment thành một alignment graph tường minh, kiểm tra
+được, và tổ chức việc sinh xoay quanh nó: các specialist agent với phạm vi ghi giới hạn
+xây dựng graph để alignment đúng by construction, và mỗi specialist verify cùng repair
+các ràng buộc pedagogical của mình như một công cụ trong lượt của nó. Trên
+ISD-Agent-Bench, harness đạt điểm tổng cao nhất trong bảy agent dưới cả một model lớn
+lẫn một SLM 9B, và một ablation cho thấy multi-agent decomposition trên graph là cơ
+chế đóng góp chính, với hiệu ứng gần như gấp đôi khi model nhỏ đi (từ $+3{,}9$ lên
+$+7{,}9$ điểm composite, $p<10^{-12}$), trong khi verification/repair đóng vai trò một
+cơ chế đảm bảo mà hiệu ứng lộ ra trong residual-defect audit chứ không phải trong điểm
+judge. Biểu diễn alignment
+thành trạng thái graph hạng nhất, và phân rã việc sinh xoay quanh nó, do đó chính là
+điều cho phép một harness duy trì chất lượng thiết kế giảng dạy như một thuộc tính của
+hệ thống thay vì của model. Mở rộng harness sang multi-session refinement, và khép
+construct gap để độ chặt pedagogical được ghi nhận công bằng, là các bước tiếp theo tự
+nhiên.

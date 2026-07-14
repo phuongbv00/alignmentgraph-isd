@@ -1,0 +1,115 @@
+\section{Mô hình Hệ thống và Phát biểu Bài toán}
+\label{sec:problem-formulation}
+
+\subsection{Mô hình Hệ thống}
+\label{sec:system-model}
+
+Một chương trình giảng dạy được sinh bởi một harness bao quanh một language model
+(\cref{fig:architecture}). Model sinh nội dung; harness sở hữu trạng thái, workflow
+và việc kiểm soát chất lượng. Trạng thái trung tâm là một \emph{alignment graph} có
+versioning mà mọi module đọc hoặc ghi.
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/architecture}
+  \caption{Kiến trúc của AlignmentGraph-ISD. Các agent chuyên biệt chạy theo một
+  thứ tự thiết kế giảng dạy cố định (trên), mỗi agent chỉ ghi các kiểu node/edge của
+  riêng nó vào alignment graph có versioning ở trung tâm. Sau khi ghi, một agent
+  chạy pedagogical verification và repair như một công cụ trong lượt của nó (vòng
+  self-check). Một aggregator cuối cùng phát ra chương trình ADDIE và ghi lại một
+  residual audit im lặng. Model có thể thay thế (LLM hoặc SLM); mọi cơ chế thuộc về
+  harness.}
+  \label{fig:architecture}
+\end{figure*}
+
+\subsection{Alignment Graph}
+\label{sec:alignment-graph}
+
+Khó khăn gốc rễ là các quan hệ giữa các thành phần thiết kế chỉ tồn tại ngầm trong
+văn bản: một người đọc có thể \emph{cảm nhận} rằng một assessment đo một objective,
+nhưng hệ thống không thể kiểm tra điều đó. AlignmentGraph-ISD hiện thực hoá
+constructive alignment~\cite{biggs1996enhancing} thành một cấu trúc dữ liệu tường
+minh. Tại mỗi bước $t$, trạng thái thiết kế là một graph $G_t = (V_t, E_t)$ mà tập
+đỉnh phủ các artifact của cả năm pha ADDIE:
+\begin{multline*}
+V_t = V_{\mathrm{needs}} \cup V_{\mathrm{objective}} \cup V_{\mathrm{assessment}} \cup V_{\mathrm{activity}} \\
+ \cup V_{\mathrm{material}} \cup V_{\mathrm{implementation}} \cup V_{\mathrm{evaluation}}.
+\end{multline*}
+Tập cạnh được giữ tối thiểu: ba quan hệ nhiều-nhiều xoay quanh objective,
+\begin{align*}
+E_t &= E_{\mathrm{measures}} \cup E_{\mathrm{supports}} \cup E_{\mathrm{evaluates}},\\
+E_{\mathrm{measures}} &\subseteq V_{\mathrm{assessment}} \times V_{\mathrm{objective}},\\
+E_{\mathrm{supports}} &\subseteq V_{\mathrm{activity}} \times V_{\mathrm{objective}},\\
+E_{\mathrm{evaluates}} &\subseteq V_{\mathrm{evaluation}} \times V_{\mathrm{objective}}.
+\end{align*}
+Một edge \textsl{measures} ghép một assessment với objective nó chấm, một edge
+\textsl{supports} ghép một activity với objective nó luyện tập, và một edge
+\textsl{evaluates} ghép một evaluation item với objective nó thẩm định. Chỉ objective
+được phân rã thành các element node theo từng learning outcome
+(\texttt{objective:LO-*}), vì alignment phải được kiểm theo từng objective. Một
+objective là \emph{aligned} khi và chỉ khi ít nhất một assessment đo nó, một activity
+hỗ trợ nó, và một evaluation đánh giá nó: với mọi $o \in V_{\mathrm{objective}}$,
+\begin{multline}
+\label{eq:aligned}
+\mathrm{aligned}(o) \iff \big(\exists a\colon (a,o) \in E_{\mathrm{measures}}\big) \\
+ \wedge \big(\exists x\colon (x,o) \in E_{\mathrm{supports}}\big) \wedge \big(\exists e\colon (e,o) \in E_{\mathrm{evaluates}}\big).
+\end{multline}
+\Cref{eq:aligned} là định nghĩa vận hành của constructive alignment trong hệ; nhiệm
+vụ của harness là làm nó đúng cho mọi objective, và làm mỗi edge \emph{hợp lệ}---một
+assessment thực sự khơi gợi đúng cấp độ nhận thức của objective, chứ không chỉ là
+một liên kết tồn tại. Mỗi node mang cờ \texttt{stale} và \texttt{repair\_history};
+mỗi edge mang cờ \texttt{verified}---đây là các trường làm cho alignment đo được
+trong \cref{sec:results}.
+
+\subsection{Ký hiệu và Giả định}
+\label{sec:assumptions}
+
+\Cref{tab:notation} liệt kê ký hiệu. Chúng tôi giả định: (i) một design brief $b$
+được cho trước (việc hình thành brief nằm ngoài phạm vi; xem
+\cref{sec:threats-limitations}); (ii) model là stateless và có thể thay thế---không
+cơ chế nào dựa vào một model cụ thể hay vào năng lực model ngoài việc tuân theo chỉ
+dẫn; (iii) output phải khớp ADDIE schema của benchmark, nên ADDIE đóng vai trò hợp
+đồng output, không phải ràng buộc thứ tự thực thi.
+
+\begin{table}[t]
+  \caption{Ký hiệu.}
+  \label{tab:notation}
+  \small
+  \begin{tabular}{@{}ll@{}}
+    \toprule
+    Ký hiệu & Ý nghĩa \\
+    \midrule
+    $b$ & design brief (input của harness) \\
+    $G_t=(V_t,E_t)$ & alignment graph tại bước $t$ \\
+    $o \in V_{\mathrm{objective}}$ & một learning objective (element node) \\
+    $\mathrm{aligned}(o)$ & vị từ constructive-alignment, \cref{eq:aligned} \\
+    $A_i$ & specialist agent cho concern ISD $i$ \\
+    $V^{(i)},E^{(i)}$ & kiểu node/edge agent $i$ được ghi \\
+    $\mathcal{V}$ & pedagogical verifier; $\Omega=\mathcal{V}(G)$ tập vi phạm \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Phát biểu Bài toán}
+\label{sec:problem-statement}
+
+Cho một design brief $b$, sinh một chương trình giảng dạy hoàn chỉnh---tức một graph
+$G$ và các artifact ADDIE được kết xuất---sao cho
+\begin{enumerate}
+  \item[(i)] mọi learning objective đều aligned theo nghĩa \cref{eq:aligned}, với mỗi
+  edge \emph{hợp lệ} ở đúng cấp độ nhận thức mà objective nhắm tới (constructive
+  alignment); và
+  \item[(ii)] chất lượng này được đảm bảo bởi harness chứ không bởi năng lực thô của
+  model---tức được duy trì khi model được thu nhỏ từ một LLM xuống một SLM.
+\end{enumerate}
+
+\subsection{Thách thức}
+\label{sec:challenges}
+
+Ba thuộc tính khiến bài toán khó. \emph{Ghép nối chéo artifact}: điều kiện (i) mang
+tính quan hệ, nên không một agent nào chỉ thấy artifact của mình có thể chứng nhận
+nó. \emph{Tính vô hình}: một vi phạm (i) không hiện ra như một lỗi cục bộ---văn bản
+nhìn vẫn ổn---nên phải phát hiện bằng cấu trúc, không phải bằng đọc soát. \emph{Độc
+lập với model}: điều kiện (ii) cấm dựa vào năng lực model, nên sự đảm bảo phải đến từ
+trạng thái kiểm tra được và điều khiển tường minh---đúng là thứ mà một agent chỉ dùng
+prompt thiếu.

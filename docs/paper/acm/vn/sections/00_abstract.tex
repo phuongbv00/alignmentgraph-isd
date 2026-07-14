@@ -1,0 +1,29 @@
+\begin{abstract}
+Các agent dựa trên LLM (large language model) có thể sinh trọn vẹn một chương
+trình giảng dạy (instructional program), nhưng chất lượng của chúng phụ thuộc vào
+\emph{constructive alignment}---sự tương ứng giữa learning objective, activity và
+assessment---vốn là thuộc tính sụp đổ đầu tiên khi các tổ chức chuyển từ model lớn
+sang small language model (SLM) chi phí thấp để sinh nội dung đào tạo nội bộ. Suy
+giảm alignment là một khiếm khuyết tích lũy và vô hình: chương trình vẫn "nhìn ổn"
+theo từng phần và chỉ lộ lỗi khi triển khai. Các hướng LLM-agent hiện có cho
+instructional systems design (ISD) chỉ \emph{khuyến khích} alignment qua prompt;
+không hướng nào biểu diễn nó thành trạng thái mà hệ thống có thể kiểm tra và sửa,
+nên chất lượng bị phó mặc cho năng lực thô của model. Chúng tôi đề xuất
+\textbf{AlignmentGraph-ISD}, một graph-guided multi-agent harness hiện thực hoá
+constructive alignment thành một \emph{alignment graph} tường minh và kiểm tra được,
+rồi tổ chức việc sinh xoay quanh nó: các agent chuyên biệt xây dựng graph theo một workflow cố định với
+phạm vi ghi bị giới hạn, nên alignment hình thành \emph{by construction}, và mỗi
+agent chạy pedagogical verification cùng repair như một công cụ ngay trong lượt của
+mình. Chúng tôi đánh giá harness trên ISD-Agent-Bench, so với sáu agent tiêu biểu,
+dưới cả một model lớn lẫn một SLM 9B, và thực hiện một ablation để tách riêng đóng
+góp của từng cơ chế. Trên benchmark, AlignmentGraph-ISD đạt điểm tổng cao nhất
+trong bảy agent; ablation cho thấy multi-agent decomposition trên graph là cơ chế
+đóng góp chính ($+3{,}9$ điểm tổng, $p < 10^{-12}$), và---quan trọng---đóng
+góp này gần như gấp đôi khi model nhỏ đi (từ $+3{,}9$ điểm tổng trên LLM lên $+7{,}9$
+trên SLM, $p < 10^{-12}$), trong khi điểm của chính harness gần như bất biến theo
+scale còn các baseline suy giảm. Pedagogical verification/repair không làm thay đổi
+điểm do judge chấm trên cả hai model dù giảm được số alignment defect đo được. Các
+kết quả này cho thấy: biểu diễn alignment thành trạng thái graph hạng nhất, và phân
+rã việc sinh xoay quanh nó, chính là điều cho phép một agent harness duy trì chất
+lượng thiết kế giảng dạy độc lập với model bên dưới.
+\end{abstract}

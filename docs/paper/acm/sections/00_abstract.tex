@@ -1,3 +1,30 @@
 \begin{abstract}
-LLM-based agents for instructional systems design (ISD) optimize the quality of a single design pass: a fixed design brief goes in, and the best possible draft comes out. Real training programs in corporate settings, however, are living artifacts that must be refined continuously as deployment feedback arrives and technology changes. Existing architectures leave designers with a dilemma at every refinement request: regenerate the entire program, which is costly and discards previously validated work, or let the model edit locally without any control mechanism, which risks silently breaking the constructive alignment among objectives, activities, and assessments. We present \textbf{AlignmentGraph-ISD}, an AI agent harness that accompanies a training program through its full lifecycle---from brief elicitation, through initial generation, to post-deployment refinement sessions. Its central feature is the representation of the instructional design as an explicit, versioned alignment graph; around this graph, the harness organizes multi-agent orchestration, pedagogical verification, cascade-scoped revision, agentic retrieval-augmented generation, and multi-session memory, so that each refinement request regenerates only the affected portion of the design under alignment control. On 90 ISD-Agent-Bench scenarios, AlignmentGraph-ISD ranks first among seven agents in two benchmark runs---84.07 with an LLM (runner-up 82.70) and 84.65 with a 9B small language model (runner-up 82.03)---with all pairwise differences significant after Holm correction, and with the margin widening as the model gets smaller. A four-condition multi-session refinement experiment [RQ2 RESULTS PENDING]. These results indicate that a harness-centric architecture is a viable path for LLM agents, including low-cost small models, to support the continuous-improvement lifecycle of training programs.
+LLM-based agents can generate complete instructional programs, but their quality
+depends on \emph{constructive alignment}---the correspondence among learning
+objectives, activities, and assessments---which is the first property to break
+down as organizations move from large models to cost-efficient small language
+models (SLMs) for internal training-content generation. Alignment degradation is
+a cumulative, invisible defect: a program still looks reasonable section by
+section and only fails at deployment. Existing LLM-agent approaches for
+instructional systems design (ISD) merely \emph{encourage} alignment through
+prompting; none represents it as state the system can check and repair, so
+quality is left to the raw capability of the model. We propose
+\textbf{AlignmentGraph-ISD}, a graph-guided multi-agent harness that reifies
+constructive alignment as an explicit, verifiable \emph{alignment graph} and
+organizes generation around it: specialist agents build the graph under a fixed instructional-design workflow
+with bounded write scope, so alignment forms by construction, and each specialist
+runs pedagogical verification and repair as a tool within its own turn. We
+evaluate the harness on ISD-Agent-Bench against six representative agents under
+both a large model and a 9B SLM, and conduct an ablation that isolates the
+contribution of each mechanism. On the benchmark, AlignmentGraph-ISD achieves the
+highest overall score among the seven agents; the ablation shows that multi-agent
+decomposition over the graph is the dominant contributor, and---crucially---its
+contribution roughly doubles as the model shrinks (from $+3.9$ composite points on
+the LLM to $+7.9$ on the SLM, $p < 10^{-12}$), while the harness's own score stays
+nearly invariant across scale as the baselines degrade. Pedagogical
+verification/repair leaves the judged score unchanged on both models even as it
+measurably reduces residual alignment defects. These findings show that
+representing alignment as first-class graph state, and decomposing generation
+around it, is what lets an agent harness preserve instructional-design quality
+independently of the underlying model.
 \end{abstract}

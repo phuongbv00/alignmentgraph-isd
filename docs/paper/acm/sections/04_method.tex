@@ -1,0 +1,136 @@
+\section{The AlignmentGraph-ISD Harness}
+\label{sec:method}
+
+\subsection{Overview}
+\label{sec:overview}
+
+The problem of \cref{sec:problem-statement} demands that alignment be produced and
+guaranteed independently of the model. The observation that drives our design is
+that everything this requires---persistent state, quality control, and specialist
+coordination---is a responsibility of the execution environment, not a capability
+of the model. AlignmentGraph-ISD therefore concentrates these responsibilities in
+a harness, leaving the model to generate content within it. A complete agent is
+the combination of the two (\emph{agent = harness + model}). Concretely, the
+harness (i)~decomposes generation among specialist agents that build the alignment
+graph under a fixed instructional-design order with bounded write scope
+(\cref{sec:decomposition}), so alignment forms by construction, and (ii)~gives
+each specialist pedagogical verification and repair as tools it runs within its own
+turn (\cref{sec:qc}), so violations are caught and fixed before generation
+proceeds. A final aggregation step (\cref{sec:aggregation}) emits the program and
+records a residual audit.
+
+\subsection{Multi-Agent Decomposition over the Graph}
+\label{sec:decomposition}
+
+Each ISD concern is handled by a specialist agent---needs context, objective
+design, assessment design, activity and material, implementation plan, and
+evaluation---run in the fixed ADDIE order. Each agent $A_i$ is a graph-update
+operator whose write scope is bounded by its specialty:
+\[
+A_i : (G_t, c) \mapsto G_{t+1}, \qquad \Delta(G_t, G_{t+1}) \subseteq V^{(i)} \cup E^{(i)},
+\]
+where $\Delta(G_t, G_{t+1})$ denotes the nodes and edges added between the two
+graphs, and $V^{(i)}, E^{(i)}$ are the node and edge types agent $i$ may write.
+For example, the assessment agent writes only \texttt{assessment} nodes and
+\textsl{measures} edges: when it emits an assessment item it must name the
+objective the item grades, and that naming \emph{is} the \textsl{measures} edge.
+Because the objective agent runs first and deposits objectives into the shared
+graph, every later agent references existing objectives, and the alignment edges of
+\cref{eq:aligned} are created as a required part of generation. Alignment thus holds
+\emph{by construction}, rather than being hoped for in prose. The context each
+agent receives is $c = \rho(b) \cup \gamma(G_t) \cup \mu(M)$, where $\rho(b)$ is
+brief-derived context, $\gamma(G_t)$ is graph-context read from earlier nodes, and
+$\mu(M)$ is stable domain memory (ADDIE, Bloom, rubric templates).
+
+\subsection{Pedagogical Verification and Repair as Per-Agent Tools}
+\label{sec:qc}
+
+Construction alone guarantees that edges \emph{exist}; it does not guarantee that
+each edge is \emph{valid} or that every objective is covered. That is the job of
+verification and repair. Crucially, these are not a separate global phase run after
+all generation; they are tools each specialist runs \emph{within its own turn},
+right after writing its artifact. This keeps each agent's trajectory a clean
+generate\,$\rightarrow$\,self-check\,$\rightarrow$\,emit loop and lets relational
+checks work, because by the time an agent self-checks, the earlier artifacts it
+depends on are already in the shared graph.
+
+\paragraph{Verifier.} Let $\mathcal{V}$ denote the pedagogical verifier and
+$\Omega = \mathcal{V}(G)$ the violations it detects. It runs seven deterministic
+constraint families over the graph: objective coverage
+(\textsl{measures}/\textsl{supports}/\textsl{evaluates} existence per objective),
+Bloom-verb validity and verb--level consistency~\cite{anderson2001taxonomy},
+assessment--objective \emph{cognitive-level match} (a higher-order objective
+measured only by recognition-level items is flagged), rubric consistency
+(dangling objective references, missing or non-observable scoring criteria),
+active-practice coverage for higher-order objectives, delivery feasibility against
+the brief, and formative-evaluation concreteness. One check---objective
+\emph{measurability}---is reported for audit but not auto-repaired, because an
+observable Bloom verb already makes an objective measurable and rewriting
+well-formed statements degrades quality (\cref{sec:discussion}).
+
+\paragraph{Owned repair.} Each violation type is owned by the specialist whose
+artifact can fix it. After agent $A_i$ generates, it verifies and repairs only the
+types it owns, up to a small budget $B$:
+\[
+\text{repeat } \big[\, \Omega_i \leftarrow \{\omega \in \mathcal{V}(G) : \mathrm{owner}(\omega)=i\};\ G \leftarrow A_i^{\mathrm{repair}}(G, \Omega_i)\,\big]
+\]
+until $\Omega_i = \emptyset$ or the budget is exhausted. A repair combines a
+targeted LLM revision of the flagged artifact with a deterministic fallback that
+guarantees convergence even when the model output is unusable. Because repair is
+owned by the same specialist that generates, removing decomposition
+(\cref{sec:experimental-methodology}) necessarily removes specialist repair too: a
+single-agent variant repairs itself holistically, so no specialist is smuggled back
+in.
+
+\subsection{Aggregation and Residual Audit}
+\label{sec:aggregation}
+
+A final aggregator renders the graph into the ADDIE output contract and validates
+it against the schema. It also records a \emph{silent residual audit}: it replays
+the verifier once and stores any remaining violations as a metric, without
+repairing. This exposes, for every configuration, how many alignment defects
+survive---a measure of condition~(i) that is independent of the rubric score used
+in \cref{sec:results}.
+
+\subsection{Algorithm}
+\label{sec:algorithm}
+
+\begin{figure}[t]
+\small
+\hrule\vspace{2pt}
+\textbf{Algorithm 1:} AlignmentGraph-ISD generation\vspace{2pt}
+\hrule\vspace{4pt}
+\begin{tabbing}
+xx\=xx\=xx\=\kill
+\textbf{Input:} brief $b$; specialists $A_1,\dots,A_k$ in ADDIE order; budget $B$\\[1pt]
+$G \gets \emptyset$\\
+\textbf{for} $i = 1$ \textbf{to} $k$ \textbf{do}\\
+\>$c \gets \rho(b) \cup \gamma(G) \cup \mu(M)$\\
+\>$G \gets A_i(G, c)$ \quad // generate; create owned nodes/edges\\
+\>\textbf{for} $r = 1$ \textbf{to} $B$ \textbf{do} \quad // self-check in the turn\\
+\>\>$\Omega_i \gets \{\omega \in \mathcal{V}(G) : \mathrm{owner}(\omega)=i\}$\\
+\>\>\textbf{if} $\Omega_i = \emptyset$ \textbf{then break}\\
+\>\>$G \gets A_i^{\mathrm{repair}}(G, \Omega_i)$\\
+\textbf{return} $\mathrm{aggregate}(G)$, \ $\mathrm{residual}\gets\mathcal{V}(G)$
+\end{tabbing}
+\vspace{-4pt}\hrule
+\caption{Generation with per-agent self-check.}
+\label{alg:harness}
+\end{figure}
+
+\Cref{alg:harness} summarizes generation. The workflow is a fixed pipeline; no
+dynamic planner is used in the single-pass setting studied here (a planner-driven
+variant is retained for the multi-session extension of
+\cref{sec:threats-limitations}).
+
+\subsection{Difference from the Closest Baselines}
+\label{sec:diff}
+
+Against the strongest baselines the difference is representational, not just
+procedural. ReAct-ADDIE and the other theory-grounded agents pass alignment
+guidance through prompts and never materialize it; the objective they generate and
+the assessment they generate are never linked in a structure the system can check.
+AlignmentGraph-ISD instead makes each alignment relation a typed edge created at
+generation time and checked by an owned verifier, so the difference in input,
+control, and output is a difference in \emph{what state exists}: a graph the harness
+can enforce \cref{eq:aligned} over, versus text it can only prompt for.

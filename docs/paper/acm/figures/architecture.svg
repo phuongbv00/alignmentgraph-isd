@@ -1,218 +1,116 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 660" width="1440" height="660"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 470" width="1180" height="470"
      font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
 
-  <rect x="0" y="0" width="1440" height="660" fill="#FFFFFF"/>
+  <rect x="0" y="0" width="1180" height="470" fill="#FFFFFF"/>
 
   <defs>
     <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#4B5563"/>
     </marker>
-    <marker id="arrRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#B4432F"/>
+    <marker id="arrMini" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6B7280"/>
     </marker>
     <marker id="arrOrange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#C0562D"/>
     </marker>
-    <marker id="arrMini" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6B7280"/>
-    </marker>
-    <marker id="arrMiniOrange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#D97706"/>
-    </marker>
-    <marker id="arrTiny" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#5B8C5A"/>
-    </marker>
   </defs>
 
   <!-- ══════════ Harness boundary ══════════ -->
-  <rect x="24" y="88" width="1392" height="552" rx="14"
+  <rect x="20" y="44" width="1140" height="410" rx="14"
         fill="none" stroke="#9CA3AF" stroke-width="1.6" stroke-dasharray="9 7"/>
-<!--  <text x="44" y="114" font-size="15" font-weight="600" fill="#6B7280">AlignmentGraph-ISD harness</text>-->
+  <text x="40" y="34" font-size="14" font-weight="600" fill="#6B7280">AlignmentGraph-ISD harness&#160;&#160;(agent = harness + model)</text>
 
-  <!-- ══════════ Designer (external) ══════════ -->
-  <rect x="40" y="18" width="190" height="46" rx="10" fill="#F3F4F6" stroke="#9CA3AF" stroke-width="1.4"/>
-  <circle cx="66" cy="36" r="6" fill="none" stroke="#6B7280" stroke-width="1.6"/>
-  <path d="M 56 52 Q 66 43 76 52" fill="none" stroke="#6B7280" stroke-width="1.6"/>
-  <text x="146" y="46" font-size="12.5" fill="#374151" text-anchor="middle">Designer &amp; stakeholders</text>
-  <line x1="135" y1="64" x2="135" y2="132" stroke="#4B5563" stroke-width="1.6" marker-end="url(#arr)"/>
-  <text x="145" y="102" font-size="10.5" fill="#4B5563">need</text>
+  <!-- ══════════ brief input ══════════ -->
+  <text x="150" y="90" font-size="12" fill="#374151" text-anchor="middle" font-style="italic">design brief b</text>
+  <line x1="150" y1="96" x2="150" y2="120" stroke="#4B5563" stroke-width="1.6" marker-end="url(#arr)"/>
 
-  <!-- ══════════ Brief elicitation ══════════ -->
-  <rect x="56" y="136" width="230" height="76" rx="10" fill="#EFE9F6" stroke="#7A5EA6" stroke-width="1.5"/>
-  <!-- chat bubbles glyph -->
-  <rect x="76" y="155" width="30" height="18" rx="6" fill="#FFFFFF" stroke="#7A5EA6" stroke-width="1.4"/>
-  <path d="M 82 173 L 80 180 L 90 173" fill="#FFFFFF" stroke="#7A5EA6" stroke-width="1.4" stroke-linejoin="round"/>
-  <rect x="96" y="172" width="30" height="18" rx="6" fill="#7A5EA6" opacity="0.85"/>
-  <path d="M 118 190 L 122 196 L 110 190" fill="#7A5EA6" opacity="0.85"/>
-  <text x="146" y="171" font-size="13" font-weight="600" fill="#3E2E58">Brief elicitation</text>
-  <text x="146" y="189" font-size="10.5" fill="#8B7BA8">§3.6 · ask / propose</text>
-
-  <!-- ══════════ Orchestrator ══════════ -->
-  <rect x="340" y="136" width="240" height="76" rx="10" fill="#E8EEF7" stroke="#4A6FA5" stroke-width="1.5"/>
-  <text x="360" y="171" font-size="13" font-weight="600" fill="#243B5E">Orchestrator</text>
-  <text x="360" y="189" font-size="10.5" fill="#7189AC">§3.3 · planner π</text>
-  <!-- task DAG glyph -->
-  <g stroke="#4A6FA5" stroke-width="1.4" fill="#FFFFFF">
-    <line x1="522" y1="158" x2="504" y2="182"/>
-    <line x1="522" y1="158" x2="540" y2="182"/>
-    <line x1="540" y1="182" x2="551" y2="196"/>
-    <circle cx="522" cy="158" r="6"/>
-    <circle cx="504" cy="182" r="6"/>
-    <circle cx="540" cy="182" r="6" fill="#4A6FA5"/>
-    <circle cx="551" cy="196" r="5"/>
-  </g>
-
-  <!-- elicitation → orchestrator -->
-  <line x1="286" y1="174" x2="336" y2="174" stroke="#4B5563" stroke-width="1.6" marker-end="url(#arr)"/>
-  <text x="311" y="164" font-size="10.5" fill="#4B5563" text-anchor="middle" font-style="italic">brief b</text>
-
-  <!-- ══════════ Specialist agents ══════════ -->
-  <rect x="340" y="248" width="240" height="286" rx="10" fill="#F8FAFC" stroke="#4A6FA5" stroke-width="1.5"/>
-  <text x="460" y="272" font-size="12.5" font-weight="600" fill="#243B5E" text-anchor="middle">Specialist agents <tspan font-weight="400" fill="#7189AC" font-size="10.5">§3.3</tspan></text>
+  <!-- ══════════ Specialist pipeline (fixed ADDIE order) ══════════ -->
+  <rect x="60" y="122" width="290" height="300" rx="10" fill="#F8FAFC" stroke="#4A6FA5" stroke-width="1.5"/>
+  <text x="205" y="144" font-size="12.5" font-weight="600" fill="#243B5E" text-anchor="middle">Specialist agents · fixed ADDIE order <tspan font-weight="400" fill="#7189AC" font-size="10.5">§4.2</tspan></text>
 
   <g font-size="11.5" fill="#374151" text-anchor="middle">
-    <rect x="356" y="286" width="208" height="28" rx="7" fill="#FFFFFF" stroke="#94A3B8"/>
-    <text x="460" y="304">Needs context</text>
-    <rect x="356" y="320" width="208" height="28" rx="7" fill="#FFFFFF" stroke="#94A3B8"/>
-    <text x="460" y="338">Objective design</text>
-    <rect x="356" y="354" width="208" height="28" rx="7" fill="#FFFFFF" stroke="#94A3B8"/>
-    <text x="460" y="372">Assessment design</text>
-    <rect x="356" y="388" width="208" height="28" rx="7" fill="#FFFFFF" stroke="#94A3B8"/>
-    <text x="460" y="406">Activity &amp; material</text>
-    <rect x="356" y="422" width="208" height="28" rx="7" fill="#FFFFFF" stroke="#94A3B8"/>
-    <text x="460" y="440">Implementation plan</text>
-    <rect x="356" y="456" width="208" height="28" rx="7" fill="#FFFFFF" stroke="#94A3B8"/>
-    <text x="460" y="474">Evaluation &amp; revision</text>
-    <rect x="356" y="492" width="208" height="28" rx="7" fill="#EEF2F7" stroke="#94A3B8"/>
-    <text x="460" y="510" font-style="italic">ADDIE aggregator</text>
+    <rect x="82" y="156" width="196" height="30" rx="7" fill="#FFFFFF" stroke="#94A3B8"/>
+    <text x="180" y="175">Needs context</text>
+    <rect x="82" y="192" width="196" height="30" rx="7" fill="#FFFFFF" stroke="#94A3B8"/>
+    <text x="180" y="211">Objective design</text>
+    <rect x="82" y="228" width="196" height="30" rx="7" fill="#FFFFFF" stroke="#94A3B8"/>
+    <text x="180" y="247">Assessment design</text>
+    <rect x="82" y="264" width="196" height="30" rx="7" fill="#FFFFFF" stroke="#94A3B8"/>
+    <text x="180" y="283">Activity &amp; material</text>
+    <rect x="82" y="300" width="196" height="30" rx="7" fill="#FFFFFF" stroke="#94A3B8"/>
+    <text x="180" y="319">Implementation plan</text>
+    <rect x="82" y="336" width="196" height="30" rx="7" fill="#FFFFFF" stroke="#94A3B8"/>
+    <text x="180" y="355">Evaluation &amp; revision</text>
+    <rect x="82" y="378" width="196" height="30" rx="7" fill="#EEF2F7" stroke="#94A3B8"/>
+    <text x="180" y="397" font-style="italic">ADDIE aggregator</text>
+  </g>
+  <!-- sequential arrows down the pipeline -->
+  <g stroke="#4B5563" stroke-width="1.3" marker-end="url(#arr)">
+    <line x1="300" y1="186" x2="300" y2="192"/>
+    <line x1="300" y1="222" x2="300" y2="228"/>
+    <line x1="300" y1="258" x2="300" y2="264"/>
+    <line x1="300" y1="294" x2="300" y2="300"/>
+    <line x1="300" y1="330" x2="300" y2="336"/>
+    <line x1="300" y1="366" x2="300" y2="378"/>
   </g>
 
-  <!-- orchestrator → specialists -->
-  <line x1="540" y1="212" x2="540" y2="244" stroke="#4B5563" stroke-width="1.6" marker-end="url(#arr)"/>
-  <text x="548" y="233" font-size="10.5" fill="#4B5563">task τ*</text>
+  <!-- ══════════ Per-agent verify & repair (self-check tool) ══════════ -->
+  <rect x="384" y="150" width="196" height="86" rx="10" fill="#FAEAE3" stroke="#C0562D" stroke-width="1.5"/>
+  <circle cx="410" cy="178" r="11" fill="#FFFFFF" stroke="#C0562D" stroke-width="1.5"/>
+  <path d="M 404 178 L 408 183 L 416 173" fill="none" stroke="#C0562D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="482" y="176" font-size="12" font-weight="600" fill="#6E2E15" text-anchor="middle">Verify &amp; repair</text>
+  <text x="482" y="193" font-size="10" fill="#B07B5E" text-anchor="middle">per-agent tool <tspan font-weight="600">§4.3</tspan></text>
+  <text x="482" y="222" font-size="9.5" fill="#8A5A44" text-anchor="middle" xml:space="preserve">repair owned Ω until ∅</text>
+  <!-- each specialist self-checks: loop between pipeline and QC -->
+  <path d="M 280 200 L 384 178" fill="none" stroke="#C0562D" stroke-width="1.4" marker-end="url(#arrOrange)"/>
+  <path d="M 384 210 L 280 250" fill="none" stroke="#C0562D" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#arrOrange)"/>
+  <text x="330" y="176" font-size="9" fill="#C0562D">verify</text>
+  <text x="316" y="244" font-size="9" fill="#C0562D">repair</text>
 
-  <!-- ══════════ Alignment graph (center) ══════════ -->
-  <rect x="664" y="136" width="356" height="334" rx="12" fill="#F0F7F0" stroke="#5B8C5A" stroke-width="2"/>
-  <text x="842" y="163" font-size="14" font-weight="600" fill="#2C4A2B" text-anchor="middle">Alignment graph <tspan font-weight="400" fill="#7DA07C" font-size="11">§3.2</tspan></text>
-  <text x="842" y="182" font-size="10.5" fill="#6B7280" text-anchor="middle" xml:space="preserve"><tspan font-style="italic">G</tspan><tspan dy="3" font-size="8">t</tspan><tspan dy="-3"> = (V</tspan><tspan dy="3" font-size="8">t</tspan><tspan dy="-3">, E</tspan><tspan dy="3" font-size="8">t</tspan><tspan dy="-3">)</tspan></text>
+  <!-- ══════════ Alignment graph (center-right) ══════════ -->
+  <rect x="628" y="122" width="330" height="300" rx="12" fill="#F0F7F0" stroke="#5B8C5A" stroke-width="2"/>
+  <text x="793" y="145" font-size="14" font-weight="600" fill="#2C4A2B" text-anchor="middle">Alignment graph <tspan font-weight="400" fill="#7DA07C" font-size="11">§3.2</tspan></text>
+  <text x="793" y="163" font-size="10.5" fill="#6B7280" text-anchor="middle" xml:space="preserve"><tspan font-style="italic">G</tspan><tspan dy="3" font-size="8">t</tspan><tspan dy="-3"> = (V</tspan><tspan dy="3" font-size="8">t</tspan><tspan dy="-3">, E</tspan><tspan dy="3" font-size="8">t</tspan><tspan dy="-3">) · aligned(o)</tspan></text>
 
   <!-- mini graph edges -->
-  <line x1="842" y1="238" x2="842" y2="264" stroke="#6B7280" stroke-width="1.2" stroke-dasharray="2 3" marker-end="url(#arrMini)"/>
-  <text x="852" y="255" font-size="9" font-style="italic" fill="#6B7280">impact</text>
-
-  <line x1="739" y1="270" x2="821" y2="282" stroke="#6B7280" stroke-width="1.2" marker-end="url(#arrMini)"/>
-  <text x="776" y="263" font-size="9.5" font-style="italic" fill="#4A6FA5">measures</text>
-
-  <line x1="736" y1="356" x2="825" y2="296" stroke="#6B7280" stroke-width="1.2" marker-end="url(#arrMini)"/>
-  <line x1="741" y1="365" x2="819" y2="365" stroke="#6B7280" stroke-width="1.2" marker-end="url(#arrMini)"/>
-  <text x="778" y="384" font-size="9.5" font-style="italic" fill="#4A6FA5">supports</text>
-
-  <line x1="948" y1="315" x2="864" y2="293" stroke="#6B7280" stroke-width="1.2" marker-end="url(#arrMini)"/>
-  <text x="915" y="288" font-size="9.5" font-style="italic" fill="#4A6FA5">evaluates</text>
-  <line x1="948" y1="335" x2="864" y2="358" stroke="#D97706" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#arrMiniOrange)"/>
+  <line x1="690" y1="250" x2="772" y2="262" stroke="#6B7280" stroke-width="1.2" marker-end="url(#arrMini)"/>
+  <text x="726" y="243" font-size="9.5" font-style="italic" fill="#4A6FA5">measures</text>
+  <line x1="687" y1="336" x2="776" y2="276" stroke="#6B7280" stroke-width="1.2" marker-end="url(#arrMini)"/>
+  <line x1="692" y1="345" x2="770" y2="345" stroke="#6B7280" stroke-width="1.2" marker-end="url(#arrMini)"/>
+  <text x="729" y="366" font-size="9.5" font-style="italic" fill="#4A6FA5">supports</text>
+  <line x1="899" y1="295" x2="815" y2="273" stroke="#6B7280" stroke-width="1.2" marker-end="url(#arrMini)"/>
+  <text x="866" y="268" font-size="9.5" font-style="italic" fill="#4A6FA5">evaluates</text>
 
   <!-- mini graph nodes -->
-  <circle cx="842" cy="219" r="19" fill="#E5E7EB" stroke="#6B7280" stroke-width="1.3"/>
-  <text x="842" y="223" font-size="10" font-weight="600" fill="#374151" text-anchor="middle">NC</text>
-
-  <circle cx="842" cy="285" r="19" fill="#DCEBDC" stroke="#5B8C5A" stroke-width="1.4"/>
-  <text x="842" y="289" font-size="10" font-weight="600" fill="#2C4A2B" text-anchor="middle">LO 1</text>
-
-  <circle cx="842" cy="365" r="19" fill="#FDE9D7" stroke="#D97706" stroke-width="1.6" stroke-dasharray="4 3"/>
-  <text x="842" y="369" font-size="10" font-weight="600" fill="#8A4B08" text-anchor="middle">LO 2</text>
-
-  <circle cx="720" cy="267" r="19" fill="#FFFFFF" stroke="#4A6FA5" stroke-width="1.4"/>
-  <text x="720" y="271" font-size="10" font-weight="600" fill="#243B5E" text-anchor="middle">AS</text>
-
-  <circle cx="720" cy="365" r="19" fill="#FFFFFF" stroke="#4A6FA5" stroke-width="1.4"/>
-  <text x="720" y="369" font-size="10" font-weight="600" fill="#243B5E" text-anchor="middle">ACT</text>
-
-  <circle cx="966" cy="325" r="19" fill="#FDE9D7" stroke="#D97706" stroke-width="1.6" stroke-dasharray="4 3"/>
-  <text x="966" y="329" font-size="10" font-weight="600" fill="#8A4B08" text-anchor="middle">EV</text>
-
-  <!-- refinement request marker pointing at LO 2 -->
-  <line x1="775" y1="428" x2="826" y2="380" stroke="#C0562D" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#arrOrange)"/>
-  <text x="770" y="443" font-size="10" font-weight="600" fill="#C0562D" text-anchor="middle" xml:space="preserve">refinement request <tspan font-style="italic">r</tspan></text>
+  <circle cx="793" cy="199" r="19" fill="#E5E7EB" stroke="#6B7280" stroke-width="1.3"/>
+  <text x="793" y="203" font-size="10" font-weight="600" fill="#374151" text-anchor="middle">NC</text>
+  <circle cx="793" cy="265" r="19" fill="#DCEBDC" stroke="#5B8C5A" stroke-width="1.4"/>
+  <text x="793" y="269" font-size="10" font-weight="600" fill="#2C4A2B" text-anchor="middle">LO 1</text>
+  <circle cx="793" cy="345" r="19" fill="#DCEBDC" stroke="#5B8C5A" stroke-width="1.4"/>
+  <text x="793" y="349" font-size="10" font-weight="600" fill="#2C4A2B" text-anchor="middle">LO 2</text>
+  <circle cx="671" cy="247" r="19" fill="#FFFFFF" stroke="#4A6FA5" stroke-width="1.4"/>
+  <text x="671" y="251" font-size="10" font-weight="600" fill="#243B5E" text-anchor="middle">AS</text>
+  <circle cx="671" cy="345" r="19" fill="#FFFFFF" stroke="#4A6FA5" stroke-width="1.4"/>
+  <text x="671" y="349" font-size="10" font-weight="600" fill="#243B5E" text-anchor="middle">ACT</text>
+  <circle cx="917" cy="305" r="19" fill="#FFFFFF" stroke="#4A6FA5" stroke-width="1.4"/>
+  <text x="917" y="309" font-size="10" font-weight="600" fill="#243B5E" text-anchor="middle">EV</text>
 
   <!-- legend -->
-  <circle cx="880" cy="440" r="7" fill="#DCEBDC" stroke="#5B8C5A" stroke-width="1.2"/>
-  <text x="893" y="444" font-size="9.5" fill="#4B5563">verified</text>
-  <circle cx="946" cy="440" r="7" fill="#FDE9D7" stroke="#D97706" stroke-width="1.2" stroke-dasharray="3 2"/>
-  <text x="959" y="444" font-size="9.5" fill="#4B5563">stale</text>
+  <circle cx="720" cy="400" r="7" fill="#DCEBDC" stroke="#5B8C5A" stroke-width="1.2"/>
+  <text x="733" y="404" font-size="9.5" fill="#4B5563">aligned objective (measures ∧ supports ∧ evaluates)</text>
 
-  <!-- specialists ↔ graph -->
-  <line x1="584" y1="360" x2="660" y2="360" stroke="#4B5563" stroke-width="1.6"
+  <!-- specialists ↔ graph : read/write (bounded scope) -->
+  <line x1="580" y1="300" x2="624" y2="300" stroke="#4B5563" stroke-width="1.6"
         marker-end="url(#arr)" marker-start="url(#arr)"/>
-  <text x="622" y="350" font-size="9.5" fill="#4B5563" text-anchor="middle">read / write</text>
+  <text x="602" y="290" font-size="9.5" fill="#4B5563" text-anchor="middle">read / write</text>
+  <text x="602" y="316" font-size="8.5" fill="#6B7280" text-anchor="middle">(bounded scope)</text>
 
-  <!-- ══════════ Retrieval agents (pluggable stack) ══════════ -->
-  <rect x="1104" y="166" width="296" height="64" rx="10" fill="#FDF8EC" stroke="#D9BE7A" stroke-width="1.2" stroke-dasharray="6 4"/>
-  <rect x="1096" y="158" width="296" height="64" rx="10" fill="#FCF6E4" stroke="#CFAF5C" stroke-width="1.2" stroke-dasharray="6 4"/>
-  <rect x="1088" y="150" width="296" height="64" rx="10" fill="#FBF3E0" stroke="#C08A2D" stroke-width="1.5" stroke-dasharray="6 4"/>
-  <text x="1236" y="178" font-size="12.5" font-weight="600" fill="#6B4A0E" text-anchor="middle">Retrieval agents <tspan font-weight="400" fill="#B99749" font-size="10.5">§3.7</tspan></text>
-  <text x="1236" y="198" font-size="10.5" fill="#8A6D2F" text-anchor="middle" xml:space="preserve">one per domain · registry <tspan font-style="italic">R</tspan></text>
-
-  <!-- specialists ↔ retrieval (on-demand, routed above the graph panel) -->
-  <path d="M 580 270 L 636 270 L 636 120 L 1236 120 L 1236 146"
-        fill="none" stroke="#4B5563" stroke-width="1.5" stroke-dasharray="6 4"
-        marker-end="url(#arr)" marker-start="url(#arr)"/>
-  <text x="930" y="112" font-size="10.5" fill="#4B5563" text-anchor="middle">retrieve (on demand)</text>
-
-  <!-- ══════════ Verifier + cascade-scoped revision ══════════ -->
-  <rect x="664" y="498" width="356" height="62" rx="10" fill="#FAEAE3" stroke="#C0562D" stroke-width="1.5"/>
-  <!-- check-in-circle + cycle glyph -->
-  <circle cx="694" cy="529" r="11" fill="#FFFFFF" stroke="#C0562D" stroke-width="1.5"/>
-  <path d="M 688 529 L 692 534 L 700 524" fill="none" stroke="#C0562D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M 723 521 A 9 9 0 1 1 716 537" fill="none" stroke="#C0562D" stroke-width="1.5" marker-end="url(#arrOrange)"/>
-  <text x="748" y="526" font-size="12.5" font-weight="600" fill="#6E2E15">Verifier &amp; cascade-scoped revision</text>
-  <text x="748" y="544" font-size="10.5" fill="#B07B5E" xml:space="preserve">§3.4 · repair until Ω<tspan dy="3" font-size="8">t</tspan><tspan dy="-3"> = ∅</tspan></text>
-
-  <!-- graph ↔ verifier -->
-  <line x1="742" y1="470" x2="742" y2="494" stroke="#4B5563" stroke-width="1.6" marker-end="url(#arr)"/>
-  <text x="750" y="487" font-size="10" fill="#4B5563">verify</text>
-  <line x1="920" y1="498" x2="920" y2="474" stroke="#C0562D" stroke-width="1.6" marker-end="url(#arrOrange)"/>
-  <text x="928" y="490" font-size="10" fill="#C0562D">mark stale</text>
-
-  <!-- verifier → specialists -->
-  <line x1="664" y1="529" x2="588" y2="529" stroke="#4B5563" stroke-width="1.6" marker-end="url(#arr)"/>
-  <text x="626" y="519" font-size="9.5" fill="#4B5563" text-anchor="middle">route ω</text>
-
-  <!-- ══════════ Four-layer memory ══════════ -->
-  <rect x="56" y="584" width="1328" height="44" rx="10" fill="#F0F7F0" stroke="#5B8C5A" stroke-width="1.5"/>
-  <text x="72" y="611" font-size="12" font-weight="600" fill="#2C4A2B">Four-layer memory <tspan font-weight="400" fill="#7DA07C" font-size="10.5">§3.5</tspan></text>
-
-  <g font-size="10.5" fill="#374151" text-anchor="middle">
-    <rect x="300" y="593" width="120" height="26" rx="6" fill="#FFFFFF" stroke="#8FBC8B"/>
-    <text x="360" y="610">working</text>
-    <rect x="434" y="593" width="120" height="26" rx="6" fill="#FFFFFF" stroke="#8FBC8B"/>
-    <text x="494" y="610">semantic</text>
-    <rect x="568" y="593" width="120" height="26" rx="6" fill="#FFFFFF" stroke="#8FBC8B"/>
-    <text x="628" y="610">episodic</text>
-    <rect x="702" y="593" width="120" height="26" rx="6" fill="#FFFFFF" stroke="#8FBC8B"/>
-    <text x="762" y="610">procedural</text>
-  </g>
-
-  <!-- committed version chain, drawn -->
-  <g font-size="9.5" fill="#2C4A2B" text-anchor="middle">
-    <rect x="1080" y="593" width="42" height="26" rx="5" fill="#DCEBDC" stroke="#5B8C5A"/>
-    <text x="1101" y="610" xml:space="preserve"><tspan font-style="italic">G</tspan><tspan dy="-3" font-size="7">(1)</tspan></text>
-    <line x1="1126" y1="606" x2="1142" y2="606" stroke="#5B8C5A" stroke-width="1.3" marker-end="url(#arrTiny)"/>
-    <rect x="1146" y="593" width="42" height="26" rx="5" fill="#DCEBDC" stroke="#5B8C5A"/>
-    <text x="1167" y="610" xml:space="preserve"><tspan font-style="italic">G</tspan><tspan dy="-3" font-size="7">(2)</tspan></text>
-    <line x1="1192" y1="606" x2="1208" y2="606" stroke="#5B8C5A" stroke-width="1.3" marker-end="url(#arrTiny)"/>
-    <text x="1222" y="610" font-size="12" fill="#5B8C5A">⋯</text>
-    <line x1="1236" y1="606" x2="1252" y2="606" stroke="#5B8C5A" stroke-width="1.3" marker-end="url(#arrTiny)"/>
-    <rect x="1256" y="593" width="42" height="26" rx="5" fill="#DCEBDC" stroke="#5B8C5A"/>
-    <text x="1277" y="610" xml:space="preserve"><tspan font-style="italic">G</tspan><tspan dy="-3" font-size="7">(v)</tspan></text>
-  </g>
-
-  <!-- graph → memory : commit -->
-  <path d="M 1020 430 L 1054 430 L 1054 580" fill="none" stroke="#4B5563" stroke-width="1.6" marker-end="url(#arr)"/>
-  <text x="1062" y="510" font-size="10.5" fill="#4B5563" xml:space="preserve">commit <tspan font-style="italic">G</tspan><tspan dy="-4" font-size="8">(v+1)</tspan></text>
-
-  <!-- memory → orchestrator : next session loop -->
-  <path d="M 56 606 L 40 606 L 40 230 L 380 230 L 380 216"
-        fill="none" stroke="#B4432F" stroke-width="1.8" stroke-dasharray="8 5" marker-end="url(#arrRed)"/>
-  <text x="210" y="224" font-size="10.5" font-weight="600" fill="#B4432F" text-anchor="middle" xml:space="preserve">session <tspan font-style="italic">v</tspan>+1 · refinement request <tspan font-style="italic">r</tspan><tspan dy="3" font-size="8">v</tspan></text>
+  <!-- ══════════ Output ══════════ -->
+  <rect x="1000" y="230" width="150" height="86" rx="10" fill="#EEF2F7" stroke="#4A6FA5" stroke-width="1.5"/>
+  <text x="1075" y="262" font-size="12" font-weight="600" fill="#243B5E" text-anchor="middle">ADDIE program</text>
+  <text x="1075" y="284" font-size="10" fill="#7189AC" text-anchor="middle">+ residual</text>
+  <text x="1075" y="298" font-size="10" fill="#7189AC" text-anchor="middle">audit §4.4</text>
+  <line x1="958" y1="273" x2="996" y2="273" stroke="#4B5563" stroke-width="1.6" marker-end="url(#arr)"/>
+  <text x="977" y="264" font-size="9" fill="#4B5563" text-anchor="middle">emit</text>
 
 </svg>

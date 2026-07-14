@@ -1,0 +1,51 @@
+\section{Threats to Validity}
+\label{sec:threats-limitations}
+
+\paragraph{Internal.}
+Prompts, models, and judges all influence scores. We fix a manifest per run, use
+identical decoding configurations across arms, grade with multiple judges to reduce
+self-preference bias, and configure agent and judge models separately. The ablation
+arms are separate workflow modules with no shared configuration flags, so a removed
+mechanism cannot leak into another arm---a property we verified in the harness test
+suite.
+
+\paragraph{Construct.}
+The benchmark rubric and trajectory score measure artifact and trace quality, not
+learner outcomes, and---as \cref{sec:discussion} shows---do not directly reward the
+alignment rigor that verification/repair enforces. We mitigate this by reporting a
+deterministic residual-defect audit alongside the judged scores; however, the
+offline audit reconstructs the graph from output text without edges, so its
+absolute per-type counts are approximate and we rely on the in-run repair activity
+for precise claims. Conclusions about verification/repair are therefore bounded to
+what these proxies measure.
+
+\paragraph{External.}
+Scenarios are synthetic and drawn from a single benchmark; results may not transfer
+to a different ISD benchmark or to real corporate briefs. The model-scale evidence
+rests on two points---one large model and one 9B SLM---which bracket a wide range but
+do not cover the full spectrum; the trend (a larger decomposition contribution on the
+smaller model) is consistent across both but would be strengthened by additional model
+sizes.
+
+\paragraph{Conclusion.}
+Effects are estimated on $n=90$ paired scenarios with non-parametric tests, Holm
+correction, and bootstrap confidence intervals; the dominant decomposition effect
+is large and highly significant, while the verify/repair effect is reported as a
+null with its confidence interval, not as a positive claim.
+
+\section{Limitations and Future Work}
+\label{sec:future-work}
+
+The present work is deliberately scoped to \emph{single-pass} generation, and each
+limitation motivates a direct extension. (1)~\emph{Multi-session refinement}: real
+programs are revised over their lifetime; the harness retains a dynamic,
+planner-driven variant with cascade-scoped invalidation for exactly this setting,
+which we leave to future evaluation. (2)~\emph{Brief elicitation}: we assume a
+design brief is given, whereas in practice the brief emerges from stakeholder
+conversation; a conversational elicitation front end is a natural addition.
+(3)~\emph{Domain knowledge}: organization-specific conventions (internal rubrics,
+code-review standards) could be injected through pluggable agentic retrieval, which
+the architecture already accommodates but which we do not evaluate here.
+(4)~\emph{Evaluation}: closing the construct gap---measuring alignment quality in a
+way that credits pedagogical rigor, ideally against learner outcomes---is the most
+important next step for assessing the verification/repair mechanism fairly.

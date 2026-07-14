@@ -1,24 +1,83 @@
 \section{Introduction}
 \label{sec:introduction}
 
-Corporate training is a continuous activity. Programs for onboarding, role transitions, and upskilling are revised whenever technology, internal processes, business requirements, or post-deployment feedback change. Our experience building and operating such programs suggests that what designers lack is not a tool that produces better first drafts, but one that follows a program through its entire lifecycle---from a vaguely articulated need, through the first complete design, to the stream of adjustments that follows every deployment. The central challenge in that lifecycle is that \emph{design does not end at the first generation}: learner and instructor feedback, incidents in the field, and technology shifts continually produce refinement requests---add a learning objective, tighten a rubric, change the duration, switch the delivery format. Each request triggers a refinement round on the existing program, and these rounds recur across many working sessions over the program's lifetime.
+Corporate training is produced at scale. Programs for onboarding, role
+transitions, and upskilling---the form instructional programs take in a corporate
+setting---are increasingly drafted with LLM-based agents, and the economics of
+inference are pushing organizations from large frontier models toward smaller,
+cheaper \emph{small language models} (SLMs) for these internal, high-volume tasks,
+precisely as base-model capability saturates on many benchmarks~\cite{belcak2025slm,deveci2025ouroboros,shukla2025scalingwall}.
+When raw model capability is no longer the lever, the quality of an agentic system
+depends increasingly on the \emph{harness} around the model rather than the model
+itself, and this effect is largest on small models~\cite{cho2026harness}.
 
-Recent LLM-agent research on instructional systems design (ISD) does not address this challenge. Theory-grounded agents such as ReAct-ADDIE, ADDIE-Agent, Dick-Carey-Agent, and RPISD-Agent~\cite{isdagentbench,yao2023react,branch2009addie,dick1978systematic,tripp1990rapid}, as well as EduPlanner~\cite{zhang2025eduplanner}, Instructional Agents~\cite{yao2025instructionalagents}, and AgentLesson~\cite{agentlesson2026}, apply ISD theory and learning principles to maximize output quality within a \emph{single design pass}: a fixed brief goes in, and the best possible draft comes out. ISD-Agent-Bench~\cite{isdagentbench} likewise evaluates one design round per scenario and does not measure long-term iteration with a designer.
+The scientific difficulty is that the quality of an instructional program is not a
+property of any single artifact but of the \emph{constructive
+alignment}~\cite{biggs1996enhancing} among them: every learning objective must be
+measured by an assessment, practiced by an activity, and appraised by an
+evaluation, at the intended cognitive level. Alignment is exactly the property
+that degrades first when a weaker model is used, and it is a \emph{cumulative,
+invisible} defect---each section still reads plausibly, and the program only fails
+when it reaches learners in the field. A conventional single prompt cannot
+guarantee alignment because it has no way to check, after the fact, whether the
+objective it wrote is actually measured by the assessment it wrote.
 
-When a refinement request must be handled with these architectures, the designer faces a dilemma. The first option is \emph{full regeneration}: feed in the updated brief and rebuild the whole program. Its cost scales with the size of the program rather than the size of the change, and---more damaging to quality---it discards every part that had been reviewed, corrected, and validated in earlier rounds. The second option is \emph{uncontrolled targeted editing}: prompt the model with the previous design and the requested change. This is cheaper, but nothing guarantees that the edited part remains consistent with the rest: a newly added objective may be measured by no assessment, and a tightened rubric may drift away from the activities it grades. Such edits silently violate \emph{constructive alignment}~\cite{biggs1996enhancing}, the foundational principle that objectives, learning activities, and assessments must correspond. The root cause of the dilemma is structural: existing architectures do not represent the alignment relations among design components as explicit, traceable state. Without that state, the system cannot answer \emph{``what does this change affect?''}, and therefore cannot edit safely.
+Recent LLM-agent work on instructional systems design (ISD) does not close this
+gap. Theory-grounded agents such as ReAct-ADDIE, ADDIE-Agent, Dick-Carey-Agent,
+and RPISD-Agent~\cite{isdagentbench,yao2023react,branch2009addie,dick1978systematic,tripp1990rapid},
+as well as EduPlanner~\cite{zhang2025eduplanner}, apply ISD theory and learning
+principles to maximize the quality of a single design pass. But in all of them
+alignment is only \emph{encouraged}---through prompt instructions or post-hoc
+scoring---never \emph{represented} as state the system can inspect link by link,
+mark when it breaks, and repair under control. Consequently, whether the output is
+actually aligned is left to the raw capability of the underlying model, which is
+exactly the wrong dependency as deployment shifts to SLMs.
 
-Three converging trends make this problem timely. Organizations already use LLMs to generate training programs at growing scale, so every program generated today is a future maintenance obligation. Alignment degradation is a cumulative, invisible defect---a broken program still ``looks fine'' section by section and only fails at deployment. And as base-model capability saturates on many benchmarks~\cite{deveci2025ouroboros,shukla2025scalingwall}, the quality of agentic systems depends increasingly on the \emph{harness} around the model, with the largest effects on small models~\cite{cho2026harness}---exactly as enterprises shift toward small language models (SLMs) for cost reasons~\cite{belcak2025slm}.
+This is the gap we address: no existing ISD harness makes alignment a first-class,
+verifiable object so that it can be preserved regardless of model scale. Closing
+the gap requires turning alignment from a hoped-for property of the prose into an
+explicit data structure the harness owns and enforces.
 
-We address the problem with \textbf{AlignmentGraph-ISD}, an AI agent harness developed under a design-science methodology~\cite{hevner2004design} and built on the premise that an agent is the combination of a harness and a model. The harness represents the instructional design as an explicit, versioned \emph{alignment graph} and organizes every other mechanism around that state: a planner-driven multi-agent workflow that assigns each artifact to a specialist agent, a pedagogical verifier that detects alignment violations, \emph{cascade-scoped revision} that propagates any change to exactly the affected subgraph, multi-session memory that lets the design persist across sessions, conversational brief elicitation for the input side of the lifecycle, and pluggable agentic retrieval for organization-specific domain knowledge. Solving the core refinement problem alone would not make a practical tool, so the harness also covers the surrounding requirements: briefs that do not exist yet at project start (\cref{sec:elicitation}), domain conventions a generic agent cannot know (\cref{sec:agentic-rag}), and first-pass quality that must remain at least competitive with existing agents---designers will not adopt a tool that refines well but generates poorly.
+We propose \textbf{AlignmentGraph-ISD}, a graph-guided multi-agent harness
+developed under a design-science methodology~\cite{hevner2004design} and built on
+the premise that an agent is the combination of a harness and a model (\emph{agent =
+harness + model})---a framework in which the harness, not the model, owns quality. The harness reifies constructive alignment as an explicit
+\emph{alignment graph}---objectives, activities, materials, assessments,
+implementation, and evaluation as typed nodes, joined by typed \textsl{measures},
+\textsl{supports}, and \textsl{evaluates} edges---and organizes generation around
+it. Specialist agents build the graph under a fixed instructional-design workflow,
+each with a bounded write scope, so that alignment edges are created as a required
+part of generation and alignment holds \emph{by construction}. Verification and
+repair are not a separate global stage but tools each specialist runs within its
+own turn: after writing its artifact, an agent checks the pedagogical constraints
+it owns against the shared graph and repairs any violation before the next agent
+proceeds. The design is independent of whether the model behind it is a large LLM
+or a low-cost SLM.
 
-We evaluate the harness along two research questions:
-\begin{itemize}
-  \item \textbf{RQ1} (first-pass quality): On ISD-Agent-Bench, how does AlignmentGraph-ISD compare with existing agents in artifact quality?
-  \item \textbf{RQ2} (refinement efficiency): In multi-session refinement, does the alignment-graph mechanism localize edits at lower cost than full regeneration without degrading alignment, compared with both horns of the dilemma executed by the strongest baseline agent?
-\end{itemize}
-
-This paper makes two contributions:
+This paper makes three contributions, in the order of the professor's structure
+guide (modeling, method, empirics):
 \begin{enumerate}
-  \item \textbf{AlignmentGraph-ISD}, a harness that represents design artifacts and their alignment relations (\textsl{measures}, \textsl{supports}, \textsl{evaluates}) as an explicit versioned graph and organizes verification, cascade-scoped revision, orchestration, memory, elicitation, and agentic retrieval around it, including a refinement entrypoint for multi-session refinement (\cref{sec:harness}).
-  \item \textbf{Empirical evidence} on ISD-Agent-Bench under both an LLM and a 9B SLM, and a multi-session refinement experiment in the IT/software-engineering domain that operationalizes ``effective refinement'' as four process metrics---cascade scope, edit locality, cost per refinement round, and alignment preservation---measured under four cross-agent control conditions, with a case study demonstrating the full workflow including brief elicitation (\cref{sec:case-study,sec:experiments}).
+  \item \textbf{Modeling.} We formalize constructive alignment as a verifiable
+  \emph{alignment graph} state (\cref{sec:problem-formulation}) and state the
+  quality-preserving ISD generation problem: produce a complete program whose
+  every objective is aligned---at the right cognitive level---with quality
+  guaranteed by the harness rather than the model.
+  \item \textbf{Method.} We present the AlignmentGraph-ISD harness
+  (\cref{sec:method}): multi-agent decomposition over the graph with bounded
+  write scope, and pedagogical verification/repair as per-agent tools, so that
+  alignment is enforced without dependence on model scale.
+  \item \textbf{Empirics.} We provide evidence on ISD-Agent-Bench under two models
+  (\cref{sec:experimental-methodology,sec:results}): AlignmentGraph-ISD leads six
+  representative agents, and an ablation isolates each mechanism's contribution,
+  showing that graph-based decomposition is the dominant driver while
+  verification/repair acts as a guarantee whose value is visible in a residual
+  defect audit.
 \end{enumerate}
+
+The remainder of the paper is organized as follows.
+\cref{sec:related-work} reviews ISD agents, benchmarks, and consistency-control
+mechanisms. \cref{sec:problem-formulation} presents the system model and the
+formal problem. \cref{sec:method} describes the harness. \cref{sec:experimental-methodology}
+gives the experimental methodology and \cref{sec:results} the results.
+\cref{sec:discussion} interprets them, \cref{sec:threats-limitations} discusses
+threats and limitations, and \cref{sec:conclusion} concludes.

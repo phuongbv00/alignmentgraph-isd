@@ -1,0 +1,80 @@
+\section{Phương pháp Thực nghiệm}
+\label{sec:experimental-methodology}
+
+\subsection{Câu hỏi Nghiên cứu}
+\label{sec:rqs}
+
+\begin{itemize}
+  \item \textbf{RQ1 (chất lượng).} Trên ISD-Agent-Bench, AlignmentGraph-ISD so với
+  các ISD agent tiêu biểu về chất lượng artifact như thế nào, dưới cả một model lớn
+  lẫn một small language model?
+  \item \textbf{RQ2 (ablation).} Cơ chế nào của harness tạo ra chất lượng đó, và đóng
+  góp của nó có thay đổi theo model scale không?
+\end{itemize}
+
+\subsection{Bộ dữ liệu}
+\label{sec:dataset}
+
+Chúng tôi dùng ISD-Agent-Bench~\cite{isdagentbench}, với các scenario trải một ma
+trận Context~$\times$~ISD. Đánh giá chạy trên split \texttt{test\_90}---90 trong số
+các test scenario, phân tầng theo 10 domain $\times$ 3 mức độ khó $\times$ 3 scenario
+mỗi ô (seed 42)---cho phủ rộng, cân bằng với chi phí chấm hợp lý.
+
+\subsection{Model và Thiết lập}
+\label{sec:setup}
+
+Để thăm dò tính độc lập với model, chúng tôi chạy mọi cấu hình ở hai điểm khác biệt
+trên phổ model-scale: \textbf{DeepSeek-v4-flash} (một LLM lớn) và \textbf{Qwen3.5-9B}
+(một SLM 9B), với cấu hình giống nhau trừ agent model. Agent model và judge model
+được cấu hình riêng để tránh self-preference bias; các judge được giữ cố định qua mọi
+lượt chạy và dùng cấu hình multi-judge mặc định của benchmark
+(\texttt{openai/gpt-4o-mini} và \texttt{google/gemini-2.5-flash-lite}). Mỗi lượt chạy
+ghi một manifest (model, judge, phiên bản prompt, commit, seed, cấu hình decoding)
+để tái lập.
+
+\subsection{Các Điều kiện}
+\label{sec:conditions}
+
+Với RQ1, AlignmentGraph-ISD được tích hợp làm agent thứ bảy dưới input/output schema
+của benchmark và so với sáu agent: Baseline (single prompt), ReAct-ADDIE, ADDIE-Agent,
+Dick-Carey-Agent, RPISD-Agent và EduPlanner.
+
+Với RQ2, ablation loại bỏ đúng một cơ chế mỗi lần khỏi harness đầy đủ. Mỗi arm là một
+workflow độc lập (không cờ cấu hình dùng chung), nên không cơ chế nào rò rỉ giữa các
+arm:
+\begin{itemize}
+  \item \texttt{full} --- multi-agent decomposition + per-agent verify/repair;
+  \item \texttt{wo-ma} --- bỏ decomposition: một agent đơn sinh toàn bộ chương trình
+  và tự sửa toàn cục cho chính nó (giữ verify/repair);
+  \item \texttt{wo-qc} --- bỏ verify/repair: cùng các specialist thứ tự cố định sinh,
+  không có công cụ kiểm soát chất lượng.
+\end{itemize}
+So \texttt{full} với \texttt{wo-ma} tách riêng multi-agent decomposition; so với
+\texttt{wo-qc} tách riêng per-agent verification/repair.
+
+\subsection{Chỉ số}
+\label{sec:metrics}
+
+Các chỉ số chính là của benchmark: một ADDIE artifact rubric 100 điểm và một
+trajectory score, gộp thành một \emph{Total} composite, mỗi cái là trung bình hai
+judge. Chúng tôi bổ sung một \emph{residual alignment-defect audit} tất định:
+verifier được chạy lại trên output cuối của mỗi arm và đếm các vi phạm mức nội dung
+còn sót. Điều này đo trực tiếp điều kiện (i) của bài toán, nắm bắt một thuộc tính mà
+rubric không tưởng thưởng tường minh.
+
+\subsection{Phân tích Thống kê}
+\label{sec:stats}
+
+Các so sánh được ghép cặp theo scenario. Chúng tôi dùng kiểm định Wilcoxon
+signed-rank (xấp xỉ chuẩn có hiệu chỉnh tie) trên composite score, với hiệu chỉnh
+Holm qua các so sánh trong mỗi lượt chạy, và báo cáo hiệu trung bình theo cặp cùng
+khoảng tin cậy bootstrap 95\% (10{,}000 resample). Với RQ2, đóng góp của một cơ chế là
+$\texttt{full} - \texttt{arm}$, ghép cặp theo scenario.
+
+\subsection{Tái lập}
+\label{sec:reproducibility}
+
+ISD-Agent-Bench và sáu baseline của nó là công khai. Mỗi lượt chạy được ghim bằng một
+manifest (\cref{sec:setup}); ba ablation arm là các module workflow riêng chọn theo
+tên; và các script phân tích (kiểm định ghép cặp và residual audit) được công bố cùng
+bài báo.

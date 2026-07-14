@@ -1,0 +1,107 @@
+\documentclass[sigconf,preprint]{acmart}
+
+\usepackage{polyglossia}
+\setmainlanguage{vietnamese}
+\setotherlanguage{english}
+
+\usepackage{pifont}
+\usepackage[capitalise,english]{cleveref}
+
+% Shared assets (references.bib, figures/) live in the parent acm/ directory.
+\graphicspath{{../figures/}{figures/}}
+
+% Bản dịch tiếng Việt của main.tex --- xem CLAUDE.md và main.tex (bản gốc tiếng Anh)
+% cho các TODO trước khi nộp (venue, ISBN/DOI, CCS codes).
+\settopmatter{printacmref=false}
+\renewcommand\footnotetextcopyrightpermission[1]{}
+\acmConference[Preprint]{Preprint --- venue TBD}{2026}{}
+\acmYear{2026}
+\acmISBN{}
+\acmDOI{}
+\setcopyright{none}
+
+\title{AlignmentGraph-ISD: Một Graph-Guided Multi-Agent Harness nhằm Duy trì Chất lượng Thiết kế Giảng dạy với Small Language Model}
+
+% TODO: xác nhận email và tên đơn vị công tác chính xác trước khi nộp.
+\author{Phuong Viet Bui}
+\affiliation{%
+  \department{Trường Công nghệ Thông tin và Truyền thông}
+  \institution{Đại học Bách khoa Hà Nội}
+  \city{Hà Nội}
+  \country{Việt Nam}
+}
+\email{phuong.bv242011m@sis.hust.edu.vn}
+
+\author{Hai Van Pham}
+\authornote{Giảng viên hướng dẫn chính.}
+\affiliation{%
+  \department{Trường Công nghệ Thông tin và Truyền thông}
+  \institution{Đại học Bách khoa Hà Nội}
+  \city{Hà Nội}
+  \country{Việt Nam}
+}
+\email{haipv@soict.hust.edu.vn}
+
+%\author{Long Kim Cu}
+%\authornote{Giảng viên đồng hướng dẫn.}
+%\affiliation{%
+%  \institution{Center for Information Technology, Ministry of Science and Technology}
+%  \city{Hanoi}
+%  \country{Vietnam}
+%}
+
+\renewcommand{\shortauthors}{Bui và c.s.}
+
+\begin{document}
+
+\input{sections/00_abstract}
+
+\begin{CCSXML}
+<ccs2012>
+   <concept>
+       <concept_id>10010405.10010489</concept_id>
+       <concept_desc>Applied computing~Education</concept_desc>
+       <concept_significance>500</concept_significance>
+   </concept>
+   <concept>
+       <concept_id>10010147.10010178.10010219.10010220</concept_id>
+       <concept_desc>Computing methodologies~Multi-agent systems</concept_desc>
+       <concept_significance>500</concept_significance>
+   </concept>
+   <concept>
+       <concept_id>10010147.10010178.10010179</concept_id>
+       <concept_desc>Computing methodologies~Natural language processing</concept_desc>
+       <concept_significance>300</concept_significance>
+   </concept>
+</ccs2012>
+\end{CCSXML}
+
+\ccsdesc[500]{Applied computing~Education}
+\ccsdesc[500]{Computing methodologies~Multi-agent systems}
+\ccsdesc[300]{Computing methodologies~Natural language processing}
+
+\keywords{instructional systems design, LLM agents, agent harness, constructive alignment, multi-agent orchestration, small language models, pedagogical verification, ablation study}
+
+\maketitle
+
+\input{sections/01_introduction}
+\input{sections/02_related_work}
+\input{sections/03_problem_formulation}
+\input{sections/04_method}
+\input{sections/05_experimental_methodology}
+\input{sections/06_results}
+\input{sections/07_discussion}
+\input{sections/08_threats_limitations}
+\input{sections/09_conclusion}
+
+\section*{Khả năng tiếp cận dữ liệu}
+ISD-Agent-Bench, bao gồm cả sáu agent baseline và pipeline đánh giá,
+đã được công bố công khai~\cite{isdagentbench}. Run manifest (model,
+judge, phiên bản prompt, seed và cấu hình decoding), ba cấu hình
+ablation-arm, cùng mã nguồn harness sẽ được công bố cùng phiên bản
+camera-ready của bài báo này.
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{../references}
+
+\end{document}

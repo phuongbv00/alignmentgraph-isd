@@ -1,0 +1,48 @@
+\section{Thảo luận}
+\label{sec:discussion}
+
+\paragraph{Diễn giải.}
+Các kết quả ủng hộ một cách đọc cụ thể về \emph{cách} một agent harness cải thiện
+chất lượng thiết kế giảng dạy. AlignmentGraph-ISD dẫn đầu cả sáu baseline trên
+benchmark (\cref{sec:rq1}), và ablation quy lợi thế đó gần như hoàn toàn cho một cơ
+chế: multi-agent decomposition trên alignment graph ($+3{,}90$ composite, $+3{,}29$
+ADDIE, $p_{\mathrm{Holm}}=2{,}3\times10^{-13}$). Phân rã việc sinh cho các specialist
+với phạm vi ghi giới hạn, trên một graph chung buộc mỗi edge alignment được tạo như
+một phần của việc sinh, chính là điều biến constructive alignment từ văn bản được
+prompt thành một thuộc tính được cưỡng chế. Điều này nhất quán với luận điểm
+harness-over-model~\cite{cho2026harness}: lợi thế đến từ môi trường thực thi, không
+phải từ việc bảo model cố gắng hơn.
+
+\paragraph{Ý nghĩa khoa học và thực tiễn.}
+Biểu diễn alignment thành trạng thái graph hạng nhất không đặc thù cho giáo dục: bất
+kỳ bối cảnh nào sinh nhiều artifact phụ thuộc lẫn nhau với một sự tương ứng bắt buộc
+giữa chúng---tài liệu kỹ thuật, định nghĩa quy trình, chương trình học---đều gặp cùng
+bài toán khiếm-khuyết-vô-hình và có thể tái dùng mẫu ``typed dependency graph +
+specialist phạm-vi-giới-hạn + verification có chủ sở hữu''. Về thực tiễn, vì lợi thế
+mang tính cấu trúc chứ không do năng lực, đây đúng là loại lợi thế được kỳ vọng quan
+trọng nhất khi triển khai chuyển sang SLM chi phí thấp~\cite{belcak2025slm}, và lượt
+chạy SLM xác nhận trực tiếp điều này: đóng góp của decomposition gần như gấp đôi
+($+3{,}9 \rightarrow +7{,}9$) trong khi điểm tuyệt đối của harness gần như không đổi
+còn các baseline mất vài điểm---harness biến một thiết kế cấu trúc thành sự bền vững
+trước việc thu nhỏ model.
+
+\paragraph{Phân tích thất bại: verification/repair không dịch chuyển điểm judge.}
+Kết quả âm đáng học nhất của chúng tôi là per-agent verification/repair gần như không
+đóng góp gì cho composite score ($+0{,}26$, n.s.), dù nó rõ ràng fire và sửa các vi
+phạm pedagogical thật (\cref{sec:rq2}). Hai quan sát giải thích điều này và ngăn việc
+thổi phồng. Thứ nhất, trên một model đủ mạnh các artifact được sinh đã phần lớn aligned
+by construction, nên các công cụ kiểm soát chất lượng còn ít việc để sửa---tỷ lệ kích
+hoạt của chúng thấp. Thứ hai, và cơ bản hơn, có một \emph{construct gap}: các kiểm tra
+cưỡng chế các tiêu chí pedagogical hình thức (khớp cấp độ nhận thức, rubric quan sát
+được, phủ luyện-tập-chủ-động) mà ADDIE rubric, khi được LLM judge chấm, không tưởng
+thưởng trực tiếp; và một kiểm tra measurability quá chặt trước kia---vốn viết lại các
+phát biểu objective vốn đã tốt---thực sự \emph{làm giảm} điểm judge, cho đến khi chúng
+tôi thu hẹp nó về các objective thực sự không quan sát được và làm nó audit-only. Kết
+luận trung thực là verification/repair là một cơ chế \emph{đảm bảo} mà giá trị của nó
+lộ ra trong residual-defect audit chứ không phải trong điểm judge; trên một model mạnh
+nó gần như một no-op về chất lượng, và luận cứ của nó dựa vào setting SLM cùng các
+triển khai nơi alignment defect không phát hiện mang chi phí thật. Chúng tôi cũng quan
+sát một mẫu trajectory-score dai dẳng: trace multi-agent có cấu trúc của harness được
+chấm không cao hơn, đôi khi thấp hơn, một vòng ReAct đơn sạch, phản ánh việc chấm
+trajectory tưởng thưởng sự đơn giản của trace hơn là các đảm bảo cấu trúc mà trace mã
+hoá.

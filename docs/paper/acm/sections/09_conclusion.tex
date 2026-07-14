@@ -1,0 +1,23 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+As organizations generate instructional programs at scale and move to cost-efficient
+small language models, the quality that matters most---constructive alignment among
+objectives, activities, and assessments---is the first property to break, and it
+breaks invisibly. Existing ISD agents only encourage alignment through prompting,
+leaving quality dependent on raw model capability. We presented
+AlignmentGraph-ISD, an agent harness that reifies constructive alignment as an
+explicit, verifiable alignment graph and organizes generation around it: specialist
+agents with bounded write scope build the graph so alignment holds by construction,
+and each specialist verifies and repairs its pedagogical constraints as a tool
+within its own turn. On ISD-Agent-Bench, the harness achieves the highest overall
+score among seven agents under both a large model and a 9B SLM, and an ablation
+shows that multi-agent decomposition over the graph is the dominant contributor,
+whose effect roughly doubles as the model shrinks (from $+3.9$ to $+7.9$ composite
+points, $p<10^{-12}$), while verification/repair acts as a guarantee mechanism whose
+effect is visible in a residual-defect audit rather than in the judged score. Representing alignment as
+first-class graph state, and decomposing generation around it, is thus what lets a
+harness preserve instructional-design quality as a property of the system rather
+than of the model. Extending the harness to multi-session refinement, and closing
+the evaluation construct gap so pedagogical rigor is credited fairly, are the
+natural next steps.

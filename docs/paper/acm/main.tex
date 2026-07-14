@@ -1,5 +1,6 @@
 \documentclass[sigconf,preprint]{acmart}
 
+\usepackage{pifont}       % \ding checkmarks/crosses in the related-work table
 \usepackage[capitalise]{cleveref}
 
 % TODO before submission:
@@ -14,7 +15,7 @@
 \acmDOI{}
 \setcopyright{none}
 
-\title{AlignmentGraph-ISD: An AI Agent Harness for Controlled Continuous Refinement of LLM-Generated Training Programs}
+\title{AlignmentGraph-ISD: A Graph-Guided Multi-Agent Harness for Preserving Instructional Design Quality with Small Language Models}
 
 % TODO: confirm supervisor emails and exact affiliation wording before submission.
 \author{Phuong Viet Bui}
@@ -74,25 +75,26 @@
 \ccsdesc[500]{Computing methodologies~Multi-agent systems}
 \ccsdesc[300]{Computing methodologies~Natural language processing}
 
-\keywords{instructional systems design, LLM agents, agent harness, constructive alignment, multi-agent orchestration, multi-session refinement}
+\keywords{instructional systems design, LLM agents, agent harness, constructive alignment, multi-agent orchestration, small language models, pedagogical verification, ablation study}
 
 \maketitle
 
 \input{sections/01_introduction}
 \input{sections/02_related_work}
-\input{sections/03_harness}
-\input{sections/04_case_study}
-\input{sections/05_experiments}
-\input{sections/06_discussion}
-\input{sections/07_conclusion}
+\input{sections/03_problem_formulation}
+\input{sections/04_method}
+\input{sections/05_experimental_methodology}
+\input{sections/06_results}
+\input{sections/07_discussion}
+\input{sections/08_threats_limitations}
+\input{sections/09_conclusion}
 
 \section*{Data Availability}
 ISD-Agent-Bench, including all six baseline agents and the evaluation
 pipeline, is publicly available~\cite{isdagentbench}. Run manifests
 (model, judge, prompt versions, seeds, and decoding configurations),
-the baseline refinement prompts used in RQ2, and the case-study design
-briefs and refinement requests will be released with the camera-ready
-version of this paper.
+the three ablation-arm configurations, and the harness source code
+will be released with the camera-ready version of this paper.
 
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{references}
