@@ -33,15 +33,15 @@ In this harness **RAG means external-corpus retrieval only**. Graph-context
 retrieval (the AlignmentGraph subgraph) and memory retrieval (working/episodic
 memory) are core, always on, and are *not* called RAG.
 
-- **`use_rag=False` on every benchmark preset** (`full`, `wo_graph`, `single_agent`,
+- **`enable_rag=False` on every benchmark preset** (`full`, `wo_graph`, `single_agent`,
   `wo_qc`); RAG is never used in benchmark runs.
 - RAG is an opt-in **case-study/app** add-on: use the `case_study` preset (or set
-  `config.ablation.use_rag = True`) and register `RetrievalSubagent` instances on
+  `config.ablation.enable_rag = True`) and register `RetrievalSubagent` instances on
   `config.retrieval_subagents`.
 
 ```python
 from alignmentgraph_isd import HarnessRunConfig, LocalCorpusSubagent
-config = HarnessRunConfig.from_ablation("case_study")   # use_rag=True
+config = HarnessRunConfig.from_ablation("case_study")   # enable_rag=True
 config.retrieval_subagents = [
     LocalCorpusSubagent("java-oop", "java_oop",
                         {"oop": ["Prefer composition over inheritance."]},

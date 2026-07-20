@@ -53,7 +53,7 @@ class ADDIEOutputAggregator(BaseISDAgent):
         }
 
         # In single_agent mode, assessment_tools/expert_review live in the activity (development) node.
-        # In multi_agent mode, they live in the dedicated assessment node.
+        # In enable_enable_multi_agent mode, they live in the dedicated assessment node.
         development = {
             "learner_materials": act_data.get("learner_materials", mat_data.get("learner_materials", [])),
             "instructor_guide": act_data.get("instructor_guide", mat_data.get("instructor_guide", {})),
@@ -90,7 +90,7 @@ class ADDIEOutputAggregator(BaseISDAgent):
         }
         return _strengthen_alignment(
             output, self.graph,
-            graph_coordination=bool(self.config.ablation.use_graph_coordination),
+            graph_coordination=bool(self.config.ablation.enable_alignment_graph),
         )
 
 

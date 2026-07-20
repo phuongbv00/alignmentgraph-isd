@@ -48,7 +48,7 @@ Output ONLY the JSON object, no markdown, no explanation.\
 
 
 class ActivityMaterialAgent(BaseISDAgent):
-    # R4/R7/R8 are alignment-tier coverage checks (gated by use_graph_coordination) this
+    # R4/R7/R8 are alignment-tier coverage checks (gated by enable_alignment_graph) this
     # specialist can concretely act on. R9 (media<->material type-match on a fuzzy alias
     # table) is audit-only, same as measurability: there is no deterministic fix that
     # wouldn't risk gaming the metric (e.g. inventing a fake media entry just to pass),

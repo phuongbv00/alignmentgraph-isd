@@ -81,7 +81,7 @@ Output ONLY the JSON object, no markdown, no explanation.\
 
 
 class EvaluationRevisionAgent(BaseISDAgent):
-    # R5/R12/R13 are alignment-tier coverage checks (gated by use_graph_coordination);
+    # R5/R12/R13 are alignment-tier coverage checks (gated by enable_alignment_graph);
     # evaluation_quality is a content-quality check that always runs.
     OWNED_VIOLATION_TYPES = frozenset({"R5", "R12", "R13", "evaluation_quality"})
 

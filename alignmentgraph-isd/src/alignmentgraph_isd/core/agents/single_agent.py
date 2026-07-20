@@ -223,7 +223,7 @@ _SECTION_TO_NODE = {
 class SingleAgent(BaseISDAgent):
     # The single agent owns every content-quality check it can repair
     # holistically. It never sees the verifier's alignment tier (its ablation
-    # preset always sets use_graph_coordination=False, see config.py), so R3/
+    # preset always sets enable_alignment_graph=False, see config.py), so R3/
     # R4/R5 violations never fire for it and are not listed here.
     OWNED_VIOLATION_TYPES = frozenset({
         "bloom", "activity_engagement",
@@ -252,7 +252,7 @@ class SingleAgent(BaseISDAgent):
             })
             self.trajectory.log_node_edit("add", self.graph.section_id(NodeType.ASSESSMENT), NodeType.ASSESSMENT)
         # Element decomposition + edge establishment are the alignment graph.
-        # wo_ma is rung 1 of the ablation ladder (use_graph_coordination
+        # wo_ma is rung 1 of the ablation ladder (enable_alignment_graph
         # off), so like wo-graph it stays a pure section blob — no graph.
         if self._graph_coordination:
             self._add_element_nodes(parsed)
@@ -284,7 +284,7 @@ class SingleAgent(BaseISDAgent):
         """R3/R4/R5 id-match only. Single-agent has no separate Design "plan"
         nodes for R6/R9/R12's type-match lookups, and no cross-specialist
         traversal to ground the 8 provenance relations — this is the
-        graph-coordination-off baseline (see AblationConfig.use_graph_coordination),
+        graph-coordination-off baseline (see AblationConfig.enable_alignment_graph),
         so these are the only relations meaningfully establishable here."""
         alignment.match_id(self.graph, "R3", target_node_type=NodeType.OBJECTIVE, field="aligned_objective")
         alignment.match_r4_supports(self.graph)

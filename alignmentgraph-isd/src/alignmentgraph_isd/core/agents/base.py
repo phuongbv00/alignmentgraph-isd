@@ -324,7 +324,7 @@ class BaseISDAgent(ABC):
         traversal. Only the CONTEXT-BUILDING style and PROVENANCE-relation
         establishment (R1,R2,R7,R8,R10,R11,R13) branch on this flag — that
         branch is what makes the wo_graph vs full ablation contrast real."""
-        return bool(self.config.ablation.use_graph_coordination)
+        return bool(self.config.ablation.enable_alignment_graph)
 
     # Verifier violation types this specialist owns. A workflow's QC node reads
     # this to decide which violations the agent should self-repair. Quality
@@ -449,7 +449,7 @@ class BaseISDAgent(ABC):
     def _maybe_retrieve(self, design_brief: DesignBrief, task_name: str, prior_context: str = "") -> str:
         """Let this specialist decide whether/how to retrieve external domain material.
 
-        Gated hard on ``use_rag`` + a non-empty registry: on the benchmark path
+        Gated hard on ``enable_rag`` + a non-empty registry: on the benchmark path
         this returns immediately with zero LLM calls. When enabled, one small
         decision call chooses the retrieval agents and execution strategy
         (single / sequential / parallel — hinted per ADDIE task, decided by the

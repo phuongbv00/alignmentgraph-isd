@@ -45,24 +45,24 @@ def test_brief_carries_standing_guidance_not_retrieval():
 
 
 def test_retrieval_gate_off_on_benchmark_default():
-    """use_rag=False → enabled() is False even with agents registered."""
+    """enable_rag=False → enabled() is False even with agents registered."""
     config = HarnessRunConfig.from_ablation("full")  # benchmark default → no_rag
-    assert config.ablation.use_rag is False
+    assert config.ablation.enable_rag is False
     config.retrieval_subagents = [_java_corpus()]
     assert RetrievalPlanner(config).enabled() is False
 
 
 def test_retrieval_gate_off_with_empty_registry():
-    """use_rag=True but no agents → enabled() is False."""
+    """enable_rag=True but no agents → enabled() is False."""
     config = HarnessRunConfig.from_ablation("full")
-    config.ablation.use_rag = True  # RAG on (case-study-style), preset-free
+    config.ablation.enable_rag = True  # RAG on (case-study-style), preset-free
     assert RetrievalPlanner(config).enabled() is False
 
 
 def test_retrieval_gate_on_when_enabled_and_registered():
-    """use_rag=True + agent registered → enabled() is True."""
+    """enable_rag=True + agent registered → enabled() is True."""
     config = HarnessRunConfig.from_ablation("full")
-    config.ablation.use_rag = True  # RAG on (case-study-style), preset-free
+    config.ablation.enable_rag = True  # RAG on (case-study-style), preset-free
     config.retrieval_subagents = [_java_corpus()]
     assert RetrievalPlanner(config).enabled() is True
 

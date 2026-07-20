@@ -1,6 +1,6 @@
 """The pedagogical verifier's two tiers: completeness (always on) and
 alignment (relation coverage + the Bloom/format validity rule, gated by
-use_graph_coordination). Graphs here always populate ELEMENT nodes alongside
+enable_alignment_graph). Graphs here always populate ELEMENT nodes alongside
 section nodes — the alignment tier reads element nodes/edges, not the raw
 section blob, mirroring how the real specialists build the graph."""
 from __future__ import annotations
@@ -52,7 +52,7 @@ def test_r3_silent_once_established():
 
 def test_alignment_tier_silent_when_graph_coordination_off():
     """wo_ma/wo_graph never see alignment-tier violations, even with a
-    genuinely uncovered objective — see AblationConfig.use_graph_coordination."""
+    genuinely uncovered objective — see AblationConfig.enable_alignment_graph."""
     graph = AlignmentGraph()
     _objective(graph, {"id": "LO-01", "level": "Apply", "statement": "Apply X", "bloom_verb": "apply"})
     assert "R3" not in _types(graph, ablation="wo_graph")

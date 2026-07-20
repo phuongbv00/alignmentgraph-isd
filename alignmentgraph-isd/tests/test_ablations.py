@@ -27,7 +27,7 @@ def test_ablation_produces_contract(ablation):
     addie = result["addie_output"]
     assert set(addie) == {"analysis", "design", "development", "implementation", "evaluation"}
     assert addie["design"]["learning_objectives"]
-    assert result["metadata"]["ablation"]["use_verifier"] in (True, False)
+    assert result["metadata"]["ablation"]["enable_alignment_graph"] in (True, False)
 
 
 # ── The 3-rung RQ2 ladder: wo_ma < wo_graph < full ───────────────────────────
@@ -35,7 +35,7 @@ def test_ablation_produces_contract(ablation):
 # conditioned generation + the alignment-tier verify/repair) exists ONLY at the
 # full rung. wo_ma (single agent, 1 blob call) and wo_graph (N blob calls, one
 # per specialist) are graph-FREE: they store plain section blobs and establish no
-# edges at all — see AblationConfig.use_graph_coordination and each specialist's
+# edges at all — see AblationConfig.enable_alignment_graph and each specialist's
 # `if self._graph_coordination:` guard. That structural gap is the RQ2 contrast.
 
 def _graph_edges(result: dict) -> list[dict]:

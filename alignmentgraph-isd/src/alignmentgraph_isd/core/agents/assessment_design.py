@@ -40,7 +40,7 @@ Output ONLY the JSON object, no markdown, no explanation.\
 
 
 class AssessmentDesignAgent(BaseISDAgent):
-    # R3/R6 are the alignment-tier coverage checks (gated by use_graph_coordination);
+    # R3/R6 are the alignment-tier coverage checks (gated by enable_alignment_graph);
     # rubric_consistency/bloom_mismatch are content-quality checks that always run.
     OWNED_VIOLATION_TYPES = frozenset({"R3", "R6", "rubric_consistency", "bloom_mismatch"})
 

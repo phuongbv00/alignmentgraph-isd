@@ -76,7 +76,7 @@ class VerifierViolation:
     message: str
     # Completeness tier: bloom | measurability | activity_engagement | rubric_consistency |
     #   feasibility | actionability | evaluation_quality
-    # Alignment tier (gated by use_graph_coordination): R1..R13 | bloom_mismatch
+    # Alignment tier (gated by enable_alignment_graph): R1..R13 | bloom_mismatch
     violation_type: str = "coverage"
     severity: str = "error"                   # error | warning
     repair_hint: str = ""
@@ -102,7 +102,7 @@ class PedagogicalVerifierAgent(BaseISDAgent):
         violations.extend(self._check_actionability())
         violations.extend(self._check_evaluation_quality())
 
-        if self.config.ablation.use_graph_coordination:
+        if self.config.ablation.enable_alignment_graph:
             violations.extend(self._check_relation_coverage())
             violations.extend(self._check_bloom_format_validity())
         return violations
@@ -395,7 +395,7 @@ class PedagogicalVerifierAgent(BaseISDAgent):
                 ))
         return violations
 
-    # ═══════════════════ alignment tier (use_graph_coordination only) ═══════════
+    # ═══════════════════ alignment tier (enable_alignment_graph only) ═══════════
     # Cross-artifact checks: coverage of the 13-relation matrix + the one
     # boolean Bloom/format-validity rule. Never runs unless the harness has
     # graph coordination active (see verify()).

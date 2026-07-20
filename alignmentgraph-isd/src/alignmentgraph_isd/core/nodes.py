@@ -3,7 +3,7 @@
 A ``NodeFactory`` captures the per-run objects (config, graph, trajectory,
 context pack, design brief) and exposes each ISD step as a node function.
 ``build_graph`` wires those nodes into a StateGraph, branching once on
-``config.ablation.multi_agent`` (multi-agent ADDIE pipeline vs single-agent) —
+``config.ablation.enable_multi_agent`` (multi-agent ADDIE pipeline vs single-agent) —
 there is no workflow-per-arm registry.
 """
 from __future__ import annotations
@@ -155,13 +155,13 @@ def initial_state() -> ISDState:
 def build_graph(config, graph, trajectory, design_brief):
     """Assemble the LangGraph StateGraph for this run.
 
-    A single builder, branching on ``config.ablation.multi_agent`` — there is no
+    A single builder, branching on ``config.ablation.enable_multi_agent`` — there is no
     workflow-per-arm registry. Both arms end in the same aggregate node and run
     per-agent QC after every generation node (QC is always on):
 
     - multi-agent (``full``/``wo_graph``): the six specialists in fixed ADDIE
       order, each followed by its QC node. ``full`` vs ``wo_graph`` differ only
-      at runtime inside the specialists (``use_graph_coordination``), not in
+      at runtime inside the specialists (``enable_alignment_graph``), not in
       graph shape.
     - single-agent (``wo_ma``): one blob-generating agent + its QC node.
     """
@@ -171,7 +171,7 @@ def build_graph(config, graph, trajectory, design_brief):
     wf = StateGraph(ISDState)
     wf.add_node("aggregate", nf.aggregate_node())
 
-    if config.ablation.multi_agent:
+    if config.ablation.enable_multi_agent:
         prev = START
         for name in GENERATION_ORDER:
             wf.add_node(name, nf.generation_node(name))
