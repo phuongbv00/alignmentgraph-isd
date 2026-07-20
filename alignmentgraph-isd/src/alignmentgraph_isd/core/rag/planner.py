@@ -12,8 +12,8 @@ class RetrievalPlanner:
     - ``build_menu()`` — compact descriptor list for a specialist's decision prompt;
     - ``execute_plan()`` — resolve agent names and run them in the sandbox.
 
-    Does NOT handle brief-derived context (that is ``ContextPlanner``) or
-    graph/memory retrieval (those are core and always on).
+    Does NOT handle brief-derived context (the brief itself + standing guidance,
+    formatted by ``_format_design_brief``) or graph-context retrieval (core, always on).
     """
 
     def __init__(self, config: HarnessRunConfig) -> None:

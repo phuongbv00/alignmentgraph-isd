@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from alignmentgraph_isd import DesignBrief, HarnessRunConfig, MemoryConfig
+from alignmentgraph_isd import DesignBrief, HarnessRunConfig
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -32,6 +32,7 @@ def _assessment_tools() -> list[dict]:
     tools = []
     los = ["LO-01", "LO-02", "LO-03", "LO-04", "LO-05"]
     types = ["multiple_choice", "short_answer", "performance_task"]
+    categories = ["diagnostic", "formative", "summative"]
     for i in range(10):
         lo = los[i % 5]
         tools.append({
@@ -39,6 +40,7 @@ def _assessment_tools() -> list[dict]:
             "type": types[i % 3],
             "question": f"Demonstrate mastery of {lo} in a realistic scenario.",
             "aligned_objective": lo,
+            "plan_category": categories[i % 3],
             "scoring_criteria": "Rubric scores correctness, design quality, and explanation against observable criteria (0-4 each).",
             "difficulty": ["easy", "medium", "hard"][i % 3],
         })
@@ -90,9 +92,9 @@ _DESIGN = {
     },
     "non_instructional_strategies": {"motivation_strategies": ["Real tasks"], "self_directed_learning": ["Reading"], "support_strategies": ["Mentor"]},
     "learning_activities": [
-        {"activity_name": "Encapsulation lab", "duration": "60m", "description": "Build a class with invariants.", "materials": ["Starter repo"]},
-        {"activity_name": "Inheritance lab", "duration": "60m", "description": "Model a hierarchy.", "materials": ["Starter repo"]},
-        {"activity_name": "Design review", "duration": "60m", "description": "Critique a design.", "materials": ["Checklist"]},
+        {"id": "ACT-01", "activity_name": "Encapsulation lab", "duration": "60m", "description": "Build a class with invariants.", "materials": ["Starter repo"], "aligned_objectives": ["LO-01", "LO-02"], "linked_module": "MOD-01"},
+        {"id": "ACT-02", "activity_name": "Inheritance lab", "duration": "60m", "description": "Model a hierarchy.", "materials": ["Starter repo"], "aligned_objectives": ["LO-03"], "linked_module": "MOD-02"},
+        {"id": "ACT-03", "activity_name": "Design review", "duration": "60m", "description": "Critique a design.", "materials": ["Checklist"], "aligned_objectives": ["LO-04", "LO-05"], "linked_module": "MOD-03"},
     ],
     "media_selection": [{"media_type": "slides", "purpose": "Concepts", "rationale": "Clarity"}, {"media_type": "repo", "purpose": "Practice", "rationale": "Transfer"}],
     "storyboard": [
@@ -104,9 +106,9 @@ _DESIGN = {
 
 _DEVELOPMENT = {
     "learner_materials": [
-        {"title": "OOP concepts handout", "type": "reading", "content": "Covers the four pillars with examples.", "format": "pdf"},
-        {"title": "Starter repository", "type": "code", "content": "Lab scaffolding with TODOs and tests.", "format": "git"},
-        {"title": "Design checklist", "type": "job_aid", "content": "SOLID review checklist with concrete prompts.", "format": "pdf"},
+        {"id": "MAT-01", "title": "OOP concepts handout", "type": "reading", "content": "Covers the four pillars with examples.", "format": "pdf", "linked_module": "MOD-01"},
+        {"id": "MAT-02", "title": "Starter repository", "type": "code", "content": "Lab scaffolding with TODOs and tests.", "format": "git", "linked_module": "MOD-02"},
+        {"id": "MAT-03", "title": "Design checklist", "type": "job_aid", "content": "SOLID review checklist with concrete prompts.", "format": "pdf", "linked_module": "MOD-03"},
     ],
     "instructor_guide": {
         "overview": "Three-session flow from concepts to applied design.",
@@ -232,15 +234,20 @@ def _payload_for_system(system_prompt: str) -> dict:
         return _DESIGN
     if "assessment instruments" in s:
         return {"assessment_tools": _DEVELOPMENT["assessment_tools"], "expert_review": _DEVELOPMENT["expert_review"]}
-    if "developing learning materials" in s:
+    if "developing learning activities and materials" in s:
         return {
+            "learning_activities": _DESIGN["learning_activities"],
             "learner_materials": _DEVELOPMENT["learner_materials"],
             "instructor_guide": _DEVELOPMENT["instructor_guide"],
             "operator_manual": _DEVELOPMENT["operator_manual"],
         }
     if "Implementation phase of ADDIE" in s:
         return _IMPLEMENTATION
-    if "Evaluation phase of ADDIE" in s:
+    if "SUMMATIVE evaluation" in s:
+        return {"summative": _EVALUATION["summative"]}
+    if "FORMATIVE evaluation" in s:
+        return {"formative": _EVALUATION["formative"], "improvement_plan": _EVALUATION["improvement_plan"]}
+    if "Evaluation phase of ADDIE" in s:  # single_agent full-blob prompt
         return _EVALUATION
     return {}
 
@@ -275,7 +282,7 @@ def fake_llm_factory():
 
 @pytest.fixture
 def fake_config(fake_llm_factory):
-    config = HarnessRunConfig.from_ablation("full", memory={"enabled": False})
+    config = HarnessRunConfig.from_ablation("full")
     config.llm_factory = fake_llm_factory
     return config
 

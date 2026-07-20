@@ -36,12 +36,12 @@ def _corpus_agent(name="testing_corpus", fail=False, max_tool_calls=3) -> Retrie
 def test_use_rag_off_is_zero_cost_and_prompt_stable(fake_llm_factory):
     brief = load_brief("java_oop_brief.json")
 
-    config_plain = HarnessRunConfig.from_ablation("full", memory={"enabled": False})
+    config_plain = HarnessRunConfig.from_ablation("full")
     config_plain.llm_factory = fake_llm_factory
     result_plain = run_design_brief(brief, config_plain)
 
     # Even with subagents registered, use_rag=False must gate everything out.
-    config_gated = HarnessRunConfig.from_ablation("full", memory={"enabled": False})
+    config_gated = HarnessRunConfig.from_ablation("full")
     config_gated.llm_factory = fake_llm_factory
     config_gated.retrieval_subagents = [_corpus_agent()]
     result_gated = run_design_brief(brief, config_gated)
@@ -53,7 +53,8 @@ def test_use_rag_off_is_zero_cost_and_prompt_stable(fake_llm_factory):
 
 def test_use_rag_on_with_empty_registry_is_zero_cost(fake_llm_factory):
     brief = load_brief("java_oop_brief.json")
-    config = HarnessRunConfig.from_ablation("case_study", memory={"enabled": False})
+    config = HarnessRunConfig.from_ablation("full")
+    config.ablation.use_rag = True  # RAG on (case-study-style), preset-free
     config.llm_factory = fake_llm_factory
     result = run_design_brief(brief, config)
     assert result["trajectory"]["retrieval_events"] == []
@@ -106,7 +107,8 @@ class _RagFakeModel(FakeChatModel):
 def test_on_demand_retrieval_flow_end_to_end():
     brief = load_brief("software_testing_brief.json")
     model = _RagFakeModel()
-    config = HarnessRunConfig.from_ablation("case_study", memory={"enabled": False})
+    config = HarnessRunConfig.from_ablation("full")
+    config.ablation.use_rag = True  # RAG on (case-study-style), preset-free
     config.llm_factory = lambda: model
     config.retrieval_subagents = [_corpus_agent()]
 

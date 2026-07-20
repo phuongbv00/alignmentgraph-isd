@@ -1,7 +1,8 @@
 from __future__ import annotations
 import re
-from ..graph import EdgeType, NodeType
+from ..graph import NodeType
 from ..schema import DesignBrief
+from .. import alignment
 from dataclasses import dataclass, field
 from .base import BaseISDAgent
 
@@ -31,17 +32,6 @@ _VERB_LEVELS: dict[str, set[int]] = {}
 for _level, _verbs in _BLOOM_VERBS.items():
     for _v in _verbs:
         _VERB_LEVELS.setdefault(_v, set()).add(_BLOOM_LEVEL_INDEX[_level.lower()])
-
-# The highest Bloom level an assessment format can plausibly elicit. Unknown
-# formats default to 6 so only clearly recognition-bound formats can fire.
-_ITEM_TYPE_CAPABILITY = {
-    "true_false": 1,
-    "matching": 1,
-    "multiple_choice": 2,
-    "quiz": 2,
-    "short_answer": 4,
-}
-_RECALL_CAPABILITY_CEILING = 2
 
 # Non-observable ("fuzzy") objective verbs: these describe an internal state that
 # cannot be directly observed or scored, so an objective built on one needs an
@@ -84,9 +74,9 @@ class VerifierViolation:
     node_id: str
     edge_type: str
     message: str
-    # coverage | bloom | measurability | activity_support | activity_engagement |
-    # rubric_consistency | bloom_mismatch | feasibility | actionability |
-    # evaluation_alignment | evaluation_quality
+    # Completeness tier: bloom | measurability | activity_engagement | rubric_consistency |
+    #   feasibility | actionability | evaluation_quality
+    # Alignment tier (gated by use_graph_coordination): R1..R13 | bloom_mismatch
     violation_type: str = "coverage"
     severity: str = "error"                   # error | warning
     repair_hint: str = ""
@@ -94,73 +84,34 @@ class VerifierViolation:
 
 
 class PedagogicalVerifierAgent(BaseISDAgent):
-    def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
+    def run(self, design_brief: DesignBrief) -> None:
         pass  # not used directly; call verify()
 
     def verify(self, design_brief: DesignBrief | None = None) -> list[VerifierViolation]:
-        # No ablation gate: the verifier always runs when called. Whether it is
-        # called at all is a workflow decision (full/wo_ma wire QC nodes; wo_qc
-        # does not; the dynamic planner schedules it per its own policy).
+        """Two tiers. Completeness always runs (a small model still needs
+        self-repair to avoid a broken/empty output). Alignment (relation
+        coverage + the Bloom/format validity rule) only runs when the harness
+        has graph coordination active — see "QC has two tiers; the alignment
+        tier only fires when there is a graph" in the refactor plan."""
         violations: list[VerifierViolation] = []
-        violations.extend(self._check_assessment_coverage())
         violations.extend(self._check_bloom_verbs())
         violations.extend(self._check_measurability())
-        violations.extend(self._check_activity_support())
         violations.extend(self._check_activity_engagement())
         violations.extend(self._check_rubric_consistency())
-        violations.extend(self._check_assessment_bloom_match())
         violations.extend(self._check_feasibility(design_brief))
         violations.extend(self._check_actionability())
-        violations.extend(self._check_evaluation_alignment())
         violations.extend(self._check_evaluation_quality())
+
+        if self.config.ablation.use_graph_coordination:
+            violations.extend(self._check_relation_coverage())
+            violations.extend(self._check_bloom_format_validity())
         return violations
 
-    # ── Check 1: every objective has ≥1 assessment measuring it ───────────────
-    def _check_assessment_coverage(self) -> list[VerifierViolation]:
-        return self._coverage_violations(
-            edge_type=EdgeType.MEASURES,
-            violation_type="coverage",
-            severity="error",
-            message_tpl="Objective '{lo}' has no assessment measuring it.",
-            repair_hint="Create an assessment item aligned with this objective and add a 'measures' edge.",
-        )
+    # ══════════════════════ completeness tier (always on) ═══════════════════
+    # Single-artifact quality: every check here reads exactly one node/item,
+    # never a relation between two artifacts, so none of it needs the graph.
 
-    def _coverage_violations(
-        self,
-        *,
-        edge_type: str,
-        violation_type: str,
-        severity: str,
-        message_tpl: str,
-        repair_hint: str,
-    ) -> list[VerifierViolation]:
-        """Element-level coverage: each objective element node needs an aligned edge.
-
-        Coverage is computed over the first-class objective element nodes rather
-        than the single ``objective_0`` section node. Falls back to the section
-        node when no element nodes exist (e.g. an empty graph)."""
-        edges = [e for e in self.graph.get_edges(edge_type) if not e.get("stale")]
-        covered_targets = {e["target"] for e in edges}
-        covered_evidence = {e.get("evidence") for e in edges if e.get("evidence")}
-
-        targets = self.graph.element_nodes(NodeType.OBJECTIVE) or self.graph.section_nodes(NodeType.OBJECTIVE)
-        violations: list[VerifierViolation] = []
-        for node in targets:
-            lo_id = str(node["data"].get("id") or node["id"])
-            if node["id"] in covered_targets or lo_id in covered_evidence:
-                continue
-            violations.append(VerifierViolation(
-                node_id=node["id"],
-                edge_type=edge_type,
-                violation_type=violation_type,
-                severity=severity,
-                message=message_tpl.format(lo=lo_id),
-                repair_hint=repair_hint,
-                metadata={"lo_id": lo_id},
-            ))
-        return violations
-
-    # ── Check 2: learning objectives use measurable Bloom's verbs ─────────────
+    # ── Bloom verb taxonomy validity ──────────────────────────────────────────
     def _check_bloom_verbs(self) -> list[VerifierViolation]:
         violations: list[VerifierViolation] = []
         for obj in self.graph.section_nodes(NodeType.OBJECTIVE):
@@ -180,7 +131,6 @@ class PedagogicalVerifierAgent(BaseISDAgent):
                         metadata={"lo_id": lo_id, "statement": statement},
                     ))
                 elif verb not in _ALL_BLOOM_VERBS:
-                    # Check if verb appears in the statement as a fallback
                     stmt_lower = statement.lower()
                     has_bloom = any(bv in stmt_lower for bv in _ALL_BLOOM_VERBS)
                     if not has_bloom:
@@ -194,7 +144,6 @@ class PedagogicalVerifierAgent(BaseISDAgent):
                             metadata={"lo_id": lo_id, "verb": verb},
                         ))
                 else:
-                    # Verb is standard: it must be consistent with the declared level.
                     level_idx = _BLOOM_LEVEL_INDEX.get(str(lo.get("level", "")).lower().strip())
                     verb_levels = _VERB_LEVELS.get(verb, set())
                     if level_idx and verb_levels and level_idx not in verb_levels:
@@ -212,13 +161,10 @@ class PedagogicalVerifierAgent(BaseISDAgent):
                         ))
         return violations
 
-    # ── Check 2b: objectives state a measurable degree or condition ──────────
+    # ── objectives state a measurable degree or condition (audit-only) ───────
     def _check_measurability(self) -> list[VerifierViolation]:
-        """Measurability, narrowly: only a *non-observable* verb (understand, know,
-        ...) with no criterion is unmeasurable. A well-formed objective with an
-        observable Bloom verb (analyze, design, apply, ...) is measurable enough
-        even without a numeric degree — flagging those over-fires and forces
-        needless rewrites. This check is audit-only (not auto-repaired); the vague
+        """Narrowly: only a *non-observable* verb (understand, know, ...) with
+        no criterion is unmeasurable. Audit-only (not auto-repaired): the vague
         verb itself is fixed by the Bloom-verb repair."""
         violations: list[VerifierViolation] = []
         for obj in self.graph.section_nodes(NodeType.OBJECTIVE):
@@ -228,14 +174,14 @@ class PedagogicalVerifierAgent(BaseISDAgent):
                 statement = str(lo.get("statement", ""))
                 lo_id = lo.get("id", obj["id"])
                 if not statement.strip():
-                    continue  # empty statements are a schema concern, not measurability
+                    continue
                 verb = str(lo.get("bloom_verb", "")).lower().strip(".,;")
                 stmt_lower = statement.lower()
                 is_vague = verb in _VAGUE_VERBS or any(
                     re.search(rf"\b{re.escape(v)}\b", stmt_lower) for v in _VAGUE_VERBS
                 )
                 if not is_vague:
-                    continue  # observable verb → measurable enough, do not flag
+                    continue
                 if _DEGREE_PATTERN.search(statement) or _CONDITION_PATTERN.search(statement):
                     continue
                 violations.append(VerifierViolation(
@@ -255,21 +201,7 @@ class PedagogicalVerifierAgent(BaseISDAgent):
                 ))
         return violations
 
-    # ── Check 3: every objective has ≥1 activity supporting it ───────────────
-    def _check_activity_support(self) -> list[VerifierViolation]:
-        # Only flag this if we have activity nodes (not in single-agent mode where
-        # activities are embedded inside the design section)
-        if not self.graph.get_nodes(NodeType.ACTIVITY):
-            return []
-        return self._coverage_violations(
-            edge_type=EdgeType.SUPPORTS,
-            violation_type="activity_support",
-            severity="warning",
-            message_tpl="Objective '{lo}' has no learning activity explicitly supporting it.",
-            repair_hint="Create a learning activity that explicitly supports this objective and add a 'supports' edge.",
-        )
-
-    # ── Check 3b: higher-order objectives get active practice ────────────────
+    # ── higher-order objectives get active practice ───────────────────────────
     def _check_activity_engagement(self) -> list[VerifierViolation]:
         """An Apply+ objective practiced only through passive formats (lecture,
         reading, video) gives learners no chance to perform the target skill."""
@@ -278,7 +210,7 @@ class PedagogicalVerifierAgent(BaseISDAgent):
         if not higher:
             return []
         violations: list[VerifierViolation] = []
-        for obj in self.graph.section_nodes(NodeType.OBJECTIVE):
+        for obj in self.graph.section_nodes(NodeType.ACTIVITY):
             activities = [
                 a for a in obj["data"].get("learning_activities", []) or []
                 if isinstance(a, dict)
@@ -292,7 +224,7 @@ class PedagogicalVerifierAgent(BaseISDAgent):
                     if not any_declared or lo_id in (a.get("aligned_objectives") or [])
                 ]
                 if not relevant:
-                    continue  # missing linkage is the coverage check's concern
+                    continue  # missing linkage is the R4 coverage check's concern
                 texts = [
                     f"{a.get('activity_name', '')} {a.get('description', '')}".lower()
                     for a in relevant
@@ -319,45 +251,20 @@ class PedagogicalVerifierAgent(BaseISDAgent):
                 ))
         return violations
 
-    # ── Check 4: assessment rubric consistency ───────────────────────────────
+    # ── assessment rubric quality (item-level, not cross-artifact) ───────────
     def _check_rubric_consistency(self) -> list[VerifierViolation]:
         violations: list[VerifierViolation] = []
-        valid_lo_ids = set(self._objective_levels())
         for node in self.graph.section_nodes(NodeType.ASSESSMENT):
             for item in node["data"].get("assessment_tools", []) or []:
                 if not isinstance(item, dict):
                     continue
                 item_id = item.get("item_id", "?")
-                aligned = item.get("aligned_objective")
-                if not aligned:
-                    violations.append(VerifierViolation(
-                        node_id=node["id"],
-                        edge_type=EdgeType.MEASURES,
-                        violation_type="rubric_consistency",
-                        severity="error",
-                        message=f"Assessment item '{item_id}' has no aligned_objective.",
-                        repair_hint="Set aligned_objective to the LO id this item measures.",
-                        metadata={"item_id": item_id},
-                    ))
-                elif valid_lo_ids and str(aligned) not in valid_lo_ids:
-                    violations.append(VerifierViolation(
-                        node_id=node["id"],
-                        edge_type=EdgeType.MEASURES,
-                        violation_type="rubric_consistency",
-                        severity="error",
-                        message=(
-                            f"Assessment item '{item_id}' claims to measure '{aligned}', "
-                            "but no such objective exists."
-                        ),
-                        repair_hint="Point aligned_objective at an existing LO id.",
-                        metadata={"item_id": item_id, "aligned_objective": str(aligned), "dangling": True},
-                    ))
                 criteria = str(item.get("scoring_criteria") or item.get("scoring_rubric") or "").strip()
                 lowered = criteria.lower()
                 if not criteria or any(marker in lowered for marker in _PLACEHOLDER_MARKERS):
                     violations.append(VerifierViolation(
                         node_id=node["id"],
-                        edge_type=EdgeType.MEASURES,
+                        edge_type="",
                         violation_type="rubric_consistency",
                         severity="warning",
                         message=f"Assessment item '{item_id}' has no scoring criteria.",
@@ -372,52 +279,13 @@ class PedagogicalVerifierAgent(BaseISDAgent):
                     if is_vague:
                         violations.append(VerifierViolation(
                             node_id=node["id"],
-                            edge_type=EdgeType.MEASURES,
+                            edge_type="",
                             violation_type="rubric_consistency",
                             severity="warning",
                             message=f"Performance item '{item_id}' lacks an observable scoring rubric.",
                             repair_hint="Replace vague language with observable, scorable criteria.",
                             metadata={"item_id": item_id, "scoring_criteria": criteria},
                         ))
-        return violations
-
-    # ── Check 4b: assessment formats can elicit the objective's Bloom level ──
-    def _check_assessment_bloom_match(self) -> list[VerifierViolation]:
-        """Constructive alignment at the format level: a higher-order objective
-        (Apply+) measured exclusively by recognition-bound formats (MCQ,
-        true/false) cannot demonstrate the intended cognitive level."""
-        levels = self._objective_levels()
-        violations: list[VerifierViolation] = []
-        for node in self.graph.section_nodes(NodeType.ASSESSMENT):
-            items_by_lo: dict[str, list[dict]] = {}
-            for item in node["data"].get("assessment_tools", []) or []:
-                if isinstance(item, dict) and item.get("aligned_objective"):
-                    items_by_lo.setdefault(str(item["aligned_objective"]), []).append(item)
-            for lo_id, lo_level in levels.items():
-                items = items_by_lo.get(lo_id, [])
-                if lo_level < 3 or not items:
-                    continue
-                capability = max(
-                    _ITEM_TYPE_CAPABILITY.get(str(item.get("type", "")).lower(), 6)
-                    for item in items
-                )
-                if capability <= _RECALL_CAPABILITY_CEILING:
-                    item_ids = [str(item.get("item_id", "?")) for item in items]
-                    violations.append(VerifierViolation(
-                        node_id=node["id"],
-                        edge_type=EdgeType.MEASURES,
-                        violation_type="bloom_mismatch",
-                        severity="error",
-                        message=(
-                            f"Objective '{lo_id}' targets a higher-order level but is measured "
-                            f"only by recognition-level formats ({', '.join(item_ids)})."
-                        ),
-                        repair_hint=(
-                            "Add a constructed-response or performance item for this objective "
-                            "(short answer, performance task, or project)."
-                        ),
-                        metadata={"lo_id": lo_id, "item_ids": item_ids, "lo_level": lo_level},
-                    ))
         return violations
 
     def _objective_levels(self) -> dict[str, int]:
@@ -434,7 +302,7 @@ class PedagogicalVerifierAgent(BaseISDAgent):
                 levels[str(lo["id"])] = idx
         return levels
 
-    # ── Check 5: delivery feasibility against the brief's constraints ─────────
+    # ── delivery feasibility against the brief's constraints ─────────────────
     def _check_feasibility(self, design_brief: DesignBrief | None) -> list[VerifierViolation]:
         if design_brief is None:
             return []
@@ -443,8 +311,8 @@ class PedagogicalVerifierAgent(BaseISDAgent):
             return []
         modules: list = []
         sessions: list = []
-        for node in self.graph.section_nodes(NodeType.OBJECTIVE):
-            modules += node["data"].get("content_structure", {}).get("modules", []) or []
+        for node in self.graph.section_nodes("content_structure"):
+            modules += node["data"].get("modules", []) or []
         for node in self.graph.section_nodes(NodeType.ACTIVITY) + self.graph.section_nodes(NodeType.MATERIAL):
             guide = node["data"].get("instructor_guide", {})
             if isinstance(guide, dict):
@@ -466,7 +334,7 @@ class PedagogicalVerifierAgent(BaseISDAgent):
             )]
         return []
 
-    # ── Check 6: actionability of implementation/development guidance ────────
+    # ── actionability of implementation/development guidance ─────────────────
     def _check_actionability(self) -> list[VerifierViolation]:
         violations: list[VerifierViolation] = []
         for node in self.graph.section_nodes(NodeType.IMPLEMENTATION_PLAN):
@@ -497,46 +365,7 @@ class PedagogicalVerifierAgent(BaseISDAgent):
                 ))
         return violations
 
-    # ── Check 7: every objective has evaluation evidence ─────────────────────
-    def _check_evaluation_alignment(self) -> list[VerifierViolation]:
-        objective_nodes = self.graph.section_nodes(NodeType.OBJECTIVE)
-        if not objective_nodes:
-            return []
-        evaluates_edges = self.graph.get_edges(EdgeType.EVALUATES)
-        evaluated_targets = {e["target"] for e in evaluates_edges if not e.get("stale")}
-        evaluated_evidence = {e.get("evidence") for e in evaluates_edges if not e.get("stale")}
-        # Summative tools that name an aligned objective also count as evidence.
-        for node in self.graph.section_nodes(NodeType.EVALUATION):
-            for item in node["data"].get("summative", {}).get("assessment_tools", []) or []:
-                if isinstance(item, dict) and item.get("aligned_objective"):
-                    evaluated_evidence.add(item["aligned_objective"])
-
-        violations: list[VerifierViolation] = []
-        for obj in objective_nodes:
-            lo_ids = [
-                lo.get("id")
-                for lo in obj["data"].get("learning_objectives", [])
-                if isinstance(lo, dict) and lo.get("id")
-            ]
-            if obj["id"] in evaluated_targets:
-                continue
-            uncovered = [lo_id for lo_id in lo_ids if lo_id not in evaluated_evidence]
-            if uncovered or (not lo_ids and obj["id"] not in evaluated_targets):
-                violations.append(VerifierViolation(
-                    node_id=obj["id"],
-                    edge_type=EdgeType.EVALUATES,
-                    violation_type="evaluation_alignment",
-                    severity="warning",
-                    message=(
-                        f"Objective '{obj['id']}' lacks evaluation evidence for: "
-                        f"{', '.join(uncovered) or obj['id']}."
-                    ),
-                    repair_hint="Add an 'evaluates' edge or a summative item aligned to each objective.",
-                    metadata={"uncovered": uncovered},
-                ))
-        return violations
-
-    # ── Check 7b: the formative evaluation plan is concrete ──────────────────
+    # ── the formative evaluation plan is concrete ─────────────────────────────
     def _check_evaluation_quality(self) -> list[VerifierViolation]:
         """An evaluation section whose formative plan names no data-collection
         method cannot drive the revision loop it exists for."""
@@ -566,10 +395,67 @@ class PedagogicalVerifierAgent(BaseISDAgent):
                 ))
         return violations
 
+    # ═══════════════════ alignment tier (use_graph_coordination only) ═══════════
+    # Cross-artifact checks: coverage of the 13-relation matrix + the one
+    # boolean Bloom/format-validity rule. Never runs unless the harness has
+    # graph coordination active (see verify()).
+
+    def _check_relation_coverage(self) -> list[VerifierViolation]:
+        """Re-run the deterministic establishers (idempotent — safe to call
+        repeatedly, and catches a reference that stopped resolving after a
+        repair elsewhere) to surface dangling/mismatched references, then
+        check coverage of all 13 relations for missing links entirely."""
+        violations: list[VerifierViolation] = []
+
+        establisher_gaps: list[dict] = []
+        establisher_gaps += alignment.match_id(self.graph, "R3", target_node_type=NodeType.OBJECTIVE, field="aligned_objective")
+        establisher_gaps += alignment.match_r4_supports(self.graph)
+        establisher_gaps += alignment.match_id(self.graph, "R5", target_node_type=NodeType.OBJECTIVE, field="aligned_objective")
+        establisher_gaps += alignment.match_r6_realizes(self.graph)
+        establisher_gaps += alignment.match_r9_realizes(self.graph)
+        establisher_gaps += alignment.match_r12_realizes(self.graph)
+        for gap in establisher_gaps:
+            node_id = gap["node_id"]
+            # These gaps are always about the SOURCE item failing to resolve
+            # its own reference (dangling aligned_objective, no plan_category
+            # match, ...) — repair() methods key on the bare item id, mirroring
+            # the item's own id field (e.g. "AT-02", not "assessment:AT-02").
+            bare_id = node_id.split(self.graph.ELEMENT_SEP, 1)[-1] if self.graph.is_element(node_id) else node_id
+            violations.append(VerifierViolation(
+                node_id=node_id, edge_type="", violation_type=gap["relation_id"],
+                severity="error", message=gap["message"],
+                metadata={"node_id": node_id, "item_id": bare_id},
+            ))
+
+        for relation_id in alignment.REGISTRY:
+            _, uncovered = alignment.relation_coverage(self.graph, relation_id)
+            for node_id in uncovered:
+                metadata = {"node_id": node_id}
+                if node_id.startswith(f"{NodeType.OBJECTIVE}{self.graph.ELEMENT_SEP}"):
+                    metadata["lo_id"] = node_id.split(self.graph.ELEMENT_SEP, 1)[-1]
+                violations.append(VerifierViolation(
+                    node_id=node_id, edge_type="", violation_type=relation_id,
+                    severity="error" if relation_id in ("R3", "R5") else "warning",
+                    message=f"{node_id} has no {relation_id} ({alignment.REGISTRY[relation_id].label}) coverage.",
+                    repair_hint=f"Establish a {alignment.REGISTRY[relation_id].label} link.",
+                    metadata=metadata,
+                ))
+        return violations
+
+    def _check_bloom_format_validity(self) -> list[VerifierViolation]:
+        """The one boolean rule beyond coverage: can the assessment format
+        elicit the objective's declared Bloom level?"""
+        violations: list[VerifierViolation] = []
+        for bv in alignment.bloom_format_violations(self.graph):
+            violations.append(VerifierViolation(
+                node_id=bv["node_id"], edge_type="", violation_type="bloom_mismatch",
+                severity="error", message=bv["message"], metadata=bv.get("metadata", {}),
+            ))
+        return violations
+
 
 def _duration_hours(design_brief: DesignBrief) -> float:
     text = f"{design_brief.context.duration} {design_brief.duration}".lower()
-    import re
     hours = 0.0
     for value, unit in re.findall(r"(\d+(?:\.\d+)?)\s*(hour|hr|h|day|d|week|w)", text):
         amount = float(value)

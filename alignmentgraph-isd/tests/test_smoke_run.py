@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from alignmentgraph_isd import HarnessRunConfig, MemoryConfig, run_design_brief
+from alignmentgraph_isd import HarnessRunConfig, run_design_brief
 
 from conftest import load_brief
 
@@ -24,7 +24,7 @@ def test_public_api_returns_contract(brief_name, fake_config):
 
 def test_run_requires_llm_factory():
     brief = load_brief("minimal_brief.json")
-    config = HarnessRunConfig.from_ablation("full", memory={"enabled": False})
+    config = HarnessRunConfig.from_ablation("full")
     with pytest.raises(RuntimeError, match="llm_factory"):
         run_design_brief(brief, config)
 

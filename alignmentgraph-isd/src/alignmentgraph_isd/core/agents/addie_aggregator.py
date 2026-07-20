@@ -1,32 +1,38 @@
 from __future__ import annotations
-from ..graph import EdgeType, NodeType
+from ..graph import NodeType
 from ..schema import DesignBrief
 from copy import deepcopy
+from .. import alignment
 from .base import BaseISDAgent
 
 
 class ADDIEOutputAggregator(BaseISDAgent):
-    def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
+    def run(self, design_brief: DesignBrief) -> None:
         pass  # call aggregate() directly
 
     def aggregate(self) -> dict:
         # Aggregate from section nodes only; element nodes carry single items and
         # would otherwise pollute the merged section payload.
-        nc_nodes = self.graph.section_nodes(NodeType.NEEDS_CONTEXT)
-        obj_nodes = self.graph.section_nodes(NodeType.OBJECTIVE)
-        asm_nodes = self.graph.section_nodes(NodeType.ASSESSMENT)
-        act_nodes = self.graph.section_nodes(NodeType.ACTIVITY)
-        mat_nodes = self.graph.section_nodes(NodeType.MATERIAL)
-        con_nodes = self.graph.section_nodes(NodeType.IMPLEMENTATION_PLAN)
-        ev_nodes = self.graph.section_nodes(NodeType.EVALUATION)
+        nc_data = _merge_node_data(self.graph.section_nodes(NodeType.NEEDS_CONTEXT))
+        obj_data = _merge_node_data(self.graph.section_nodes(NodeType.OBJECTIVE))
+        asm_data = _merge_node_data(self.graph.section_nodes(NodeType.ASSESSMENT))
+        act_data = _merge_node_data(self.graph.section_nodes(NodeType.ACTIVITY))
+        mat_data = _merge_node_data(self.graph.section_nodes(NodeType.MATERIAL)) or act_data
+        con_data = _merge_node_data(self.graph.section_nodes(NodeType.IMPLEMENTATION_PLAN))
+        ev_data = _merge_node_data(self.graph.section_nodes(NodeType.EVALUATION))
 
-        nc_data = _merge_node_data(nc_nodes)
-        obj_data = _merge_node_data(obj_nodes)
-        asm_data = _merge_node_data(asm_nodes)
-        act_data = _merge_node_data(act_nodes)
-        mat_data = _merge_node_data(mat_nodes) or act_data  # activity_material agent stores both
-        con_data = _merge_node_data(con_nodes)
-        ev_data = _merge_node_data(ev_nodes)
+        # Design is decomposed across several singleton "plan" nodes (see
+        # objective_design.py's 2-call split) — this is their ONE home under
+        # graph coordination. In the wo-graph arm there is NO such split: the
+        # whole Design blob lives in objective_0, so each field falls back to
+        # obj_data (the pre-refactor single-blob layout).
+        plan_data = _merge_node_data(self.graph.section_nodes("assessment_plan")) or obj_data.get("assessment_plan", {})
+        content_data = _merge_node_data(self.graph.section_nodes("content_structure")) or obj_data.get("content_structure", {})
+        strategy_data = _merge_node_data(self.graph.section_nodes("instructional_strategies")) or obj_data.get("instructional_strategies", {})
+        non_instr_data = _merge_node_data(self.graph.section_nodes("non_instructional_strategies")) or obj_data.get("non_instructional_strategies", {})
+        storyboard_data = _merge_node_data(self.graph.section_nodes("storyboard_plan"))
+        media_items = [n["data"] for n in self.graph.element_nodes("media")] or obj_data.get("media_selection", [])
+        storyboard = storyboard_data.get("storyboard", []) or obj_data.get("storyboard", [])
 
         analysis = {
             "needs_analysis": nc_data.get("needs_analysis", {}),
@@ -37,13 +43,13 @@ class ADDIEOutputAggregator(BaseISDAgent):
 
         design = {
             "learning_objectives": obj_data.get("learning_objectives", []),
-            "assessment_plan": obj_data.get("assessment_plan", {}),
-            "content_structure": obj_data.get("content_structure", {}),
-            "instructional_strategies": obj_data.get("instructional_strategies", {}),
-            "non_instructional_strategies": obj_data.get("non_instructional_strategies", {}),
-            "learning_activities": obj_data.get("learning_activities", []),
-            "media_selection": obj_data.get("media_selection", []),
-            "storyboard": obj_data.get("storyboard", []),
+            "assessment_plan": plan_data,
+            "content_structure": content_data,
+            "instructional_strategies": strategy_data,
+            "non_instructional_strategies": non_instr_data,
+            "learning_activities": act_data.get("learning_activities", []),
+            "media_selection": media_items,
+            "storyboard": storyboard,
         }
 
         # In single_agent mode, assessment_tools/expert_review live in the activity (development) node.
@@ -82,7 +88,10 @@ class ADDIEOutputAggregator(BaseISDAgent):
             "implementation": implementation,
             "evaluation": evaluation,
         }
-        return _strengthen_alignment(output, self.graph)
+        return _strengthen_alignment(
+            output, self.graph,
+            graph_coordination=bool(self.config.ablation.use_graph_coordination),
+        )
 
 
 def _merge_node_data(nodes: list[dict]) -> dict:
@@ -142,7 +151,7 @@ def _is_empty(value) -> bool:
     return value in ({}, [], "", None)
 
 
-def _strengthen_alignment(output: dict, graph) -> dict:
+def _strengthen_alignment(output: dict, graph, *, graph_coordination: bool) -> dict:
     design = output.setdefault("design", {})
     development = output.setdefault("development", {})
     implementation = output.setdefault("implementation", {})
@@ -150,20 +159,17 @@ def _strengthen_alignment(output: dict, graph) -> dict:
 
     objectives = design.get("learning_objectives", []) or []
     assessment_tools = development.get("assessment_tools", []) or []
-    activities = design.get("learning_activities", []) or []
-    storyboard = design.get("storyboard", []) or []
-    modules = design.get("content_structure", {}).get("modules", []) or []
 
     objective_ids = [lo.get("id") for lo in objectives if isinstance(lo, dict) and lo.get("id")]
     if objective_ids:
-        _ensure_assessment_coverage(objectives, assessment_tools, graph)
-        design["alignment_matrix"] = _build_alignment_matrix(
-            objective_ids,
-            assessment_tools,
-            activities,
-            storyboard,
-            graph,
-        )
+        if graph_coordination:
+            # Last-resort coverage net for the graph-coordination mechanism only
+            # (when the repair budget ran out before closing every R3 gap). At
+            # wo_graph/wo_ma the alignment tier is ablated, so patching
+            # coverage here would leak the mechanism into the arms measuring
+            # its absence.
+            _ensure_assessment_coverage(objectives, assessment_tools, graph)
+        design["alignment_matrix"] = _build_alignment_matrix(objective_ids, graph)
         development["objective_assessment_map"] = {
             lo_id: [
                 item.get("item_id")
@@ -172,9 +178,6 @@ def _strengthen_alignment(output: dict, graph) -> dict:
             ]
             for lo_id in objective_ids
         }
-        _tag_activities(activities, objective_ids)
-        _tag_storyboard(storyboard, objective_ids)
-        _link_materials_to_modules(development.get("learner_materials", []), modules)
 
     _strengthen_implementation(implementation)
 
@@ -199,6 +202,9 @@ def _strengthen_alignment(output: dict, graph) -> dict:
 
 
 def _ensure_assessment_coverage(objectives: list, assessment_tools: list, graph) -> None:
+    """Output-level safety net: guarantee every objective has at least one
+    assessment item in the FINAL output, even outside the ``full`` arm (where
+    the alignment tier never ran to catch this during generation)."""
     if not isinstance(assessment_tools, list):
         return
     covered = {
@@ -206,7 +212,6 @@ def _ensure_assessment_coverage(objectives: list, assessment_tools: list, graph)
         for item in assessment_tools
         if isinstance(item, dict) and item.get("aligned_objective")
     }
-    objective_node_id = graph.section_id(NodeType.OBJECTIVE)
     for objective in objectives:
         if not isinstance(objective, dict):
             continue
@@ -223,20 +228,45 @@ def _ensure_assessment_coverage(objectives: list, assessment_tools: list, graph)
             "difficulty": "hard",
             "coverage_repair": True,
         })
-        graph.add_edge(
-            EdgeType.MEASURES,
-            graph.section_id(NodeType.ASSESSMENT),
-            objective_node_id,
-            evidence=lo_id,
-            rationale=f"Aggregator added {item_id} to guarantee assessment coverage for {lo_id}.",
-            verified=True,
-        )
         covered.add(lo_id)
 
 
+def _build_alignment_matrix(objective_ids: list[str], graph) -> list[dict]:
+    """Per-objective alignment record built from **established** edges
+    (relation_id, established_by, evidence) — the real R1/R2/R3/R4/R5 picture,
+    replacing the old index-paired ``LO[i] <-> activity[i]`` guess."""
+    objective_relations = [
+        rid for rid, relation in alignment.REGISTRY.items()
+        if NodeType.OBJECTIVE in relation.target_node_types
+    ]
+    matrix: list[dict] = []
+    for lo_id in objective_ids:
+        target_id = f"{NodeType.OBJECTIVE}{graph.ELEMENT_SEP}{lo_id}"
+        entry = {"objective_id": lo_id, "relations": {}}
+        for relation_id in objective_relations:
+            edges = graph.get_edges(relation_id=relation_id, target=target_id)
+            entry["relations"][relation_id] = [
+                {
+                    "label": alignment.REGISTRY[relation_id].label,
+                    "source": e["source"],
+                    "established_by": e.get("established_by", ""),
+                    "evidence": e.get("evidence", ""),
+                }
+                for e in edges
+            ]
+        matrix.append(entry)
+    return matrix
+
+
 def _strengthen_implementation(implementation: dict) -> None:
+    """Polish NON-EMPTY implementation sections (setdefault-style, identical
+    for every ablation arm). An entirely empty section is left empty: painting
+    hardcoded content onto nothing turns a dead generation into a
+    partially-scored output and masks the failure from both the completeness
+    tier and the judge (exactly how a truncated single-agent run once scored
+    40% on Implementation while every other phase was 0)."""
     orientation = implementation.setdefault("instructor_orientation", {})
-    if isinstance(orientation, dict):
+    if isinstance(orientation, dict) and orientation:
         objectives = orientation.get("orientation_objectives", [])
         learner_facing = (
             not objectives
@@ -261,7 +291,7 @@ def _strengthen_implementation(implementation: dict) -> None:
         ])
 
     system_check = implementation.setdefault("system_check", {})
-    if isinstance(system_check, dict):
+    if isinstance(system_check, dict) and system_check:
         checklist = list(system_check.get("checklist", []))
         required_checks = [
             "Verify learning platform, lab resources, app login, and network access before each session.",
@@ -280,87 +310,3 @@ def _strengthen_implementation(implementation: dict) -> None:
             "Switch learners to offline or low-bandwidth materials if the primary environment fails.",
             "Use delayed submission or local notes if network connectivity drops.",
         ])
-
-
-def _build_alignment_matrix(
-    objective_ids: list[str],
-    assessment_tools: list,
-    activities: list,
-    storyboard: list,
-    graph,
-) -> list[dict]:
-    measures = _fresh_edges(graph.get_edges(EdgeType.MEASURES))
-    supports = _fresh_edges(graph.get_edges(EdgeType.SUPPORTS))
-    evaluates = _fresh_edges(graph.get_edges(EdgeType.EVALUATES))
-    matrix = []
-
-    for index, lo_id in enumerate(objective_ids):
-        matrix.append({
-            "objective_id": lo_id,
-            "assessment_items": [
-                item.get("item_id")
-                for item in assessment_tools
-                if isinstance(item, dict) and item.get("aligned_objective") == lo_id
-            ],
-            "learning_activity": _pick_name(activities, index, "activity_name"),
-            "storyboard_frame": _pick_name(storyboard, index, "frame_number"),
-            "graph_evidence": {
-                "measures": _edge_evidence(measures, lo_id),
-                "supports": _edge_evidence(supports, lo_id),
-                "evaluates": _edge_evidence(evaluates, lo_id),
-            },
-        })
-    return matrix
-
-
-def _edge_evidence(edges: list[dict], lo_id: str) -> list[str]:
-    return [
-        edge.get("rationale") or edge.get("source", "")
-        for edge in edges
-        if edge.get("evidence") == lo_id
-    ]
-
-
-def _fresh_edges(edges: list[dict]) -> list[dict]:
-    return [edge for edge in edges if not edge.get("stale")]
-
-
-def _pick_name(items: list, index: int, key: str):
-    if not items:
-        return None
-    item = items[min(index, len(items) - 1)]
-    if not isinstance(item, dict):
-        return item
-    return item.get(key)
-
-
-def _tag_activities(activities: list, objective_ids: list[str]) -> None:
-    if not activities:
-        return
-    for index, lo_id in enumerate(objective_ids):
-        activity = activities[min(index, len(activities) - 1)]
-        if not isinstance(activity, dict):
-            continue
-        aligned = activity.setdefault("aligned_objectives", [])
-        if lo_id not in aligned:
-            aligned.append(lo_id)
-
-
-def _tag_storyboard(storyboard: list, objective_ids: list[str]) -> None:
-    if not storyboard:
-        return
-    for index, lo_id in enumerate(objective_ids):
-        frame = storyboard[min(index, len(storyboard) - 1)]
-        if not isinstance(frame, dict):
-            continue
-        note = str(frame.get("notes", ""))
-        if lo_id not in note:
-            frame["notes"] = f"{note} Alignment: supports {lo_id}.".strip()
-
-
-def _link_materials_to_modules(materials: list, modules: list) -> None:
-    if not materials or not modules:
-        return
-    for index, material in enumerate(materials):
-        if isinstance(material, dict):
-            material.setdefault("linked_module", modules[min(index, len(modules) - 1)])

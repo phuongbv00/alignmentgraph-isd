@@ -47,16 +47,25 @@ Output ONLY the JSON object, no markdown, no explanation.\
 class ImplementationPlanAgent(BaseISDAgent):
     OWNED_VIOLATION_TYPES = frozenset({"feasibility", "actionability"})
 
-    def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
+    def run(self, design_brief: DesignBrief) -> None:
         prompt = _format_design_brief(design_brief)
-        # Graph-context retrieval (core, not RAG): inject prior G_t nodes into this prompt
-        prior_ctx = self._graph_context([NodeType.OBJECTIVE, NodeType.ACTIVITY])
+        # Traversal-scoped context: what must be operationalized (activities/
+        # materials) and how it was meant to run (instructional strategy).
+        # No relation in the 13-relation matrix targets implementation_plan,
+        # so this specialist establishes no alignment edges — only context.
+        if self._graph_coordination:
+            strategy_node = self.graph.get_node(self.graph.section_id("instructional_strategies"))
+            prior_nodes = (
+                self.graph.element_nodes("activity")
+                + self.graph.element_nodes("material")
+                + ([strategy_node] if strategy_node else [])
+            )
+            prior_ctx = self._element_context(prior_nodes)
+        else:
+            prior_ctx = self._graph_context([NodeType.ACTIVITY, NodeType.MATERIAL, "instructional_strategies"])
         user_content = prompt
         if prior_ctx:
             user_content = f"=== DESIGN + DEVELOPMENT RESULTS (from prior agents) ===\n{prior_ctx}\n\n=== SCENARIO ===\n{prompt}"
-        pack_ctx = self._context_pack_text(context_pack)
-        if pack_ctx:
-            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{pack_ctx}\n\n{user_content}"
         user_content = self._with_retrieval(design_brief, "implementation_plan", user_content)
         messages = [
             {"role": "system", "content": _SYSTEM},
@@ -107,23 +116,17 @@ class ImplementationPlanAgent(BaseISDAgent):
             adjustments = monitoring.setdefault("real_time_adjustments", [])
             if isinstance(adjustments, list):
                 adjustments.append("Re-scope delivery constraints after verifier feasibility warning.")
-        self.graph.update_node(self.graph.section_id(NodeType.IMPLEMENTATION_PLAN), {"monitoring": monitoring, "repaired": True})
-        self.graph.clear_stale(self.graph.section_id(NodeType.IMPLEMENTATION_PLAN))
-        self.graph.mark_repaired(self.graph.section_id(NodeType.IMPLEMENTATION_PLAN), "; ".join(v.message for v in owned))
-        impact = self._invalidate_impacted(
-            self.graph.section_id(NodeType.IMPLEMENTATION_PLAN),
-            "Implementation constraint repair changed delivery feasibility; impacted design and evaluation sections must be refreshed.",
-            action="repair_cascade",
-            changed_fields=["monitoring", "delivery_constraints"],
+        impl_id = self.graph.section_id(NodeType.IMPLEMENTATION_PLAN)
+        self.graph.update_node(impl_id, {"monitoring": monitoring, "repaired": True})
+        self._log_repair(
+            impl_id,
             violation_type=(owned[0].violation_type if owned else "feasibility"),
+            repaired_fields=["monitoring", "delivery_constraints"],
         )
         self.trajectory.log_step(
             "ImplementationPlanAgent",
             "repair_feasibility",
             "; ".join(v.message for v in owned),
-            (
-                "Updated implementation monitoring and contingency adjustment notes; "
-                f"invalidated nodes={len(impact['nodes'])} edges={len(impact['edges'])}."
-            ),
+            "Updated implementation monitoring and contingency adjustment notes.",
         )
         return remaining

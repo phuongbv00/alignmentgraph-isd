@@ -46,13 +46,9 @@ Output ONLY the JSON object, no markdown, no explanation.\
 
 
 class NeedsContextAgent(BaseISDAgent):
-    def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
+    def run(self, design_brief: DesignBrief) -> None:
         prompt = _format_design_brief(design_brief)
-        user_content = prompt
-        pack_ctx = self._context_pack_text(context_pack)
-        if pack_ctx:
-            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{pack_ctx}\n\n=== SCENARIO ===\n{prompt}"
-        user_content = self._with_retrieval(design_brief, "needs_context", user_content)
+        user_content = self._with_retrieval(design_brief, "needs_context", prompt)
         messages = [
             {"role": "system", "content": _SYSTEM},
             {"role": "user", "content": user_content},
@@ -62,5 +58,31 @@ class NeedsContextAgent(BaseISDAgent):
         node_id = self.graph.section_id(NodeType.NEEDS_CONTEXT)
         self.graph.add_node(NodeType.NEEDS_CONTEXT, node_id, parsed)
         self.trajectory.log_node_edit("add", node_id, NodeType.NEEDS_CONTEXT)
+        # gap/task/learner element nodes exist only as provenance sources for the
+        # alignment graph (R1/R2/R10/R11/R13). The wo-graph arm establishes none
+        # of those, so it decomposes nothing — it stays a pure section blob.
+        if self._graph_coordination:
+            self._decompose(parsed)
         self.trajectory.log_step("NeedsContextAgent", "needs_analysis", prompt[:200], response[:200] if response else "")
+
+    def _decompose(self, parsed: dict) -> None:
+        """First-class nodes for the analysis items later specialists traverse
+        from (R1/R2/R10/R13's sources): gaps, task topics, and the learner
+        profile. Output schema (gap_analysis/main_topics stay string lists) is
+        unchanged — ids are assigned positionally, not by the model."""
+        needs = parsed.get("needs_analysis", {}) or {}
+        gap_ids = self._decompose_auto_id("gap", needs.get("gap_analysis"), id_prefix="GAP")
+        for gid in gap_ids:
+            self.trajectory.log_node_edit("add", gid, "gap")
+
+        task = parsed.get("task_analysis", {}) or {}
+        topic_ids = self._decompose_auto_id("task", task.get("main_topics"), id_prefix="TOPIC", text_key="topic")
+        for tid in topic_ids:
+            self.trajectory.log_node_edit("add", tid, "task")
+
+        learner = parsed.get("learner_analysis", {}) or {}
+        if learner:
+            learner_id = self.graph.section_id("learner")
+            self.graph.add_node("learner", learner_id, learner)
+            self.trajectory.log_node_edit("add", learner_id, "learner")
 

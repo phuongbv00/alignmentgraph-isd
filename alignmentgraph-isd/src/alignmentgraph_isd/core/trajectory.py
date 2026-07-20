@@ -8,18 +8,14 @@ class TrajectoryLogger:
         self._start = time.time()
         self.agent_steps: list[dict] = []
         self.node_edits: list[dict] = []
-        self.edge_edits: list[dict] = []
         self.tool_calls: list[dict] = []
         self.reasoning_steps: list[str] = []
         self.agent_interactions: list[dict] = []
-        self.planner_decisions: list[dict] = []
-        self.task_graph_snapshots: list[dict] = []
         # Structured event streams so an evaluator/reviewer can compute repair
-        # success rate, cascade size, and validation health without parsing prose.
+        # success rate and validation health without parsing prose.
         self.validation_events: list[dict] = []
         self.verifier_events: list[dict] = []
         self.repair_events: list[dict] = []
-        self.cascade_events: list[dict] = []
         self.retrieval_events: list[dict] = []
         self.llm_calls: int = 0
         self.token_usage: dict = {"prompt_tokens": 0, "completion_tokens": 0}
@@ -75,46 +71,10 @@ class TrajectoryLogger:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
 
-    def log_edge_edit(
-        self,
-        op: str,
-        source_id: str,
-        target_id: str,
-        edge_type: str,
-        evidence: str = "",
-        rationale: str = "",
-    ) -> None:
-        self.edge_edits.append({
-            "op": op,
-            "source_id": source_id,
-            "target_id": target_id,
-            "edge_type": edge_type,
-            "evidence": evidence,
-            "rationale": rationale,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
-
     def log_llm_call(self, prompt_tokens: int = 0, completion_tokens: int = 0) -> None:
         self.llm_calls += 1
         self.token_usage["prompt_tokens"] += prompt_tokens
         self.token_usage["completion_tokens"] += completion_tokens
-
-    def log_planner_decision(self, decision: dict) -> None:
-        self.planner_decisions.append(decision)
-        task_graph = decision.get("task_graph")
-        if task_graph:
-            self.task_graph_snapshots.append({
-                "step": len(self.planner_decisions),
-                "selected_task": decision.get("next_task", ""),
-                "task_graph": task_graph,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            })
-        self.log_step(
-            "ISDTaskPlanner",
-            "route",
-            decision.get("reason", ""),
-            decision.get("next_task", ""),
-        )
 
     def log_validation_result(self, scope: str, errors: list[str]) -> None:
         """Record a schema-validation pass (scope = node type or 'addie_output')."""
@@ -145,14 +105,12 @@ class TrajectoryLogger:
         violation_type: str,
         node_id: str,
         repaired_fields: list[str],
-        cascade: dict | None = None,
     ) -> None:
         self.repair_events.append({
             "agent": agent,
             "violation_type": violation_type,
             "node_id": node_id,
             "repaired_fields": list(repaired_fields or []),
-            "cascade": cascade or {"nodes": 0, "edges": 0},
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
 
@@ -183,16 +141,6 @@ class TrajectoryLogger:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
 
-    def log_cascade_event(self, source_node: str, nodes: list[str], edges: list, reason: str = "") -> None:
-        self.cascade_events.append({
-            "source_node": source_node,
-            "nodes": list(nodes),
-            "edges": len(edges),
-            "node_count": len(nodes),
-            "reason": reason,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
-
     def summary_metrics(self, residual_violation_count: int) -> dict:
         """Aggregate structured events into headline metrics for metadata.
 
@@ -206,8 +154,6 @@ class TrajectoryLogger:
         return {
             "repair_events": len(self.repair_events),
             "repair_success_rate": repair_success_rate,
-            "cascade_count": len(self.cascade_events),
-            "cascade_nodes": sum(event["node_count"] for event in self.cascade_events),
             "validation_error_count": sum(event["error_count"] for event in self.validation_events),
             "verifier_rounds": len(self.verifier_events),
             "peak_violation_count": peak_violations,
@@ -225,13 +171,9 @@ class TrajectoryLogger:
             "agent_interactions": self.agent_interactions,
             "agent_steps": self.agent_steps,
             "node_edits": self.node_edits,
-            "edge_edits": self.edge_edits,
-            "planner_decisions": self.planner_decisions,
-            "task_graph_snapshots": self.task_graph_snapshots,
             "validation_events": self.validation_events,
             "verifier_events": self.verifier_events,
             "repair_events": self.repair_events,
-            "cascade_events": self.cascade_events,
             "retrieval_events": self.retrieval_events,
             "llm_calls": self.llm_calls,
             "token_usage": self.token_usage,

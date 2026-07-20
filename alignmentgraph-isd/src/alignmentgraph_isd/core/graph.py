@@ -6,9 +6,9 @@ from enum import StrEnum
 class NodeType(StrEnum):
     """Artifact category of a graph node (one per ADDIE-phase concern).
 
-    ``StrEnum`` members ARE their string value, so they stay JSON-serializable and
-    interoperate with the plain strings that MemorySaver/output deserialization
-    produce (``NodeType.OBJECTIVE == "objective"``).
+    ``StrEnum`` members ARE their string value, so they stay JSON-serializable
+    and interoperate with the plain strings that output deserialization produces
+    (``NodeType.OBJECTIVE == "objective"``).
     """
 
     NEEDS_CONTEXT = "needs_context"
@@ -20,32 +20,22 @@ class NodeType(StrEnum):
     EVALUATION = "evaluation"
 
 
-class EdgeType(StrEnum):
-    """Alignment relation between two nodes (objective-centered)."""
-
-    MEASURES = "measures"
-    SUPPORTS = "supports"
-    EVALUATES = "evaluates"
-
-
 class AlignmentGraph:
+    """Alignment-dependency graph of ISD artifacts.
+
+    Nodes carry only ``{type, id, data}``. Edges carry
+    ``{type, source, target, relation_id, established_by, evidence, rationale}``
+    where ``type`` is the human-readable relation key ("R3-measures") and
+    ``relation_id`` is the bare matrix id ("R3") used for coverage indexing. An
+    edge exists iff a deterministic establisher (see ``alignment.py``) confirmed
+    it — there is no ``verified``/``stale`` state, no cascade invalidation.
+    """
+
     NODE_TYPES = frozenset(NodeType)
-    EDGE_TYPES = frozenset(EdgeType)
     SECTION_SUFFIX = "_0"
-    IMPACT_POLICY = {
-        NodeType.NEEDS_CONTEXT: (
-            NodeType.OBJECTIVE, NodeType.ASSESSMENT, NodeType.ACTIVITY,
-            NodeType.MATERIAL, NodeType.IMPLEMENTATION_PLAN, NodeType.EVALUATION,
-        ),
-        NodeType.OBJECTIVE: (NodeType.ASSESSMENT, NodeType.ACTIVITY, NodeType.MATERIAL, NodeType.EVALUATION),
-        NodeType.ASSESSMENT: (NodeType.ACTIVITY, NodeType.MATERIAL, NodeType.EVALUATION),
-        NodeType.ACTIVITY: (NodeType.MATERIAL, NodeType.ASSESSMENT, NodeType.IMPLEMENTATION_PLAN, NodeType.EVALUATION),
-        NodeType.MATERIAL: (NodeType.ACTIVITY, NodeType.ASSESSMENT, NodeType.IMPLEMENTATION_PLAN, NodeType.EVALUATION),
-        NodeType.IMPLEMENTATION_PLAN: (
-            NodeType.OBJECTIVE, NodeType.ASSESSMENT, NodeType.ACTIVITY, NodeType.MATERIAL, NodeType.EVALUATION,
-        ),
-        NodeType.EVALUATION: (NodeType.ASSESSMENT,),
-    }
+    # Element node ids are namespaced as "<type>:<element_id>" (e.g.
+    # "objective:LO-01"). Section nodes keep the legacy "<type>_0" form.
+    ELEMENT_SEP = ":"
 
     @classmethod
     def section_id(cls, node_type: NodeType | str) -> str:
@@ -55,147 +45,27 @@ class AlignmentGraph:
     def __init__(self) -> None:
         self._nodes: dict[str, dict] = {}
         self._edges: list[dict] = []
+        # Adjacency index for neighbors()/traverse(). Rebuilt lazily on read
+        # after any add_edge; edge dicts are shared by reference.
+        self._adj_dirty: bool = True
+        self._out_index: dict[str, list[dict]] = {}
+        self._in_index: dict[str, list[dict]] = {}
 
-    def add_node(
-        self,
-        node_type: NodeType | str,
-        node_id: str,
-        data: dict | None = None,
-        *,
-        verified: bool = False,
-        repair_history: list | None = None,
-    ) -> None:
-        self._nodes[node_id] = {
-            "type": node_type,
-            "id": node_id,
-            "data": data or {},
-            "verified": verified,
-            "repair_history": repair_history or [],
-            "stale": False,
-            "stale_reasons": [],
-        }
+    # ── nodes ───────────────────────────────────────────────────────────────
+    def add_node(self, node_type: NodeType | str, node_id: str, data: dict | None = None) -> None:
+        self._nodes[node_id] = {"type": node_type, "id": node_id, "data": data or {}}
 
     def update_node(self, node_id: str, data: dict) -> None:
         """Merge new data into an existing node."""
         if node_id in self._nodes:
             self._nodes[node_id]["data"].update(data)
 
-    def mark_repaired(self, node_id: str, reason: str) -> None:
-        if node_id in self._nodes:
-            self._nodes[node_id]["repair_history"].append(reason)
-            self._nodes[node_id]["stale"] = False
-
-    def mark_stale(self, node_id: str, reason: str) -> bool:
-        if node_id in self._nodes:
-            self._nodes[node_id]["stale"] = True
-            reasons = self._nodes[node_id].setdefault("stale_reasons", [])
-            if reason and reason not in reasons:
-                reasons.append(reason)
-            return True
-        return False
-
-    def clear_stale(self, node_id: str) -> None:
-        if node_id in self._nodes:
-            self._nodes[node_id]["stale"] = False
-            self._nodes[node_id]["stale_reasons"] = []
-
-    def invalidate_impacted(
-        self,
-        changed_node_id: str,
-        *,
-        changed_fields: list[str] | None = None,
-        evidence: str = "",
-        reason: str = "",
-    ) -> dict[str, list]:
-        """Mark graph elements impacted by a changed node as stale.
-
-        This is the generic "oil spill" mechanism: any node that acts as a
-        source of truth can force dependent nodes and their alignment edges to
-        be recomputed by the ISD task planner.
-        """
-        changed_node = self.get_node(changed_node_id)
-        if not changed_node:
-            return {"nodes": [], "edges": []}
-
-        changed_type = changed_node.get("type", "")
-        impacted_types = set(self.IMPACT_POLICY.get(changed_type, ()))
-        if not impacted_types:
-            return {"nodes": [], "edges": []}
-
-        stale_reason = reason or f"{changed_type}:{changed_node_id} changed; impacted graph elements need refresh."
-        if changed_fields:
-            stale_reason = f"{stale_reason} changed_fields={','.join(changed_fields)}"
-
-        affected_nodes: list[str] = []
-        for node in self._nodes.values():
-            if node.get("id") == changed_node_id:
-                continue
-            if node.get("type") in impacted_types and self.mark_stale(node["id"], stale_reason):
-                affected_nodes.append(node["id"])
-
-        affected_edges: list[dict] = []
-        affected_node_ids = set(affected_nodes)
-        for edge in self._edges:
-            if not self._edge_touches(edge, affected_node_ids):
-                continue
-            if evidence and edge.get("evidence") and edge.get("evidence") != evidence:
-                continue
-            edge["verified"] = False
-            edge["stale"] = True
-            reasons = edge.setdefault("stale_reasons", [])
-            if stale_reason not in reasons:
-                reasons.append(stale_reason)
-            affected_edges.append({
-                "type": edge.get("type", ""),
-                "source": edge.get("source", ""),
-                "target": edge.get("target", ""),
-                "evidence": edge.get("evidence", ""),
-            })
-
-        return {"nodes": affected_nodes, "edges": affected_edges}
-
-    def _edge_touches(self, edge: dict, node_ids: set[str]) -> bool:
-        return edge.get("source") in node_ids or edge.get("target") in node_ids
-
-    def add_edge(
-        self,
-        edge_type: EdgeType | str,
-        source_id: str,
-        target_id: str,
-        *,
-        evidence: str = "",
-        rationale: str = "",
-        verified: bool = False,
-    ) -> None:
-        edge = {
-            "type": edge_type,
-            "source": source_id,
-            "target": target_id,
-            "evidence": evidence,
-            "rationale": rationale,
-            "verified": verified,
-            "stale": False,
-            "stale_reasons": [],
-        }
-        if edge not in self._edges:
-            self._edges.append(edge)
-
-    # Element node ids are namespaced as "<type>:<element_id>" (e.g. "objective:LO-01").
-    # Section nodes keep the legacy "<type>_0" form. Both share a node type, so
-    # section-level consumers should filter with section_nodes()/element_nodes().
-    ELEMENT_SEP = ":"
-
     def add_element_node(
-        self,
-        node_type: NodeType | str,
-        element_id: str,
-        data: dict | None = None,
-        *,
-        verified: bool = False,
+        self, node_type: NodeType | str, element_id: str, data: dict | None = None
     ) -> str:
         """Add a first-class element node (one artifact item) and return its id."""
         node_id = f"{node_type}{self.ELEMENT_SEP}{element_id}"
-        self.add_node(node_type, node_id, data, verified=verified)
+        self.add_node(node_type, node_id, data)
         return node_id
 
     def is_element(self, node_id: str) -> bool:
@@ -217,17 +87,152 @@ class AlignmentGraph:
     def get_node(self, node_id: str) -> dict | None:
         return self._nodes.get(node_id)
 
-    def get_edges(self, edge_type: EdgeType | str | None = None) -> list[dict]:
-        if edge_type is None:
-            return list(self._edges)
-        return [e for e in self._edges if e["type"] == edge_type]
+    # ── edges ───────────────────────────────────────────────────────────────
+    def add_edge(
+        self,
+        edge_type: str,
+        source_id: str,
+        target_id: str,
+        *,
+        evidence: str = "",
+        rationale: str = "",
+        relation_id: str = "",
+        established_by: str = "",
+    ) -> None:
+        """Add an alignment edge.
+
+        ``edge_type`` is the relation key ("R3-measures"); ``relation_id``
+        (R1..R13) and ``established_by`` (id|type|provenance) are resolved by
+        callers from the (source_type, target_type) pair via ``alignment.py``'s
+        registry, not here (avoids a graph<->alignment import cycle).
+
+        Edge identity is ``(type, source, target, relation_id)``. Re-establishing
+        the same link refreshes its evidence/rationale in place instead of
+        appending a duplicate.
+        """
+        existing = self._find_edge(edge_type, source_id, target_id, relation_id)
+        if existing is not None:
+            if evidence:
+                existing["evidence"] = evidence
+            if rationale:
+                existing["rationale"] = rationale
+            if established_by:
+                existing["established_by"] = established_by
+            return
+        self._edges.append({
+            "type": edge_type,
+            "source": source_id,
+            "target": target_id,
+            "evidence": evidence,
+            "rationale": rationale,
+            "relation_id": relation_id,
+            "established_by": established_by,
+        })
+        self._adj_dirty = True
+
+    def _find_edge(
+        self, edge_type: str, source_id: str, target_id: str, relation_id: str
+    ) -> dict | None:
+        """The edge with this (type, source, target, relation_id) identity, if any."""
+        for edge in self._edges:
+            if (
+                edge["type"] == edge_type
+                and edge["source"] == source_id
+                and edge["target"] == target_id
+                and edge.get("relation_id", "") == relation_id
+            ):
+                return edge
+        return None
+
+    def get_edges(
+        self,
+        edge_type: str | None = None,
+        *,
+        relation_id: str | None = None,
+        target: str | None = None,
+        source: str | None = None,
+    ) -> list[dict]:
+        edges = self._edges
+        if edge_type is not None:
+            edges = [e for e in edges if e["type"] == edge_type]
+        if relation_id is not None:
+            edges = [e for e in edges if e.get("relation_id") == relation_id]
+        if target is not None:
+            edges = [e for e in edges if e.get("target") == target]
+        if source is not None:
+            edges = [e for e in edges if e.get("source") == source]
+        return list(edges)
+
+    # ── traversal (adjacency index, lazily rebuilt) ─────────────────────────
+    def _ensure_index(self) -> None:
+        if not self._adj_dirty:
+            return
+        self._out_index = {}
+        self._in_index = {}
+        for edge in self._edges:
+            self._out_index.setdefault(edge["source"], []).append(edge)
+            self._in_index.setdefault(edge["target"], []).append(edge)
+        self._adj_dirty = False
+
+    def neighbors(
+        self,
+        node_id: str,
+        edge_type: str | None = None,
+        *,
+        relation_id: str | None = None,
+        direction: str = "out",
+    ) -> list[dict]:
+        """Nodes reachable from ``node_id`` by one alignment edge.
+
+        ``direction="out"`` follows edges where ``node_id`` is the source
+        (default); ``"in"`` follows edges where it is the target.
+        """
+        self._ensure_index()
+        index = self._out_index if direction == "out" else self._in_index
+        result: list[dict] = []
+        for edge in index.get(node_id, []):
+            if edge_type is not None and edge["type"] != edge_type:
+                continue
+            if relation_id is not None and edge.get("relation_id") != relation_id:
+                continue
+            other_id = edge["target"] if direction == "out" else edge["source"]
+            node = self.get_node(other_id)
+            if node is not None:
+                result.append(node)
+        return result
+
+    def traverse(
+        self,
+        start_id: str,
+        rel_path: list[str | None],
+        *,
+        direction: str = "out",
+    ) -> list[dict]:
+        """Follow a chain of edge types from ``start_id``, hop by hop.
+
+        Each entry in ``rel_path`` is an edge type to follow at that hop (or
+        ``None`` to follow any edge type). Returns the node dicts reached after
+        the last hop. This is the multi-hop primitive Development specialists use
+        to reach an objective through an intervening Design "plan" node.
+        """
+        frontier_ids = [start_id]
+        for edge_type in rel_path:
+            next_ids: list[str] = []
+            seen: set[str] = set()
+            for node_id in frontier_ids:
+                for node in self.neighbors(node_id, edge_type, direction=direction):
+                    if node["id"] not in seen:
+                        seen.add(node["id"])
+                        next_ids.append(node["id"])
+            frontier_ids = next_ids
+        return [n for n in (self.get_node(nid) for nid in frontier_ids) if n is not None]
 
     def get_node_context(self, node_types: list[NodeType | str], max_chars_per_node: int = 600) -> str:
         """Return a compact text summary of nodes for injection into agent prompts.
 
         This is the graph-context retrieval entry point (core, not RAG): later
-        agents call this to see what earlier agents already put in G_t before
-        generating their section.
+        agents call this to see what earlier agents already put in the graph
+        before generating their section.
         """
         import json
         lines: list[str] = []
@@ -256,31 +261,17 @@ class AlignmentGraph:
             node_type = node.get("type")
             if not node_id or not node_type:
                 continue
-            # Preserve any unknown fields, then normalise the known ones so callers
-            # can rely on their presence/type.
-            restored = dict(node)
-            restored.update({
-                "type": node_type,
-                "id": node_id,
-                "data": node.get("data", {}),
-                "verified": bool(node.get("verified", False)),
-                "repair_history": list(node.get("repair_history", [])),
-                "stale": bool(node.get("stale", False)),
-                "stale_reasons": list(node.get("stale_reasons", [])),
-            })
-            graph._nodes[node_id] = restored
+            graph._nodes[node_id] = {"type": node_type, "id": node_id, "data": node.get("data", {})}
         for edge in payload.get("edges", []):
             if isinstance(edge, dict):
-                restored_edge = dict(edge)
-                restored_edge.update({
+                graph._edges.append({
                     "type": edge.get("type", ""),
                     "source": edge.get("source", ""),
                     "target": edge.get("target", ""),
                     "evidence": edge.get("evidence", ""),
                     "rationale": edge.get("rationale", ""),
-                    "verified": bool(edge.get("verified", False)),
-                    "stale": bool(edge.get("stale", False)),
-                    "stale_reasons": list(edge.get("stale_reasons", [])),
+                    "relation_id": edge.get("relation_id", ""),
+                    "established_by": edge.get("established_by", ""),
                 })
-                graph._edges.append(restored_edge)
+        graph._adj_dirty = True
         return graph

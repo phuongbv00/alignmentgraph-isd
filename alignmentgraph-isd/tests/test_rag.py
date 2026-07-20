@@ -3,7 +3,7 @@
 Tests are scoped to the right layer:
 - Gate: ``RetrievalPlanner.enabled()``
 - Routing: ``RetrievalAgentRegistry.retrieve()`` / ``select()``
-- Context separation: ``ContextPlanner`` is not retrieval
+- Context separation: brief-derived context is NOT retrieval
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from alignmentgraph_isd import (
     RetrievalAgentRegistry,
     RetrievalTool,
 )
-from alignmentgraph_isd.core.context import ContextPlanner
+from alignmentgraph_isd.core.agents.base import _format_design_brief
 from alignmentgraph_isd.core.rag.planner import RetrievalPlanner
 
 from conftest import load_brief
@@ -35,12 +35,13 @@ def _java_corpus() -> RetrievalAgent:
     )
 
 
-def test_context_planner_is_not_retrieval():
-    """Brief-derived context is prepared by ContextPlanner, not RetrievalPlanner."""
-    pack = ContextPlanner().build(load_brief("java_oop_brief.json"))
-    assert pack["design_brief_focus"]["title"]
-    assert pack["rubric_focus"]
-    assert "rag" not in pack  # RAG is added separately, only by the harness
+def test_brief_carries_standing_guidance_not_retrieval():
+    """The specialist prompt is the brief + static design guidance (no external
+    corpus). RAG material is prepended separately, only when the harness enables it."""
+    text = _format_design_brief(load_brief("java_oop_brief.json"))
+    assert "Standing design guidance" in text  # static guidance, appended once
+    assert "measurable Bloom verbs" in text
+    assert "RETRIEVED" not in text  # no retrieval happened here
 
 
 def test_retrieval_gate_off_on_benchmark_default():
@@ -53,13 +54,15 @@ def test_retrieval_gate_off_on_benchmark_default():
 
 def test_retrieval_gate_off_with_empty_registry():
     """use_rag=True but no agents → enabled() is False."""
-    config = HarnessRunConfig.from_ablation("case_study")  # use_rag=True
+    config = HarnessRunConfig.from_ablation("full")
+    config.ablation.use_rag = True  # RAG on (case-study-style), preset-free
     assert RetrievalPlanner(config).enabled() is False
 
 
 def test_retrieval_gate_on_when_enabled_and_registered():
     """use_rag=True + agent registered → enabled() is True."""
-    config = HarnessRunConfig.from_ablation("case_study")
+    config = HarnessRunConfig.from_ablation("full")
+    config.ablation.use_rag = True  # RAG on (case-study-style), preset-free
     config.retrieval_subagents = [_java_corpus()]
     assert RetrievalPlanner(config).enabled() is True
 

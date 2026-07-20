@@ -8,13 +8,15 @@ from conftest import load_brief
 
 
 def test_element_nodes_created_during_run(fake_config):
+    """The relation-driven refactor makes every alignment-bearing artifact
+    type element-level (not just objective) — the graph itself is the
+    retrieval/traversal structure the 13-relation matrix is established over.
+    See alignment.py / the specialists' _decompose_elements calls."""
     result = run_design_brief(load_brief("minimal_brief.json"), fake_config)
     node_edits = result["trajectory"]["node_edits"]
     element_ids = [edit["node_id"] for edit in node_edits if ":" in edit["node_id"]]
-    assert any(nid.startswith("objective:") for nid in element_ids), element_ids
-    # Only objective is element-level (coverage is per-LO); other artifact types
-    # have no per-item consumer, so no assessment:/material: element nodes.
-    assert not any(nid.startswith(("assessment:", "material:")) for nid in element_ids), element_ids
+    for prefix in ("objective:", "assessment:", "activity:", "material:", "gap:", "task:"):
+        assert any(nid.startswith(prefix) for nid in element_ids), (prefix, element_ids)
 
 
 def test_coverage_clean_after_full_run(fake_config):

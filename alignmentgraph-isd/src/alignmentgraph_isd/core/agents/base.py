@@ -3,9 +3,56 @@ import json
 import re
 from abc import ABC, abstractmethod
 from ...config import HarnessRunConfig
-from ..graph import AlignmentGraph, NodeType
+from ..graph import AlignmentGraph
 from ..schema import DesignBrief
 from ..trajectory import TrajectoryLogger
+
+
+def _is_truncation_error(exc: Exception) -> bool:
+    """A JSON-mode response cut off at the model's max output length raises
+    (rather than returning partial text). Detect that so the caller can retry
+    unbound and salvage what was produced."""
+    msg = str(exc).lower()
+    return (
+        "length limit" in msg
+        or "max_tokens" in msg
+        or ("finish_reason" in msg and "length" in msg)
+        or ("could not parse" in msg and "length" in msg)
+    )
+
+
+def _extract_token_usage(result) -> tuple[int, int]:
+    """(prompt_tokens, completion_tokens) from a LangChain chat result, robust
+    across the two shapes providers actually use:
+
+    - ``usage_metadata`` — a **dict** ``{"input_tokens", "output_tokens", ...}``
+      (LangChain's normalized form; the previous code read it with ``getattr``,
+      which silently returned 0 for every real backend since a dict has no such
+      attribute — that is why token_usage stayed 0 despite real LLM calls).
+    - ``response_metadata["token_usage"]`` — the raw provider block, OpenAI-style
+      ``{"prompt_tokens", "completion_tokens"}`` (dict or object).
+    """
+    def _get(obj, key, default=0):
+        if obj is None:
+            return default
+        if isinstance(obj, dict):
+            value = obj.get(key, default)
+        else:
+            value = getattr(obj, key, default)
+        return value if isinstance(value, int) else default
+
+    usage = getattr(result, "usage_metadata", None)
+    if usage:
+        prompt = _get(usage, "input_tokens")
+        completion = _get(usage, "output_tokens")
+        if prompt or completion:
+            return prompt, completion
+
+    response_metadata = getattr(result, "response_metadata", None) or {}
+    token_usage = response_metadata.get("token_usage") if isinstance(response_metadata, dict) else None
+    if token_usage:
+        return _get(token_usage, "prompt_tokens"), _get(token_usage, "completion_tokens")
+    return 0, 0
 
 
 def _fix_json_control_chars(s: str) -> str:
@@ -179,8 +226,21 @@ def parse_json_response(raw: str, *, warn: bool = True) -> dict:
     return {}
 
 
+# Standing ISD quality guidance appended to every specialist's brief. This is the
+# only non-brief content the old ContextPlanner/context_pack carried; it is static,
+# so it lives here as a constant rather than being rebuilt per run and JSON-dumped
+# (where it sat at the end of a brief-duplicating blob and got truncation-clipped).
+_DESIGN_GUIDANCE = """\
+Standing design guidance:
+- Every objective must be measured by at least one assessment item; preserve \
+objective<->assessment<->activity alignment with explicit objective IDs.
+- Cover all 33 ADDIE sub-items explicitly.
+- Use measurable Bloom verbs; avoid vague verbs such as know, learn, understand, comprehend.
+- Include pilot execution evidence, data collection, monitoring, and revision loops."""
+
+
 def _format_design_brief(design_brief: DesignBrief) -> str:
-    """Serialize a DesignBrief into a clean string suitable as an LLM user message."""
+    """Serialize a DesignBrief (+ standing design guidance) as an LLM user message."""
     lines: list[str] = []
     if design_brief.title:
         lines.append(f"Title: {design_brief.title}")
@@ -206,7 +266,7 @@ def _format_design_brief(design_brief: DesignBrief) -> str:
         lines.append(f"User request (this session): {design_brief.user_message}")
     if not lines:
         lines.append(json.dumps(design_brief.model_dump(), ensure_ascii=False))
-    return "\n".join(lines)
+    return "\n".join(lines) + "\n\n" + _DESIGN_GUIDANCE
 
 
 # Default execution-strategy hint per ADDIE task for on-demand retrieval. The
@@ -251,8 +311,20 @@ class BaseISDAgent(ABC):
         self.trajectory = trajectory
 
     @abstractmethod
-    def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
+    def run(self, design_brief: DesignBrief) -> None:
         ...
+
+    @property
+    def _graph_coordination(self) -> bool:
+        """Whether this run has graph coordination active (traversal-scoped
+        context + provenance-relation establishment). Decomposition into
+        element nodes and id/type-match establishment (R3,R5,R6,R9,R12, and
+        R4's id half) stay unconditional at every ablation rung — they are
+        post-hoc bookkeeping on a specialist's own output and need no
+        traversal. Only the CONTEXT-BUILDING style and PROVENANCE-relation
+        establishment (R1,R2,R7,R8,R10,R11,R13) branch on this flag — that
+        branch is what makes the wo_graph vs full ablation contrast real."""
+        return bool(self.config.ablation.use_graph_coordination)
 
     # Verifier violation types this specialist owns. A workflow's QC node reads
     # this to decide which violations the agent should self-repair. Quality
@@ -269,16 +341,101 @@ class BaseISDAgent(ABC):
         earlier agents already deposited in the AlignmentGraph before generating
         its own section.
         Returns empty string when the graph has no relevant content yet.
+
+        Deprecated in favour of ``_element_context``/``_traversal_context``,
+        which scope the prompt to the specific element/section nodes a relation
+        actually needs instead of every node of a whole type. Kept for any
+        specialist that has not been migrated yet.
         """
         return self.graph.get_node_context(node_types, max_chars_per_node=max_chars)
 
-    def _context_pack_text(self, context_pack: dict, max_chars: int = 1600) -> str:
-        if not context_pack:
-            return ""
-        text = json.dumps(context_pack, ensure_ascii=False, indent=2)
-        if len(text) > max_chars:
-            text = text[:max_chars] + "…"
-        return text
+    def _element_context(self, nodes: list[dict], max_chars: int = 600) -> str:
+        """Format specific element/section nodes for prompt injection.
+
+        Unlike ``_graph_context`` (which dumps every node of a type), the
+        caller passes exactly the nodes a relation calls for — e.g.
+        ``self._element_context(self.graph.element_nodes(NodeType.OBJECTIVE))``
+        for "every learning objective", or the result of ``graph.traverse(...)``
+        for a relation-scoped neighborhood.
+        """
+        import json
+        lines: list[str] = []
+        for node in nodes:
+            data_str = json.dumps(node.get("data", {}), ensure_ascii=False)
+            if len(data_str) > max_chars:
+                data_str = data_str[:max_chars] + "…"
+            lines.append(f"[{str(node.get('type', '')).upper()}:{node.get('id', '')}]\n{data_str}")
+        return "\n\n".join(lines)
+
+    def _traversal_context(
+        self,
+        start_ids: list[str],
+        rel_path: list[str | None],
+        *,
+        direction: str = "out",
+        max_chars: int = 600,
+    ) -> str:
+        """Relation-scoped context: follow ``rel_path`` from each of
+        ``start_ids`` and format the nodes reached. The multi-hop replacement
+        for ``_graph_context``'s whole-type blob dump."""
+        seen: set[str] = set()
+        nodes: list[dict] = []
+        for start_id in start_ids:
+            for node in self.graph.traverse(start_id, rel_path, direction=direction):
+                if node["id"] not in seen:
+                    seen.add(node["id"])
+                    nodes.append(node)
+        return self._element_context(nodes, max_chars=max_chars)
+
+    def _decompose_elements(
+        self,
+        node_type: str,
+        items: object,
+        *,
+        id_field: str = "id",
+    ) -> list[str]:
+        """Turn a list of dicts in a just-generated section into first-class
+        element nodes (a cheap non-LLM parse — no extra LLM call). Each item
+        must carry ``id_field``; items missing it are skipped (the completeness
+        tier catches a section that is malformed enough to have no usable ids).
+        """
+        node_ids: list[str] = []
+        if not isinstance(items, list):
+            return node_ids
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            raw_id = item.get(id_field)
+            if not raw_id:
+                continue
+            node_ids.append(self.graph.add_element_node(node_type, str(raw_id), dict(item)))
+        return node_ids
+
+    def _decompose_auto_id(
+        self,
+        node_type: str,
+        items: object,
+        *,
+        id_prefix: str,
+        text_key: str = "description",
+    ) -> list[str]:
+        """Decompose a list into element nodes with a positionally-assigned id
+        (``{id_prefix}-01``, ``-02``, ...), for output fields the ADDIE schema
+        specifies as plain string lists (gaps, topics, modules, action items) —
+        keeps the generation schema, and so the judge-visible output shape,
+        unchanged, while still giving these items first-class graph nodes for
+        provenance edges. A bare string item is wrapped as ``{text_key: item}``;
+        a dict item is stored as-is (with the assigned id added).
+        """
+        node_ids: list[str] = []
+        if not isinstance(items, list):
+            return node_ids
+        for index, item in enumerate(items, start=1):
+            element_id = f"{id_prefix}-{index:02d}"
+            data = dict(item) if isinstance(item, dict) else {text_key: item}
+            data.setdefault("id", element_id)
+            node_ids.append(self.graph.add_element_node(node_type, element_id, data))
+        return node_ids
 
     # ── On-demand agentic retrieval (RAG as a tool the specialist decides to use) ──
 
@@ -356,61 +513,25 @@ class BaseISDAgent(ABC):
                 lines.append(f"[{label}] citations: {', '.join(citations)}")
         return "\n".join(lines)
 
-    def _add_element_edge(
-        self,
-        edge_type: str,
-        source_id: str,
-        lo_id: str,
-        *,
-        rationale: str = "",
-        verified: bool = True,
-    ) -> None:
-        """Mirror a section-level alignment edge onto the objective element node.
-
-        Element nodes (``objective:LO-01``) are first-class, so alignment edges
-        point at the specific objective, not only the aggregate ``objective_0``.
-        No-op if the element node does not exist (e.g. before objective design).
-        """
-        element_id = f"{NodeType.OBJECTIVE}{self.graph.ELEMENT_SEP}{lo_id}"
-        if self.graph.get_node(element_id):
-            self.graph.add_edge(
-                edge_type, source_id, element_id,
-                evidence=lo_id, rationale=rationale, verified=verified,
-            )
-
-    def _invalidate_impacted(
+    def _log_repair(
         self,
         node_id: str,
-        reason: str,
         *,
-        action: str = "cascade_invalidation",
-        changed_fields: list[str] | None = None,
-        evidence: str = "",
         violation_type: str = "",
-    ) -> dict[str, list]:
-        impact = self.graph.invalidate_impacted(
-            node_id,
-            changed_fields=changed_fields,
-            evidence=evidence,
-            reason=reason,
+        repaired_fields: list[str] | None = None,
+    ) -> None:
+        """Record that this specialist regenerated ``node_id`` to fix a violation.
+
+        Repair is in-place regeneration + edge re-establishment (the graph dedups
+        re-established edges); there is no downstream cascade — the static ADDIE
+        order means later artifacts are generated after this one, not before it.
+        """
+        self.trajectory.log_repair_event(
+            agent=type(self).__name__,
+            violation_type=violation_type,
+            node_id=node_id,
+            repaired_fields=repaired_fields or [],
         )
-        if impact["nodes"] or impact["edges"]:
-            self.trajectory.log_step(
-                type(self).__name__,
-                action,
-                node_id,
-                f"Marked stale nodes={len(impact['nodes'])} edges={len(impact['edges'])}.",
-            )
-            self.trajectory.log_cascade_event(node_id, impact["nodes"], impact["edges"], reason)
-        if action == "repair_cascade":
-            self.trajectory.log_repair_event(
-                agent=type(self).__name__,
-                violation_type=violation_type,
-                node_id=node_id,
-                repaired_fields=changed_fields or [],
-                cascade={"nodes": len(impact["nodes"]), "edges": len(impact["edges"])},
-            )
-        return impact
 
     def _call_llm(self, messages: list[dict], max_retries: int = 2) -> str:
         """Call LLM with automatic retry on empty/invalid response.
@@ -419,17 +540,36 @@ class BaseISDAgent(ABC):
         the response is empty or produces no parseable JSON. Generation calls use
         the default; repair calls that have deterministic fallbacks pass 0.
         """
+        if self.config.llm_factory is None:
+            self.trajectory.log_llm_call(0, 0)
+            self.trajectory.log_step(type(self).__name__, "llm_error", "", "llm_factory not set — cannot call LLM")
+            return ""
+        raw_llm = self.config.llm_factory()
+        json_llm = raw_llm
         try:
-            if self.config.llm_factory is None:
-                raise RuntimeError("llm_factory not set — cannot call LLM")
-            llm = self.config.llm_factory()
-            try:
-                llm = llm.bind(response_format={"type": "json_object"})
-            except Exception:
-                pass
-            content = self._invoke_with_retry(llm, messages, max_retries)
-            return content
+            json_llm = raw_llm.bind(response_format={"type": "json_object"})
+        except Exception:
+            pass
+        try:
+            return self._invoke_with_retry(json_llm, messages, max_retries)
         except Exception as exc:
+            # A truncated response under JSON mode is RAISED by ChatOpenAI rather
+            # than returned, so we would lose a section entirely on a small model
+            # with a hard output cap (e.g. a 2B endpoint capping completion at
+            # 4096, on which the large evaluation JSON overflows). Retry once with
+            # the UNBOUND model: it hands back the partial text, which
+            # parse_json_response salvages via _close_unbalanced_json — a
+            # mostly-complete section instead of nothing.
+            if _is_truncation_error(exc):
+                try:
+                    content = self._invoke_with_retry(raw_llm, messages, 0)
+                    self.trajectory.log_step(
+                        type(self).__name__, "salvage_truncated", str(exc)[:80], content[:100],
+                    )
+                    if content:
+                        return content
+                except Exception:
+                    pass
             self.trajectory.log_llm_call(0, 0)
             self.trajectory.log_step(type(self).__name__, "llm_error", "", str(exc))
             return ""
@@ -438,11 +578,8 @@ class BaseISDAgent(ABC):
         """Invoke the LLM, retrying once with a correction message if output is empty."""
         result = llm.invoke(messages)
         content = result.content if hasattr(result, "content") else str(result)
-        usage = getattr(result, "usage_metadata", None)
-        self.trajectory.log_llm_call(
-            getattr(usage, "input_tokens", 0) if usage else 0,
-            getattr(usage, "output_tokens", 0) if usage else 0,
-        )
+        prompt_tokens, completion_tokens = _extract_token_usage(result)
+        self.trajectory.log_llm_call(prompt_tokens, completion_tokens)
         if max_retries > 0 and not parse_json_response(content, warn=False):
             # Output was not valid JSON — send a targeted correction turn quoting
             # the exact parse error so the model can fix that specific spot.

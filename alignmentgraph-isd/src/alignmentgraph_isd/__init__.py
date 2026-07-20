@@ -1,7 +1,6 @@
 from .core.runner import MetaAgent
 from .core.graph import AlignmentGraph
-from .config import AblationConfig, HarnessRunConfig, MemoryConfig
-from .core.memory import HarnessMemory
+from .config import AblationConfig, HarnessRunConfig
 from .core.schema import DesignBrief, DesignBriefContext, DesignBriefConstraints
 from .core.rag.agent import RetrievalTool, RetrievalAgent, RetrievalAgentRegistry
 from .core.llm import llm_factory_from_env
@@ -27,8 +26,6 @@ __all__ = [
     "AlignmentGraph",
     "AblationConfig",
     "HarnessRunConfig",
-    "MemoryConfig",
-    "HarnessMemory",
     "DesignBrief",
     "DesignBriefContext",
     "DesignBriefConstraints",

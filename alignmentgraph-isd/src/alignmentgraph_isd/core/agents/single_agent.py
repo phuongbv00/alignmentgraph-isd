@@ -1,6 +1,7 @@
 from __future__ import annotations
-from ..graph import EdgeType, NodeType
+from ..graph import NodeType
 from ..schema import DesignBrief
+from .. import alignment
 from .base import BaseISDAgent, _format_design_brief, parse_json_response
 
 _SYSTEM = """\
@@ -77,9 +78,9 @@ Return ONLY valid JSON with EXACTLY this nested schema:
       "support_strategies": ["<support1>", "<support2>"]
     },
     "learning_activities": [
-      {"activity_name": "<name1>", "duration": "<time>", "description": "<desc>", "materials": ["<material>"]},
-      {"activity_name": "<name2>", "duration": "<time>", "description": "<desc>", "materials": ["<material>"]},
-      {"activity_name": "<name3>", "duration": "<time>", "description": "<desc>", "materials": ["<material>"]}
+      {"id": "ACT-01", "activity_name": "<name1>", "duration": "<time>", "description": "<desc>", "materials": ["<material>"], "aligned_objectives": ["LO-01"]},
+      {"id": "ACT-02", "activity_name": "<name2>", "duration": "<time>", "description": "<desc>", "materials": ["<material>"], "aligned_objectives": ["LO-02"]},
+      {"id": "ACT-03", "activity_name": "<name3>", "duration": "<time>", "description": "<desc>", "materials": ["<material>"], "aligned_objectives": ["LO-03"]}
     ],
     "media_selection": [
       {"media_type": "<type>", "purpose": "<purpose>", "rationale": "<rationale>"},
@@ -173,11 +174,11 @@ Return ONLY valid JSON with EXACTLY this nested schema:
     },
     "summative": {
       "assessment_tools": [
-        {"item_id": "SA-01", "type": "comprehensive", "question": "<question>", "scoring_rubric": "<rubric>"},
-        {"item_id": "SA-02", "type": "comprehensive", "question": "<question>", "scoring_rubric": "<rubric>"},
-        {"item_id": "SA-03", "type": "comprehensive", "question": "<question>", "scoring_rubric": "<rubric>"},
-        {"item_id": "SA-04", "type": "performance", "question": "<question>", "scoring_rubric": "<rubric>"},
-        {"item_id": "SA-05", "type": "performance", "question": "<question>", "scoring_rubric": "<rubric>"}
+        {"item_id": "SA-01", "type": "comprehensive", "question": "<question>", "aligned_objective": "LO-01", "scoring_rubric": "<rubric>"},
+        {"item_id": "SA-02", "type": "comprehensive", "question": "<question>", "aligned_objective": "LO-02", "scoring_rubric": "<rubric>"},
+        {"item_id": "SA-03", "type": "comprehensive", "question": "<question>", "aligned_objective": "LO-03", "scoring_rubric": "<rubric>"},
+        {"item_id": "SA-04", "type": "performance", "question": "<question>", "aligned_objective": "LO-04", "scoring_rubric": "<rubric>"},
+        {"item_id": "SA-05", "type": "performance", "question": "<question>", "aligned_objective": "LO-05", "scoring_rubric": "<rubric>"}
       ],
       "effectiveness_analysis": {
         "learning_outcomes": {"achievement_rate": "85%", "details": "<outcome analysis>"},
@@ -220,20 +221,18 @@ _SECTION_TO_NODE = {
 
 
 class SingleAgent(BaseISDAgent):
-    # The single agent owns every content check it can repair holistically. Edge
-    # coverage (measures/supports/evaluates) is satisfied by construction in
-    # _add_alignment_edges, so those types are not listed.
+    # The single agent owns every content-quality check it can repair
+    # holistically. It never sees the verifier's alignment tier (its ablation
+    # preset always sets use_graph_coordination=False, see config.py), so R3/
+    # R4/R5 violations never fire for it and are not listed here.
     OWNED_VIOLATION_TYPES = frozenset({
         "bloom", "activity_engagement",
         "rubric_consistency", "bloom_mismatch", "evaluation_quality",
     })  # measurability is audit-only (see PedagogicalVerifierAgent._check_measurability)
 
-    def run(self, design_brief: DesignBrief, context_pack: dict) -> None:
+    def run(self, design_brief: DesignBrief) -> None:
         prompt = _format_design_brief(design_brief)
         user_content = prompt
-        pack_ctx = self._context_pack_text(context_pack)
-        if pack_ctx:
-            user_content = f"=== RETRIEVED CONTEXT PACK ===\n{pack_ctx}\n\n=== SCENARIO ===\n{prompt}"
         user_content = self._with_retrieval(design_brief, "full_design", user_content)
         messages = [
             {"role": "system", "content": _SYSTEM},
@@ -252,58 +251,44 @@ class SingleAgent(BaseISDAgent):
                 "expert_review": development.get("expert_review", {}),
             })
             self.trajectory.log_node_edit("add", self.graph.section_id(NodeType.ASSESSMENT), NodeType.ASSESSMENT)
-        self._add_element_nodes(parsed)
-        self._add_alignment_edges(parsed)
+        # Element decomposition + edge establishment are the alignment graph.
+        # wo_ma is rung 1 of the ablation ladder (use_graph_coordination
+        # off), so like wo-graph it stays a pure section blob — no graph.
+        if self._graph_coordination:
+            self._add_element_nodes(parsed)
+            self._add_alignment_edges(parsed)
         self.trajectory.log_step("SingleAgent", "generate_addie", prompt[:200], raw[:200] if raw else "(empty)")
 
     def _add_element_nodes(self, parsed: dict) -> None:
-        # Only ``objective`` is element-level: coverage is checked per learning
-        # outcome. Other artifact types stay section-level (no per-item consumer).
-        for lo in parsed.get("design", {}).get("learning_objectives", []) or []:
+        """Decompose the objective/assessment/activity/summative items this
+        single call produced into element nodes, so the SAME deterministic
+        establishers the specialist pipeline uses can operate on them."""
+        design = parsed.get("design", {}) or {}
+        development = parsed.get("development", {}) or {}
+        evaluation = parsed.get("evaluation", {}) or {}
+        for lo in design.get("learning_objectives", []) or []:
             if isinstance(lo, dict) and lo.get("id"):
                 self.graph.add_element_node(NodeType.OBJECTIVE, str(lo["id"]), dict(lo))
+        for item in development.get("assessment_tools", []) or []:
+            if isinstance(item, dict) and item.get("item_id"):
+                self.graph.add_element_node("assessment", str(item["item_id"]), dict(item))
+        for activity in design.get("learning_activities", []) or []:
+            if isinstance(activity, dict) and (activity.get("id") or activity.get("activity_name")):
+                activity_id = str(activity.get("id") or activity["activity_name"])
+                self.graph.add_element_node("activity", activity_id, dict(activity))
+        for item in (evaluation.get("summative", {}) or {}).get("assessment_tools", []) or []:
+            if isinstance(item, dict) and item.get("item_id"):
+                self.graph.add_element_node("summative", str(item["item_id"]), dict(item))
 
     def _add_alignment_edges(self, parsed: dict) -> None:
-        objective_node = self.graph.get_node(self.graph.section_id(NodeType.OBJECTIVE))
-        if not objective_node:
-            return
-        objective_ids = [
-            lo.get("id")
-            for lo in parsed.get("design", {}).get("learning_objectives", [])
-            if isinstance(lo, dict) and lo.get("id")
-        ]
-        assessment_source = self.graph.section_id(NodeType.ASSESSMENT) if self.graph.get_node(self.graph.section_id(NodeType.ASSESSMENT)) else self.graph.section_id(NodeType.ACTIVITY)
-        for lo_id in objective_ids:
-            self.graph.add_edge(
-                EdgeType.MEASURES,
-                assessment_source,
-                self.graph.section_id(NodeType.OBJECTIVE),
-                evidence=lo_id,
-                rationale=f"Single-agent assessment output measures {lo_id}.",
-                verified=True,
-            )
-            self.graph.add_edge(
-                EdgeType.SUPPORTS,
-                self.graph.section_id(NodeType.ACTIVITY),
-                self.graph.section_id(NodeType.OBJECTIVE),
-                evidence=lo_id,
-                rationale=f"Single-agent learning activities support {lo_id}.",
-                verified=True,
-            )
-            self.graph.add_edge(
-                EdgeType.EVALUATES,
-                self.graph.section_id(NodeType.EVALUATION),
-                self.graph.section_id(NodeType.OBJECTIVE),
-                evidence=lo_id,
-                rationale=f"Single-agent evaluation plan evaluates {lo_id}.",
-                verified=True,
-            )
-            self._add_element_edge(EdgeType.MEASURES, assessment_source, lo_id)
-            self._add_element_edge(EdgeType.SUPPORTS, self.graph.section_id(NodeType.ACTIVITY), lo_id)
-            self._add_element_edge(EdgeType.EVALUATES, self.graph.section_id(NodeType.EVALUATION), lo_id)
-            self.trajectory.log_edge_edit("add", assessment_source, self.graph.section_id(NodeType.OBJECTIVE), EdgeType.MEASURES, lo_id)
-            self.trajectory.log_edge_edit("add", self.graph.section_id(NodeType.ACTIVITY), self.graph.section_id(NodeType.OBJECTIVE), EdgeType.SUPPORTS, lo_id)
-            self.trajectory.log_edge_edit("add", self.graph.section_id(NodeType.EVALUATION), self.graph.section_id(NodeType.OBJECTIVE), EdgeType.EVALUATES, lo_id)
+        """R3/R4/R5 id-match only. Single-agent has no separate Design "plan"
+        nodes for R6/R9/R12's type-match lookups, and no cross-specialist
+        traversal to ground the 8 provenance relations — this is the
+        graph-coordination-off baseline (see AblationConfig.use_graph_coordination),
+        so these are the only relations meaningfully establishable here."""
+        alignment.match_id(self.graph, "R3", target_node_type=NodeType.OBJECTIVE, field="aligned_objective")
+        alignment.match_r4_supports(self.graph)
+        alignment.match_id(self.graph, "R5", target_node_type=NodeType.OBJECTIVE, field="aligned_objective")
 
     # ── Self-repair (used when multi-agent decomposition is ablated) ──────────
     # In the ``wo-ma`` arm generation is a single agent, so repair must
@@ -345,29 +330,31 @@ class SingleAgent(BaseISDAgent):
             touched.append(self.graph.section_id(NodeType.OBJECTIVE))
         if assessment_node:
             self.graph.update_node(self.graph.section_id(NodeType.ASSESSMENT), assessment)
+            for item in assessment.get("assessment_tools", []) or []:
+                if isinstance(item, dict) and item.get("item_id"):
+                    self.graph.add_element_node("assessment", str(item["item_id"]), dict(item))
             touched.append(self.graph.section_id(NodeType.ASSESSMENT))
         if evaluation_node:
             self.graph.update_node(self.graph.section_id(NodeType.EVALUATION), evaluation)
             touched.append(self.graph.section_id(NodeType.EVALUATION))
+        # Keep the graph's edges consistent with whatever repair just changed
+        # (id-match only — see _add_alignment_edges).
+        alignment.match_id(self.graph, "R3", target_node_type=NodeType.OBJECTIVE, field="aligned_objective")
+        alignment.match_r4_supports(self.graph)
+        alignment.match_id(self.graph, "R5", target_node_type=NodeType.OBJECTIVE, field="aligned_objective")
 
-        for node_id in touched:
-            self.graph.clear_stale(node_id)
-            self.graph.mark_repaired(node_id, "SingleAgent self-repair")
-        impact = {"nodes": [], "edges": []}
         if touched:
-            impact = self._invalidate_impacted(
+            self._log_repair(
                 touched[0],
-                "Single-agent self-repair revised the flagged sections; downstream alignment refreshed.",
-                action="repair_cascade",
-                changed_fields=["learning_objectives", "assessment_tools", "formative"],
                 violation_type=getattr(violations[0], "violation_type", "content"),
+                repaired_fields=["learning_objectives", "assessment_tools", "formative"],
             )
         self.trajectory.log_node_edit("update", self.graph.section_id(NodeType.OBJECTIVE), NodeType.OBJECTIVE)
         self.trajectory.log_step(
             "SingleAgent",
             "self_repair",
             "; ".join(getattr(v, "message", "") for v in violations)[:200],
-            f"Repaired {len(violations)} violation(s) in one agent; cascade nodes={len(impact['nodes'])}.",
+            f"Repaired {len(violations)} violation(s) in one agent.",
         )
         return []
 
@@ -500,12 +487,8 @@ def _apply_design_fallbacks(design: dict, violations: list) -> None:
 
 
 def _apply_assessment_fallbacks(assessment: dict, design: dict, violations: list) -> None:
-    from .pedagogical_verifier import (
-        _ITEM_TYPE_CAPABILITY,
-        _OBSERVABLE_TERMS,
-        _RECALL_CAPABILITY_CEILING,
-        _VAGUE_RUBRIC_TERMS,
-    )
+    from .pedagogical_verifier import _OBSERVABLE_TERMS, _VAGUE_RUBRIC_TERMS
+    from ..alignment import item_type_capability, _RECALL_CAPABILITY_CEILING as RECALL_CAPABILITY_CEILING
 
     tools = assessment.get("assessment_tools")
     if not isinstance(tools, list):
@@ -539,11 +522,11 @@ def _apply_assessment_fallbacks(assessment: dict, design: dict, violations: list
 
     for lo_id in _violation_ids(violations, "bloom_mismatch"):
         capability = max(
-            (_ITEM_TYPE_CAPABILITY.get(str(t.get("type", "")).lower(), 6)
+            (item_type_capability(t.get("type", ""))
              for t in tools if isinstance(t, dict) and str(t.get("aligned_objective")) == lo_id),
             default=0,
         )
-        if capability > _RECALL_CAPABILITY_CEILING:
+        if capability > RECALL_CAPABILITY_CEILING:
             continue
         statement = str(lo_map.get(lo_id, {}).get("statement", ""))
         tools.append({

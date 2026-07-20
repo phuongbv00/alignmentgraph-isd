@@ -1,10 +1,10 @@
-"""Reusable LangGraph node factories shared by every workflow.
+"""LangGraph node factories + the single graph builder.
 
 A ``NodeFactory`` captures the per-run objects (config, graph, trajectory,
-context pack, design brief) and exposes each ISD step as a node function. The
-per-arm workflow modules (``workflows/full.py`` etc.) wire these nodes into a
-StateGraph explicitly — the factory contains NO ablation branching, so which
-mechanisms run is decided entirely by which nodes a workflow wires.
+context pack, design brief) and exposes each ISD step as a node function.
+``build_graph`` wires those nodes into a StateGraph, branching once on
+``config.ablation.multi_agent`` (multi-agent ADDIE pipeline vs single-agent) —
+there is no workflow-per-arm registry.
 """
 from __future__ import annotations
 
@@ -14,8 +14,6 @@ from typing import Annotated, TypedDict
 import operator
 
 from .audit import GraphAuditor
-from .planner import ISDTaskPlanner
-from .task_graph import TaskGraphBuilder
 from .validation import validate_addie
 from .agents.needs_context import NeedsContextAgent
 from .agents.objective_design import ObjectiveDesignAgent
@@ -40,12 +38,7 @@ class ISDState(TypedDict):
     addie_output: dict
     errors: Annotated[list[str], operator.add]
     audit: dict
-    pending_tasks: list[dict]
-    next_task: str
     task_attempts: dict[str, int]
-    planner_decisions: Annotated[list[dict], operator.add]
-    needs_verification: bool
-    repair_rounds: int
     validation_errors: list[str]
 
 
@@ -59,17 +52,21 @@ GENERATION_AGENTS: dict[str, type] = {
     "evaluation_revision": EvaluationRevisionAgent,
 }
 
+# Fixed ADDIE order the multi-agent arm generates in.
+GENERATION_ORDER = [
+    "needs_context", "objective_design", "assessment_design",
+    "activity_material", "implementation_plan", "evaluation_revision",
+]
+
 
 class NodeFactory:
     """Builds node functions bound to one run's objects. No ablation flags."""
 
-    def __init__(self, config, graph, trajectory, context_pack, design_brief) -> None:
+    def __init__(self, config, graph, trajectory, design_brief) -> None:
         self.config = config
         self.graph = graph
         self.trajectory = trajectory
-        self.context_pack = context_pack
         self.design_brief = design_brief
-        self.task_planner = ISDTaskPlanner.from_config(config)
 
     # ── shared helpers ──────────────────────────────────────────────────────
     def _args(self):
@@ -82,26 +79,7 @@ class NodeFactory:
         return attempts
 
     def _generation_done(self, state: ISDState, task_name: str) -> dict:
-        return {"task_attempts": self._bump_attempt(state, task_name), "needs_verification": True}
-
-    @staticmethod
-    def _violation_to_dict(v) -> dict:
-        return {
-            "node_id": v.node_id, "edge_type": v.edge_type, "type": v.violation_type,
-            "msg": v.message, "severity": v.severity, "repair_hint": v.repair_hint,
-            "metadata": v.metadata,
-        }
-
-    def _violations_from_state(self, state: ISDState):
-        from .agents.pedagogical_verifier import VerifierViolation
-        return [
-            VerifierViolation(
-                node_id=v["node_id"], edge_type=v.get("edge_type", ""), message=v["msg"],
-                violation_type=v["type"], severity=v["severity"],
-                repair_hint=v.get("repair_hint", ""), metadata=v.get("metadata", {}),
-            )
-            for v in state.get("violations", [])
-        ]
+        return {"task_attempts": self._bump_attempt(state, task_name)}
 
     # ── generation nodes ────────────────────────────────────────────────────
     def generation_node(self, node_name: str):
@@ -109,7 +87,7 @@ class NodeFactory:
 
         def _node(state: ISDState) -> dict:
             try:
-                agent_cls(*self._args()).run(self.design_brief, self.context_pack)
+                agent_cls(*self._args()).run(self.design_brief)
             except Exception as exc:
                 return {"errors": [f"{agent_cls.__name__}: {exc}"],
                         "task_attempts": self._bump_attempt(state, node_name)}
@@ -119,7 +97,7 @@ class NodeFactory:
     def single_agent_node(self):
         def _node(state: ISDState) -> dict:
             try:
-                SingleAgent(*self._args()).run(self.design_brief, self.context_pack)
+                SingleAgent(*self._args()).run(self.design_brief)
             except Exception as exc:
                 return {"errors": [f"SingleAgent: {exc}"],
                         "task_attempts": self._bump_attempt(state, "single_agent")}
@@ -129,8 +107,8 @@ class NodeFactory:
     # ── per-agent quality-control node (verify owned types + repair) ─────────
     def qc_node(self, agent_cls, task_name: str, budget: int = 2):
         """Verify the checks ``agent_cls`` owns and let it repair them, in place,
-        up to ``budget`` rounds. This is the quality-control tool a specialist
-        owns; a workflow includes it (full/wo_ma) or omits it (wo_qc)."""
+        up to ``budget`` rounds. This is the quality-control tool each specialist
+        owns; it runs after every generation node in both arms (QC is always on)."""
         owned_types = agent_cls.OWNED_VIOLATION_TYPES
 
         def _node(state: ISDState) -> dict:
@@ -166,64 +144,56 @@ class NodeFactory:
             return result
         return _node
 
-    # ── dynamic-planner branch nodes (used only by workflows/dynamic.py) ─────
-    def audit_node(self):
-        def _node(state: ISDState) -> dict:
-            return {"audit": GraphAuditor(self.graph).audit(state.get("violations", [])).to_dict()}
-        return _node
-
-    def task_planner_node(self):
-        def _node(state: ISDState) -> dict:
-            audit = GraphAuditor(self.graph).audit(state.get("violations", []))
-            decision = self.task_planner.decide(audit, state, self.config)
-            decision_dict = decision.to_dict()
-            decision_dict["audit_summary"] = audit.summary
-            decision_dict["task_graph"] = TaskGraphBuilder.build(audit, decision, state)
-            self.trajectory.log_planner_decision(decision_dict)
-            return {
-                "audit": audit.to_dict(),
-                "next_task": decision.next_task,
-                "pending_tasks": [t.to_dict() for t in decision.pending_tasks],
-                "planner_decisions": [decision_dict],
-            }
-        return _node
-
-    def verifier_node(self):
-        def _node(state: ISDState) -> dict:
-            try:
-                violations = PedagogicalVerifierAgent(*self._args()).verify(self.design_brief)
-                violation_dicts = [self._violation_to_dict(v) for v in violations]
-                self.trajectory.log_verifier_result(violation_dicts)
-                return {"violations": violation_dicts, "needs_verification": False,
-                        "task_attempts": self._bump_attempt(state, "verifier")}
-            except Exception as exc:
-                return {"violations": [], "needs_verification": False,
-                        "task_attempts": self._bump_attempt(state, "verifier"),
-                        "errors": [f"PedagogicalVerifier: {exc}"]}
-        return _node
-
-    def specialist_repair_node(self, agent_cls, task_name: str):
-        def _node(state: ISDState) -> dict:
-            try:
-                remaining = agent_cls(*self._args()).repair(self._violations_from_state(state))
-            except Exception as exc:
-                return {"errors": [f"{agent_cls.__name__}: {exc}"],
-                        "task_attempts": self._bump_attempt(state, task_name),
-                        "repair_rounds": int(state.get("repair_rounds", 0) or 0) + 1}
-            return {"violations": [self._violation_to_dict(v) for v in remaining],
-                    "task_attempts": self._bump_attempt(state, task_name),
-                    "repair_rounds": int(state.get("repair_rounds", 0) or 0) + 1,
-                    "needs_verification": True}
-        return _node
-
 
 def initial_state() -> ISDState:
     return {
         "violations": [], "addie_output": {}, "errors": [], "audit": {},
-        "pending_tasks": [], "next_task": "", "task_attempts": {},
-        "planner_decisions": [], "needs_verification": True, "repair_rounds": 0,
-        "validation_errors": [],
+        "task_attempts": {}, "validation_errors": [],
     }
+
+
+def build_graph(config, graph, trajectory, design_brief):
+    """Assemble the LangGraph StateGraph for this run.
+
+    A single builder, branching on ``config.ablation.multi_agent`` — there is no
+    workflow-per-arm registry. Both arms end in the same aggregate node and run
+    per-agent QC after every generation node (QC is always on):
+
+    - multi-agent (``full``/``wo_graph``): the six specialists in fixed ADDIE
+      order, each followed by its QC node. ``full`` vs ``wo_graph`` differ only
+      at runtime inside the specialists (``use_graph_coordination``), not in
+      graph shape.
+    - single-agent (``wo_ma``): one blob-generating agent + its QC node.
+    """
+    from langgraph.graph import StateGraph, START, END
+
+    nf = NodeFactory(config, graph, trajectory, design_brief)
+    wf = StateGraph(ISDState)
+    wf.add_node("aggregate", nf.aggregate_node())
+
+    if config.ablation.multi_agent:
+        prev = START
+        for name in GENERATION_ORDER:
+            wf.add_node(name, nf.generation_node(name))
+            wf.add_edge(prev, name)
+            agent_cls = GENERATION_AGENTS[name]
+            if agent_cls.OWNED_VIOLATION_TYPES:  # only agents with checks get a QC node
+                qc = f"{name}_qc"
+                wf.add_node(qc, nf.qc_node(agent_cls, qc))
+                wf.add_edge(name, qc)
+                prev = qc
+            else:
+                prev = name
+        wf.add_edge(prev, "aggregate")
+    else:
+        wf.add_node("single_agent", nf.single_agent_node())
+        wf.add_node("single_agent_qc", nf.qc_node(SingleAgent, "single_agent_qc"))
+        wf.add_edge(START, "single_agent")
+        wf.add_edge("single_agent", "single_agent_qc")
+        wf.add_edge("single_agent_qc", "aggregate")
+
+    wf.add_edge("aggregate", END)
+    return wf.compile()
 
 
 def jsonschema_validate_addie(addie_output: dict) -> None:

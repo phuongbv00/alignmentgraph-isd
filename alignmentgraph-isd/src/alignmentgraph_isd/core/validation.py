@@ -21,16 +21,30 @@ _SECTION_FIELDS: dict[str, dict[str, tuple[type | tuple[type, ...], bool]]] = {
         "context_analysis": (dict, True),
         "task_analysis": (dict, True),
     },
+    # Design is now decomposed across several singleton nodes (see
+    # objective_design.py's 2-call split) — objective_0 only holds
+    # learning_objectives; the rest live in their own node types below.
     "objective": {
         "learning_objectives": (list, True),
-        "instructional_strategies": (dict, True),
+    },
+    "assessment_plan": {
+        "diagnostic": (list, False),
+        "formative": (list, False),
+        "summative": (list, False),
+    },
+    "instructional_strategies": {
+        "model": (str, False),
+        "sequence": (list, True),
+    },
+    "content_structure": {
+        "modules": (list, True),
     },
     "assessment": {
         "assessment_tools": (list, True),
         "expert_review": (dict, False),
     },
     "activity": {
-        "learner_materials": (list, True),
+        "learning_activities": (list, True),
         "instructor_guide": (dict, False),
     },
     "material": {
@@ -55,6 +69,8 @@ _ID_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_:\-]*$")
 _LIST_ITEM_ID_FIELD = {
     "objective": ("learning_objectives", "id"),
     "assessment": ("assessment_tools", "item_id"),
+    "activity": ("learning_activities", "id"),
+    "material": ("learner_materials", "id"),
 }
 
 

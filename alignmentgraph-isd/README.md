@@ -10,7 +10,7 @@ contribution). The package exposes a stable public API on the canonical
 ```python
 from alignmentgraph_isd import DesignBrief, HarnessRunConfig, run_design_brief
 
-config = HarnessRunConfig.from_ablation("full")        # full | no_verifier | no_repair | single_agent | linear_addie_only | case_study
+config = HarnessRunConfig.from_ablation("full")        # full | wo_graph | single_agent (wo_ma) | wo_qc | dynamic_full | case_study
 config.llm_factory = lambda: my_chat_model             # any LangChain chat model factory; required
 
 brief = DesignBrief(
@@ -33,8 +33,8 @@ In this harness **RAG means external-corpus retrieval only**. Graph-context
 retrieval (the AlignmentGraph subgraph) and memory retrieval (working/episodic
 memory) are core, always on, and are *not* called RAG.
 
-- The **benchmark defaults to `no_rag`** (`use_rag=False`); RAG is never used in
-  benchmark runs.
+- **`use_rag=False` on every benchmark preset** (`full`, `wo_graph`, `single_agent`,
+  `wo_qc`); RAG is never used in benchmark runs.
 - RAG is an opt-in **case-study/app** add-on: use the `case_study` preset (or set
   `config.ablation.use_rag = True`) and register `RetrievalSubagent` instances on
   `config.retrieval_subagents`.

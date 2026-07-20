@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import DesignBrief, HarnessRunConfig, MemoryConfig, llm_factory_from_env, run_design_brief
+from . import DesignBrief, HarnessRunConfig, llm_factory_from_env, run_design_brief
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -20,8 +20,6 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--output", required=True, help="Path for the full harness result JSON.")
     run_parser.add_argument("--trajectory", help="Optional path for trajectory JSON only.")
     run_parser.add_argument("--ablation", default="full", help="Ablation preset key.")
-    run_parser.add_argument("--training-program-id", default="", help="Persistent app graph id.")
-    run_parser.add_argument("--session-id", default="", help="Persistent app session id.")
     # Model selection (falls back to AGENT_MODEL_* env vars). Requires the
     # optional [llm] extra: pip install 'alignmentgraph-isd[llm]'.
     run_parser.add_argument("--model-name", default="", help="Chat model name (env: AGENT_MODEL_NAME).")
@@ -45,13 +43,7 @@ def main(argv: list[str] | None = None) -> int:
 def _run(args: argparse.Namespace) -> int:
     payload = json.loads(Path(args.input).read_text(encoding="utf-8"))
     design_brief = DesignBrief.model_validate(payload)
-    config = HarnessRunConfig.from_ablation(
-        args.ablation,
-        memory=MemoryConfig(
-            training_program_id=args.training_program_id,
-            session_id=args.session_id,
-        ),
-    )
+    config = HarnessRunConfig.from_ablation(args.ablation)
     config.llm_factory = llm_factory_from_env(
         model_name=args.model_name,
         api_spec=args.api_spec,
