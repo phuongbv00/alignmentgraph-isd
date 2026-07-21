@@ -6,9 +6,11 @@ established edge's ``relation_id`` / ``established_by`` mechanism, and the
 structural alignment state the verifier actually saw.
 
 Two artifacts:
-- ``<stem>.json`` — node-link JSON (``graph.to_dict()``) plus per-objective and
-  per-relation alignment annotations, from the single definition in
-  ``alignment.py`` (nothing re-implements the rules here).
+- ``<stem>.json`` — the full dump (``AlignmentGraph.to_full_dict``): node-link
+  JSON with complete node payloads, per-objective and per-relation alignment
+  annotations from the single definition in ``alignment.py`` (nothing
+  re-implements the rules here), plus run metadata (brief id, timestamp,
+  node/edge counts by type).
 - ``<stem>.dot`` — GraphViz DOT, renderable in one command:
       dot -Tsvg <stem>.dot -o <stem>.svg
 
@@ -186,12 +188,20 @@ def to_dot(graph: AlignmentGraph, *, title: str = "") -> str:
     return "\n".join(lines)
 
 
-def dump(graph: AlignmentGraph, path_stem: str | Path, *, title: str = "") -> list[Path]:
-    """Write ``<stem>.json`` and ``<stem>.dot``. Returns the paths written."""
+def dump(
+    graph: AlignmentGraph,
+    path_stem: str | Path,
+    *,
+    title: str = "",
+    design_brief_id: str | None = None,
+) -> list[Path]:
+    """Write ``<stem>.json`` (the full dump, ``AlignmentGraph.to_full_dict``)
+    and ``<stem>.dot``. Returns the paths written."""
     stem = Path(path_stem)
     stem.parent.mkdir(parents=True, exist_ok=True)
     json_path = stem.with_suffix(".json")
     dot_path = stem.with_suffix(".dot")
-    json_path.write_text(json.dumps(to_node_link(graph), ensure_ascii=False, indent=2), encoding="utf-8")
+    payload = graph.to_full_dict(design_brief_id=design_brief_id)
+    json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     dot_path.write_text(to_dot(graph, title=title), encoding="utf-8")
     return [json_path, dot_path]

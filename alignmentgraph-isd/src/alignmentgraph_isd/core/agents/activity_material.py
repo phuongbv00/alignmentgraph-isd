@@ -48,7 +48,7 @@ Output ONLY the JSON object, no markdown, no explanation.\
 
 
 class ActivityMaterialAgent(BaseISDAgent):
-    # R4/R7/R8 are alignment-tier coverage checks (gated by enable_alignment_graph) this
+    # R4/R7/R8 are alignment-tier coverage checks this
     # specialist can concretely act on. R9 (media<->material type-match on a fuzzy alias
     # table) is audit-only, same as measurability: there is no deterministic fix that
     # wouldn't risk gaming the metric (e.g. inventing a fake media entry just to pass),
@@ -59,16 +59,13 @@ class ActivityMaterialAgent(BaseISDAgent):
 
     def run(self, design_brief: DesignBrief) -> None:
         prompt = _format_design_brief(design_brief)
-        if self._graph_coordination:
-            objective_nodes = self.graph.element_nodes(NodeType.OBJECTIVE)
-            module_nodes = self.graph.element_nodes("content")
-            strategy_node = self.graph.get_node(self.graph.section_id("instructional_strategies"))
-            media_nodes = self.graph.element_nodes("media")
-            prior_ctx = self._element_context(
-                objective_nodes + module_nodes + ([strategy_node] if strategy_node else []) + media_nodes
-            )
-        else:
-            prior_ctx = self._graph_context([NodeType.OBJECTIVE, "content", "instructional_strategies", "media"])
+        objective_nodes = self.graph.element_nodes(NodeType.OBJECTIVE)
+        module_nodes = self.graph.element_nodes("content")
+        strategy_node = self.graph.get_node(self.graph.section_id("instructional_strategies"))
+        media_nodes = self.graph.element_nodes("media")
+        prior_ctx = self._element_context(
+            objective_nodes + module_nodes + ([strategy_node] if strategy_node else []) + media_nodes
+        )
         user_content = prompt
         if prior_ctx:
             user_content = f"=== OBJECTIVES + CONTENT MODULES + INSTRUCTIONAL STRATEGY ===\n{prior_ctx}\n\n=== SCENARIO ===\n{prompt}"
@@ -83,43 +80,39 @@ class ActivityMaterialAgent(BaseISDAgent):
             self.graph.add_node(node_type, node_id, parsed)
             self.trajectory.log_node_edit("add", node_id, node_type)
 
-        # Element decomposition + edge establishment are the alignment graph;
-        # the wo-graph arm ablates them (section blob only).
-        if self._graph_coordination:
-            activity_ids = self._decompose_elements("activity", parsed.get("learning_activities", []), id_field="id")
-            material_ids = self._decompose_elements("material", parsed.get("learner_materials", []), id_field="id")
-            for aid in activity_ids:
-                self.trajectory.log_node_edit("add", aid, "activity")
-            for mid in material_ids:
-                self.trajectory.log_node_edit("add", mid, "material")
-            self._establish_relations(activity_ids, material_ids)
+        # Element decomposition + edge establishment build the alignment graph.
+        activity_ids = self._decompose_elements("activity", parsed.get("learning_activities", []), id_field="id")
+        material_ids = self._decompose_elements("material", parsed.get("learner_materials", []), id_field="id")
+        for aid in activity_ids:
+            self.trajectory.log_node_edit("add", aid, "activity")
+        for mid in material_ids:
+            self.trajectory.log_node_edit("add", mid, "material")
+        self._establish_relations(activity_ids, material_ids)
         self.trajectory.log_step("ActivityMaterialAgent", "develop_activities", prompt[:200], response[:200] if response else "")
 
     def _establish_relations(self, activity_ids: list[str], material_ids: list[str]) -> None:
         # R4: objective -> activity (list-aware id-match on aligned_objectives).
-        # Always on — no traversal required, just reading the item's own field.
+        # No traversal required — just reading the item's own field.
         alignment.match_r4_supports(self.graph)
 
-        if self._graph_coordination:
-            # R7: instructional_strategies -> activity (provenance; the whole
-            # call was conditioned on the strategy node).
-            strategy_id = self.graph.section_id("instructional_strategies")
-            if self.graph.get_node(strategy_id):
-                for activity_id in activity_ids:
-                    alignment.record_provenance(self.graph, "R7", [strategy_id], activity_id)
+        # R7: instructional_strategies -> activity (provenance; the whole
+        # call was conditioned on the strategy node).
+        strategy_id = self.graph.section_id("instructional_strategies")
+        if self.graph.get_node(strategy_id):
+            for activity_id in activity_ids:
+                alignment.record_provenance(self.graph, "R7", [strategy_id], activity_id)
 
-            # R8: content module -> activity/material, via the model-declared linked_module.
-            for item_id in activity_ids + material_ids:
-                node = self.graph.get_node(item_id)
-                if not node:
-                    continue
-                module_ref = str(node["data"].get("linked_module", "") or "")
-                module_id = f"content{self.graph.ELEMENT_SEP}{module_ref}" if module_ref else ""
-                if module_ref and self.graph.get_node(module_id):
-                    alignment.record_provenance(self.graph, "R8", [module_id], item_id)
+        # R8: content module -> activity/material, via the model-declared linked_module.
+        for item_id in activity_ids + material_ids:
+            node = self.graph.get_node(item_id)
+            if not node:
+                continue
+            module_ref = str(node["data"].get("linked_module", "") or "")
+            module_id = f"content{self.graph.ELEMENT_SEP}{module_ref}" if module_ref else ""
+            if module_ref and self.graph.get_node(module_id):
+                alignment.record_provenance(self.graph, "R8", [module_id], item_id)
 
         # R9: media_selection -> material (type-match on normalized category).
-        # Always on — no traversal required.
         alignment.match_r9_realizes(self.graph)
 
     def repair(self, violations: list) -> list:

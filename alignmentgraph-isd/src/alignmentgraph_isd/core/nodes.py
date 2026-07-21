@@ -1,10 +1,9 @@
 """LangGraph node factories + the single graph builder.
 
 A ``NodeFactory`` captures the per-run objects (config, graph, trajectory,
-context pack, design brief) and exposes each ISD step as a node function.
-``build_graph`` wires those nodes into a StateGraph, branching once on
-``config.ablation.enable_multi_agent`` (multi-agent ADDIE pipeline vs single-agent) —
-there is no workflow-per-arm registry.
+design brief) and exposes each ISD step as a node function. ``build_graph``
+wires those nodes into one fixed StateGraph: the six ADDIE specialists in
+order, each followed by its QC node, then aggregation.
 """
 from __future__ import annotations
 
@@ -21,7 +20,6 @@ from .agents.assessment_design import AssessmentDesignAgent
 from .agents.activity_material import ActivityMaterialAgent
 from .agents.implementation_plan import ImplementationPlanAgent
 from .agents.evaluation_revision import EvaluationRevisionAgent
-from .agents.single_agent import SingleAgent
 from .agents.pedagogical_verifier import PedagogicalVerifierAgent
 from .agents.addie_aggregator import ADDIEOutputAggregator
 
@@ -52,7 +50,7 @@ GENERATION_AGENTS: dict[str, type] = {
     "evaluation_revision": EvaluationRevisionAgent,
 }
 
-# Fixed ADDIE order the multi-agent arm generates in.
+# Fixed ADDIE order the specialists generate in.
 GENERATION_ORDER = [
     "needs_context", "objective_design", "assessment_design",
     "activity_material", "implementation_plan", "evaluation_revision",
@@ -60,7 +58,7 @@ GENERATION_ORDER = [
 
 
 class NodeFactory:
-    """Builds node functions bound to one run's objects. No ablation flags."""
+    """Builds node functions bound to one run's objects."""
 
     def __init__(self, config, graph, trajectory, design_brief) -> None:
         self.config = config
@@ -92,16 +90,6 @@ class NodeFactory:
                 return {"errors": [f"{agent_cls.__name__}: {exc}"],
                         "task_attempts": self._bump_attempt(state, node_name)}
             return self._generation_done(state, node_name)
-        return _node
-
-    def single_agent_node(self):
-        def _node(state: ISDState) -> dict:
-            try:
-                SingleAgent(*self._args()).run(self.design_brief)
-            except Exception as exc:
-                return {"errors": [f"SingleAgent: {exc}"],
-                        "task_attempts": self._bump_attempt(state, "single_agent")}
-            return self._generation_done(state, "single_agent")
         return _node
 
     # ── per-agent quality-control node (verify owned types + repair) ─────────
@@ -153,44 +141,28 @@ def initial_state() -> ISDState:
 
 
 def build_graph(config, graph, trajectory, design_brief):
-    """Assemble the LangGraph StateGraph for this run.
-
-    A single builder, branching on ``config.ablation.enable_multi_agent`` — there is no
-    workflow-per-arm registry. Both arms end in the same aggregate node and run
-    per-agent QC after every generation node (QC is always on):
-
-    - multi-agent (``full``/``wo_graph``): the six specialists in fixed ADDIE
-      order, each followed by its QC node. ``full`` vs ``wo_graph`` differ only
-      at runtime inside the specialists (``enable_alignment_graph``), not in
-      graph shape.
-    - single-agent (``wo_ma``): one blob-generating agent + its QC node.
-    """
+    """Assemble the LangGraph StateGraph for this run: the six specialists in
+    fixed ADDIE order, each followed by its QC node (per-agent verify + repair,
+    always on), ending in the shared aggregate node."""
     from langgraph.graph import StateGraph, START, END
 
     nf = NodeFactory(config, graph, trajectory, design_brief)
     wf = StateGraph(ISDState)
     wf.add_node("aggregate", nf.aggregate_node())
 
-    if config.ablation.enable_multi_agent:
-        prev = START
-        for name in GENERATION_ORDER:
-            wf.add_node(name, nf.generation_node(name))
-            wf.add_edge(prev, name)
-            agent_cls = GENERATION_AGENTS[name]
-            if agent_cls.OWNED_VIOLATION_TYPES:  # only agents with checks get a QC node
-                qc = f"{name}_qc"
-                wf.add_node(qc, nf.qc_node(agent_cls, qc))
-                wf.add_edge(name, qc)
-                prev = qc
-            else:
-                prev = name
-        wf.add_edge(prev, "aggregate")
-    else:
-        wf.add_node("single_agent", nf.single_agent_node())
-        wf.add_node("single_agent_qc", nf.qc_node(SingleAgent, "single_agent_qc"))
-        wf.add_edge(START, "single_agent")
-        wf.add_edge("single_agent", "single_agent_qc")
-        wf.add_edge("single_agent_qc", "aggregate")
+    prev = START
+    for name in GENERATION_ORDER:
+        wf.add_node(name, nf.generation_node(name))
+        wf.add_edge(prev, name)
+        agent_cls = GENERATION_AGENTS[name]
+        if agent_cls.OWNED_VIOLATION_TYPES:  # only agents with checks get a QC node
+            qc = f"{name}_qc"
+            wf.add_node(qc, nf.qc_node(agent_cls, qc))
+            wf.add_edge(name, qc)
+            prev = qc
+        else:
+            prev = name
+    wf.add_edge(prev, "aggregate")
 
     wf.add_edge("aggregate", END)
     return wf.compile()

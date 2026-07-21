@@ -81,19 +81,16 @@ Output ONLY the JSON object, no markdown, no explanation.\
 
 
 class EvaluationRevisionAgent(BaseISDAgent):
-    # R5/R12/R13 are alignment-tier coverage checks (gated by enable_alignment_graph);
+    # R5/R12/R13 are alignment-tier coverage checks;
     # evaluation_quality is a content-quality check that always runs.
     OWNED_VIOLATION_TYPES = frozenset({"R5", "R12", "R13", "evaluation_quality"})
 
     def run(self, design_brief: DesignBrief) -> None:
         prompt = _format_design_brief(design_brief)
         gap_nodes = self.graph.element_nodes("gap")
-        if self._graph_coordination:
-            objective_nodes = self.graph.element_nodes(NodeType.OBJECTIVE)
-            plan_node = self.graph.get_node(self.graph.section_id("assessment_plan"))
-            prior_ctx = self._element_context(objective_nodes + ([plan_node] if plan_node else []) + gap_nodes)
-        else:
-            prior_ctx = self._graph_context([NodeType.OBJECTIVE, "assessment_plan", "gap"])
+        objective_nodes = self.graph.element_nodes(NodeType.OBJECTIVE)
+        plan_node = self.graph.get_node(self.graph.section_id("assessment_plan"))
+        prior_ctx = self._element_context(objective_nodes + ([plan_node] if plan_node else []) + gap_nodes)
         base = prompt
         if prior_ctx:
             base = f"=== OBJECTIVES + ASSESSMENT PLAN + NEEDS GAPS ===\n{prior_ctx}\n\n=== SCENARIO ===\n{prompt}"
@@ -119,10 +116,8 @@ class EvaluationRevisionAgent(BaseISDAgent):
         self.graph.add_node(NodeType.EVALUATION, node_id, parsed)
         self.trajectory.log_node_edit("add", node_id, NodeType.EVALUATION)
 
-        # Element decomposition + edge establishment are the alignment graph;
-        # the wo-graph arm ablates them (section blob only).
-        if self._graph_coordination:
-            self._establish_relations(parsed, gap_nodes)
+        # Element decomposition + edge establishment build the alignment graph.
+        self._establish_relations(parsed, gap_nodes)
         self.trajectory.log_step("EvaluationRevisionAgent", "plan_evaluation", prompt[:200],
                                  f"summative_items={len(parsed['summative'].get('assessment_tools', []))}")
 
@@ -143,12 +138,10 @@ class EvaluationRevisionAgent(BaseISDAgent):
         )
         for iid in improvement_ids:
             self.trajectory.log_node_edit("add", iid, "improvement")
-        # R13 is provenance: only meaningful when this call was actually
-        # conditioned on the traversed gap nodes.
-        if self._graph_coordination:
-            gap_ids = [n["id"] for n in gap_nodes]
-            for improvement_id in improvement_ids:
-                alignment.record_provenance(self.graph, "R13", gap_ids, improvement_id)
+        # R13 is provenance: this call was conditioned on the traversed gap nodes.
+        gap_ids = [n["id"] for n in gap_nodes]
+        for improvement_id in improvement_ids:
+            alignment.record_provenance(self.graph, "R13", gap_ids, improvement_id)
 
     def repair(self, violations: list) -> list:
         remaining = []

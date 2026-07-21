@@ -8,7 +8,7 @@ class RetrievalPlanner:
     """On-demand retrieval façade used by specialist agents.
 
     Wraps the registry to provide three operations:
-    - ``enabled()`` — gate check (enable_rag + non-empty registry);
+    - ``enabled()`` — gate check (use_rag + non-empty registry);
     - ``build_menu()`` — compact descriptor list for a specialist's decision prompt;
     - ``execute_plan()`` — resolve agent names and run them in the sandbox.
 
@@ -21,7 +21,7 @@ class RetrievalPlanner:
         self.registry = RetrievalAgentRegistry(getattr(config, "retrieval_subagents", None) or [])
 
     def enabled(self) -> bool:
-        return bool(self.config.ablation.enable_rag) and len(self.registry) > 0
+        return bool(self.config.use_rag) and len(self.registry) > 0
 
     def build_menu(self, design_brief: DesignBrief, task_name: str) -> list[dict]:
         """Compact menu of relevant retrieval agents for a specialist's decision prompt."""

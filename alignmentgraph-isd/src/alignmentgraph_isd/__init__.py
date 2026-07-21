@@ -1,6 +1,6 @@
 from .core.runner import MetaAgent
 from .core.graph import AlignmentGraph
-from .config import AblationConfig, HarnessRunConfig
+from .config import HarnessRunConfig
 from .core.schema import DesignBrief, DesignBriefContext, DesignBriefConstraints
 from .core.rag.agent import RetrievalTool, RetrievalAgent, RetrievalAgentRegistry
 from .core.llm import llm_factory_from_env
@@ -24,7 +24,6 @@ def run_design_brief(design_brief: DesignBrief, config: HarnessRunConfig | None 
 __all__ = [
     "MetaAgent",
     "AlignmentGraph",
-    "AblationConfig",
     "HarnessRunConfig",
     "DesignBrief",
     "DesignBriefContext",

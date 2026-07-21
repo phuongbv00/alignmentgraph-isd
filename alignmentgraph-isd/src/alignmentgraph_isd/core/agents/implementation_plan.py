@@ -53,16 +53,13 @@ class ImplementationPlanAgent(BaseISDAgent):
         # materials) and how it was meant to run (instructional strategy).
         # No relation in the 13-relation matrix targets implementation_plan,
         # so this specialist establishes no alignment edges — only context.
-        if self._graph_coordination:
-            strategy_node = self.graph.get_node(self.graph.section_id("instructional_strategies"))
-            prior_nodes = (
-                self.graph.element_nodes("activity")
-                + self.graph.element_nodes("material")
-                + ([strategy_node] if strategy_node else [])
-            )
-            prior_ctx = self._element_context(prior_nodes)
-        else:
-            prior_ctx = self._graph_context([NodeType.ACTIVITY, NodeType.MATERIAL, "instructional_strategies"])
+        strategy_node = self.graph.get_node(self.graph.section_id("instructional_strategies"))
+        prior_nodes = (
+            self.graph.element_nodes("activity")
+            + self.graph.element_nodes("material")
+            + ([strategy_node] if strategy_node else [])
+        )
+        prior_ctx = self._element_context(prior_nodes)
         user_content = prompt
         if prior_ctx:
             user_content = f"=== DESIGN + DEVELOPMENT RESULTS (from prior agents) ===\n{prior_ctx}\n\n=== SCENARIO ===\n{prompt}"

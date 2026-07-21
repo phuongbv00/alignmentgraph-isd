@@ -58,11 +58,8 @@ class GraphAuditResult:
     unevaluated_objectives: list[str] = field(default_factory=list)
     verifier_violations: list[dict] = field(default_factory=list)
     ready_to_aggregate: bool = False
-    # Per-relation coverage for all 13 matrix relations (R1..R13), always
-    # computed regardless of ablation arm: edges are established as data at
-    # every rung (see alignment.py), so this is what makes the RQ2 story
-    # measurable — coverage differs across wo_ma/wo_graph/full even
-    # though this auditor itself has no notion of which arm produced the graph.
+    # Per-relation coverage for all 13 matrix relations (R1..R13), computed
+    # from established edges as data (see alignment.py).
     relation_coverage: dict[str, dict] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:

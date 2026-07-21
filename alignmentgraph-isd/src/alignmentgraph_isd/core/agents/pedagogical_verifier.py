@@ -76,7 +76,7 @@ class VerifierViolation:
     message: str
     # Completeness tier: bloom | measurability | activity_engagement | rubric_consistency |
     #   feasibility | actionability | evaluation_quality
-    # Alignment tier (gated by enable_alignment_graph): R1..R13 | bloom_mismatch
+    # Alignment tier: R1..R13 | bloom_mismatch
     violation_type: str = "coverage"
     severity: str = "error"                   # error | warning
     repair_hint: str = ""
@@ -88,11 +88,10 @@ class PedagogicalVerifierAgent(BaseISDAgent):
         pass  # not used directly; call verify()
 
     def verify(self, design_brief: DesignBrief | None = None) -> list[VerifierViolation]:
-        """Two tiers. Completeness always runs (a small model still needs
-        self-repair to avoid a broken/empty output). Alignment (relation
-        coverage + the Bloom/format validity rule) only runs when the harness
-        has graph coordination active — see "QC has two tiers; the alignment
-        tier only fires when there is a graph" in the refactor plan."""
+        """Two tiers, both always on: completeness (single-artifact content
+        quality — a small model still needs self-repair to avoid a broken/empty
+        output) and alignment (relation coverage + the Bloom/format validity
+        rule, read from the alignment graph's established edges)."""
         violations: list[VerifierViolation] = []
         violations.extend(self._check_bloom_verbs())
         violations.extend(self._check_measurability())
@@ -101,10 +100,8 @@ class PedagogicalVerifierAgent(BaseISDAgent):
         violations.extend(self._check_feasibility(design_brief))
         violations.extend(self._check_actionability())
         violations.extend(self._check_evaluation_quality())
-
-        if self.config.ablation.enable_alignment_graph:
-            violations.extend(self._check_relation_coverage())
-            violations.extend(self._check_bloom_format_validity())
+        violations.extend(self._check_relation_coverage())
+        violations.extend(self._check_bloom_format_validity())
         return violations
 
     # ══════════════════════ completeness tier (always on) ═══════════════════
@@ -395,7 +392,7 @@ class PedagogicalVerifierAgent(BaseISDAgent):
                 ))
         return violations
 
-    # ═══════════════════ alignment tier (enable_alignment_graph only) ═══════════
+    # ═══════════════════ alignment tier ═════════════════════════════════════
     # Cross-artifact checks: coverage of the 13-relation matrix + the one
     # boolean Bloom/format-validity rule. Never runs unless the harness has
     # graph coordination active (see verify()).

@@ -1,8 +1,10 @@
-"""Token-usage capture + graph-dump snapshot — both are reported artifacts the
-RQ2 analysis reads, so pin their shape."""
+"""Token-usage capture + the alignment-graph dump — both are reported
+artifacts downstream analysis reads, so pin their shape."""
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 
 from alignmentgraph_isd import HarnessRunConfig, run_design_brief
 from alignmentgraph_isd.core import viz
@@ -40,7 +42,7 @@ def test_run_records_nonzero_token_usage():
             r.usage_metadata = {"input_tokens": 1000, "output_tokens": 500}
             return r
 
-    config = HarnessRunConfig.from_ablation("full")
+    config = HarnessRunConfig()
     config.llm_factory = lambda: TokenModel()
     result = run_design_brief(load_brief("minimal_brief.json"), config)
     usage = result["trajectory"]["token_usage"]
@@ -50,36 +52,105 @@ def test_run_records_nonzero_token_usage():
     assert usage["completion_tokens"] == 500 * calls
 
 
-# ── graph snapshot in metadata + node-link / dot artifacts ───────────────────
+# ── the graph dump: its own result keys + json/dot artifacts ─────────────────
 
-def test_metadata_carries_lightweight_graph_snapshot():
-    config = HarnessRunConfig.from_ablation("full")
+def _run_default():
+    config = HarnessRunConfig()
     config.llm_factory = lambda: FakeChatModel()
-    result = run_design_brief(load_brief("minimal_brief.json"), config)
-    graph = result["metadata"]["graph"]
+    return run_design_brief(load_brief("minimal_brief.json"), config)
 
-    assert {"nodes", "edges", "objective_alignment", "relation_coverage"} <= set(graph)
-    # lightweight: node data payload is stripped (it duplicates addie_output)
-    assert all("data" not in node for node in graph["nodes"])
+
+def test_result_carries_full_graph_dump_separate_from_trajectory():
+    result = _run_default()
+    graph = result["graph"]
+
+    assert {"nodes", "edges", "objective_alignment", "relation_coverage", "metadata"} <= set(graph)
+    # FULL dump: every node keeps its complete data payload
+    assert all("data" in node for node in graph["nodes"])
     # edges keep the structural fields the alignment analysis needs
     typed_edges = [e for e in graph["edges"] if e.get("relation_id")]
     assert typed_edges and all("established_by" in e for e in typed_edges)
     assert set(graph["relation_coverage"]) == {f"R{i}" for i in range(1, 14)}
+    # dump metadata: brief id, timestamp, counts by type
+    meta = graph["metadata"]
+    assert meta["design_brief_id"] and meta["generated_at"]
+    assert meta["node_count"] == len(graph["nodes"])
+    assert meta["edge_count"] == len(graph["edges"])
+    assert sum(meta["node_counts_by_type"].values()) == meta["node_count"]
+    assert sum(meta["edge_counts_by_type"].values()) == meta["edge_count"]
+    # the dump lives OUTSIDE trajectory/metadata (separate file downstream)
+    assert "graph" not in result["metadata"]
+    assert "graph" not in result["trajectory"]
+
+
+def test_graph_dump_round_trips_through_json():
+    result = _run_default()
+    restored = json.loads(json.dumps(result["graph"], ensure_ascii=False))
+    assert restored == result["graph"]
+
+
+def _assert_valid_dot(dot: str) -> None:
+    assert dot.startswith("digraph ") and dot.rstrip().endswith("}")
+    # Balanced braces/brackets outside quoted strings, and quotes all closed.
+    depth_brace = depth_bracket = 0
+    in_string = escape = False
+    for ch in dot:
+        if escape:
+            escape = False
+            continue
+        if in_string and ch == "\\":
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            depth_brace += 1
+        elif ch == "}":
+            depth_brace -= 1
+            assert depth_brace >= 0
+        elif ch == "[":
+            depth_bracket += 1
+        elif ch == "]":
+            depth_bracket -= 1
+            assert depth_bracket >= 0
+    assert not in_string and depth_brace == 0 and depth_bracket == 0
+    dot_bin = shutil.which("dot")
+    if dot_bin:  # render for real when graphviz is installed
+        proc = subprocess.run([dot_bin, "-Tsvg"], input=dot.encode("utf-8"),
+                              capture_output=True, timeout=60)
+        assert proc.returncode == 0, proc.stderr.decode()[:500]
+
+
+def test_graph_dot_is_valid_dot_syntax():
+    result = _run_default()
+    _assert_valid_dot(result["graph_dot"])
+
+
+def test_graph_dot_escapes_unicode_and_special_chars():
+    graph = AlignmentGraph()
+    graph.add_element_node(NodeType.OBJECTIVE, 'LO-"한글"',
+                           {"id": 'LO-"한글"', "level": "Apply", "statement": '학습자는 "OOP"를\n적용한다'})
+    graph.add_element_node("assessment", "AT-01", {"item_id": "AT-01", "type": "수행평가"})
+    graph.add_edge("R3-measures", "assessment:AT-01", 'objective:LO-"한글"',
+                   relation_id="R3", established_by="id")
+    _assert_valid_dot(graph.to_dot(title='한국어 "브리프"'))
 
 
 def test_graph_dump_written_when_env_opts_in(tmp_path, monkeypatch):
     monkeypatch.setenv("ALIGNMENTGRAPH_DUMP_DIR", str(tmp_path))
-    config = HarnessRunConfig.from_ablation("full")
-    config.llm_factory = lambda: FakeChatModel()
-    result = run_design_brief(load_brief("minimal_brief.json"), config)
+    result = _run_default()
 
     dumped = result["metadata"].get("graph_dump")
     assert dumped and len(dumped) == 2
     json_path = next(p for p in dumped if p.endswith(".json"))
     dot_path = next(p for p in dumped if p.endswith(".dot"))
-    # full dump keeps node data (unlike the metadata snapshot)
+    # the dumped file matches the in-result full dump (modulo timestamp)
     payload = json.loads(open(json_path, encoding="utf-8").read())
     assert any("data" in node for node in payload["nodes"])
+    assert payload["metadata"]["design_brief_id"] == result["graph"]["metadata"]["design_brief_id"]
     assert open(dot_path, encoding="utf-8").read().startswith("digraph alignment {")
 
 

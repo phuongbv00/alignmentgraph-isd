@@ -58,11 +58,9 @@ class NeedsContextAgent(BaseISDAgent):
         node_id = self.graph.section_id(NodeType.NEEDS_CONTEXT)
         self.graph.add_node(NodeType.NEEDS_CONTEXT, node_id, parsed)
         self.trajectory.log_node_edit("add", node_id, NodeType.NEEDS_CONTEXT)
-        # gap/task/learner element nodes exist only as provenance sources for the
-        # alignment graph (R1/R2/R10/R11/R13). The wo-graph arm establishes none
-        # of those, so it decomposes nothing — it stays a pure section blob.
-        if self._graph_coordination:
-            self._decompose(parsed)
+        # gap/task/learner element nodes are the provenance sources for the
+        # alignment graph (R1/R2/R10/R11/R13).
+        self._decompose(parsed)
         self.trajectory.log_step("NeedsContextAgent", "needs_analysis", prompt[:200], response[:200] if response else "")
 
     def _decompose(self, parsed: dict) -> None:

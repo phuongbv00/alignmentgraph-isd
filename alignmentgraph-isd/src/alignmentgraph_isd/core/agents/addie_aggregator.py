@@ -52,8 +52,8 @@ class ADDIEOutputAggregator(BaseISDAgent):
             "storyboard": storyboard,
         }
 
-        # In single_agent mode, assessment_tools/expert_review live in the activity (development) node.
-        # In enable_enable_multi_agent mode, they live in the dedicated assessment node.
+        # assessment_tools/expert_review live in the dedicated assessment node;
+        # the activity (development) node is kept as a fallback source.
         development = {
             "learner_materials": act_data.get("learner_materials", mat_data.get("learner_materials", [])),
             "instructor_guide": act_data.get("instructor_guide", mat_data.get("instructor_guide", {})),
@@ -88,10 +88,7 @@ class ADDIEOutputAggregator(BaseISDAgent):
             "implementation": implementation,
             "evaluation": evaluation,
         }
-        return _strengthen_alignment(
-            output, self.graph,
-            graph_coordination=bool(self.config.ablation.enable_alignment_graph),
-        )
+        return _strengthen_alignment(output, self.graph)
 
 
 def _merge_node_data(nodes: list[dict]) -> dict:
@@ -151,7 +148,7 @@ def _is_empty(value) -> bool:
     return value in ({}, [], "", None)
 
 
-def _strengthen_alignment(output: dict, graph, *, graph_coordination: bool) -> dict:
+def _strengthen_alignment(output: dict, graph) -> dict:
     design = output.setdefault("design", {})
     development = output.setdefault("development", {})
     implementation = output.setdefault("implementation", {})
@@ -162,13 +159,9 @@ def _strengthen_alignment(output: dict, graph, *, graph_coordination: bool) -> d
 
     objective_ids = [lo.get("id") for lo in objectives if isinstance(lo, dict) and lo.get("id")]
     if objective_ids:
-        if graph_coordination:
-            # Last-resort coverage net for the graph-coordination mechanism only
-            # (when the repair budget ran out before closing every R3 gap). At
-            # wo_graph/wo_ma the alignment tier is ablated, so patching
-            # coverage here would leak the mechanism into the arms measuring
-            # its absence.
-            _ensure_assessment_coverage(objectives, assessment_tools, graph)
+        # Last-resort coverage net (when the repair budget ran out before
+        # closing every R3 gap).
+        _ensure_assessment_coverage(objectives, assessment_tools, graph)
         design["alignment_matrix"] = _build_alignment_matrix(objective_ids, graph)
         development["objective_assessment_map"] = {
             lo_id: [
@@ -203,8 +196,7 @@ def _strengthen_alignment(output: dict, graph, *, graph_coordination: bool) -> d
 
 def _ensure_assessment_coverage(objectives: list, assessment_tools: list, graph) -> None:
     """Output-level safety net: guarantee every objective has at least one
-    assessment item in the FINAL output, even outside the ``full`` arm (where
-    the alignment tier never ran to catch this during generation)."""
+    assessment item in the FINAL output."""
     if not isinstance(assessment_tools, list):
         return
     covered = {
@@ -259,12 +251,11 @@ def _build_alignment_matrix(objective_ids: list[str], graph) -> list[dict]:
 
 
 def _strengthen_implementation(implementation: dict) -> None:
-    """Polish NON-EMPTY implementation sections (setdefault-style, identical
-    for every ablation arm). An entirely empty section is left empty: painting
-    hardcoded content onto nothing turns a dead generation into a
-    partially-scored output and masks the failure from both the completeness
-    tier and the judge (exactly how a truncated single-agent run once scored
-    40% on Implementation while every other phase was 0)."""
+    """Polish NON-EMPTY implementation sections (setdefault-style). An entirely
+    empty section is left empty: painting hardcoded content onto nothing turns
+    a dead generation into a partially-scored output and masks the failure from
+    both the completeness tier and the judge (exactly how a truncated run once
+    scored 40% on Implementation while every other phase was 0)."""
     orientation = implementation.setdefault("instructor_orientation", {})
     if isinstance(orientation, dict) and orientation:
         objectives = orientation.get("orientation_objectives", [])

@@ -10,7 +10,7 @@ contribution). The package exposes a stable public API on the canonical
 ```python
 from alignmentgraph_isd import DesignBrief, HarnessRunConfig, run_design_brief
 
-config = HarnessRunConfig.from_ablation("full")        # full | wo_graph | single_agent (wo_ma) | wo_qc | dynamic_full | case_study
+config = HarnessRunConfig()                            # the full pipeline is the only pipeline
 config.llm_factory = lambda: my_chat_model             # any LangChain chat model factory; required
 
 brief = DesignBrief(
@@ -21,31 +21,57 @@ brief = DesignBrief(
 )
 
 result = run_design_brief(brief, config)
-# result == {"addie_output": {...}, "trajectory": {...}, "metadata": {...}}
+# result == {"addie_output": {...}, "trajectory": {...}, "metadata": {...},
+#            "graph": {...}, "graph_dot": "digraph alignment { ... }"}
 ```
 
 `run_design_brief` (and the CLI) fail with a clear error if `llm_factory` is not
 configured — they never emit a silent empty output.
 
+### Graph dump (explainability / auditability)
+
+The alignment graph is the run's explicit, human-auditable alignment state, so
+every run returns a **full dump as its own result keys, separate from the
+trajectory**:
+
+- `result["graph"]` — `AlignmentGraph.to_full_dict()`: every node (id, type,
+  complete data payload), every edge (source, target, relation key such as
+  `"R3-measures"`, `relation_id`, `established_by`, evidence, rationale),
+  per-objective / per-relation alignment annotations, and a `metadata` block
+  (design brief id, UTC timestamp, node/edge counts by type). Fully
+  JSON-serializable.
+- `result["graph_dot"]` — `AlignmentGraph.to_dot()`: a valid Graphviz DOT
+  document (node shape/colour by type and alignment state, edge labels by
+  relation, DOT-escaped labels — Korean/unicode content stays valid). Render
+  with `dot -Tsvg graph.dot -o graph.svg`.
+
+Write them to files with the CLI's `--graph <stem>` flag, or set the
+`ALIGNMENTGRAPH_DUMP_DIR` env var to have every run write
+`<brief_id>_graph.json` + `<brief_id>_graph.dot` there automatically. The
+benchmark adapter surfaces the same keys, and the benchmark runner saves them
+as `<agent_id>_graph.json` / `<agent_id>_graph.dot` next to each scenario's
+output.
+
 ### RAG (external corpus only)
 
 In this harness **RAG means external-corpus retrieval only**. Graph-context
-retrieval (the AlignmentGraph subgraph) and memory retrieval (working/episodic
-memory) are core, always on, and are *not* called RAG.
+retrieval (the AlignmentGraph subgraph) is core, always on, and is *not*
+called RAG.
 
-- **`enable_rag=False` on every benchmark preset** (`full`, `wo_graph`, `single_agent`,
-  `wo_qc`); RAG is never used in benchmark runs.
-- RAG is an opt-in **case-study/app** add-on: use the `case_study` preset (or set
-  `config.ablation.enable_rag = True`) and register `RetrievalSubagent` instances on
-  `config.retrieval_subagents`.
+RAG is off by default (`use_rag=False`) and is an opt-in add-on: set
+`use_rag=True` **and** register retrieval agents on
+`config.retrieval_subagents` — both are required for the gate to open.
 
 ```python
-from alignmentgraph_isd import HarnessRunConfig, LocalCorpusSubagent
-config = HarnessRunConfig.from_ablation("case_study")   # enable_rag=True
+from alignmentgraph_isd import HarnessRunConfig, RetrievalAgent, RetrievalTool
+config = HarnessRunConfig(use_rag=True)
 config.retrieval_subagents = [
-    LocalCorpusSubagent("java-oop", "java_oop",
-                        {"oop": ["Prefer composition over inheritance."]},
-                        domains=["software engineering"], keywords=["oop", "java"]),
+    RetrievalAgent(
+        "java-oop-corpus", "java_oop",
+        tools=[RetrievalTool("search_corpus", "Search OOP corpus",
+                             lambda query="": ["Prefer composition over inheritance."])],
+        domains=["software engineering"], keywords=["oop", "java"],
+    ),
 ]
 ```
 
@@ -63,7 +89,7 @@ AGENT_MODEL_API_KEY="$OPENROUTER_API_KEY" alignmentgraph-isd run \
   --input tests/fixtures/minimal_brief.json \
   --output result.json \
   --trajectory trajectory.json \
-  --ablation full \
+  --graph graph \
   --model-name openai/gpt-4o-mini \
   --base-url https://openrouter.ai/api/v1
 
@@ -85,5 +111,5 @@ Network-free; a fake `llm_factory` drives the whole pipeline (see
 ```bash
 python -m pytest tests/                       # all tests
 python -m pytest tests/test_smoke_run.py      # public-API smoke on the fixtures
-python -m pytest tests/test_ablations.py      # every ablation preset end-to-end
+python -m pytest tests/test_full_pipeline.py  # end-to-end contract + 13-relation coverage
 ```

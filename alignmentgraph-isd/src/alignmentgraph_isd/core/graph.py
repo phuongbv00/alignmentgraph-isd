@@ -227,29 +227,54 @@ class AlignmentGraph:
             frontier_ids = next_ids
         return [n for n in (self.get_node(nid) for nid in frontier_ids) if n is not None]
 
-    def get_node_context(self, node_types: list[NodeType | str], max_chars_per_node: int = 600) -> str:
-        """Return a compact text summary of nodes for injection into agent prompts.
-
-        This is the graph-context retrieval entry point (core, not RAG): later
-        agents call this to see what earlier agents already put in the graph
-        before generating their section.
-        """
-        import json
-        lines: list[str] = []
-        for nt in node_types:
-            for node in self.get_nodes(nt):
-                data_str = json.dumps(node["data"], ensure_ascii=False)
-                if len(data_str) > max_chars_per_node:
-                    data_str = data_str[:max_chars_per_node] + "…"
-                lines.append(f"[{nt.upper()}:{node['id']}]\n{data_str}")
-        return "\n\n".join(lines)
-
     def is_empty(self, node_type: NodeType | str) -> bool:
         """True if no non-empty node of this type exists."""
         return all(not n["data"] for n in self.get_nodes(node_type))
 
     def to_dict(self) -> dict:
         return {"nodes": list(self._nodes.values()), "edges": list(self._edges)}
+
+    def to_full_dict(self, *, design_brief_id: str | None = None) -> dict:
+        """Complete, JSON-serializable dump of the alignment state for auditing.
+
+        Everything is included: every node (id, type, full ``data`` payload),
+        every edge (source, target, relation key like "R3-measures",
+        ``relation_id``, ``established_by``, evidence, rationale), the
+        per-objective / per-relation alignment annotations from the single
+        alignment definition (``alignment.py`` via ``viz.py``), plus a
+        ``metadata`` block (design brief id, UTC timestamp, node/edge counts by
+        type). This is the payload written to ``*_graph.json`` — separate from
+        the trajectory — so a human can audit or visualize the run's alignment
+        state directly.
+        """
+        from datetime import datetime, timezone
+        from . import viz  # lazy: viz imports this module
+
+        payload = viz.to_node_link(self, include_data=True)
+        node_counts: dict[str, int] = {}
+        for node in self._nodes.values():
+            node_counts[str(node["type"])] = node_counts.get(str(node["type"]), 0) + 1
+        edge_counts: dict[str, int] = {}
+        for edge in self._edges:
+            edge_counts[str(edge["type"])] = edge_counts.get(str(edge["type"]), 0) + 1
+        payload["metadata"] = {
+            "design_brief_id": design_brief_id or "",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "node_count": len(self._nodes),
+            "edge_count": len(self._edges),
+            "node_counts_by_type": node_counts,
+            "edge_counts_by_type": edge_counts,
+        }
+        return payload
+
+    def to_dot(self, *, title: str = "") -> str:
+        """GraphViz DOT rendering of the alignment graph (see ``viz.to_dot``):
+        node shape/fill by node type and alignment state, edge labels by
+        relation key, DOT-escaped labels (unicode content stays valid). Render
+        with ``dot -Tsvg out.dot -o out.svg``."""
+        from . import viz  # lazy: viz imports this module
+
+        return viz.to_dot(self, title=title)
 
     @classmethod
     def from_dict(cls, payload: dict) -> "AlignmentGraph":

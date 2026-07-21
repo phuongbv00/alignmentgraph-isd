@@ -38,7 +38,7 @@ def test_repair_logs_structured_repair_events():
     graph.add_node("objective", "objective_0", {"learning_objectives": [{"id": "LO-01", "statement": "Apply X"}]})
     graph.add_element_node("objective", "LO-01", {"id": "LO-01", "statement": "Apply X"})
     traj = TrajectoryLogger()
-    config = HarnessRunConfig.from_ablation("full")
+    config = HarnessRunConfig()
 
     violation = VerifierViolation(
         node_id="objective:LO-01", edge_type="measures", violation_type="R3",

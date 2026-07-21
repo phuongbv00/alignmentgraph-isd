@@ -24,7 +24,7 @@ def test_public_api_returns_contract(brief_name, fake_config):
 
 def test_run_requires_llm_factory():
     brief = load_brief("minimal_brief.json")
-    config = HarnessRunConfig.from_ablation("full")
+    config = HarnessRunConfig()
     with pytest.raises(RuntimeError, match="llm_factory"):
         run_design_brief(brief, config)
 

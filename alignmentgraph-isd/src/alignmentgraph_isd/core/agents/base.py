@@ -314,18 +314,6 @@ class BaseISDAgent(ABC):
     def run(self, design_brief: DesignBrief) -> None:
         ...
 
-    @property
-    def _graph_coordination(self) -> bool:
-        """Whether this run has graph coordination active (traversal-scoped
-        context + provenance-relation establishment). Decomposition into
-        element nodes and id/type-match establishment (R3,R5,R6,R9,R12, and
-        R4's id half) stay unconditional at every ablation rung — they are
-        post-hoc bookkeeping on a specialist's own output and need no
-        traversal. Only the CONTEXT-BUILDING style and PROVENANCE-relation
-        establishment (R1,R2,R7,R8,R10,R11,R13) branch on this flag — that
-        branch is what makes the wo_graph vs full ablation contrast real."""
-        return bool(self.config.ablation.enable_alignment_graph)
-
     # Verifier violation types this specialist owns. A workflow's QC node reads
     # this to decide which violations the agent should self-repair. Quality
     # control is driven by the workflow (see core/nodes.py::NodeFactory.qc_node),
@@ -334,25 +322,12 @@ class BaseISDAgent(ABC):
         """Default no-op repair; specialists override to fix owned violations."""
         return violations
 
-    def _graph_context(self, node_types: list[str], max_chars: int = 600) -> str:
-        """Pull relevant prior nodes from G_t for injection into this agent's prompt.
-
-        This is graph-context retrieval (core, not RAG): each agent reads what
-        earlier agents already deposited in the AlignmentGraph before generating
-        its own section.
-        Returns empty string when the graph has no relevant content yet.
-
-        Deprecated in favour of ``_element_context``/``_traversal_context``,
-        which scope the prompt to the specific element/section nodes a relation
-        actually needs instead of every node of a whole type. Kept for any
-        specialist that has not been migrated yet.
-        """
-        return self.graph.get_node_context(node_types, max_chars_per_node=max_chars)
-
     def _element_context(self, nodes: list[dict], max_chars: int = 600) -> str:
         """Format specific element/section nodes for prompt injection.
 
-        Unlike ``_graph_context`` (which dumps every node of a type), the
+        This is graph-context retrieval (core, not RAG): each agent reads what
+        earlier agents already deposited in the AlignmentGraph before generating
+        its own section. The
         caller passes exactly the nodes a relation calls for — e.g.
         ``self._element_context(self.graph.element_nodes(NodeType.OBJECTIVE))``
         for "every learning objective", or the result of ``graph.traverse(...)``
@@ -376,8 +351,7 @@ class BaseISDAgent(ABC):
         max_chars: int = 600,
     ) -> str:
         """Relation-scoped context: follow ``rel_path`` from each of
-        ``start_ids`` and format the nodes reached. The multi-hop replacement
-        for ``_graph_context``'s whole-type blob dump."""
+        ``start_ids`` and format the nodes reached (multi-hop)."""
         seen: set[str] = set()
         nodes: list[dict] = []
         for start_id in start_ids:
@@ -449,7 +423,7 @@ class BaseISDAgent(ABC):
     def _maybe_retrieve(self, design_brief: DesignBrief, task_name: str, prior_context: str = "") -> str:
         """Let this specialist decide whether/how to retrieve external domain material.
 
-        Gated hard on ``enable_rag`` + a non-empty registry: on the benchmark path
+        Gated hard on a non-empty registry: on the benchmark path
         this returns immediately with zero LLM calls. When enabled, one small
         decision call chooses the retrieval agents and execution strategy
         (single / sequential / parallel — hinted per ADDIE task, decided by the

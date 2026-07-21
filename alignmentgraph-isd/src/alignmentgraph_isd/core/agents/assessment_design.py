@@ -40,18 +40,15 @@ Output ONLY the JSON object, no markdown, no explanation.\
 
 
 class AssessmentDesignAgent(BaseISDAgent):
-    # R3/R6 are the alignment-tier coverage checks (gated by enable_alignment_graph);
+    # R3/R6 are the alignment-tier coverage checks;
     # rubric_consistency/bloom_mismatch are content-quality checks that always run.
     OWNED_VIOLATION_TYPES = frozenset({"R3", "R6", "rubric_consistency", "bloom_mismatch"})
 
     def run(self, design_brief: DesignBrief) -> None:
         prompt = _format_design_brief(design_brief)
-        if self._graph_coordination:
-            objective_nodes = self.graph.element_nodes(NodeType.OBJECTIVE)
-            plan_node = self.graph.get_node(self.graph.section_id("assessment_plan"))
-            prior_ctx = self._element_context(objective_nodes + ([plan_node] if plan_node else []))
-        else:
-            prior_ctx = self._graph_context([NodeType.OBJECTIVE, "assessment_plan"])
+        objective_nodes = self.graph.element_nodes(NodeType.OBJECTIVE)
+        plan_node = self.graph.get_node(self.graph.section_id("assessment_plan"))
+        prior_ctx = self._element_context(objective_nodes + ([plan_node] if plan_node else []))
         user_content = prompt
         if prior_ctx:
             user_content = f"=== LEARNING OBJECTIVES + ASSESSMENT PLAN ===\n{prior_ctx}\n\n=== SCENARIO ===\n{prompt}"
@@ -64,22 +61,18 @@ class AssessmentDesignAgent(BaseISDAgent):
         parsed = parse_json_response(response)
         # NO deterministic coverage patch here: R3 gaps are the alignment
         # tier's job (verifier surfaces them -> _repair_alignment_coverage
-        # fixes them, full arm only). Patching at generation time ran in every
-        # ablation arm and silently equalized wo_graph/wo_ma with full
-        # on assessment coverage — leaking the graph mechanism into the arms
-        # that ablate it, and hiding the gap count the RQ2 story reports.
+        # fixes them). Patching at generation time would hide the gap count
+        # the audit reports.
         node_id = self.graph.section_id(NodeType.ASSESSMENT)
         self.graph.add_node(NodeType.ASSESSMENT, node_id, parsed)
         self.trajectory.log_node_edit("add", node_id, NodeType.ASSESSMENT)
 
-        # Element decomposition + edge establishment are the alignment graph.
-        # The wo-graph arm ablates them entirely (section blob only).
-        if self._graph_coordination:
-            item_ids = self._decompose_elements("assessment", parsed.get("assessment_tools", []), id_field="item_id")
-            for iid in item_ids:
-                self.trajectory.log_node_edit("add", iid, "assessment")
-            alignment.match_id(self.graph, "R3", target_node_type=NodeType.OBJECTIVE, field="aligned_objective")
-            alignment.match_r6_realizes(self.graph)
+        # Element decomposition + edge establishment build the alignment graph.
+        item_ids = self._decompose_elements("assessment", parsed.get("assessment_tools", []), id_field="item_id")
+        for iid in item_ids:
+            self.trajectory.log_node_edit("add", iid, "assessment")
+        alignment.match_id(self.graph, "R3", target_node_type=NodeType.OBJECTIVE, field="aligned_objective")
+        alignment.match_r6_realizes(self.graph)
         self.trajectory.log_step("AssessmentDesignAgent", "design_assessments", prompt[:200], response[:200] if response else "")
 
     def repair(self, violations: list) -> list:

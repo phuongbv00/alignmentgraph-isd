@@ -100,59 +100,6 @@ Output ONLY the JSON object, no markdown, no explanation.\
 """
 
 
-# No-graph (wo-graph / naive multi-agent) Design blob: the whole Design phase in
-# ONE call, stored as one section node. No LO-rooted 2-call split, no element
-# decomposition, no edges — this is what the wo-graph arm ablates the alignment
-# graph down to. Same fields as the two graph-coordinated calls, merged.
-_SYSTEM_COMBINED = """\
-You are an expert instructional designer working on the Design phase of ADDIE.
-
-Given a training scenario and its needs/task/learner analysis, produce ONLY valid JSON with this
-EXACT schema (learning objectives first, then the design that serves them):
-{
-  "learning_objectives": [
-    {"id": "LO-01", "level": "Remember", "statement": "<objective>", "bloom_verb": "<verb>", "measurable": true},
-    {"id": "LO-02", "level": "Understand", "statement": "<objective>", "bloom_verb": "<verb>", "measurable": true},
-    {"id": "LO-03", "level": "Apply", "statement": "<objective>", "bloom_verb": "<verb>", "measurable": true},
-    {"id": "LO-04", "level": "Analyze", "statement": "<objective>", "bloom_verb": "<verb>", "measurable": true},
-    {"id": "LO-05", "level": "Evaluate", "statement": "<objective>", "bloom_verb": "<verb>", "measurable": true}
-  ],
-  "assessment_plan": {"diagnostic": ["<d1>"], "formative": ["<f1>"], "summative": ["<s1>"]},
-  "content_structure": {"modules": ["<m1>", "<m2>", "<m3>"], "topics": ["<t1>", "<t2>"], "sequencing": "<sequence>"},
-  "instructional_strategies": {
-    "model": "Gagné's 9 Events",
-    "sequence": [
-      {"event": "Gain attention", "activity": "<activity>", "duration": "<time>", "resources": ["<resource>"]},
-      {"event": "Inform learners of objectives", "activity": "<activity>", "duration": "<time>", "resources": ["<resource>"]},
-      {"event": "Stimulate recall of prior learning", "activity": "<activity>", "duration": "<time>", "resources": ["<resource>"]},
-      {"event": "Present content", "activity": "<activity>", "duration": "<time>", "resources": ["<resource>"]},
-      {"event": "Provide learning guidance", "activity": "<activity>", "duration": "<time>", "resources": ["<resource>"]},
-      {"event": "Elicit performance", "activity": "<activity>", "duration": "<time>", "resources": ["<resource>"]},
-      {"event": "Provide feedback", "activity": "<activity>", "duration": "<time>", "resources": ["<resource>"]},
-      {"event": "Assess performance", "activity": "<activity>", "duration": "<time>", "resources": ["<resource>"]},
-      {"event": "Enhance retention and transfer", "activity": "<activity>", "duration": "<time>", "resources": ["<resource>"]}
-    ],
-    "methods": ["<method1>", "<method2>"],
-    "rationale": "<rationale>"
-  },
-  "non_instructional_strategies": {"motivation_strategies": ["<m1>"], "self_directed_learning": ["<s1>"], "support_strategies": ["<s1>"]},
-  "media_selection": [
-    {"media_type": "<type>", "purpose": "<purpose>", "rationale": "<rationale>"},
-    {"media_type": "<type>", "purpose": "<purpose>", "rationale": "<rationale>"}
-  ],
-  "storyboard": [
-    {"frame_number": 1, "screen_title": "<title>", "visual_description": "<visual>", "interaction": "<interaction>", "notes": "<notes>"},
-    {"frame_number": 2, "screen_title": "<title>", "visual_description": "<visual>", "interaction": "<interaction>", "notes": "<notes>"},
-    {"frame_number": 3, "screen_title": "<title>", "visual_description": "<visual>", "interaction": "<interaction>", "notes": "<notes>"}
-  ]
-}
-
-Must include ALL 9 Gagné events and at least 5 objectives spanning multiple Bloom's levels.
-Use only these Bloom verbs in bloom_verb: Recall, Explain, Apply, Analyze, Evaluate, Design.
-Output ONLY the JSON object, no markdown, no explanation.\
-"""
-
-
 class ObjectiveDesignAgent(BaseISDAgent):
     # activity_engagement moved to ActivityMaterialAgent: learning_activities has a single
     # owner now, so all activity-related repair belongs with the agent that generates them.
@@ -161,32 +108,8 @@ class ObjectiveDesignAgent(BaseISDAgent):
     OWNED_VIOLATION_TYPES = frozenset({"bloom"})
 
     def run(self, design_brief: DesignBrief) -> None:
-        if self._graph_coordination:
-            objective_ids = self._run_lo_call(design_brief)
-            self._run_rest_call(design_brief, objective_ids)
-        else:
-            self._run_blob_call(design_brief)
-
-    # ── No-graph single blob (wo-graph) ────────────────────────────────────
-    def _run_blob_call(self, design_brief: DesignBrief) -> None:
-        prompt = _format_design_brief(design_brief)
-        prior_ctx = self._graph_context([NodeType.NEEDS_CONTEXT])
-        user_content = prompt
-        if prior_ctx:
-            user_content = f"=== ANALYSIS RESULTS ===\n{prior_ctx}\n\n=== SCENARIO ===\n{prompt}"
-        user_content = self._with_retrieval(design_brief, "objective_design", user_content)
-        response = self._call_llm([
-            {"role": "system", "content": _SYSTEM_COMBINED},
-            {"role": "user", "content": user_content},
-        ])
-        parsed = parse_json_response(response)
-        # One section node holds the whole Design blob; the aggregator reads the
-        # design fields from it directly. No element decomposition, no edges —
-        # this arm has NO alignment graph.
-        node_id = self.graph.section_id(NodeType.OBJECTIVE)
-        self.graph.add_node(NodeType.OBJECTIVE, node_id, parsed)
-        self.trajectory.log_node_edit("add", node_id, NodeType.OBJECTIVE)
-        self.trajectory.log_step("ObjectiveDesignAgent", "design_blob", prompt[:200], response[:200] if response else "")
+        objective_ids = self._run_lo_call(design_brief)
+        self._run_rest_call(design_brief, objective_ids)
 
     # ── Call 1 ────────────────────────────────────────────────────────────
     def _run_lo_call(self, design_brief: DesignBrief) -> list[str]:
@@ -194,15 +117,10 @@ class ObjectiveDesignAgent(BaseISDAgent):
         gap_ids = [n["id"] for n in self.graph.element_nodes("gap")]
         task_ids = [n["id"] for n in self.graph.element_nodes("task")]
         learner_id = self.graph.section_id("learner")
-        if self._graph_coordination:
-            source_ids = gap_ids + task_ids + ([learner_id] if self.graph.get_node(learner_id) else [])
-            prior_ctx = self._element_context([
-                n for n in (self.graph.get_node(nid) for nid in source_ids) if n is not None
-            ])
-        else:
-            # No graph coordination: fall back to the pre-refactor whole-type
-            # blob dump instead of relation-scoped retrieval.
-            prior_ctx = self._graph_context([NodeType.NEEDS_CONTEXT])
+        source_ids = gap_ids + task_ids + ([learner_id] if self.graph.get_node(learner_id) else [])
+        prior_ctx = self._element_context([
+            n for n in (self.graph.get_node(nid) for nid in source_ids) if n is not None
+        ])
         user_content = prompt
         if prior_ctx:
             user_content = f"=== NEEDS/TASK/LEARNER ANALYSIS ===\n{prior_ctx}\n\n=== SCENARIO ===\n{prompt}"
@@ -218,19 +136,17 @@ class ObjectiveDesignAgent(BaseISDAgent):
         self.graph.add_node(NodeType.OBJECTIVE, node_id, {"learning_objectives": parsed.get("learning_objectives", [])})
         self.trajectory.log_node_edit("add", node_id, NodeType.OBJECTIVE)
 
-        # Decomposition into element nodes stays unconditional — it is cheap
-        # bookkeeping, not "graph coordination" (see BaseISDAgent._graph_coordination).
+        # Decomposition into first-class element nodes (cheap non-LLM bookkeeping).
         objective_ids = self._decompose_elements(NodeType.OBJECTIVE, parsed.get("learning_objectives", []))
         for oid in objective_ids:
             self.trajectory.log_node_edit("add", oid, NodeType.OBJECTIVE)
-        # R1/R2 are provenance relations: only meaningful when generation was
-        # actually conditioned on this traversal, i.e. graph coordination is on.
-        if self._graph_coordination:
-            for oid in objective_ids:
-                if gap_ids or task_ids:
-                    alignment.record_provenance(self.graph, "R1", gap_ids + task_ids, oid)
-                if self.graph.get_node(learner_id):
-                    alignment.record_provenance(self.graph, "R2", [learner_id], oid)
+        # R1/R2 are provenance relations: generation was conditioned on the
+        # traversed gap/task/learner nodes above, so record that provenance.
+        for oid in objective_ids:
+            if gap_ids or task_ids:
+                alignment.record_provenance(self.graph, "R1", gap_ids + task_ids, oid)
+            if self.graph.get_node(learner_id):
+                alignment.record_provenance(self.graph, "R2", [learner_id], oid)
 
         self.trajectory.log_step("ObjectiveDesignAgent", "design_objectives", prompt[:200], response[:200] if response else "")
         return objective_ids
@@ -238,11 +154,8 @@ class ObjectiveDesignAgent(BaseISDAgent):
     # ── Call 2 ────────────────────────────────────────────────────────────
     def _run_rest_call(self, design_brief: DesignBrief, objective_ids: list[str]) -> None:
         prompt = _format_design_brief(design_brief)
-        if self._graph_coordination:
-            lo_nodes = [n for n in (self.graph.get_node(oid) for oid in objective_ids) if n is not None]
-            lo_ctx = self._element_context(lo_nodes)
-        else:
-            lo_ctx = self._graph_context([NodeType.OBJECTIVE])
+        lo_nodes = [n for n in (self.graph.get_node(oid) for oid in objective_ids) if n is not None]
+        lo_ctx = self._element_context(lo_nodes)
         user_content = prompt
         if lo_ctx:
             user_content = f"=== FINALIZED LEARNING OBJECTIVES ===\n{lo_ctx}\n\n=== SCENARIO ===\n{prompt}"
@@ -288,27 +201,25 @@ class ObjectiveDesignAgent(BaseISDAgent):
             "storyboard", parsed.get("storyboard"), id_prefix="SB", text_key="screen_title",
         )
 
-        # Rooting edges + R10/R11 provenance only apply when this call was
-        # actually conditioned on the traversed LOs/tasks/context — without
-        # graph coordination there is no traversal to record.
-        if self._graph_coordination:
-            # Rooting edges: every objective anchors every Design plan node this
-            # call produced, so Development can traverse item -> plan -> objective
-            # in one extra hop instead of fetching the LO separately.
-            for oid in objective_ids:
-                for plan_id in plan_node_ids:
-                    self.graph.add_edge("rooted-in", oid, plan_id, established_by="provenance",
-                                         rationale=f"{plan_id} was generated conditioned on {oid}.")
+        # Rooting edges + R10/R11 provenance: this call was conditioned on the
+        # traversed LOs/tasks/context, so record that traversal.
+        # Rooting edges: every objective anchors every Design plan node this
+        # call produced, so Development can traverse item -> plan -> objective
+        # in one extra hop instead of fetching the LO separately.
+        for oid in objective_ids:
+            for plan_id in plan_node_ids:
+                self.graph.add_edge("rooted-in", oid, plan_id, established_by="provenance",
+                                     rationale=f"{plan_id} was generated conditioned on {oid}.")
 
-            # R10: content modules cover the task topics traversed to build them.
-            task_ids = [n["id"] for n in self.graph.element_nodes("task")]
-            for module_id in module_ids:
-                alignment.record_provenance(self.graph, "R10", task_ids, module_id)
+        # R10: content modules cover the task topics traversed to build them.
+        task_ids = [n["id"] for n in self.graph.element_nodes("task")]
+        for module_id in module_ids:
+            alignment.record_provenance(self.graph, "R10", task_ids, module_id)
 
-            # R11: media selection is constrained by the needs/context analysis.
-            needs_context_id = self.graph.section_id(NodeType.NEEDS_CONTEXT)
-            for media_id in media_ids:
-                alignment.record_provenance(self.graph, "R11", [needs_context_id], media_id)
+        # R11: media selection is constrained by the needs/context analysis.
+        needs_context_id = self.graph.section_id(NodeType.NEEDS_CONTEXT)
+        for media_id in media_ids:
+            alignment.record_provenance(self.graph, "R11", [needs_context_id], media_id)
 
         self.trajectory.log_step(
             "ObjectiveDesignAgent", "design_plan_sections", prompt[:200], response[:200] if response else "",

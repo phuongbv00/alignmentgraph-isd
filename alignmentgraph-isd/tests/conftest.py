@@ -214,20 +214,8 @@ _EVALUATION = {
 }
 
 
-def _single_agent_payload() -> dict:
-    return {
-        "analysis": _ANALYSIS,
-        "design": _DESIGN,
-        "development": _DEVELOPMENT,
-        "implementation": _IMPLEMENTATION,
-        "evaluation": _EVALUATION,
-    }
-
-
 def _payload_for_system(system_prompt: str) -> dict:
     s = system_prompt
-    if "COMPLETE, DETAILED ADDIE" in s:
-        return _single_agent_payload()
     if "Analysis phase of ADDIE" in s:
         return _ANALYSIS
     if "Design phase of ADDIE" in s:
@@ -247,8 +235,6 @@ def _payload_for_system(system_prompt: str) -> dict:
         return {"summative": _EVALUATION["summative"]}
     if "FORMATIVE evaluation" in s:
         return {"formative": _EVALUATION["formative"], "improvement_plan": _EVALUATION["improvement_plan"]}
-    if "Evaluation phase of ADDIE" in s:  # single_agent full-blob prompt
-        return _EVALUATION
     return {}
 
 
@@ -282,7 +268,7 @@ def fake_llm_factory():
 
 @pytest.fixture
 def fake_config(fake_llm_factory):
-    config = HarnessRunConfig.from_ablation("full")
+    config = HarnessRunConfig()
     config.llm_factory = fake_llm_factory
     return config
 

@@ -1,8 +1,8 @@
-"""The pedagogical verifier's two tiers: completeness (always on) and
-alignment (relation coverage + the Bloom/format validity rule, gated by
-enable_alignment_graph). Graphs here always populate ELEMENT nodes alongside
-section nodes — the alignment tier reads element nodes/edges, not the raw
-section blob, mirroring how the real specialists build the graph."""
+"""The pedagogical verifier's two tiers: completeness (single-artifact content
+quality) and alignment (relation coverage + the Bloom/format validity rule).
+Graphs here always populate ELEMENT nodes alongside section nodes — the
+alignment tier reads element nodes/edges, not the raw section blob, mirroring
+how the real specialists build the graph."""
 from __future__ import annotations
 
 from alignmentgraph_isd import DesignBrief, HarnessRunConfig
@@ -12,13 +12,12 @@ from alignmentgraph_isd.core.graph import AlignmentGraph, NodeType
 from alignmentgraph_isd.core.trajectory import TrajectoryLogger
 
 
-def _verifier(graph: AlignmentGraph, ablation: str = "full") -> PedagogicalVerifierAgent:
-    config = HarnessRunConfig.from_ablation(ablation)
-    return PedagogicalVerifierAgent(config, graph, TrajectoryLogger())
+def _verifier(graph: AlignmentGraph) -> PedagogicalVerifierAgent:
+    return PedagogicalVerifierAgent(HarnessRunConfig(), graph, TrajectoryLogger())
 
 
-def _types(graph: AlignmentGraph, ablation: str = "full") -> set[str]:
-    return {v.violation_type for v in _verifier(graph, ablation).verify()}
+def _types(graph: AlignmentGraph) -> set[str]:
+    return {v.violation_type for v in _verifier(graph).verify()}
 
 
 def _objective(graph: AlignmentGraph, lo: dict) -> None:
@@ -48,15 +47,6 @@ def test_r3_silent_once_established():
         "scoring_criteria": "Rubric scores accuracy and completeness on a 0-4 scale.",
     }])
     assert "R3" not in _types(graph)
-
-
-def test_alignment_tier_silent_when_graph_coordination_off():
-    """wo_ma/wo_graph never see alignment-tier violations, even with a
-    genuinely uncovered objective — see AblationConfig.enable_alignment_graph."""
-    graph = AlignmentGraph()
-    _objective(graph, {"id": "LO-01", "level": "Apply", "statement": "Apply X", "bloom_verb": "apply"})
-    assert "R3" not in _types(graph, ablation="wo_graph")
-    assert "R3" not in _types(graph, ablation="wo_ma")
 
 
 def test_verifier_reports_a_broad_spread_of_completeness_and_alignment_types():
@@ -121,14 +111,6 @@ def test_bloom_verb_level_consistency():
     _objective(graph, {"id": "LO-01", "level": "Apply", "statement": "Given a spec, list three items.", "bloom_verb": "list"})
     violations = [v for v in _verifier(graph).verify() if v.violation_type == "bloom"]
     assert violations and "different Bloom level" in violations[0].message
-
-
-def test_measurability_and_bloom_run_even_without_graph_coordination():
-    """Completeness-tier checks are always on — see PedagogicalVerifierAgent.verify()."""
-    graph = AlignmentGraph()
-    _objective(graph, {"id": "LO-01", "level": "Apply", "statement": "Given a spec, list three items.", "bloom_verb": "list"})
-    assert "bloom" in _types(graph, ablation="wo_graph")
-    assert "bloom" in _types(graph, ablation="wo_ma")
 
 
 def test_rubric_consistency_flags_missing_criteria():
@@ -241,7 +223,7 @@ def test_content_violations_repair_to_convergence_without_llm():
          "aligned_objective": "LO-02", "scoring_criteria": "Answer key: option B."},
     ])
 
-    config = HarnessRunConfig.from_ablation("full")  # no llm_factory → deterministic fallback
+    config = HarnessRunConfig()  # no llm_factory → deterministic fallback
     trajectory = TrajectoryLogger()
     before = PedagogicalVerifierAgent(config, graph, trajectory).verify()
     before_types = {v.violation_type for v in before}
@@ -271,7 +253,7 @@ def test_evaluation_quality_repairs_to_convergence_without_llm():
         "formative": {"data_collection": {"methods": []}},
         "summative": {},
     })
-    config = HarnessRunConfig.from_ablation("full")
+    config = HarnessRunConfig()
     trajectory = TrajectoryLogger()
     before = [
         v for v in PedagogicalVerifierAgent(config, graph, trajectory).verify()

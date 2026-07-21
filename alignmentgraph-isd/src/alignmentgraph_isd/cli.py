@@ -19,7 +19,10 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--input", required=True, help="Path to a DesignBrief-shaped JSON file.")
     run_parser.add_argument("--output", required=True, help="Path for the full harness result JSON.")
     run_parser.add_argument("--trajectory", help="Optional path for trajectory JSON only.")
-    run_parser.add_argument("--ablation", default="full", help="Ablation preset key.")
+    run_parser.add_argument(
+        "--graph",
+        help="Optional path stem for the alignment-graph dump (writes <stem>.json + <stem>.dot).",
+    )
     # Model selection (falls back to AGENT_MODEL_* env vars). Requires the
     # optional [llm] extra: pip install 'alignmentgraph-isd[llm]'.
     run_parser.add_argument("--model-name", default="", help="Chat model name (env: AGENT_MODEL_NAME).")
@@ -43,7 +46,7 @@ def main(argv: list[str] | None = None) -> int:
 def _run(args: argparse.Namespace) -> int:
     payload = json.loads(Path(args.input).read_text(encoding="utf-8"))
     design_brief = DesignBrief.model_validate(payload)
-    config = HarnessRunConfig.from_ablation(args.ablation)
+    config = HarnessRunConfig()
     config.llm_factory = llm_factory_from_env(
         model_name=args.model_name,
         api_spec=args.api_spec,
@@ -69,6 +72,14 @@ def _run(args: argparse.Namespace) -> int:
             json.dumps(result.get("trajectory", {}), ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+    if args.graph:
+        stem = Path(args.graph)
+        stem.parent.mkdir(parents=True, exist_ok=True)
+        stem.with_suffix(".json").write_text(
+            json.dumps(result.get("graph", {}), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        stem.with_suffix(".dot").write_text(result.get("graph_dot", ""), encoding="utf-8")
     return 0
 
 
