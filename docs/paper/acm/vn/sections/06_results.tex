@@ -1,94 +1,63 @@
 \section{Kết quả}
 \label{sec:results}
 
-\subsection{RQ1: Chất lượng trên ISD-Agent-Bench}
+Toàn bộ bảng và trị số thống kê trong phần này được sinh tự động từ artifact kết quả
+bằng pipeline phân tích (\cref{sec:reproducibility}), nhằm bảo đảm số trong bảng và
+trong prose luôn khớp với artifact. \TBD{Các lượt chạy trên dải Qwen đang được thực
+hiện; mọi số liệu hiển thị hiện là placeholder ở chế độ demo và sẽ được thay bằng số
+thực khi pipeline hoàn tất.}
+
+\subsection{RQ1: Chất lượng theo model scale}
 \label{sec:rq1}
 
-\Cref{tab:rq1} báo cáo bảy agent trên \texttt{test\_90}. AlignmentGraph-ISD đạt
-composite và ADDIE rubric cao nhất dưới \emph{cả hai} model (87,77 / 85,46 trên LLM;
-86,47 / 83,96 trên SLM). Kiểm định Wilcoxon signed-rank ghép cặp theo scenario, với
-hiệu chỉnh Holm qua sáu so sánh, đặt nó trên mọi baseline ở cả hai lượt với
-$p_{\mathrm{Holm}} < 1{,}4\times10^{-13}$ ở cả mười hai so sánh; biên hiệu trung bình
-theo cặp từ $+2{,}20$ (so với Baseline) tới $+8{,}31$ (so với EduPlanner) trên LLM, và
-từ $+3{,}59$ (so với Dick-Carey-Agent) tới $+30{,}46$ (so với EduPlanner) trên SLM,
-với khoảng tin cậy bootstrap 95\% loại trừ 0 xuyên suốt. Lợi thế tập trung ở artifact
-rubric hơn là trajectory score, nhất quán với việc harness cải thiện \emph{cái gì}
-được sinh ra chứ không phải cách tool trace đọc.
+\Cref{tab:rq1-ladder} trình bày Total của bảy tác tử trên \texttt{test\_90} theo bốn
+kích thước Qwen; mỗi ô là trung bình per-scenario gộp ba lượt chạy độc lập, kèm độ
+lệch chuẩn giữa các lượt và $n$ scenario complete-case. Ở kích thước lớn nhất (9B),
+AlignmentGraph-ISD đạt Total $\rqOneHarnessTotalNineB$
+(SD giữa các lượt $\rqOneHarnessRunSDNineB$), so với $\rqOneBestBaselineTotalNineB$
+của đối sánh mạnh nhất tại kích thước này (\rqOneBestBaselineNameNineB); chênh lệch
+ghép cặp tương ứng là $+\rqOneDeltaBestNineB$ điểm với khoảng tin cậy bootstrap 95\%
+$[\rqOneDeltaBestCILoNineB;\,\rqOneDeltaBestCIHiNineB]$. Ở kích thước nhỏ nhất
+(0,8B), harness đạt $\rqOneHarnessTotalZeroEightB$ so với
+$\rqOneBestBaselineTotalZeroEightB$ của \rqOneBestBaselineNameZeroEightB{}
+(chênh lệch $+\rqOneDeltaBestZeroEightB$;
+CI $[\rqOneDeltaBestCILoZeroEightB;\,\rqOneDeltaBestCIHiZeroEightB]$). Trên toàn bộ
+24 so sánh ghép cặp (bốn kích thước, sáu đối sánh mỗi kích thước, hiệu chỉnh Holm
+trong từng kích thước), $p_{\mathrm{Holm}}$ lớn nhất là $\rqOnePHolmMaxAll$.
+\TBD{prose bổ sung: thứ hạng đầy đủ theo từng kích thước, các đối sánh suy giảm mạnh,
+và nhận xét về SD giữa các lượt, khi có số thực}.
 
-\begin{table}[t]
-  \caption{RQ1: ISD-Agent-Bench \texttt{test\_90} (trung bình hai judge;
-  Total = composite, ADDIE = artifact rubric, Traj.\ = trajectory; \textbf{đậm} =
-  tốt nhất theo cột).}
-  \label{tab:rq1}
-  \small
-  \begin{tabular}{@{}lrrr@{\hskip 10pt}rrr@{}}
-    \toprule
-    & \multicolumn{3}{c}{DeepSeek-v4-flash (LLM)} & \multicolumn{3}{c}{Qwen3.5-9B (SLM)} \\
-    \cmidrule(lr){2-4}\cmidrule(lr){5-7}
-    Agent & Total & ADDIE & Traj. & Total & ADDIE & Traj. \\
-    \midrule
-    Baseline          & 85,56 & 84,24 & 88,64 & 80,81 & 77,97 & 87,44 \\
-    EduPlanner        & 79,47 & 76,16 & 87,20 & 56,01 & 43,49 & 85,23 \\
-    ADDIE-Agent       & 83,12 & 79,45 & 91,68 & 80,89 & 76,35 & 91,49 \\
-    RPISD-Agent       & 80,98 & 79,81 & 83,71 & 79,32 & 77,05 & 84,61 \\
-    Dick-Carey-Agent  & 84,71 & 82,28 & 90,38 & 82,88 & 79,78 & 90,14 \\
-    ReAct-ADDIE       & 83,37 & 79,20 & \textbf{93,08} & 80,08 & 74,50 & \textbf{93,10} \\
-    \textbf{AlignmentGraph-ISD} & \textbf{87,77} & \textbf{85,46} & \textbf{93,16} & \textbf{86,47} & \textbf{83,96} & 92,34 \\
-    \bottomrule
-  \end{tabular}
-\end{table}
+\input{generated/tab_rq1}
 
-\paragraph{Model scale.} Harness gần như bất biến theo scale: composite của nó chỉ
-giảm $1{,}30$ điểm từ LLM sang SLM ($87{,}77 \rightarrow 86{,}47$), trong khi các
-baseline suy giảm nhiều hơn hẳn---Baseline mất $4{,}75$ ($85{,}56 \rightarrow 80{,}81$)
-và EduPlanner sụp $23{,}46$ ($79{,}47 \rightarrow 56{,}01$). Vì harness giữ được chất
-lượng khi model yếu đi, biên hiệu ghép cặp của nó so với baseline mạnh nhất
-\emph{nới rộng} từ $+2{,}20$ trên LLM (so với Baseline) lên $+3{,}59$ trên SLM (so với
-Dick-Carey-Agent). Đây là hiệu ứng harness-over-model cụ thể hoá: lợi thế đến từ môi
-trường thực thi, nên nó tăng đúng chỗ năng lực model co lại.
+\paragraph{Interaction theo kích thước mô hình.} Để kiểm tra nhận định về khoảng cách
+theo kích thước bằng một phép kiểm định trực tiếp thay vì so hai ước lượng riêng,
+chúng tôi báo difference-in-differences của chênh lệch harness trừ Baseline giữa kích
+thước lớn nhất và nhỏ nhất: $\rqOneDiDVsBaseline$ điểm (CI 95\%
+$[\rqOneDiDVsBaselineCILo;\,\rqOneDiDVsBaselineCIHi]$;
+$p=\rqOneDiDVsBaselineP$), cùng độ dốc xu hướng của chênh lệch theo bậc kích thước
+($\rqOneTrendSlopeVsBaseline$ điểm/bậc). Kết luận về việc lợi thế của harness có nới
+rộng khi mô hình nhỏ đi hay không dựa trên dấu và khoảng tin cậy của các đại lượng
+này. \TBD{diễn giải interaction khi có số thực}.
 
-\subsection{RQ2: Ablation}
+\subsection{RQ2: Constructive alignment đo trực tiếp}
 \label{sec:rq2}
 
-\Cref{tab:rq2} tách riêng từng cơ chế trên cả hai model. Bỏ multi-agent decomposition
-(\texttt{wo-ma}) là gây hại nhất: mất $+3{,}90$ composite và $+3{,}29$ ADDIE trên LLM
-($p_{\mathrm{Holm}} = 2{,}3\times10^{-13}$), và \emph{gấp đôi} trên SLM ở $+7{,}94$
-composite và $+7{,}79$ ADDIE ($p_{\mathrm{Holm}} = 7{,}0\times10^{-14}$; CI 95\%
-$[+5{,}46, +10{,}85]$). Vậy đóng góp của decomposition trên graph \emph{tăng lên khi
-model nhỏ đi}, phản chiếu hiệu ứng harness-over-model của RQ1. Bỏ per-agent
-verification/repair (\texttt{wo-qc}) chỉ thay đổi composite $+0{,}26$ (LLM) và
-$+0{,}15$ (SLM) điểm, cả hai đều không phân biệt được với 0 về thống kê
-($p_{\mathrm{Holm}} = 0{,}89$ và $0{,}53$).
+\Cref{tab:rq2-alignment} trình bày các thành phần của thước đo alignment
+(\cref{sec:alignment-metric})---Porter alignment index, các tiêu chí Webb và embedding
+coverage---cho bảy tác tử theo bốn kích thước mô hình. Chúng tôi báo cáo ba lớp kết
+quả: (i) so sánh ghép cặp CAS giữa harness và từng đối sánh trong từng kích thước
+(Wilcoxon signed-rank, hiệu chỉnh Holm với family sáu so sánh, khoảng tin cậy
+bootstrap); (ii) sự thay đổi của từng thành phần khi kích thước mô hình giảm; và
+(iii) interaction method~$\times$~model size trên CAS bằng
+difference-in-differences, kiểm tra trực tiếp giả thuyết rằng khoảng cách alignment
+nới rộng khi mô hình nhỏ đi. \TBD{prose kết quả RQ2: mức CAS, chênh lệch ghép cặp,
+CI, $p_{\mathrm{Holm}}$ và kết quả interaction, khi có số thực}.
 
-\begin{table}[t]
-  \caption{Ablation RQ2 (Total composite; đóng góp = \texttt{full} $-$ arm, ghép
-  cặp). Đóng góp của decomposition gần như gấp đôi trên SLM.}
-  \label{tab:rq2}
-  \small
-  \begin{tabular}{@{}lrr@{}}
-    \toprule
-    & DeepSeek (LLM) & Qwen3.5-9B (SLM) \\
-    \midrule
-    \texttt{full} (harness đầy đủ)     & 87,77 & 86,47 \\
-    \texttt{wo-ma} ($-$ decomposition) & 83,86 & 78,53 \\
-    \texttt{wo-qc} ($-$ verify/repair) & 87,51 & 86,33 \\
-    \midrule
-    \multicolumn{3}{@{}l}{\emph{Đóng góp (composite ghép cặp; $p_{\mathrm{Holm}}$):}}\\
-    \quad decomposition & $+3{,}90$ ($2{,}3{\times}10^{-13}$) & $+7{,}94$ ($7{,}0{\times}10^{-14}$) \\
-    \quad verify/repair & $+0{,}26$ (0{,}89, n.s.) & $+0{,}15$ (0{,}53, n.s.) \\
-    \bottomrule
-  \end{tabular}
-\end{table}
+\input{generated/tab_rq2_alignment}
 
-\paragraph{Verify/repair có làm gì không?} Việc đóng góp điểm judge bằng 0 không có
-nghĩa nó không hoạt động. Nó fire trên các kiểm tra giá trị cao---tính hợp lệ
-Bloom-verb, nhất quán rubric, phủ luyện-tập-chủ-động, và khớp cấp độ nhận thức
-assessment--objective---và residual audit cho thấy nó giảm được alignment defect một
-cách đo được. Trên SLM, arm \texttt{wo-qc} để lại $39$ vi phạm mức nội dung trên 90
-output, trong khi \texttt{full} chỉ để lại $12$---giảm $69\%$, tập trung đúng ở các
-kiểm tra mà công cụ sửa (tính hợp lệ Bloom, nhất quán rubric, khớp cấp độ nhận thức).
-Vậy verification/repair làm đúng việc của nó; sự giảm đó chỉ đơn giản không được rubric
-tưởng thưởng---một construct gap chúng tôi quay lại ở \cref{sec:discussion}. (Audit
-offline dựng lại graph từ văn bản output mà không có edge nên các đếm tuyệt đối theo
-loại chỉ là xấp xỉ; so sánh giữa các arm và hoạt động repair trong-lượt mới là tín
-hiệu tin cậy.)
+Vì thước đo đọc cùng một văn bản kết xuất cho mọi tác tử và không dùng phán đoán LLM
+ở bất kỳ bước tổng hợp nào, kết quả RQ2 là một phép đo trực tiếp của vị từ
+$\mathrm{aligned}(o)$ trong \cref{eq:aligned}, độc lập với cả verifier của harness
+lẫn LLM judge của benchmark. Mối liên hệ giữa CAS và điểm judge của RQ1---hai thước đo
+nhắm vào hai khía cạnh khác nhau của chất lượng---được thảo luận trong
+\cref{sec:discussion}.

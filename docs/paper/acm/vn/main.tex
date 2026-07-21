@@ -1,4 +1,4 @@
-\documentclass[sigconf,preprint]{acmart}
+\documentclass[sigconf]{acmart}
 
 \usepackage{polyglossia}
 \setmainlanguage{vietnamese}
@@ -7,11 +7,19 @@
 \usepackage{pifont}
 \usepackage[capitalise,english]{cleveref}
 
+% Placeholder cho số liệu chưa có: các thí nghiệm trên dải Qwen đang chạy;
+% số cuối cùng được điền qua generated/*.tex do pipeline thống kê sinh tự động.
+\newcommand{\TBD}[1]{\textcolor{red}{[TBD: #1]}}
+
+% Macro thống kê sinh tự động từ artifact (demo placeholder khi chưa có số).
+\input{generated/stats_macros}
+
 % Shared assets (references.bib, figures/) live in the parent acm/ directory.
 \graphicspath{{../figures/}{figures/}}
 
 % Bản dịch tiếng Việt của main.tex --- xem CLAUDE.md và main.tex (bản gốc tiếng Anh)
 % cho các TODO trước khi nộp (venue, ISBN/DOI, CCS codes).
+% TODO camera-ready: đổi thành printacmref=true và điền venue/ISBN/DOI thật.
 \settopmatter{printacmref=false}
 \renewcommand\footnotetextcopyrightpermission[1]{}
 \acmConference[Preprint]{Preprint --- venue TBD}{2026}{}
@@ -20,7 +28,7 @@
 \acmDOI{}
 \setcopyright{none}
 
-\title{AlignmentGraph-ISD: Một Graph-Guided Multi-Agent Harness nhằm Duy trì Chất lượng Thiết kế Giảng dạy với Small Language Model}
+\title{AlignmentGraph-ISD: A Graph-Guided Multi-Agent Harness for Instructional Systems Design with Small Language Model}
 
 % TODO: xác nhận email và tên đơn vị công tác chính xác trước khi nộp.
 \author{Phuong Viet Bui}
@@ -50,7 +58,11 @@
 %  \country{Vietnam}
 %}
 
-\renewcommand{\shortauthors}{Bui và c.s.}
+\renewcommand{\shortauthors}{Bui và Pham}
+
+% Cho phép TeX co giãn thêm ở bước cuối để tránh overfull hbox do các token dài
+% không ngắt được (vd AlignmentGraph-ISD, verification/repair) trong chế độ tiếng Việt.
+\setlength{\emergencystretch}{2em}
 
 \begin{document}
 
@@ -80,7 +92,7 @@
 \ccsdesc[500]{Computing methodologies~Multi-agent systems}
 \ccsdesc[300]{Computing methodologies~Natural language processing}
 
-\keywords{instructional systems design, LLM agents, agent harness, constructive alignment, multi-agent orchestration, small language models, pedagogical verification, ablation study}
+\keywords{instructional systems design, instructional design, LLM agent, agent harness, constructive alignment, multi-agent system, small language model}
 
 \maketitle
 
@@ -95,11 +107,9 @@
 \input{sections/09_conclusion}
 
 \section*{Khả năng tiếp cận dữ liệu}
-ISD-Agent-Bench, bao gồm cả sáu agent baseline và pipeline đánh giá,
-đã được công bố công khai~\cite{isdagentbench}. Run manifest (model,
-judge, phiên bản prompt, seed và cấu hình decoding), ba cấu hình
-ablation-arm, cùng mã nguồn harness sẽ được công bố cùng phiên bản
-camera-ready của bài báo này.
+ISD-Agent-Bench, sáu tác tử đối sánh và pipeline đánh giá đã được công bố công khai
+~\cite{isdagentbench}.
+Mã nguồn AlignmentGraph-ISD và các artifacts liên quan có thể được truy cập tại [PENDING].
 
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{../references}

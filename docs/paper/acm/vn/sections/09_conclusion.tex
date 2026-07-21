@@ -1,23 +1,29 @@
 \section{Kết luận}
 \label{sec:conclusion}
 
-Khi các tổ chức sinh chương trình giảng dạy ở quy mô lớn và chuyển sang small language
-model chi phí thấp, chất lượng quan trọng nhất---constructive alignment giữa objective,
-activity và assessment---lại là thuộc tính sụp đổ đầu tiên, và nó sụp một cách vô hình.
-Các ISD agent hiện có chỉ khuyến khích alignment qua prompt, để chất lượng phụ thuộc
-vào năng lực thô của model. Chúng tôi đã trình bày AlignmentGraph-ISD, một agent harness
-hiện thực hoá constructive alignment thành một alignment graph tường minh, kiểm tra
-được, và tổ chức việc sinh xoay quanh nó: các specialist agent với phạm vi ghi giới hạn
-xây dựng graph để alignment đúng by construction, và mỗi specialist verify cùng repair
-các ràng buộc pedagogical của mình như một công cụ trong lượt của nó. Trên
-ISD-Agent-Bench, harness đạt điểm tổng cao nhất trong bảy agent dưới cả một model lớn
-lẫn một SLM 9B, và một ablation cho thấy multi-agent decomposition trên graph là cơ
-chế đóng góp chính, với hiệu ứng gần như gấp đôi khi model nhỏ đi (từ $+3{,}9$ lên
-$+7{,}9$ điểm composite, $p<10^{-12}$), trong khi verification/repair đóng vai trò một
-cơ chế đảm bảo mà hiệu ứng lộ ra trong residual-defect audit chứ không phải trong điểm
-judge. Biểu diễn alignment
-thành trạng thái graph hạng nhất, và phân rã việc sinh xoay quanh nó, do đó chính là
-điều cho phép một harness duy trì chất lượng thiết kế giảng dạy như một thuộc tính của
-hệ thống thay vì của model. Mở rộng harness sang multi-session refinement, và khép
-construct gap để độ chặt pedagogical được ghi nhận công bằng, là các bước tiếp theo tự
-nhiên.
+Việc chuyển từ LLM thương mại sang SLM giúp giảm chi phí và tăng quyền kiểm soát dữ liệu,
+nhưng đồng thời làm vai trò của harness trở nên quan trọng hơn. Văn liệu hiện tại vẫn để
+mở hai câu hỏi: chất lượng ISD thay đổi như thế nào trên một dải kích thước mô hình
+cùng họ, và constructive alignment---thuộc tính dễ suy giảm nhưng khó quan sát
+nhất---được các hệ tác tử duy trì đến đâu? Chúng tôi nghiên cứu các câu hỏi này với ba
+đóng góp. Thứ nhất, harness AlignmentGraph-ISD hiện thực hoá constructive alignment
+thành một alignment graph tường minh làm trạng thái thiết kế trung tâm: các tác tử
+chuyên biệt xây dựng đồ thị dưới phạm vi ghi giới hạn, verifier kiểm tra và sửa các
+ràng buộc trong quá trình sinh, và toàn bộ đồ thị được kết xuất thành artifact
+auditable cho quy trình educator-in-the-loop. Thứ hai, một thước đo constructive
+alignment tự động, tất định và độc lập với hệ được đo, xây dựng trên các khung đo
+alignment đã kiểm chứng trong đo lường giáo dục, được phát hành như phần mở rộng của
+ISD-Agent-Bench. Thứ ba, một thiết kế thực nghiệm đo hành vi chất lượng và alignment
+theo kích thước mô hình trên dải bốn SLM cùng họ Qwen (0,8B--9B), mỗi mô hình ba lượt
+chạy độc lập, với bảy tác tử trên 90 scenario.
+
+Trên thiết kế này, RQ1 trả lời câu hỏi về chất lượng theo model scale bằng so sánh
+ghép cặp và kiểm định interaction trực tiếp, còn RQ2 đo đúng vị từ alignment đã được
+dùng để định nghĩa thành công của bài toán. \TBD{tóm tắt phát hiện chính của RQ1 và
+RQ2 khi có số thực}.
+
+Đóng góp phương pháp luận trung tâm không phụ thuộc vào từng con số: xem alignment như
+dữ liệu có cấu trúc mà harness sở hữu---tường minh, kiểm tra được bởi máy và audit
+được bởi con người---thay vì một phẩm chất chỉ được yêu cầu trong prompt. Những bước
+tiếp theo gồm hiệu chuẩn thước đo alignment với chuyên gia, đánh giá trên hạ tầng
+on-premise, và mở rộng sang refinement đa phiên với brief thực tế.

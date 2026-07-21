@@ -1,83 +1,82 @@
 \section{Giới thiệu}
 \label{sec:introduction}
 
-Đào tạo doanh nghiệp được sản xuất ở quy mô lớn. Các chương trình cho onboarding,
-chuyển đổi vai trò và nâng cao kỹ năng---hình thái của instructional program trong
-bối cảnh doanh nghiệp---ngày càng được soạn thảo bằng các agent dựa trên LLM, và
-kinh tế học của inference đang đẩy các tổ chức từ model lớn sang small language
-model (SLM) rẻ hơn cho các tác vụ nội bộ, khối lượng lớn này, đúng lúc năng lực của
-model nền bão hoà trên nhiều benchmark~\cite{belcak2025slm,deveci2025ouroboros,shukla2025scalingwall}.
-Khi năng lực thô của model không còn là đòn bẩy, chất lượng của một agentic system
-phụ thuộc ngày càng nhiều vào \emph{harness} bao quanh model chứ không phải bản
-thân model, và hiệu ứng này lớn nhất trên các model nhỏ~\cite{cho2026harness}.
+Các mô hình ngôn ngữ lớn (large language models, LLM) đang mở rộng nhanh phạm vi ứng
+dụng trong giáo dục, từ hỗ trợ người học và tạo sinh học liệu đến thiết kế một chương trình
+giảng dạy hoàn chỉnh~\cite{wang2024llmedu}. Khả năng tự động hoá quy trình thiết kế hệ
+thống giảng dạy (instructional systems design, ISD) hứa hẹn giảm đáng kể công sức xây
+dựng mục tiêu, hoạt động, học liệu và đánh giá. Tuy nhiên, đưa các hệ thống này vào cơ sở
+giáo dục không chỉ là bài toán nâng chất lượng đầu ra; đó còn là bài toán triển khai.
 
-Khó khăn khoa học nằm ở chỗ chất lượng của một chương trình giảng dạy không phải là
-thuộc tính của bất kỳ artifact đơn lẻ nào, mà của \emph{constructive
-alignment}~\cite{biggs1996enhancing} giữa chúng: mỗi learning objective phải được
-đo bởi một assessment, luyện tập bởi một activity, và đánh giá bởi một evaluation,
-ở đúng cấp độ nhận thức. Alignment chính là thuộc tính suy giảm đầu tiên khi dùng
-model yếu hơn, và là một khiếm khuyết \emph{tích lũy, vô hình}---mỗi phần vẫn đọc
-hợp lý, và chương trình chỉ hỏng khi đến tay người học. Một prompt đơn lẻ thông
-thường không thể đảm bảo alignment vì nó không có cách nào kiểm tra, sau khi đã
-sinh, liệu objective nó viết có thực sự được đo bởi assessment nó viết hay không.
+Về thực tiễn, các LLM thương mại phát sinh chi phí suy luận lặp lại và yêu cầu dữ liệu
+người học hoặc học liệu nội bộ đi qua dịch vụ của bên thứ ba. Vì vậy, các cơ sở giáo dục
+ngày càng quan tâm tới mô hình open-weight có thể tự lưu trữ, đặc biệt là các mô hình
+ngôn ngữ nhỏ (small language models, SLM) có chi phí vận hành thấp hơn
+~\cite{chan2026bigger,zesch2024flexi,pan2025onpremise,belcak2025slm}. Về kỹ thuật, xu
+hướng này diễn ra đúng lúc năng lực mô hình nền có dấu hiệu bão hoà trên nhiều benchmark
+~\cite{deveci2025ouroboros,shukla2025scalingwall}. Khi không thể chỉ dựa vào việc tăng
+kích thước mô hình, chất lượng của một hệ tác tử phụ thuộc nhiều hơn vào bộ khung thực
+thi (\emph{harness}) quản lý trạng thái, quy trình và kiểm soát chất lượng; ảnh hưởng của
+harness đặc biệt rõ trên các mô hình nhỏ~\cite{cho2026harness}.
 
-Các công trình LLM-agent gần đây về instructional systems design (ISD) không khép
-được khoảng trống này. Các agent bám lý thuyết như ReAct-ADDIE, ADDIE-Agent,
-Dick-Carey-Agent và RPISD-Agent~\cite{isdagentbench,yao2023react,branch2009addie,dick1978systematic,tripp1990rapid},
-cũng như EduPlanner~\cite{zhang2025eduplanner}, áp dụng lý thuyết ISD và nguyên lý
-học tập để tối đa hoá chất lượng của một lượt thiết kế. Nhưng ở tất cả chúng,
-alignment chỉ được \emph{khuyến khích}---qua chỉ dẫn trong prompt hoặc chấm điểm hậu
-kỳ---chứ không bao giờ được \emph{biểu diễn} thành trạng thái mà hệ thống có thể soi
-từng liên kết, đánh dấu khi hỏng, và sửa có kiểm soát. Do đó việc output có thực sự
-aligned hay không bị phó mặc cho năng lực thô của model bên dưới---đúng là sự phụ
-thuộc sai lầm khi triển khai chuyển sang SLM.
+Các hệ tác tử ISD và sinh lesson plan gần đây chủ yếu hướng tới tự động hoá, giảm khối
+lượng công việc, cá nhân hoá và nâng chất lượng trên các mô hình thương mại mạnh
+~\cite{isdagentbench,zhang2025eduplanner,zeng2026coma,agentlesson2026,yao2025instructionalagents}.
+Một số công trình lân cận đã dùng mô hình nhỏ để hỗ trợ giáo viên hoặc tinh chỉnh mô hình
+7B cho sinh lesson plan~\cite{reza2025smallmodels,zheng2025lessonplanlm}. Tuy nhiên,
+việc duy trì chất lượng khi mô hình nền được thu nhỏ chưa được đặt thành một mục tiêu
+thiết kế và đánh giá trọng tâm trong nhóm công trình được khảo sát. Trên cơ sở đó,
+nghiên cứu này hướng tới hai mục tiêu: đánh giá chất lượng của harness ISD đề xuất
+trong tương quan với các tác tử ISD tiêu biểu trên một dải kích thước mô hình cùng họ,
+từ SLM rất nhỏ tới 9B; và đo trực tiếp mức constructive alignment trong đầu ra của mọi
+hệ bằng một thước đo tự động, độc lập với hệ được đo.
 
-Đây là khoảng trống chúng tôi giải quyết: chưa có ISD harness nào biến alignment
-thành một đối tượng hạng nhất, kiểm tra được, để có thể duy trì nó bất kể model
-scale. Khép khoảng trống này đòi hỏi biến alignment từ một thuộc tính kỳ vọng trong
-văn bản thành một cấu trúc dữ liệu tường minh mà harness sở hữu và cưỡng chế.
+Để thực hiện các mục tiêu này, chúng tôi tập trung vào \emph{constructive alignment}
+giữa các thành phần ISD~\cite{biggs1996enhancing}. Mỗi mục tiêu học tập cần được luyện
+tập bằng hoạt động phù hợp, được đo bằng đánh giá tương ứng và được theo dõi ở đúng cấp
+độ nhận thức. Alignment là một lăng kính vận hành hữu ích vì nó cho phép xem xét sự
+nhất quán giữa các thành phần: từng phần của chương trình có thể đọc hợp lý dù không còn cùng phục vụ
+một mục tiêu. Từ đó, chúng tôi đưa ra giả thuyết thiết kế rằng harness sẽ ít phụ thuộc
+hơn vào khả năng tự giữ nhất quán của mô hình nếu các quan hệ chất lượng được lưu thành
+trạng thái có cấu trúc, thay vì chỉ tồn tại ngầm trong văn bản sinh.
 
-Chúng tôi đề xuất \textbf{AlignmentGraph-ISD}, một graph-guided multi-agent harness
-phát triển theo phương pháp luận design-science~\cite{hevner2004design} và dựa trên
-tiền đề rằng một agent là sự kết hợp của một harness và một model (\emph{agent =
-harness + model})---một framework trong đó harness, chứ không phải model, sở hữu chất
-lượng.
-Harness hiện thực hoá constructive alignment thành một \emph{alignment graph} tường
-minh---objective, activity, material, assessment, implementation và evaluation là
-các node có kiểu, nối bởi các edge có kiểu \textsl{measures}, \textsl{supports} và
-\textsl{evaluates}---rồi tổ chức việc sinh xoay quanh nó. Các agent chuyên biệt xây
-dựng graph theo một workflow ISD cố định, mỗi agent với phạm vi ghi bị giới hạn, sao
-cho các edge alignment được tạo ra như một phần bắt buộc của việc sinh và alignment
-đúng \emph{by construction}. Verification và repair không phải một giai đoạn tổng
-thể riêng mà là công cụ mỗi agent chạy ngay trong lượt của mình: sau khi viết
-artifact, agent kiểm tra các ràng buộc pedagogical mà nó sở hữu trên graph chung và
-sửa mọi vi phạm trước khi agent kế tiếp tiếp tục. Thiết kế này độc lập với việc
-model bên dưới là một LLM lớn hay một SLM chi phí thấp.
+Từ giả thuyết đó, chúng tôi đề xuất \textbf{AlignmentGraph-ISD}, một harness đa tác tử
+được dẫn hướng bằng đồ thị và phát triển theo phương pháp luận design science
+~\cite{hevner2004design}. Thiết kế dựa trên tiền đề \emph{agent = harness + model}: mô
+hình sinh nội dung, còn harness sở hữu trạng thái, điều phối quy trình và kiểm soát chất
+lượng. Constructive alignment được hiện thực hoá thành một \emph{alignment graph}
+tường minh---cấu trúc dữ liệu trung tâm của harness. Các tác tử chuyên biệt xây dựng đồ
+thị theo quy trình ISD cố định và chỉ ghi vào phần trạng thái thuộc phạm vi của mình;
+cơ chế kiểm chứng và sửa lỗi sau đó đánh giá các ràng buộc trên trạng thái chung. Vì
+alignment là dữ liệu tường minh thay vì thuộc tính ngầm của văn bản, toàn bộ đồ thị
+(node, cạnh và trạng thái kiểm chứng) được kết xuất thành artifact mà chuyên gia thiết
+kế giảng dạy có thể xem, truy vết và can thiệp; khả năng giải thích và kiểm tra được
+(explainability/auditability) này là một mục tiêu thiết kế ngang hàng với chất lượng.
+Hành vi chất lượng theo kích thước mô hình được kiểm tra bằng RQ1, còn mức constructive
+alignment của đầu ra được đo trực tiếp bằng RQ2.
 
-Bài báo có ba đóng góp, theo thứ tự của đề cương (mô hình hoá, phương pháp, thực
-nghiệm):
+Bài báo có ba đóng góp:
 \begin{enumerate}
-  \item \textbf{Mô hình hoá.} Chúng tôi hình thức hoá constructive alignment thành
-  một trạng thái \emph{alignment graph} kiểm tra được (\cref{sec:problem-formulation})
-  và phát biểu bài toán sinh ISD duy-trì-chất-lượng: sinh một chương trình hoàn
-  chỉnh mà mọi objective đều aligned---ở đúng cấp độ nhận thức---với chất lượng được
-  harness đảm bảo thay vì model.
-  \item \textbf{Phương pháp.} Chúng tôi trình bày harness AlignmentGraph-ISD
-  (\cref{sec:method}): multi-agent decomposition trên graph với phạm vi ghi giới
-  hạn, và pedagogical verification/repair như công cụ per-agent, để alignment được
-  cưỡng chế mà không phụ thuộc vào model scale.
-  \item \textbf{Thực nghiệm.} Chúng tôi cung cấp bằng chứng trên ISD-Agent-Bench
-  dưới hai model (\cref{sec:experimental-methodology,sec:results}):
-  AlignmentGraph-ISD dẫn đầu sáu agent tiêu biểu, và một ablation tách riêng đóng
-  góp của từng cơ chế, cho thấy decomposition trên graph là động lực chính còn
-  verification/repair đóng vai trò một cơ chế đảm bảo mà giá trị của nó lộ ra trong
-  residual-defect audit.
+  \item \textbf{Harness.} Chúng tôi trình bày AlignmentGraph-ISD
+  (\cref{sec:problem-formulation,sec:method}): constructive alignment được hình thức
+  hoá thành alignment graph đóng vai trò trạng thái alignment tường minh, kết hợp phân
+  rã đa tác tử, phạm vi ghi giới hạn, cơ chế kiểm chứng--sửa lỗi trong quá trình sinh,
+  và artifact đồ thị auditable cho quy trình educator-in-the-loop.
+  \item \textbf{Thước đo alignment.} Chúng tôi đề xuất một thước đo constructive
+  alignment tự động (\cref{sec:alignment-metric}), xây dựng trên các khung đo alignment
+  đã được kiểm chứng trong đo lường giáo dục, tất định và độc lập với hệ được đo; thước
+  đo được dùng như một phần mở rộng của ISD-Agent-Bench và áp dụng được cho mọi tác tử
+  ISD.
+  \item \textbf{Thực nghiệm.} Chúng tôi cung cấp bằng chứng thực nghiệm về hành vi
+  chất lượng và alignment theo kích thước mô hình trên dải bốn SLM cùng họ Qwen
+  (0,8B--9B), mỗi mô hình ba lượt chạy độc lập, với bảy tác tử trên 90 scenario của
+  ISD-Agent-Bench (\cref{sec:experimental-methodology,sec:results}).
 \end{enumerate}
 
 Phần còn lại của bài báo được tổ chức như sau. \cref{sec:related-work} điểm lại các
-ISD agent, benchmark và cơ chế kiểm soát nhất quán. \cref{sec:problem-formulation}
-trình bày mô hình hệ thống và bài toán hình thức. \cref{sec:method} mô tả harness.
-\cref{sec:experimental-methodology} trình bày phương pháp thực nghiệm và
-\cref{sec:results} là kết quả. \cref{sec:discussion} diễn giải chúng,
-\cref{sec:threats-limitations} bàn về threats và limitations, và
-\cref{sec:conclusion} kết luận.
+ISD agent, benchmark và các cơ chế kiểm soát nhất quán. \cref{sec:problem-formulation}
+trình bày mô hình hệ thống và phát biểu bài toán; \cref{sec:method} mô tả harness.
+\cref{sec:experimental-methodology} và \cref{sec:results} lần lượt trình bày thiết kế
+thực nghiệm và kết quả. Cuối cùng, \cref{sec:discussion} diễn giải các phát hiện,
+\cref{sec:threats-limitations} thảo luận nguy cơ đối với tính hợp lệ và hạn chế, còn
+\cref{sec:conclusion} kết luận bài báo.

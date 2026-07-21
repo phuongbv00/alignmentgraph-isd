@@ -1,80 +1,161 @@
-\section{Phương pháp Thực nghiệm}
+\section{Phương pháp thực nghiệm}
 \label{sec:experimental-methodology}
 
-\subsection{Câu hỏi Nghiên cứu}
+\subsection{Câu hỏi nghiên cứu}
 \label{sec:rqs}
 
 \begin{itemize}
-  \item \textbf{RQ1 (chất lượng).} Trên ISD-Agent-Bench, AlignmentGraph-ISD so với
-  các ISD agent tiêu biểu về chất lượng artifact như thế nào, dưới cả một model lớn
-  lẫn một small language model?
-  \item \textbf{RQ2 (ablation).} Cơ chế nào của harness tạo ra chất lượng đó, và đóng
-  góp của nó có thay đổi theo model scale không?
+  \item \textbf{RQ1 (chất lượng theo model scale).} Trên một dải kích thước SLM cùng
+  họ, chất lượng đầu ra (điểm judge tổng hợp) của AlignmentGraph-ISD và sáu tác tử đối
+  sánh thay đổi như thế nào khi mô hình nền nhỏ đi, và harness có duy trì được lợi thế
+  ở các kích thước nhỏ không?
+  \item \textbf{RQ2 (constructive alignment đo trực tiếp).} Trên một thước đo
+  constructive alignment tự động, tất định và độc lập với hệ được đo, đầu ra của
+  AlignmentGraph-ISD có mức alignment cao hơn các đối sánh không, và khoảng cách này
+  thay đổi thế nào khi mô hình nền nhỏ đi?
 \end{itemize}
 
 \subsection{Bộ dữ liệu}
 \label{sec:dataset}
 
-Chúng tôi dùng ISD-Agent-Bench~\cite{isdagentbench}, với các scenario trải một ma
-trận Context~$\times$~ISD. Đánh giá chạy trên split \texttt{test\_90}---90 trong số
-các test scenario, phân tầng theo 10 domain $\times$ 3 mức độ khó $\times$ 3 scenario
-mỗi ô (seed 42)---cho phủ rộng, cân bằng với chi phí chấm hợp lý.
+Chúng tôi sử dụng split \texttt{test\_90} của ISD-Agent-Bench~\cite{isdagentbench}.
+Tập này gồm 90 scenario được phân tầng theo 10 lĩnh vực, ba mức độ khó và ba scenario
+trong mỗi ô; seed 42 được dùng khi chọn tập. Cách lấy mẫu tạo độ phủ cân bằng trên ma
+trận Context~$\times$~ISD trong giới hạn chi phí đánh giá.
 
-\subsection{Model và Thiết lập}
+\subsection{Mô hình và thiết lập}
 \label{sec:setup}
 
-Để thăm dò tính độc lập với model, chúng tôi chạy mọi cấu hình ở hai điểm khác biệt
-trên phổ model-scale: \textbf{DeepSeek-v4-flash} (một LLM lớn) và \textbf{Qwen3.5-9B}
-(một SLM 9B), với cấu hình giống nhau trừ agent model. Agent model và judge model
-được cấu hình riêng để tránh self-preference bias; các judge được giữ cố định qua mọi
-lượt chạy và dùng cấu hình multi-judge mặc định của benchmark
-(\texttt{openai/gpt-4o-mini} và \texttt{google/gemini-2.5-flash-lite}). Mỗi lượt chạy
-ghi một manifest (model, judge, phiên bản prompt, commit, seed, cấu hình decoding)
-để tái lập.
+Để khảo sát hành vi theo kích thước mô hình mà không bị nhiễu bởi khác biệt về họ mô
+hình, dữ liệu huấn luyện hay kiến trúc, chúng tôi dùng \textbf{bốn kích thước trong
+cùng họ Qwen}: 0,8B; 2B; 4B và 9B, chạy trên cùng một runtime/provider với cùng cấu
+hình decoding (\TBD{exact model ID, phiên bản, provider, quantization và tham số
+decoding của từng kích thước}). Nhờ giữ cố định mọi yếu tố ngoài kích thước, sự thay
+đổi giữa các cột kích thước phản ánh chủ yếu hiệu ứng model scale thay vì khác biệt
+family---một hạn chế của các thiết kế so sánh hai mô hình khác họ.
 
-\subsection{Các Điều kiện}
+Mỗi tổ hợp tác tử~$\times$~kích thước được chạy \textbf{ba lượt độc lập} trên toàn bộ
+90 scenario để lượng hoá biến thiên giữa các lần sinh (retry, routing, ngẫu nhiên khi
+decoding). Mô hình sinh và mô hình judge được cấu hình độc lập nhằm hạn chế
+self-preference bias~\cite{panickssery2024llm}; hai judge
+\texttt{openai/gpt-4o-mini} và \texttt{google/gemini-2.5-flash-lite} được giữ cố định
+cho mọi lượt chạy. Manifest của mỗi lượt lưu mô hình, judge, phiên bản prompt, commit,
+seed và tham số decoding.
+
+\subsection{Các điều kiện}
 \label{sec:conditions}
 
-Với RQ1, AlignmentGraph-ISD được tích hợp làm agent thứ bảy dưới input/output schema
-của benchmark và so với sáu agent: Baseline (single prompt), ReAct-ADDIE, ADDIE-Agent,
-Dick-Carey-Agent, RPISD-Agent và EduPlanner.
+AlignmentGraph-ISD được tích hợp như tác tử thứ bảy và tuân theo cùng schema đầu vào,
+đầu ra của benchmark. Sáu đối sánh gồm Baseline dùng một prompt, ReAct-ADDIE,
+ADDIE-Agent, Dick-Carey-Agent, RPISD-Agent và EduPlanner. Cả bảy tác tử được chạy trên
+cả bốn kích thước mô hình với cùng bộ scenario, tạo thành lưới
+$7\times4\times3$ (tác tử~$\times$~kích thước~$\times$~lượt chạy).
 
-Với RQ2, ablation loại bỏ đúng một cơ chế mỗi lần khỏi harness đầy đủ. Mỗi arm là một
-workflow độc lập (không cờ cấu hình dùng chung), nên không cơ chế nào rò rỉ giữa các
-arm:
-\begin{itemize}
-  \item \texttt{full} --- multi-agent decomposition + per-agent verify/repair;
-  \item \texttt{wo-ma} --- bỏ decomposition: một agent đơn sinh toàn bộ chương trình
-  và tự sửa toàn cục cho chính nó (giữ verify/repair);
-  \item \texttt{wo-qc} --- bỏ verify/repair: cùng các specialist thứ tự cố định sinh,
-  không có công cụ kiểm soát chất lượng.
-\end{itemize}
-So \texttt{full} với \texttt{wo-ma} tách riêng multi-agent decomposition; so với
-\texttt{wo-qc} tách riêng per-agent verification/repair.
-
-\subsection{Chỉ số}
+\subsection{Chỉ số chất lượng cho RQ1}
 \label{sec:metrics}
 
-Các chỉ số chính là của benchmark: một ADDIE artifact rubric 100 điểm và một
-trajectory score, gộp thành một \emph{Total} composite, mỗi cái là trung bình hai
-judge. Chúng tôi bổ sung một \emph{residual alignment-defect audit} tất định:
-verifier được chạy lại trên output cuối của mỗi arm và đếm các vi phạm mức nội dung
-còn sót. Điều này đo trực tiếp điều kiện (i) của bài toán, nắm bắt một thuộc tính mà
-rubric không tưởng thưởng tường minh.
+Benchmark cung cấp hai chỉ số chính: điểm rubric ADDIE trên thang 100 và điểm trajectory.
+Mỗi chỉ số là trung bình của hai judge. Ở từng scenario, điểm tổng hợp được tính theo
+trọng số cố định:
+\[
+\mathrm{Total}=0{,}7\,\mathrm{ADDIE}+0{,}3\,\mathrm{Trajectory}.
+\]
+Với mỗi tổ hợp tác tử~$\times$~kích thước, giá trị của một scenario là trung bình của
+ba lượt chạy; các bảng báo cả độ lệch chuẩn giữa các lượt để phản ánh run-to-run
+variability.
 
-\subsection{Phân tích Thống kê}
+\subsection{Thước đo constructive alignment cho RQ2}
+\label{sec:alignment-metric}
+
+Rubric của benchmark do LLM judge chấm và đo chất lượng tổng quát, không đo trực tiếp
+vị từ alignment trong \cref{eq:aligned}. Vì vậy, chúng tôi xây dựng \textbf{Composite
+Alignment Score (CAS)}, một thước đo offline với ba nguyên tắc thiết kế:
+\begin{itemize}
+  \item \emph{Tất định ở tầng tổng hợp.} Mọi công thức tổng hợp là các khung đo
+  alignment đã được công bố và kiểm chứng trong đo lường giáo dục từ hơn hai thập
+  kỷ~\cite{porter2002measuring,webb1997criteria}; không có phán đoán LLM nào tham gia
+  vào việc tính điểm.
+  \item \emph{Độc lập với hệ được đo.} Bộ phân loại và encoder là các mô hình
+  pretrained độc lập, không liên quan tới verifier hay bất kỳ cơ chế nào của harness;
+  điều này tránh tính vòng tròn khi hệ tự chấm đầu ra của mình và tránh self-preference
+  bias của LLM judge~\cite{panickssery2024llm}.
+  \item \emph{Chỉ đọc văn bản kết xuất.} Thước đo phân tích văn bản ADDIE cuối cùng
+  của mọi tác tử, không đọc các liên kết định danh có cấu trúc; nhờ đó, định dạng đầu
+  ra giàu cấu trúc của harness không được ưu ái so với đầu ra thuần văn bản của các đối
+  sánh.
+\end{itemize}
+
+\paragraph{Gán nhãn cấp độ nhận thức.} Mỗi objective, assessment item, activity và
+evaluation item được gán một cấp độ Bloom~\cite{anderson2001taxonomy} bằng bộ phân
+loại pretrained; tính hợp lệ của việc phân loại Bloom tự động được kế thừa từ các
+nghiên cứu trước~\cite{waheed2021bloomnet,li2022bloomclassification}, với fallback là
+một từ điển động từ Bloom tiếng Hàn cho các trường hợp bộ phân loại không áp dụng
+được. Đồng thời, mỗi phần tử được gán vào một content topic rút từ nội dung scenario.
+
+\paragraph{Porter alignment index.} Với mỗi cặp thành phần
+(objectives$\leftrightarrow$assessment, objectives$\leftrightarrow$activities,
+objectives$\leftrightarrow$evaluation), chúng tôi dựng hai ma trận phân bố
+content-topic~$\times$~Bloom-level chuẩn hoá về tổng bằng 1, rồi tính
+\[
+P = 1 - \tfrac{1}{2}\textstyle\sum_i |X_i - Y_i|,
+\]
+trong đó $X_i, Y_i$ là tỷ trọng của ô $i$ trong hai phân bố~\cite{porter2002measuring}.
+$P=1$ khi hai thành phần phân bổ trọng tâm nội dung và cấp độ nhận thức giống hệt
+nhau; các ngưỡng diễn giải tham chiếu Fulmer~\cite{fulmer2011estimating}.
+
+\paragraph{Tiêu chí Webb dạng liên tục.} Từ khung alignment của
+Webb~\cite{webb1997criteria}, chúng tôi dùng hai tiêu chí liên tục:
+\emph{range-of-knowledge} (tỷ lệ objective có ít nhất một item tương ứng ở mỗi thành
+phần) và \emph{Bloom-consistency} (tỷ lệ item có cấp độ nhận thức không thấp hơn
+objective mà nó phục vụ). Hai tiêu chí này lượng hoá trực tiếp hai lớp của
+\cref{eq:aligned}: độ phủ và tính hợp lệ cấp độ nhận thức.
+
+\paragraph{Embedding coverage.} Sự tương ứng ngữ nghĩa giữa objective và các item được
+đo bằng mean-max cosine similarity với multilingual encoder
+LaBSE~\cite{feng2022labse}: với mỗi objective, lấy độ tương đồng lớn nhất tới các item
+của từng thành phần rồi trung bình trên các objective. Cách đo này theo khung
+requirements traceability trong công nghệ phần mềm~\cite{clelandhuang2018traceability}.
+
+\paragraph{Tổng hợp.} CAS là trung bình không trọng số của các thành phần trên thang
+$[0,1]$; các bảng báo cả từng thành phần để kết quả không phụ thuộc vào một cách tổng
+hợp duy nhất. Toàn bộ pipeline (bộ phân loại, encoder, công thức, ngưỡng) được phát
+hành như một phần mở rộng của ISD-Agent-Bench và áp dụng được cho đầu ra của mọi tác
+tử ISD. Các hạn chế của thước đo---độ chính xác của bộ phân loại, tính chuyển giao
+sang tiếng Hàn---được thảo luận trong \cref{sec:threats-limitations}.
+
+\subsection{Phân tích thống kê}
 \label{sec:stats}
 
-Các so sánh được ghép cặp theo scenario. Chúng tôi dùng kiểm định Wilcoxon
-signed-rank (xấp xỉ chuẩn có hiệu chỉnh tie) trên composite score, với hiệu chỉnh
-Holm qua các so sánh trong mỗi lượt chạy, và báo cáo hiệu trung bình theo cặp cùng
-khoảng tin cậy bootstrap 95\% (10{,}000 resample). Với RQ2, đóng góp của một cơ chế là
-$\texttt{full} - \texttt{arm}$, ghép cặp theo scenario.
+Đơn vị phân tích là giá trị theo scenario, lấy trung bình của ba lượt chạy. Mọi so
+sánh được ghép cặp theo scenario: chúng tôi áp dụng kiểm định Wilcoxon signed-rank
+trên Total (RQ1) và CAS (RQ2), dùng xấp xỉ chuẩn có hiệu chỉnh tie. Hiệu chỉnh Holm
+được áp dụng với family được định nghĩa tường minh: \emph{sáu so sánh
+(AlignmentGraph-ISD với từng đối sánh) trong từng kích thước mô hình}. Bên cạnh
+$p$-value, chúng tôi báo chênh lệch trung bình ghép cặp và khoảng tin cậy bootstrap
+95\% với 10.000 lần lấy mẫu lại theo scenario.
+
+\paragraph{Interaction theo kích thước mô hình.} Nhận định ``khoảng cách nới rộng khi
+mô hình nhỏ đi'' đòi hỏi một kiểm định tương tác, không chỉ hai ước lượng riêng. Chúng
+tôi ước lượng interaction \emph{method~$\times$~model size} bằng bootstrap
+difference-in-differences: với mỗi cặp kích thước (nhỏ nhất và lớn nhất là cặp chính),
+thống kê quan tâm là
+$\Delta_{\text{nhỏ}}-\Delta_{\text{lớn}}$, trong đó $\Delta$ là chênh lệch ghép cặp
+harness trừ đối sánh ở kích thước tương ứng; khoảng tin cậy 95\% được lấy từ 10.000
+lần resample theo scenario.
+
+\paragraph{Xử lý scenario lỗi.} Một số tác tử có thể không sinh được đầu ra hợp lệ
+theo schema ở một số scenario hoặc lượt chạy. Chính sách được định nghĩa trước phân
+tích: phân tích chính dùng complete-case theo cặp (chỉ giữ scenario mà cả hai tác tử
+trong một so sánh đều được chấm thành công ở đủ số lượt), kèm một phân tích độ nhạy
+trong đó scenario lỗi bị phạt điểm 0 để kiểm tra kết luận có đổi chiều hay không. Các
+bảng báo $n$ và số scenario lỗi (kèm lý do) cho từng ô tác tử~$\times$~kích
+thước~$\times$~lượt chạy.
 
 \subsection{Tái lập}
 \label{sec:reproducibility}
 
-ISD-Agent-Bench và sáu baseline của nó là công khai. Mỗi lượt chạy được ghim bằng một
-manifest (\cref{sec:setup}); ba ablation arm là các module workflow riêng chọn theo
-tên; và các script phân tích (kiểm định ghép cặp và residual audit) được công bố cùng
-bài báo.
+ISD-Agent-Bench và sáu đối sánh được công bố công khai. Mỗi lượt chạy có manifest
+(\cref{sec:setup}). Thước đo alignment được phát hành như một phần mở rộng độc lập của
+benchmark. Toàn bộ bảng số liệu và trị số thống kê trong \cref{sec:results} được sinh
+tự động từ artifact kết quả bằng script phân tích, nhằm loại bỏ sai lệch khi chép số
+thủ công; script và artifact sẽ được phát hành cùng bài báo.

@@ -1,48 +1,48 @@
 \section{Thảo luận}
 \label{sec:discussion}
 
-\paragraph{Diễn giải.}
-Các kết quả ủng hộ một cách đọc cụ thể về \emph{cách} một agent harness cải thiện
-chất lượng thiết kế giảng dạy. AlignmentGraph-ISD dẫn đầu cả sáu baseline trên
-benchmark (\cref{sec:rq1}), và ablation quy lợi thế đó gần như hoàn toàn cho một cơ
-chế: multi-agent decomposition trên alignment graph ($+3{,}90$ composite, $+3{,}29$
-ADDIE, $p_{\mathrm{Holm}}=2{,}3\times10^{-13}$). Phân rã việc sinh cho các specialist
-với phạm vi ghi giới hạn, trên một graph chung buộc mỗi edge alignment được tạo như
-một phần của việc sinh, chính là điều biến constructive alignment từ văn bản được
-prompt thành một thuộc tính được cưỡng chế. Điều này nhất quán với luận điểm
-harness-over-model~\cite{cho2026harness}: lợi thế đến từ môi trường thực thi, không
-phải từ việc bảo model cố gắng hơn.
+\paragraph{Khung diễn giải theo hai câu hỏi nghiên cứu.}
+Vì số liệu cuối cùng được điền tự động từ artifact, phần này trình bày khung diễn giải
+đã định trước theo từng kịch bản kết quả, thay vì diễn giải hậu nghiệm. Với RQ1, nếu
+AlignmentGraph-ISD giữ thứ hạng dẫn đầu trên cả bốn kích thước và
+difference-in-differences cho thấy lợi thế lớn hơn ở kích thước nhỏ với khoảng tin cậy
+loại trừ 0, kết quả ủng hộ luận điểm harness-over-model~\cite{cho2026harness}: cách tổ
+chức môi trường thực thi bù một phần cho giới hạn của mô hình nền, và phần bù này lớn
+dần khi mô hình yếu đi. Nếu lợi thế ổn định nhưng không nới rộng, kết luận hẹp hơn:
+harness cải thiện chất lượng đồng đều nhưng không đặc biệt hữu ích hơn cho SLM. Nếu
+lợi thế thu hẹp ở kích thước nhỏ, giả thuyết thiết kế bị thách thức---các cơ chế của
+harness có thể đòi hỏi một năng lực mô hình tối thiểu để vận hành.
+\TBD{chốt diễn giải theo kịch bản xảy ra khi có số thực}.
 
-\paragraph{Ý nghĩa khoa học và thực tiễn.}
-Biểu diễn alignment thành trạng thái graph hạng nhất không đặc thù cho giáo dục: bất
-kỳ bối cảnh nào sinh nhiều artifact phụ thuộc lẫn nhau với một sự tương ứng bắt buộc
-giữa chúng---tài liệu kỹ thuật, định nghĩa quy trình, chương trình học---đều gặp cùng
-bài toán khiếm-khuyết-vô-hình và có thể tái dùng mẫu ``typed dependency graph +
-specialist phạm-vi-giới-hạn + verification có chủ sở hữu''. Về thực tiễn, vì lợi thế
-mang tính cấu trúc chứ không do năng lực, đây đúng là loại lợi thế được kỳ vọng quan
-trọng nhất khi triển khai chuyển sang SLM chi phí thấp~\cite{belcak2025slm}, và lượt
-chạy SLM xác nhận trực tiếp điều này: đóng góp của decomposition gần như gấp đôi
-($+3{,}9 \rightarrow +7{,}9$) trong khi điểm tuyệt đối của harness gần như không đổi
-còn các baseline mất vài điểm---harness biến một thiết kế cấu trúc thành sự bền vững
-trước việc thu nhỏ model.
+Với RQ2, thước đo alignment cho phép tách hai khả năng mà điểm judge không phân biệt
+được. Nếu CAS của harness cao hơn các đối sánh và khoảng cách nới rộng khi mô hình nhỏ
+đi, điều đó ủng hộ trực tiếp cơ chế trung tâm: alignment là thuộc tính suy giảm sớm
+trên mô hình nhỏ, và việc lưu nó thành trạng thái tường minh giúp giữ lại thuộc tính
+này. Ngược lại, nếu CAS của harness không tách khỏi các đối sánh dù điểm judge tách,
+thì lợi thế của harness đến từ các khía cạnh chất lượng khác ngoài alignment---một kết
+quả vẫn hữu ích nhưng đòi hỏi hạ claim về cơ chế. Sự đối chiếu giữa CAS và điểm judge
+cũng cho biết rubric tổng quát nhạy đến đâu với vi phạm alignment.
+\TBD{đối chiếu CAS--judge khi có số thực}.
 
-\paragraph{Phân tích thất bại: verification/repair không dịch chuyển điểm judge.}
-Kết quả âm đáng học nhất của chúng tôi là per-agent verification/repair gần như không
-đóng góp gì cho composite score ($+0{,}26$, n.s.), dù nó rõ ràng fire và sửa các vi
-phạm pedagogical thật (\cref{sec:rq2}). Hai quan sát giải thích điều này và ngăn việc
-thổi phồng. Thứ nhất, trên một model đủ mạnh các artifact được sinh đã phần lớn aligned
-by construction, nên các công cụ kiểm soát chất lượng còn ít việc để sửa---tỷ lệ kích
-hoạt của chúng thấp. Thứ hai, và cơ bản hơn, có một \emph{construct gap}: các kiểm tra
-cưỡng chế các tiêu chí pedagogical hình thức (khớp cấp độ nhận thức, rubric quan sát
-được, phủ luyện-tập-chủ-động) mà ADDIE rubric, khi được LLM judge chấm, không tưởng
-thưởng trực tiếp; và một kiểm tra measurability quá chặt trước kia---vốn viết lại các
-phát biểu objective vốn đã tốt---thực sự \emph{làm giảm} điểm judge, cho đến khi chúng
-tôi thu hẹp nó về các objective thực sự không quan sát được và làm nó audit-only. Kết
-luận trung thực là verification/repair là một cơ chế \emph{đảm bảo} mà giá trị của nó
-lộ ra trong residual-defect audit chứ không phải trong điểm judge; trên một model mạnh
-nó gần như một no-op về chất lượng, và luận cứ của nó dựa vào setting SLM cùng các
-triển khai nơi alignment defect không phát hiện mang chi phí thật. Chúng tôi cũng quan
-sát một mẫu trajectory-score dai dẳng: trace multi-agent có cấu trúc của harness được
-chấm không cao hơn, đôi khi thấp hơn, một vòng ReAct đơn sạch, phản ánh việc chấm
-trajectory tưởng thưởng sự đơn giản của trace hơn là các đảm bảo cấu trúc mà trace mã
-hoá.
+\paragraph{Alignment graph như artifact giải thích được.}
+Ngoài vai trò trạng thái cho máy, alignment graph còn là một sản phẩm cho con người.
+Toàn bộ node, cạnh và trạng thái kiểm chứng được kết xuất thành file JSON kèm biểu
+diễn Graphviz (\cref{sec:aggregation}), nên chuyên gia thiết kế giảng dạy có thể trả
+lời các câu hỏi kiểm toán cụ thể---mục tiêu nào chưa có assessment tương ứng, liên kết
+nào chưa qua kiểm chứng, sửa đổi nào đã kích hoạt kiểm tra lại---mà không cần đọc lại
+toàn bộ văn bản chương trình. Điều này định vị hệ thống là công cụ hỗ trợ ra quyết
+định (decision support) trong quy trình educator-in-the-loop: con người giữ quyền rà
+soát, chỉnh sửa và override, còn harness bảo đảm rằng các quan hệ cần rà soát là tường
+minh và truy vết được. Chúng tôi chủ ý tránh các claim kiểu ``đúng by construction'':
+cơ chế chỉ làm cho alignment kiểm tra được và sửa được, không bảo đảm nó đúng.
+
+\paragraph{Triển khai có trách nhiệm.}
+Một chương trình sinh tự động có thể sai theo cách khó nhận ra: mục tiêu hoặc
+assessment không phù hợp vẫn đọc trôi chảy. Vì vậy, đầu ra của hệ thống cần được
+chuyên gia phê duyệt trước khi dùng với người học, đặc biệt trong các ngữ cảnh có hệ
+quả cao; artifact đồ thị giảm chi phí của việc rà soát này nhưng không thay thế nó.
+Nội dung sinh cũng có thể mang thiên lệch văn hoá, ngôn ngữ hoặc rào cản tiếp cận thừa
+hưởng từ mô hình nền; các cơ chế của harness không kiểm tra các thuộc tính này và
+chúng cần quy trình rà soát riêng. Cuối cùng, động cơ về riêng tư và tự lưu trữ chỉ
+được hiện thực hoá trọn vẹn khi mô hình và judge chạy on-premise; cấu hình thực nghiệm
+hiện tại vẫn dùng API bên ngoài (\cref{sec:threats-limitations}).

@@ -1,71 +1,106 @@
-\section{Công trình Liên quan}
+\section{Công trình liên quan}
 \label{sec:related-work}
 
-\subsection{LLM Agent cho Thiết kế Giảng dạy}
+\subsection{Tác tử LLM cho thiết kế giảng dạy}
 
-Các hệ thống gần nhất với chúng tôi áp dụng lý thuyết ISD vào kiến trúc agent.
-ISD-Agent-Bench~\cite{isdagentbench} hiện thực bốn agent bám lý thuyết: ReAct-ADDIE
-(một vòng ReAct trên các công cụ ISD~\cite{yao2023react}), ADDIE-Agent (một state
-graph năm pha tuyến tính~\cite{branch2009addie}), Dick-Carey-Agent (systems
-approach với vòng formative-evaluation~\cite{dick1978systematic}), và RPISD-Agent
-(rapid prototyping~\cite{tripp1990rapid}). EduPlanner~\cite{zhang2025eduplanner}
-dùng cộng tác đối kháng generate--evaluate--optimize giữa các agent;
-LessonPlanner~\cite{lessonplanner2024} và các nghiên cứu teaching-plan với
-GPT-4~\cite{hu2024teachingplan} cải thiện từng artifact đơn lẻ;
-LearnLM~\cite{learnlm2024} tinh chỉnh chính model cho mục đích sư phạm. Tất cả đều
-nhận một brief và tối ưu bản nháp của một lượt sinh, và đều xem constructive
-alignment là thứ cần \emph{khuyến khích} qua thiết kế prompt hoặc chấm điểm hậu
-kỳ---không hướng nào biểu diễn alignment thành trạng thái mà hệ thống kiểm tra theo
-từng objective và sửa.
+Nhóm công trình gần nhất áp dụng lý thuyết ISD vào kiến trúc tác tử. ISD-Agent-Bench
+~\cite{isdagentbench} hiện thực bốn cách tiếp cận: ReAct-ADDIE tổ chức một vòng ReAct
+trên các công cụ ISD~\cite{yao2023react}; ADDIE-Agent dùng đồ thị trạng thái tuyến tính
+theo năm pha ADDIE~\cite{branch2009addie}; Dick-Carey-Agent triển khai cách tiếp cận hệ
+thống với vòng formative evaluation~\cite{dick1978systematic}; còn RPISD-Agent dựa trên
+rapid prototyping~\cite{tripp1990rapid}. Các hệ đa tác tử khác phân chia quy trình theo
+vai trò. EduPlanner dùng chu trình generate--evaluate--optimize mang tính đối kháng
+~\cite{zhang2025eduplanner}; COMA và Instructional Agents phối hợp nhiều vai trò để sinh
+lesson plan hoặc học liệu~\cite{zeng2026coma,yao2025instructionalagents}; AgentLesson
+kết hợp tác tử viết và tác tử đánh giá~\cite{agentlesson2026}.
 
-\subsection{Benchmark và Đánh giá}
+Một hướng liên quan tập trung vào chất lượng của từng đầu ra. LessonPlanner hỗ trợ giáo
+viên mới xây dựng lesson plan theo lý thuyết sư phạm~\cite{lessonplanner2024}; các nghiên
+cứu khác sinh teaching plan bằng GPT-4 hoặc lặp self-critique để cải thiện bản nháp
+~\cite{hu2024teachingplan,zheng2024selfcritique}. LearnLM tinh chỉnh mô hình cho mục đích
+học tập~\cite{learnlm2024}, trong khi LessonPlanLM tinh chỉnh Qwen2-7B với tri thức
+lesson-plan~\cite{zheng2025lessonplanlm}. Các công trình này cho thấy nhiều cách nâng
+chất lượng nội dung, nhưng không đặt alignment của toàn bộ quy trình ISD vào một trạng
+thái chung mà hệ thống có thể kiểm tra theo từng mục tiêu.
 
-OpenLearnLM~\cite{openlearnlm2026}, EduBench~\cite{edubench2025},
-MathTutorBench~\cite{mathtutorbench2025} và TutorBench~\cite{tutorbench2025} đánh
-giá năng lực giáo dục ở mức từng tác vụ. ISD-Agent-Bench~\cite{isdagentbench} đi xa
-hơn khi chấm cả chất lượng artifact theo một ADDIE rubric lẫn chất lượng trajectory
-của agent, trên các scenario tổng hợp trải một ma trận Context~$\times$~ISD, với
-chấm điểm multi-judge để giảm self-preference bias. Chúng tôi dùng nó làm nền đánh
-giá cho cả hai câu hỏi nghiên cứu, và bổ sung một \emph{residual alignment-defect
-audit} tất định đo một thuộc tính mà rubric không chấm trực tiếp.
+Triển khai cục bộ trên mô hình nhỏ đã bắt đầu xuất hiện ở vùng lân cận. Small Models,
+Big Support dùng mô hình 3B--7B tự lưu trữ để hỗ trợ giáo viên tạo bài tập, rubric và
+chấm điểm~\cite{reza2025smallmodels}. Tuy nhiên, đây là content-authoring pipeline cho
+từng đầu ra, không phải một quy trình ISD đa thành phần. Tương tự, LessonPlanLM đạt chất
+lượng cao nhờ fine-tuning, trong khi bài toán của chúng tôi là duy trì chất lượng bằng
+harness mà không thay đổi trọng số mô hình. Vì vậy, câu hỏi của chúng tôi được giới hạn
+ở khả năng duy trì chất lượng của \emph{agentic ISD khi chuyển sang mô hình nhỏ}, thay
+vì bao quát mọi ứng dụng giáo dục dùng SLM.
 
-\subsection{Kiểm soát Nhất quán trong Sinh Đa-Artifact}
+\subsection{Benchmark và đánh giá}
 
-Về lý thuyết, constructive alignment~\cite{biggs1996enhancing} định nghĩa chuẩn
-nhất quán giữa objective, activity và assessment, còn systems
-approach~\cite{dick1978systematic} biện minh cho việc kiểm tra có hệ thống. Bloom's
-taxonomy~\cite{anderson2001taxonomy} cung cấp chuẩn cấp-độ-nhận-thức mà một
-assessment phải khớp. Về kỹ thuật, các cơ chế verifier và self-repair như
-Self-Refine~\cite{madaan2023selfrefine} và Reflexion~\cite{shinn2023reflexion} cho
-thấy giá trị của việc kiểm tra và sửa output từ bên ngoài model---giá trị này tăng
-khi model nền bão hoà và khi các model nhỏ được triển
-khai~\cite{cho2026harness,belcak2025slm}. Tuy nhiên trong các hệ ISD hiện có,
-alignment chỉ được khuyến khích qua prompt hoặc chấm sau khi sinh; nó không bao giờ
-được biểu diễn thành trạng thái hạng nhất---một cấu trúc dữ liệu mà hệ thống có thể
-kiểm tra từng liên kết, đánh dấu vùng bị ảnh hưởng khi thay đổi, và lan truyền sửa
-chữa có kiểm soát.
+OpenLearnLM~\cite{openlearnlm2026}, EduBench~\cite{edubench2025}, MathTutorBench
+~\cite{mathtutorbench2025} và TutorBench~\cite{tutorbench2025} đánh giá năng lực giáo
+dục ở mức từng tác vụ. ISD-Agent-Bench~\cite{isdagentbench} mở rộng phạm vi sang một
+quy trình thiết kế hoàn chỉnh: benchmark chấm cả chất lượng đầu ra theo rubric ADDIE và
+chất lượng trajectory của tác tử trên các scenario tổng hợp thuộc ma trận
+Context~$\times$~ISD. Cấu hình multi-judge giúp giảm self-preference
+bias~\cite{panickssery2024llm}. Chúng tôi dùng benchmark này cho RQ1; vì rubric LLM-judge
+không đo trực tiếp constructive alignment, chúng tôi bổ sung cho RQ2 một thước đo
+alignment tự động, tất định như một phần mở rộng của benchmark
+(\cref{sec:alignment-metric}).
 
-\subsection{Tổng hợp và Định vị}
+Về phía đo lường alignment, giáo dục học đã có các khung định lượng cho sự nhất quán
+giữa curriculum, instruction và assessment: Porter alignment index đo mức trùng khớp
+giữa hai phân bố nội dung theo cấp độ nhận thức~\cite{porter2002measuring}, với ngưỡng
+tới hạn được ước lượng bởi Fulmer~\cite{fulmer2011estimating}; Webb đề xuất các tiêu
+chí alignment như range-of-knowledge và depth-of-knowledge
+consistency~\cite{webb1997criteria}. Trong công nghệ phần mềm, requirements
+traceability dùng độ tương đồng ngữ nghĩa để khôi phục liên kết giữa các
+artifact~\cite{clelandhuang2018traceability}. Theo khảo sát của chúng tôi, các khung
+này chưa được dùng để đánh giá tự động đầu ra của tác tử ISD; thước đo trong
+\cref{sec:alignment-metric} vận dụng chúng cho mục đích đó.
 
-\Cref{tab:related} tóm tắt khoảng trống. Các ISD agent hiện tại tối ưu một lượt
-sinh, được đánh giá bằng chất lượng artifact và trajectory, và thiếu một biểu diễn
-tường minh của alignment cho việc kiểm soát; không hệ nào được đánh giá trên setting
-SLM vốn ngày càng chi phối chi phí triển khai. AlignmentGraph-ISD khép khoảng trống
-bằng cách biến alignment thành trạng thái graph hạng nhất của harness, phân rã việc
-sinh xoay quanh nó để alignment đúng by construction, verify và repair các ràng
-buộc pedagogical như công cụ per-agent, và đánh giá kết quả trên cả một LLM lẫn một
-SLM.
+\subsection{Kiểm soát nhất quán khi sinh nhiều thành phần}
+
+Chúng tôi định vị AlignmentGraph-ISD theo ba trục. Thứ nhất là \emph{biểu diễn}.
+Constructive alignment định nghĩa sự nhất quán giữa mục tiêu, hoạt động và đánh giá
+~\cite{biggs1996enhancing}, còn Bloom's taxonomy cung cấp khung đối chiếu cấp độ nhận
+thức~\cite{anderson2001taxonomy}. Tuy nhiên, trong phần lớn hệ ISD, các quan hệ này vẫn
+nằm ngầm trong văn bản. Thứ hai là \emph{điều phối}. Các kiến trúc đa tác tử phân rã
+công việc theo vai trò~\cite{zhang2025eduplanner,zeng2026coma,yao2025instructionalagents},
+nhưng các vai trò không cùng cập nhật một biểu diễn alignment có ràng buộc ghi. Thứ ba
+là \emph{kiểm chứng và sửa lỗi}. Self-Refine, Reflexion và self-critique cho lesson plan
+cho thấy đầu ra có thể được cải thiện bằng phản hồi lặp
+~\cite{madaan2023selfrefine,shinn2023reflexion,zheng2024selfcritique}. Dù vậy, các cơ
+chế này chủ yếu phản hồi trên văn bản hoàn chỉnh, thay vì kiểm tra từng liên kết alignment
+trong trạng thái thiết kế.
+
+Văn liệu cho thấy từng trục có thể cải thiện đầu ra, nhưng cung cấp ít bằng chứng về cách
+kết hợp chúng để duy trì chất lượng khi mô hình nền bị thu nhỏ. AlignmentGraph-ISD kiểm
+tra một cách kết hợp cụ thể: alignment graph làm cấu trúc dữ liệu trung tâm, các tác tử
+chuyên biệt cùng xây dựng nó, verifier kiểm tra ràng buộc trên nó, và repair được giới
+hạn theo chủ sở hữu của phần trạng thái cần sửa.
+
+\subsection{Tổng hợp và định vị}
+
+\Cref{tab:related} tóm tắt sáu hệ đối sánh được hiện thực trong ISD-Agent-Bench. Các
+công trình gốc chủ yếu nghiên cứu tự động hoá và chất lượng trên mô hình mạnh; vì vậy,
+vẫn chưa rõ chất lượng của các hệ này thay đổi ra sao trên SLM và cơ chế harness nào có
+thể hạn chế mức suy giảm. AlignmentGraph-ISD dùng alignment graph để hiện thực hoá một
+giả thuyết cơ chế cụ thể, rồi đánh giá cùng harness trên một dải bốn kích thước SLM
+cùng họ.
 
 \begin{table}[t]
   \caption{Định vị so với các ISD agent tiêu biểu. AbC = alignment được biểu diễn
-  thành \emph{trạng thái kiểm tra được} (không chỉ prompt); Ver = pedagogical
-  verification theo từng objective; Rep = tự động sửa vi phạm được phát hiện; SLM =
-  được đánh giá trên small language model.}
+  thành trạng thái kiểm tra được (không chỉ prompt); Ver = pedagogical
+  verification theo từng objective; Rep = tự động sửa vi phạm được phát hiện; Ret =
+  duy trì chất lượng khi thay đổi kích thước mô hình là mục tiêu thiết kế và đánh giá.
+  \ding{51} = có đầy đủ; \ding{55} = không có;
+  \textbf{(\ding{51})} = có một phần (vd Dick-Carey chạy formative-evaluation nhưng
+  không theo từng objective; EduPlanner đánh giá/tối ưu qua critic-agent nhưng không
+  cưỡng chế trên một trạng thái alignment tường minh). Đánh dấu dựa trên hành vi triển
+  khai của mỗi agent trong ISD-Agent-Bench~\cite{isdagentbench}.}
   \label{tab:related}
   \small
   \begin{tabular}{@{}lcccc@{}}
     \toprule
-    Agent & AbC & Ver & Rep & SLM \\
+    Agent & AbC & Ver & Rep & Ret \\
     \midrule
     Baseline (single prompt)               & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
     ReAct-ADDIE~\cite{isdagentbench,yao2023react}       & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\

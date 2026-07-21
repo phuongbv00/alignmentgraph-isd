@@ -1,49 +1,61 @@
-\section{Nguy cơ đối với Tính hợp lệ}
+\section{Nguy cơ đối với tính hợp lệ}
 \label{sec:threats-limitations}
 
-\paragraph{Internal.}
-Prompt, model và judge đều ảnh hưởng điểm số. Chúng tôi ghim một manifest cho mỗi lượt
-chạy, dùng cấu hình decoding giống nhau qua các arm, chấm bằng nhiều judge để giảm
-self-preference bias, và cấu hình agent model cùng judge model riêng. Các ablation arm
-là các module workflow riêng không có cờ cấu hình dùng chung, nên một cơ chế bị bỏ
-không thể rò rỉ sang arm khác---một thuộc tính chúng tôi đã kiểm trong bộ test của
-harness.
+\paragraph{Tính hợp lệ nội tại.}
+Prompt, mô hình và judge đều có thể ảnh hưởng tới điểm số. Chúng tôi giảm rủi ro này
+bằng cách lưu manifest cho từng lượt chạy, giữ cấu hình decoding giống nhau giữa các
+tác tử và kích thước, tách mô hình sinh khỏi mô hình judge và sử dụng hai judge. Một
+yếu tố gây nhiễu vẫn còn: AlignmentGraph-ISD dùng nhiều lời gọi mô hình hơn Baseline
+một-prompt, nên một phần lợi thế trên điểm judge có thể đến từ test-time compute bổ
+sung. Nghiên cứu báo số lời gọi và token theo tác tử trong artifact
+(\TBD{bảng resource theo tác tử}), nhưng chưa có đối sánh cân bằng ngân sách; kết luận
+vì vậy áp dụng cho các tác tử như chúng được thiết kế, không phải cho các phương án đã
+cân bằng compute.
 
-\paragraph{Construct.}
-Rubric và trajectory score của benchmark đo chất lượng artifact và trace, không đo kết
-quả người học, và---như \cref{sec:discussion} cho thấy---không tưởng thưởng trực tiếp
-độ chặt alignment mà verification/repair cưỡng chế. Chúng tôi giảm thiểu bằng cách báo
-cáo một residual-defect audit tất định bên cạnh điểm judge; tuy nhiên, audit offline
-dựng lại graph từ văn bản output mà không có edge, nên các đếm tuyệt đối theo loại chỉ
-là xấp xỉ và chúng tôi dựa vào hoạt động repair trong-lượt cho các khẳng định chính
-xác. Vì vậy các kết luận về verification/repair bị giới hạn ở những gì các proxy này
-đo được.
+\paragraph{Tính hợp lệ khái niệm.}
+Rubric ADDIE và điểm trajectory đo chất lượng đầu ra cùng dấu vết thực thi, không đo
+kết quả học tập. Thước đo alignment của RQ2 khắc phục việc alignment không được đo
+trực tiếp, nhưng mang các giới hạn riêng cần khai báo. Thứ nhất, bộ phân loại Bloom và
+encoder có sai số ($\kappa<1$ so với nhãn chuyên gia trong các nghiên cứu
+gốc~\cite{waheed2021bloomnet,li2022bloomclassification}); vì cùng một pipeline được áp
+dụng cho mọi tác tử, sai số này chủ yếu ảnh hưởng giá trị tuyệt đối, nên kết quả RQ2
+được diễn giải là \emph{xếp hạng tương đối giữa các tác tử}, không phải một cuộc kiểm
+toán alignment tuyệt đối. Thứ hai, các tài nguyên phân loại Bloom chủ yếu được huấn
+luyện trên tiếng Anh; việc chuyển sang scenario tiếng Hàn (qua encoder đa ngữ và
+fallback từ điển tiếng Hàn) là một nguy cơ chuyển giao chưa được kiểm chứng độc lập.
+Thứ ba, thước đo lượng hoá alignment cấu trúc--ngữ nghĩa giữa các thành phần văn bản;
+nó không đo tính đúng đắn sư phạm sâu hơn hay kết quả học tập thực tế. Một đánh giá
+với chuyên gia gán nhãn vẫn là bước xác nhận cần thiết.
 
-\paragraph{External.}
-Các scenario là tổng hợp và lấy từ một benchmark duy nhất; kết quả có thể không chuyển
-sang một ISD benchmark khác hay các brief doanh nghiệp thật. Bằng chứng model-scale
-dựa trên hai điểm---một model lớn và một SLM 9B---bao một khoảng rộng nhưng không phủ
-toàn phổ; xu hướng (đóng góp decomposition lớn hơn trên model nhỏ hơn) nhất quán ở cả
-hai nhưng sẽ vững hơn nếu có thêm các cỡ model.
+\paragraph{Tính hợp lệ ngoại tại.}
+Các scenario đều là dữ liệu tổng hợp từ một benchmark; kết quả có thể thay đổi trên
+brief thực tế, lĩnh vực khác hoặc benchmark ISD khác. Dải kích thước nằm trong một họ
+mô hình duy nhất (Qwen) trên cùng runtime: thiết kế này cô lập hiệu ứng kích thước
+khỏi khác biệt family, nhưng đổi lại, kết luận về model scale chỉ chắc chắn trong họ
+mô hình đã đánh giá và cần được kiểm tra lại trên các họ khác. Ngoài ra, dù động cơ
+hướng tới tự lưu trữ, các thí nghiệm gọi mô hình qua API bên ngoài; hành vi trên
+hạ tầng on-premise với quantization thực tế chưa được đo.
 
-\paragraph{Conclusion.}
-Các hiệu ứng được ước lượng trên $n=90$ scenario ghép cặp với kiểm định phi tham số,
-hiệu chỉnh Holm và khoảng tin cậy bootstrap; hiệu ứng decomposition chủ đạo là lớn và
-rất có ý nghĩa, trong khi hiệu ứng verify/repair được báo cáo như một kết quả null kèm
-khoảng tin cậy, không phải một khẳng định dương.
+\paragraph{Tính hợp lệ của kết luận thống kê.}
+Các hiệu ứng được ước lượng trên tối đa 90 cặp scenario với ba lượt chạy mỗi tổ hợp;
+SD giữa các lượt được báo cáo và các kiểm định dùng trung bình theo scenario, nên
+run-to-run variability được lượng hoá nhưng chưa được mô hình hoá đầy đủ (ví dụ bằng
+mixed model theo cả scenario và lượt chạy). Complete-case có thể tạo thiên lệch nếu
+lỗi không xảy ra ngẫu nhiên; phân tích độ nhạy với scenario lỗi bị phạt điểm
+(\cref{sec:stats}) kiểm tra mức nhạy của kết luận với chính sách này. Các scenario
+trong cùng lĩnh vực có thể phụ thuộc lẫn nhau; bootstrap theo cụm lĩnh vực là một
+kiểm tra bổ sung đáng thực hiện.
 
-\section{Hạn chế và Hướng Phát triển}
+\section{Hạn chế và hướng phát triển}
 \label{sec:future-work}
 
-Công trình này được giới hạn có chủ đích ở sinh \emph{single-pass}, và mỗi hạn chế mở
-ra một mở rộng trực tiếp. (1)~\emph{Multi-session refinement}: các chương trình thật
-được chỉnh sửa suốt vòng đời của chúng; harness giữ lại một biến thể dynamic, dùng
-planner, với cascade-scoped invalidation đúng cho setting này, chúng tôi để lại cho
-đánh giá tương lai. (2)~\emph{Brief elicitation}: chúng tôi giả định một design brief
-được cho trước, trong khi thực tế brief hình thành từ trao đổi với stakeholder; một
-front end elicitation dạng hội thoại là một bổ sung tự nhiên. (3)~\emph{Tri thức
-domain}: các quy ước đặc thù tổ chức (rubric nội bộ, chuẩn code-review) có thể được
-tiêm qua pluggable agentic retrieval, thứ mà kiến trúc đã sẵn sàng nhưng chúng tôi
-không đánh giá ở đây. (4)~\emph{Đánh giá}: khép construct gap---đo chất lượng alignment
-theo cách ghi nhận độ chặt pedagogical, lý tưởng là so với kết quả người học---là bước
-tiếp theo quan trọng nhất để đánh giá công bằng cơ chế verification/repair.
+Nghiên cứu giới hạn ở việc sinh một chương trình từ một design brief cho trước. Brief
+trong thực tế thường hình thành từ trao đổi với các bên liên quan, nên một giao diện hội
+thoại để thu thập brief là mở rộng tự nhiên. Harness cũng có thể tiếp nhận tri thức tổ
+chức---chẳng hạn rubric nội bộ hoặc quy ước chuyên ngành---qua retrieval, nhưng khả năng
+này chưa được đánh giá. Về đo lường, ưu tiên tiếp theo là hiệu chuẩn thước đo alignment
+với nhãn của chuyên gia ISD (báo agreement giữa người gán nhãn) và liên hệ các chỉ số
+alignment với kết quả học tập thực tế. Về triển khai, một đánh giá trên hạ tầng
+on-premise và một nghiên cứu người dùng với chuyên gia thiết kế giảng dạy sử dụng
+artifact đồ thị để audit là hai bước cần thiết để kiểm chứng các lợi ích đã nêu trong
+động cơ.

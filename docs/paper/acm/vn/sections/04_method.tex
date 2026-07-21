@@ -4,88 +4,96 @@
 \subsection{Tổng quan}
 \label{sec:overview}
 
-Bài toán ở \cref{sec:problem-statement} đòi hỏi alignment phải được sinh ra và đảm
-bảo độc lập với model. Quan sát dẫn dắt thiết kế của chúng tôi là: mọi thứ điều này
-cần---trạng thái bền vững, kiểm soát chất lượng, và điều phối chuyên biệt---là trách
-nhiệm của môi trường thực thi, không phải năng lực của model. Do đó AlignmentGraph-ISD
-tập trung các trách nhiệm này vào một harness, để model chỉ sinh nội dung bên trong
-nó. Một agent hoàn chỉnh là sự kết hợp của cả hai (\emph{agent = harness + model}).
-Cụ thể, harness (i)~phân rã việc sinh cho các agent chuyên biệt xây dựng alignment
-graph theo một thứ tự thiết kế giảng dạy cố định với phạm vi ghi giới hạn
-(\cref{sec:decomposition}), để alignment hình thành by construction, và (ii)~trao
-cho mỗi agent pedagogical verification cùng repair như các công cụ nó chạy ngay
-trong lượt của mình (\cref{sec:qc}), để vi phạm được bắt và sửa trước khi việc sinh
-tiếp tục. Một bước aggregation cuối (\cref{sec:aggregation}) phát ra chương trình và
-ghi lại một residual audit.
+AlignmentGraph-ISD hiện thực hoá giả thuyết rằng chất lượng sẽ ít phụ thuộc hơn vào khả
+năng tự giữ nhất quán của mô hình nếu harness sở hữu các quan hệ chất lượng dưới dạng
+trạng thái có cấu trúc và phân rã việc sinh quanh trạng thái đó. Hệ thống đặt những trách
+nhiệm không nên phó mặc cho mô hình---quản lý trạng
+thái, điều phối và kiểm soát chất lượng---vào harness. Mô hình tạo nội dung trong từng
+nhiệm vụ; harness quyết định nhiệm vụ nào được thực hiện, phần trạng thái nào được cập
+nhật và điều kiện nào phải được kiểm tra. Theo cách nhìn này, một tác tử hoàn chỉnh là
+sự kết hợp giữa harness và mô hình (\emph{agent = harness + model}).
 
-\subsection{Multi-Agent Decomposition trên Graph}
+Thiết kế có hai cơ chế chính. Thứ nhất, quá trình sinh được phân rã cho các tác tử chuyên
+biệt cùng xây dựng alignment graph theo một thứ tự cố định và dưới phạm vi ghi giới hạn
+(\cref{sec:decomposition}). Thứ hai, sau mỗi lần cập nhật, tác tử chạy công cụ kiểm
+chứng và sửa lỗi trên phần trạng thái do mình sở hữu (\cref{sec:qc}). Cuối quy trình,
+bộ tổng hợp kết xuất đồ thị thành chương trình ADDIE, kèm một artifact đồ thị đầy đủ
+để con người kiểm tra (\cref{sec:aggregation}).
+
+\subsection{Phân rã đa tác tử trên đồ thị}
 \label{sec:decomposition}
 
-Mỗi concern ISD do một specialist agent xử lý---needs context, objective design,
-assessment design, activity và material, implementation plan, và evaluation---chạy
-theo thứ tự ADDIE cố định. Mỗi agent $A_i$ là một toán tử cập-nhật-graph có phạm vi
-ghi bị giới hạn bởi chuyên môn của nó:
+Mỗi mối quan tâm trong ISD do một tác tử chuyên biệt xử lý: phân tích nhu cầu, thiết kế
+mục tiêu, thiết kế đánh giá, xây dựng hoạt động và học liệu, lập kế hoạch triển khai, và
+đánh giá chương trình. Các tác tử chạy theo một thứ tự cố định. Ta biểu diễn tác tử
+$A_i$ như một toán tử cập nhật đồ thị với phạm vi ghi được giới hạn:
 \[
 A_i : (G_t, c) \mapsto G_{t+1}, \qquad \Delta(G_t, G_{t+1}) \subseteq V^{(i)} \cup E^{(i)},
 \]
-trong đó $\Delta(G_t, G_{t+1})$ là các node và edge được thêm giữa hai graph, còn
-$V^{(i)}, E^{(i)}$ là các kiểu node và edge mà agent $i$ được ghi. Ví dụ, assessment
-agent chỉ ghi node \texttt{assessment} và edge \textsl{measures}: khi nó phát ra một
-assessment item nó phải nêu tên objective mà item chấm, và việc nêu tên đó \emph{chính
-là} edge \textsl{measures}. Vì objective agent chạy trước và đặt các objective vào
-graph chung, mọi agent sau tham chiếu tới objective đã có, và các edge alignment của
-\cref{eq:aligned} được tạo ra như một phần bắt buộc của việc sinh. Nhờ vậy alignment
-đúng \emph{by construction}, thay vì được kỳ vọng trong văn bản. Context mỗi agent
-nhận là $c = \rho(b) \cup \gamma(G_t) \cup \mu(M)$, với $\rho(b)$ là context từ
-brief, $\gamma(G_t)$ là graph-context đọc từ các node trước, và $\mu(M)$ là bộ nhớ
-domain ổn định (ADDIE, Bloom, rubric template).
+Ở đây, $\Delta(G_t,G_{t+1})$ là tập node và edge được thêm, sửa hoặc xoá; còn
+$V^{(i)}$ và $E^{(i)}$ là các kiểu mà tác tử $i$ được phép ghi. Ràng buộc này áp dụng
+cho cả sinh mới và sửa lỗi. Ví dụ, tác tử thiết kế đánh giá chỉ được ghi node
+\texttt{assessment} và cạnh \textsl{measures}. Khi tạo một assessment item, tác tử phải
+tham chiếu mục tiêu mà item đó đo; tham chiếu này đồng thời tạo cạnh
+\textsl{measures}. Vì tác tử mục tiêu chạy trước, các tác tử sau luôn liên kết đầu ra
+của mình với những mục tiêu đã có trong đồ thị. Nhờ đó, độ phủ cấu trúc của alignment
+được tạo ngay trong quá trình sinh thay vì chỉ được kỳ vọng từ prompt. Tính hợp lệ về
+ngữ nghĩa và cấp độ nhận thức vẫn do verifier kiểm tra (\cref{sec:qc}).
 
-\subsection{Verification và Repair như Công cụ Per-Agent}
+Ngữ cảnh của mỗi tác tử là $c=\rho(b)\cup\gamma(G_t)\cup\mu(M)$, trong đó
+$\rho(b)$ lấy thông tin từ design brief, $\gamma(G_t)$ lấy trạng thái liên quan từ đồ
+thị, và $\mu(M)$ cung cấp tri thức ổn định về ADDIE, Bloom và mẫu rubric.
+
+\subsection{Kiểm chứng và sửa lỗi trong từng lượt}
 \label{sec:qc}
 
-Chỉ riêng construction đảm bảo các edge \emph{tồn tại}; nó không đảm bảo mỗi edge
-\emph{hợp lệ} hay mọi objective được phủ. Đó là việc của verification và repair.
-Quan trọng: đây không phải một giai đoạn tổng thể riêng chạy sau khi sinh xong; chúng
-là các công cụ mỗi specialist chạy \emph{ngay trong lượt của mình}, ngay sau khi viết
-artifact. Điều này giữ cho trajectory của mỗi agent là một vòng sạch
-generate\,$\rightarrow$\,self-check\,$\rightarrow$\,emit và cho phép các kiểm tra quan
-hệ hoạt động, vì đến lúc một agent self-check, các artifact trước mà nó phụ thuộc đã
-có trong graph chung.
+Việc tạo cạnh bắt buộc mới bảo đảm độ phủ cấu trúc; nó chưa cho biết cạnh có hợp lệ hay
+không. Vì vậy, kiểm chứng và sửa lỗi được thực hiện ngay sau mỗi lần một tác tử cập nhật
+đồ thị, thay vì dồn thành một bước hậu kiểm duy nhất. Mỗi lượt có dạng
+generate\,$\rightarrow$\,self-check\,$\rightarrow$\,emit. Khi self-check bắt đầu,
+những thành phần mà tác tử phụ thuộc đã có trong trạng thái chung, nên verifier có thể
+kiểm tra quan hệ giữa các thành phần của thiết kế.
 
 \paragraph{Verifier.} Gọi $\mathcal{V}$ là pedagogical verifier và
-$\Omega = \mathcal{V}(G)$ là tập vi phạm nó phát hiện. Nó chạy bảy họ ràng buộc tất
-định trên graph: objective coverage (sự tồn tại
-\textsl{measures}/\textsl{supports}/\textsl{evaluates} theo từng objective), tính
-hợp lệ của Bloom-verb và nhất quán verb--level~\cite{anderson2001taxonomy}, khớp
-\emph{cấp độ nhận thức} assessment--objective (một objective bậc cao chỉ đo bằng item
-mức nhận diện sẽ bị đánh dấu), nhất quán rubric (tham chiếu objective treo, tiêu chí
-chấm thiếu hoặc không quan sát được), phủ luyện-tập-chủ-động cho objective bậc cao,
-tính khả thi triển khai so với brief, và tính cụ thể của formative evaluation. Một
-kiểm tra---\emph{measurability} của objective---được báo cho audit nhưng không tự
-sửa, vì một Bloom verb quan sát được đã làm objective đo được và việc viết lại các
-phát biểu vốn đã tốt sẽ làm giảm chất lượng (\cref{sec:discussion}).
+$\Omega=\mathcal{V}(G)$ là tập vi phạm phát hiện trên đồ thị $G$. Verifier thực hiện
+bảy nhóm kiểm tra tất định: độ phủ của các cạnh \textsl{measures},
+\textsl{supports} và \textsl{evaluates} theo từng mục tiêu; tính hợp lệ của động từ
+Bloom và sự nhất quán giữa động từ với cấp độ nhận thức~\cite{anderson2001taxonomy};
+sự phù hợp giữa assessment và mục tiêu; tính nhất quán của rubric; mức độ bao phủ hoạt
+động học tập chủ động cho mục tiêu bậc cao; tính khả thi của kế hoạch triển khai so với
+brief; và tính cụ thể của formative evaluation.
 
-\paragraph{Repair có chủ sở hữu.} Mỗi loại vi phạm thuộc về specialist mà artifact
-của nó có thể sửa. Sau khi agent $A_i$ sinh, nó verify và repair chỉ các loại nó sở
-hữu, tối đa một budget $B$:
+\paragraph{Sửa lỗi có chủ sở hữu.} Mỗi loại vi phạm được ánh xạ tất định tới tác tử có
+quyền sửa thành phần liên quan. Sau khi tác tử $A_i$ sinh nội dung, nó chỉ xử lý các vi
+phạm thuộc phạm vi của mình, tối đa $B$ vòng (mặc định $B=2$):
 \[
 \text{lặp } \big[\, \Omega_i \leftarrow \{\omega \in \mathcal{V}(G) : \mathrm{owner}(\omega)=i\};\ G \leftarrow A_i^{\mathrm{repair}}(G, \Omega_i)\,\big]
 \]
-cho đến khi $\Omega_i = \emptyset$ hoặc hết budget. Một repair kết hợp một revision
-nhắm-đích bằng LLM lên artifact bị đánh dấu với một fallback tất định đảm bảo hội tụ
-ngay cả khi output của model không dùng được. Vì repair thuộc về chính specialist đã
-sinh, việc bỏ decomposition (\cref{sec:experimental-methodology}) tất yếu bỏ luôn
-specialist repair: một biến thể single-agent tự sửa toàn cục cho chính nó, nên không
-specialist nào bị lén đưa trở lại.
+Vòng lặp dừng khi $\Omega_i=\emptyset$ hoặc khi dùng hết ngân sách. Mỗi lần sửa kết hợp
+một yêu cầu chỉnh sửa có mục tiêu gửi tới mô hình với một fallback tất định. Nếu lời gọi
+mô hình lỗi hoặc trả về sai schema, fallback áp dụng luật tương ứng, chẳng hạn bổ sung
+một liên kết cấu trúc còn thiếu, để quy trình không bị kẹt. Ngân sách $B$ bảo đảm vòng
+lặp kết thúc; nó không bảo đảm mọi vi phạm đều được loại bỏ. Các vi phạm còn lại được
+ghi nhận ở bước tổng hợp.
 
-\subsection{Aggregation và Residual Audit}
+\subsection{Aggregation và artifact đồ thị auditable}
 \label{sec:aggregation}
 
-Một aggregator cuối kết xuất graph thành ADDIE output contract và kiểm nó theo
-schema. Nó cũng ghi một \emph{residual audit im lặng}: chạy lại verifier một lần và
-lưu mọi vi phạm còn lại làm metric, không sửa. Điều này phơi bày, với mỗi cấu hình,
-bao nhiêu alignment defect còn sót---một thước đo điều kiện (i) độc lập với điểm
-rubric dùng ở \cref{sec:results}.
+Bộ tổng hợp cuối kết xuất alignment graph thành đầu ra ADDIE và kiểm tra đầu ra theo
+schema của benchmark. Sau đó, verifier được chạy thêm một lần mà không sửa; các vi phạm
+còn lại được ghi vào artifact thay vì bị che giấu.
+
+Song song với đầu ra ADDIE, harness kết xuất \emph{toàn bộ} alignment graph thành một
+artifact riêng: một file JSON chứa mọi node, cạnh và trạng thái kiểm soát chất lượng
+(cờ \texttt{verified}, \texttt{stale}, danh sách vi phạm còn lại), cùng một biểu diễn
+Graphviz DOT để trực quan hoá. Artifact này biến alignment từ một thuộc tính ngầm của
+văn bản thành một đối tượng mà chuyên gia thiết kế giảng dạy có thể xem, truy vết và
+phản biện: với mỗi mục tiêu, chuyên gia thấy được assessment nào đo nó, hoạt động nào
+luyện tập nó, liên kết nào đã qua kiểm chứng và liên kết nào còn bị gắn cờ. Cơ chế này
+phục vụ quy trình educator-in-the-loop, trong đó con người giữ quyền rà soát và
+override trước khi chương trình được triển khai; harness làm cho các quan hệ alignment
+trở nên tường minh và kiểm tra được, chứ không thay thế phán đoán sư phạm của chuyên
+gia.
 
 \subsection{Thuật toán}
 \label{sec:algorithm}
@@ -106,25 +114,30 @@ $G \gets \emptyset$\\
 \>\>$\Omega_i \gets \{\omega \in \mathcal{V}(G) : \mathrm{owner}(\omega)=i\}$\\
 \>\>\textbf{if} $\Omega_i = \emptyset$ \textbf{then break}\\
 \>\>$G \gets A_i^{\mathrm{repair}}(G, \Omega_i)$\\
-\textbf{return} $\mathrm{aggregate}(G)$, \ $\mathrm{residual}\gets\mathcal{V}(G)$
+\textbf{return} $\mathrm{aggregate}(G)$, \ $\mathrm{dump}(G,\mathcal{V}(G))$
 \end{tabbing}
 \vspace{-4pt}\hrule
 \caption{Sinh với self-check per-agent.}
+\Description{Mã giả của Thuật toán 1: khởi tạo graph rỗng; với mỗi specialist theo thứ
+tự ADDIE, dựng context từ brief, graph và bộ nhớ domain rồi sinh node/edge mà agent sở
+hữu; sau đó lặp tối đa B vòng: lấy các vi phạm do agent này sở hữu từ verifier, dừng nếu
+rỗng, ngược lại repair; cuối cùng trả về output đã aggregate cùng artifact đồ thị chứa
+các vi phạm còn lại.}
 \label{alg:harness}
 \end{figure}
 
-\Cref{alg:harness} tóm tắt việc sinh. Workflow là một pipeline cố định; không dùng
-dynamic planner trong setting single-pass nghiên cứu ở đây (một biến thể dùng planner
-được giữ lại cho phần mở rộng multi-session ở \cref{sec:threats-limitations}).
+\Cref{alg:harness} tóm tắt quy trình. Các tác tử chạy theo một pipeline cố định và mỗi
+chương trình được sinh trong một lượt duy nhất.
 
-\subsection{Khác biệt so với các Baseline Gần nhất}
+\subsection{Khác biệt so với các baseline gần nhất}
 \label{sec:diff}
 
-So với các baseline mạnh nhất, khác biệt mang tính biểu diễn chứ không chỉ quy trình.
-ReAct-ADDIE và các agent bám lý thuyết khác truyền chỉ dẫn alignment qua prompt và
-không bao giờ vật chất hoá nó; objective chúng sinh và assessment chúng sinh không
-bao giờ được liên kết trong một cấu trúc mà hệ thống có thể kiểm tra.
-AlignmentGraph-ISD thay vào đó biến mỗi quan hệ alignment thành một edge có kiểu được
-tạo lúc sinh và được kiểm bởi một verifier có chủ sở hữu, nên khác biệt về input,
-điều khiển và output là khác biệt về \emph{trạng thái nào tồn tại}: một graph mà
-harness có thể cưỡng chế \cref{eq:aligned}, so với văn bản mà nó chỉ có thể prompt.
+Khác biệt với các đối sánh gần nhất nằm trước hết ở biểu diễn. ReAct-ADDIE và các tác
+tử bám lý thuyết truyền yêu cầu alignment qua prompt, nhưng mục tiêu và đánh giá vẫn chỉ
+tồn tại như các đoạn văn bản. AlignmentGraph-ISD vật chất hoá mỗi quan hệ thành một cạnh
+có kiểu, tạo cạnh trong lúc sinh và giao quyền kiểm tra, sửa lỗi cho tác tử sở hữu. Do
+đó, harness có thể truy vấn trực tiếp điều kiện trong \cref{eq:aligned}, thay vì chỉ hy
+vọng văn bản cuối cùng tuân theo chỉ dẫn; đồng thời, cùng trạng thái đó được kết xuất
+cho con người kiểm tra qua artifact đồ thị (\cref{sec:aggregation}). Cách tiếp cận này
+không bảo đảm alignment đúng tuyệt đối; nó làm alignment trở nên tường minh, kiểm được
+và sửa được.
