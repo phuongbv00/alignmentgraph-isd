@@ -98,14 +98,23 @@ class EvaluationRevisionAgent(BaseISDAgent):
 
         # Two calls (see the module comment): summative alone, then
         # formative+improvement — each stays under a small model's output cap.
-        summative = parse_json_response(self._call_llm([
-            {"role": "system", "content": _SYSTEM_SUMMATIVE},
-            {"role": "user", "content": base},
-        ]))
-        formative = parse_json_response(self._call_llm([
-            {"role": "system", "content": _SYSTEM_FORMATIVE},
-            {"role": "user", "content": base},
-        ]))
+        # Surgical regen: reuse whichever half a prior attempt already produced,
+        # so a whole-specialist regen only re-rolls the call that came back empty.
+        prior = (self.graph.get_node(self.graph.section_id(NodeType.EVALUATION)) or {}).get("data", {}) or {}
+        if prior.get("summative"):
+            summative = {"summative": prior["summative"]}
+        else:
+            summative = parse_json_response(self._call_llm([
+                {"role": "system", "content": _SYSTEM_SUMMATIVE},
+                {"role": "user", "content": base},
+            ]))
+        if prior.get("formative"):
+            formative = {"formative": prior["formative"], "improvement_plan": prior.get("improvement_plan", {})}
+        else:
+            formative = parse_json_response(self._call_llm([
+                {"role": "system", "content": _SYSTEM_FORMATIVE},
+                {"role": "user", "content": base},
+            ]))
 
         parsed = {
             "formative": formative.get("formative", {}),

@@ -113,6 +113,13 @@ class ObjectiveDesignAgent(BaseISDAgent):
 
     # ── Call 1 ────────────────────────────────────────────────────────────
     def _run_lo_call(self, design_brief: DesignBrief) -> list[str]:
+        # Surgical regen: if a prior attempt already produced objectives, reuse
+        # them instead of re-rolling good work (a whole-specialist regen fired
+        # because the *rest* call came back empty, not this one).
+        existing = self.graph.get_node(self.graph.section_id(NodeType.OBJECTIVE))
+        if existing and existing["data"].get("learning_objectives"):
+            return [n["id"] for n in self.graph.element_nodes(NodeType.OBJECTIVE)]
+
         prompt = _format_design_brief(design_brief)
         gap_ids = [n["id"] for n in self.graph.element_nodes("gap")]
         task_ids = [n["id"] for n in self.graph.element_nodes("task")]
@@ -153,6 +160,11 @@ class ObjectiveDesignAgent(BaseISDAgent):
 
     # ── Call 2 ────────────────────────────────────────────────────────────
     def _run_rest_call(self, design_brief: DesignBrief, objective_ids: list[str]) -> None:
+        # Surgical regen: the strategies node only exists if a prior attempt's
+        # rest call parsed successfully — skip re-rolling it then.
+        if self.graph.get_node(self.graph.section_id("instructional_strategies")) is not None:
+            return
+
         prompt = _format_design_brief(design_brief)
         lo_nodes = [n for n in (self.graph.get_node(oid) for oid in objective_ids) if n is not None]
         lo_ctx = self._element_context(lo_nodes)
