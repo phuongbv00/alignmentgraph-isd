@@ -118,6 +118,35 @@ def _close_unbalanced_json(s: str) -> str:
     return s + "".join(reversed(stack))
 
 
+def _salvage_json(text: str) -> dict:
+    """Best-effort deterministic repair of malformed LLM JSON via json-repair.
+
+    Returns a non-empty dict on success, ``{}`` otherwise (including when the
+    library is unavailable, so callers degrade to the pre-salvage behavior).
+    A top-level list — e.g. the model emitted ``[...]`` then a second ``{...}``
+    value — is merged dict-by-dict in order, mirroring the section-dict shape
+    every specialist expects.
+    """
+    try:
+        import json_repair
+    except ImportError:
+        return {}
+    try:
+        repaired = json_repair.loads(text)
+    except Exception:
+        return {}
+    if isinstance(repaired, dict) and repaired:
+        return repaired
+    if isinstance(repaired, list):
+        merged: dict = {}
+        for item in repaired:
+            if isinstance(item, dict):
+                merged.update(item)
+        if merged:
+            return merged
+    return {}
+
+
 def _json_error_hint(raw: str) -> str:
     """A short human hint about why ``raw`` is not parseable JSON, for a retry
     prompt. Empty string if it actually parses or is empty."""
@@ -136,12 +165,19 @@ def _json_error_hint(raw: str) -> str:
         return f"{e.msg} near ...{near}..."
 
 
-def parse_json_response(raw: str, *, warn: bool = True) -> dict:
+def parse_json_response(raw: str, *, warn: bool = True, salvage: bool = True) -> dict:
     """Robustly parse a JSON dict from an LLM response.
 
     Handles: markdown fences, leading/trailing prose, literal control
     characters inside string values, and other common LLM JSON issues.
     Logs a warning (does not raise) if all attempts fail.
+
+    ``salvage=True`` adds a final deterministic repair pass (json-repair) that
+    recovers output no targeted fix above could: invalid escapes, stray quotes,
+    multiple top-level values, and cap-truncated responses (keeps the complete
+    prefix). ``salvage=False`` keeps the strict behavior — used by the
+    correction-turn check in ``_invoke_with_retry`` so the model still gets its
+    retry chances before we accept a repaired (possibly lossy) parse.
     """
     if not raw:
         return {}
@@ -201,7 +237,20 @@ def parse_json_response(raw: str, *, warn: bool = True) -> dict:
         except json.JSONDecodeError as e:
             last_err = e
 
-        # Try 5: append missing closing braces/brackets for truncated JSON.
+        # Try 5: deterministic salvage via json-repair. Only reached when every
+        # targeted fix above failed, so well-formed responses never take this
+        # path. Covers the malformed-JSON classes small models (0.8B) emit:
+        # invalid escapes (\'), stray quotes after brackets, several top-level
+        # values, and mid-string truncation at the completion cap. Runs BEFORE
+        # the bracket-closing fallback because json-repair keeps the complete
+        # truncated prefix (it closes the string mid-value), whereas closing
+        # the regex candidate cuts at the last '}' and drops everything after.
+        if salvage:
+            salvaged = _salvage_json(cleaned) or _salvage_json(candidate)
+            if salvaged:
+                return salvaged
+
+        # Try 6: append missing closing braces/brackets for truncated JSON.
         try:
             balanced = _close_unbalanced_json(no_trailing)
             result = json.loads(_fix_json_control_chars(balanced))
@@ -209,6 +258,13 @@ def parse_json_response(raw: str, *, warn: bool = True) -> dict:
                 return result
         except json.JSONDecodeError as e:
             last_err = e
+
+    elif salvage:
+        # No '{' block found at all (e.g. a bare top-level array): still give
+        # json-repair a chance before giving up.
+        salvaged = _salvage_json(cleaned)
+        if salvaged:
+            return salvaged
 
     if not warn:
         return {}
@@ -554,7 +610,10 @@ class BaseISDAgent(ABC):
         content = result.content if hasattr(result, "content") else str(result)
         prompt_tokens, completion_tokens = _extract_token_usage(result)
         self.trajectory.log_llm_call(prompt_tokens, completion_tokens)
-        if max_retries > 0 and not parse_json_response(content, warn=False):
+        # salvage=False: judge validity strictly so the correction turns still
+        # fire on malformed JSON; the deterministic salvage is only the final
+        # net once retries are exhausted (a salvaged parse can be lossy).
+        if max_retries > 0 and not parse_json_response(content, warn=False, salvage=False):
             # Output was not valid JSON — send a targeted correction turn quoting
             # the exact parse error so the model can fix that specific spot.
             hint = _json_error_hint(content)
