@@ -125,7 +125,6 @@ class EvaluationRevisionAgent(BaseISDAgent):
         self.graph.add_node(NodeType.EVALUATION, node_id, parsed)
         self.trajectory.log_node_edit("add", node_id, NodeType.EVALUATION)
 
-        # Element decomposition + edge establishment build the alignment graph.
         self._establish_relations(parsed, gap_nodes)
         self.trajectory.log_step("EvaluationRevisionAgent", "plan_evaluation", prompt[:200],
                                  f"summative_items={len(parsed['summative'].get('assessment_tools', []))}")

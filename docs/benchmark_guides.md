@@ -22,7 +22,7 @@
 7. [Audit kết quả](#7-audit-kết-quả)
 8. [Score alignment (RQ2)](#8-score-alignment-rq2--chạy-cho-từng-run-dir)
 9. [Pool runs → thống kê](#9-pool-12-runs--thống-kê-rq1--rq2)
-10. [Sinh bảng paper](#10-sinh-bảng--macro-số-liệu-cho-paper)
+10. [Sinh bảng + hình paper](#10-sinh-bảng-hình--macro-số-liệu-cho-paper)
 11. [Teardown + lưu trữ](#11-teardown--lưu-trữ)
 12. [TL;DR](#12-tldr--ladder-chạy-xong-rồi-giờ-làm-gì)
     — Phụ lục A. [Metrics reference](#phụ-lục-a--metrics-reference)
@@ -31,7 +31,7 @@
 
 | Script                         | Vai trò                                                                                         | Mục     |
 |--------------------------------|-------------------------------------------------------------------------------------------------|---------|
-| `1_setup.sh`                   | venv + cài agents/evaluator (editable)                                                          | 2       |
+| `1_setup.sh`                   | venv + cài deps gốc (`pyproject.toml`) + agents/evaluator (editable)                            | 2       |
 | `2_split_data.sh`              | split gốc train/test 95/5 (seed 42)                                                             | 3       |
 | `2_split_stratified_subset.py` | split `train_30` / `test_90`                                                                    | 3       |
 | `3_sync_runpod_pods_env.py`    | list pods → verify model → sync env-quads vào `.env`                                            | 4.6     |
@@ -44,6 +44,7 @@
 | `7_score_alignment.py`         | chấm alignment RQ2 per run dir (LLM-free)                                                       | 8       |
 | `7_pool_ladder_runs.py`        | pool 12 runs → `pooled_ladder.json` + stats + token usage                                       | 9       |
 | `8_gen_paper_tables.py`        | sinh `.tex` + macros vào `docs/paper/acm/vn/generated/`                                         | 10      |
+| `8_gen_paper_figures.py`       | sinh 8 hình RQ1/RQ2 (`.pdf`+`.png`) vào `docs/paper/acm/vn/generated/figures/`                  | 10      |
 
 ---
 
@@ -56,7 +57,7 @@
 [9] pool runs ◄── [8] score alignment ◄── [7] audit ◄── [6] BENCH test_90 (ladder)
       │                (RQ2, local)                          4 size × 3 run
       ▼
-[10] gen paper tables ──► [11] teardown + lưu trữ
+[10] gen paper tables + figures ──► [11] teardown + lưu trữ
 ```
 
 Nguyên tắc xuyên suốt (ML hygiene): **mọi quyết định tuning (prompt, config, flag) chỉ dựa
@@ -67,7 +68,7 @@ sau đó ⇒ phải chạy lại ladder.
 
 ```bash
 cd isd-agent-benchmark
-./scripts/1_setup.sh              # venv + cài mọi agent + evaluator (editable)
+./scripts/1_setup.sh              # venv + deps gốc từ pyproject.toml + agents + evaluator (editable)
 python run_benchmark.py --check   # mọi agent module import sạch
 ```
 
@@ -584,7 +585,7 @@ python scripts/7_pool_ladder_runs.py --auto-glob 'results/test_90_benchmark_*_r*
 - Có dir trùng tag (re-run sau abort): dùng dir timestamp mới, xoá dir cũ **chỉ sau khi** pool
   xác nhận dir mới đủ 90 scenario.
 
-## 10. Sinh bảng + macro số liệu cho paper
+## 10. Sinh bảng, hình + macro số liệu cho paper
 
 ```bash
 python scripts/8_gen_paper_tables.py --pooled results/pooled_ladder.json
@@ -594,6 +595,32 @@ Ghi vào `docs/paper/acm/vn/generated/`: `tab_rq1.tex`, `tab_rq2_alignment.tex`,
 `stats_macros.tex` (mọi con số trong prose là `\newcommand`, **số trong paper phải sinh tự
 động, không gõ tay**), `stats_summary.md` (bản dump người đọc để cross-check). Số format
 kiểu VN (`{,}`).
+
+
+### 10.1 Hình (figures)
+
+```bash
+# Deps: matplotlib nằm trong pyproject.toml gốc (1_setup.sh đã cài; nếu venv cũ: pip install -e .)
+python scripts/8_gen_paper_figures.py --runs-glob 'results/test_90_benchmark_*_r*'
+```
+
+Ghi vào `docs/paper/acm/vn/generated/figures/` (mỗi hình cả `.pdf` vector cho
+`\includegraphics` lẫn `.png` preview; text trong hình tiếng Anh, caption tiếng Việt viết
+trong LaTeX):
+
+| Hình                      | Nội dung                                                                                              |
+|---------------------------|-------------------------------------------------------------------------------------------------------|
+| `fig_rq1_ladder`          | Total vs model size, 7 agents, error bar = run-to-run SD (headline RQ1)                               |
+| `fig_rq1_delta`           | Δ(proposed − baseline) per size, CI95 bootstrap, marker đặc = p_holm < 0,05, kèm trend slope          |
+| `fig_rq1_components`      | ADDIE vs Trajectory theo size                                                                         |
+| `fig_rq2_ladder`          | Alignment composite vs size (headline RQ2 — gap có nới rộng khi model nhỏ đi?)                        |
+| `fig_rq2_components`      | Heatmap agents × 5 alignment components per size                                                      |
+| `fig_rq2_vs_rq1_scatter`  | Per-scenario: composite vs Total (judge), Spearman ρ per size — cần `--runs-glob`                     |
+| `fig_failure_rate`        | % scenario fail per agent × size (mean of runs, whisker min–max)                                      |
+| `fig_cost_quality`        | Total vs total tokens / exec time (deployment-cost angle)                                             |
+
+`--demo` render toàn bộ bằng dữ liệu synthetic (test layout, không cần pooled JSON). Thiếu
+alignment/token data trong pooled JSON ⇒ hình tương ứng bị skip kèm cảnh báo.
 
 Điều kiện serve phải ghi trong paper (bf16, 16k, non-thinking, streaming, cap 8096) — lấy
 nguyên văn từ mục 4.
@@ -605,8 +632,8 @@ nguyên văn từ mục 4.
 - Giữ nguyên vẹn: mọi `results/test_90_benchmark_*_r*/`, mọi `results/ladder_*/ladder_manifest.json`,
   `results/pooled_ladder.json`, `scenarios/*_metadata.json`, và managed block trong `.env`
   (ghi lại pod id/URL đợt serve gần nhất).
-- Số trong paper chỉ được đến từ `generated/` (mục 10) — regenerate được từ raw results
-  bất kỳ lúc nào bằng chuỗi [8] → [9] → [10].
+- Số VÀ hình trong paper chỉ được đến từ `generated/` (mục 10) — regenerate được từ raw
+  results bất kỳ lúc nào bằng chuỗi [8] → [9] → [10].
 
 ## 12. TL;DR — "ladder chạy xong rồi, giờ làm gì?"
 
@@ -620,7 +647,9 @@ for RUN in results/test_90_benchmark_*_r*; do python scripts/7_score_alignment.p
 python scripts/7_pool_ladder_runs.py --auto-glob 'results/test_90_benchmark_*_r*'
 # 4. Bảng paper:
 python scripts/8_gen_paper_tables.py --pooled results/pooled_ladder.json
-# 5. Tắt pod RunPod (console), giữ manifests.
+# 5. Hình paper:
+python scripts/8_gen_paper_figures.py --runs-glob 'results/test_90_benchmark_*_r*'
+# 6. Tắt pod RunPod (console), giữ manifests.
 ```
 
 ---

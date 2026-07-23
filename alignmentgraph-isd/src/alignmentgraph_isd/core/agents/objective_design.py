@@ -227,8 +227,6 @@ class ObjectiveDesignAgent(BaseISDAgent):
             "storyboard", parsed.get("storyboard"), id_prefix="SB", text_key="screen_title",
         )
 
-        # Rooting edges + R10/R11 provenance: this call was conditioned on the
-        # traversed LOs/tasks/context, so record that traversal.
         # Rooting edges: every objective anchors every Design plan node this
         # call produced, so Development can traverse item -> plan -> objective
         # in one extra hop instead of fetching the LO separately.

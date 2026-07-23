@@ -80,7 +80,6 @@ class ActivityMaterialAgent(BaseISDAgent):
             self.graph.add_node(node_type, node_id, parsed)
             self.trajectory.log_node_edit("add", node_id, node_type)
 
-        # Element decomposition + edge establishment build the alignment graph.
         activity_ids = self._decompose_elements("activity", parsed.get("learning_activities", []), id_field="id")
         material_ids = self._decompose_elements("material", parsed.get("learner_materials", []), id_field="id")
         for aid in activity_ids:

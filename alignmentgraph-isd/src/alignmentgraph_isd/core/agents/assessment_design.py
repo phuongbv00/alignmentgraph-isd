@@ -67,7 +67,6 @@ class AssessmentDesignAgent(BaseISDAgent):
         self.graph.add_node(NodeType.ASSESSMENT, node_id, parsed)
         self.trajectory.log_node_edit("add", node_id, NodeType.ASSESSMENT)
 
-        # Element decomposition + edge establishment build the alignment graph.
         item_ids = self._decompose_elements("assessment", parsed.get("assessment_tools", []), id_field="item_id")
         for iid in item_ids:
             self.trajectory.log_node_edit("add", iid, "assessment")
