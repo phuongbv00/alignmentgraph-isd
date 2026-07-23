@@ -8,11 +8,12 @@
 \usepackage[capitalise,english]{cleveref}
 
 % Placeholder cho số liệu chưa có: các thí nghiệm trên dải Qwen đang chạy;
-% số cuối cùng được điền qua generated/*.tex do pipeline thống kê sinh tự động.
+% số cuối cùng được điền qua docs/generated/*.tex do pipeline thống kê sinh tự động
+% (sync bằng docs/scripts/sync_generated.sh).
 \newcommand{\TBD}[1]{\textcolor{red}{[TBD: #1]}}
 
 % Macro thống kê sinh tự động từ artifact (demo placeholder khi chưa có số).
-\input{generated/stats_macros}
+\input{../../../generated/stats_macros}
 
 % Shared assets (references.bib, figures/) live in the parent acm/ directory.
 \graphicspath{{../figures/}{figures/}}

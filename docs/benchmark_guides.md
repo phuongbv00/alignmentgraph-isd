@@ -43,8 +43,8 @@
 | `6_audit_postrun.py`           | audit sau run: completeness/integrity/metrics per run dir                                       | 7.3–7.5 |
 | `7_score_alignment.py`         | chấm alignment RQ2 per run dir (LLM-free)                                                       | 8       |
 | `7_pool_ladder_runs.py`        | pool 12 runs → `pooled_ladder.json` + stats + token usage                                       | 9       |
-| `8_gen_paper_tables.py`        | sinh `.tex` + macros vào `docs/paper/acm/vn/generated/`                                         | 10      |
-| `8_gen_paper_figures.py`       | sinh 8 hình RQ1/RQ2 (`.pdf`+`.png`) vào `docs/paper/acm/vn/generated/figures/`                  | 10      |
+| `8_gen_paper_tables.py`        | sinh `.tex` + macros vào `results/generated/` (sync sang docs bằng `docs/scripts/sync_generated.sh`)    | 10      |
+| `8_gen_paper_figures.py`       | sinh 8 hình RQ1/RQ2 (`.pdf`+`.png`) vào `results/generated/figures/`                            | 10      |
 
 ---
 
@@ -591,10 +591,10 @@ python scripts/7_pool_ladder_runs.py --auto-glob 'results/test_90_benchmark_*_r*
 python scripts/8_gen_paper_tables.py --pooled results/pooled_ladder.json
 ```
 
-Ghi vào `docs/paper/acm/vn/generated/`: `tab_rq1.tex`, `tab_rq2_alignment.tex`,
-`stats_macros.tex` (mọi con số trong prose là `\newcommand`, **số trong paper phải sinh tự
-động, không gõ tay**), `stats_summary.md` (bản dump người đọc để cross-check). Số format
-kiểu VN (`{,}`).
+Ghi vào `results/generated/` (**benchmark-local, gitignored**): `tab_rq1.tex`,
+`tab_rq2_alignment.tex`, `stats_macros.tex` (mọi con số trong prose là `\newcommand`, **số
+trong paper phải sinh tự động, không gõ tay**), `stats_summary.md` (bản dump người đọc để
+cross-check). Số format kiểu VN (`{,}`). Copy sang docs bằng bước sync ở mục 10.2.
 
 
 ### 10.1 Hình (figures)
@@ -604,7 +604,7 @@ kiểu VN (`{,}`).
 python scripts/8_gen_paper_figures.py --runs-glob 'results/test_90_benchmark_*_r*'
 ```
 
-Ghi vào `docs/paper/acm/vn/generated/figures/` (mỗi hình cả `.pdf` vector cho
+Ghi vào `results/generated/figures/` (mỗi hình cả `.pdf` vector cho
 `\includegraphics` lẫn `.png` preview; text trong hình tiếng Anh, caption tiếng Việt viết
 trong LaTeX):
 
@@ -621,6 +621,17 @@ trong LaTeX):
 
 `--demo` render toàn bộ bằng dữ liệu synthetic (test layout, không cần pooled JSON). Thiếu
 alignment/token data trong pooled JSON ⇒ hình tương ứng bị skip kèm cảnh báo.
+
+### 10.2 Sync artifacts vào docs/generated/
+
+```bash
+# từ repo thesis (master-thesis/)
+docs/scripts/sync_generated.sh
+```
+
+Copy `results/generated/{*.tex, stats_summary.md, figures/*}` → `docs/generated/`. LaTeX của
+paper trỏ tới đó bằng đường dẫn tương đối (vd `\input{../../../generated/stats_macros}`).
+Các script 8_* **không** ghi trực tiếp vào `docs/` nữa — sync là bước copy duy nhất.
 
 Điều kiện serve phải ghi trong paper (bf16, 16k, non-thinking, streaming, cap 8096) — lấy
 nguyên văn từ mục 4.
@@ -645,11 +656,13 @@ python scripts/6_audit_postrun.py
 for RUN in results/test_90_benchmark_*_r*; do python scripts/7_score_alignment.py "$RUN"; done
 # 3. Pool:
 python scripts/7_pool_ladder_runs.py --auto-glob 'results/test_90_benchmark_*_r*'
-# 4. Bảng paper:
+# 4. Bảng paper (vào results/generated/):
 python scripts/8_gen_paper_tables.py --pooled results/pooled_ladder.json
-# 5. Hình paper:
+# 5. Hình paper (vào results/generated/figures/):
 python scripts/8_gen_paper_figures.py --runs-glob 'results/test_90_benchmark_*_r*'
-# 6. Tắt pod RunPod (console), giữ manifests.
+# 6. Sync vào cây paper (chạy từ repo thesis):
+cd .. && docs/scripts/sync_generated.sh && cd isd-agent-benchmark
+# 7. Tắt pod RunPod (console), giữ manifests.
 ```
 
 ---
@@ -744,8 +757,15 @@ từng agent. Đây là các thống kê **suy diễn**, không phải điểm s
 - **`run_to_run_sd`** — SD giữa 3 giá trị trung bình cấp-run (đo độ ổn định run-to-run, tách biệt với phương sai giữa
   scenario).
 - **Paired Wilcoxon signed-rank test** (`wilcoxon_signed_rank`) — so khớp cặp theo scenario giữa harness đề xuất và từng
-  baseline (6 baseline), two-sided, hiệu chỉnh tie theo xấp xỉ chuẩn. Trả về `W_plus` (thống kê), `p_raw`,
-  `n_effective` (số cặp có delta ≠ 0).
+  baseline (6 baseline), two-sided. Với `n_effective ≤ 25`: **exact permutation null** (liệt kê phân phối W+ qua DP
+  trên rank đã tie-average — bắt buộc vì xấp xỉ chuẩn anti-conservative ở n nhỏ: exact p sàn two-sided là 0.25 tại n=3,
+  0.5 tại n=2); n lớn hơn dùng xấp xỉ chuẩn hiệu chỉnh tie. Trả về `W_plus` (thống kê), `p_raw`, `n_effective` (số cặp
+  có delta ≠ 0). Quy ước: ô có complete-case n≤5 khai báo là *not testable* bằng score test; bằng chứng tại đó lấy từ
+  failure-rate test + sensitivity.
+- **Fisher exact test trên output-failure** (`failure_tests` + `fisher_exact_2x2`, secondary) — 2×2
+  [failed, ok] × [proposed, baseline] ở cấp scenario (failed = thiếu output chấm được ở ≥1 run của size đó), two-sided,
+  Holm/6 mỗi size; run-level counts chỉ báo cáo mô tả (các run cùng scenario không độc lập). Đây là mặt robustness của
+  luận điểm bù scale, dùng thay score test tại các ô n quá nhỏ.
 - **Holm correction** (`holm_correct`) — hiệu chỉnh đa kiểm định step-down trên family gồm đúng 6 so sánh (proposed vs
   mỗi baseline) **trong cùng một model size** → `p_holm`.
 - **Bootstrap 95% CI** (`bootstrap_ci`, 10 000 resample, seed 42) — CI của mean paired delta (
@@ -759,7 +779,13 @@ từng agent. Đây là các thống kê **suy diễn**, không phải điểm s
   `did_mean` = delta(proposed − baseline) tại size lớn nhất trừ tại size nhỏ nhất, kèm bootstrap 95% CI và Wilcoxon p
   trên các giá trị DiD per-scenario.
 - **Trend slope** (`trend_ols_slope_per_size_step`) — độ dốc OLS của delta(proposed − baseline) theo 4 bước kích thước
-  model, kèm CI — đo khoảng cách chất lượng "nới rộng" hay "thu hẹp" đơn điệu theo scale.
+  model, kèm CI — đo khoảng cách chất lượng "nới rộng" hay "thu hẹp" đơn điệu theo scale. Lưu ý: với baseline có
+  failure nặng ở size nhỏ, trend/DiD complete-case trộn các subset scenario khác nhau qua size (survivorship) — chỉ
+  diễn giải mô tả, không dùng làm bằng chứng chính.
+- **RQ2 paired stats + conditional composite** (trong `pool_alignment`) — cùng machinery (Wilcoxon exact-capable +
+  Holm/6 + bootstrap CI + rank-biserial) chạy trên per-scenario alignment `composite` (mean-of-runs, scenario chấm được
+  cho cả 2 agent); kèm `conditional_composite` = composite chỉ trên scenario có ≥1 objective trích được (tách chất
+  lượng alignment khỏi tỉ lệ parse được — mean unconditional chấm output không có objective ~0).
 
 ## A.3 RQ2 — Alignment metric (constructive alignment, LLM-free)
 

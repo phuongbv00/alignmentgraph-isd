@@ -84,7 +84,11 @@ by construction".
    được, cho bài toán sinh chương trình ADDIE.
 2. **Alignment metric / benchmark extension** — mở rộng ISD-Agent-Bench với một thước đo constructive alignment định
    lượng, tự động, không dùng LLM judgment ở bước tổng hợp (Porter Alignment Index + Webb criteria + embedding
-   coverage), độc lập với verifier nội bộ của hệ được đo — tránh tính vòng tròn.
+   coverage). Metric độc lập ở **cơ chế chấm** — chỉ đọc text đầu ra, không gọi LLM, không dùng nhãn/ID tự khai của hệ
+   được đo — tránh vòng tròn LLM-judge và vòng tròn self-declared labels. Nó **không** độc lập về construct với harness
+   đề xuất (harness được thiết kế để tối ưu chính constructive alignment mà metric đo — đây là chủ đích, và thành phần
+   Webb range đạt trần by-construction đóng vai trò manipulation check); vì vậy thứ hạng theo metric được corroborate
+   bằng instrument độc lập là LLM-judge rubric (RQ1).
 3. **Bằng chứng thực nghiệm về model scale** — đánh giá có kiểm soát trên dải Qwen cùng họ (0.8B → 2B → 4B → 9B), mỗi mô
    hình 3 run, cho cả chất lượng (judge) lẫn alignment (metric mới).
 
@@ -101,18 +105,35 @@ Thực nghiệm sử dụng 90 tình huống trong tập `test_90` của ISD-Age
 bốn kích thước Qwen cùng họ (0.8B, 2B, 4B, 9B), **mỗi mô hình 3 run độc lập** để lượng hoá run-to-run variability; chất
 lượng được chấm bởi hai judge và lấy trung vị/trung bình theo quy ước của benchmark.
 
-RQ1 phân tích bằng Wilcoxon signed-rank ghép cặp theo tình huống (trên mean-of-3-runs), hiệu chỉnh Holm (family định
-nghĩa tường minh), bootstrap 95% CI; interaction `method × model size` kiểm bằng bootstrap difference-in-differences.
-RQ2 chấm alignment metric offline trên đầu ra đã lưu của mọi agent — không cần chạy lại agent, không có lời gọi LLM
-trong metric.
+RQ1 phân tích bằng Wilcoxon signed-rank ghép cặp theo tình huống (trên mean-of-3-runs; **exact permutation null khi
+n≤25**, normal approximation chỉ ở n lớn), hiệu chỉnh Holm (family định nghĩa tường minh = 6 so sánh/size), bootstrap
+95% CI. **Primary analysis** = 6 so sánh complete-case trên Total tại mỗi size; failure-rate (Fisher exact scenario-
+level), sensitivity imputation (failure=0 / failure=min), interaction `method × model size` (bootstrap
+difference-in-differences) và stats trên alignment composite là **secondary/exploratory**. Ô có complete-case n≤5 được
+khai báo là không kiểm định được bằng score test (exact p sàn 0.25 tại n=3); bằng chứng tại các ô đó là failure-rate +
+sensitivity. RQ2 chấm alignment metric offline trên đầu ra đã lưu của mọi agent — không cần chạy lại agent, không có
+lời gọi LLM trong metric; báo cáo cả composite unconditional lẫn conditional-on-parseable-output.
 
 Số liệu trong paper được sinh tự động từ artifact (script pool + generator LaTeX), không gõ tay; kết quả các run trước
 pivot không được sử dụng.
 
 ## Kết quả chính
 
-*(Chờ ladder runs — user chạy manual; bảng và prose statistics sẽ được sinh tự động từ `pooled_ladder.json` qua
-generator.)*
+*(Số cụ thể trích từ `docs/results_20260723.md` / artifacts sinh tự động từ `pooled_ladder.json`; thứ tự dưới đây là
+thứ tự dẫn dắt của narrative — mạnh nhất trước.)*
+
+1. **Robustness theo scale:** hệ đề xuất sinh output dùng được cho 100% scenario ở cả 4 size × 3 run; baseline
+   single-prompt và eduplanner hỏng phần lớn scenario ở 0.8B (87–88/90) và một phần ở 2B (Fisher exact p_holm ≤ 2e-10).
+   Một phần failure có thể do truncation dưới trần token dùng chung — vẫn là failure ở cấp hệ thống.
+2. **Chất lượng (judge):** thắng có ý nghĩa các structured agent cùng lớp (addie, rpisd) ở cả 4 size; dẫn đầu **ADDIE ở
+   cả 4 size**. Trung thực hai chiều: hòa react-isd về Total ở 4B–9B (workflow 2-call, ~1/3 token) và thua nhẹ
+   dick-carey ở 0.8B về Total (−1.59, có ý nghĩa) — tại đó harness vẫn dẫn ADDIE và vượt xa về alignment.
+3. **Bù scale (dạng defensible):** lợi thế Total vs react-isd co lại có ý nghĩa khi model lớn lên (DiD −2.17,
+   p=1.3e-4); failure differential tập trung ở model nhỏ; delta vs baseline/eduplanner ở 0.8B chỉ kiểm định được dưới
+   sensitivity imputation (+36→+60, p_holm ≤ 1.3e-15) — không claim từ DiD n≤3.
+4. **Alignment (metric mới):** dẫn đầu cả 4 size, giữ nguyên khi conditional-on-parseable; mọi so sánh p_holm ≤ 4.8e-13,
+   r_rb ≥ 0.92; gap vs á quân nới rộng khi model nhỏ đi (0.079 ở 9B → 0.239 ở 0.8B) — trả lời cả hai vế RQ2, kèm giới
+   hạn construct proximity đã khai báo ở Đóng góp 2.
 
 ## Ý nghĩa và phạm vi kết luận
 

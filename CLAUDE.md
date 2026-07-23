@@ -14,7 +14,7 @@ This is a master's thesis monorepo with three top-level parts:
 - **`docs/`** — research documents.
   - `docs/summary.md` — RQ context (RQ1 = quality vs Qwen model scale, RQ2 = LLM-free constructive-alignment metric).
   - `docs/benchmark_guides.md` — **single source of truth for the whole benchmark workflow**: data split → RunPod/vLLM serving → tune → ladder run → audit → RQ2 scoring → pooling → paper tables, plus the full metrics reference (Appendix A). Consult it before touching anything experiment-related; it superseded and replaced the old `metrics.md`, `notes-serving-setup.md`, `results-audit-checklist.md`, and the benchmark's `scripts/README_ladder.md`.
-  - `docs/paper/` — the research paper: `acm/` (ACM template; `scripts/8_gen_paper_tables.py` writes generated tables/macros to `acm/vn/generated/` — numbers in the paper are generated, never hand-typed), `structure-guide.md`, `refs-deployment-survey.md`.
+  - `docs/paper/` — the research paper: `acm/` (ACM template; the benchmark's `scripts/8_gen_paper_tables.py` + `8_gen_paper_figures.py` write generated tables/macros/figures to the benchmark's `results/generated/`, and `docs/scripts/sync_generated.sh` copies them into `docs/generated/` (the paper \input/\includegraphics targets, via relative paths) — numbers in the paper are generated, never hand-typed), `structure-guide.md`, `refs-deployment-survey.md`.
   - `docs/refs/` — reference material pulled in from other repos.
   - `docs/thesis/` — the LaTeX thesis manuscript. `main.tex` is the entry point; `Chapter/` holds one `.tex` file per chapter; `Figure/` holds images; `glossary.tex` and `reference.bib` hold the glossary and bibliography; `compile.sh` runs `pdflatex -> bibtex -> pdflatex -> pdflatex` to produce `main.pdf`. LaTeX build artifacts and `*.pdf` are gitignored.
 - **`alignmentgraph-isd/`** — the **thesis contribution**: a standalone Python package (`alignmentgraph_isd`), a LangGraph-based multi-agent ADDIE instructional-design harness. Core only — experiment harnesses live outside. Tracked directly in this repo (not a submodule).
@@ -96,7 +96,9 @@ python scripts/6_audit_postrun.py     # after runs finish
 # Post-processing (local; no agent/judge calls)
 python scripts/7_score_alignment.py results/test_90_benchmark_<...>   # per run dir (RQ2)
 python scripts/7_pool_ladder_runs.py --auto-glob 'results/test_90_benchmark_*_r*'
-python scripts/8_gen_paper_tables.py --pooled results/pooled_ladder.json
+python scripts/8_gen_paper_tables.py --pooled results/pooled_ladder.json   # → results/generated/
+python scripts/8_gen_paper_figures.py --runs-glob 'results/test_90_benchmark_*_r*'
+../docs/scripts/sync_generated.sh   # copy generated artifacts into docs/generated/
 
 # Run a single scenario against chosen agents
 python run_benchmark.py \
