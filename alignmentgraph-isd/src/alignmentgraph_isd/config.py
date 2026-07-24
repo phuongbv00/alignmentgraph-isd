@@ -19,6 +19,14 @@ class HarnessRunConfig(BaseModel):
     use_rag: bool = False
     retrieval_subagents: list[Any] = []
 
+    # Ablation switches (both ON = the full pipeline; there are no presets).
+    # ``enable_verifier`` wires the per-specialist QC nodes (verify + repair loop)
+    # into the workflow. ``enable_graph_context`` gates the READ side of the
+    # AlignmentGraph only — prompt injection of prior nodes' data; the graph is
+    # still written in full either way, so dumps and the residual audit stay intact.
+    enable_verifier: bool = True
+    enable_graph_context: bool = True
+
     # Robustness: re-run a specialist whose section came back with empty required
     # fields (a small model intermittently returns empty/broken JSON, or a call is
     # dropped by a 429). ``regen_budget`` is the number of extra attempts;

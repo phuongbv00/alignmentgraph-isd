@@ -10,7 +10,7 @@ contribution). The package exposes a stable public API on the canonical
 ```python
 from alignmentgraph_isd import DesignBrief, HarnessRunConfig, run_design_brief
 
-config = HarnessRunConfig()                            # the full pipeline is the only pipeline
+config = HarnessRunConfig()                            # defaults = the full pipeline
 config.llm_factory = lambda: my_chat_model             # any LangChain chat model factory; required
 
 brief = DesignBrief(
@@ -27,6 +27,23 @@ result = run_design_brief(brief, config)
 
 `run_design_brief` (and the CLI) fail with a clear error if `llm_factory` is not
 configured — they never emit a silent empty output.
+
+### Ablation switches
+
+`HarnessRunConfig` carries two booleans, both `True` by default (there is no
+preset system):
+
+- `enable_verifier` — wire the per-specialist QC nodes (pedagogical verify +
+  repair loop) into the workflow. Off: the generation chain runs bare; the
+  aggregator safety nets and the residual graph audit still run.
+- `enable_graph_context` — inject prior AlignmentGraph node data into
+  specialist prompts. Off: every specialist sees only the design brief; the
+  graph is still **written** in full (dumps/audit intact), i.e. it becomes
+  write-only from the prompts' point of view.
+
+The resolved flags are recorded in `result["metadata"]["run_config"]`, so every
+run is self-describing. These switches exist for the thesis ablation study (the
+benchmark registers one agent id per arm); production use keeps both on.
 
 ### Graph dump (explainability / auditability)
 

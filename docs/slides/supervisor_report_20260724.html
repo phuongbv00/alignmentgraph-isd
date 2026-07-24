@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AlignmentGraph-ISD — Báo cáo supervisor 24/07/2026</title>
+<style>
+  :root {
+    --ink: #1a2233;
+    --muted: #5b6577;
+    --accent: #1f5fa8;
+    --accent2: #b3541e;
+    --ok: #1e7a46;
+    --warn: #a8322d;
+    --bg: #fbfbf8;
+    --card: #ffffff;
+    --line: #d8dce4;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: #2b2f38; }
+  body { font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: var(--ink); }
+
+  .slide {
+    display: none;
+    width: 100vw; height: 100vh;
+    background: var(--bg);
+    padding: 3.2vh 4.5vw;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .slide.active { display: flex; }
+
+  .slide h1 { font-size: 4.6vh; line-height: 1.15; color: var(--accent); }
+  .slide h2 { font-size: 4.2vh; color: var(--accent); margin-bottom: 1.6vh; border-bottom: 2px solid var(--line); padding-bottom: 0.8vh; }
+  .slide h3 { font-size: 2.9vh; color: var(--ink); margin-bottom: 0.8vh; }
+  .kicker { font-size: 2.1vh; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent2); font-weight: 600; margin-bottom: 0.6vh; }
+
+  ul { list-style: none; }
+  li { font-size: 2.75vh; line-height: 1.42; margin: 1.15vh 0; padding-left: 2.4vh; position: relative; }
+  li::before { content: "▸"; position: absolute; left: 0; color: var(--accent2); }
+  li ul li { font-size: 2.45vh; margin: 0.5vh 0; }
+  li ul li::before { content: "–"; color: var(--muted); }
+  b, strong { color: var(--accent); }
+  .neg { color: var(--warn); font-weight: 600; }
+  .pos { color: var(--ok); font-weight: 600; }
+  .en { font-style: italic; }
+  .note { font-size: 2.05vh; color: var(--muted); margin-top: auto; padding-top: 1vh; border-top: 1px dashed var(--line); }
+
+  .cols { display: flex; gap: 2.5vw; flex: 1; min-height: 0; align-items: stretch; }
+  .col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .col.narrow { flex: 0.72; }
+  .col.wide { flex: 1.35; }
+
+  .figbox { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1.2vh; }
+  .figbox img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .figcap { font-size: 1.85vh; color: var(--muted); margin-top: 0.6vh; text-align: center; }
+
+  table { border-collapse: collapse; width: 100%; background: var(--card); font-size: 2.15vh; }
+  th, td { border: 1px solid var(--line); padding: 0.7vh 0.9vh; text-align: center; }
+  th { background: #eef2f8; color: var(--accent); }
+  td.l, th.l { text-align: left; }
+  tr.hl td { background: #f0f6ee; font-weight: 600; }
+
+  .badge { display: inline-block; font-size: 1.9vh; font-weight: 700; padding: 0.25vh 1.1vh; border-radius: 99px; margin-right: 0.6vw; }
+  .badge.b1 { background: #e3ecf7; color: var(--accent); }
+  .badge.b2 { background: #f7ece3; color: var(--accent2); }
+  .badge.b3 { background: #e5f2ea; color: var(--ok); }
+
+  .pipeline { display: flex; align-items: stretch; gap: 0.5vw; margin: 1.4vh 0; }
+  .pstep { flex: 1; background: var(--card); border: 1.5px solid var(--accent); border-radius: 8px; padding: 0.9vh 0.7vw; text-align: center; position: relative; }
+  .pstep .pn { font-size: 1.7vh; font-weight: 700; color: var(--accent2); }
+  .pstep .pt { font-size: 1.95vh; font-weight: 600; color: var(--ink); line-height: 1.25; }
+  .parrow { align-self: center; color: var(--muted); font-size: 2.6vh; }
+
+  .footer { position: fixed; bottom: 1.4vh; right: 2vw; font-size: 1.8vh; color: #9aa2b0; z-index: 5; }
+
+  /* Title slide */
+  .title-slide { justify-content: center; align-items: flex-start; gap: 2.2vh; }
+  .title-slide .rule { width: 18vw; height: 4px; background: var(--accent2); border-radius: 2px; }
+  .title-slide h1 { font-size: 6vh; max-width: 78vw; }
+  .title-slide .sub { font-size: 3vh; color: var(--muted); max-width: 72vw; line-height: 1.4; }
+  .title-slide .meta { font-size: 2.4vh; color: var(--ink); margin-top: 2vh; }
+
+  svg text { font-family: "Avenir Next", "Segoe UI", Arial, sans-serif; }
+
+  @media print {
+    html, body { background: #fff; }
+    .slide { display: flex !important; page-break-after: always; width: 100%; height: 100vh; }
+    .slide:last-of-type { page-break-after: auto; }
+    .footer { display: none; }
+  }
+  @page { size: 13.33in 7.5in; margin: 0; }
+</style>
+</head>
+<body>
+
+<!-- ============ 1. TITLE ============ -->
+<section class="slide title-slide active">
+  <div class="kicker">Báo cáo tiến độ luận văn · 24/07/2026</div>
+  <h1>AlignmentGraph-ISD</h1>
+  <div class="rule"></div>
+  <div class="sub">Duy trì chất lượng thiết kế giảng dạy (ISD) khi thu nhỏ mô hình nền open-weight —
+    harness đa tác tử với <b>alignment graph</b> tường minh, kiểm được và audit được</div>
+  <div class="meta">
+    <b>Nội dung:</b> kết quả ladder 22–23/07 · <b>mới 24/07: ablation study</b> — cơ chế nào của harness thực sự tạo ra chất lượng?<br>
+    Học viên: Bùi Việt Phương &nbsp;·&nbsp; ~30 phút
+  </div>
+</section>
+
+<!-- ============ 2. BỐI CẢNH & GAP ============ -->
+<section class="slide">
+  <h2>Bối cảnh &amp; khoảng trống nghiên cứu</h2>
+  <div class="cols">
+    <div class="col">
+      <h3>Bối cảnh</h3>
+      <ul>
+        <li>LLM thương mại soạn được chương trình giảng dạy tốt — nhưng <b>chi phí API</b> và việc <b>dữ liệu người học đi qua bên thứ ba</b> cản trở triển khai tại trường học, doanh nghiệp.</li>
+        <li>Giải pháp thực tế hơn: <b>model nhỏ, mở, chạy tại chỗ</b> — rẻ hơn và giữ được dữ liệu. Đánh đổi: model nhỏ thì yếu hơn.</li>
+        <li>Khi model yếu đi, chất lượng phụ thuộc vào <b>harness</b> — khung điều phối bao quanh model: phân rã tác vụ, quản lý trạng thái, kiểm soát chất lượng. <b>Câu hỏi trung tâm: harness bù được bao nhiêu khi thu nhỏ model?</b></li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Khoảng trống</h3>
+      <ul>
+        <li><b>Gap 1:</b> chưa ai nghiên cứu việc <b>giữ chất lượng khi thu nhỏ model</b> như một mục tiêu thiết kế &amp; đánh giá của hệ tác tử thiết kế giảng dạy (ISD).</li>
+        <li><b>Gap 2:</b> <span class="en">constructive alignment</span> — mục tiêu, hoạt động, đánh giá phải ăn khớp nhau, tiêu chí định nghĩa thành công của thiết kế giảng dạy — <b>chưa được đo trực tiếp</b> bằng thước đo tự động, khách quan (không dùng LLM judge).</li>
+        <li>Công trình lân cận: Small Models Big Support (SLM hỗ trợ soạn nội dung), LessonPlanLM (fine-tune 7B), Instructional Agents (vẫn dùng API thương mại).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3. RQ & CONTRIBUTIONS ============ -->
+<section class="slide">
+  <h2>Câu hỏi nghiên cứu &amp; đóng góp</h2>
+  <h3>Hai câu hỏi nghiên cứu</h3>
+  <ul>
+    <li><b>RQ1 — Chất lượng giữ được bao nhiêu khi thu nhỏ model?</b> Trên thang Qwen từ 9B xuống 0.8B, AlignmentGraph-ISD duy trì chất lượng thế nào so với 6 hệ đối sánh?</li>
+    <li><b>RQ2 — Alignment có đo trực tiếp được không?</b> Đầu ra có mức <span class="en">constructive alignment</span> (mục tiêu–hoạt động–đánh giá ăn khớp) cao hơn đối sánh không, và khoảng cách có <b>nới rộng khi model nhỏ đi</b> không?</li>
+  </ul>
+  <h3 style="margin-top:1.6vh">Ba đóng góp</h3>
+  <ul>
+    <li><span class="badge b1">C1</span><b>AlignmentGraph-ISD</b> — hệ đa tác tử soạn chương trình theo ADDIE, trong đó mọi quan hệ alignment được ghi thành <b>đồ thị tường minh</b>: máy kiểm được, người dạy xem lại và can thiệp được.</li>
+    <li><span class="badge b2">C2</span><b>Thước đo alignment</b> — bổ sung cho ISD-Agent-Bench một thước đo constructive alignment <b>định lượng, tự động, không nhờ LLM chấm</b> (gốc: Porter index + tiêu chí Webb + độ phủ ngữ nghĩa).</li>
+    <li><span class="badge b3">C3</span><b>Bằng chứng thực nghiệm về scale</b> — so sánh có kiểm soát trên 4 cỡ model cùng họ (0.8B/2B/4B/9B), mỗi cỡ 3 lần chạy độc lập, đo bằng cả hai thước.</li>
+  </ul>
+  <div class="note">Giả thuyết thiết kế: model nhỏ yếu với tác vụ mở, nhiều ràng buộc → <b>thu hẹp tác vụ của mỗi call</b> (mỗi tác tử phụ trách một khâu ISD) + một bộ nhớ chung để các phần sinh riêng vẫn ăn khớp về sư phạm.</div>
+</section>
+
+<!-- ============ 4. METHOD DIAGRAM ============ -->
+<section class="slide">
+  <h2>Phương pháp — AlignmentGraph-ISD harness</h2>
+  <p style="font-size:2.5vh; line-height:1.45; margin:0.6vh 0 0.4vh;"><b>Ý tưởng cốt lõi:</b> thu hẹp tác vụ của mỗi call (phân rã theo từng mối quan tâm ISD) và biểu diễn mọi quan hệ alignment thành <b>node/edge tường minh</b> trên một đồ thị chung — để verifier kiểm tra được và educator audit được, thay vì để các quan hệ này ẩn trong văn xuôi của một prompt lớn.</p>
+  <div style="flex:1; min-height:0; display:flex; align-items:center; justify-content:center;">
+  <svg viewBox="0 0 1080 540" style="width:100%; height:100%; max-height:62vh;" role="img" aria-label="AlignmentGraph-ISD overview">
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#5b6577"/>
+      </marker>
+      <marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#1f5fa8"/>
+      </marker>
+      <marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#a8322d"/>
+      </marker>
+      <marker id="arrG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#8a5a2e"/>
+      </marker>
+      <!-- little robot icon; colored via currentColor on <use> -->
+      <g id="bot">
+        <circle cx="0" cy="-21" r="2.6" fill="currentColor"/>
+        <line x1="0" y1="-18" x2="0" y2="-14" stroke="currentColor" stroke-width="1.8"/>
+        <rect x="-14" y="-14" width="28" height="22" rx="7" fill="#ffffff" stroke="currentColor" stroke-width="2"/>
+        <circle cx="-5.5" cy="-4.5" r="2.6" fill="currentColor"/>
+        <circle cx="5.5" cy="-4.5" r="2.6" fill="currentColor"/>
+        <path d="M -4.5 2 Q 0 5 4.5 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        <rect x="-9" y="11" width="18" height="8" rx="3.5" fill="#ffffff" stroke="currentColor" stroke-width="1.8"/>
+      </g>
+      <!-- specialist agent card: 150x64, label via two <text> in caller -->
+      <rect id="card" width="150" height="64" rx="12" fill="#eef4fb" stroke="#1f5fa8" stroke-width="1.8"/>
+    </defs>
+
+    <!-- Input -->
+    <rect x="12" y="244" width="132" height="76" rx="12" fill="#eef2f8" stroke="#1f5fa8" stroke-width="2"/>
+    <text x="78" y="277" text-anchor="middle" font-size="18" font-weight="700" fill="#1a2233">Design brief</text>
+    <text x="78" y="299" text-anchor="middle" font-size="13.5" fill="#5b6577">(ISD scenario)</text>
+    <line x1="144" y1="282" x2="166" y2="282" stroke="#5b6577" stroke-width="2.5" marker-end="url(#arr)"/>
+
+    <!-- Harness container -->
+    <rect x="170" y="26" width="600" height="490" rx="16" fill="#ffffff" stroke="#c3cad6" stroke-width="2"/>
+    <text x="470" y="47" text-anchor="middle" font-size="14.5" font-weight="700" fill="#5b6577" letter-spacing="1.6">MULTI-AGENT HARNESS · 6 SPECIALIST LLM AGENTS</text>
+
+    <!-- Specialist agents around the graph: 3 on top, 3 below -->
+    <g font-size="13.5" font-weight="600" fill="#1a2233">
+      <g transform="translate(192,68)" color="#1f5fa8">
+        <use href="#card"/><use href="#bot" transform="translate(28,33)"/>
+        <text x="52" y="28">Needs &amp;</text><text x="52" y="46">Context</text>
+      </g>
+      <g transform="translate(395,68)" color="#1f5fa8">
+        <use href="#card"/><use href="#bot" transform="translate(28,33)"/>
+        <text x="52" y="28">Objective</text><text x="52" y="46">Design</text>
+      </g>
+      <g transform="translate(598,68)" color="#1f5fa8">
+        <use href="#card"/><use href="#bot" transform="translate(28,33)"/>
+        <text x="52" y="28">Assessment</text><text x="52" y="46">Design</text>
+      </g>
+      <g transform="translate(192,414)" color="#1f5fa8">
+        <use href="#card"/><use href="#bot" transform="translate(28,33)"/>
+        <text x="52" y="28">Activity &amp;</text><text x="52" y="46">Material</text>
+      </g>
+      <g transform="translate(395,414)" color="#1f5fa8">
+        <use href="#card"/><use href="#bot" transform="translate(28,33)"/>
+        <text x="52" y="28">Implementation</text><text x="52" y="46">Plan</text>
+      </g>
+      <g transform="translate(598,414)" color="#1f5fa8">
+        <use href="#card"/><use href="#bot" transform="translate(28,33)"/>
+        <text x="52" y="28">Evaluation &amp;</text><text x="52" y="46">Revision</text>
+      </g>
+    </g>
+
+    <!-- agent <-> graph arrows (read/write) — all 6 specialists -->
+    <g stroke="#1f5fa8" stroke-width="2.1" fill="none">
+      <line x1="272" y1="136" x2="286" y2="170" marker-start="url(#arrB)" marker-end="url(#arrB)"/>
+      <line x1="665" y1="136" x2="566" y2="170" marker-start="url(#arrB)" marker-end="url(#arrB)"/>
+      <line x1="272" y1="406" x2="286" y2="392" marker-start="url(#arrB)" marker-end="url(#arrB)"/>
+      <line x1="665" y1="406" x2="566" y2="392" marker-start="url(#arrB)" marker-end="url(#arrB)"/>
+      <line x1="470" y1="410" x2="470" y2="392" marker-start="url(#arrB)" marker-end="url(#arrB)"/>
+      <line x1="435" y1="138" x2="435" y2="170" marker-end="url(#arrB)"/>
+      <line x1="485" y1="170" x2="485" y2="138" marker-end="url(#arrB)"/>
+    </g>
+    <text x="427" y="158" text-anchor="end" font-size="12.5" fill="#1f5fa8">write nodes &amp; edges</text>
+    <text x="493" y="158" font-size="12.5" fill="#1f5fa8">read graph context</text>
+
+    <!-- Alignment graph (shifted left to clear the verifier) -->
+    <g transform="translate(-30,0)">
+    <rect x="250" y="176" width="350" height="210" rx="14" fill="#fdf3e7" stroke="#b3541e" stroke-width="2.2"/>
+    <text x="425" y="200" text-anchor="middle" font-size="16.5" font-weight="700" fill="#b3541e">Alignment Graph — shared design state</text>
+
+    <!-- unlabeled neighbour nodes + thin edges (it's a real graph) -->
+    <g stroke="#b08a5e" stroke-width="1.3">
+      <line x1="315" y1="278" x2="288" y2="248"/>
+      <line x1="303" y1="298" x2="275" y2="330"/>
+      <line x1="472" y1="228" x2="505" y2="216"/>
+      <line x1="472" y1="348" x2="507" y2="362"/>
+      <line x1="556" y1="277" x2="571" y2="242"/>
+    </g>
+    <g fill="#efe4d3" stroke="#b08a5e" stroke-width="1.4">
+      <circle cx="285" cy="244" r="7"/>
+      <circle cx="272" cy="334" r="7"/>
+      <circle cx="509" cy="214" r="7"/>
+      <circle cx="511" cy="364" r="7"/>
+      <circle cx="573" cy="238" r="7"/>
+    </g>
+
+    <!-- main nodes -->
+    <g font-size="13.5" text-anchor="middle" font-weight="700" fill="#1a2233">
+      <rect x="275" y="276" width="84" height="28" rx="14" fill="#e3ecf7" stroke="#1f5fa8" stroke-width="1.8"/>
+      <text x="317" y="295">Objective</text>
+      <rect x="405" y="222" width="80" height="28" rx="14" fill="#e5f2ea" stroke="#1e7a46" stroke-width="1.8"/>
+      <text x="445" y="241">Activity</text>
+      <rect x="399" y="330" width="94" height="28" rx="14" fill="#f7e7e6" stroke="#a8322d" stroke-width="1.8"/>
+      <text x="446" y="349">Assessment</text>
+      <rect x="504" y="276" width="88" height="28" rx="14" fill="#f0eef8" stroke="#5b4ea8" stroke-width="1.8"/>
+      <text x="548" y="295">Evaluation</text>
+    </g>
+    <!-- labeled alignment edges -->
+    <g stroke="#8a5a2e" stroke-width="1.7" fill="none">
+      <line x1="412" y1="248" x2="355" y2="276" marker-end="url(#arrG)"/>
+      <line x1="405" y1="332" x2="352" y2="304" marker-end="url(#arrG)"/>
+      <line x1="518" y1="272" x2="470" y2="252" marker-end="url(#arrG)"/>
+      <line x1="518" y1="308" x2="482" y2="328" marker-end="url(#arrG)"/>
+    </g>
+    <g font-size="12" fill="#8a5a2e" font-style="italic">
+      <text x="336" y="262">supports</text>
+      <text x="330" y="326">measures</text>
+      <text x="500" y="250" text-anchor="middle">evaluates</text>
+      <text x="512" y="330">evaluates</text>
+    </g>
+    </g>
+
+    <!-- Pedagogical Verifier (agent) -->
+    <g transform="translate(614,244)" color="#a8322d">
+      <rect width="150" height="76" rx="12" fill="#fbeeed" stroke="#a8322d" stroke-width="1.8"/>
+      <use href="#bot" transform="translate(28,39)"/>
+      <text x="52" y="28" font-size="13.5" font-weight="700" fill="#a8322d">Pedagogical</text>
+      <text x="52" y="45" font-size="13.5" font-weight="700" fill="#a8322d">Verifier</text>
+      <text x="52" y="63" font-size="11.5" fill="#a8322d">alignment checks</text>
+    </g>
+    <!-- check: read graph -> verifier -->
+    <line x1="572" y1="282" x2="610" y2="282" stroke="#a8322d" stroke-width="2" marker-end="url(#arrR)"/>
+    <text x="591" y="272" text-anchor="middle" font-size="12" font-style="italic" fill="#a8322d">check</text>
+    <!-- repair: delegate back to the owning specialist -->
+    <g stroke="#a8322d" stroke-width="2" stroke-dasharray="6 4" fill="none">
+      <path d="M 689 244 C 700 208 704 168 700 138" marker-end="url(#arrR)"/>
+      <path d="M 689 324 C 700 358 704 388 700 410" marker-end="url(#arrR)"/>
+    </g>
+    <text x="706" y="186" text-anchor="middle" font-size="12" font-style="italic" fill="#a8322d">delegate repair</text>
+    <text x="706" y="380" text-anchor="middle" font-size="12" font-style="italic" fill="#a8322d">delegate repair</text>
+
+    <!-- Aggregator + outputs -->
+    <line x1="770" y1="282" x2="792" y2="282" stroke="#5b6577" stroke-width="2.5" marker-end="url(#arr)"/>
+    <rect x="796" y="248" width="120" height="68" rx="12" fill="#eef2f8" stroke="#1f5fa8" stroke-width="2"/>
+    <text x="856" y="277" text-anchor="middle" font-size="16" font-weight="700" fill="#1a2233">Aggregator</text>
+    <text x="856" y="298" text-anchor="middle" font-size="12.5" fill="#5b6577">assemble ADDIE</text>
+
+    <line x1="908" y1="252" x2="948" y2="152" stroke="#5b6577" stroke-width="2.2" marker-end="url(#arr)"/>
+    <line x1="908" y1="312" x2="948" y2="404" stroke="#5b6577" stroke-width="2.2" marker-end="url(#arr)"/>
+
+    <rect x="928" y="88" width="140" height="60" rx="12" fill="#e5f2ea" stroke="#1e7a46" stroke-width="2"/>
+    <text x="998" y="113" text-anchor="middle" font-size="16" font-weight="700" fill="#1e7a46">ADDIE output</text>
+    <text x="998" y="134" text-anchor="middle" font-size="12.5" fill="#1e7a46">full curriculum</text>
+
+    <rect x="928" y="406" width="140" height="62" rx="12" fill="#e5f2ea" stroke="#1e7a46" stroke-width="2"/>
+    <text x="998" y="430" text-anchor="middle" font-size="15.5" font-weight="700" fill="#1e7a46">Graph dump</text>
+    <text x="998" y="450" text-anchor="middle" font-size="12.5" fill="#1e7a46">JSON + DOT</text>
+    <text x="998" y="494" text-anchor="middle" font-size="13.5" font-weight="600" fill="#5b6577">educator audit &amp; override</text>
+  </svg>
+  </div>
+</section>
+
+<!-- ============ 5. AUDITABILITY + METRIC ============ -->
+<section class="slide">
+  <h2>Auditability (C1) &amp; Alignment metric (C2)</h2>
+  <div class="cols">
+    <div class="col">
+      <h3>Đồ thị xuất ra được — người dạy kiểm tra được (C1)</h3>
+      <ul>
+        <li>Cuối mỗi lần chạy, hệ xuất <b>toàn bộ đồ thị alignment</b> thành file riêng (dạng máy đọc được + hình vẽ được) — không phải đọc lại log hội thoại.</li>
+        <li>Người dạy nhìn thấy: mục tiêu nào được đo bởi bài đánh giá nào, được hỗ trợ bởi hoạt động nào → <b>chỗ nào lệch thì thấy ngay và sửa được</b>.</li>
+        <li>Định vị rõ: <b>công cụ hỗ trợ quyết định</b> cho chuyên gia thiết kế giảng dạy — không thay thế chuyên gia.</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Thước đo alignment — tự động, không nhờ LLM chấm (C2)</h3>
+      <ul>
+        <li>Gốc từ các thước đo có sẵn trong nghiên cứu giáo dục: <b>Porter index</b> + <b>tiêu chí Webb</b> (độ phủ mức Bloom) + <b>độ phủ ngữ nghĩa</b> giữa mục tiêu và đánh giá.</li>
+        <li>Chỉ đọc <b>văn bản đầu ra</b>: không gọi LLM, không tin nhãn tự khai của hệ được chấm → tránh vòng lặp "LLM tự chấm LLM".</li>
+        <li class="neg"><b>Giới hạn khai báo minh bạch:</b> thước đo này đo đúng thứ harness được thiết kế để tối ưu — vì vậy thứ hạng luôn được <b>đối chiếu bằng một kênh chấm độc lập</b> (điểm trên ISD-Agent-Bench).</li>
+        <li>Chấm lại được trên output đã lưu của mọi hệ — không cần chạy lại, ai cũng tái lập được.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 6. EXPERIMENTAL SETUP ============ -->
+<section class="slide">
+  <h2>Thiết lập thực nghiệm</h2>
+  <div class="cols">
+    <div class="col">
+      <h3>Dữ liệu, hệ đối sánh, thang điểm</h3>
+      <ul>
+        <li><b>Benchmark:</b> ISD-Agent-Bench, tập <b>test_90</b> — 90 tình huống thiết kế giảng dạy, phủ đều 10 lĩnh vực × 3 độ khó.</li>
+        <li><b>7 hệ tham gia:</b> AlignmentGraph-ISD + 6 hệ đối sánh, từ baseline one-shot (1 call duy nhất) đến các hệ theo quy trình ISD kinh điển (ADDIE, Dick–Carey, RPISD…).</li>
+        <li><b>Thang model:</b> cùng họ Qwen3.5 — <b>0.8B / 2B / 4B / 9B</b>, mỗi cỡ chạy <b>3 lần độc lập</b> để đo độ dao động.</li>
+        <li><b>Điểm trên ISD-Agent-Bench:</b> 2 giám khảo LLM chấm theo rubric; điểm mỗi tình huống = 0.7·nội dung ADDIE + 0.3·quy trình.</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Vì sao kết luận đáng tin</h3>
+      <ul>
+        <li>Mọi so sánh đều <b>ghép cặp theo từng tình huống</b> (cùng đề, cùng model) — không so trung bình trần trụi; kiểm định + hiệu chỉnh so sánh bội + khoảng tin cậy, khai báo trước khi chạy.</li>
+        <li>Kết quả phụ (tỉ lệ hỏng output, xu hướng theo cỡ model…) được dán nhãn <b>phụ/khám phá</b> — không trộn vào kết luận chính.</li>
+        <li class="neg"><b>Giới hạn khai báo minh bạch:</b> ô nào hệ đối sánh không tạo được output hợp lệ ở phần lớn tình huống (còn ≤5 tình huống so được) thì khai báo là <b>không kiểm định được bằng điểm</b> — bằng chứng tại đó lấy từ tỉ lệ failure.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="note">Model của agent và model của judge cấu hình <b>tách biệt</b> (tránh self-preference bias); kết quả các lần chạy trước khi chốt thiết kế nghiên cứu không được sử dụng.</div>
+</section>
+
+<!-- ============ 7. SETUP PROCESS ============ -->
+<section class="slide">
+  <h2>Cách vận hành thực nghiệm — tự động, công bằng, tái lập được</h2>
+  <h3>Một dây chuyền tự động từ dữ liệu đến bảng số trong paper</h3>
+  <div class="pipeline">
+    <div class="pstep"><div class="pn">1</div><div class="pt">Chia dữ liệu<br>→ 90 tình huống test</div></div>
+    <div class="parrow">→</div>
+    <div class="pstep"><div class="pn">2</div><div class="pt">Dựng 4 model<br>tự host</div></div>
+    <div class="parrow">→</div>
+    <div class="pstep"><div class="pn">3</div><div class="pt">Hiệu chỉnh trên<br>tập tách riêng</div></div>
+    <div class="parrow">→</div>
+    <div class="pstep"><div class="pn">4</div><div class="pt">Chạy chính thức<br>+ giám sát 3 tầng</div></div>
+    <div class="parrow">→</div>
+    <div class="pstep"><div class="pn">5</div><div class="pt">Chấm alignment<br>+ gộp 12 lần chạy</div></div>
+    <div class="parrow">→</div>
+    <div class="pstep"><div class="pn">6</div><div class="pt">Sinh bảng + hình<br>cho paper</div></div>
+  </div>
+  <div class="cols">
+    <div class="col">
+      <h3>Model tự host, cấu hình đồng nhất</h3>
+      <ul>
+        <li>4 cỡ Qwen chạy trên GPU thuê, <b>cùng một cấu hình phục vụ</b> — chỉ khác đúng kích thước model → khác biệt đo được là do cỡ model, không do hạ tầng.</li>
+        <li>Cấu hình kết nối được đồng bộ <b>tự động bằng script</b>, không chỉnh tay — tránh lỗi người thao tác.</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Công bằng &amp; kiểm soát chất lượng</h3>
+      <ul>
+        <li>Mọi hệ chịu <b>cùng giới hạn tài nguyên</b>: cùng max-token cap mỗi call, cùng chế độ sampling/streaming — điều kiện thi đấu đồng nhất.</li>
+        <li>Giám sát 3 tầng: kiểm tra trước khi chạy → theo dõi trong khi chạy → soát lại sau khi chạy; <b>12/12 lần chạy đạt</b>.</li>
+        <li>Mọi con số trong paper <b>sinh tự động</b> từ dữ liệu chạy — không gõ tay, tái lập được từ đầu đến cuối.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 8. KQ ROBUSTNESS ============ -->
+<section class="slide">
+  <div class="kicker">Kết quả 23/07 — 1/6</div>
+  <h2>Độ bền: bằng chứng mạnh nhất</h2>
+  <div class="cols">
+    <div class="col wide">
+      <div class="figbox">
+        <img src="../generated/figures/fig_failure_rate.png" alt="Tỉ lệ tình huống hỏng theo cỡ model">
+        <div class="figcap">Tỉ lệ tình huống hỏng (không tạo ra được bản thiết kế dùng được) theo cỡ model</div>
+      </div>
+    </div>
+    <div class="col">
+      <ul>
+        <li class="pos"><b>Tích cực:</b> AlignmentGraph-ISD tạo output dùng được cho <b>100%</b> tình huống — cả 12 lần chạy × 90 tình huống, kể cả trên model nhỏ nhất.</li>
+        <li>Đối chiếu ở <b>0.8B</b>: baseline one-shot hỏng <b>87/90</b>, eduplanner <b>88/90</b> tình huống; ở 2B vẫn còn 46/90 và 31/90. Khác biệt có ý nghĩa thống kê rất mạnh (p &lt; 10⁻¹⁰).</li>
+        <li><b>Diễn giải:</b> với model nhỏ, hệ không có scaffold không chỉ "kém hơn" — phần lớn <b>không tạo được output hợp lệ</b>. Phân rã tác vụ là điều kiện tiên quyết.</li>
+        <li class="neg"><b>Trung thực:</b> một phần failure của baseline one-shot có thể do max-token cap mỗi call (phải sinh toàn bộ chương trình trong một call) — nhưng ở cấp hệ thống, không tạo được bản thiết kế vẫn là failure.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 9. RQ1 LADDER ============ -->
+<section class="slide">
+  <div class="kicker">Kết quả 23/07 — 2/6</div>
+  <h2>RQ1 — Điểm trên ISD-Agent-Bench theo thang model</h2>
+  <div class="cols">
+    <div class="col wide">
+      <div class="figbox">
+        <img src="../generated/figures/fig_rq1_ladder.png" alt="Điểm ISD-Agent-Bench theo thang model">
+        <div class="figcap">Điểm trên ISD-Agent-Bench (0.7·nội dung ADDIE + 0.3·quy trình), trung bình 3 lần chạy, theo từng tình huống</div>
+      </div>
+    </div>
+    <div class="col">
+      <table>
+        <tr><th class="l">Agent</th><th>0.8B</th><th>2B</th><th>4B</th><th>9B</th></tr>
+        <tr class="hl"><td class="l">alignmentgraph</td><td>79.8</td><td><b>84.3</b></td><td>85.4</td><td>86.2</td></tr>
+        <tr><td class="l">react-isd</td><td>77.9</td><td>81.5</td><td><b>85.5</b></td><td><b>86.5</b></td></tr>
+        <tr><td class="l">dick-carey</td><td><b>81.4</b></td><td>80.1</td><td>82.3</td><td>81.3</td></tr>
+        <tr><td class="l">rpisd</td><td>78.1</td><td>79.2</td><td>81.1</td><td>81.9</td></tr>
+        <tr><td class="l">addie-agent</td><td>75.9</td><td>77.9</td><td>81.1</td><td>81.7</td></tr>
+        <tr><td class="l">baseline</td><td>59.4 ⁿ⁼³</td><td>66.7</td><td>81.1</td><td>82.9</td></tr>
+        <tr><td class="l">eduplanner</td><td>51.3 ⁿ⁼²</td><td>63.7</td><td>79.2</td><td>81.7</td></tr>
+      </table>
+      <ul>
+        <li class="pos"><b>Tích cực:</b> đường của AlignmentGraph-ISD <b>cao và phẳng</b> — từ 9B xuống 0.8B, điểm chỉ giảm 6.4 (86.2 → 79.8). Chất lượng được duy trì phần lớn khi thu nhỏ model.</li>
+        <li>Các hệ không có scaffold <b>suy sụp ở model nhỏ</b> (và chỉ còn rất ít tình huống chấm được — xem slide trước).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 10. RQ1 PAIRED STATS ============ -->
+<section class="slide">
+  <div class="kicker">Kết quả 23/07 — 3/6</div>
+  <h2>RQ1 — So từng cặp: thắng ở đâu, hòa ở đâu, thua ở đâu</h2>
+  <div class="cols">
+    <div class="col wide">
+      <div class="figbox">
+        <img src="../generated/figures/fig_rq1_delta.png" alt="Chênh lệch điểm với từng đối thủ theo cỡ model">
+        <div class="figcap">Chênh lệch điểm ISD-Agent-Bench (AlignmentGraph-ISD − đối thủ), ghép cặp theo tình huống, chỉ tính tình huống cả hai bên có bài</div>
+      </div>
+    </div>
+    <div class="col">
+      <ul>
+        <li class="pos"><b>Thắng có ý nghĩa thống kê:</b> hai hệ quy trình cùng lớp (ADDIE-agent, RPISD) ở <b>cả 4 cỡ model</b>; Dick-Carey từ 2B trở lên; react-isd ở model nhỏ (0.8B–2B).</li>
+        <li class="neg"><b>Hòa — ghi nhận trung thực:</b> với model lớn (4B–9B), react-isd — quy trình chỉ 2 call, ~1/3 chi phí — đạt điểm tương đương hệ đề xuất. Khi model đủ mạnh, harness không còn tạo khác biệt trên điểm tổng.</li>
+        <li class="neg"><b>Thua — ghi nhận trung thực:</b> ở 0.8B thua Dick-Carey 1.59 điểm (có ý nghĩa thống kê). Hàm ý: cấu trúc quy trình nói chung hỗ trợ model nhỏ — không riêng cấu trúc của hệ đề xuất.</li>
+        <li><b>"Harness bù scale" — mức claim giữ được:</b> lợi thế của hệ đề xuất <i>thu hẹp dần</i> khi model lớn lên (đo trực tiếp, có ý nghĩa thống kê) — bù nhiều nhất ở nơi cần nhất.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 11. RQ1 COMPONENTS ============ -->
+<section class="slide">
+  <div class="kicker">Kết quả 23/07 — 4/6</div>
+  <h2>RQ1 — Bóc tách điểm: nội dung giảng dạy vs quy trình</h2>
+  <div class="cols">
+    <div class="col wide">
+      <div class="figbox">
+        <img src="../generated/figures/fig_rq1_components.png" alt="Điểm nội dung ADDIE và điểm quy trình theo cỡ model">
+        <div class="figcap">Điểm trên ISD-Agent-Bench gồm hai phần: nội dung ADDIE (trái) và quy trình làm việc (phải)</div>
+      </div>
+    </div>
+    <div class="col">
+      <ul>
+        <li class="pos"><b>Tích cực:</b> dẫn đầu điểm <b>nội dung ADDIE ở cả 4 cỡ model</b> (80.4 → 86.0) — đây là phần đo chất lượng bản thiết kế giảng dạy thực sự.</li>
+        <li><b>Vì sao tổng điểm hòa ở model lớn:</b> react-isd được cộng ở phần <b>quy trình</b> (thang này thưởng quy trình gọn 2 bước), nhưng thua rõ về nội dung ở model nhỏ (73.5 vs 80.4 @ 0.8B).</li>
+        <li>Ở 0.8B, Dick-Carey tương đương về nội dung (80.1 vs 80.4) nhưng <b>thấp hơn hẳn về alignment</b> (0.445 vs 0.759 — slide sau).</li>
+        <li><b>Hệ quả:</b> lợi thế của hệ đề xuất nằm ở <b>nội dung + alignment</b>, không nằm ở điểm quy trình.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 12. RQ2 LADDER ============ -->
+<section class="slide">
+  <div class="kicker">Kết quả 23/07 — 5/6</div>
+  <h2>RQ2 — Đo trực tiếp constructive alignment</h2>
+  <div class="cols">
+    <div class="col wide">
+      <div class="figbox">
+        <img src="../generated/figures/fig_rq2_ladder.png" alt="Điểm alignment theo cỡ model">
+        <div class="figcap">Thước đo alignment (0–1, tự động, không LLM chấm), gộp 3 lần chạy mỗi cỡ model</div>
+      </div>
+    </div>
+    <div class="col">
+      <ul>
+        <li class="pos"><b>Tích cực:</b> dẫn đầu alignment ở <b>cả 4 cỡ model</b> (0.71–0.76) — á quân (Dick-Carey) chỉ 0.45–0.65.</li>
+        <li class="pos"><b>Vế hai của RQ2 được xác nhận:</b> khoảng cách với á quân <b>nới rộng khi model nhỏ đi</b> — từ 0.079 (9B) lên <b>0.239</b> (0.8B). Model càng yếu, khung giữ alignment càng đáng giá.</li>
+        <li><b>Kiểm tra robustness:</b> thứ hạng giữ nguyên khi chỉ chấm các tình huống mọi hệ đều có output hợp lệ — kết quả không đến từ việc hệ đối sánh failure.</li>
+        <li>Mọi so sánh có ý nghĩa thống kê ở mức rất mạnh (p &lt; 10⁻¹², effect size gần tối đa).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 13. RQ2 COMPONENTS + CORROBORATION ============ -->
+<section class="slide">
+  <div class="kicker">Kết quả 23/07 — 6/6</div>
+  <h2>RQ2 — Nhìn vào bên trong thước đo, và đối chiếu chéo</h2>
+  <div class="cols">
+    <div class="col">
+      <div class="figbox">
+        <img src="../generated/figures/fig_rq2_components.png" alt="Các thành phần của thước đo alignment">
+        <div class="figcap">Các thành phần của thước đo (Porter, Webb, độ phủ ngữ nghĩa) theo cỡ model</div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="figbox">
+        <img src="../generated/figures/fig_rq2_vs_rq1_scatter.png" alt="Đối chiếu thước đo alignment với điểm ISD-Agent-Bench">
+        <div class="figcap">Thước đo alignment vs điểm nội dung ADDIE trên ISD-Agent-Bench — hai kênh chấm độc lập cho cùng thứ hạng</div>
+      </div>
+    </div>
+  </div>
+  <ul style="margin-top:1vh">
+    <li class="neg"><b>Khai báo minh bạch:</b> điểm tuyệt đối 1.000 ở tiêu chí Webb-range là <b>do chính hệ được thiết kế để bảo đảm quan hệ đó</b> — nó xác nhận cơ chế hoạt động như thiết kế, không phải bằng chứng chất lượng độc lập. Được khai báo rõ trong paper.</li>
+    <li class="pos"><b>Đối trọng:</b> thứ hạng alignment được <b>xác nhận chéo bằng một kênh chấm hoàn toàn độc lập</b> — điểm nội dung ADDIE do giám khảo LLM chấm (hình phải): hai kênh đồng thuận ở cả 4 cỡ model.</li>
+  </ul>
+</section>
+
+<!-- ============ 13b. ABLATION SETUP ============ -->
+<section class="slide">
+  <div class="kicker">Ablation 24/07 — 1/4</div>
+  <h2>Ablation — chất lượng đến từ cơ chế nào?</h2>
+  <div class="cols">
+    <div class="col">
+      <h3>Harness có hai cơ chế "thông minh" trên nền quy trình ADDIE đa tác tử</h3>
+      <ul>
+        <li><span class="badge b1">1</span><b>Bộ nhớ đồ thị chung</b> <span class="en">(graph-context)</span>: tác tử sau <b>đọc lại sản phẩm của tác tử trước</b> qua alignment graph trước khi viết phần của mình — mục tiêu, đánh giá, hoạt động luôn "nhìn thấy" nhau.</li>
+        <li><span class="badge b2">2</span><b>Vòng tự kiểm &amp; sửa</b> <span class="en">(verifier)</span>: sau mỗi bước, hệ tự soát các lỗi alignment (động từ Bloom, độ phủ mục tiêu–đánh giá, rubric…) và sửa tại chỗ.</li>
+        <li><b>Ablation</b> = lần lượt <b>tắt từng cơ chế</b> rồi đo lại toàn bộ. Phần chất lượng mất đi khi tắt = đóng góp thật của cơ chế đó.</li>
+      </ul>
+    </div>
+    <div class="col">
+      <table>
+        <tr><th class="l">Phiên bản</th><th>Tự kiểm &amp; sửa</th><th>Bộ nhớ đồ thị</th></tr>
+        <tr class="hl"><td class="l">A0 — đầy đủ</td><td>✓</td><td>✓</td></tr>
+        <tr><td class="l">A1 — tắt tự kiểm</td><td>✗</td><td>✓</td></tr>
+        <tr><td class="l">A2 — tắt bộ nhớ đồ thị</td><td>✓</td><td>✗</td></tr>
+        <tr><td class="l">A3 — tắt cả hai</td><td>✗</td><td>✗</td></tr>
+      </table>
+      <ul>
+        <li class="pos"><b>So sánh công bằng:</b> cả 4 phiên bản làm <b>cùng 90 tình huống</b>, trên cùng 4 cỡ model (0.8B → 9B), và được <b>chấm trong cùng một phiên giám khảo</b> — khác biệt đo được chỉ có thể đến từ cơ chế bị tắt.</li>
+        <li>Đo bằng <b>hai thước độc lập</b>: điểm trên ISD-Agent-Bench (thang 100, giám khảo LLM chấm) và thước đo alignment chuyên biệt (thang 0–1, không dùng LLM).</li>
+      </ul>
+      <div class="note">Kiểm định: Wilcoxon ghép cặp theo tình huống (n=90) + hiệu chỉnh Holm + bootstrap CI; cấu hình từng phiên bản được máy kiểm tra tự động. Chi tiết: docs/benchmark_guides.md §6b — số sinh tự động, không gõ tay.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 13c. ABLATION RQ2 ============ -->
+<section class="slide">
+  <div class="kicker">Ablation 24/07 — 2/4</div>
+  <h2>Kết quả 1 — bộ nhớ đồ thị là thứ giữ alignment</h2>
+  <div class="cols">
+    <div class="col">
+      <table>
+        <tr><th class="l">Alignment (0–1)</th><th>0.8B</th><th>2B</th><th>4B</th><th>9B</th></tr>
+        <tr class="hl"><td class="l">A0 — đầy đủ</td><td><b>0.744</b></td><td><b>0.728</b></td><td>0.705</td><td>0.727</td></tr>
+        <tr><td class="l">A1 — tắt tự kiểm</td><td>0.740</td><td>0.723</td><td><b>0.713</b></td><td><b>0.736</b></td></tr>
+        <tr><td class="l">A2 — tắt bộ nhớ đồ thị</td><td>0.657</td><td>0.621</td><td>0.645</td><td>0.683</td></tr>
+        <tr><td class="l">A3 — tắt cả hai</td><td>0.601</td><td>0.591</td><td>0.609</td><td>0.646</td></tr>
+      </table>
+      <div class="note" style="margin-top:1vh">Mọi chênh lệch của A2 và A3 so với A0 đều chắc chắn về thống kê (p &lt; 0.001 sau hiệu chỉnh, 90 tình huống ghép cặp). Của A1 thì không (≈ 0).</div>
+    </div>
+    <div class="col">
+      <ul>
+        <li class="pos"><b>Tích cực — phát hiện chính:</b> tắt bộ nhớ đồ thị làm alignment <b>giảm rõ ở cả 4 cỡ model</b> (tới <b>~15%</b> ở 2B). Giảm <b>mạnh nhất ở model nhỏ</b>, thu hẹp dần khi model lớn — đúng luận điểm "harness bù cho model nhỏ".</li>
+        <li class="pos"><b>Tích cực:</b> tắt cả hai cơ chế → giảm sâu nhất ở mọi cỡ model. Hai cơ chế cộng lại giải thích phần lớn lợi thế alignment của hệ.</li>
+        <li><b>Trung tính — ghi nhận trung thực:</b> tắt riêng vòng tự kiểm, điểm hầu như không đổi. Nhưng khi bộ nhớ đồ thị đã mất, vòng tự kiểm vẫn bù lại được một phần → vai trò của nó là <b>cơ chế an toàn dự phòng</b> + để lại <b>audit trail</b> (sửa gì, vì sao), không phải nguồn điểm chính.</li>
+        <li>Chi phí: bộ nhớ đồ thị tốn thêm ~22–25% token; vòng tự kiểm tốn không đáng kể.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 13d. ABLATION RQ1 + FIG ============ -->
+<section class="slide">
+  <div class="kicker">Ablation 24/07 — 3/4</div>
+  <h2>Kết quả 2 — điểm trên ISD-Agent-Bench không "nhìn thấy" alignment</h2>
+  <div class="cols">
+    <div class="col wide">
+      <div class="figbox">
+        <img src="../generated/figures/fig_ablation.png" alt="Chênh lệch điểm ISD-Agent-Bench giữa các phiên bản theo cỡ model">
+        <div class="figcap">Chênh lệch điểm trên ISD-Agent-Bench (phiên bản − đầy đủ): trong ±0.7/100 ở 2B–9B; điểm −1.5 ở 0.8B có khoảng tin cậy rộng, không có ý nghĩa thống kê</div>
+      </div>
+    </div>
+    <div class="col">
+      <ul>
+        <li>Điểm trên ISD-Agent-Bench (giám khảo LLM chấm theo rubric ADDIE) <b>gần như không phân biệt được 4 phiên bản</b>: không khác biệt có ý nghĩa nào vượt quá 0.7/100 — trong khi thước đo alignment chuyên biệt chênh <b>6–15%</b> cho cùng các phiên bản đó.</li>
+        <li><b>Ghi nhận trung thực chiều ngược:</b> tắt vòng tự kiểm thậm chí <i>tăng nhẹ</i> điểm bench (+0.7 ở 2B). Việc sửa lỗi alignment không cải thiện điểm trong đánh giá tổng quát của judge — hai đại lượng khác nhau.</li>
+        <li class="pos"><b>Đây chính là phát hiện:</b> muốn đo constructive alignment thì phải có thước đo chuyên biệt — kết quả này củng cố lý do tồn tại của metric RQ2 (đóng góp 2).</li>
+        <li class="pos"><b>Độ bền không đổi:</b> cả 4 phiên bản đều tạo output dùng được cho 100% tình huống, kể cả trên model nhỏ nhất → độ bền đến từ khung ADDIE đa tác tử + kiểm tra cấu trúc, không phụ thuộc hai cơ chế vừa tắt.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 13e. ABLATION CONCLUSIONS ============ -->
+<section class="slide">
+  <div class="kicker">Ablation 24/07 — 4/4</div>
+  <h2>Ablation — kết luận</h2>
+  <ul>
+    <li><span class="badge b3">Tích cực</span><b>Bộ nhớ đồ thị chung</b> là cơ chế chịu tải cho alignment: đóng góp rõ ở cả 4 cỡ model, <b>lớn nhất ở model nhỏ</b> — bằng chứng ở cấp cơ chế cho luận điểm "harness bù scale".</li>
+    <li><span class="badge b1">Trung tính</span><b>Vòng tự kiểm &amp; sửa</b> không cộng điểm khi bộ nhớ đồ thị còn nguyên; giá trị của nó là <b>cơ chế an toàn dự phòng</b> và <b>audit trail</b> cho chuyên gia (sửa gì, vì sao) — đúng định vị educator-in-the-loop.</li>
+    <li><span class="badge b3">Tích cực</span><b>Điểm trên ISD-Agent-Bench không phản ánh alignment</b> (không khác biệt có ý nghĩa nào quá 0.7/100 giữa các phiên bản, trong khi alignment chênh 6–15%) → thước đo alignment chuyên biệt là đóng góp cần thiết, không phải phụ trợ.</li>
+    <li><span class="badge b1">Phạm vi</span><b>Độ bền</b> (100% output ở mọi phiên bản) đến từ khung ADDIE đa tác tử — khung này là nền của mọi phiên bản nên ablation chưa tách riêng được; claim về khung giữ ở mức toàn hệ thống.</li>
+  </ul>
+  <h3 style="margin-top:1.4vh">Giới hạn — đã đo và khai báo</h3>
+  <ul>
+    <li>Điểm tuyệt đối giữa hai đợt chấm (cách nhau 2 ngày) lệch +1.4…+2.0/100 do LLM judge drift theo thời gian → mọi so sánh ablation đều nằm <b>trong cùng một đợt chấm</b>; không đặt số tuyệt đối của hai đợt cạnh nhau.</li>
+    <li>Mỗi phiên bản chạy 1 lần trên mỗi cỡ model — đủ cho các kết luận trên (90 tình huống ghép cặp, p &lt; 0.001); riêng phần cơ chế an toàn dự phòng, nếu cần khẳng định mạnh hơn sẽ chạy lặp bổ sung.</li>
+  </ul>
+  <div class="note">Toàn bộ số liệu sinh tự động từ dữ liệu chạy (tái lập được); bảng và hình cho paper đã sẵn sàng để đưa thẳng vào bản thảo.</div>
+</section>
+
+<!-- ============ 14. COST ============ -->
+<section class="slide">
+  <h2>Chi phí vận hành — harness tốn thêm bao nhiêu?</h2>
+  <div class="cols">
+    <div class="col wide">
+      <div class="figbox">
+        <img src="../generated/figures/fig_cost_quality.png" alt="Chi phí vs chất lượng">
+        <div class="figcap">Lượng token mỗi tình huống vs điểm trên ISD-Agent-Bench — đánh đổi chi phí/chất lượng</div>
+      </div>
+    </div>
+    <div class="col">
+      <ul>
+        <li>AlignmentGraph-ISD tốn <b>22–33k token</b> (~8 call) mỗi tình huống — gấp <b>2–4 lần</b> baseline one-shot, nhưng vẫn <b>thấp hơn</b> eduplanner và RPISD.</li>
+        <li class="pos"><b>Chi phí phụ trội giảm khi model lớn</b>: 33.2k (0.8B) → 22.5k (9B) — model mạnh hơn thì ít phải regenerate hơn.</li>
+        <li class="neg"><b>Trung thực:</b> ở 9B, react-isd đạt điểm tương đương với ~29% chi phí. Với model lớn, phần chi phí tăng thêm đổi lấy <b>nội dung ADDIE + alignment + auditability</b> — không phải điểm tổng trên bench.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 15. CONCLUSIONS ============ -->
+<section class="slide">
+  <h2>Kết luận (đã hiệu chỉnh theo mức bằng chứng)</h2>
+  <ul>
+    <li><b>1 · Độ bền:</b> tạo output hợp lệ cho 100% tình huống ở mọi cỡ model; các hệ không có scaffold hỏng 87–88/90 ở 0.8B, 31–46/90 ở 2B — với model nhỏ, thiếu scaffold thì phần lớn <b>không tạo được output</b>.</li>
+    <li><b>2 · Điểm trên ISD-Agent-Bench:</b> vượt các hệ quy trình cùng lớp ở cả 4 cỡ model; dẫn điểm <b>nội dung ADDIE ở cả 4 cỡ</b>. Ghi nhận trung thực: tương đương react-isd ở model lớn, thấp hơn Dick-Carey 1.59 điểm ở 0.8B.</li>
+    <li><b>3 · "Harness bù scale" — mức claim giữ được:</b> lợi thế thu hẹp dần khi model lớn lên (đo trực tiếp, có ý nghĩa thống kê); chênh lệch failure tập trung ở model nhỏ; khoảng cách rất lớn ở 0.8B chỉ nêu kèm điều kiện tính cả các tình huống hệ đối sánh không có output.</li>
+    <li><b>4 · Alignment (RQ2):</b> dẫn đầu cả 4 cỡ model, khoảng cách nới rộng khi model nhỏ đi (0.079 → 0.239); giữ nguyên khi chỉ chấm các tình huống mọi hệ đều có output; giới hạn của thước đo đã khai báo và được đối chiếu chéo bằng kênh chấm độc lập.</li>
+    <li><b>5 · Ablation:</b> bộ nhớ đồ thị chung là cơ chế duy trì alignment (rõ ở cả 4 cỡ model, lớn nhất ở model nhỏ); vòng tự kiểm = cơ chế an toàn + audit trail; điểm trên ISD-Agent-Bench không phản ánh alignment → khẳng định giá trị của metric RQ2.</li>
+  </ul>
+  <h3 style="margin-top:1.4vh">Hạn chế &amp; kế hoạch</h3>
+  <ul>
+    <li><b>Hạn chế:</b> chưa tách riêng được khung đa tác tử (nền của mọi phiên bản — claim ở mức hệ thống); metric gần construct với vòng tự kiểm (đã đối chiếu chéo bằng judge); failure của baseline một phần có thể do max-token cap; chưa có expert evaluation.</li>
+    <li><b>Kế hoạch:</b> viết mục Ablation vào bản thảo (artifact đã sẵn sàng) → submit <b>IEEE TLT</b> (fallback: EAIT); expert evaluation là bước kế tiếp (ETR&amp;D để dành khi có expert study).</li>
+  </ul>
+  <div class="note">Cảm ơn thầy/cô — mong nhận góp ý về: mức claim của "bù scale" + kết quả ablation, thiết kế expert eval, và lựa chọn journal.</div>
+</section>
+
+<div class="footer"><span id="pageno"></span></div>
+
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  let cur = 0;
+  function show(i) {
+    cur = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach((s, k) => s.classList.toggle('active', k === cur));
+    document.getElementById('pageno').textContent = (cur + 1) + ' / ' + slides.length;
+    location.hash = cur + 1;
+  }
+  document.addEventListener('keydown', e => {
+    if (['ArrowRight', ' ', 'PageDown'].includes(e.key)) { e.preventDefault(); show(cur + 1); }
+    else if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); show(cur - 1); }
+    else if (e.key === 'Home') show(0);
+    else if (e.key === 'End') show(slides.length - 1);
+  });
+  document.addEventListener('click', e => {
+    if (e.target.closest('a')) return;
+    show(e.clientX < window.innerWidth * 0.2 ? cur - 1 : cur + 1);
+  });
+  show((parseInt(location.hash.slice(1), 10) || 1) - 1);
+</script>
+</body>
+</html>

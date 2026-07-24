@@ -19,6 +19,7 @@
 4. [Serving (RunPod Pods + vLLM)](#4-serving-runpod-pods--vllm)
 5. [Tune trên train_30](#5-tune-harness-trên-train_30)
 6. [Bench trên test_90 — ladder](#6-bench-trên-test_90--chạy-ladder)
+   — 6b. [Ablation study](#6b-ablation-study-4-size--4-arm-1-run-cùng-judge-session)
 7. [Audit kết quả](#7-audit-kết-quả)
 8. [Score alignment (RQ2)](#8-score-alignment-rq2--chạy-cho-từng-run-dir)
 9. [Pool runs → thống kê](#9-pool-12-runs--thống-kê-rq1--rq2)
@@ -29,22 +30,30 @@
 
 ### Bản đồ script (`isd-agent-benchmark/scripts/`)
 
-| Script                         | Vai trò                                                                                         | Mục     |
-|--------------------------------|-------------------------------------------------------------------------------------------------|---------|
-| `1_setup.sh`                   | venv + cài deps gốc (`pyproject.toml`) + agents/evaluator (editable)                            | 2       |
-| `2_split_data.sh`              | split gốc train/test 95/5 (seed 42)                                                             | 3       |
-| `2_split_stratified_subset.py` | split `train_30` / `test_90`                                                                    | 3       |
-| `3_sync_runpod_pods_env.py`    | list pods → verify model → sync env-quads vào `.env`                                            | 4.6     |
-| `3_run_benchmark_test.sh`      | smoke run 1 scenario (sanity sau setup, ngoài e2e)                                              | 2       |
-| `4_run_benchmark.sh`           | launcher tmux tổng quát — dùng cho **tune** trên `train_30` (chọn slot qua `AGENT_MODEL_SLOTS`) | 5       |
-| `5_audit_preflight.py`         | audit trước khi launch: pod/auth/model/flags/smoke/disk                                         | 7.1     |
-| `5_run_ladder.sh`              | launcher ladder 4 size × 3 run                                                                  | 6       |
-| `6_audit_inflight.py`          | audit trong khi chạy: đếm red-flag trong logs + progress freshness                              | 7.2     |
-| `6_audit_postrun.py`           | audit sau run: completeness/integrity/metrics per run dir                                       | 7.3–7.5 |
-| `7_score_alignment.py`         | chấm alignment RQ2 per run dir (LLM-free)                                                       | 8       |
-| `7_pool_ladder_runs.py`        | pool 12 runs → `pooled_ladder.json` + stats + token usage                                       | 9       |
-| `8_gen_paper_tables.py`        | sinh `.tex` + macros vào `results/generated/` (sync sang docs bằng `docs/scripts/sync_generated.sh`)    | 10      |
-| `8_gen_paper_figures.py`       | sinh 8 hình RQ1/RQ2 (`.pdf`+`.png`) vào `results/generated/figures/`                            | 10      |
+Script chung nằm ở `scripts/`; pipeline ladder nằm trong `scripts/alignmentgraph-isd-bench/`;
+pipeline ablation nằm trong `scripts/alignmentgraph-isd-bench/ablation/` (numbering song song
+với ladder, tái dùng 6_audit + 7_score_alignment từ thư mục cha).
+
+| Script                                                        | Vai trò                                                                                         | Mục     |
+|---------------------------------------------------------------|-------------------------------------------------------------------------------------------------|---------|
+| `1_setup.sh`                                                  | venv + cài deps gốc (`pyproject.toml`) + agents/evaluator (editable)                            | 2       |
+| `2_split_data.sh`                                             | split gốc train/test 95/5 (seed 42)                                                             | 3       |
+| `2_split_stratified_subset.py`                                | split `train_30` / `test_90`                                                                    | 3       |
+| `3_sync_runpod_pods_env.py`                                   | list pods → verify model → sync env-quads vào `.env`                                            | 4.6     |
+| `3_run_benchmark_test.sh`                                     | smoke run 1 scenario (sanity sau setup, ngoài e2e)                                              | 2       |
+| `4_run_benchmark.sh`                                          | launcher tmux tổng quát — dùng cho **tune** trên `train_30` (chọn slot qua `AGENT_MODEL_SLOTS`) | 5       |
+| `alignmentgraph-isd-bench/5_audit_preflight.py`               | audit trước khi launch: pod/auth/model/flags/smoke/disk                                         | 7.1     |
+| `alignmentgraph-isd-bench/5_run_ladder.sh`                    | launcher ladder 4 size × 3 run                                                                  | 6       |
+| `alignmentgraph-isd-bench/6_audit_inflight.py`                | audit trong khi chạy: đếm red-flag trong logs + progress freshness                              | 7.2     |
+| `alignmentgraph-isd-bench/6_audit_postrun.py`                 | audit sau run: completeness/integrity/metrics per run dir                                       | 7.3–7.5 |
+| `alignmentgraph-isd-bench/7_score_alignment.py`               | chấm alignment RQ2 per run dir (LLM-free)                                                       | 8       |
+| `alignmentgraph-isd-bench/7_pool_ladder_runs.py`              | pool 12 runs → `pooled_ladder.json` + stats + token usage                                       | 9       |
+| `alignmentgraph-isd-bench/8_gen_paper_tables.py`              | sinh `.tex` + macros vào `results/generated/` (sync bằng `docs/scripts/sync_generated.sh`)      | 10      |
+| `alignmentgraph-isd-bench/8_gen_paper_figures.py`             | sinh 8 hình RQ1/RQ2 (`.pdf`+`.png`) vào `results/generated/figures/`                            | 10      |
+| `alignmentgraph-isd-bench/ablation/5_run_ablation.sh`         | launcher ablation 4 size × 4 arm × 1 run (tag `abl1`)                                           | 6b      |
+| `alignmentgraph-isd-bench/ablation/7_pool_ablation_runs.py`   | pool 4 run ablation → `pooled_ablation.json` + stats + flag check                               | 6b      |
+| `alignmentgraph-isd-bench/ablation/8_gen_ablation_tables.py`  | sinh `tab_ablation.tex` + `abl_macros.tex` + `stats_ablation.md`                                | 6b      |
+| `alignmentgraph-isd-bench/ablation/8_gen_ablation_figures.py` | sinh `figures/fig_ablation.{pdf,png}`                                                           | 6b      |
 
 ---
 
@@ -342,7 +351,7 @@ cần một lệnh foreground đơn lẻ.)
 
 ```bash
 source .env            # judge config + RUNPOD_API_KEY/VLLM_API_KEY
-./scripts/5_run_ladder.sh        # gõ "yes" ở prompt xác nhận
+./scripts/alignmentgraph-isd-bench/5_run_ladder.sh        # gõ "yes" ở prompt xác nhận
 ```
 
 Cơ chế (cùng mechanism với `4_run_benchmark.sh`):
@@ -371,7 +380,7 @@ echo per-slot lúc launch và ghi vào manifest.
 RATE_LIMIT=moderate \
 QWEN08B_RATE_LIMIT=conservative \
 QWEN2B_RATE_LIMIT=conservative \
-./scripts/5_run_ladder.sh
+./scripts/alignmentgraph-isd-bench/5_run_ladder.sh
 ```
 
 (`<SLOT>_RATE_LIMIT` cũng hoạt động y hệt trong `4_run_benchmark.sh`.)
@@ -393,16 +402,76 @@ resume = launch lại đúng phần còn thiếu:
 
 ```bash
 # Chỉ 4B, run 2 và 3 (run 1 đã xong):
-LADDER_SLOTS="qwen4b" RUN_TAGS="r2,r3" ./scripts/5_run_ladder.sh
+LADDER_SLOTS="qwen4b" RUN_TAGS="r2,r3" ./scripts/alignmentgraph-isd-bench/5_run_ladder.sh
 
 # Chỉ 0.8B, đủ 3 run:
-LADDER_SLOTS="qwen08b" ./scripts/5_run_ladder.sh
+LADDER_SLOTS="qwen08b" ./scripts/alignmentgraph-isd-bench/5_run_ladder.sh
 ```
 
 - Mỗi lần re-launch ghi manifest `ladder_<ts>/` mới; **giữ tất cả manifest**.
 - **Không xoá** run dir dở dang vội — script pool (mục 9) báo tường minh scenario
   thiếu/fail per-run; re-run cùng tag phân biệt được bằng timestamp (dùng dir mới hơn, chỉ
   xoá dir bỏ dở **sau khi** pool xác nhận dir mới đủ).
+
+## 6b. Ablation study (4 size × 4 arm, 1 run, cùng judge session)
+
+Pipeline riêng trong `scripts/alignmentgraph-isd-bench/ablation/`, chạy **sau khi ladder xong**
+(consistency check cần `pooled_ladder.json`). Mỗi size chạy **một** benchmark run chứa cả 4 arm
+như 4 agent — mọi arm được chấm trong **cùng judge session** per scenario nên delta arm-vs-A0
+không dính judge drift, và tự thỏa gate ≥2 successful agents của evaluator.
+
+| Arm              | agent_id                          | enable_verifier | enable_graph_context |
+|------------------|-----------------------------------|-----------------|----------------------|
+| A0 full pipeline | `alignmentgraph-isd`              | True            | True                 |
+| A1 −Verifier     | `alignmentgraph-isd-no-verifier`  | False           | True                 |
+| A2 −GraphContext | `alignmentgraph-isd-no-graph-ctx` | True            | False                |
+| A3 skeleton      | `alignmentgraph-isd-skeleton`     | False           | False                |
+
+Flag là **kwargs cố định theo agent_id** trong registry của `run_benchmark.py` (không phải env
+var) → không thể chạy nhầm config; mỗi run còn tự ghi `metadata.run_config` vào
+`*_trajectory.json` và script pool **hard-fail** nếu flag không khớp agent_id.
+
+```bash
+# 0) Pod 4 size đang RUNNING + env-quads đã sync (python scripts/3_sync_runpod_pods_env.py)
+DRY_RUN=1 ./scripts/alignmentgraph-isd-bench/ablation/5_run_ablation.sh   # xem lệnh, không chạy
+./scripts/alignmentgraph-isd-bench/ablation/5_run_ablation.sh             # 4 tmux session, tag abl1
+
+# 1) Audit từng run dir như ladder (mục 7.3–7.5)
+python scripts/alignmentgraph-isd-bench/6_audit_postrun.py results/test_90_benchmark_*_abl1_*
+
+# 2) RQ2 alignment per run dir (chấm mọi *_output.json nên tự phủ cả 4 arm — mục 8)
+python scripts/alignmentgraph-isd-bench/7_score_alignment.py results/test_90_benchmark_Qwen3.5-0.8B_abl1_<ts>
+# ... lặp cho 4 run dir
+
+# 3) Pool + kiểm định (Wilcoxon paired arm−A0, Holm theo 3 arm mỗi size, bootstrap CI,
+#    A0 consistency check vs pooled_ladder.json, flag check)
+python scripts/alignmentgraph-isd-bench/ablation/7_pool_ablation_runs.py \
+    --auto-glob 'results/test_90_benchmark_*_abl1_*' \
+    --ladder-pooled results/pooled_ladder.json        # → results/pooled_ablation.json
+
+# 4) Sinh artifact paper rồi sync (mục 10.2)
+python scripts/alignmentgraph-isd-bench/ablation/8_gen_ablation_tables.py    # tab_ablation.tex, abl_macros.tex, stats_ablation.md
+python scripts/alignmentgraph-isd-bench/ablation/8_gen_ablation_figures.py   # figures/fig_ablation.{pdf,png}
+../docs/scripts/sync_generated.sh   # (chạy từ repo thesis)
+```
+
+Lưu ý diễn giải (phải ghi trong paper):
+
+- **Số vào paper chỉ lấy từ artifact generated** (`tab_ablation.tex` / `abl_macros.tex` /
+  `stats_ablation.md`), không gõ tay — như mọi số khác.
+- Hướng delta trong bảng/hình = **arm − A0** (âm = gỡ thành phần làm giảm chất lượng); trong
+  `pooled_ablation.json` các row comparison lưu chiều A0 − arm (contribution).
+- **Tag ablation không được chứa `_r` / khớp `r\d+`** (mặc định `abl1`) — để auto-glob
+  `..._r*` của pool ladder (mục 9) không bao giờ nuốt nhầm run ablation.
+- Ngữ nghĩa arm: khi QC tắt (A1/A3), các edge alignment-tier mà verifier re-establish trong
+  vòng repair sẽ không được tạo → edge coverage trong graph dump giảm là **một phần của hiệu
+  ứng đo được**, không phải bug. Khi graph-context tắt (A2/A3), graph vẫn được **ghi** đầy đủ
+  (dump/audit còn nguyên) — chỉ tắt chiều **đọc** vào prompt. Safety net của aggregator
+  (`_strengthen_alignment`, `_ensure_assessment_coverage`), residual audit và regen loop
+  (`regen_budget`) **bật ở mọi arm** (không phải cơ chế bị ablate).
+- A0 chạy lại trong-session; 3 run r1–r3 của ladder chỉ dùng làm **A0 consistency check**
+  (đo judge/session drift thực nghiệm — xem `stats_ablation.md`). 1 run/arm/size: delta nên
+  vượt ~2× run-to-run SD của ladder mới coi là chắc; borderline thì chạy thêm `RUN_TAG=abl2`.
 
 ## 7. Audit kết quả
 
@@ -414,7 +483,7 @@ LADDER_SLOTS="qwen08b" ./scripts/5_run_ladder.sh
 ### 7.1 Pre-flight (trước khi bấm chạy)
 
 ```bash
-python scripts/5_audit_preflight.py       # PASS/FAIL từng mục dưới; --no-smoke để bỏ smoke call
+python scripts/alignmentgraph-isd-bench/5_audit_preflight.py       # PASS/FAIL từng mục dưới; --no-smoke để bỏ smoke call
 ```
 
 Script tự đọc `.env`, check pod alive/auth (401/200), model khớp slot, smoke non-thinking
@@ -438,7 +507,7 @@ Script tự đọc `.env`, check pod alive/auth (401/200), model khớp slot, sm
 ### 7.2 In-flight (mỗi 30–60 phút trong khi chạy)
 
 ```bash
-python scripts/6_audit_inflight.py        # ladder dir mới nhất; watch -n 300 để theo dõi liên tục
+python scripts/alignmentgraph-isd-bench/6_audit_inflight.py        # ladder dir mới nhất; watch -n 300 để theo dõi liên tục
 ```
 
 Đếm 524/400/empty/stub (phải đứng yên ở 0) + ✅/❌ per slot log + progress freshness.
@@ -462,7 +531,7 @@ Checklist gốc:
 ### 7.3 Post-run: Completeness (đủ số lượng)
 
 ```bash
-python scripts/6_audit_postrun.py         # audit mọi run dir (7.3 + 7.4 + 7.5 trong một report)
+python scripts/alignmentgraph-isd-bench/6_audit_postrun.py         # audit mọi run dir (7.3 + 7.4 + 7.5 trong một report)
 ```
 
 Script phân biệt **RED** (lỗi hạ tầng — stub/rỗng/token=0/sai model/thiếu metric) với
@@ -555,7 +624,7 @@ không tốn API — chỉ đọc `*_output.json` và ghi `alignment_scores.json
 
 ```bash
 for RUN in results/test_90_benchmark_*_r*; do
-  python scripts/7_score_alignment.py "$RUN"
+  python scripts/alignmentgraph-isd-bench/7_score_alignment.py "$RUN"
 done
 ```
 
@@ -567,7 +636,7 @@ vẫn chạy nhưng **bỏ trống toàn bộ phần RQ2** (graceful skip — d�
 ## 9. Pool 12 runs → thống kê RQ1 + RQ2
 
 ```bash
-python scripts/7_pool_ladder_runs.py --auto-glob 'results/test_90_benchmark_*_r*'
+python scripts/alignmentgraph-isd-bench/7_pool_ladder_runs.py --auto-glob 'results/test_90_benchmark_*_r*'
 ```
 
 - Output: `results/pooled_ladder.json` + report stdout. Gộp 3 run/size (mean-of-runs), rồi
@@ -588,7 +657,7 @@ python scripts/7_pool_ladder_runs.py --auto-glob 'results/test_90_benchmark_*_r*
 ## 10. Sinh bảng, hình + macro số liệu cho paper
 
 ```bash
-python scripts/8_gen_paper_tables.py --pooled results/pooled_ladder.json
+python scripts/alignmentgraph-isd-bench/8_gen_paper_tables.py --pooled results/pooled_ladder.json
 ```
 
 Ghi vào `results/generated/` (**benchmark-local, gitignored**): `tab_rq1.tex`,
@@ -596,28 +665,27 @@ Ghi vào `results/generated/` (**benchmark-local, gitignored**): `tab_rq1.tex`,
 trong paper phải sinh tự động, không gõ tay**), `stats_summary.md` (bản dump người đọc để
 cross-check). Số format kiểu VN (`{,}`). Copy sang docs bằng bước sync ở mục 10.2.
 
-
 ### 10.1 Hình (figures)
 
 ```bash
 # Deps: matplotlib nằm trong pyproject.toml gốc (1_setup.sh đã cài; nếu venv cũ: pip install -e .)
-python scripts/8_gen_paper_figures.py --runs-glob 'results/test_90_benchmark_*_r*'
+python scripts/alignmentgraph-isd-bench/8_gen_paper_figures.py --runs-glob 'results/test_90_benchmark_*_r*'
 ```
 
 Ghi vào `results/generated/figures/` (mỗi hình cả `.pdf` vector cho
 `\includegraphics` lẫn `.png` preview; text trong hình tiếng Anh, caption tiếng Việt viết
 trong LaTeX):
 
-| Hình                      | Nội dung                                                                                              |
-|---------------------------|-------------------------------------------------------------------------------------------------------|
-| `fig_rq1_ladder`          | Total vs model size, 7 agents, error bar = run-to-run SD (headline RQ1)                               |
-| `fig_rq1_delta`           | Δ(proposed − baseline) per size, CI95 bootstrap, marker đặc = p_holm < 0,05, kèm trend slope          |
-| `fig_rq1_components`      | ADDIE vs Trajectory theo size                                                                         |
-| `fig_rq2_ladder`          | Alignment composite vs size (headline RQ2 — gap có nới rộng khi model nhỏ đi?)                        |
-| `fig_rq2_components`      | Heatmap agents × 5 alignment components per size                                                      |
-| `fig_rq2_vs_rq1_scatter`  | Per-scenario: composite vs Total (judge), Spearman ρ per size — cần `--runs-glob`                     |
-| `fig_failure_rate`        | % scenario fail per agent × size (mean of runs, whisker min–max)                                      |
-| `fig_cost_quality`        | Total vs total tokens / exec time (deployment-cost angle)                                             |
+| Hình                     | Nội dung                                                                                     |
+|--------------------------|----------------------------------------------------------------------------------------------|
+| `fig_rq1_ladder`         | Total vs model size, 7 agents, error bar = run-to-run SD (headline RQ1)                      |
+| `fig_rq1_delta`          | Δ(proposed − baseline) per size, CI95 bootstrap, marker đặc = p_holm < 0,05, kèm trend slope |
+| `fig_rq1_components`     | ADDIE vs Trajectory theo size                                                                |
+| `fig_rq2_ladder`         | Alignment composite vs size (headline RQ2 — gap có nới rộng khi model nhỏ đi?)               |
+| `fig_rq2_components`     | Heatmap agents × 5 alignment components per size                                             |
+| `fig_rq2_vs_rq1_scatter` | Per-scenario: composite vs Total (judge), Spearman ρ per size — cần `--runs-glob`            |
+| `fig_failure_rate`       | % scenario fail per agent × size (mean of runs, whisker min–max)                             |
+| `fig_cost_quality`       | Total vs total tokens / exec time (deployment-cost angle)                                    |
 
 `--demo` render toàn bộ bằng dữ liệu synthetic (test layout, không cần pooled JSON). Thiếu
 alignment/token data trong pooled JSON ⇒ hình tương ứng bị skip kèm cảnh báo.
@@ -651,15 +719,15 @@ nguyên văn từ mục 4.
 ```bash
 cd isd-agent-benchmark
 # 1. Audit từng run dir:
-python scripts/6_audit_postrun.py
+python scripts/alignmentgraph-isd-bench/6_audit_postrun.py
 # 2. RQ2 scoring (local, free):
-for RUN in results/test_90_benchmark_*_r*; do python scripts/7_score_alignment.py "$RUN"; done
+for RUN in results/test_90_benchmark_*_r*; do python scripts/alignmentgraph-isd-bench/7_score_alignment.py "$RUN"; done
 # 3. Pool:
-python scripts/7_pool_ladder_runs.py --auto-glob 'results/test_90_benchmark_*_r*'
+python scripts/alignmentgraph-isd-bench/7_pool_ladder_runs.py --auto-glob 'results/test_90_benchmark_*_r*'
 # 4. Bảng paper (vào results/generated/):
-python scripts/8_gen_paper_tables.py --pooled results/pooled_ladder.json
+python scripts/alignmentgraph-isd-bench/8_gen_paper_tables.py --pooled results/pooled_ladder.json
 # 5. Hình paper (vào results/generated/figures/):
-python scripts/8_gen_paper_figures.py --runs-glob 'results/test_90_benchmark_*_r*'
+python scripts/alignmentgraph-isd-bench/8_gen_paper_figures.py --runs-glob 'results/test_90_benchmark_*_r*'
 # 6. Sync vào cây paper (chạy từ repo thesis):
 cd .. && docs/scripts/sync_generated.sh && cd isd-agent-benchmark
 # 7. Tắt pod RunPod (console), giữ manifests.
@@ -748,7 +816,9 @@ component (xem mục 7.5).
 
 ## A.2 RQ1 statistics — duy trì chất lượng theo model scale
 
-File: [`scripts/7_pool_ladder_runs.py`](../isd-agent-benchmark/scripts/7_pool_ladder_runs.py). Input: 4 kích thước
+File: [
+`scripts/alignmentgraph-isd-bench/7_pool_ladder_runs.py`](../isd-agent-benchmark/scripts/alignmentgraph-isd-bench/7_pool_ladder_runs.py).
+Input: 4 kích thước
 Qwen (0.8B/2B/4B/9B) × 3 run độc lập/kích thước × 90 scenario (`test_90`), mỗi scenario đã có `Total` (mục A.1.4) cho
 từng agent. Đây là các thống kê **suy diễn**, không phải điểm số thô.
 

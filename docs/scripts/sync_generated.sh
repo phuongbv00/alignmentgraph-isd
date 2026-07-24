@@ -2,7 +2,7 @@
 # Sync generated paper artifacts from the benchmark into docs/generated/.
 #
 #   isd-agent-benchmark/results/generated/   -->   docs/generated/
-#     *.tex, stats_summary.md                        (LaTeX \input targets)
+#     *.tex, stats_summary.md, stats_ablation.md     (LaTeX \input targets + notes)
 #     figures/*.{pdf,png}                            (for \includegraphics)
 #
 # The 8_* generator scripts write ONLY into the benchmark's results/generated/
@@ -10,8 +10,11 @@
 # The paper references these via relative paths (e.g. ../../../generated/).
 # Regenerate first:
 #   cd isd-agent-benchmark
-#   python scripts/8_gen_paper_tables.py
-#   python scripts/8_gen_paper_figures.py --runs-glob 'results/test_90_benchmark_*_r*'
+#   python scripts/alignmentgraph-isd-bench/8_gen_paper_tables.py
+#   python scripts/alignmentgraph-isd-bench/8_gen_paper_figures.py --runs-glob 'results/test_90_benchmark_*_r*'
+#   # ablation (if pooled_ablation.json exists):
+#   python scripts/alignmentgraph-isd-bench/ablation/8_gen_ablation_tables.py
+#   python scripts/alignmentgraph-isd-bench/ablation/8_gen_ablation_figures.py
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"         # master-thesis/
@@ -22,6 +25,11 @@ DST="$ROOT/docs/generated"
 
 mkdir -p "$DST/figures"
 cp "$SRC"/*.tex "$SRC"/stats_summary.md "$DST"/
+# ablation stats notes (only exists after the ablation pipeline has run);
+# plain if-block: `[ ... ] && cp` would trip set -e when the file is absent
+if [ -f "$SRC/stats_ablation.md" ]; then
+  cp "$SRC/stats_ablation.md" "$DST"/
+fi
 if compgen -G "$SRC/figures/*" > /dev/null; then
   cp "$SRC"/figures/*.pdf "$SRC"/figures/*.png "$DST/figures/"
 fi

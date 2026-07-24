@@ -70,6 +70,16 @@ def run_workflow(config: HarnessRunConfig, design_brief: DesignBrief) -> dict:
     trajectory_payload = trajectory.finalize()
     metadata = {
         "llm": _llm_metadata(config),
+        # Resolved harness flags, so every result is self-describing — the
+        # ablation pooling script verifies an arm actually ran the config its
+        # agent id claims.
+        "run_config": {
+            "enable_verifier": config.enable_verifier,
+            "enable_graph_context": config.enable_graph_context,
+            "use_rag": config.use_rag,
+            "regen_budget": config.regen_budget,
+            "regen_backoff_seconds": config.regen_backoff_seconds,
+        },
         "design_brief_id": design_brief.id,
         "violations": final_state.get("violations", []),
         "errors": final_state.get("errors", []),

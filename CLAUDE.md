@@ -14,7 +14,7 @@ This is a master's thesis monorepo with three top-level parts:
 - **`docs/`** — research documents.
   - `docs/summary.md` — RQ context (RQ1 = quality vs Qwen model scale, RQ2 = LLM-free constructive-alignment metric).
   - `docs/benchmark_guides.md` — **single source of truth for the whole benchmark workflow**: data split → RunPod/vLLM serving → tune → ladder run → audit → RQ2 scoring → pooling → paper tables, plus the full metrics reference (Appendix A). Consult it before touching anything experiment-related; it superseded and replaced the old `metrics.md`, `notes-serving-setup.md`, `results-audit-checklist.md`, and the benchmark's `scripts/README_ladder.md`.
-  - `docs/paper/` — the research paper: `acm/` (ACM template; the benchmark's `scripts/8_gen_paper_tables.py` + `8_gen_paper_figures.py` write generated tables/macros/figures to the benchmark's `results/generated/`, and `docs/scripts/sync_generated.sh` copies them into `docs/generated/` (the paper \input/\includegraphics targets, via relative paths) — numbers in the paper are generated, never hand-typed), `structure-guide.md`, `refs-deployment-survey.md`.
+  - `docs/paper/` — the research paper: `acm/` (ACM template; the benchmark's `scripts/alignmentgraph-isd-bench/8_gen_paper_tables.py` + `8_gen_paper_figures.py` write generated tables/macros/figures to the benchmark's `results/generated/`, and `docs/scripts/sync_generated.sh` copies them into `docs/generated/` (the paper \input/\includegraphics targets, via relative paths) — numbers in the paper are generated, never hand-typed), `structure-guide.md`, `refs-deployment-survey.md`.
   - `docs/refs/` — reference material pulled in from other repos.
   - `docs/thesis/` — the LaTeX thesis manuscript. `main.tex` is the entry point; `Chapter/` holds one `.tex` file per chapter; `Figure/` holds images; `glossary.tex` and `reference.bib` hold the glossary and bibliography; `compile.sh` runs `pdflatex -> bibtex -> pdflatex -> pdflatex` to produce `main.pdf`. LaTeX build artifacts and `*.pdf` are gitignored.
 - **`alignmentgraph-isd/`** — the **thesis contribution**: a standalone Python package (`alignmentgraph_isd`), a LangGraph-based multi-agent ADDIE instructional-design harness. Core only — experiment harnesses live outside. Tracked directly in this repo (not a submodule).
@@ -24,7 +24,7 @@ The two code parts are coupled: the benchmark agent `agents/alignmentgraph-isd` 
 
 ## The `alignmentgraph-isd` package (thesis core)
 
-Located in `alignmentgraph-isd/src/alignmentgraph_isd/`. **There is no ablation system — the full pipeline is the only pipeline** (the former `HARNESS_ABLATION` presets were removed in the 2026-07 RQ pivot; do not reintroduce them).
+Located in `alignmentgraph-isd/src/alignmentgraph_isd/`. **The full pipeline is the default and only preset** (the former `HARNESS_ABLATION` preset system was removed in the 2026-07 RQ pivot; do not reintroduce it). For the defense ablation study, `HarnessRunConfig` carries exactly two boolean switches, both `True` by default: `enable_verifier` (wires the QC verify+repair nodes) and `enable_graph_context` (gates the READ side of graph-context prompt injection only — the graph is always written). They are set solely via the benchmark's per-arm agent registrations (`alignmentgraph-isd-no-verifier`, `-no-graph-ctx`, `-skeleton` in `run_benchmark.py`), and the resolved flags are recorded in `metadata.run_config`.
 
 Public API (see the package README for details):
 
@@ -61,11 +61,11 @@ Layout:
 
 ### Evaluator (`evaluator/`)
 
-`isd_evaluator` package. ADDIE rubric scoring: 33 Context-Matrix sub-steps → 13 consolidated items → 5 ADDIE phases (100 pts), plus BFCL-based trajectory scoring; per-scenario canonical composite `total_score = 0.7·ADDIE + 0.3·Trajectory` (beware: the aggregate CSV "Avg" column is judge-mean and diverges when a component is missing — always use per-scenario `total_score`). Multi-judge by default (`--single-judge` to disable). Context-aware weighting in `metrics/context_weights.py`. `metrics/alignment.py` holds the **RQ2 constructive-alignment metric** (deterministic, LLM-free: Porter index, Webb range/Bloom-consistency, embedding coverage/precision) — run over a results dir via `scripts/7_score_alignment.py`. Full metric definitions: `docs/benchmark_guides.md` Appendix A.
+`isd_evaluator` package. ADDIE rubric scoring: 33 Context-Matrix sub-steps → 13 consolidated items → 5 ADDIE phases (100 pts), plus BFCL-based trajectory scoring; per-scenario canonical composite `total_score = 0.7·ADDIE + 0.3·Trajectory` (beware: the aggregate CSV "Avg" column is judge-mean and diverges when a component is missing — always use per-scenario `total_score`). Multi-judge by default (`--single-judge` to disable). Context-aware weighting in `metrics/context_weights.py`. `metrics/alignment.py` holds the **RQ2 constructive-alignment metric** (deterministic, LLM-free: Porter index, Webb range/Bloom-consistency, embedding coverage/precision) — run over a results dir via `scripts/alignmentgraph-isd-bench/7_score_alignment.py`. Full metric definitions: `docs/benchmark_guides.md` Appendix A.
 
 ## Common commands
 
-All commands run from inside `isd-agent-benchmark/`. The `scripts/` number prefixes follow pipeline order; the full workflow (incl. audits and paper-table generation) is in `docs/benchmark_guides.md`.
+All commands run from inside `isd-agent-benchmark/`. The `scripts/` number prefixes follow pipeline order; shared scripts sit in `scripts/`, the ladder pipeline in `scripts/alignmentgraph-isd-bench/`, the ablation pipeline in `scripts/alignmentgraph-isd-bench/ablation/`. The full workflow (incl. audits and paper-table generation) is in `docs/benchmark_guides.md`.
 
 ```bash
 # One-time setup: creates venv, installs base deps + every agent + evaluator (editable)
@@ -88,17 +88,25 @@ python scripts/3_sync_runpod_pods_env.py        # --dry-run to preview
 DATASET=train_30 AGENT_MODEL_SLOTS=qwen2b RUN_TAGS=tune1 ./scripts/4_run_benchmark.sh
 
 # RQ1 ladder (EXPENSIVE — 4 sizes × 3 runs × 7 agents × 90 scenarios) + audits
-python scripts/5_audit_preflight.py
-./scripts/5_run_ladder.sh
-python scripts/6_audit_inflight.py    # every 30–60 min while running
-python scripts/6_audit_postrun.py     # after runs finish
+python scripts/alignmentgraph-isd-bench/5_audit_preflight.py
+./scripts/alignmentgraph-isd-bench/5_run_ladder.sh
+python scripts/alignmentgraph-isd-bench/6_audit_inflight.py    # every 30–60 min while running
+python scripts/alignmentgraph-isd-bench/6_audit_postrun.py     # after runs finish
 
 # Post-processing (local; no agent/judge calls)
-python scripts/7_score_alignment.py results/test_90_benchmark_<...>   # per run dir (RQ2)
-python scripts/7_pool_ladder_runs.py --auto-glob 'results/test_90_benchmark_*_r*'
-python scripts/8_gen_paper_tables.py --pooled results/pooled_ladder.json   # → results/generated/
-python scripts/8_gen_paper_figures.py --runs-glob 'results/test_90_benchmark_*_r*'
+python scripts/alignmentgraph-isd-bench/7_score_alignment.py results/test_90_benchmark_<...>   # per run dir (RQ2)
+python scripts/alignmentgraph-isd-bench/7_pool_ladder_runs.py --auto-glob 'results/test_90_benchmark_*_r*'
+python scripts/alignmentgraph-isd-bench/8_gen_paper_tables.py --pooled results/pooled_ladder.json   # → results/generated/
+python scripts/alignmentgraph-isd-bench/8_gen_paper_figures.py --runs-glob 'results/test_90_benchmark_*_r*'
 ../docs/scripts/sync_generated.sh   # copy generated artifacts into docs/generated/
+
+# Ablation study (defense; 4 sizes × 4 arms as agents in ONE run per size, tag abl1;
+# full pipeline in docs/benchmark_guides.md §6b — run AFTER the ladder is pooled)
+DRY_RUN=1 ./scripts/alignmentgraph-isd-bench/ablation/5_run_ablation.sh   # preview commands
+./scripts/alignmentgraph-isd-bench/ablation/5_run_ablation.sh
+python scripts/alignmentgraph-isd-bench/ablation/7_pool_ablation_runs.py --auto-glob 'results/test_90_benchmark_*_abl1_*'
+python scripts/alignmentgraph-isd-bench/ablation/8_gen_ablation_tables.py    # tab_ablation.tex + abl_macros.tex + stats_ablation.md
+python scripts/alignmentgraph-isd-bench/ablation/8_gen_ablation_figures.py   # figures/fig_ablation.{pdf,png}
 
 # Run a single scenario against chosen agents
 python run_benchmark.py \
@@ -115,7 +123,7 @@ python run_benchmark.py \
 python run_benchmark.py --dataset test_90 --agents baseline,alignmentgraph-isd
 ```
 
-Default agents: `eduplanner, baseline, react-isd, addie-agent, dick-carey-agent, rpisd-agent`. **`alignmentgraph-isd` is NOT in the defaults — add it explicitly with `--agents`.**
+Default agents: `eduplanner, baseline, react-isd, addie-agent, dick-carey-agent, rpisd-agent`. **`alignmentgraph-isd` is NOT in the defaults — add it explicitly with `--agents`.** The ablation arms (`alignmentgraph-isd-no-verifier`, `alignmentgraph-isd-no-graph-ctx`, `alignmentgraph-isd-skeleton`) are likewise registry-only: same adapter package with the flags pinned per agent_id, selected explicitly via `--agents` (normally through `ablation/5_run_ablation.sh`).
 
 Rate-limit presets (`-r conservative|moderate|aggressive|turbo`) set worker counts and `BENCHMARK_DELAY` together; per-slot override via `<SLOT>_RATE_LIMIT`. See the benchmark README for the full flag/env matrix.
 

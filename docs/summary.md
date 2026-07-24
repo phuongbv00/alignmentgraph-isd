@@ -114,6 +114,13 @@ khai báo là không kiểm định được bằng score test (exact p sàn 0.2
 sensitivity. RQ2 chấm alignment metric offline trên đầu ra đã lưu của mọi agent — không cần chạy lại agent, không có
 lời gọi LLM trong metric; báo cáo cả composite unconditional lẫn conditional-on-parseable-output.
 
+Một **ablation study** đo mức đóng góp của từng thành phần harness: ba arm
+(−Verifier tắt vòng QC verify+repair; −GraphContext tắt việc bơm graph-context vào prompt; skeleton tắt cả hai) chạy
+cùng A0 (full pipeline) như bốn agent trong **một run duy nhất mỗi size** trên cả 4 kích thước Qwen — mọi arm được chấm
+trong cùng judge session nên delta arm−A0 (paired per-scenario, Wilcoxon + Holm theo 3 arm/size, bootstrap CI) không
+nhiễm judge drift; A0 in-session được đối chiếu với 3 run ladder làm consistency check. Ablation không đổi RQ1/RQ2 —
+nó là luận cứ defense cho thiết kế harness (contribution 1).
+
 Số liệu trong paper được sinh tự động từ artifact (script pool + generator LaTeX), không gõ tay; kết quả các run trước
 pivot không được sử dụng.
 
@@ -134,14 +141,22 @@ thứ tự dẫn dắt của narrative — mạnh nhất trước.)*
 4. **Alignment (metric mới):** dẫn đầu cả 4 size, giữ nguyên khi conditional-on-parseable; mọi so sánh p_holm ≤ 4.8e-13,
    r_rb ≥ 0.92; gap vs á quân nới rộng khi model nhỏ đi (0.079 ở 9B → 0.239 ở 0.8B) — trả lời cả hai vế RQ2, kèm giới
    hạn construct proximity đã khai báo ở Đóng góp 2.
+5. **Ablation (2026-07-24, §5 results doc):** gỡ graph-context làm alignment composite rớt có ý nghĩa ở cả 4 size
+   (−0.044…−0.107, p_holm ≤ 3e-7), hiệu ứng lớn nhất ở model nhỏ — graph-context là component chịu tải cho alignment và
+   khớp câu chuyện bù scale. Verifier đứng riêng không đo được đóng góp (ns) nhưng skeleton rớt sâu hơn −GraphCtx ở mọi
+   size (thêm −0.03…−0.06) → verifier là backstop tương tác + nguồn audit trail. Judge Total gần như bất biến giữa các
+   arm (không khác biệt có ý nghĩa nào quá 0.7/100) trong khi composite dịch 6–15% → LLM-judge không đo được alignment,
+   củng cố lý do tồn tại của RQ2 metric. 0 output failure ở mọi arm → robustness đến từ decomposition + schema + regen
+   (giữ ở mọi arm).
 
 ## Ý nghĩa và phạm vi kết luận
 
 Nếu giả thuyết được xác nhận, kết quả cho thấy các cơ chế ở cấp harness giúp chất lượng và alignment của hệ ISD ổn định
 hơn khi mô hình nền được thu nhỏ, đồng thời cung cấp một thước đo alignment tái sử dụng được cho các benchmark ISD. Kết
-luận về cơ chế được giới hạn cẩn trọng: thiết kế không tách riêng ảnh hưởng của cấu trúc đồ thị khỏi phân rã tác vụ và
-lượng tính toán suy luận (các cơ chế coupling chặt — đây là lý do không dùng ablation), nên các claim ở mức hệ thống,
-không ở mức từng cơ chế.
+luận về cơ chế được giới hạn cẩn trọng ở hai mức: claim hệ thống (so với baseline) từ ladder, và claim cơ chế từ
+ablation study — ablation tách được đóng góp của graph-context (có ý nghĩa, mọi size) và vai trò backstop của verifier
+trên trục alignment, nhưng không tách phân rã tác vụ đa-agent (không có arm single-agent — decomposition là nền của mọi
+arm), nên claim về decomposition vẫn ở mức hệ thống.
 
 Hệ thống được định vị là decision support cho chuyên gia ISD với educator-in-the-loop, không thay thế chuyên gia; graph
 dump là cơ chế audit và override cụ thể phục vụ định vị này. Các kết quả tạo cơ sở cho hướng triển khai hệ ISD bằng

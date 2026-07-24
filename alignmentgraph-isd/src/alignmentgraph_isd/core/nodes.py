@@ -169,7 +169,8 @@ class NodeFactory:
     def qc_node(self, agent_cls, task_name: str, budget: int = 2):
         """Verify the checks ``agent_cls`` owns and let it repair them, in place,
         up to ``budget`` rounds. This is the quality-control tool each specialist
-        owns; it runs after every generation node in both arms (QC is always on)."""
+        owns; it runs after every generation node whenever
+        ``config.enable_verifier`` is on (the default — off only in ablation arms)."""
         owned_types = agent_cls.OWNED_VIOLATION_TYPES
 
         def _node(state: ISDState) -> dict:
@@ -215,8 +216,14 @@ def initial_state() -> ISDState:
 
 def build_graph(config, graph, trajectory, design_brief):
     """Assemble the LangGraph StateGraph for this run: the six specialists in
-    fixed ADDIE order, each followed by its QC node (per-agent verify + repair,
-    always on), ending in the shared aggregate node."""
+    fixed ADDIE order, each followed by its QC node (per-agent verify + repair)
+    unless ``config.enable_verifier`` is off, ending in the shared aggregate node.
+
+    With QC off (ablation arm), the alignment-tier edges the verifier normally
+    re-establishes during repair rounds are never created, so edge coverage in the
+    graph dump may drop — that reduction is part of the measured ablation effect,
+    not a bug. Zero verifier/repair activity in the metadata is likewise expected
+    there; the residual GraphAuditor audit in the aggregate node still runs."""
     from langgraph.graph import StateGraph, START, END
 
     nf = NodeFactory(config, graph, trajectory, design_brief)
@@ -228,7 +235,9 @@ def build_graph(config, graph, trajectory, design_brief):
         wf.add_node(name, nf.generation_node(name))
         wf.add_edge(prev, name)
         agent_cls = GENERATION_AGENTS[name]
-        if agent_cls.OWNED_VIOLATION_TYPES:  # only agents with checks get a QC node
+        # Only agents with checks get a QC node, and none do when the verifier is
+        # ablated away.
+        if agent_cls.OWNED_VIOLATION_TYPES and getattr(config, "enable_verifier", True):
             qc = f"{name}_qc"
             wf.add_node(qc, nf.qc_node(agent_cls, qc))
             wf.add_edge(name, qc)

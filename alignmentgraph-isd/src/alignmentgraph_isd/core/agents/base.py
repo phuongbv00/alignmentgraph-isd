@@ -388,7 +388,15 @@ class BaseISDAgent(ABC):
         ``self._element_context(self.graph.element_nodes(NodeType.OBJECTIVE))``
         for "every learning objective", or the result of ``graph.traverse(...)``
         for a relation-scoped neighborhood.
+
+        ``config.enable_graph_context`` (off only in ablation arms) gates ALL
+        graph-context reads at once — including a specialist re-reading its own
+        earlier output and any repair-time context — by returning ``""`` here;
+        every call site guards ``if prior_ctx:`` so the prompt cleanly falls back
+        to the bare design brief. Graph WRITES are untouched.
         """
+        if not getattr(self.config, "enable_graph_context", True):
+            return ""
         import json
         lines: list[str] = []
         for node in nodes:
@@ -407,7 +415,11 @@ class BaseISDAgent(ABC):
         max_chars: int = 600,
     ) -> str:
         """Relation-scoped context: follow ``rel_path`` from each of
-        ``start_ids`` and format the nodes reached (multi-hop)."""
+        ``start_ids`` and format the nodes reached (multi-hop). Gated by
+        ``config.enable_graph_context`` like ``_element_context`` (early return
+        also skips the traversal cost)."""
+        if not getattr(self.config, "enable_graph_context", True):
+            return ""
         seen: set[str] = set()
         nodes: list[dict] = []
         for start_id in start_ids:
