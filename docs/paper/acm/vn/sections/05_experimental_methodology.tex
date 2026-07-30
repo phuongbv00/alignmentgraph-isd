@@ -9,10 +9,11 @@
   họ, chất lượng đầu ra (điểm judge tổng hợp) của AlignmentGraph-ISD và sáu tác tử đối
   sánh thay đổi như thế nào khi mô hình nền nhỏ đi, và harness có duy trì được lợi thế
   ở các kích thước nhỏ không?
-  \item \textbf{RQ2 (constructive alignment đo trực tiếp).} Trên một thước đo
-  constructive alignment tự động, tất định và độc lập với hệ được đo, đầu ra của
-  AlignmentGraph-ISD có mức alignment cao hơn các đối sánh không, và khoảng cách này
-  thay đổi thế nào khi mô hình nền nhỏ đi?
+  \item \textbf{RQ2 (constructive alignment theo tiêu chí đã thiết lập).} Theo các
+  tiêu chí constructive alignment đã được thiết lập---được operationalize thành các
+  chỉ số tự động, tất định và độc lập với hệ được đo---đầu ra của AlignmentGraph-ISD
+  đạt mức alignment cao hơn các đối sánh không, và khoảng cách này thay đổi thế nào
+  khi mô hình nền nhỏ đi?
 \end{itemize}
 
 \subsection{Bộ dữ liệu}
@@ -64,12 +65,21 @@ Với mỗi tổ hợp tác tử~$\times$~kích thước, giá trị của một
 ba lượt chạy; các bảng báo cả độ lệch chuẩn giữa các lượt để phản ánh run-to-run
 variability.
 
-\subsection{Thước đo constructive alignment cho RQ2}
+\subsection{Quy trình đánh giá constructive alignment cho RQ2}
 \label{sec:alignment-metric}
 
 Rubric của benchmark do LLM judge chấm và đo chất lượng tổng quát, không đo trực tiếp
-vị từ alignment trong \cref{eq:aligned}. Vì vậy, chúng tôi xây dựng \textbf{Composite
-Alignment Score (CAS)}, một thước đo offline với ba nguyên tắc thiết kế:
+vị từ alignment trong \cref{eq:aligned}. Vì vậy, chúng tôi đánh giá constructive
+alignment bằng một \textbf{quy trình đánh giá tự động} (automated audit protocol)
+đặt nền trên khung ILO--hoạt động dạy học--đánh giá của Biggs và
+Tang~\cite{biggs1996enhancing,biggs2011teaching}: các tiêu chí alignment cốt lõi mà
+Quality Matters rubric operationalize cho thiết kế khoá học~\cite{qm2018rubric}---mục
+tiêu đo được, đánh giá đo đúng mục tiêu, hoạt động phục vụ mục tiêu, cấp độ nhận thức
+tương thích---được lượng hoá bằng các chỉ số alignment đã được công bố và kiểm chứng
+trong đo lường giáo dục~\cite{porter2002measuring,webb1997criteria}. Chúng tôi
+\emph{không} đề xuất một thước đo mới; đóng góp ở đây là việc vận dụng các khung đã
+thiết lập vào đánh giá tự động, ở quy mô benchmark, cho đầu ra của tác tử ISD. Quy
+trình tuân theo ba nguyên tắc thiết kế:
 \begin{itemize}
   \item \emph{Tất định ở tầng tổng hợp.} Mọi công thức tổng hợp là các khung đo
   alignment đã được công bố và kiểm chứng trong đo lường giáo dục từ hơn hai thập
@@ -79,7 +89,7 @@ Alignment Score (CAS)}, một thước đo offline với ba nguyên tắc thiế
   pretrained độc lập, không liên quan tới verifier hay bất kỳ cơ chế nào của harness;
   điều này tránh tính vòng tròn khi hệ tự chấm đầu ra của mình và tránh self-preference
   bias của LLM judge~\cite{panickssery2024llm}.
-  \item \emph{Chỉ đọc văn bản kết xuất.} Thước đo phân tích văn bản ADDIE cuối cùng
+  \item \emph{Chỉ đọc văn bản kết xuất.} Quy trình phân tích văn bản ADDIE cuối cùng
   của mọi tác tử, không đọc các liên kết định danh có cấu trúc; nhờ đó, định dạng đầu
   ra giàu cấu trúc của harness không được ưu ái so với đầu ra thuần văn bản của các đối
   sánh.
@@ -116,19 +126,35 @@ LaBSE~\cite{feng2022labse}: với mỗi objective, lấy độ tương đồng l
 của từng thành phần rồi trung bình trên các objective. Cách đo này theo khung
 requirements traceability trong công nghệ phần mềm~\cite{clelandhuang2018traceability}.
 
-\paragraph{Tổng hợp.} CAS là trung bình không trọng số của các thành phần trên thang
-$[0,1]$; các bảng báo cả từng thành phần để kết quả không phụ thuộc vào một cách tổng
-hợp duy nhất. Toàn bộ pipeline (bộ phân loại, encoder, công thức, ngưỡng) được phát
-hành như một phần mở rộng của ISD-Agent-Bench và áp dụng được cho đầu ra của mọi tác
-tử ISD. Các hạn chế của thước đo---độ chính xác của bộ phân loại, tính chuyển giao
-sang tiếng Hàn---được thảo luận trong \cref{sec:threats-limitations}.
+\paragraph{Endpoint cấp objective.} Để kết quả diễn giải được trực tiếp theo các
+tiêu chí alignment kiểu Quality Matters~\cite{qm2018rubric}, quy trình báo cáo bốn
+endpoint ở cấp learning objective: (i)~\emph{assessment coverage}---tỷ lệ objective
+có ít nhất một assessment item tương ứng vượt ngưỡng tương đồng ngữ nghĩa;
+(ii)~\emph{activity coverage}---cùng tiêu chí đối với các activity;
+(iii)~\emph{cognitive congruence}---tỷ lệ objective mà assessment item tương ứng
+tốt nhất có cấp độ Bloom không thấp hơn cấp độ của objective; và
+(iv)~\emph{full alignment rate} (FAR)---tỷ lệ objective thoả \emph{đồng thời} cả ba
+tiêu chí trên, tính trên toàn bộ objective. FAR là endpoint chính của RQ2: một
+objective chỉ được coi là fully aligned khi được đánh giá đo đúng, được hoạt động hỗ
+trợ và tương thích về cấp độ nhận thức.
+
+\paragraph{Tổng hợp.} Bên cạnh các endpoint trên, \emph{alignment composite} là trung
+bình không trọng số của năm chỉ số thành phần (Porter, hai tiêu chí Webb, embedding
+coverage và precision) trên thang $[0,1]$; composite chỉ là một cách tổng hợp phục vụ
+tầng kiểm định thống kê, không phải một construct mới, và các bảng báo cả từng thành
+phần lẫn từng endpoint để kết quả không phụ thuộc vào một cách tổng hợp duy nhất.
+Toàn bộ pipeline (bộ phân loại, encoder, công thức, ngưỡng) được phát hành như một
+phần mở rộng của ISD-Agent-Bench và áp dụng được cho đầu ra của mọi tác tử ISD. Các
+hạn chế của quy trình---độ chính xác của bộ phân loại, tính chuyển giao sang tiếng
+Hàn, lựa chọn ngưỡng---được thảo luận trong \cref{sec:threats-limitations}.
 
 \subsection{Phân tích thống kê}
 \label{sec:stats}
 
 Đơn vị phân tích là giá trị theo scenario, lấy trung bình của ba lượt chạy. Mọi so
 sánh được ghép cặp theo scenario: chúng tôi áp dụng kiểm định Wilcoxon signed-rank
-trên Total (RQ1) và CAS (RQ2), dùng xấp xỉ chuẩn có hiệu chỉnh tie. Hiệu chỉnh Holm
+trên Total (RQ1), và trên alignment composite cùng full alignment rate (RQ2, hai
+family Holm riêng), dùng xấp xỉ chuẩn có hiệu chỉnh tie. Hiệu chỉnh Holm
 được áp dụng với family được định nghĩa tường minh: \emph{sáu so sánh
 (AlignmentGraph-ISD với từng đối sánh) trong từng kích thước mô hình}. Bên cạnh
 $p$-value, chúng tôi báo chênh lệch trung bình ghép cặp và khoảng tin cậy bootstrap

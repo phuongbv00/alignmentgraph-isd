@@ -39,25 +39,27 @@ $p=\rqOneDiDVsBaselineP$), cùng độ dốc xu hướng của chênh lệch the
 rộng khi mô hình nhỏ đi hay không dựa trên dấu và khoảng tin cậy của các đại lượng
 này. \TBD{diễn giải interaction khi có số thực}.
 
-\subsection{RQ2: Constructive alignment đo trực tiếp}
+\subsection{RQ2: Constructive alignment theo tiêu chí đã thiết lập}
 \label{sec:rq2}
 
-\Cref{tab:rq2-alignment} trình bày các thành phần của thước đo alignment
-(\cref{sec:alignment-metric})---Porter alignment index, các tiêu chí Webb và embedding
-coverage---cho bảy tác tử theo bốn kích thước mô hình. Chúng tôi báo cáo ba lớp kết
-quả: (i) so sánh ghép cặp CAS giữa harness và từng đối sánh trong từng kích thước
-(Wilcoxon signed-rank, hiệu chỉnh Holm với family sáu so sánh, khoảng tin cậy
-bootstrap); (ii) sự thay đổi của từng thành phần khi kích thước mô hình giảm; và
-(iii) interaction method~$\times$~model size trên CAS bằng
-difference-in-differences, kiểm tra trực tiếp giả thuyết rằng khoảng cách alignment
-nới rộng khi mô hình nhỏ đi. \TBD{prose kết quả RQ2: mức CAS, chênh lệch ghép cặp,
-CI, $p_{\mathrm{Holm}}$ và kết quả interaction, khi có số thực}.
+\Cref{tab:rq2-alignment} trình bày các endpoint cấp objective
+(\cref{sec:alignment-metric})---full alignment rate (FAR, endpoint chính), assessment
+coverage, activity coverage, cognitive congruence---cùng alignment composite cho bảy
+tác tử theo bốn kích thước mô hình. Chúng tôi báo cáo ba lớp kết quả: (i) so sánh
+ghép cặp giữa harness và từng đối sánh trong từng kích thước trên FAR và composite
+(Wilcoxon signed-rank, hiệu chỉnh Holm với family sáu so sánh cho từng chỉ số,
+khoảng tin cậy bootstrap); (ii) sự thay đổi của từng endpoint và thành phần khi kích
+thước mô hình giảm; và (iii) interaction method~$\times$~model size trên composite
+bằng difference-in-differences, kiểm tra trực tiếp giả thuyết rằng khoảng cách
+alignment nới rộng khi mô hình nhỏ đi. \TBD{prose kết quả RQ2: mức FAR và composite,
+chênh lệch ghép cặp, CI, $p_{\mathrm{Holm}}$ và kết quả interaction, khi có số thực}.
 
 \input{../../../generated/tab_rq2_alignment}
 
-Vì thước đo đọc cùng một văn bản kết xuất cho mọi tác tử và không dùng phán đoán LLM
-ở bất kỳ bước tổng hợp nào, kết quả RQ2 là một phép đo trực tiếp của vị từ
-$\mathrm{aligned}(o)$ trong \cref{eq:aligned}, độc lập với cả verifier của harness
-lẫn LLM judge của benchmark. Mối liên hệ giữa CAS và điểm judge của RQ1---hai thước đo
-nhắm vào hai khía cạnh khác nhau của chất lượng---được thảo luận trong
-\cref{sec:discussion}.
+Vì quy trình đánh giá đọc cùng một văn bản kết xuất cho mọi tác tử và không dùng phán
+đoán LLM ở bất kỳ bước tổng hợp nào, kết quả RQ2 là một phép đo tự động của vị từ
+$\mathrm{aligned}(o)$ trong \cref{eq:aligned} theo các tiêu chí đã thiết lập, độc lập
+với cả verifier của harness lẫn LLM judge của benchmark; các so sánh được diễn giải
+ở mức tương đối giữa các tác tử. Mối liên hệ giữa các chỉ số alignment và điểm judge
+của RQ1---hai phép đo nhắm vào hai khía cạnh khác nhau của chất lượng---được thảo
+luận trong \cref{sec:discussion}.

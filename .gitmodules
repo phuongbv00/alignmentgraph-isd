@@ -1,3 +1,6 @@
 [submodule "isd-agent-benchmark"]
 	path = isd-agent-benchmark
 	url = git@github.com:phuongbv00/isd-agent-benchmark.git
+[submodule "EDM2022CLO"]
+	path = EDM2022CLO
+	url = git@github.com:phuongbv00/EDM2022CLO.git

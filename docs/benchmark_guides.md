@@ -1,424 +1,239 @@
 # Benchmark guide — single source of truth (RQ1/RQ2)
 
-> Tài liệu **duy nhất** cho toàn bộ quy trình benchmark Qwen3.5 ladder: từ split data →
-> dựng serving → tune → chạy bench → audit → hậu xử lý ra bảng số liệu paper, kèm định nghĩa
-> đầy đủ mọi metric (Phụ lục A). Mục tiêu: một người mới pull repo về, có API key, đọc mỗi
-> file này là **tái lập được toàn bộ thực nghiệm**.
+> Toàn bộ quy trình benchmark Qwen3.5 ladder: split data → serving → tune → chạy bench → audit →
+> hậu xử lý ra số cho paper, kèm định nghĩa metric (Phụ lục A). Mục tiêu: đọc mỗi file này là
+> tái lập được thực nghiệm.
 >
-> Mọi lệnh chạy từ `isd-agent-benchmark/` trừ khi ghi khác. Bối cảnh RQ xem
-> [`docs/summary.md`](summary.md).
->
-> (File này gộp và thay thế các tài liệu cũ: `scripts/README_ladder.md`,
-> `docs/notes-serving-setup.md`, `docs/results-audit-checklist.md`, `docs/metrics.md`.)
+> Mọi lệnh chạy từ `isd-agent-benchmark/` trừ khi ghi khác. Bối cảnh RQ: [`docs/summary.md`](summary.md).
 
-## Mục lục
+**Ba quy tắc không được vi phạm:**
 
-1. [Tổng quan pipeline](#1-tổng-quan-pipeline)
-2. [Setup một lần](#2-setup-một-lần)
-3. [Split data](#3-split-data--train--test--train_30--test_90)
-4. [Serving (RunPod Pods + vLLM)](#4-serving-runpod-pods--vllm)
-5. [Tune trên train_30](#5-tune-harness-trên-train_30)
-6. [Bench trên test_90 — ladder](#6-bench-trên-test_90--chạy-ladder)
-   — 6b. [Ablation study](#6b-ablation-study-4-size--4-arm-1-run-cùng-judge-session)
-7. [Audit kết quả](#7-audit-kết-quả)
-8. [Score alignment (RQ2)](#8-score-alignment-rq2--chạy-cho-từng-run-dir)
-9. [Pool runs → thống kê](#9-pool-12-runs--thống-kê-rq1--rq2)
-10. [Sinh bảng + hình paper](#10-sinh-bảng-hình--macro-số-liệu-cho-paper)
-11. [Teardown + lưu trữ](#11-teardown--lưu-trữ)
-12. [TL;DR](#12-tldr--ladder-chạy-xong-rồi-giờ-làm-gì)
-    — Phụ lục A. [Metrics reference](#phụ-lục-a--metrics-reference)
-
-### Bản đồ script (`isd-agent-benchmark/scripts/`)
-
-Script chung nằm ở `scripts/`; pipeline ladder nằm trong `scripts/alignmentgraph-isd-bench/`;
-pipeline ablation nằm trong `scripts/alignmentgraph-isd-bench/ablation/` (numbering song song
-với ladder, tái dùng 6_audit + 7_score_alignment từ thư mục cha).
-
-| Script                                                        | Vai trò                                                                                         | Mục     |
-|---------------------------------------------------------------|-------------------------------------------------------------------------------------------------|---------|
-| `1_setup.sh`                                                  | venv + cài deps gốc (`pyproject.toml`) + agents/evaluator (editable)                            | 2       |
-| `2_split_data.sh`                                             | split gốc train/test 95/5 (seed 42)                                                             | 3       |
-| `2_split_stratified_subset.py`                                | split `train_30` / `test_90`                                                                    | 3       |
-| `3_sync_runpod_pods_env.py`                                   | list pods → verify model → sync env-quads vào `.env`                                            | 4.6     |
-| `3_run_benchmark_test.sh`                                     | smoke run 1 scenario (sanity sau setup, ngoài e2e)                                              | 2       |
-| `4_run_benchmark.sh`                                          | launcher tmux tổng quát — dùng cho **tune** trên `train_30` (chọn slot qua `AGENT_MODEL_SLOTS`) | 5       |
-| `alignmentgraph-isd-bench/5_audit_preflight.py`               | audit trước khi launch: pod/auth/model/flags/smoke/disk                                         | 7.1     |
-| `alignmentgraph-isd-bench/5_run_ladder.sh`                    | launcher ladder 4 size × 3 run                                                                  | 6       |
-| `alignmentgraph-isd-bench/6_audit_inflight.py`                | audit trong khi chạy: đếm red-flag trong logs + progress freshness                              | 7.2     |
-| `alignmentgraph-isd-bench/6_audit_postrun.py`                 | audit sau run: completeness/integrity/metrics per run dir                                       | 7.3–7.5 |
-| `alignmentgraph-isd-bench/7_score_alignment.py`               | chấm alignment RQ2 per run dir (LLM-free)                                                       | 8       |
-| `alignmentgraph-isd-bench/7_pool_ladder_runs.py`              | pool 12 runs → `pooled_ladder.json` + stats + token usage                                       | 9       |
-| `alignmentgraph-isd-bench/8_gen_paper_tables.py`              | sinh `.tex` + macros vào `results/generated/` (sync bằng `docs/scripts/sync_generated.sh`)      | 10      |
-| `alignmentgraph-isd-bench/8_gen_paper_figures.py`             | sinh 8 hình RQ1/RQ2 (`.pdf`+`.png`) vào `results/generated/figures/`                            | 10      |
-| `alignmentgraph-isd-bench/ablation/5_run_ablation.sh`         | launcher ablation 4 size × 4 arm × 1 run (tag `abl1`)                                           | 6b      |
-| `alignmentgraph-isd-bench/ablation/7_pool_ablation_runs.py`   | pool 4 run ablation → `pooled_ablation.json` + stats + flag check                               | 6b      |
-| `alignmentgraph-isd-bench/ablation/8_gen_ablation_tables.py`  | sinh `tab_ablation.tex` + `abl_macros.tex` + `stats_ablation.md`                                | 6b      |
-| `alignmentgraph-isd-bench/ablation/8_gen_ablation_figures.py` | sinh `figures/fig_ablation.{pdf,png}`                                                           | 6b      |
+1. Mọi quyết định tuning chỉ dựa trên `train_30`. `test_90` chỉ chạy sau khi freeze code. Sửa code sau đó ⇒ chạy lại
+   ladder.
+2. Số trong paper **chỉ** đến từ `results/generated/` (mục 9). Không gõ tay.
+3. Cấu hình judge và 3 flag bảo hộ (mục 3.3) phải **đồng nhất** giữa mọi run và mọi agent — đó là điều kiện công bằng
+   của so sánh.
 
 ---
 
-## 1. Tổng quan pipeline
+## Pipeline
 
 ```
-[2] setup env ──► [3] split data ──► [4] dựng serving ──► [5] TUNE trên train_30
-                                                            │  (loop đến khi chốt config)
-                                                            ▼
-[9] pool runs ◄── [8] score alignment ◄── [7] audit ◄── [6] BENCH test_90 (ladder)
-      │                (RQ2, local)                          4 size × 3 run
-      ▼
-[10] gen paper tables + figures ──► [11] teardown + lưu trữ
+[1] setup ─► [2] split data ─► [3] serving ─► [4] TUNE (train_30) ─┐
+                                                 loop đến khi chốt │
+                                                                   ▼
+[8] pool ◄── [7] score alignment ◄── [6] audit ◄── [5] BENCH test_90 (ladder)
+     │            (RQ2, local)                       4 size × 3 run × 10 agent
+     ▼
+[9] gen tables + figures ─► [10] teardown
 ```
 
-Nguyên tắc xuyên suốt (ML hygiene): **mọi quyết định tuning (prompt, config, flag) chỉ dựa
-trên `train_30`; `test_90` chỉ được chạy sau khi đã freeze harness**, và mọi thay đổi code
-sau đó ⇒ phải chạy lại ladder.
+### Bản đồ script
 
-## 2. Setup một lần
+Script chung ở `scripts/`; pipeline ladder ở `scripts/alignmentgraph-isd-bench/`; pipeline ablation ở
+`.../ablation/` (numbering song song, tái dùng audit + scoring của thư mục cha).
+
+| Script                                    | Vai trò                                                              | Mục |
+|-------------------------------------------|----------------------------------------------------------------------|-----|
+| `.../00_validate_bloom.py`                | **chạy trước mọi thứ, một lần**: validate cả hai Bloom arm vs nhãn chuyên gia | A.3 |
+| `1_setup.sh`                              | venv + deps + agents/evaluator (editable)                            | 1   |
+| `2_split_data.sh`                         | split gốc train/test 95/5 (seed 42)                                  | 2   |
+| `2_split_stratified_subset.py`            | cắt `train_30` / `test_90`                                           | 2   |
+| `3_sync_runpod_pods_env.py`               | list pod → verify model → ghi env-quad agent vào `.env`              | 3.4 |
+| `3_run_benchmark_test.sh`                 | smoke run 1 scenario                                                 | 1   |
+| `4_run_benchmark.sh`                      | launcher tmux tổng quát — dùng cho **tune**                          | 4   |
+| `.../01_audit_preflight.py`               | audit trước launch: pod/auth/model/flags/smoke/disk                  | 6.1 |
+| `.../02_run_ladder.sh`                    | launcher ladder 4 size × 3 run × 10 agent                            | 5   |
+| `.../03_audit_inflight.py`                | audit khi đang chạy: red-flag trong log + progress freshness         | 6.2 |
+| `.../04_audit_postrun.py`                 | audit sau run: completeness / integrity / metrics / trường RQ2       | 6.3 |
+| `.../04_repair_ladder_results.py`         | chấm lại judge cho agent lỗi transient, **không** sinh lại output    | 6.4 |
+| `.../05_sync_embed_pod_env.py`            | sync embed pod → `EMBED_SLOTS` + `<SLOT>_EMBED_*` vào `.env`         | 7   |
+| `.../06_score_alignment.py`               | chấm alignment RQ2 (không LLM), sweep nhiều encoder trong một lệnh   | 7   |
+| `.../07_pool_ladder_runs.py`              | pool 12 run → `pooled_ladder.json` + stats + token usage             | 8   |
+| `.../ablation/08_pool_ablation_runs.py`   | pool 4 arm từ chính run dir ladder → `pooled_ablation.json`          | 5.4 |
+| `.../09_gen_paper_tables.py`              | `.tex` + macro số liệu → `results/generated/`                        | 9   |
+| `.../10_gen_paper_figures.py`             | hình RQ1/RQ2 → `results/generated/figures/`                          | 9   |
+| `.../ablation/11_gen_ablation_tables.py`  | `tab_ablation.tex` + `abl_macros.tex` + `stats_ablation.md`          | 5.4 |
+| `.../ablation/12_gen_ablation_figures.py` | `figures/fig_ablation*`                                              | 5.4 |
+| `.../14_gen_sensitivity_table.py`         | `tab_sensitivity.tex` + `sens_macros.tex` từ `alignment_sensitivity` | 9   |
+| `.../99_audit_artifacts.py`               | cổng cuối: artifact/figure/table đủ, thật, mới, đã wire vào paper    | 9.1 |
+
+---
+
+## 1. Setup
 
 ```bash
 cd isd-agent-benchmark
-./scripts/1_setup.sh              # venv + deps gốc từ pyproject.toml + agents + evaluator (editable)
+./scripts/1_setup.sh              # venv + deps + agents + evaluator (editable)
 python run_benchmark.py --check   # mọi agent module import sạch
+./scripts/3_run_benchmark_test.sh # smoke 1 scenario
 ```
 
-### `.env` — 3 bản example theo giai đoạn
+### `.env`
 
-Agent model và judge model cấu hình **tách biệt** (tránh self-preference bias). Copy bản
-khớp giai đoạn đang làm vào `isd-agent-benchmark/.env` rồi điền key thật. Ma trận flag/env
-đầy đủ: README của benchmark.
-
-**Bản 1 — smoke test** (`./scripts/3_run_benchmark_test.sh`, 1 scenario, chưa cần pod —
-agent model dùng luôn hosted API để verify pipeline end-to-end):
-
-```bash
-# --- secrets ---
-OPENROUTER_API_KEY=sk-or-...
-
-# --- agent model (global fallback khi không truyền --agent-model-*) ---
-AGENT_MODEL_PROVIDER=openrouter
-AGENT_MODEL_API_SPEC=openai_compatible
-AGENT_MODEL_NAME=openai/gpt-4o-mini
-AGENT_MODEL_BASE_URL=https://openrouter.ai/api/v1
-AGENT_MODEL_API_KEY_ENV=OPENROUTER_API_KEY
-
-# --- judge (multi-judge, median) ---
-JUDGE_MODEL_PROVIDER=openrouter
-JUDGE_MODEL_NAMES=openai/gpt-4o-mini,google/gemini-2.5-flash-lite
-JUDGE_MODEL_BASE_URL=https://openrouter.ai/api/v1
-JUDGE_MODEL_API_KEY_ENV=OPENROUTER_API_KEY
-```
-
-**Bản 2 — tune trên `train_30`** (mục 5; agent model = 1 pod tự host, thường 2B):
+Agent model và judge model cấu hình **tách biệt** (tránh self-preference bias). Judge giữ nguyên xuyên suốt.
 
 ```bash
 # --- secrets ---
 OPENROUTER_API_KEY=sk-or-...     # judge
-RUNPOD_API_KEY=rpa_...           # account key — chỉ để 3_sync_runpod_pods_env.py list pods
-VLLM_API_KEY=...                 # Bearer token server vLLM (khớp RunPod secret, mục 4.5)
+RUNPOD_API_KEY=rpa_...           # chỉ để script list pod (read-only)
+VLLM_API_KEY=...                 # Bearer token của server vLLM (khớp RunPod secret)
 
-# --- judge (giữ nguyên như bản 1) ---
+# --- judge (cố định mọi giai đoạn) ---
 JUDGE_MODEL_PROVIDER=openrouter
 JUDGE_MODEL_NAMES=openai/gpt-4o-mini,google/gemini-2.5-flash-lite
 JUDGE_MODEL_BASE_URL=https://openrouter.ai/api/v1
 JUDGE_MODEL_API_KEY_ENV=OPENROUTER_API_KEY
 
-# --- agent model: KHÔNG cần viết tay ---
-# Sau khi pod RUNNING, chạy:  python scripts/3_sync_runpod_pods_env.py
-# → script tự append managed block vào cuối file này, gồm:
-#   QWEN{08B,2B,4B,9B}_AGENT_MODEL_{PROVIDER,BASE_URL,NAME,API_KEY_ENVS}
-#   + 3 flag bảo hộ: AGENT_MODEL_MAX_TOKENS_CAP=8096, AGENT_MODEL_STREAMING=1,
-#     AGENT_MODEL_DISABLE_THINKING=1
-# Lệnh tune ở mục 5 tham chiếu $QWEN2B_AGENT_MODEL_* từ block đó.
-```
+# --- agent model ---
+# Smoke test: dùng hosted API qua AGENT_MODEL_{PROVIDER,NAME,BASE_URL,API_KEY_ENV} global.
+# Tune/bench: KHÔNG viết tay. Chạy 3_sync_runpod_pods_env.py → nó append managed block
+# gồm QWEN{08B,2B,4B,9B}_AGENT_MODEL_{PROVIDER,BASE_URLS,NAME,API_KEY_ENVS} + 3 flag bảo hộ.
 
-**Bản 3 — bench ladder trên `test_90`** (mục 6; giống bản 2, thêm tuỳ chọn rate):
-
-```bash
-# --- secrets + judge: y hệt bản 2 ---
-OPENROUTER_API_KEY=sk-or-...
-RUNPOD_API_KEY=rpa_...
-VLLM_API_KEY=...
-JUDGE_MODEL_PROVIDER=openrouter
-JUDGE_MODEL_NAMES=openai/gpt-4o-mini,google/gemini-2.5-flash-lite
-JUDGE_MODEL_BASE_URL=https://openrouter.ai/api/v1
-JUDGE_MODEL_API_KEY_ENV=OPENROUTER_API_KEY
-
-# --- tuỳ chọn ladder (mục 6.3) ---
+# --- tuỳ chọn ladder ---
 # RATE_LIMIT=turbo                # conservative|moderate|aggressive|turbo
-# QWEN08B_RATE_LIMIT=aggressive   # override per-slot nếu cần
-
-# --- agent model: managed block do 3_sync_runpod_pods_env.py tự ghi (như bản 2) ---
-# Ladder cần đủ cả 4 slot trong block — script sẽ cảnh báo slot nào chưa có pod.
+# QWEN08B_RATE_LIMIT=conservative # override per-slot
 ```
 
-Ba bản chỉ khác phần agent model: smoke dùng `AGENT_MODEL_*` global trỏ hosted API; tune/bench
-dùng env-quad per-slot do script sync tự quản lý. Judge giữ nguyên xuyên suốt — **cấu hình
-judge phải giống hệt nhau giữa các run/giai đoạn để điểm số so sánh được**.
+Một slot có thể có **nhiều pod**: script gom mọi pod cùng model vào `<SLOT>_AGENT_MODEL_BASE_URLS`
+(comma-separated), agent round-robin qua chúng. Pod trong cùng slot phải serve cùng model — script hard-fail nếu khác.
 
-## 3. Split data — train / test / train_30 / test_90
+## 2. Split data
 
-Hai tầng, đều đã chạy và commit kết quả (seed 42 — chỉ chạy lại nếu làm lại từ đầu):
+Đã chạy và commit sẵn (seed 42) — chỉ chạy lại nếu làm từ đầu.
 
 ```bash
-# Tầng 1: split gốc 95/5, stratified theo domain|difficulty|learning_environment
-./scripts/2_split_data.sh                     # → scenarios/train/ (~24.6k), scenarios/test/ (~1.2k)
-
-# Tầng 2: cắt subset cố định theo lưới domain × difficulty (10 domain × 3 level)
-python scripts/2_split_stratified_subset.py --source scenarios/train --target scenarios/train_30              # 1/cell = 30, để TUNE
-python scripts/2_split_stratified_subset.py --source scenarios/test  --target scenarios/test_90 --per-cell 3  # 3/cell = 90, để BENCH
+./scripts/2_split_data.sh    # → scenarios/train/ (~24.6k), scenarios/test/ (~1.2k), stratified
+python scripts/2_split_stratified_subset.py --source scenarios/train --target scenarios/train_30              # 30, để TUNE
+python scripts/2_split_stratified_subset.py --source scenarios/test  --target scenarios/test_90 --per-cell 3  # 90, để BENCH
 ```
 
-Metadata sinh kèm (`scenarios/train_30_metadata.json`, `scenarios/test_90_metadata.json`) ghi
-seed, nguồn, số lượng — giữ lại cho phần reproducibility của paper. `train_30` lấy từ **train
-split** nên tune thoải mái không đụng test.
+Lưới stratify: 10 domain × 3 difficulty. Metadata (`scenarios/*_metadata.json`) ghi seed/nguồn/số lượng — giữ cho phần
+reproducibility. `train_30` lấy từ train split nên tune thoải mái không đụng test.
 
-## 4. Serving (RunPod Pods + vLLM)
+## 3. Serving (RunPod + vLLM)
 
-> Mục này đồng thời là **nguồn để viết mục Experimental Setup** của thesis/paper.
+> Mục này là nguồn để viết **Experimental Setup** của paper.
 
-### 4.1 Model ladder
+### 3.1 Ladder
 
-Cấu hình pod chạy ladder:
+| Slot    | Checkpoint          | GPU           |
+|---------|---------------------|---------------|
+| qwen08b | `Qwen/Qwen3.5-0.8B` | RTX 4090 24GB |
+| qwen2b  | `Qwen/Qwen3.5-2B`   | RTX 4090 24GB |
+| qwen4b  | `Qwen/Qwen3.5-4B`   | RTX 4090 24GB |
+| qwen9b  | `Qwen/Qwen3.5-9B`   | RTX 5090 32GB |
 
-| Slot    | Checkpoint (HF id)  | Params | GPU serve         |
-|---------|---------------------|--------|-------------------|
-| qwen08b | `Qwen/Qwen3.5-0.8B` | 0.8B   | RTX 4090 24GB     |
-| qwen2b  | `Qwen/Qwen3.5-2B`   | 2B     | RTX 4090 24GB     |
-| qwen4b  | `Qwen/Qwen3.5-4B`   | 4B     | RTX 4090 24GB     |
-| qwen9b  | `Qwen/Qwen3.5-9B`   | 9B     | RTX PRO 4500 32GB |
+### 3.2 Serving stack (viết vào Methods)
 
-### 4.2 Serving stack (viết vào Methods)
+vLLM `v0.25.1`, bf16, context **16384** cho cả 4 model, mỗi model một pod, endpoint OpenAI-compatible, auth Bearer.
 
-- **Inference engine**: vLLM `v0.25.1`.
-- **Precision**: bf16.
-- **Context window**: 16384 cho cả 4 model.
-- **Serving flags**:
-  ```
-  --dtype bfloat16 \
-  --trust-remote-code \
-  --tensor-parallel-size 1 \
-  --gpu-memory-utilization 0.95 \
-  --max-model-len 16384 \
-  --reasoning-parser qwen3 \
-  --enable-auto-tool-choice \
-  --tool-call-parser qwen3_coder \
-  --language-model-only \
-  --enable-prefix-caching \
-  --host 0.0.0.0 \
-  --port 8000
-  ```
-- Hosting: RunPod secure cloud, mỗi model một pod độc lập, endpoint OpenAI-compatible,
-  auth Bearer token (vLLM `VLLM_API_KEY`).
-
-### 4.3 Completion-budget cap (quan trọng — phải ghi trong paper)
-
-- **Vấn đề**: nhiều agent trong benchmark hardcode `max_tokens` theo giả định model
-  context lớn (baseline: 32768; alignmentgraph-isd adapter: 16384; eduplanner: tới 16384).
-  Với server 16k-context, request `prompt + max_tokens > 16384` bị từ chối (HTTP 400).
-- **Giải pháp**: clamp trung tâm trong `shared/llm/factory.py::_chat_kwargs`, bật bằng env
-  `AGENT_MODEL_MAX_TOKENS_CAP`. Ladder runs đặt **cap = 8096** (xấp xỉ nửa context; prompt
-  scenario thực đo ~5–6k tokens nên còn dư headroom). ⚠️ Ghi chú cũ viết 8192 — **giá trị
-  thật trong `.env` và trong error traces của mọi run là 8096** (vd.
-  `completion_tokens=8096` đúng tại trần khi baseline vỡ structured output); paper phải
-  ghi 8,096.
-- **Câu chữ gợi ý cho paper**: "For the 16k-context self-hosted models, every agent's
-  completion budget was uniformly capped at 8,096 tokens; agents' own configured budgets
-  apply whenever they are below the cap." — nhấn mạnh cap áp dụng **đồng loạt mọi agent**
-  nên không tạo lợi thế riêng cho agent nào (fairness).
-- Không set cap ⇒ hành vi gốc giữ nguyên (backward compatible với run dùng model context lớn).
-
-### 4.4 Streaming + non-thinking mode
-
-Rút từ sự cố run `test_90` đầu tiên (2026-07-22):
-
-- **Streaming**: RunPod HTTP proxy (Cloudflare) có read-timeout 120s → call sinh ADDIE
-  không-streaming của 4B/9B (>120s) bị cắt hàng loạt (HTTP 524; 17 lần với 4B, 26 lần với 9B
-  trong run đầu). Fix: client bật streaming (`AGENT_MODEL_STREAMING=1` →
-  `ChatOpenAI(streaming=True, stream_usage=True)` trong `shared/llm/factory.py`).
-  Token accounting không đổi (đọc `usage_metadata` từ stream).
-- **Non-thinking mode**: Qwen3.5 mặc định thinking; model nhỏ (2B) lan man trong `<think>`
-  đến cạn completion budget → `content` rỗng → baseline âm thầm ghi stub output
-  (14/14 scenario của 2B trong run đầu — dữ liệu đó bị loại). Fix: chạy ladder ở
-  **non-thinking mode** (`AGENT_MODEL_DISABLE_THINKING=1` → server-side
-  `chat_template_kwargs: {enable_thinking: false}`).
-- **Câu chữ gợi ý**: "All ladder models were served in non-thinking mode with streaming
-  enabled; completion budgets were uniformly capped at 8,096 tokens." — cả 3 điều kiện
-  áp dụng đồng nhất cho mọi agent và mọi model size (fairness).
-- **Run bị loại**: `test_90_benchmark_*_r1_20260722_184403` (2B stub outputs, 4B/9B 524).
-
-Tổng hợp: **3 flag bảo hộ bắt buộc** cho mọi ladder run (script sync ở 4.6 tự ghi vào
-managed block cuối `.env`):
-
-```bash
-export AGENT_MODEL_MAX_TOKENS_CAP=8096
-export AGENT_MODEL_STREAMING=1
-export AGENT_MODEL_DISABLE_THINKING=1
+```
+--dtype bfloat16 \
+--trust-remote-code \
+--tensor-parallel-size 1 \
+--gpu-memory-utilization 0.95 \
+--max-model-len 16384 \
+--reasoning-parser qwen3 \
+--enable-auto-tool-choice \
+--tool-call-parser qwen3_coder \
+--language-model-only \
+--enable-prefix-caching
 ```
 
-### 4.5 Tạo pod trên RunPod console (thủ công, từ template public)
-
-Pod tạo **thủ công trên console** từ một template public dùng chung cho cả 4 size
-(`isd-agent-bench-qwen3.5-slm-ladder`):
-
-**Template: <https://console.runpod.io/deploy?template=x4cakqmn77>**
-
-Các bước, lặp cho từng pod (×4):
-
-1. Mở link template → **Deploy**. Chọn GPU: RTX 4090 24GB cho 0.8B/2B/4B, A40 48GB cho 9B.
-2. Chọn model: sửa **container start command**, thay **token đầu tiên (positional)** bằng
-   HF id của slot (`Qwen/Qwen3.5-0.8B` / `-2B` / `-4B` / `-9B`). RunPod truyền start command
-   như Docker CMD thuần — **không có shell, không expand `$ENV`** — nên KHÔNG đổi model được
-   bằng env var; không sửa các flag phía sau.
-3. Auth đã đấu sẵn: template set `VLLM_API_KEY={{ RUNPOD_SECRET_VLLM_API_KEY }}` (RunPod
-   secret) — đảm bảo secret đó trong account trùng giá trị `VLLM_API_KEY` trong `.env`.
-   Không cần `HF_TOKEN` (checkpoint public) — đừng thêm.
-4. Deploy, chờ pod RUNNING và vLLM trả lời
-   `GET https://<pod_id>-8000.proxy.runpod.net/v1/models` (**401** khi không key, **200** khi có key).
-
-Storage (theo cấu hình pod thật): container disk 20GB + **mỗi pod một network volume riêng**
-(EU-RO-1) mount tại `/workspace` để cache HF weights (`HF_HOME=/workspace/huggingface`) —
-weights sống sót qua stop/restart pod, không phải tải lại. Env khác của template: cổng expose
-`8000/http` (vLLM) + `22/tcp`.
-
-### 4.6 Sync env vars từ pod đang sống vào `.env`
+### 3.3 Ba flag bảo hộ — bắt buộc, đảm bảo tính công bằng của so sánh
 
 ```bash
-python scripts/3_sync_runpod_pods_env.py        # --dry-run để xem block trước
+AGENT_MODEL_MAX_TOKENS_CAP=8192
+AGENT_MODEL_STREAMING=1
+AGENT_MODEL_DISABLE_THINKING=1
+```
+
+Cả ba do `3_sync_runpod_pods_env.py` tự ghi vào managed block, áp **đồng loạt mọi agent và mọi size** nên không tạo lợi
+thế riêng — đó là luận điểm fairness.
+
+### 3.4 Tạo pod + sync env
+
+Pod tạo thủ công trên console từ template public dùng chung cho cả 4 size:
+**<https://console.runpod.io/deploy?template=x4cakqmn77>**
+
+1. Deploy → chọn GPU theo bảng 3.1.
+2. Đổi model: sửa **token positional đầu tiên** của container start command thành HF id của slot. RunPod truyền start
+   command như Docker CMD thuần (không shell, không expand `$ENV`) nên **không đổi model bằng env var được**. Không sửa
+   flag phía sau.
+3. Auth đã đấu sẵn qua RunPod secret `VLLM_API_KEY` — đảm bảo secret trùng giá trị trong `.env`. Không cần `HF_TOKEN`.
+4. Chờ `GET https://<pod_id>-8000.proxy.runpod.net/v1/models` trả 401 (không key) / 200 (có key).
+
+Storage: container 20GB + mỗi pod một network volume mount `/workspace` cho HF cache — weights sống sót qua restart.
+
+```bash
+python scripts/3_sync_runpod_pods_env.py    # --dry-run để xem block trước
 source .env
 ```
 
-Script **chỉ đọc** RunPod API (không tạo/xoá gì): list pods, match slot theo start command /
-tên pod, **verify model thật qua chính `/v1/models` của pod**, rồi **ghi đè managed block ở
-cuối `.env`** (giữa hai marker `# >>> qwen-ladder pods ... >>>` / `# <<< ... <<<`) — chạy lại
-là thay block, không bao giờ duplicate, không đụng phần còn lại của `.env`. Block chứa đủ
-env-quad `QWEN{08B,2B,4B,9B}_AGENT_MODEL_{PROVIDER,BASE_URL,NAME,API_KEY_ENVS}` + 3 flag bảo
-hộ (4.4). Base URL dạng `https://<pod_id>-8000.proxy.runpod.net/v1`; key env là `VLLM_API_KEY`.
-`5_run_ladder.sh` tự `source .env` nên sau khi sync là chạy được ngay.
+Script **chỉ đọc** RunPod API: list pod, match slot, **verify model thật qua `/v1/models` của chính pod**, rồi ghi đè
+managed block ở cuối `.env` (giữa hai marker). Chạy lại là thay block, không duplicate, không đụng phần còn lại.
+Env-quad nhận bất kỳ provider OpenAI-compatible nào nên có thể thay một slot bằng hosted API.
 
-Env-quad nhận **bất kỳ** provider OpenAI-compatible, nên có thể thay một slot bằng hosted API
-(vd. OpenRouter) bằng cách override quad của slot đó — verify đúng model ID trên provider trước.
+## 4. Tune trên `train_30`
 
-### 4.7 Chi tiết vận hành + chi phí (footnote/appendix nếu cần)
-
-- 9B bf16 (~18GB weights) **không vừa GPU 24GB** ở 16k context (OOM khi load/profile với
-  util 0.95) → cần GPU ≥32GB (thực tế: RTX PRO 4500 Blackwell 32GB). Đáng ghi như hardware
-  requirement thực nghiệm.
-- Chi phí thuê tại thời điểm chạy (secure cloud, 2026-07): RTX 4090 $0.69/h ×3 +
-  RTX PRO 4500 Blackwell $0.74/h ×1 ≈ **$2.81/h cho cả ladder**.
-- **Pod tính tiền theo giờ kể cả idle** — dừng/xoá pod trên console ngay khi xong (mục 11).
-
-## 5. Tune harness trên `train_30`
-
-Mục đích: chỉnh prompt/config của `alignmentgraph-isd` (và phát hiện lỗi hạ tầng) trên tập
-tách biệt với tập báo cáo. Chạy **single run, một model** (thường chọn size nhỏ/rẻ trước):
+Chỉnh prompt/config của `alignmentgraph-isd` trên tập tách biệt với tập báo cáo.
 
 ```bash
-# Launcher thực dùng: 4_run_benchmark.sh (tmux, đọc env-quads từ managed block trong .env)
-DATASET=train_30 \
-AGENT_MODEL_SLOTS=qwen2b \
-AGENTS=baseline,react-isd,alignmentgraph-isd \
-RUN_TAGS=tune1 \
-./scripts/4_run_benchmark.sh
+DATASET=train_30 AGENT_MODEL_SLOTS=qwen2b AGENTS=baseline,react-isd,alignmentgraph-isd \
+RUN_TAGS=tune1 ./scripts/4_run_benchmark.sh
 ```
 
-(`AGENT_MODEL_SLOTS` nhận nhiều slot phẩy-cách nếu muốn tune trên vài size **song song** —
-mỗi slot một tmux session `bench-<slot>`. `RUN_TAGS` cũng nhận nhiều tag phẩy-cách, chạy
-**tuần tự** trong mỗi session — `RUN_TAGS=tune1,tune2,tune3` = 3 run lặp cùng code, dùng để
-đo độ ổn định trên `train_30`; còn giữa các vòng tune có sửa code thì mỗi vòng launch riêng
-một tag. Chạy thẳng `python run_benchmark.py` với các flag `--agent-model-*` vẫn được khi
-cần một lệnh foreground đơn lẻ.)
+- `AGENT_MODEL_SLOTS` nhiều slot = chạy **song song** (mỗi slot một tmux session). `RUN_TAGS` nhiều tag = chạy **tuần
+  tự** trong mỗi session (`tune1,tune2,tune3` để đo độ ổn định cùng code).
+- Kết quả vào `results/train_30_benchmark_<model>_tune<N>_<ts>/`. Tag `tuneN` để không lẫn với run báo cáo `r1/r2/r3`.
+- Thu hẹp `--agents` cho rẻ khi debug, nhưng **vòng chốt cuối chạy đủ 7 agent** để chắc thay đổi không phá agent khác.
+- Kết thúc tune = **commit đóng băng code** (manifest ladder sẽ ghi commit hash).
 
-- Kết quả vào `results/train_30_benchmark_<model>_tune<N>_<ts>/`. Dùng run-tag `tuneN` để
-  không lẫn với run báo cáo (`r1/r2/r3`).
-- Mỗi vòng: sửa harness → chạy lại `train_30` → so `total_score`/log lỗi → lặp.
-- Có thể thu hẹp `--agents` cho rẻ khi chỉ debug harness; nhưng vòng chốt cuối nên chạy đủ 7
-  agent để chắc thay đổi không phá agent khác.
-- **Kết thúc giai đoạn tune = đóng băng code** (commit; manifest ladder ở mục 6 sẽ tự ghi
-  commit hash của cả benchmark lẫn monorepo).
+## 5. Bench `test_90` — ladder
 
-## 6. Bench trên `test_90` — chạy ladder
+### 5.1 Quy mô
 
-### 6.1 Quy mô & chi phí — đọc trước khi bấm
+4 size × 3 run × 10 agent × 90 scenario ≈ **10 800 agent generation**, mỗi generation thêm 2 judge evaluation.
+Một run đơn ở rate `turbo` mất vài giờ; cả ladder ~1 ngày wall-clock (size chạy song song, 3 run của một size tuần tự).
 
-- 4 size × 3 run độc lập/size × 7 agent (6 default + `alignmentgraph-isd` — **không** nằm
-  trong defaults, launcher đã thêm sẵn) × 90 scenario ≈ **7 560 agent generations**, cộng
-  2 judge evaluation/generation (multi-judge mặc định).
-- Một run `test_90` đơn (7 agent, 1 model) ở rate `turbo` mất **vài giờ**; cả ladder cỡ
-  **~1 ngày** wall-clock (các size chạy song song, 3 run của một size chạy tuần tự).
-  Cộng thêm tiền GPU RunPod theo giờ trong suốt thời gian đó.
+10 agent = 6 default + `alignmentgraph-isd` + 3 arm ablation. Không cái nào nằm trong defaults — launcher đã thêm sẵn.
 
-### 6.2 Launch
+### 5.2 Launch
 
 ```bash
-source .env            # judge config + RUNPOD_API_KEY/VLLM_API_KEY
-./scripts/alignmentgraph-isd-bench/5_run_ladder.sh        # gõ "yes" ở prompt xác nhận
+source .env
+./scripts/alignmentgraph-isd-bench/02_run_ladder.sh    # gõ "yes" ở prompt
 ```
 
-Cơ chế (cùng mechanism với `4_run_benchmark.sh`):
-
-- Env-quads lấy từ managed block trong `.env` (launcher tự `source .env`); thiếu `*_BASE_URL`
-  ⇒ hard-fail kèm hướng dẫn chạy `scripts/3_sync_runpod_pods_env.py`.
-- Mỗi size một tmux session (`ladder-qwen08b`, `ladder-qwen2b`, `ladder-qwen4b`,
-  `ladder-qwen9b`) — các size chạy **song song**; trong mỗi session 3 run chạy **tuần tự**
-  với `--run-tag r1|r2|r3`, mỗi run một results dir riêng:
-  `results/test_90_benchmark_<model>_r<N>_<timestamp>/`.
-- **Manifest reproducibility** ghi TRƯỚC khi launch vào
-  `results/ladder_<ts>/ladder_manifest.json`: model ID/provider/base URL từng slot, dataset,
-  agents, run tags, judge models, và **git commit của cả benchmark checkout lẫn monorepo cha**
-  (chứa package `alignmentgraph-isd`). **Giữ file này cùng kết quả.**
+- Env-quad lấy từ managed block; thiếu base URL ⇒ hard-fail kèm hướng dẫn.
+- Mỗi size một tmux session (`ladder-qwen08b`...), chạy **song song**; trong mỗi session 3 run **tuần tự** với
+  `--run-tag r1|r2|r3` → `results/test_90_benchmark_<model>_r<N>_<ts>/`.
+- **Manifest reproducibility** ghi TRƯỚC khi launch vào `results/ladder_<ts>/ladder_manifest.json`: model/provider/URL
+  từng slot, dataset, agents, run tag, judge model, **git commit của cả benchmark lẫn monorepo cha**. Giữ file này.
 - Log per-slot: `results/ladder_<ts>/<slot>.log`.
 
-### 6.3 Rate limit per-slot
+Monitor: `tmux attach -t ladder-qwen2b` (detach `Ctrl+B, D`) hoặc `tail -f results/ladder_*/qwen2b.log`.
 
-`RATE_LIMIT` (default `turbo`) là preset toàn cục (`conservative|moderate|aggressive|turbo`
-— đặt worker counts + `BENCHMARK_DELAY`). Vì mỗi provider/model giới hạn khác nhau, từng slot
-có thể override bằng `<SLOT>_RATE_LIMIT`; slot không set thì dùng giá trị toàn cục. Rate được
-echo per-slot lúc launch và ghi vào manifest.
+**Resume từng phần** — mỗi (size, run) là một invocation độc lập:
 
 ```bash
-# Toàn cục moderate, nhưng throttle model nhỏ trên endpoint giới hạn chặt hơn:
-RATE_LIMIT=moderate \
-QWEN08B_RATE_LIMIT=conservative \
-QWEN2B_RATE_LIMIT=conservative \
-./scripts/alignmentgraph-isd-bench/5_run_ladder.sh
+LADDER_SLOTS="qwen4b" RUN_TAGS="r2,r3" ./scripts/alignmentgraph-isd-bench/02_run_ladder.sh
 ```
 
-(`<SLOT>_RATE_LIMIT` cũng hoạt động y hệt trong `4_run_benchmark.sh`.)
+Mỗi lần re-launch ghi manifest mới — giữ tất cả. **Không xoá** run dir dở dang vội: script pool báo tường minh scenario
+thiếu; chỉ xoá dir cũ **sau khi** pool xác nhận dir mới đủ 90 scenario.
 
-### 6.4 Monitor
+### 5.3 Rate limit
 
-```bash
-tmux ls
-tmux attach -t ladder-qwen2b     # detach: Ctrl+B, D
-tail -f results/ladder_*/qwen2b.log
-```
+`RATE_LIMIT` (default `turbo`) là preset toàn cục đặt worker count + `BENCHMARK_DELAY`. Override per-slot bằng
+`<SLOT>_RATE_LIMIT`. Rate được echo lúc launch và ghi vào manifest.
 
-Kết hợp checklist in-flight ở mục 7.2.
+### 5.4 Ablation (4 arm, nằm trong chính run của ladder)
 
-### 6.5 Resume / chạy lại từng phần
-
-Mỗi (size, run) là một invocation `run_benchmark.py` độc lập với results dir riêng, nên
-resume = launch lại đúng phần còn thiếu:
-
-```bash
-# Chỉ 4B, run 2 và 3 (run 1 đã xong):
-LADDER_SLOTS="qwen4b" RUN_TAGS="r2,r3" ./scripts/alignmentgraph-isd-bench/5_run_ladder.sh
-
-# Chỉ 0.8B, đủ 3 run:
-LADDER_SLOTS="qwen08b" ./scripts/alignmentgraph-isd-bench/5_run_ladder.sh
-```
-
-- Mỗi lần re-launch ghi manifest `ladder_<ts>/` mới; **giữ tất cả manifest**.
-- **Không xoá** run dir dở dang vội — script pool (mục 9) báo tường minh scenario
-  thiếu/fail per-run; re-run cùng tag phân biệt được bằng timestamp (dùng dir mới hơn, chỉ
-  xoá dir bỏ dở **sau khi** pool xác nhận dir mới đủ).
-
-## 6b. Ablation study (4 size × 4 arm, 1 run, cùng judge session)
-
-Pipeline riêng trong `scripts/alignmentgraph-isd-bench/ablation/`, chạy **sau khi ladder xong**
-(consistency check cần `pooled_ladder.json`). Mỗi size chạy **một** benchmark run chứa cả 4 arm
-như 4 agent — mọi arm được chấm trong **cùng judge session** per scenario nên delta arm-vs-A0
-không dính judge drift, và tự thỏa gate ≥2 successful agents của evaluator.
+**Không có benchmark run riêng.** 4 arm chạy như 4 agent bên trong run ladder nên được gộp 3 run/size như phần còn lại,
+và mọi arm được chấm trong **cùng judge session** per scenario → delta arm-vs-A0 không dính judge drift. A0 **chính là**
+`alignmentgraph-isd` của ladder, nên không bảng nào cần chú thích hoà giải hai con số A0.
 
 | Arm              | agent_id                          | enable_verifier | enable_graph_context |
 |------------------|-----------------------------------|-----------------|----------------------|
@@ -427,483 +242,632 @@ không dính judge drift, và tự thỏa gate ≥2 successful agents của eval
 | A2 −GraphContext | `alignmentgraph-isd-no-graph-ctx` | True            | False                |
 | A3 skeleton      | `alignmentgraph-isd-skeleton`     | False           | False                |
 
-Flag là **kwargs cố định theo agent_id** trong registry của `run_benchmark.py` (không phải env
-var) → không thể chạy nhầm config; mỗi run còn tự ghi `metadata.run_config` vào
-`*_trajectory.json` và script pool **hard-fail** nếu flag không khớp agent_id.
+Flag là **kwargs cố định theo agent_id** trong registry của `run_benchmark.py` (không phải env var) → không chạy nhầm
+config được; mỗi run ghi `metadata.run_config` vào trajectory và script pool **hard-fail** nếu flag không khớp agent_id.
+
+Post-processing chạy **sau khi ladder xong** (consistency check cần `pooled_ladder.json`):
 
 ```bash
-# 0) Pod 4 size đang RUNNING + env-quads đã sync (python scripts/3_sync_runpod_pods_env.py)
-DRY_RUN=1 ./scripts/alignmentgraph-isd-bench/ablation/5_run_ablation.sh   # xem lệnh, không chạy
-./scripts/alignmentgraph-isd-bench/ablation/5_run_ablation.sh             # 4 tmux session, tag abl1
-
-# 1) Audit từng run dir như ladder (mục 7.3–7.5)
-python scripts/alignmentgraph-isd-bench/6_audit_postrun.py results/test_90_benchmark_*_abl1_*
-
-# 2) RQ2 alignment per run dir (chấm mọi *_output.json nên tự phủ cả 4 arm — mục 8)
-python scripts/alignmentgraph-isd-bench/7_score_alignment.py results/test_90_benchmark_Qwen3.5-0.8B_abl1_<ts>
-# ... lặp cho 4 run dir
-
-# 3) Pool + kiểm định (Wilcoxon paired arm−A0, Holm theo 3 arm mỗi size, bootstrap CI,
-#    A0 consistency check vs pooled_ladder.json, flag check)
-python scripts/alignmentgraph-isd-bench/ablation/7_pool_ablation_runs.py \
-    --auto-glob 'results/test_90_benchmark_*_abl1_*' \
-    --ladder-pooled results/pooled_ladder.json        # → results/pooled_ablation.json
-
-# 4) Sinh artifact paper rồi sync (mục 10.2)
-python scripts/alignmentgraph-isd-bench/ablation/8_gen_ablation_tables.py    # tab_ablation.tex, abl_macros.tex, stats_ablation.md
-python scripts/alignmentgraph-isd-bench/ablation/8_gen_ablation_figures.py   # figures/fig_ablation.{pdf,png}
-../docs/scripts/sync_generated.sh   # (chạy từ repo thesis)
+python scripts/alignmentgraph-isd-bench/ablation/08_pool_ablation_runs.py \
+    --auto-glob 'results/test_90_benchmark_*_r[123]_*' \
+    --ladder-pooled results/pooled_ladder.json          # → results/pooled_ablation.json
+python scripts/alignmentgraph-isd-bench/ablation/11_gen_ablation_tables.py
+python scripts/alignmentgraph-isd-bench/ablation/12_gen_ablation_figures.py
 ```
 
-Lưu ý diễn giải (phải ghi trong paper):
+**Đọc theo lưới 2×2, không chỉ theo "vs A0".** Bốn arm là một **thiết kế giai thừa đầy đủ** (verifier × graph
+context). So từng arm với A0 chỉ là *main effect*, và nó **giấu mất** trường hợp một cơ chế trông như vô dụng chỉ vì
+cơ chế kia đã ngăn lỗi từ trước. `08` vì vậy sinh thêm hai khối:
 
-- **Số vào paper chỉ lấy từ artifact generated** (`tab_ablation.tex` / `abl_macros.tex` /
-  `stats_ablation.md`), không gõ tay — như mọi số khác.
-- Hướng delta trong bảng/hình = **arm − A0** (âm = gỡ thành phần làm giảm chất lượng); trong
-  `pooled_ablation.json` các row comparison lưu chiều A0 − arm (contribution).
-- **Tag ablation không được chứa `_r` / khớp `r\d+`** (mặc định `abl1`) — để auto-glob
-  `..._r*` của pool ladder (mục 9) không bao giờ nuốt nhầm run ablation.
-- Ngữ nghĩa arm: khi QC tắt (A1/A3), các edge alignment-tier mà verifier re-establish trong
-  vòng repair sẽ không được tạo → edge coverage trong graph dump giảm là **một phần của hiệu
-  ứng đo được**, không phải bug. Khi graph-context tắt (A2/A3), graph vẫn được **ghi** đầy đủ
-  (dump/audit còn nguyên) — chỉ tắt chiều **đọc** vào prompt. Safety net của aggregator
-  (`_strengthen_alignment`, `_ensure_assessment_coverage`), residual audit và regen loop
-  (`regen_budget`) **bật ở mọi arm** (không phải cơ chế bị ablate).
-- A0 chạy lại trong-session; 3 run r1–r3 của ladder chỉ dùng làm **A0 consistency check**
-  (đo judge/session drift thực nghiệm — xem `stats_ablation.md`). 1 run/arm/size: delta nên
-  vượt ~2× run-to-run SD của ladder mới coi là chắc; borderline thì chạy thêm `RUN_TAG=abl2`.
+- **`factorial`** — simple effect của từng cơ chế dưới **cả hai trạng thái** của cơ chế kia, cộng **tương tác**
+  (hiệu của hai simple effect; âm = hai cơ chế **thay thế** nhau). Tính trên cả `addie_median` lẫn
+  `objective_assessment_similarity`, paired per-scenario, Wilcoxon + bootstrap CI. Báo **không hiệu chỉnh**: đây là các
+  contrast cấu trúc của thiết kế, không phải một family so-sánh-với-A0.
+- **`verifier_activity`** — số lần verifier chạy / số lần **sửa** mỗi scenario, đọc từ `verifier_events` /
+  `repair_events` trong trajectory. Đây là bằng chứng **cơ chế**: nó tách "thành phần không chạy" khỏi "chạy nhưng
+  không còn việc để làm".
 
-## 7. Audit kết quả
+Artifact tương ứng: `tab_ablation_factorial.tex` (dẫn 1 tín hiệu chính) kèm `tab_ablation_factorial_full.tex`
+(bản đầy đủ 2×2 read trên toàn bộ 10 tín hiệu báo cáo, phụ lục), macro `\ablVerifCtxOn/Off*` + `\ablInteraction*` +
+`\ablRepairs*`, hình `fig_ablation_factorial`, và section "2x2 factorial" trong `stats_ablation.md`.
 
-> Đúc kết từ các sự cố thật ngày 2026-07-22 (524 proxy timeout, stub output, empty content).
-> Cấu trúc results: `results/test_90_benchmark_<model>_r<N>_<ts>/test_90/<scenario_id>/` chứa
-> `{agent}_output.json`, `{agent}_trajectory.json`, `{agent}_log.txt`, `comparison_report.json`;
-> log tổng mỗi slot ở `results/ladder_<ts>/qwen*.log`; summary ở `benchmark_summary.json` + `SUMMARY.md`.
+Diễn giải cần ghi trong paper:
 
-### 7.1 Pre-flight (trước khi bấm chạy)
+- Hướng delta trong bảng/hình = **arm − A0** (âm = gỡ thành phần làm giảm chất lượng); trong `pooled_ablation.json` các
+  row comparison lưu chiều A0 − arm (contribution).
+- `07_pool_ladder_runs.py` chỉ xét proposed + 6 baseline nên 3 arm nằm cùng run dir **không bị nuốt** vào phía ladder.
+- Khi QC tắt (A1/A3), edge alignment-tier mà verifier re-establish trong vòng repair không được tạo → edge coverage
+  giảm là **một phần của hiệu ứng đo được**, không phải bug. Khi graph-context tắt (A2/A3), graph vẫn được **ghi** đầy
+  đủ — chỉ tắt chiều **đọc** vào prompt. Safety net của aggregator, residual audit và regen loop **bật ở mọi arm**.
+- `a0_consistency` giờ là **invariant check**: delta phải ~0. Khác 0 = hai lần pool đọc lệch nhau trên cùng dữ liệu →
+  lỗi cần sửa, không phải drift để giải thích.
+
+## 6. Audit
+
+Cấu trúc results: `results/test_90_benchmark_<model>_r<N>_<ts>/test_90/<scenario_id>/` chứa `{agent}_output.json`,
+`{agent}_trajectory.json`, `{agent}_log.txt`, `comparison_report.json`; summary ở `benchmark_summary.json` +
+`SUMMARY.md`.
+
+### 6.1 Pre-flight
 
 ```bash
-python scripts/alignmentgraph-isd-bench/5_audit_preflight.py       # PASS/FAIL từng mục dưới; --no-smoke để bỏ smoke call
+python scripts/alignmentgraph-isd-bench/01_audit_preflight.py     # --no-smoke để bỏ smoke call
 ```
 
-Script tự đọc `.env`, check pod alive/auth (401/200), model khớp slot, smoke non-thinking
-(gửi đúng `chat_template_kwargs` như client ladder), 3 flag bảo hộ, disk. Checklist gốc
-(để hiểu script check gì / khi cần làm tay):
+Check: 4 pod alive + auth (401/200), model khớp slot, smoke non-thinking thật sự ăn (response **không có**
+`reasoning_content`, `content` có chữ), 3 flag bảo hộ có mặt, disk trống.
 
-- [ ] 4 pod sống + auth: cả 4 trả **401** khi curl không key, **200** khi có key
-  (pod id xem managed block trong `.env` hoặc bảng 4.1):
-  ```bash
-  for p in <pod_id_08b> <pod_id_2b> <pod_id_4b> <pod_id_9b>; do
-    curl -s -o /dev/null -w "$p: %{http_code}\n" --max-time 10 https://${p}-8000.proxy.runpod.net/v1/models
-  done
-  ```
-- [ ] Đúng model trên đúng pod: `curl -H "Authorization: Bearer $VLLM_API_KEY" .../v1/models`
-  → so id với slot (`3_sync_runpod_pods_env.py` đã tự verify bước này khi sync — cột `(live)`)
-- [ ] Env đủ 3 flag bảo hộ (nằm trong managed block cuối `.env`):
-  `AGENT_MODEL_MAX_TOKENS_CAP=8096`, `AGENT_MODEL_STREAMING=1`, `AGENT_MODEL_DISABLE_THINKING=1`
-- [ ] Smoke test non-thinking thật sự ăn: response **không có `reasoning_content`**, `content` có chữ
-- [ ] Disk trống đủ cho results (mỗi run ~vài trăm MB) — `df -h .`
-
-### 7.2 In-flight (mỗi 30–60 phút trong khi chạy)
+### 6.2 In-flight (mỗi 30–60 phút)
 
 ```bash
-python scripts/alignmentgraph-isd-bench/6_audit_inflight.py        # ladder dir mới nhất; watch -n 300 để theo dõi liên tục
+python scripts/alignmentgraph-isd-bench/03_audit_inflight.py      # watch -n 300 để theo dõi liên tục
 ```
 
-Đếm 524/400/empty/stub (phải đứng yên ở 0) + ✅/❌ per slot log + progress freshness.
-Checklist gốc:
+Đếm 524 / 400 / empty / stub trong log — **phải đứng yên ở 0** — cộng ✅/❌ per slot và progress freshness
+(timestamp mới < 10 phút). GPU util = 0% kéo dài + progress đứng = treo.
 
-- [ ] **Đếm lỗi trong ladder logs** — con số phải đứng yên ở 0:
-  ```bash
-  for f in results/ladder_*/qwen*.log; do
-    echo "$f: 524=$(grep -c 'Error code: 524' $f) 400=$(grep -c 'Error code: 400' $f) \
-  empty=$(grep -c '응답 길이: 0' $f) stub=$(grep -c '기본 출력 반환' $f) \
-  ok=$(grep -c '✅' $f) fail=$(grep -c '❌' $f)"
-  done
-  ```
-    - `524 > 0` → proxy timeout quay lại (streaming chưa ăn?) — dừng, điều tra
-    - `stub > 0` → baseline đang ghi default output → data scenario đó hỏng
-    - `empty > 0` → thinking vẫn tràn budget hoặc model trả rỗng
-- [ ] **Progress tiến đều**: `tail results/test_90_benchmark_*/benchmark_progress.log` — timestamp mới < 10 phút
-- [ ] **GPU đang làm việc**: RunPod console → util > 0% ở pod đang được đánh; util = 0% kéo dài + progress đứng = treo
-- [ ] Tỷ lệ ✅/❌ hợp lý (❌ lác đác do transient được retry thì chấp nhận; ❌ cùng 1 agent lặp lại → soi `{agent}_log.txt`)
-
-### 7.3 Post-run: Completeness (đủ số lượng)
+### 6.3 Post-run
 
 ```bash
-python scripts/alignmentgraph-isd-bench/6_audit_postrun.py         # audit mọi run dir (7.3 + 7.4 + 7.5 trong một report)
+python scripts/alignmentgraph-isd-bench/04_audit_postrun.py                          # mọi run dir
+python scripts/alignmentgraph-isd-bench/04_audit_postrun.py --fields-only <run_dir>  # riêng các trường RQ2 tiêu thụ
 ```
 
-Script phân biệt **RED** (lỗi hạ tầng — stub/rỗng/token=0/sai model/thiếu metric) với
-**info** (agent fail kiểu capability — hợp lệ, failure policy mục 9 xử lý). Checklist gốc
-cho 7.3–7.5:
+Script phân biệt **RED** (lỗi hạ tầng: stub / rỗng / token=0 / sai model / thiếu metric) với **info** (agent fail kiểu
+capability — hợp lệ, failure policy ở mục 8 xử lý, **không** re-run). Nó phủ ba tầng:
 
-- [ ] **Đủ scenario**: 90 thư mục scenario mỗi run (test_90)
-  ```bash
-  for d in results/test_90_benchmark_*_r*/test_90; do echo "$d: $(ls $d | wc -l)"; done
-  ```
-- [ ] **Đủ agent × scenario**: mỗi scenario đủ 7 `_output.json` (6 default + alignmentgraph-isd)
-  ```bash
-  python3 - <<'EOF'
-  import glob, os
-  AGENTS = ["eduplanner","baseline","react-isd","addie-agent","dick-carey-agent","rpisd-agent","alignmentgraph-isd"]
-  for run in sorted(glob.glob("results/test_90_benchmark_*_r*/test_90")):
-      missing = []
-      for sc in sorted(os.listdir(run)):
-          for a in AGENTS:
-              if not os.path.exists(f"{run}/{sc}/{a}_output.json"):
-                  missing.append(f"{sc}/{a}")
-      print(run, "MISSING:", len(missing), missing[:5])
-  EOF
-  ```
-- [ ] Mỗi scenario có `comparison_report.json` (evaluation đã chạy); không có `evaluation_error` trong summary
-- [ ] `benchmark_summary.json` tồn tại ở gốc mỗi run
-- [ ] Đủ **3 runs** (r1/r2/r3) × 4 model size cho RQ1 trước khi pool
+- **Completeness** — 90 scenario/run; mỗi scenario đủ output của các agent; có `comparison_report.json`;
+  `benchmark_summary.json` tồn tại; đủ 3 run × 4 size trước khi pool.
+- **Integrity** — stub/default output (stub đủ 33 sub-item nên nhìn "đầy đủ", phải quét bằng marker), output < 1KB,
+  trajectory rỗng, `token_usage.total_tokens = 0`, model name trong metadata khớp thư mục run, duration hợp lý.
+- **Metrics** — mỗi `comparison_report.json` có `total_score` (median multi-judge), `addie_score`, `trajectory_score`;
+  đủ 5 phase ADDIE; đủ số judge cấu hình; phân phối điểm sanity (không agent nào toàn 0 hoặc toàn 100).
 
-Agent thiếu output **được phép** nếu là capability failure (vd. baseline vỡ structured-output
-vì trần token trên model nhỏ — chính là dữ liệu RQ1; failure policy ở mục 9 xử lý, không
-re-run). **Không được phép** nếu là lỗi hạ tầng hàng loạt (7.6).
+`--fields-only` gọi thẳng extractor của evaluator để xem **đúng những trường RQ2 tiêu thụ** (objectives / assessments /
+activities / evaluation) có rỗng không. Quan trọng: output parse được nhưng không trích ra objective nào sẽ bị chấm
+`0.0` và trông y hệt một thiết kế lệch thật — chỉ ở đây mới phân biệt được parse fail với chất lượng kém.
 
-### 7.4 Post-run: Integrity (dữ liệu thật, không rác)
+> ⚠️ **Bẫy CSV Avg**: cột `Avg` trong aggregate CSV là judge-mean, lệch khi thiếu component. Số chuẩn cho paper luôn là
+> per-scenario `total_score`.
 
-- [ ] **Quét stub/default output** (bài học 2B ngày 07-22 — stub đủ 33 sub-items nên nhìn "đầy đủ"):
-  ```bash
-  python3 - <<'EOF'
-  import glob, json
-  STUB_MARKS = ['"미지정"', '"problem_definition": null']
-  for f in glob.glob("results/test_90_benchmark_*_r*/test_90/*/*_output.json"):
-      s = open(f, encoding="utf-8").read()
-      if all(m in s for m in STUB_MARKS):
-          print("STUB?", f)
-  EOF
-  ```
-- [ ] **Output rỗng / cụt**: file < 1KB hoặc thiếu phase
-  ```bash
-  find results/test_90_benchmark_*_r*/test_90 -name "*_output.json" -size -1k
-  ```
-- [ ] **Trajectory không rỗng** + agent "agentic" (react-isd, alignmentgraph-isd, ...) có tool calls thật
-  ```bash
-  find results/test_90_benchmark_*_r*/test_90 -name "*_trajectory.json" -size -200c
-  ```
-- [ ] **Token accounting > 0**: metadata mỗi trajectory có `token_usage.total_tokens > 0`
-  (= 0 nghĩa là stream_usage không hoạt động hoặc call không xảy ra)
-- [ ] **Đúng model sinh đúng run**: metadata ghi model name khớp thư mục run (0.8B run không lẫn URL pod 9B)
-- [ ] Duration mỗi agent-run hợp lý (vài chục giây – vài phút; 0s hoặc hàng giờ đều đáng ngờ)
+### 6.4 Red flags
 
-### 7.5 Post-run: Metrics (đủ các số cần đo)
+| Dấu hiệu                         | Ý nghĩa                       | Hành động                                  |
+|----------------------------------|-------------------------------|--------------------------------------------|
+| `Error code: 524`                | Proxy cắt call >120s          | Dừng, kiểm `AGENT_MODEL_STREAMING`         |
+| `Error code: 400` max context    | Cap không ăn / prompt quá dài | Kiểm `AGENT_MODEL_MAX_TOKENS_CAP`          |
+| `기본 출력 반환` / stub marker         | Baseline ghi default output   | Loại scenario/run, tìm nguyên nhân rỗng    |
+| `응답 길이: 0`                       | Model trả rỗng                | Kiểm non-thinking flag + pod log           |
+| `token_usage = 0` hàng loạt      | Accounting hỏng               | Sửa trước khi chạy tiếp — số token sai hết |
+| Model name metadata ≠ run dir    | Nhầm URL pod ↔ slot           | Loại run, kiểm managed block               |
+| `evaluation_error` trong summary | Judge chết giữa chừng         | `04_repair_ladder_results.py` (xem dưới)   |
+| Pod EXITED giữa run              | OOM/crash server              | Xem RunPod console log, kiểm VRAM          |
 
-Mỗi `comparison_report.json` (per-scenario, per-agent) phải có:
-
-- [ ] **`total_score`** (median multi-judge, /100) — **số chuẩn cho paper là per-scenario total_score**
-- [ ] **`addie_score`** (/100, từ 33 Context-Matrix sub-steps → 13 items → 5 ADDIE phases)
-- [ ] **`trajectory_score`** (BFCL-based) — kiểm agent nào thiếu (agent không trajectory → biết trước, ghi chú)
-- [ ] Điểm **đủ 5 phase** ADDIE, không phase nào 0/null hàng loạt
-- [ ] **Multi-judge đủ số judge** cấu hình; độ lệch giữa judges không bất thường (1 judge chấm lệch hẳn → soi)
-- [ ] ⚠️ **Bẫy CSV Avg**: cột Avg trong aggregate CSV là judge-mean, sẽ lệch per-scenario khi
-  thiếu component — **luôn tính lại từ per-scenario `total_score`**, không lấy CSV Avg
-- [ ] Phân phối điểm sanity: không có agent toàn 0 (lỗi pipeline) hoặc toàn 100 (parse lỗi);
-  điểm stub (nếu lọt) thường thấp bất thường + đồng loạt giống nhau → đối chiếu 7.4
-
-### 7.6 Red flags — dừng ngay / loại run
-
-| Dấu hiệu                         | Ý nghĩa                                     | Hành động                                       |
-|----------------------------------|---------------------------------------------|-------------------------------------------------|
-| `Error code: 524` trong log      | Proxy cắt call >120s (streaming hỏng?)      | Dừng, kiểm `AGENT_MODEL_STREAMING`              |
-| `Error code: 400` max context    | Cap không ăn / prompt quá dài               | Kiểm `AGENT_MODEL_MAX_TOKENS_CAP`               |
-| `기본 출력 반환` / STUB? ở 7.4         | Baseline ghi default output                 | Loại scenario/run, tìm nguyên nhân content rỗng |
-| `응답 길이: 0`                       | Model trả rỗng (thinking tràn? server lỗi?) | Kiểm non-thinking flag + pod logs               |
-| `token_usage = 0` hàng loạt      | Accounting hỏng (stream_usage)              | Sửa trước khi chạy tiếp, số cost/token sai hết  |
-| Model name metadata ≠ run dir    | Nhầm URL pod ↔ slot                         | Loại run, kiểm managed block trong `.env`       |
-| `evaluation_error` trong summary | Judge/evaluator chết giữa chừng             | Chạy lại evaluation cho scenario đó             |
-| Pod EXITED giữa run              | OOM/crash server                            | Xem RunPod console logs, kiểm VRAM              |
-
-## 8. Score alignment (RQ2) — chạy cho TỪNG run dir
-
-Bước này **không nằm trong ladder**, phải chạy tay sau bench. Tất định, LLM-free, chạy local,
-không tốn API — chỉ đọc `*_output.json` và ghi `alignment_scores.json` vào từng scenario dir:
+Judge lỗi transient sửa được **không cần sinh lại output**:
 
 ```bash
-for RUN in results/test_90_benchmark_*_r*; do
-  python scripts/alignmentgraph-isd-bench/7_score_alignment.py "$RUN"
-done
+python scripts/alignmentgraph-isd-bench/04_repair_ladder_results.py --dry-run   # xem phạm vi, không gọi judge
+python scripts/alignmentgraph-isd-bench/04_repair_ladder_results.py             # sửa rồi tự chạy audit post-run
 ```
 
-Dùng `--overwrite` nếu cần chấm lại dir đã có `alignment_scores.json` (encoder mặc định
-`tfidf`; script cũng đọc scenario gốc từ `scenarios/` để lấy topic — chạy từ trong
-`isd-agent-benchmark/` là đủ). Thiếu bước này thì mục 9
-vẫn chạy nhưng **bỏ trống toàn bộ phần RQ2** (graceful skip — dễ quên!).
+Script chấm lại từng agent bị ảnh hưởng trong thư mục tạm rồi merge **đúng row đó** vào report gốc (vì
+`compare --agents X` sẽ ghi đè cả report), đồng bộ `benchmark_summary.json`/`SUMMARY.md`, tạo backup
+`.pre-judge-repair`.
+Output và trajectory chỉ được đọc, không bao giờ sinh lại.
 
-## 9. Pool 12 runs → thống kê RQ1 + RQ2
+## 7. Score alignment (RQ2)
+
+Bước này **không nằm trong ladder**, phải chạy tay sau bench. Chỉ đọc `*_output.json` và ghi
+`alignment_scores.json` vào từng scenario dir. Thiếu bước này thì mục 8 vẫn chạy nhưng **bỏ trống toàn bộ RQ2**
+(graceful skip — dễ quên).
+
+**Chỉ encoder primary (8B) cần pod.** Mọi arm còn lại chạy trên máy local (A.3). Pod dùng cùng convention template
+ladder: **<https://console.runpod.io/deploy?template=3i3er665bh>** — GPU ≥24GB (bf16 weights ~16GB), không sửa start
+command. Deploy **nhiều pod cùng lúc** thì scorer tự load-balance round-robin song song qua chúng.
+
+Chuẩn bị trước một lần: checkpoint Bloom (arm chính) — xem A.3.
 
 ```bash
-python scripts/alignmentgraph-isd-bench/7_pool_ladder_runs.py --auto-glob 'results/test_90_benchmark_*_r*'
+RUNS='results/test_90_benchmark_*_r[123]_*'
+
+# (1) arm primary — cần pod đang chạy
+python scripts/alignmentgraph-isd-bench/05_sync_embed_pod_env.py   # --dry-run để xem trước
+source .env    # → EMBED_SLOTS + NEMOTRON_EMBED_{BASE_URLS,MODEL,API_KEY_ENV}
+python scripts/alignmentgraph-isd-bench/06_score_alignment.py $RUNS
+
+# (2) TẮT POD, rồi chấm 3 arm sensitivity còn lại hoàn toàn local (~70 phút)
+python scripts/alignmentgraph-isd-bench/06_score_alignment.py $RUNS \
+    --encoder-presets bgem3,granite,tfidf --bloom-presets lexicon
 ```
 
-- Output: `results/pooled_ladder.json` + report stdout. Gộp 3 run/size (mean-of-runs), rồi
-  per-size: Wilcoxon paired (proposed vs 6 baseline), Holm correction, bootstrap 95% CI,
-  rank-biserial r, 3 failure policies (`complete_case` chính / `zero` / `min_score`),
-  interaction DiD + trend slope — định nghĩa đầy đủ ở Phụ lục A.2. Alignment metrics (RQ2)
-  pool từ `alignment_scores.json` (Phụ lục A.3). Kèm section `token_usage` (operational
-  metadata, Phụ lục A.4): mean tokens / llm_calls / exec-time per agent × size.
-- Auto-glob nhóm dir theo tên model + run tag; nếu nó vơ nhầm dir (vd. run tune, run bỏ dở),
-  dùng mapping tường minh `--model <key>=dir1,dir2,dir3` (xem `--help`).
-- Variance giữa r1/r2/r3 của cùng (model, agent): CV quá lớn (>~20–30%) → soi run lệch trước
-  khi kết luận.
-- Trend theo model size có giải thích được không (0.8B < 2B < 4B < 9B là kỳ vọng thô;
-  đảo chiều ở đâu → kiểm integrity (7.4) chỗ đó trước khi coi là finding).
-- Có dir trùng tag (re-run sau abort): dùng dir timestamp mới, xoá dir cũ **chỉ sau khi** pool
-  xác nhận dir mới đủ 90 scenario.
+Tách hai bước như trên là cách rẻ nhất: pod chỉ sống đúng khoảng thời gian chấm arm primary. Chạy một phát
+`--all-arms` cũng đúng, chỉ là pod nằm không trong lúc ba arm local chạy.
 
-## 10. Sinh bảng, hình + macro số liệu cho paper
+**Sweep là hình sao, không phải lưới.** Cấu hình chính = (`nemotron` + `bertbloom`); mỗi arm lệch **đúng một trục**.
+Tổng 5 arm (1 chính + 3 encoder + 1 Bloom), không phải 4×2 = 8 — lưới không trả lời thêm câu hỏi nào mà nhân đôi chi
+phí lẫn diện tích phải kiểm.
+
+Trục Bloom **không tùy chọn**: 3/7 tín hiệu panel do Bloom sinh ra, bỏ trục này thì cả họ B không được kiểm bởi
+trục nào. Arm chính `bertbloom` cần checkpoint (train một lần, ~15 phút trên máy local); arm sweep `lexicon` gần như
+miễn phí — chạy CPU, vector lấy từ cache:
 
 ```bash
-python scripts/alignmentgraph-isd-bench/8_gen_paper_tables.py --pooled results/pooled_ladder.json
+# cần checkpoint trước (một lần, vài phút GPU):
+python evaluator/scripts/train_bloom_6way_classifier.py --train ../EDM2022CLO/data/sample_full.csv \
+    --output-dir models/bloom-bert-edm2022
+python scripts/alignmentgraph-isd-bench/06_score_alignment.py --bloom-presets lexicon --embed-cache-only $RUNS
 ```
 
-Ghi vào `results/generated/` (**benchmark-local, gitignored**): `tab_rq1.tex`,
-`tab_rq2_alignment.tex`, `stats_macros.tex` (mọi con số trong prose là `\newcommand`, **số
-trong paper phải sinh tự động, không gõ tay**), `stats_summary.md` (bản dump người đọc để
-cross-check). Số format kiểu VN (`{,}`). Copy sang docs bằng bước sync ở mục 10.2.
+Cách scorer hoạt động:
 
-### 10.1 Hình (figures)
+- Instrument **chỉ chọn được qua preset** (`ENCODER_PRESETS` / `BLOOM_PRESETS`); không cờ model/URL tự do. Không
+  truyền cờ nào = chạy đúng cấu hình chính. Preset quyết định luôn **backend**: arm `api` lấy endpoint từ
+  `<SLOT>_EMBED_BASE_URLS`, arm `local` chạy in-process (thiết bị tự chọn — `mps`/`cuda`/`cpu`, ép bằng
+  `--local-device`). Arm không có pod (hoặc arm Bloom không có checkpoint) thì **SKIP kèm lý do** chứ không làm hỏng
+  cả sweep — bù sau gần như miễn phí nhờ cache. `--require-all` nếu muốn "đủ mọi arm hoặc không chạy". Arm BERT **không bao giờ âm thầm fallback về
+  lexicon**: fallback sẽ khiến trục sensitivity tự đồng thuận với chính nó rồi báo đó là instrument independence.
+- `nemotron` ghi artifact **không suffix** — file duy nhất mà pooling đọc. Arm khác ghi
+  `alignment_scores.<suffix>.json`.
+- Mỗi lần gọi còn ghi một roster dạng long `results/alignment_sweep_<timestamp>.csv` (một dòng mỗi arm × run dir ×
+  agent). **Có timestamp** vì sweep thường chạy làm nhiều lượt — arm primary, rồi các arm local, rồi re-score Bloom —
+  và tên cố định thì lượt sau xoá roster của lượt trước. Ghim tên bằng `--sweep-csv <path>`. **Luôn được ghi** —
+  không có cách tắt, vì mỗi lần chấm phải để lại dấu vết nó đã phủ những arm nào.
+- Scorer hỏi `/v1/models` **từng arm** và **hard-fail** nếu pod serve model khác preset: cache key là
+  `sha1(model[@revision] + text)` nên chấm nhầm pod sẽ ghi vector sai dưới key trông đúng — hỏng ngầm.
+- **Pod không trả lời `/v1/models` bị loại khỏi `.env`** khi sync (tên model trong record RunPod chỉ là *nhãn pod*,
+  không phải bằng chứng về thứ đang được serve). Pod đang boot thì chờ rồi re-run; `--allow-unverified` để ép.
+- `tfidf` thuần CPU, luôn chạy được kể cả khi không pod nào sống. Chỉ có 1 GPU thì bật từng pod một rồi lặp lại đúng
+  lệnh trên — arm đã xong được bỏ qua.
+- Chết giữa chừng: chạy lại **nguyên lệnh**. Scenario hoàn chỉnh được skip, file hỏng/thiếu tự chấm lại.
+
+Embedding cache SQLite ở `results/.embed_cache_<model>.sqlite` — mỗi text encode đúng một lần, dùng chung mọi run dir và
+mọi arm cùng model. `--embed-cache-only` cho phép chấm lại hoàn toàn offline.
+
+**Re-score hay reaggregate?**
+
+| Đổi cái gì                                                  | Lệnh                                                                                |
+|-------------------------------------------------------------|-------------------------------------------------------------------------------------|
+| Định nghĩa endpoint (bỏ tiêu chí, đổi cách tổng hợp)        | `--reaggregate` — đọc `details.objectives` có sẵn, tính lại, tức thì, không cần pod |
+| Tín hiệu gốc (encoder, Bloom classifier, cách extract text) | `--overwrite` — re-score thật                                                       |
+
+Cả hai đều phải re-pool + re-gen sau đó. **Đừng trộn hai cấu hình protocol trong một pool** — pooling hard-fail nếu
+phát hiện nhiều bộ `(encoder, revision, bloom_classifier)`.
+
+Validity evidence cho Bloom — chạy một lần, báo cả hai arm + κ giữa chúng:
 
 ```bash
-# Deps: matplotlib nằm trong pyproject.toml gốc (1_setup.sh đã cài; nếu venv cũ: pip install -e .)
-python scripts/alignmentgraph-isd-bench/8_gen_paper_figures.py --runs-glob 'results/test_90_benchmark_*_r*'
+python scripts/alignmentgraph-isd-bench/00_validate_bloom.py ../EDM2022CLO/data/sample_full.csv \
+    --text-col Learning_outcome --label-cols Remember,Understand,Apply,Analyze,Evaluate,Create \
+    --out results/generated/bloom_validation.md
+# thêm arm BERT: trỏ CSV vào held-out split cạnh checkpoint, KHÔNG dùng corpus đã train
+python scripts/alignmentgraph-isd-bench/00_validate_bloom.py models/bloom-bert-edm2022/eval_split.csv \
+    --text-col text --label-col label --bloom-checkpoint models/bloom-bert-edm2022
 ```
 
-Ghi vào `results/generated/figures/` (mỗi hình cả `.pdf` vector cho
-`\includegraphics` lẫn `.png` preview; text trong hình tiếng Anh, caption tiếng Việt viết
-trong LaTeX):
-
-| Hình                     | Nội dung                                                                                     |
-|--------------------------|----------------------------------------------------------------------------------------------|
-| `fig_rq1_ladder`         | Total vs model size, 7 agents, error bar = run-to-run SD (headline RQ1)                      |
-| `fig_rq1_delta`          | Δ(proposed − baseline) per size, CI95 bootstrap, marker đặc = p_holm < 0,05, kèm trend slope |
-| `fig_rq1_components`     | ADDIE vs Trajectory theo size                                                                |
-| `fig_rq2_ladder`         | Alignment composite vs size (headline RQ2 — gap có nới rộng khi model nhỏ đi?)               |
-| `fig_rq2_components`     | Heatmap agents × 5 alignment components per size                                             |
-| `fig_rq2_vs_rq1_scatter` | Per-scenario: composite vs Total (judge), Spearman ρ per size — cần `--runs-glob`            |
-| `fig_failure_rate`       | % scenario fail per agent × size (mean of runs, whisker min–max)                             |
-| `fig_cost_quality`       | Total vs total tokens / exec time (deployment-cost angle)                                    |
-
-`--demo` render toàn bộ bằng dữ liệu synthetic (test layout, không cần pooled JSON). Thiếu
-alignment/token data trong pooled JSON ⇒ hình tương ứng bị skip kèm cảnh báo.
-
-### 10.2 Sync artifacts vào docs/generated/
+## 8. Pool → thống kê RQ1 + RQ2
 
 ```bash
-# từ repo thesis (master-thesis/)
-docs/scripts/sync_generated.sh
+python scripts/alignmentgraph-isd-bench/07_pool_ladder_runs.py \
+    --auto-glob 'results/test_90_benchmark_*_r*' --auto-encoders --auto-bloom
 ```
 
-Copy `results/generated/{*.tex, stats_summary.md, figures/*}` → `docs/generated/`. LaTeX của
-paper trỏ tới đó bằng đường dẫn tương đối (vd `\input{../../../generated/stats_macros}`).
-Các script 8_* **không** ghi trực tiếp vào `docs/` nữa — sync là bước copy duy nhất.
+Output `results/pooled_ladder.json` + report stdout. Gộp 3 run/size (mean-of-runs), rồi per-size: Wilcoxon paired
+(proposed vs 6 baseline), Holm, bootstrap CI, rank-biserial, 3 failure policy, interaction DiD + trend slope — định
+nghĩa ở A.2. RQ2 pool từ `alignment_scores.json` (A.3). Kèm section `token_usage` (A.4).
 
-Điều kiện serve phải ghi trong paper (bf16, 16k, non-thinking, streaming, cap 8096) — lấy
-nguyên văn từ mục 4.
+- `--auto-encoders` (hoặc `--encoders bgem3,granite,tfidf`) thêm khoá `alignment_sensitivity`. `pooled["alignment"]`
+  **luôn** là encoder chính nên `09`/`10`/ablation không đổi gì.
+- Auto-glob nhóm dir theo tên model + run tag. Nếu nó vơ nhầm dir (run tune, run bỏ dở) thì dùng mapping tường minh
+  `--model <key>=dir1,dir2,dir3`.
+- Kiểm trước khi kết luận: CV giữa r1/r2/r3 của cùng (model, agent) quá lớn (>~20–30%) → soi run lệch. Trend theo size
+  đảo chiều ở đâu → kiểm integrity chỗ đó trước khi coi là finding.
 
-## 11. Teardown + lưu trữ
-
-- **Dừng/xoá pod RunPod ngay khi ladder xong** (thao tác trên console — không có script
-  teardown) — pod tính tiền theo giờ kể cả idle.
-- Giữ nguyên vẹn: mọi `results/test_90_benchmark_*_r*/`, mọi `results/ladder_*/ladder_manifest.json`,
-  `results/pooled_ladder.json`, `scenarios/*_metadata.json`, và managed block trong `.env`
-  (ghi lại pod id/URL đợt serve gần nhất).
-- Số VÀ hình trong paper chỉ được đến từ `generated/` (mục 10) — regenerate được từ raw
-  results bất kỳ lúc nào bằng chuỗi [8] → [9] → [10].
-
-## 12. TL;DR — "ladder chạy xong rồi, giờ làm gì?"
+## 9. Sinh bảng, hình + macro cho paper
 
 ```bash
-cd isd-agent-benchmark
-# 1. Audit từng run dir:
-python scripts/alignmentgraph-isd-bench/6_audit_postrun.py
-# 2. RQ2 scoring (local, free):
-for RUN in results/test_90_benchmark_*_r*; do python scripts/alignmentgraph-isd-bench/7_score_alignment.py "$RUN"; done
-# 3. Pool:
-python scripts/alignmentgraph-isd-bench/7_pool_ladder_runs.py --auto-glob 'results/test_90_benchmark_*_r*'
-# 4. Bảng paper (vào results/generated/):
-python scripts/alignmentgraph-isd-bench/8_gen_paper_tables.py --pooled results/pooled_ladder.json
-# 5. Hình paper (vào results/generated/figures/):
-python scripts/alignmentgraph-isd-bench/8_gen_paper_figures.py --runs-glob 'results/test_90_benchmark_*_r*'
-# 6. Sync vào cây paper (chạy từ repo thesis):
-cd .. && docs/scripts/sync_generated.sh && cd isd-agent-benchmark
-# 7. Tắt pod RunPod (console), giữ manifests.
+python scripts/alignmentgraph-isd-bench/09_gen_paper_tables.py --pooled results/pooled_ladder.json
+python scripts/alignmentgraph-isd-bench/14_gen_sensitivity_table.py     # nếu có alignment_sensitivity
+python scripts/alignmentgraph-isd-bench/10_gen_paper_figures.py --runs-glob 'results/test_90_benchmark_*_r*'
+cd .. && docs/scripts/sync_generated.sh                                 # từ repo thesis
 ```
+
+Tất cả ghi vào `results/generated/` (benchmark-local, gitignored): `tab_rq1.tex` (ADDIE-lead) kèm
+`tab_rq1_total.tex`/`tab_rq1_traj.tex` (Total/Trajectory song song, cùng logic §A.2), `tab_rq2_alignment.tex`
+(tín hiệu dẫn) kèm `tab_rq2_panel.tex` (panel đầy đủ 7 tín hiệu), `stats_macros.tex` (mọi con số trong prose là
+`\newcommand`), `stats_summary.md` (bản dump người đọc để cross-check).
+Số format kiểu VN (`{,}`). `sync_generated.sh` là **bước copy duy nhất** sang `docs/generated/`; LaTeX trỏ tới đó bằng
+đường dẫn tương đối.
+
+Hình (cả `.pdf` vector lẫn `.png` preview; text trong hình tiếng Anh, caption tiếng Việt viết trong LaTeX):
+
+| Hình                     | Nội dung                                                                     |
+|--------------------------|------------------------------------------------------------------------------|
+| `fig_rq1_ladder`         | Total vs model size, error bar = run-to-run SD (headline RQ1)                |
+| `fig_rq1_delta`          | Δ(proposed − baseline) per size, CI95, marker đặc = p_holm < 0,05, kèm slope |
+| `fig_rq1_components`     | ADDIE vs Trajectory theo size                                                |
+| `fig_rq2_ladder`         | Objective–assessment alignment vs size (headline RQ2)                        |
+| `fig_rq2_components`     | Heatmap agents × 5 alignment component per size                              |
+| `fig_rq2_vs_rq1_scatter` | Per-scenario alignment vs Total, Spearman ρ per size — cần `--runs-glob`     |
+| `fig_failure_rate`       | % scenario fail per agent × size                                             |
+| `fig_cost_quality`       | Total vs total token / exec time (deployment-cost angle)                     |
+
+`--demo` render bằng dữ liệu synthetic để test layout. Thiếu alignment/token data ⇒ hình tương ứng skip kèm cảnh báo.
+
+Điều kiện serve phải ghi trong paper (bf16, 16k, non-thinking, streaming, cap 8192) — lấy nguyên văn từ mục 3.
+
+## 9.1 Cổng cuối: audit artifact
+
+```bash
+python scripts/alignmentgraph-isd-bench/99_audit_artifacts.py            # sau khi đã sync
+python scripts/alignmentgraph-isd-bench/99_audit_artifacts.py --strict   # WARN cũng fail
+python scripts/alignmentgraph-isd-bench/99_audit_artifacts.py --no-docs  # chỉ phía benchmark
+```
+
+Chạy **sau** toàn bộ 9 (kể cả `sync_generated.sh`). Có mặt file là kiểm tra yếu nhất, nên script soi 8 lớp:
+drift inventory (A — quét thẳng source của 5 generator, hai chiều, nên generator thêm output mới thì không thể lọt),
+thiếu file (B), lệch sync docs↔results theo **byte** + `sync_generated.sh` có thực sự copy artifact đó không (C),
+placeholder/TBD-DEMO (D — generator cố tình sinh file comment-only `\input` được khi thiếu pooled layer, LaTeX vẫn
+compile và bảng biến mất im lặng), độ mới đọc từ **header** chứ không phải mtime (E — sync là `cp` nên restamp mọi
+file), figure phải đủ cặp `.pdf`+`.png` (F), `\input`/`\includegraphics` có resolve và artifact nào chưa ai tham
+chiếu (G), và macro nào prose dùng mà không generator nào định nghĩa (H — `Undefined control sequence`, lỗi build
+mà kiểm tra file không bao giờ thấy).
+
+Cái gì là *bắt buộc* phụ thuộc pooled layer đang có: artifact ablation chỉ bị đòi khi có `pooled_ablation.json`,
+sensitivity khi pooled ladder có `alignment_sensitivity`; hai file bloom validation luôn chỉ WARN vì cần checkpoint
+train tay. Exit 0 = không RED (và không WARN nếu `--strict`).
+
+## 10. Teardown
+
+- **Tắt/xoá pod RunPod ngay** (thao tác console, không có script) — tính tiền theo giờ kể cả idle.
+- Giữ nguyên vẹn: mọi `results/test_90_benchmark_*_r*/`, mọi `ladder_manifest.json`, `pooled_ladder.json`,
+  `scenarios/*_metadata.json`, và managed block trong `.env`.
+- Số và hình trong paper regenerate được bất kỳ lúc nào từ raw results bằng chuỗi mục 7 → 8 → 9.
 
 ---
 
 # Phụ lục A — Metrics reference
 
-Liệt kê toàn bộ các metric được đo trong dự án và ý nghĩa của từng metric, theo nguồn tính
-toán thực tế trong code (không phải mô tả lý thuyết).
+Ba nhóm, theo nguồn tính toán thực tế trong code:
 
-Có ba nhóm, tương ứng ba tầng của pipeline đo lường:
+1. **Judge quality metrics** (A.1) — LLM judge chấm từng ADDIE output, nguồn cho RQ1.
+2. **RQ1 statistics** (A.2) — thống kê suy diễn trên các judge metric đã pool theo model size.
+3. **RQ2 alignment protocol** (A.3) — thước đo constructive alignment tự động, **không LLM**, độc lập với judge và với
+   verifier nội bộ của harness.
 
-1. **Judge quality metrics** — do LLM judge chấm trên từng ADDIE output (per scenario), nguồn cho RQ1.
-2. **RQ1 statistics** — thống kê suy diễn (paired test, effect size, CI) tính trên các judge metric đã pool theo model
-   size, dùng để trả lời "chất lượng có được duy trì khi thu nhỏ model không".
-3. **RQ2 alignment metric** — thước đo constructive alignment định lượng, tự động, **không dùng LLM ở bước tổng hợp**,
-   tính độc lập với judge và với verifier nội bộ của harness.
+Cộng thêm **operational metadata** (A.4) — log để debug, không vào headline stats.
 
-Ngoài ra có một số **operational metadata** được ghi log nhưng không nằm trong headline stats của hai RQ.
+## A.1 Judge quality metrics (per-scenario)
 
-## A.1 Judge quality metrics (per-scenario, LLM judge)
+Nguồn: [`evaluator/src/isd_evaluator/`](../isd-agent-benchmark/evaluator/src/isd_evaluator/).
 
-Nguồn: `isd-agent-benchmark/evaluator/src/isd_evaluator/`. Mỗi scenario, mỗi agent được một (hoặc nhiều, nếu
-multi-judge) LLM judge chấm hai phần độc lập, gộp thành một **Total** composite.
+**ADDIE Rubric Score (0–100)** — `metrics/addie_rubric.py`, rubric ở `rubrics/addie_definitions.py`. Hai bước LLM-judge
+tuần tự cho mỗi sub-item: (1) *status* — phân loại vào `absent/weak/moderate/good/excellent`, mỗi trạng thái ứng một
+khoảng điểm cố định; (2) *score* — chấm chi tiết, **bị ép cứng** nằm trong khoảng của status, tránh judge chấm vượt
+khung. **33 sub-item** (Context-Matrix) → trung bình thành **13 item** → **5 phase ADDIE**. Trọng số phase mặc định
+Analysis 25 / Design 25 / Development 20 / Implementation 15 / Evaluation 15, điều chỉnh động theo context scenario
+(`metrics/context_weights.py`: suy ra hồ sơ ngữ cảnh — loại tổ chức, hình thức triển khai, người học, domain, quy mô
+lớp, thời lượng — rồi cộng/trừ trọng số, kẹp trong [0,05; 0,50], chuẩn hoá tổng = 1; scenario "PBL" thì Design +
+Evaluation nặng hơn Development, "VR" thì ngược lại). `normalized_score = total_weighted / max_possible × 100`.
 
-### A.1.1 ADDIE Rubric Score (0–100)
+**Trajectory Score (0–100)** — `metrics/trajectory.py`. Đo **chất lượng quá trình** (không phải output cuối), khung
+BFCL,
+4 chiều × 25 điểm: *Tool Correctness* (chọn đúng công cụ, tránh gọi thừa), *Argument Accuracy* (tham số đúng
+giá trị/kiểu/không thiếu field), *Redundancy Avoidance* (tránh gọi lặp, tránh chia nhỏ vô ích), *Result Utilization*
+(dùng kết quả tool vào bước sau, phục hồi hợp lý khi tool lỗi). Cùng một chuẩn cho single-agent và multi-agent.
 
-File: [`metrics/addie_rubric.py`](../isd-agent-benchmark/evaluator/src/isd_evaluator/metrics/addie_rubric.py), định
-nghĩa rubric ở [
-`rubrics/addie_definitions.py`](../isd-agent-benchmark/evaluator/src/isd_evaluator/rubrics/addie_definitions.py).
-
-Đo mức độ đầy đủ/chất lượng của ADDIE output so với rubric chuyên gia ISD, theo hai bước LLM-judge tuần tự cho mỗi
-sub-item:
-
-- **Bước 1 — status**: judge phân loại từng sub-item vào 1 trong 5 trạng thái
-  `absent / weak / moderate / good / excellent`, mỗi trạng thái ứng với một khoảng điểm cố định (0.0 / 1.0–3.9 /
-  4.0–6.9 / 7.0–8.9 / 9.0–10.0).
-- **Bước 2 — score**: judge cho điểm chi tiết, **bị ép cứng** (`enforced_score`) nằm trong khoảng của status đã xác định
-  ở bước 1 — tránh judge tự do chấm vượt khung.
-- **33 sub-item** (Context-Matrix — xem `docs/refs/`) → gộp trung bình thành **13 item** (`ITEM_MAPPING`) → gộp thành *
-  *5 ADDIE phase** (`analysis`, `design`, `development`, `implementation`, `evaluation`).
-- Mỗi phase có `raw_score` (tổng điểm item, thang 0–10/item), `weighted_score` (nhân trọng số phase), `percentage`.
-- **Trọng số phase mặc định** (`DEFAULT_PHASE_WEIGHTS`): Analysis 25%, Design 25%, Development 20%, Implementation 15%,
-  Evaluation 15% — điều chỉnh động theo context của scenario (mục A.1.3).
-- `normalized_score` = `total_weighted / max_possible_weighted × 100` — đây là con số ADDIE 0–100 dùng downstream.
-
-### A.1.2 Trajectory Score (0–100)
-
-File: [`metrics/trajectory.py`](../isd-agent-benchmark/evaluator/src/isd_evaluator/metrics/trajectory.py). Đo **chất
-lượng quá trình suy luận/dùng công cụ** của agent (không phải chất lượng output cuối), dựa trên khung BFCL (Berkeley
-Function-Calling Leaderboard), LLM-judge trên trajectory log. 4 chiều, mỗi chiều 0–25 điểm, tổng 0–100 (
-`TrajectoryScore.total`):
-
-- **Tool Correctness** — có chọn đúng công cụ cho từng bước ADDIE không, có tránh gọi công cụ thừa không.
-- **Argument Accuracy** — tham số truyền cho tool có đúng giá trị/kiểu/không thiếu field bắt buộc không.
-- **Redundancy Avoidance** — có tránh gọi lặp cùng một tool với cùng tham số, tránh chia nhỏ một việc thành nhiều lời
-  gọi không cần thiết.
-- **Result Utilization** — có dùng kết quả tool vào bước suy luận tiếp theo, có phục hồi hợp lý khi tool lỗi không.
-
-Đánh giá cùng một chuẩn cho cả single-agent và multi-agent (không ưu ái kiến trúc nhiều tác tử).
-
-### A.1.3 Context-aware phase weighting (điều chỉnh trọng số, không phải metric riêng)
-
-File: [`metrics/context_weights.py`](../isd-agent-benchmark/evaluator/src/isd_evaluator/metrics/context_weights.py).
-Không tự nó là một con số được báo cáo, nhưng **quyết định trọng số phase** dùng ở mục A.1.1 → ảnh hưởng trực tiếp
-`normalized_score`. `ContextWeightAdjuster` suy ra hồ sơ ngữ cảnh scenario (loại hình tổ chức, hình thức triển khai, độ
-tuổi/học lực/vai trò người học, domain, quy mô lớp, môi trường công nghệ, thời lượng — theo Context Matrix) rồi cộng/trừ
-trọng số từng phase (kẹp trong [0.05, 0.50], chuẩn hoá lại tổng = 1). Mục đích: một scenario "PBL" thì Design+Evaluation
-quan trọng hơn Development, một scenario "VR" thì ngược lại — rubric chấm phải phản ánh đúng trọng tâm của bối cảnh đó
-thay vì áp trọng số cố định cho mọi scenario.
-
-### A.1.4 Total composite (0–100)
-
-File: [`models/__init__.py`](../isd-agent-benchmark/evaluator/src/isd_evaluator/models/__init__.py) (
-`CompositeScore.total`).
+**Total composite (0–100)** — `models/__init__.py`:
 
 ```
-Total = 0.7 × ADDIE.normalized_score + 0.3 × Trajectory.total
+Total = 0,7 × ADDIE.normalized_score + 0,3 × Trajectory.total
 ```
 
-Đây là con số **canonical** dùng cho mọi so sánh giữa agent (per-scenario `total_score` trong
-`comparison_report.json`) — **không phải** cột "Avg" của `aggregate_table.csv`, vốn là judge-mean và lệch khi thiếu
-component (xem mục 7.5).
+**Thước dẫn của RQ1 là `addie_median`, không phải composite** — ADDIE đo chất lượng nội dung thiết kế giảng dạy, tức
+đúng construct câu hỏi nghiên cứu nhắm tới; `trajectory_score` đo process conformance (construct khác); `total_score`
+mang trọng số 0,7/0,3 của benchmark, không đến từ câu hỏi nghiên cứu này. Cả ba tín hiệu được thống kê **y như nhau**
+(3 failure policy, Holm theo từng (signal, policy)) dưới `comparisons.by_signal[<signal>]`, và `total_score` vẫn báo
+đầy đủ để so sánh được với chính ISD-Agent-Bench. Quyết định này là **post-hoc** (chọn sau khi đã thấy kết quả) và
+phải khai đúng như vậy trong paper.
 
-## A.2 RQ1 statistics — duy trì chất lượng theo model scale
+Về composite: per-scenario `total_score` trong `comparison_report.json` —
+**không phải** cột `Avg` của `aggregate_table.csv`.
 
-File: [
-`scripts/alignmentgraph-isd-bench/7_pool_ladder_runs.py`](../isd-agent-benchmark/scripts/alignmentgraph-isd-bench/7_pool_ladder_runs.py).
-Input: 4 kích thước
-Qwen (0.8B/2B/4B/9B) × 3 run độc lập/kích thước × 90 scenario (`test_90`), mỗi scenario đã có `Total` (mục A.1.4) cho
-từng agent. Đây là các thống kê **suy diễn**, không phải điểm số thô.
+## A.2 RQ1 statistics
 
-- **`mean_total`** — trung bình `Total` của một agent tại một model size, pool qua 3 run rồi qua các scenario (
-  mean-of-3-runs, complete-case là policy chính).
-- **`run_to_run_sd`** — SD giữa 3 giá trị trung bình cấp-run (đo độ ổn định run-to-run, tách biệt với phương sai giữa
+File: [`07_pool_ladder_runs.py`](../isd-agent-benchmark/scripts/alignmentgraph-isd-bench/07_pool_ladder_runs.py).
+Input: 4 size × 3 run × 90 scenario, mỗi scenario đã có `Total` cho từng agent.
+
+- **`mean_total`** — trung bình `Total` của một agent tại một size, pool qua 3 run rồi qua scenario (complete-case là
+  policy chính).
+- **`run_to_run_sd`** — SD giữa 3 giá trị trung bình cấp-run (độ ổn định run-to-run, tách khỏi phương sai giữa
   scenario).
-- **Paired Wilcoxon signed-rank test** (`wilcoxon_signed_rank`) — so khớp cặp theo scenario giữa harness đề xuất và từng
-  baseline (6 baseline), two-sided. Với `n_effective ≤ 25`: **exact permutation null** (liệt kê phân phối W+ qua DP
-  trên rank đã tie-average — bắt buộc vì xấp xỉ chuẩn anti-conservative ở n nhỏ: exact p sàn two-sided là 0.25 tại n=3,
-  0.5 tại n=2); n lớn hơn dùng xấp xỉ chuẩn hiệu chỉnh tie. Trả về `W_plus` (thống kê), `p_raw`, `n_effective` (số cặp
-  có delta ≠ 0). Quy ước: ô có complete-case n≤5 khai báo là *not testable* bằng score test; bằng chứng tại đó lấy từ
-  failure-rate test + sensitivity.
-- **Fisher exact test trên output-failure** (`failure_tests` + `fisher_exact_2x2`, secondary) — 2×2
-  [failed, ok] × [proposed, baseline] ở cấp scenario (failed = thiếu output chấm được ở ≥1 run của size đó), two-sided,
-  Holm/6 mỗi size; run-level counts chỉ báo cáo mô tả (các run cùng scenario không độc lập). Đây là mặt robustness của
-  luận điểm bù scale, dùng thay score test tại các ô n quá nhỏ.
-- **Holm correction** (`holm_correct`) — hiệu chỉnh đa kiểm định step-down trên family gồm đúng 6 so sánh (proposed vs
-  mỗi baseline) **trong cùng một model size** → `p_holm`.
-- **Bootstrap 95% CI** (`bootstrap_ci`, 10 000 resample, seed 42) — CI của mean paired delta (
-  `Total_proposed − Total_baseline`), không giả định phân phối.
-- **Matched-pairs rank-biserial correlation r** (`rank_biserial`) — effect size của Wilcoxon test,
-  `r = (W+ − W−)/(W+ + W−)`, range [−1, 1].
-- **Sensitivity analysis / failure policies** (`scenario_mean_map`) — 3 chính sách khi một agent fail/thiếu scenario:
-  `complete_case` (chính, loại scenario thiếu), `zero` (impute 0), `min_score` (impute điểm thấp nhất quan sát được ở
-  model size đó) — kiểm tra kết luận có nhạy với cách xử lý failure hay không.
-- **Interaction / Difference-in-Differences** (`interaction_tests`) — trả lời "method × model size" (reviewer Q11):
-  `did_mean` = delta(proposed − baseline) tại size lớn nhất trừ tại size nhỏ nhất, kèm bootstrap 95% CI và Wilcoxon p
-  trên các giá trị DiD per-scenario.
-- **Trend slope** (`trend_ols_slope_per_size_step`) — độ dốc OLS của delta(proposed − baseline) theo 4 bước kích thước
-  model, kèm CI — đo khoảng cách chất lượng "nới rộng" hay "thu hẹp" đơn điệu theo scale. Lưu ý: với baseline có
-  failure nặng ở size nhỏ, trend/DiD complete-case trộn các subset scenario khác nhau qua size (survivorship) — chỉ
-  diễn giải mô tả, không dùng làm bằng chứng chính.
-- **RQ2 paired stats + conditional composite** (trong `pool_alignment`) — cùng machinery (Wilcoxon exact-capable +
-  Holm/6 + bootstrap CI + rank-biserial) chạy trên per-scenario alignment `composite` (mean-of-runs, scenario chấm được
-  cho cả 2 agent); kèm `conditional_composite` = composite chỉ trên scenario có ≥1 objective trích được (tách chất
-  lượng alignment khỏi tỉ lệ parse được — mean unconditional chấm output không có objective ~0).
+  Tính trên **đúng tập complete-case của `mean_total`**, không phải trên mọi scenario có điểm trong từng run: nếu mỗi
+  run
+  trung bình trên một tập scenario khác nhau thì các run mean không so sánh được, và độ tản của chúng lẫn biến thiên
+  run-to-run với khác biệt thành phần scenario. Đây là con số in kèm `mean_total` trong `tab_rq1.tex` và làm error bar
+  của `fig_rq1_ladder`, nên hai số phải cùng mẫu.
+- **Paired Wilcoxon signed-rank** — khớp cặp theo scenario, proposed vs từng baseline, two-sided. Với `n_effective ≤ 25`
+  dùng **exact permutation null** (bắt buộc: xấp xỉ chuẩn anti-conservative ở n nhỏ — exact p sàn two-sided là 0,25 tại
+  n=3). Ô có complete-case n≤5 khai báo *not testable* bằng score test; bằng chứng tại đó lấy từ failure-rate test.
+- **Fisher exact 2×2 trên output-failure** (secondary) — [failed, ok] × [proposed, baseline] cấp scenario, Holm/6 mỗi
+  size. Đây là mặt robustness của luận điểm bù scale, dùng thay score test ở các ô n quá nhỏ. Run-level count chỉ báo
+  cáo mô tả (các run cùng scenario không độc lập).
+- **Holm correction** — step-down trên family gồm đúng 6 so sánh **trong cùng một size** → `p_holm`.
+- **Bootstrap 95% CI** — 10 000 resample, seed 42, trên mean paired delta.
+- **Rank-biserial r** — effect size của Wilcoxon, `r = (W⁺ − W⁻)/(W⁺ + W⁻)`, range [−1, 1].
+- **Failure policies** — `complete_case` (chính, loại scenario thiếu) / `zero` (impute 0) / `min_score` (impute điểm
+  thấp nhất quan sát được ở size đó). Kiểm kết luận có nhạy với cách xử lý failure không.
+- **Interaction / DiD** — `did_mean` = delta tại size lớn nhất trừ delta tại size nhỏ nhất, kèm bootstrap CI + Wilcoxon
+  p.
+- **Trend slope** — độ dốc OLS của delta theo 4 bước size, kèm CI. ⚠️ Với baseline failure nặng ở size nhỏ,
+  trend/DiD complete-case trộn các subset scenario khác nhau qua size (survivorship) — **chỉ diễn giải mô tả**.
 
-## A.3 RQ2 — Alignment metric (constructive alignment, LLM-free)
+## A.3 RQ2 — Alignment evaluation protocol
 
-File: [
-`evaluator/src/isd_evaluator/metrics/alignment.py`](../isd-agent-benchmark/evaluator/src/isd_evaluator/metrics/alignment.py).
-Đo **constructive alignment** của một ADDIE output — mức khớp giữa learning objectives, assessment, activities,
-evaluation — bằng công thức tất định (zero lời gọi LLM ở bước tổng hợp), đọc **chỉ text** (không dùng `objective_id`/
-`aligned_objective` hay field `level` tự khai báo để chấm điểm, chỉ dùng cho audit). Mọi thành phần nằm trong [0, 1].
+File: [`metrics/alignment.py`](../isd-agent-benchmark/evaluator/src/isd_evaluator/metrics/alignment.py).
+Đặc tả chốt + rationale: `docs/summary.md` §"Alignment evaluation protocol".
 
-- **Porter Alignment Index** (`porter_mean`, Porter 2002 / Fulmer 2011) — với mỗi cặp (objectives ↔ assessment, ↔
-  activities, ↔ evaluation): dựng ma trận phân phối topic × Bloom-level chuẩn hoá (tổng = 1) cho mỗi phía, rồi
-  `P = 1 − 0.5·Σ|X_ij − Y_ij|`. Đo khớp **kép** cả về nội dung (topic, suy ra bằng cosine similarity tới topic của
-  scenario) lẫn tầng nhận thức (Bloom level, suy ra bằng lexicon classifier tiếng Việt/Anh — không dùng LLM).
-- **Webb Range-of-Knowledge** (`webb_range`, Webb 1997/1999) — tỉ lệ objective có ít nhất một assessment item khớp (
-  cosine similarity ≥ ngưỡng 0.25).
-- **Webb Bloom-Consistency** (`webb_bloom_consistency`) — trong số assessment item khớp với một objective (bằng argmax
-  similarity), tỉ lệ item có Bloom level ≥ level của objective tương ứng — đo assessment có "đo đúng tầng nhận thức đã
-  đặt ra" hay đo thấp hơn mục tiêu.
-- **Embedding coverage** (`embedding_coverage`, SE traceability framing — Cleland-Huang) — trung bình, với mỗi
-  objective, độ tương đồng cosine lớn nhất tới bất kỳ assessment item nào (mọi objective có được "phủ" không).
-- **Embedding precision** (`embedding_precision`) — chiều ngược lại: trung bình, với mỗi assessment item, độ tương đồng
-  lớn nhất tới bất kỳ objective nào (mọi item có "bám" vào một objective thật hay là nội dung lạc đề).
-- **Composite** — trung bình các thành phần *đã xác định* trong
-  `[porter_mean, webb_range, webb_bloom_consistency, embedding_coverage, embedding_precision]`; = 0.0 nếu output không
-  có objective nào.
-- **Sanity report** (`lexicon_vs_declared_agreement`, report-only) — tỉ lệ đồng thuận giữa Bloom level do lexicon
-  classifier suy ra và level agent tự khai báo trong output; **không** vào composite, chỉ để phát hiện agent "nói một
-  đằng làm một nẻo" (khai declared level cao nhưng text không thể hiện).
+Chấm constructive alignment bằng một hàm cố định của văn bản — **zero lời gọi LLM trong đo lường, không sampling**.
+Đọc **chỉ text** (`objective_id`/`aligned_objective`/`level` tự khai **không** dùng để chấm, chỉ làm validation
+evidence). Mọi giá trị trong [0, 1]. **Không có scalar tổng hợp và không có ngưỡng cắt.**
 
-Text encoder mặc định là character n-gram TF-IDF thuần Python (`TfidfCharNgramEncoder`, hợp tiếng Việt/Hàn không cách từ
-rõ); có thể thay bằng sentence-embedding đa ngôn ngữ (`SentenceTransformerEncoder`, LaBSE/BGE-M3) nếu cần độ chính xác
-semantic cao hơn — cả hai cùng interface `TextEncoder` nên không đổi công thức phía trên khi đổi encoder.
+> **Panel, không thứ bậc.** 7 tín hiệu là một panel phẳng, mỗi tín hiệu một câu hỏi riêng, tất cả đều báo cho mọi so
+> sánh — thắng hay thua. Không có "endpoint chính": gắn nhãn chính/phụ chỉ là composite ngầm.
+>
+> **Quy tắc đặt tên**: tín hiệu mang tên phép toán nó thực hiện. Tên metric bị đọc trên nhãn trục hình và bullet
+> slide, nơi một cái tên hứa nhiều hơn phép toán sẽ làm đúng công việc mà chỉ tầng bằng chứng có quyền làm. Vì vậy 4
+> tín hiệu họ embedding mang hậu tố `*_similarity`; từ "alignment" chỉ ở tên protocol và các vế `aligned(o)`, không
+> nằm trên metric nào; và không tín hiệu nào gọi là *precision* — chữ đó gợi khung retrieval vốn phải có ngưỡng, mà
+> protocol thì không có ngưỡng nào.
 
-### Pooling cấp scenario/model-size (RQ2)
+> **Cosine ở đây là *rectified*** — `max(0, cos)`, clip trần 1,0. Đây là lựa chọn **thang đo**, không phải ngưỡng khớp:
+> cặp anti-correlated không "align" hơn cặp trực giao nên phần âm gộp về sàn 0. Không hằng số nào quyết định hai text
+> "có khớp hay không". Trong paper/slide gọi đúng là *rectified cosine trên [0, 1]*.
 
-File: `7_pool_ladder_runs.py`, hàm `extract_alignment_metrics` + `pool_alignment` — đọc `alignment_scores.json` (nếu có)
-trong từng scenario dir, gộp theo agent × model size thành `mean` và `sd_across_scenarios` cho mỗi metric ở trên (tên
-field tự động flatten dạng `porter_alignment.mean`, `webb_consistency.mean`, `coverage.mean`, …), dùng để dựng bảng
-`tab_rq2_alignment.tex`.
+**Panel = hai họ instrument độc lập cơ chế**, mỗi họ một trục sensitivity riêng. Đây là câu trả lời *cấu trúc* cho
+chỉ trích "panel chỉ là 7 biến thể của cosine": không họ nào một mình gánh construct.
 
-## A.4 Operational metadata (không phải headline metric của RQ1/RQ2)
+*Họ A — textual correspondence (encoder), 4 tín hiệu:*
 
-Ghi trong `metadata` của mỗi `{agent}_trajectory.json` (`run_benchmark.py`), dùng cho debug/audit chi phí, **không**
-đi vào Total hay alignment composite:
+- `objective_assessment_similarity` — trung bình trên objectives của **max cosine tới bất kỳ assessment item nào**
+  (liên tục, không ngưỡng): vế `measures`, quan hệ trung tâm của constructive alignment (Biggs). Lý do bỏ ngưỡng:
+  ngưỡng 0,25 quá lỏng (best-match cosine p10 ≈ 0,4–0,69) → coverage bão hoà ~1,00 cho mọi hệ, không phân biệt và mở
+  câu hỏi "why this threshold". Đo liên tục phân biệt rất mạnh: harness ~0,83–0,86 vs baseline 0,19–0,64.
+- `objective_activity_similarity`, `objective_evaluation_similarity` — cùng công thức với activities / evaluation
+  texts (vế `supports` / `evaluates`).
+- `assessment_objective_similarity` — chiều ngược (mean-max cosine assessment→objective): có item mồ côi không.
+  **Hướng không đơn nghĩa** — rất cao có thể là "không thừa item" mà cũng có thể là "assessment chỉ chép lại
+  objective" — nên đọc như diagnostic, KHÔNG cộng vào đếm "thắng bao nhiêu vế" (`NON_DIRECTIONAL_SIGNALS`).
 
-- **`token_usage`** — snapshot từ `shared/llm/token_accounting`, tổng token input/output mỗi lần chạy một scenario (đảm
-  bảo mọi agent dùng `max_tokens` đồng nhất — fairness).
-- **`execution_time_seconds`** — thời gian chạy hết một scenario.
+*Họ B — cognitive demand (Bloom classifier), 3 tín hiệu, không dùng similarity:*
 
-Được pool theo agent × model size bởi `pool_tokens()` trong `7_pool_ladder_runs.py`
-(section `token_usage` của `pooled_ladder.json`) — phục vụ bảng chi phí/hiệu năng, không vào RQ stats.
+- `objective_cognitive_congruence` — % objective mà best assessment item (**argmax, không ngưỡng**) có Bloom level ≥
+  level của objective, trên objectives classifiable hai phía (**objective-centric**).
+- `porter_mean` + `porter.{assessment,activities,evaluation}` — Porter Alignment Index (Porter 2002 / Fulmer 2011): ma
+  trận phân phối topic × Bloom-level chuẩn hoá mỗi phía, `P = 1 − 0,5·Σ|X_ij − Y_ij|`.
+- `webb_bloom_consistency` — Webb Bloom-consistency (item-centric, khác congruence ở trên).
+
+Không có objectives → 3 tín hiệu similarity họ A = 0,0; set trống → tín hiệu tương ứng 0,0 + note.
+
+**Multiplicity — báo hai tầng.** `p_holm` = Holm trong từng tín hiệu (family = 6 so sánh/size), giữ nguyên power;
+`p_holm_panel` = Holm trên **toàn panel × baseline** của size đó, cùng dữ liệu nên miễn phí, và nó chặn trước phản
+biện "các anh chạy 168 test". Phòng thủ chống selective reporting nằm ở chỗ **mọi tín hiệu đều báo cho mọi so sánh**,
+không nằm ở việc gộp family.
+
+Hai layer validity trong `details` (**không phải tín hiệu panel** — chúng đo instrument, không đo agent):
+`validation.declared_link_agreement` (% link objective↔item mà similarity matching tái tạo đúng link agent tự khai) và
+`sanity.bloom_vs_declared_agreement` + `sanity.classifier` (calibration Bloom arm đang chấm vs declared level; key
+mang chữ "bloom" chứ không phải "lexicon" vì trục Bloom có hai arm).
+
+**Encoder.** Primary `nvidia/llama-embed-nemotron-8b` — family independence: Llama/NVIDIA ≠ agent Qwen ≠ judge
+OpenAI/Google. Bộ sweep là **ba neural khác lineage** + một lexical floor:
+
+| Preset     | Model                                                | Backbone    | Backend | Suffix    |
+|------------|------------------------------------------------------|-------------|---------|-----------|
+| `nemotron` | `nvidia/llama-embed-nemotron-8b`                     | Llama-3.1   | **pod** | (không)   |
+| `bgem3`    | `BAAI/bge-m3` (568M)                                 | XLM-RoBERTa | local   | `bgem3`   |
+| `granite`  | `ibm-granite/granite-embedding-311m-multilingual-r2` | ModernBERT  | local   | `granite` |
+| `tfidf`    | char n-gram thuần Python                             | —           | local   | `tfidf`   |
+
+**Chỉ arm 8B cần pod.** Ba arm còn lại chạy in-process qua sentence-transformers trên GPU máy local. Đo thật trên
+M4 Pro (MPS), với **335 340 text duy nhất** của ladder: `bgem3` 126 text/s ⇒ **~44 phút**, `granite` 226 text/s ⇒
+**~25 phút**, `tfidf` vài giây. Một lượt duy nhất — cache dùng chung cho mọi lần chấm lại. Model tải một lần
+(bge-m3 2,6 GB, granite 627 MB).
+
+⚠️ **Một model = một backend, không được trộn.** Cache key là `sha1(model[@revision] + text)`, **không ghi backend**,
+nên nếu một model được embed vừa trên pod vừa local thì hai nguồn vector khác nhau về số học sẽ nằm chung một key mà
+không ai thấy. Backend được chốt cứng trong `ENCODER_PRESETS`; đừng đổi nó giữa chừng một đợt chấm.
+
+Chọn E2/E3 theo **backbone chứ không theo tổ chức**: `bge-m3`/`multilingual-e5`/`arctic-v2`/`jina-v3`/`nomic-v2` đều là
+XLM-RoBERTa (lineage collision — chỉ lấy MỘT), và nhiều model top-2026 là Qwen/Gemma trá hình (`harrier-oss-v1-0.6b` =
+`model_type: qwen3`, `jina-v4` = Qwen2.5-VL, `voyage-4-nano` = Qwen3) — **mở `config.json` kiểm backbone, đừng tin tên
+**.
+
+`tfidf` là **một trục sensitivity ngang hàng** chứ không phải phụ lục: nó trả lời câu hỏi không encoder neural nào trả
+lời thay được — *thứ hạng có sống sót khi bỏ hẳn ngữ nghĩa không?* — và là encoder duy nhất **tất định bit-wise**. Nó
+trực giao với ba encoder neural (vốn cùng học contrastive trên web corpus nên sai số có thể tương quan).
+
+**Pin weights**: tên model KHÔNG pin weights. Revision set **theo từng arm** (`<SLOT>_EMBED_REVISION` trong `.env` —
+placeholder do `05` sinh và giữ nguyên qua mỗi lần re-sync — hoặc `--embed-revision-for SLOT=<hash>`); không có dạng
+toàn cục vì một chuỗi revision không thể pin weights của nhiều model. Revision đi vào cả `encoder_revision` của score
+file lẫn **key của embedding cache**, nên đổi revision là re-embed thật. Thiếu revision thì claim tái lập chỉ đứng
+được nhờ cache — `07` in cảnh báo `revision UNPINNED`.
+
+**Bloom (arm sweep — arm chính xem mục kế)**: rule-based action-verb lexicon (`LexiconBloomClassifier`), **chỉ
+tiếng Anh** — corpus được chấm đo được là
+100% tiếng Anh trên mọi agent và mọi size. Text ngôn ngữ khác trả `None` (không phân loại được → bị loại khỏi các đại
+lượng phụ thuộc Bloom, không đoán bừa). Coverage thực đo trên objectives: **97,1%**.
+
+Lexicon có **hai tầng, phân biệt rõ xuất xứ**:
+
+- **Tier 1 — `_AK_PROCESSES` (51 verb)**: 19 cognitive process của Cognitive Process Dimension + các *alternative name*
+  mà Anderson & Krathwohl (2001, Table 5.1) liệt kê. **Cấp của verb ở tầng này không do mình chọn** — theo đúng A&K.
+  Hệ quả khác với các bảng verb lưu truyền kiểu handout: `compare`/`contrast`/`match`/`categorize` là **Understand (2)**
+  chứ không phải Analyze; `integrate`/`outline`/`structure` là **Analyze (4)** (alternative name của *organizing*) chứ
+  không phải Create. Một số alternative name của A&K bị **cố ý loại** vì đa nghĩa trong văn xuôi thường
+  (`focusing`, `selecting`, `mapping`, `representing`, `parsing`…) — mất recall thì được, mất xuất xứ thì không.
+- **Tier 2 — `_CONVENTIONAL_VERBS` (54 verb)**: verb thông dụng trong thực hành viết objective và trong dòng literature
+  rule-based Bloom (Omar et al. 2012 và các công trình sau). Xuất xứ yếu hơn tier 1 và được ghi rõ là vậy.
+
+Một verb chỉ được nằm ở **đúng một cấp** — có test ép điều này, vì nếu không thì rule "highest wins" sẽ bị quyết định
+bởi trùng lặp trong lexicon thay vì bởi văn bản.
+
+**Guard từ loại**: match bị từ chối nếu ngay trước nó là determiner/possessive/`of` (`the design`, `a plan`,
+`the proposed solution`) — đó là danh từ hoặc tính từ phân từ, không phải hành vi được thực hiện. Đo trước khi có guard:
+≥4,3% số lần gán cấp là do khớp kiểu này. Guard chỉ xét **ngữ cảnh liền kề**; cho phép có khoảng cách sẽ chặn nhầm cả
+động từ thật (`the learners create …`). Giới hạn đã biết: danh từ ghép không có determiner (`their lesson design`) vẫn
+lọt — phân biệt được ca này cần POS tagger, tức thêm một thành phần thống kê vào một pipeline đang bán điểm tất định.
+
+**Quy tắc gán cấp: động từ DẪN ĐẦU**, không phải động từ cao nhất. Theo Webb — level đi theo *central performance*,
+còn động từ đứng sau thường chỉ nêu mục đích hoặc phương tiện (`apply X to design Y` là Apply, không phải Create).
+Chọn bằng bằng chứng chứ không phải khẩu vị, trên hai corpus có nhãn độc lập:
+
+| Corpus | highest wins | **leading verb** |
+|---|---|---|
+| EDM2022 learning objectives (n=18 773) | κ 0,591 | **κ 0,657** |
+| Public exam-question set (n=8 767) | κ 0,386 | **κ 0,434** |
+
+### Bằng chứng hiệu lực
+
+Nguồn: **submodule `EDM2022CLO/`** (fork của [SteveLEEEEE/EDM2022CLO](https://github.com/SteveLEEEEE/EDM2022CLO), dataset
++ notebook đã release của Li et al. 2022, EDM) — 21 380 learning objective từ 5 558 khoá của một đại học Úc,
+**gán nhãn tay**, multi-label. Đúng genre với thứ protocol chấm (không phải câu hỏi thi). Clone kèm submodule:
+`git submodule update --init EDM2022CLO`.
+
+| | |
+|---|---|
+| Coverage | 84,1% |
+| Accuracy | 72,7% |
+| Adjacent accuracy (\|Δ\|≤1) | 86,0% |
+| **Cohen's κ** | **0,657** — "substantial" (Landis & Koch) |
+| Majority floor / oracle ceiling | 27,1% / 77,6% → **đạt 90% khoảng khả dụng** |
+| Multi-label hit rate | 79,9% |
+
+**Mốc so sánh quan trọng:** chính paper EDM2022 báo κ = **0,63** giữa **hai human coder được đào tạo** trên bộ dữ liệu
+này (lên 0,80 sau khi thảo luận thống nhất). Lexicon đạt 0,657 — **ngang hoặc hơn mức đồng thuận giữa hai chuyên gia**.
+Trần oracle 77,6% là giới hạn trên của *mọi* classifier nhìn động từ (cùng một động từ mang nhiều nhãn khác nhau), nên
+phần lỗi còn lại chủ yếu là mơ hồ của nhãn chứ không phải lỗi instrument.
+
+Chạy lại: `00_validate_bloom.py <csv> --text-col Learning_outcome --label-cols Remember,Understand,Apply,Analyze,Evaluate,Create`
+— **chạy một lần, trước khi tin bất kỳ số Bloom nào**; độc lập hoàn toàn với run data. Báo cáo đầy đủ (kèm phân tầng
+theo độ thuần nhãn + confusion matrix): `results/generated/bloom_validation.md`.
+
+### Trục sensitivity Bloom — `bertbloom`
+
+3/7 tín hiệu (`objective_cognitive_congruence`, `porter_*`, `webb_bloom_consistency`) chạy trên Bloom, nên họ tín
+hiệu này có **trục sensitivity riêng**, ngang hàng với trục encoder:
+
+| Arm | Instrument | Xuất xứ | Suffix |
+|---|---|---|---|
+| `bertbloom` (**chính**) | `TransformerBloomClassifier` | BERT 6 lớp fine-tune trên 21 380 nhãn người của EDM2022CLO (Li et al. 2022) | (không) |
+| `lexicon` (sweep) | `LexiconBloomClassifier` | A&K 2001 Table 5.1 — tất định, giải thích được từng quyết định | `lexicon` |
+
+⚠️ Arm chính **cần checkpoint trên đĩa**, nên chấm alignment không còn zero-setup: train trước
+(`evaluator/scripts/train_bloom_6way_classifier.py`); thiếu checkpoint thì mọi arm bị SKIP chứ không fallback ngầm.
+
+Câu hỏi của trục này **không phải** "classifier nào đúng hơn" mà là *thứ hạng agent có phụ thuộc lựa chọn classifier
+không*. Hai instrument dẫn xuất hoàn toàn độc lập — một từ taxonomy, một từ nhãn người — mà cho cùng thứ hạng thì đó
+là bằng chứng mạnh hơn bất kỳ instrument đơn lẻ nào ở κ bất kỳ; và nó biến điểm yếu của lexicon thành **kết quả
+robustness** thay vì một câu bào chữa.
+
+Chi tiết bắt buộc khai:
+
+- **Dùng corpus của Li et al., không dùng thiết kế classifier của họ.** Không notebook nào của họ cho ra classifier
+  6 lớp: `EDM2022 CLO.ipynb` train **6 model nhị phân độc lập** (`createBERT`, `num_labels=2`), mỗi level một
+  checkpoint; `Multi-Label.ipynb` train **một model multi-label** (sigmoid, ngưỡng 0,5 mỗi level) có thể ra nhiều
+  level hoặc không level nào. Panel cần **đúng một mức Bloom mỗi text** (congruence so level, Porter cần một ô
+  topic×level mỗi text, Webb cần một level mỗi item), nên cả hai đường đều phải thêm một tầng quyết định (argmax qua
+  6 head train riêng — tỉ lệ dương của chúng chạy từ ~4% tới ~27% — hoặc tie-break trên sigmoid). Một head softmax
+  6 lớp cho thẳng quyết định đó, train bằng `evaluator/scripts/train_bloom_6way_classifier.py`.
+- **Cấu hình = `createBERT` của notebook, đổi đúng một thứ.** `bert-base-uncased`, `max_length` 55, batch 64,
+  3 epoch, warmup 5, weight decay 0,05, learning rate mặc định transformers, eval/save theo step (10), best model
+  theo macro F1, early stopping patience 10, split hai tầng 20% test → 20% val với `random_state=666`. Thứ duy nhất
+  đổi là **head: `num_labels=6`** thay cho 6 head `num_labels=2`. Đổi bất kỳ tham số nào khác thì câu "cùng cấu hình
+  với Li et al." hết đúng.
+- Train trên **subset single-label** (18 773/21 380 dòng; 2 607 dòng multi-label bị loại vì head đơn nhãn không biểu
+  diễn được). Trainer ghi `eval_split.csv` + `held_out_metrics.json` cạnh checkpoint; số của arm BERT **phải** báo
+  trên split đó, báo trên tập đã train là in-sample và vô nghĩa khi so với lexicon.
+- **Coverage lệch theo thiết kế**: lexicon abstain (84,1% trên EDM2022CLO), BERT argmax luôn (100%), nên mẫu số của
+  congruence/Porter/Webb khác nhau giữa hai arm. Khai thẳng, không cân bằng lại — thứ hạng sống sót qua hai instrument
+  có coverage lệch hẳn nhau thì kết luận càng chắc.
+- Arm BERT **không bao giờ fallback ngầm về lexicon**: thiếu checkpoint thì arm bị SKIP kèm lý do — với BERT là arm
+  chính, điều đó nghĩa là cả lần chấm dừng lại, đúng như mong muốn (một artifact gắn nhãn `bertbloom` mà thực chất do
+  lexicon chấm là kiểu hỏng tệ nhất).
+
+**Số đã đo (train 2026-07-29, cả hai arm trên cùng 3 755 dòng held-out — artifact:
+`results/generated/bloom_arms_validation.md`):**
+
+| Arm | Coverage | Accuracy | κ vs gold |
+|---|---|---|---|
+| `bertbloom` (**chính**) | 100% | 94,1% | **0,926** |
+| lexicon (A&K, sweep) | 83,4% | 72,3% | 0,650 |
+
+Đồng thuận giữa hai arm (3 133 dòng cả hai phân loại được): **73,5% raw, κ 0,665**. Con số này mới là thứ đáng đọc —
+hai instrument **không phải bản sao của nhau**, nên nếu thứ hạng agent vẫn giữ khi đổi arm thì đó là robustness thật.
+
+κ 0,650 của lexicon trên held-out khớp với 0,657 trên toàn corpus → split không lệch.
+
+Hai câu reviewer chắc chắn hỏi, trả lời sẵn:
+
+- *"Sao máy hơn người (κ 0,63 giữa hai coder)?"* — hai đại lượng khác nhau. κ 0,63 là hai coder **độc lập** đồng ý với
+  nhau trước khi thống nhất; BERT được học chính bộ nhãn đã thống nhất, tức nó học **quy ước mã hoá** của nhóm đó chứ
+  không phải "hiểu Bloom hơn con người".
+- *"Sao vượt trần oracle 77,6%?"* — trần đó áp cho classifier **chỉ nhìn động từ dẫn đầu**; BERT đọc cả câu nên phân
+  biệt được các ca cùng động từ khác cấp. Vượt trần là điều đúng phải xảy ra, không phải dấu hiệu rò rỉ.
+- Đã kiểm rò rỉ: corpus trùng lặp 0,6% dòng, và chỉ **1,1%** text held-out từng xuất hiện trong train pool → không
+  giải thích được κ 0,926.
+
+### Pooling RQ2
+
+`extract_alignment_metrics` + `pool_alignment` trong `07`: đọc `alignment_scores.json` từng scenario dir, gộp theo
+agent × size thành `mean`/`sd_across_scenarios` cho mọi metric. Tầng inferential chạy trên **TOÀN BỘ panel**, dưới
+`stats.per_model[].panel[<signal>]` — không tín hiệu nào được hoisted lên cấp trên, vì thứ bậc *cấu trúc* cũng chính
+là composite ngầm mà panel loại bỏ. Mỗi tín hiệu có đủ:
+
+- `comparisons` — paired Wilcoxon + bootstrap CI + rank-biserial (cùng machinery RQ1), kèm `p_holm` (Holm/6 trong
+  tín hiệu đó) và `p_holm_panel` (Holm trên toàn panel × baseline của size đó).
+- `align_descriptive` — mean + bootstrap CI95 per agent.
+- `conditional_align` — chỉ scenario mà **mọi run được chấm** đều cho ≥1 objective (đọc `counts.objectives`, không đọc
+  sự tồn tại của `porter_mean`). Tách quality khỏi parse failure.
+- `align_failures` + `comparisons_failure_zero` — **tầng failure policy, song song RQ1**. Hai layer trên là
+  **complete-case trên output CÓ SẴN**, không phải unconditional: agent crash thì không có `*_output.json`, scenario đó
+  rơi khỏi tập ghép cặp và cú crash **không tốn gì** cho agent. `06` ghi roster `missing_outputs` (có log, không output
+  → attempted & failed), pooling đếm vào `align_failures` rồi chạy lại paired test với các cell đó impute 0,0. Không có
+  policy `min_score` như RQ1 vì các endpoint đã sàn ở 0,0. **Paper phải báo cả hai layer**, và **không được gọi layer
+  chính là "unconditional"**. Roster là bắt buộc: `06` luôn ghi, `07` luôn đọc.
+- `align_failures` nằm ở cấp `per_model[]` (độc lập tín hiệu); `interaction_align` — DiD (largest − smallest size) per
+  baseline, bootstrap CI + Wilcoxon p — chạy trên `lead_metric` (mặc định `objective_assessment_similarity`, đổi bằng
+  `--sensitivity-metric`). "Lead" ở đây chỉ chọn *chuỗi nào được vẽ* cho các tóm tắt một chiều, không phải một endpoint
+  chính.
+
+Pooling **hard-fail** nếu các run dir gộp lại mang nhiều bộ `(encoder, encoder_revision, bloom_classifier)` khác nhau —
+trung bình trộn hai instrument không đo cái gì cả.
+
+**Coverage**: `07` so số file score tìm được với kỳ vọng (`n_scenarios_union × n_runs`) và **in WARNING nếu thiếu**
+(`n_scenario_files` / `n_scenario_files_expected` / `coverage_complete` cũng nằm trong JSON). Cần cảnh báo này vì con
+số `n=` per-agent trong report **không phân biệt được** "agent fail ở scenario đó" (dữ liệu thật, failure policy xử lý)
+với "scenario đó chưa từng được chấm" (lỗi thao tác) — một sweep chấm dở sẽ pool y như thể đã đủ. `04_audit_postrun.py`
+bắt cùng lỗi này sớm hơn, ở mức từng run dir và từng encoder arm; `07` là lớp phòng thủ thứ hai ngay tại chỗ số được tạo
+ra.
+
+**Sensitivity sweep** (cả hai trục) → `alignment_sensitivity.encoders[]`, mỗi entry mang `axis: encoder|bloom`:
+mỗi arm chạy **cùng** `pool_alignment` trên
+`alignment_scores.<suffix>.json` nên có đủ `models` + `stats`, cộng `agreement_with_primary.per_model[]`:
+Spearman ρ + p permutation chính xác (n≤8) + Kendall τ-b trên vector điểm trung bình theo agent (**trích τ-b trong
+prose** vì n=7 thì Spearman nhiễu); ρ cấp scenario cho agent đề xuất (n≈90, trả lời câu hỏi khác: hai encoder có đồng ý
+*scenario nào* align tốt không); và ba đối chứng phi-rank — `top1_agent_*`, `proposed_rank_*`,
+`sign_agreement_vs_baselines` — vì ρ cao vẫn có thể đi kèm kết luận lật.
+
+`--auto-encoders` / `--auto-bloom` lấy roster **từ registry trước, đĩa sau**: preset non-primary chưa chấm được ghi là
+`skipped` chứ không vắng mặt — vắng mặt chính là kiểu hỏng làm một sweep dở dang trông như đã đủ.
+
+Ablation pooling reuse `pool_alignment` → bảng `objective_assessment_similarity` arm−A0 trong `stats_ablation.md`.
+
+## A.4 Operational metadata
+
+Ghi trong `metadata` của mỗi `{agent}_trajectory.json`, pool bởi `pool_tokens()`. **Không** vào Total hay endpoint
+alignment:
+
+- **`token_usage`** — tổng token input/output mỗi scenario (bằng chứng mọi agent dùng `max_tokens` đồng nhất —
+  fairness).
+- **`execution_time_seconds`** — **chỉ lưu thô, KHÔNG dùng để báo cáo/so sánh**: nó phản ánh tải serving/latency API
+  chứ không phải bản chất method.

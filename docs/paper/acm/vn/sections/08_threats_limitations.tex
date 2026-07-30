@@ -14,18 +14,22 @@ cân bằng compute.
 
 \paragraph{Tính hợp lệ khái niệm.}
 Rubric ADDIE và điểm trajectory đo chất lượng đầu ra cùng dấu vết thực thi, không đo
-kết quả học tập. Thước đo alignment của RQ2 khắc phục việc alignment không được đo
-trực tiếp, nhưng mang các giới hạn riêng cần khai báo. Thứ nhất, bộ phân loại Bloom và
-encoder có sai số ($\kappa<1$ so với nhãn chuyên gia trong các nghiên cứu
+kết quả học tập. Quy trình đánh giá alignment của RQ2 khắc phục việc alignment không
+được đo trực tiếp, nhưng mang các giới hạn riêng cần khai báo. Thứ nhất, bộ phân loại
+Bloom và encoder có sai số ($\kappa<1$ so với nhãn chuyên gia trong các nghiên cứu
 gốc~\cite{waheed2021bloomnet,li2022bloomclassification}); vì cùng một pipeline được áp
 dụng cho mọi tác tử, sai số này chủ yếu ảnh hưởng giá trị tuyệt đối, nên kết quả RQ2
 được diễn giải là \emph{xếp hạng tương đối giữa các tác tử}, không phải một cuộc kiểm
 toán alignment tuyệt đối. Thứ hai, các tài nguyên phân loại Bloom chủ yếu được huấn
 luyện trên tiếng Anh; việc chuyển sang scenario tiếng Hàn (qua encoder đa ngữ và
 fallback từ điển tiếng Hàn) là một nguy cơ chuyển giao chưa được kiểm chứng độc lập.
-Thứ ba, thước đo lượng hoá alignment cấu trúc--ngữ nghĩa giữa các thành phần văn bản;
-nó không đo tính đúng đắn sư phạm sâu hơn hay kết quả học tập thực tế. Một đánh giá
-với chuyên gia gán nhãn vẫn là bước xác nhận cần thiết.
+Thứ ba, ngưỡng tương đồng của các endpoint coverage ($0{,}25$) là một quyết định
+screening, không phải hằng số lý thuyết; vì cùng một ngưỡng áp cho mọi tác tử, lựa
+chọn này dịch chuyển giá trị tuyệt đối nhiều hơn thứ hạng tương đối, và một phân tích
+độ nhạy theo ngưỡng là kiểm tra bổ sung hợp lý. Thứ tư, quy trình lượng hoá alignment
+cấu trúc--ngữ nghĩa giữa các thành phần văn bản; nó không đo tính đúng đắn sư phạm
+sâu hơn hay kết quả học tập thực tế. Một đánh giá với chuyên gia gán nhãn vẫn là bước
+xác nhận cần thiết.
 
 \paragraph{Tính hợp lệ ngoại tại.}
 Các scenario đều là dữ liệu tổng hợp từ một benchmark; kết quả có thể thay đổi trên
@@ -53,9 +57,10 @@ Nghiên cứu giới hạn ở việc sinh một chương trình từ một desi
 trong thực tế thường hình thành từ trao đổi với các bên liên quan, nên một giao diện hội
 thoại để thu thập brief là mở rộng tự nhiên. Harness cũng có thể tiếp nhận tri thức tổ
 chức---chẳng hạn rubric nội bộ hoặc quy ước chuyên ngành---qua retrieval, nhưng khả năng
-này chưa được đánh giá. Về đo lường, ưu tiên tiếp theo là hiệu chuẩn thước đo alignment
-với nhãn của chuyên gia ISD (báo agreement giữa người gán nhãn) và liên hệ các chỉ số
-alignment với kết quả học tập thực tế. Về triển khai, một đánh giá trên hạ tầng
+này chưa được đánh giá. Về đo lường, ưu tiên tiếp theo là hiệu chuẩn quy trình đánh
+giá alignment với nhãn của chuyên gia ISD---hai chuyên gia chấm blind trên một mẫu
+phân tầng, báo agreement giữa người gán nhãn (Cohen's~$\kappa$)---và liên hệ các chỉ
+số alignment với kết quả học tập thực tế. Về triển khai, một đánh giá trên hạ tầng
 on-premise và một nghiên cứu người dùng với chuyên gia thiết kế giảng dạy sử dụng
 artifact đồ thị để audit là hai bước cần thiết để kiểm chứng các lợi ích đã nêu trong
 động cơ.

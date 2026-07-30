@@ -41,8 +41,8 @@ quy trình thiết kế hoàn chỉnh: benchmark chấm cả chất lượng đ�
 chất lượng trajectory của tác tử trên các scenario tổng hợp thuộc ma trận
 Context~$\times$~ISD. Cấu hình multi-judge giúp giảm self-preference
 bias~\cite{panickssery2024llm}. Chúng tôi dùng benchmark này cho RQ1; vì rubric LLM-judge
-không đo trực tiếp constructive alignment, chúng tôi bổ sung cho RQ2 một thước đo
-alignment tự động, tất định như một phần mở rộng của benchmark
+không đo trực tiếp constructive alignment, chúng tôi bổ sung cho RQ2 một quy trình
+đánh giá alignment tự động, tất định như một phần mở rộng của benchmark
 (\cref{sec:alignment-metric}).
 
 Về phía đo lường alignment, giáo dục học đã có các khung định lượng cho sự nhất quán
@@ -50,11 +50,15 @@ giữa curriculum, instruction và assessment: Porter alignment index đo mức 
 giữa hai phân bố nội dung theo cấp độ nhận thức~\cite{porter2002measuring}, với ngưỡng
 tới hạn được ước lượng bởi Fulmer~\cite{fulmer2011estimating}; Webb đề xuất các tiêu
 chí alignment như range-of-knowledge và depth-of-knowledge
-consistency~\cite{webb1997criteria}. Trong công nghệ phần mềm, requirements
-traceability dùng độ tương đồng ngữ nghĩa để khôi phục liên kết giữa các
-artifact~\cite{clelandhuang2018traceability}. Theo khảo sát của chúng tôi, các khung
-này chưa được dùng để đánh giá tự động đầu ra của tác tử ISD; thước đo trong
-\cref{sec:alignment-metric} vận dụng chúng cho mục đích đó.
+consistency~\cite{webb1997criteria}. Ở cấp thiết kế khoá học, Quality Matters rubric
+operationalize các tiêu chí alignment của khung constructive alignment Biggs--Tang
+~\cite{biggs1996enhancing,biggs2011teaching} thành các chuẩn review cụ thể (mục tiêu
+đo được; đánh giá, học liệu và hoạt động phục vụ mục tiêu)~\cite{qm2018rubric}. Trong
+công nghệ phần mềm, requirements traceability dùng độ tương đồng ngữ nghĩa để khôi
+phục liên kết giữa các artifact~\cite{clelandhuang2018traceability}. Theo khảo sát
+của chúng tôi, các khung này chưa được dùng để đánh giá tự động đầu ra của tác tử
+ISD; quy trình trong \cref{sec:alignment-metric} vận dụng chúng cho mục đích đó, thay
+vì đề xuất một thước đo mới.
 
 \subsection{Kiểm soát nhất quán khi sinh nhiều thành phần}
 

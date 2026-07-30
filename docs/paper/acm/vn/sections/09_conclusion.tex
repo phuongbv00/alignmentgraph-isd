@@ -10,20 +10,20 @@ nhất---được các hệ tác tử duy trì đến đâu? Chúng tôi nghiên
 thành một alignment graph tường minh làm trạng thái thiết kế trung tâm: các tác tử
 chuyên biệt xây dựng đồ thị dưới phạm vi ghi giới hạn, verifier kiểm tra và sửa các
 ràng buộc trong quá trình sinh, và toàn bộ đồ thị được kết xuất thành artifact
-auditable cho quy trình educator-in-the-loop. Thứ hai, một thước đo constructive
-alignment tự động, tất định và độc lập với hệ được đo, xây dựng trên các khung đo
-alignment đã kiểm chứng trong đo lường giáo dục, được phát hành như phần mở rộng của
-ISD-Agent-Bench. Thứ ba, một thiết kế thực nghiệm đo hành vi chất lượng và alignment
+auditable cho quy trình educator-in-the-loop. Thứ hai, một quy trình đánh giá constructive
+alignment tự động, tất định và độc lập với hệ được đo---operationalize các khung đo
+alignment đã kiểm chứng trong đo lường giáo dục thay vì đề xuất thước đo mới---được
+phát hành như phần mở rộng của ISD-Agent-Bench. Thứ ba, một thiết kế thực nghiệm đo hành vi chất lượng và alignment
 theo kích thước mô hình trên dải bốn SLM cùng họ Qwen (0,8B--9B), mỗi mô hình ba lượt
 chạy độc lập, với bảy tác tử trên 90 scenario.
 
 Trên thiết kế này, RQ1 trả lời câu hỏi về chất lượng theo model scale bằng so sánh
-ghép cặp và kiểm định interaction trực tiếp, còn RQ2 đo đúng vị từ alignment đã được
-dùng để định nghĩa thành công của bài toán. \TBD{tóm tắt phát hiện chính của RQ1 và
+ghép cặp và kiểm định interaction trực tiếp, còn RQ2 kiểm tra vị từ alignment đã được
+dùng để định nghĩa thành công của bài toán theo các tiêu chí đã thiết lập. \TBD{tóm tắt phát hiện chính của RQ1 và
 RQ2 khi có số thực}.
 
 Đóng góp phương pháp luận trung tâm không phụ thuộc vào từng con số: xem alignment như
 dữ liệu có cấu trúc mà harness sở hữu---tường minh, kiểm tra được bởi máy và audit
 được bởi con người---thay vì một phẩm chất chỉ được yêu cầu trong prompt. Những bước
-tiếp theo gồm hiệu chuẩn thước đo alignment với chuyên gia, đánh giá trên hạ tầng
-on-premise, và mở rộng sang refinement đa phiên với brief thực tế.
+tiếp theo gồm hiệu chuẩn quy trình đánh giá alignment với chuyên gia, đánh giá trên
+hạ tầng on-premise, và mở rộng sang refinement đa phiên với brief thực tế.

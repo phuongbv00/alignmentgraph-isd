@@ -28,8 +28,9 @@ việc duy trì chất lượng khi mô hình nền được thu nhỏ chưa đ�
 thiết kế và đánh giá trọng tâm trong nhóm công trình được khảo sát. Trên cơ sở đó,
 nghiên cứu này hướng tới hai mục tiêu: đánh giá chất lượng của harness ISD đề xuất
 trong tương quan với các tác tử ISD tiêu biểu trên một dải kích thước mô hình cùng họ,
-từ SLM rất nhỏ tới 9B; và đo trực tiếp mức constructive alignment trong đầu ra của mọi
-hệ bằng một thước đo tự động, độc lập với hệ được đo.
+từ SLM rất nhỏ tới 9B; và kiểm tra mức constructive alignment trong đầu ra của mọi
+hệ theo các tiêu chí đã thiết lập, bằng một quy trình đánh giá tự động, độc lập với
+hệ được đo.
 
 Để thực hiện các mục tiêu này, chúng tôi tập trung vào \emph{constructive alignment}
 giữa các thành phần ISD~\cite{biggs1996enhancing}. Mỗi mục tiêu học tập cần được luyện
@@ -53,7 +54,7 @@ alignment là dữ liệu tường minh thay vì thuộc tính ngầm của văn
 kế giảng dạy có thể xem, truy vết và can thiệp; khả năng giải thích và kiểm tra được
 (explainability/auditability) này là một mục tiêu thiết kế ngang hàng với chất lượng.
 Hành vi chất lượng theo kích thước mô hình được kiểm tra bằng RQ1, còn mức constructive
-alignment của đầu ra được đo trực tiếp bằng RQ2.
+alignment của đầu ra theo các tiêu chí đã thiết lập được kiểm tra bằng RQ2.
 
 Bài báo có ba đóng góp:
 \begin{enumerate}
@@ -62,11 +63,13 @@ Bài báo có ba đóng góp:
   hoá thành alignment graph đóng vai trò trạng thái alignment tường minh, kết hợp phân
   rã đa tác tử, phạm vi ghi giới hạn, cơ chế kiểm chứng--sửa lỗi trong quá trình sinh,
   và artifact đồ thị auditable cho quy trình educator-in-the-loop.
-  \item \textbf{Thước đo alignment.} Chúng tôi đề xuất một thước đo constructive
-  alignment tự động (\cref{sec:alignment-metric}), xây dựng trên các khung đo alignment
-  đã được kiểm chứng trong đo lường giáo dục, tất định và độc lập với hệ được đo; thước
-  đo được dùng như một phần mở rộng của ISD-Agent-Bench và áp dụng được cho mọi tác tử
-  ISD.
+  \item \textbf{Quy trình đánh giá alignment.} Chúng tôi vận dụng các khung đo
+  alignment đã được kiểm chứng trong đo lường giáo dục---Porter alignment index, các
+  tiêu chí của Webb và semantic coverage---thành một quy trình đánh giá constructive
+  alignment tự động, tất định và độc lập với hệ được đo
+  (\cref{sec:alignment-metric}), với endpoint chính là \emph{full alignment rate} ở
+  cấp learning objective theo các tiêu chí kiểu Quality Matters; quy trình được dùng
+  như một phần mở rộng của ISD-Agent-Bench và áp dụng được cho mọi tác tử ISD.
   \item \textbf{Thực nghiệm.} Chúng tôi cung cấp bằng chứng thực nghiệm về hành vi
   chất lượng và alignment theo kích thước mô hình trên dải bốn SLM cùng họ Qwen
   (0,8B--9B), mỗi mô hình ba lượt chạy độc lập, với bảy tác tử trên 90 scenario của
