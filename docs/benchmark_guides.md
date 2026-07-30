@@ -475,6 +475,13 @@ Tất cả ghi vào `results/generated/` (benchmark-local, gitignored): `tab_rq1
 `tab_rq1_total.tex`/`tab_rq1_traj.tex` (Total/Trajectory song song, cùng logic §A.2), `tab_rq2_alignment.tex`
 (tín hiệu dẫn) kèm `tab_rq2_panel.tex` (panel đầy đủ 7 tín hiệu), `stats_macros.tex` (mọi con số trong prose là
 `\newcommand`), `stats_summary.md` (bản dump người đọc để cross-check).
+
+**Quy ước artifact (2026-07-30, enforce bằng `99_audit_artifacts.py` check I):** mọi text trong artifact là
+**tiếng Anh**, số dùng **dấu chấm** (`87.77`). Caption chỉ nói *bảng chiếu gì* và *một ô là gì*, ~100–250 ký tự;
+phần biện luận phương pháp thuộc mục Methods. Mean và ±SD phải cùng một signal (`run_to_run_sd_{addie,traj,total}`
+trong pooled; `run_to_run_sd` trần là Total, chỉ còn tồn tại cho `08_pool_ablation_runs.py`). Ô nào tính trên tập
+scenario thiếu thì phải in `n` + footnote — RQ2 đếm scenario có **ít nhất một** run chấm được, điều kiện yếu hơn
+complete-case đủ 3 run của RQ1, nên hai bảng ghi nhãn khác nhau.
 Số format kiểu VN (`{,}`). `sync_generated.sh` là **bước copy duy nhất** sang `docs/generated/`; LaTeX trỏ tới đó bằng
 đường dẫn tương đối.
 

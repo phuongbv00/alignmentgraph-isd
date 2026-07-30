@@ -1,6 +1,6 @@
 # Ladder statistics summary
 
-Generated: 2026-07-30T17:41:41
+Generated: 2026-07-30T19:49:31
 
 - Proposed agent: `alignmentgraph-isd`
 - Size order: Qwen3.5-0.8B, Qwen3.5-2B, Qwen3.5-4B, Qwen3.5-9B
@@ -10,7 +10,8 @@ Generated: 2026-07-30T17:41:41
 
 ## Qwen3.5-0.8B (macro suffix: ZeroEightB)
 
-- alignmentgraph-isd: Total=81.4766, runSD=0.2575, nCC=90, missing=0
+- alignmentgraph-isd: ADDIE=80.4583 (LEAD signal, runSD_addie=0.1439), Traj=83.8528 (runSD_traj=0.5786), Total=81.4766 (runSD_total=0.2575), nCC=90, missing=0
+  Each runSD is the SD of that signal's own run-level means; they are not interchangeable.
 
 | baseline | n | mean diff | 95% CI | W+ | r_rb | p | p_holm |
 |---|---|---|---|---|---|---|---|
@@ -27,7 +28,8 @@ Sensitivity (mean diff under imputation policies):
 
 ## Qwen3.5-2B (macro suffix: TwoB)
 
-- alignmentgraph-isd: Total=85.9268, runSD=0.0209, nCC=90, missing=0
+- alignmentgraph-isd: ADDIE=84.6943 (LEAD signal, runSD_addie=0.0384), Traj=88.8019 (runSD_traj=0.0883), Total=85.9268 (runSD_total=0.0209), nCC=90, missing=0
+  Each runSD is the SD of that signal's own run-level means; they are not interchangeable.
 
 | baseline | n | mean diff | 95% CI | W+ | r_rb | p | p_holm |
 |---|---|---|---|---|---|---|---|
@@ -44,7 +46,8 @@ Sensitivity (mean diff under imputation policies):
 
 ## Qwen3.5-4B (macro suffix: FourB)
 
-- alignmentgraph-isd: Total=87.1126, runSD=0.1574, nCC=90, missing=0
+- alignmentgraph-isd: ADDIE=85.8788 (LEAD signal, runSD_addie=0.1810), Traj=89.9917 (runSD_traj=0.2295), Total=87.1126 (runSD_total=0.1574), nCC=90, missing=0
+  Each runSD is the SD of that signal's own run-level means; they are not interchangeable.
 
 | baseline | n | mean diff | 95% CI | W+ | r_rb | p | p_holm |
 |---|---|---|---|---|---|---|---|
@@ -61,7 +64,8 @@ Sensitivity (mean diff under imputation policies):
 
 ## Qwen3.5-9B (macro suffix: NineB)
 
-- alignmentgraph-isd: Total=87.4076, runSD=0.1471, nCC=90, missing=0
+- alignmentgraph-isd: ADDIE=86.2261 (LEAD signal, runSD_addie=0.1919), Traj=90.1648 (runSD_traj=0.1278), Total=87.4076 (runSD_total=0.1471), nCC=90, missing=0
+  Each runSD is the SD of that signal's own run-level means; they are not interchangeable.
 
 | baseline | n | mean diff | 95% CI | W+ | r_rb | p | p_holm |
 |---|---|---|---|---|---|---|---|
@@ -126,9 +130,13 @@ DiD on addie_median = mean over scenarios of [delta(largest size) - delta(smalle
 No signal is primary: each is reported for every comparison, win or lose. `p_holm` corrects within one signal (6 comparisons); `p_panel` corrects over the whole panel x baseline family for that size.
 
 ### Qwen3.5-0.8B
+**Missing outputs (complete-case layer is conditioned on these):** `baseline` 85 scenario(s), 167 agent-run cell(s), `eduplanner` 83 scenario(s), 157 agent-run cell(s), `rpisd-agent` 2 scenario(s), 2 agent-run cell(s)
+
 #### objective_assessment_similarity [correspondence]
 mean [bootstrap CI95] per agent: addie-agent=0.595 [0.583, 0.607] (n=90), alignmentgraph-isd=0.851 [0.841, 0.862] (n=90), baseline=0.104 [0.059, 0.153] (n=70), dick-carey-agent=0.441 [0.431, 0.450] (n=90), eduplanner=0.360 [0.307, 0.413] (n=73), react-isd=0.504 [0.482, 0.526] (n=90), rpisd-agent=0.510 [0.497, 0.524] (n=90)
 conditional (>=1 objective): addie-agent=0.595 (n=90), alignmentgraph-isd=0.851 (n=90), baseline=0.315 (n=19), dick-carey-agent=0.443 (n=89), eduplanner=0.523 (n=42), react-isd=0.504 (n=90), rpisd-agent=0.510 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -139,9 +147,24 @@ conditional (>=1 objective): addie-agent=0.595 (n=90), alignmentgraph-isd=0.851 
 | rpisd-agent | 90 | +0.3410 | [+0.3248, +0.3565] | 1.332e-15 | 9.326e-15 |
 | eduplanner | 73 | +0.4883 | [+0.4342, +0.5414] | 2.265e-13 | 2.491e-12 |
 
+failure=0 mean per agent: addie-agent=0.595 (n=90), alignmentgraph-isd=0.851 (n=90), baseline=0.043 (n=90), dick-carey-agent=0.441 (n=90), eduplanner=0.144 (n=90), react-isd=0.504 (n=90), rpisd-agent=0.506 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 90 | +0.8083 | [+0.7849, +0.8293] | 1.332e-15 |
+| react-isd | 90 | +0.3474 | [+0.3240, +0.3703] | 1.332e-15 |
+| dick-carey-agent | 90 | +0.4104 | [+0.3950, +0.4258] | 1.332e-15 |
+| addie-agent | 90 | +0.2562 | [+0.2403, +0.2725] | 1.332e-15 |
+| rpisd-agent | 90 | +0.3449 | [+0.3281, +0.3614] | 1.332e-15 |
+| eduplanner | 90 | +0.7073 | [+0.6757, +0.7374] | 1.332e-15 |
+
 #### objective_activity_similarity [correspondence]
 mean [bootstrap CI95] per agent: addie-agent=0.445 [0.439, 0.451] (n=90), alignmentgraph-isd=0.697 [0.688, 0.707] (n=90), baseline=0.117 [0.067, 0.172] (n=70), dick-carey-agent=0.393 [0.386, 0.400] (n=90), eduplanner=0.394 [0.340, 0.448] (n=73), react-isd=0.403 [0.390, 0.416] (n=90), rpisd-agent=0.436 [0.426, 0.445] (n=90)
 conditional (>=1 objective): addie-agent=0.445 (n=90), alignmentgraph-isd=0.697 (n=90), baseline=0.351 (n=19), dick-carey-agent=0.395 (n=89), eduplanner=0.568 (n=42), react-isd=0.403 (n=90), rpisd-agent=0.436 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -152,9 +175,24 @@ conditional (>=1 objective): addie-agent=0.445 (n=90), alignmentgraph-isd=0.697 
 | rpisd-agent | 90 | +0.2618 | [+0.2477, +0.2754] | 1.332e-15 | 9.326e-15 |
 | eduplanner | 73 | +0.3034 | [+0.2490, +0.3590] | 3.428e-13 | 3.257e-12 |
 
+failure=0 mean per agent: addie-agent=0.445 (n=90), alignmentgraph-isd=0.697 (n=90), baseline=0.048 (n=90), dick-carey-agent=0.393 (n=90), eduplanner=0.157 (n=90), react-isd=0.403 (n=90), rpisd-agent=0.432 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 90 | +0.6491 | [+0.6218, +0.6736] | 1.332e-15 |
+| react-isd | 90 | +0.2939 | [+0.2793, +0.3091] | 1.332e-15 |
+| dick-carey-agent | 90 | +0.3043 | [+0.2933, +0.3158] | 1.332e-15 |
+| addie-agent | 90 | +0.2524 | [+0.2418, +0.2632] | 1.332e-15 |
+| rpisd-agent | 90 | +0.2650 | [+0.2504, +0.2794] | 1.332e-15 |
+| eduplanner | 90 | +0.5399 | [+0.5074, +0.5704] | 1.332e-15 |
+
 #### objective_evaluation_similarity [correspondence]
 mean [bootstrap CI95] per agent: addie-agent=0.596 [0.584, 0.608] (n=90), alignmentgraph-isd=0.806 [0.793, 0.819] (n=90), baseline=0.150 [0.105, 0.197] (n=70), dick-carey-agent=0.451 [0.442, 0.460] (n=90), eduplanner=0.316 [0.263, 0.369] (n=73), react-isd=0.465 [0.442, 0.488] (n=90), rpisd-agent=0.527 [0.515, 0.538] (n=90)
 conditional (>=1 objective): addie-agent=0.596 (n=90), alignmentgraph-isd=0.806 (n=90), baseline=0.438 (n=19), dick-carey-agent=0.454 (n=89), eduplanner=0.464 (n=42), react-isd=0.465 (n=90), rpisd-agent=0.527 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -165,9 +203,24 @@ conditional (>=1 objective): addie-agent=0.596 (n=90), alignmentgraph-isd=0.806 
 | rpisd-agent | 90 | +0.2794 | [+0.2626, +0.2962] | 1.332e-15 | 9.326e-15 |
 | eduplanner | 73 | +0.4874 | [+0.4310, +0.5418] | 2.265e-13 | 2.491e-12 |
 
+failure=0 mean per agent: addie-agent=0.596 (n=90), alignmentgraph-isd=0.806 (n=90), baseline=0.060 (n=90), dick-carey-agent=0.451 (n=90), eduplanner=0.127 (n=90), react-isd=0.465 (n=90), rpisd-agent=0.523 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 90 | +0.7461 | [+0.7220, +0.7685] | 1.332e-15 |
+| react-isd | 90 | +0.3408 | [+0.3142, +0.3669] | 1.332e-15 |
+| dick-carey-agent | 90 | +0.3545 | [+0.3373, +0.3718] | 1.332e-15 |
+| addie-agent | 90 | +0.2101 | [+0.1919, +0.2286] | 1.332e-15 |
+| rpisd-agent | 90 | +0.2833 | [+0.2653, +0.3012] | 1.332e-15 |
+| eduplanner | 90 | +0.6789 | [+0.6475, +0.7088] | 1.332e-15 |
+
 #### assessment_objective_similarity [correspondence] — diagnostic, direction not one-way-good
 mean [bootstrap CI95] per agent: addie-agent=0.524 [0.514, 0.533] (n=90), alignmentgraph-isd=0.682 [0.670, 0.695] (n=90), baseline=0.528 [0.493, 0.563] (n=17), dick-carey-agent=0.468 [0.457, 0.478] (n=90), eduplanner=0.477 [0.453, 0.502] (n=59), react-isd=0.362 [0.349, 0.375] (n=90), rpisd-agent=0.498 [0.486, 0.510] (n=90)
 conditional (>=1 objective): addie-agent=0.524 (n=90), alignmentgraph-isd=0.682 (n=90), baseline=0.544 (n=12), dick-carey-agent=0.469 (n=89), eduplanner=0.481 (n=42), react-isd=0.362 (n=90), rpisd-agent=0.498 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -178,9 +231,24 @@ conditional (>=1 objective): addie-agent=0.524 (n=90), alignmentgraph-isd=0.682 
 | rpisd-agent | 90 | +0.1841 | [+0.1677, +0.2006] | 1.332e-15 | 9.326e-15 |
 | eduplanner | 59 | +0.2041 | [+0.1754, +0.2334] | 5.871e-11 | 3.229e-10 |
 
+failure=0 mean per agent: addie-agent=0.524 (n=90), alignmentgraph-isd=0.682 (n=90), baseline=0.051 (n=86), dick-carey-agent=0.468 (n=90), eduplanner=0.155 (n=89), react-isd=0.362 (n=90), rpisd-agent=0.494 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 86 | +0.6325 | [+0.6036, +0.6595] | 1.332e-15 |
+| react-isd | 90 | +0.3204 | [+0.3052, +0.3358] | 1.332e-15 |
+| dick-carey-agent | 90 | +0.2146 | [+0.1979, +0.2310] | 1.332e-15 |
+| addie-agent | 90 | +0.1585 | [+0.1434, +0.1735] | 1.332e-15 |
+| rpisd-agent | 90 | +0.1881 | [+0.1711, +0.2054] | 1.332e-15 |
+| eduplanner | 89 | +0.5289 | [+0.4975, +0.5602] | 1.332e-15 |
+
 #### objective_cognitive_congruence [cognitive]
 mean [bootstrap CI95] per agent: addie-agent=0.565 [0.535, 0.595] (n=90), alignmentgraph-isd=0.813 [0.790, 0.835] (n=90), baseline=0.628 [0.495, 0.759] (n=17), dick-carey-agent=0.766 [0.746, 0.784] (n=90), eduplanner=0.630 [0.566, 0.693] (n=59), react-isd=0.570 [0.524, 0.616] (n=90), rpisd-agent=0.552 [0.514, 0.590] (n=90)
 conditional (>=1 objective): addie-agent=0.565 (n=90), alignmentgraph-isd=0.813 (n=90), baseline=0.607 (n=12), dick-carey-agent=0.767 (n=89), eduplanner=0.622 (n=42), react-isd=0.570 (n=90), rpisd-agent=0.552 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -191,9 +259,24 @@ conditional (>=1 objective): addie-agent=0.565 (n=90), alignmentgraph-isd=0.813 
 | rpisd-agent | 90 | +0.2609 | [+0.2166, +0.3049] | 7.216e-13 | 2.887e-12 |
 | eduplanner | 59 | +0.1794 | [+0.1077, +0.2507] | 6.842e-05 | 1.597e-04 |
 
+failure=0 mean per agent: addie-agent=0.565 (n=90), alignmentgraph-isd=0.813 (n=90), baseline=0.060 (n=86), dick-carey-agent=0.766 (n=90), eduplanner=0.202 (n=89), react-isd=0.570 (n=90), rpisd-agent=0.550 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 86 | +0.7510 | [+0.7131, +0.7879] | 4.441e-15 |
+| react-isd | 90 | +0.2431 | [+0.1942, +0.2935] | 4.216e-12 |
+| dick-carey-agent | 90 | +0.0471 | [+0.0150, +0.0788] | 1.164e-02 |
+| addie-agent | 90 | +0.2479 | [+0.2090, +0.2874] | 9.415e-14 |
+| rpisd-agent | 90 | +0.2626 | [+0.2179, +0.3070] | 4.330e-13 |
+| eduplanner | 89 | +0.6120 | [+0.5660, +0.6579] | 1.332e-15 |
+
 #### porter_mean [cognitive]
 mean [bootstrap CI95] per agent: addie-agent=0.355 [0.338, 0.372] (n=90), alignmentgraph-isd=0.433 [0.419, 0.446] (n=90), baseline=0.181 [0.142, 0.219] (n=30), dick-carey-agent=0.316 [0.297, 0.335] (n=90), eduplanner=0.284 [0.253, 0.314] (n=59), react-isd=0.223 [0.204, 0.240] (n=90), rpisd-agent=0.270 [0.253, 0.286] (n=90)
 conditional (>=1 objective): addie-agent=0.355 (n=90), alignmentgraph-isd=0.433 (n=90), baseline=0.178 (n=19), dick-carey-agent=0.317 (n=89), eduplanner=0.284 (n=42), react-isd=0.223 (n=90), rpisd-agent=0.270 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -204,9 +287,24 @@ conditional (>=1 objective): addie-agent=0.355 (n=90), alignmentgraph-isd=0.433 
 | rpisd-agent | 90 | +0.1630 | [+0.1425, +0.1837] | 5.551e-15 | 2.776e-14 |
 | eduplanner | 59 | +0.1471 | [+0.1135, +0.1808] | 9.360e-09 | 3.120e-08 |
 
+failure=0 mean per agent: addie-agent=0.355 (n=90), alignmentgraph-isd=0.433 (n=90), baseline=0.031 (n=88), dick-carey-agent=0.316 (n=90), eduplanner=0.095 (n=89), react-isd=0.223 (n=90), rpisd-agent=0.269 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 88 | +0.4025 | [+0.3841, +0.4200] | 2.220e-15 |
+| react-isd | 90 | +0.2098 | [+0.1886, +0.2312] | 1.332e-15 |
+| dick-carey-agent | 90 | +0.1164 | [+0.0960, +0.1377] | 8.669e-13 |
+| addie-agent | 90 | +0.0777 | [+0.0550, +0.1007] | 5.267e-08 |
+| rpisd-agent | 90 | +0.1637 | [+0.1429, +0.1847] | 3.331e-15 |
+| eduplanner | 89 | +0.3381 | [+0.3116, +0.3632] | 2.220e-15 |
+
 #### webb_bloom_consistency [cognitive]
 mean [bootstrap CI95] per agent: addie-agent=0.477 [0.450, 0.505] (n=90), alignmentgraph-isd=0.682 [0.663, 0.702] (n=90), baseline=0.276 [0.165, 0.393] (n=30), dick-carey-agent=0.846 [0.820, 0.870] (n=90), eduplanner=0.595 [0.535, 0.654] (n=59), react-isd=0.386 [0.342, 0.431] (n=90), rpisd-agent=0.576 [0.537, 0.613] (n=90)
 conditional (>=1 objective): addie-agent=0.477 (n=90), alignmentgraph-isd=0.682 (n=90), baseline=0.272 (n=19), dick-carey-agent=0.846 (n=89), eduplanner=0.585 (n=42), react-isd=0.386 (n=90), rpisd-agent=0.576 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -217,10 +315,27 @@ conditional (>=1 objective): addie-agent=0.477 (n=90), alignmentgraph-isd=0.682 
 | rpisd-agent | 90 | +0.1067 | [+0.0624, +0.1518] | 1.022e-04 | 2.434e-04 |
 | eduplanner | 59 | +0.0798 | [+0.0154, +0.1453] | 3.655e-02 | 7.309e-02 |
 
+failure=0 mean per agent: addie-agent=0.477 (n=90), alignmentgraph-isd=0.682 (n=90), baseline=0.047 (n=88), dick-carey-agent=0.846 (n=90), eduplanner=0.191 (n=89), react-isd=0.386 (n=90), rpisd-agent=0.573 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 88 | +0.6342 | [+0.6027, +0.6637] | 2.220e-15 |
+| react-isd | 90 | +0.2964 | [+0.2495, +0.3430] | 9.059e-14 |
+| dick-carey-agent | 90 | -0.1639 | [-0.1962, -0.1302] | 5.611e-12 |
+| addie-agent | 90 | +0.2053 | [+0.1721, +0.2378] | 8.833e-13 |
+| rpisd-agent | 90 | +0.1091 | [+0.0642, +0.1548] | 4.784e-05 |
+| eduplanner | 89 | +0.4916 | [+0.4477, +0.5344] | 1.332e-15 |
+
 ### Qwen3.5-2B
+**Missing outputs (complete-case layer is conditioned on these):** `baseline` 43 scenario(s), 60 agent-run cell(s), `eduplanner` 33 scenario(s), 34 agent-run cell(s)
+
 #### objective_assessment_similarity [correspondence]
 mean [bootstrap CI95] per agent: addie-agent=0.606 [0.588, 0.623] (n=90), alignmentgraph-isd=0.850 [0.838, 0.863] (n=90), baseline=0.383 [0.347, 0.418] (n=88), dick-carey-agent=0.499 [0.488, 0.510] (n=90), eduplanner=0.500 [0.468, 0.532] (n=90), react-isd=0.583 [0.563, 0.602] (n=90), rpisd-agent=0.519 [0.509, 0.530] (n=90)
 conditional (>=1 objective): addie-agent=0.606 (n=90), alignmentgraph-isd=0.850 (n=90), baseline=0.485 (n=55), dick-carey-agent=0.500 (n=89), eduplanner=0.600 (n=56), react-isd=0.583 (n=90), rpisd-agent=0.519 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -231,9 +346,24 @@ conditional (>=1 objective): addie-agent=0.606 (n=90), alignmentgraph-isd=0.850 
 | rpisd-agent | 90 | +0.3313 | [+0.3168, +0.3457] | 1.332e-15 | 9.326e-15 |
 | eduplanner | 90 | +0.3508 | [+0.3167, +0.3866] | 1.332e-15 | 9.326e-15 |
 
+failure=0 mean per agent: addie-agent=0.606 (n=90), alignmentgraph-isd=0.850 (n=90), baseline=0.292 (n=90), dick-carey-agent=0.499 (n=90), eduplanner=0.433 (n=90), react-isd=0.583 (n=90), rpisd-agent=0.519 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 90 | +0.5588 | [+0.5224, +0.5948] | 1.332e-15 |
+| react-isd | 90 | +0.2674 | [+0.2464, +0.2890] | 1.332e-15 |
+| dick-carey-agent | 90 | +0.3516 | [+0.3367, +0.3667] | 1.332e-15 |
+| addie-agent | 90 | +0.2448 | [+0.2234, +0.2659] | 1.332e-15 |
+| rpisd-agent | 90 | +0.3313 | [+0.3168, +0.3457] | 1.332e-15 |
+| eduplanner | 90 | +0.4174 | [+0.3824, +0.4536] | 1.332e-15 |
+
 #### objective_activity_similarity [correspondence]
 mean [bootstrap CI95] per agent: addie-agent=0.454 [0.444, 0.464] (n=90), alignmentgraph-isd=0.680 [0.671, 0.688] (n=90), baseline=0.420 [0.381, 0.458] (n=88), dick-carey-agent=0.473 [0.465, 0.482] (n=90), eduplanner=0.432 [0.406, 0.456] (n=90), react-isd=0.490 [0.476, 0.505] (n=90), rpisd-agent=0.542 [0.530, 0.554] (n=90)
 conditional (>=1 objective): addie-agent=0.454 (n=90), alignmentgraph-isd=0.680 (n=90), baseline=0.528 (n=55), dick-carey-agent=0.475 (n=89), eduplanner=0.515 (n=56), react-isd=0.490 (n=90), rpisd-agent=0.542 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -244,9 +374,24 @@ conditional (>=1 objective): addie-agent=0.454 (n=90), alignmentgraph-isd=0.680 
 | rpisd-agent | 90 | +0.1380 | [+0.1250, +0.1511] | 1.332e-15 | 9.326e-15 |
 | eduplanner | 90 | +0.2479 | [+0.2217, +0.2753] | 1.332e-15 | 9.326e-15 |
 
+failure=0 mean per agent: addie-agent=0.454 (n=90), alignmentgraph-isd=0.680 (n=90), baseline=0.321 (n=90), dick-carey-agent=0.473 (n=90), eduplanner=0.375 (n=90), react-isd=0.490 (n=90), rpisd-agent=0.542 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 90 | +0.3590 | [+0.3219, +0.3959] | 1.332e-15 |
+| react-isd | 90 | +0.1892 | [+0.1737, +0.2053] | 1.332e-15 |
+| dick-carey-agent | 90 | +0.2062 | [+0.1934, +0.2185] | 1.332e-15 |
+| addie-agent | 90 | +0.2257 | [+0.2131, +0.2386] | 1.332e-15 |
+| rpisd-agent | 90 | +0.1380 | [+0.1250, +0.1511] | 1.332e-15 |
+| eduplanner | 90 | +0.3043 | [+0.2761, +0.3329] | 1.332e-15 |
+
 #### objective_evaluation_similarity [correspondence]
 mean [bootstrap CI95] per agent: addie-agent=0.608 [0.592, 0.624] (n=90), alignmentgraph-isd=0.806 [0.786, 0.825] (n=90), baseline=0.328 [0.300, 0.356] (n=88), dick-carey-agent=0.505 [0.495, 0.516] (n=90), eduplanner=0.478 [0.444, 0.511] (n=90), react-isd=0.555 [0.534, 0.575] (n=90), rpisd-agent=0.523 [0.513, 0.534] (n=90)
 conditional (>=1 objective): addie-agent=0.608 (n=90), alignmentgraph-isd=0.806 (n=90), baseline=0.408 (n=55), dick-carey-agent=0.507 (n=89), eduplanner=0.574 (n=56), react-isd=0.555 (n=90), rpisd-agent=0.523 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -257,9 +402,24 @@ conditional (>=1 objective): addie-agent=0.608 (n=90), alignmentgraph-isd=0.806 
 | rpisd-agent | 90 | +0.2824 | [+0.2622, +0.3021] | 1.332e-15 | 9.326e-15 |
 | eduplanner | 90 | +0.3282 | [+0.2880, +0.3696] | 1.332e-15 | 9.326e-15 |
 
+failure=0 mean per agent: addie-agent=0.608 (n=90), alignmentgraph-isd=0.806 (n=90), baseline=0.251 (n=90), dick-carey-agent=0.505 (n=90), eduplanner=0.414 (n=90), react-isd=0.555 (n=90), rpisd-agent=0.523 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 90 | +0.5545 | [+0.5212, +0.5880] | 1.332e-15 |
+| react-isd | 90 | +0.2512 | [+0.2254, +0.2775] | 1.332e-15 |
+| dick-carey-agent | 90 | +0.3005 | [+0.2801, +0.3206] | 1.332e-15 |
+| addie-agent | 90 | +0.1979 | [+0.1729, +0.2224] | 1.332e-15 |
+| rpisd-agent | 90 | +0.2824 | [+0.2622, +0.3021] | 1.332e-15 |
+| eduplanner | 90 | +0.3919 | [+0.3515, +0.4330] | 1.332e-15 |
+
 #### assessment_objective_similarity [correspondence] — diagnostic, direction not one-way-good
 mean [bootstrap CI95] per agent: addie-agent=0.531 [0.518, 0.544] (n=90), alignmentgraph-isd=0.652 [0.640, 0.664] (n=90), baseline=0.468 [0.455, 0.480] (n=82), dick-carey-agent=0.541 [0.529, 0.554] (n=90), eduplanner=0.522 [0.507, 0.537] (n=89), react-isd=0.428 [0.416, 0.440] (n=90), rpisd-agent=0.450 [0.441, 0.458] (n=90)
 conditional (>=1 objective): addie-agent=0.531 (n=90), alignmentgraph-isd=0.652 (n=90), baseline=0.469 (n=55), dick-carey-agent=0.540 (n=89), eduplanner=0.528 (n=56), react-isd=0.428 (n=90), rpisd-agent=0.450 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -270,9 +430,24 @@ conditional (>=1 objective): addie-agent=0.531 (n=90), alignmentgraph-isd=0.652 
 | rpisd-agent | 90 | +0.2021 | [+0.1903, +0.2145] | 1.332e-15 | 9.326e-15 |
 | eduplanner | 89 | +0.1291 | [+0.1115, +0.1466] | 8.882e-15 | 1.421e-13 |
 
+failure=0 mean per agent: addie-agent=0.531 (n=90), alignmentgraph-isd=0.652 (n=90), baseline=0.340 (n=89), dick-carey-agent=0.541 (n=90), eduplanner=0.446 (n=89), react-isd=0.428 (n=90), rpisd-agent=0.450 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 89 | +0.3110 | [+0.2786, +0.3451] | 1.332e-15 |
+| react-isd | 90 | +0.2242 | [+0.2104, +0.2388] | 1.332e-15 |
+| dick-carey-agent | 90 | +0.1109 | [+0.0958, +0.1259] | 3.553e-15 |
+| addie-agent | 90 | +0.1211 | [+0.1056, +0.1365] | 1.998e-15 |
+| rpisd-agent | 90 | +0.2021 | [+0.1903, +0.2145] | 1.332e-15 |
+| eduplanner | 89 | +0.2051 | [+0.1767, +0.2337] | 3.553e-15 |
+
 #### objective_cognitive_congruence [cognitive]
 mean [bootstrap CI95] per agent: addie-agent=0.624 [0.587, 0.658] (n=90), alignmentgraph-isd=0.865 [0.845, 0.885] (n=90), baseline=0.722 [0.678, 0.765] (n=82), dick-carey-agent=0.756 [0.730, 0.781] (n=90), eduplanner=0.685 [0.650, 0.718] (n=89), react-isd=0.662 [0.627, 0.695] (n=90), rpisd-agent=0.559 [0.524, 0.594] (n=90)
 conditional (>=1 objective): addie-agent=0.624 (n=90), alignmentgraph-isd=0.865 (n=90), baseline=0.713 (n=55), dick-carey-agent=0.757 (n=89), eduplanner=0.697 (n=56), react-isd=0.662 (n=90), rpisd-agent=0.559 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -283,9 +458,24 @@ conditional (>=1 objective): addie-agent=0.624 (n=90), alignmentgraph-isd=0.865 
 | rpisd-agent | 90 | +0.3062 | [+0.2664, +0.3473] | 5.329e-15 | 1.865e-14 |
 | eduplanner | 89 | +0.1790 | [+0.1401, +0.2194] | 2.783e-11 | 9.276e-11 |
 
+failure=0 mean per agent: addie-agent=0.624 (n=90), alignmentgraph-isd=0.865 (n=90), baseline=0.521 (n=89), dick-carey-agent=0.756 (n=90), eduplanner=0.590 (n=89), react-isd=0.662 (n=90), rpisd-agent=0.559 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 89 | +0.3447 | [+0.2887, +0.4019] | 5.684e-14 |
+| react-isd | 90 | +0.2036 | [+0.1690, +0.2399] | 1.232e-13 |
+| dick-carey-agent | 90 | +0.1096 | [+0.0760, +0.1429] | 1.780e-08 |
+| addie-agent | 90 | +0.2417 | [+0.2012, +0.2846] | 5.329e-14 |
+| rpisd-agent | 90 | +0.3062 | [+0.2664, +0.3473] | 5.329e-15 |
+| eduplanner | 89 | +0.2743 | [+0.2251, +0.3245] | 2.425e-13 |
+
 #### porter_mean [cognitive]
 mean [bootstrap CI95] per agent: addie-agent=0.359 [0.342, 0.375] (n=90), alignmentgraph-isd=0.448 [0.434, 0.462] (n=90), baseline=0.275 [0.259, 0.290] (n=85), dick-carey-agent=0.354 [0.339, 0.368] (n=90), eduplanner=0.344 [0.323, 0.365] (n=89), react-isd=0.268 [0.256, 0.280] (n=90), rpisd-agent=0.322 [0.304, 0.339] (n=90)
 conditional (>=1 objective): addie-agent=0.359 (n=90), alignmentgraph-isd=0.448 (n=90), baseline=0.268 (n=55), dick-carey-agent=0.354 (n=89), eduplanner=0.354 (n=56), react-isd=0.268 (n=90), rpisd-agent=0.322 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -296,9 +486,24 @@ conditional (>=1 objective): addie-agent=0.359 (n=90), alignmentgraph-isd=0.448 
 | rpisd-agent | 90 | +0.1260 | [+0.1046, +0.1476] | 5.063e-13 | 1.645e-12 |
 | eduplanner | 89 | +0.1024 | [+0.0768, +0.1281] | 5.347e-10 | 3.208e-09 |
 
+failure=0 mean per agent: addie-agent=0.359 (n=90), alignmentgraph-isd=0.448 (n=90), baseline=0.204 (n=90), dick-carey-agent=0.354 (n=90), eduplanner=0.295 (n=89), react-isd=0.268 (n=90), rpisd-agent=0.322 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 90 | +0.2434 | [+0.2189, +0.2681] | 1.332e-15 |
+| react-isd | 90 | +0.1791 | [+0.1616, +0.1970] | 1.332e-15 |
+| dick-carey-agent | 90 | +0.0940 | [+0.0727, +0.1157] | 1.260e-10 |
+| addie-agent | 90 | +0.0888 | [+0.0675, +0.1107] | 1.260e-10 |
+| rpisd-agent | 90 | +0.1260 | [+0.1046, +0.1476] | 3.908e-13 |
+| eduplanner | 89 | +0.1520 | [+0.1250, +0.1796] | 3.908e-13 |
+
 #### webb_bloom_consistency [cognitive]
 mean [bootstrap CI95] per agent: addie-agent=0.573 [0.538, 0.605] (n=90), alignmentgraph-isd=0.724 [0.704, 0.744] (n=90), baseline=0.601 [0.553, 0.647] (n=85), dick-carey-agent=0.761 [0.736, 0.785] (n=90), eduplanner=0.659 [0.631, 0.686] (n=89), react-isd=0.496 [0.460, 0.532] (n=90), rpisd-agent=0.539 [0.509, 0.568] (n=90)
 conditional (>=1 objective): addie-agent=0.573 (n=90), alignmentgraph-isd=0.724 (n=90), baseline=0.608 (n=55), dick-carey-agent=0.763 (n=89), eduplanner=0.677 (n=56), react-isd=0.496 (n=90), rpisd-agent=0.539 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -309,10 +514,27 @@ conditional (>=1 objective): addie-agent=0.573 (n=90), alignmentgraph-isd=0.724 
 | rpisd-agent | 90 | +0.1855 | [+0.1515, +0.2190] | 3.912e-12 | 8.607e-12 |
 | eduplanner | 89 | +0.0639 | [+0.0307, +0.0963] | 1.535e-04 | 1.535e-04 |
 
+failure=0 mean per agent: addie-agent=0.573 (n=90), alignmentgraph-isd=0.724 (n=90), baseline=0.451 (n=90), dick-carey-agent=0.761 (n=90), eduplanner=0.566 (n=89), react-isd=0.496 (n=90), rpisd-agent=0.539 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 90 | +0.2728 | [+0.2193, +0.3260] | 5.453e-12 |
+| react-isd | 90 | +0.2285 | [+0.1882, +0.2685] | 1.713e-12 |
+| dick-carey-agent | 90 | -0.0365 | [-0.0682, -0.0049] | 5.419e-02 |
+| addie-agent | 90 | +0.1516 | [+0.1141, +0.1908] | 5.299e-10 |
+| rpisd-agent | 90 | +0.1855 | [+0.1515, +0.2190] | 3.912e-12 |
+| eduplanner | 89 | +0.1571 | [+0.1155, +0.1979] | 3.480e-09 |
+
 ### Qwen3.5-4B
+**Missing outputs (complete-case layer is conditioned on these):** `baseline` 8 scenario(s), 8 agent-run cell(s), `dick-carey-agent` 1 scenario(s), 1 agent-run cell(s), `eduplanner` 13 scenario(s), 15 agent-run cell(s)
+
 #### objective_assessment_similarity [correspondence]
 mean [bootstrap CI95] per agent: addie-agent=0.608 [0.596, 0.620] (n=90), alignmentgraph-isd=0.806 [0.791, 0.820] (n=90), baseline=0.547 [0.528, 0.565] (n=90), dick-carey-agent=0.536 [0.526, 0.546] (n=90), eduplanner=0.598 [0.578, 0.615] (n=89), react-isd=0.579 [0.568, 0.591] (n=90), rpisd-agent=0.466 [0.457, 0.474] (n=90)
 conditional (>=1 objective): addie-agent=0.608 (n=90), alignmentgraph-isd=0.806 (n=90), baseline=0.572 (n=80), dick-carey-agent=0.536 (n=90), eduplanner=0.620 (n=81), react-isd=0.579 (n=90), rpisd-agent=0.466 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -323,9 +545,24 @@ conditional (>=1 objective): addie-agent=0.608 (n=90), alignmentgraph-isd=0.806 
 | rpisd-agent | 90 | +0.3402 | [+0.3246, +0.3556] | 1.332e-15 | 9.326e-15 |
 | eduplanner | 89 | +0.2078 | [+0.1864, +0.2306] | 1.332e-15 | 9.326e-15 |
 
+failure=0 mean per agent: addie-agent=0.608 (n=90), alignmentgraph-isd=0.806 (n=90), baseline=0.530 (n=90), dick-carey-agent=0.534 (n=90), eduplanner=0.565 (n=90), react-isd=0.579 (n=90), rpisd-agent=0.466 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 90 | +0.2762 | [+0.2542, +0.2995] | 1.332e-15 |
+| react-isd | 90 | +0.2266 | [+0.2139, +0.2389] | 1.332e-15 |
+| dick-carey-agent | 90 | +0.2716 | [+0.2577, +0.2850] | 1.332e-15 |
+| addie-agent | 90 | +0.1977 | [+0.1829, +0.2128] | 1.332e-15 |
+| rpisd-agent | 90 | +0.3402 | [+0.3246, +0.3556] | 1.332e-15 |
+| eduplanner | 90 | +0.2409 | [+0.2145, +0.2694] | 1.332e-15 |
+
 #### objective_activity_similarity [correspondence]
 mean [bootstrap CI95] per agent: addie-agent=0.536 [0.528, 0.544] (n=90), alignmentgraph-isd=0.686 [0.680, 0.693] (n=90), baseline=0.486 [0.470, 0.501] (n=90), dick-carey-agent=0.545 [0.536, 0.553] (n=90), eduplanner=0.474 [0.458, 0.489] (n=89), react-isd=0.534 [0.522, 0.547] (n=90), rpisd-agent=0.538 [0.531, 0.545] (n=90)
 conditional (>=1 objective): addie-agent=0.536 (n=90), alignmentgraph-isd=0.686 (n=90), baseline=0.508 (n=80), dick-carey-agent=0.545 (n=90), eduplanner=0.492 (n=81), react-isd=0.534 (n=90), rpisd-agent=0.538 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -336,9 +573,24 @@ conditional (>=1 objective): addie-agent=0.536 (n=90), alignmentgraph-isd=0.686 
 | rpisd-agent | 90 | +0.1483 | [+0.1396, +0.1574] | 1.332e-15 | 9.326e-15 |
 | eduplanner | 89 | +0.2129 | [+0.1976, +0.2295] | 1.332e-15 | 9.326e-15 |
 
+failure=0 mean per agent: addie-agent=0.536 (n=90), alignmentgraph-isd=0.686 (n=90), baseline=0.470 (n=90), dick-carey-agent=0.543 (n=90), eduplanner=0.447 (n=90), react-isd=0.534 (n=90), rpisd-agent=0.538 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 90 | +0.2162 | [+0.1986, +0.2356] | 1.332e-15 |
+| react-isd | 90 | +0.1524 | [+0.1396, +0.1656] | 1.332e-15 |
+| dick-carey-agent | 90 | +0.1437 | [+0.1321, +0.1555] | 1.332e-15 |
+| addie-agent | 90 | +0.1500 | [+0.1402, +0.1598] | 1.332e-15 |
+| rpisd-agent | 90 | +0.1483 | [+0.1396, +0.1574] | 1.332e-15 |
+| eduplanner | 90 | +0.2391 | [+0.2180, +0.2607] | 1.332e-15 |
+
 #### objective_evaluation_similarity [correspondence]
 mean [bootstrap CI95] per agent: addie-agent=0.608 [0.596, 0.620] (n=90), alignmentgraph-isd=0.789 [0.773, 0.804] (n=90), baseline=0.497 [0.478, 0.514] (n=90), dick-carey-agent=0.537 [0.526, 0.547] (n=90), eduplanner=0.595 [0.574, 0.613] (n=89), react-isd=0.562 [0.551, 0.574] (n=90), rpisd-agent=0.472 [0.464, 0.480] (n=90)
 conditional (>=1 objective): addie-agent=0.608 (n=90), alignmentgraph-isd=0.789 (n=90), baseline=0.519 (n=80), dick-carey-agent=0.537 (n=90), eduplanner=0.617 (n=81), react-isd=0.562 (n=90), rpisd-agent=0.472 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -349,9 +601,24 @@ conditional (>=1 objective): addie-agent=0.608 (n=90), alignmentgraph-isd=0.789 
 | rpisd-agent | 90 | +0.3167 | [+0.3001, +0.3332] | 1.332e-15 | 9.326e-15 |
 | eduplanner | 89 | +0.1939 | [+0.1709, +0.2181] | 1.332e-15 | 9.326e-15 |
 
+failure=0 mean per agent: addie-agent=0.608 (n=90), alignmentgraph-isd=0.789 (n=90), baseline=0.480 (n=90), dick-carey-agent=0.534 (n=90), eduplanner=0.562 (n=90), react-isd=0.562 (n=90), rpisd-agent=0.472 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 90 | +0.3087 | [+0.2865, +0.3322] | 1.332e-15 |
+| react-isd | 90 | +0.2268 | [+0.2124, +0.2409] | 1.332e-15 |
+| dick-carey-agent | 90 | +0.2545 | [+0.2392, +0.2696] | 1.332e-15 |
+| addie-agent | 90 | +0.1809 | [+0.1648, +0.1971] | 1.332e-15 |
+| rpisd-agent | 90 | +0.3167 | [+0.3001, +0.3332] | 1.332e-15 |
+| eduplanner | 90 | +0.2265 | [+0.1987, +0.2562] | 1.332e-15 |
+
 #### assessment_objective_similarity [correspondence] — diagnostic, direction not one-way-good
 mean [bootstrap CI95] per agent: addie-agent=0.558 [0.546, 0.569] (n=90), alignmentgraph-isd=0.663 [0.649, 0.676] (n=90), baseline=0.483 [0.474, 0.492] (n=90), dick-carey-agent=0.564 [0.553, 0.575] (n=90), eduplanner=0.495 [0.484, 0.505] (n=89), react-isd=0.461 [0.450, 0.473] (n=90), rpisd-agent=0.411 [0.402, 0.419] (n=90)
 conditional (>=1 objective): addie-agent=0.558 (n=90), alignmentgraph-isd=0.663 (n=90), baseline=0.484 (n=80), dick-carey-agent=0.564 (n=90), eduplanner=0.496 (n=81), react-isd=0.461 (n=90), rpisd-agent=0.411 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -362,9 +629,24 @@ conditional (>=1 objective): addie-agent=0.558 (n=90), alignmentgraph-isd=0.663 
 | rpisd-agent | 90 | +0.2522 | [+0.2394, +0.2650] | 1.332e-15 | 9.326e-15 |
 | eduplanner | 89 | +0.1688 | [+0.1559, +0.1818] | 1.332e-15 | 9.326e-15 |
 
+failure=0 mean per agent: addie-agent=0.558 (n=90), alignmentgraph-isd=0.663 (n=90), baseline=0.468 (n=90), dick-carey-agent=0.562 (n=90), eduplanner=0.467 (n=90), react-isd=0.461 (n=90), rpisd-agent=0.411 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 90 | +0.1944 | [+0.1804, +0.2090] | 1.332e-15 |
+| react-isd | 90 | +0.2015 | [+0.1919, +0.2109] | 1.332e-15 |
+| dick-carey-agent | 90 | +0.1005 | [+0.0873, +0.1137] | 1.776e-15 |
+| addie-agent | 90 | +0.1052 | [+0.0938, +0.1166] | 1.332e-15 |
+| rpisd-agent | 90 | +0.2522 | [+0.2394, +0.2650] | 1.332e-15 |
+| eduplanner | 90 | +0.1958 | [+0.1774, +0.2157] | 1.332e-15 |
+
 #### objective_cognitive_congruence [cognitive]
 mean [bootstrap CI95] per agent: addie-agent=0.674 [0.638, 0.707] (n=90), alignmentgraph-isd=0.918 [0.900, 0.934] (n=90), baseline=0.729 [0.699, 0.759] (n=90), dick-carey-agent=0.791 [0.770, 0.812] (n=90), eduplanner=0.725 [0.698, 0.752] (n=89), react-isd=0.767 [0.737, 0.796] (n=90), rpisd-agent=0.528 [0.494, 0.563] (n=90)
 conditional (>=1 objective): addie-agent=0.674 (n=90), alignmentgraph-isd=0.918 (n=90), baseline=0.725 (n=80), dick-carey-agent=0.791 (n=90), eduplanner=0.723 (n=81), react-isd=0.767 (n=90), rpisd-agent=0.528 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -375,9 +657,24 @@ conditional (>=1 objective): addie-agent=0.674 (n=90), alignmentgraph-isd=0.918 
 | rpisd-agent | 90 | +0.3896 | [+0.3488, +0.4298] | 7.994e-15 | 1.599e-14 |
 | eduplanner | 89 | +0.1928 | [+0.1613, +0.2252] | 2.043e-13 | 4.086e-13 |
 
+failure=0 mean per agent: addie-agent=0.674 (n=90), alignmentgraph-isd=0.918 (n=90), baseline=0.709 (n=90), dick-carey-agent=0.788 (n=90), eduplanner=0.684 (n=90), react-isd=0.767 (n=90), rpisd-agent=0.528 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 90 | +0.2091 | [+0.1739, +0.2454] | 1.645e-13 |
+| react-isd | 90 | +0.1507 | [+0.1216, +0.1814] | 3.093e-12 |
+| dick-carey-agent | 90 | +0.1298 | [+0.0998, +0.1599] | 3.161e-11 |
+| addie-agent | 90 | +0.2443 | [+0.2109, +0.2801] | 9.992e-15 |
+| rpisd-agent | 90 | +0.3896 | [+0.3488, +0.4298] | 7.994e-15 |
+| eduplanner | 90 | +0.2336 | [+0.1969, +0.2726] | 4.352e-14 |
+
 #### porter_mean [cognitive]
 mean [bootstrap CI95] per agent: addie-agent=0.393 [0.375, 0.410] (n=90), alignmentgraph-isd=0.446 [0.435, 0.457] (n=90), baseline=0.309 [0.298, 0.319] (n=90), dick-carey-agent=0.363 [0.349, 0.378] (n=90), eduplanner=0.368 [0.354, 0.382] (n=89), react-isd=0.299 [0.285, 0.312] (n=90), rpisd-agent=0.291 [0.276, 0.305] (n=90)
 conditional (>=1 objective): addie-agent=0.393 (n=90), alignmentgraph-isd=0.446 (n=90), baseline=0.311 (n=80), dick-carey-agent=0.363 (n=90), eduplanner=0.365 (n=81), react-isd=0.299 (n=90), rpisd-agent=0.291 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -388,9 +685,24 @@ conditional (>=1 objective): addie-agent=0.393 (n=90), alignmentgraph-isd=0.446 
 | rpisd-agent | 90 | +0.1553 | [+0.1377, +0.1735] | 2.220e-15 | 9.326e-15 |
 | eduplanner | 89 | +0.0784 | [+0.0623, +0.0947] | 1.169e-11 | 1.948e-11 |
 
+failure=0 mean per agent: addie-agent=0.393 (n=90), alignmentgraph-isd=0.446 (n=90), baseline=0.299 (n=90), dick-carey-agent=0.362 (n=90), eduplanner=0.348 (n=90), react-isd=0.299 (n=90), rpisd-agent=0.291 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 90 | +0.1473 | [+0.1319, +0.1630] | 1.332e-15 |
+| react-isd | 90 | +0.1474 | [+0.1301, +0.1647] | 2.220e-15 |
+| dick-carey-agent | 90 | +0.0839 | [+0.0653, +0.1020] | 1.844e-11 |
+| addie-agent | 90 | +0.0533 | [+0.0335, +0.0733] | 8.186e-06 |
+| rpisd-agent | 90 | +0.1553 | [+0.1377, +0.1735] | 2.220e-15 |
+| eduplanner | 90 | +0.0978 | [+0.0784, +0.1175] | 2.640e-12 |
+
 #### webb_bloom_consistency [cognitive]
 mean [bootstrap CI95] per agent: addie-agent=0.668 [0.641, 0.695] (n=90), alignmentgraph-isd=0.871 [0.858, 0.883] (n=90), baseline=0.591 [0.568, 0.613] (n=90), dick-carey-agent=0.761 [0.734, 0.787] (n=90), eduplanner=0.702 [0.681, 0.723] (n=89), react-isd=0.624 [0.599, 0.647] (n=90), rpisd-agent=0.501 [0.469, 0.534] (n=90)
 conditional (>=1 objective): addie-agent=0.668 (n=90), alignmentgraph-isd=0.871 (n=90), baseline=0.590 (n=80), dick-carey-agent=0.761 (n=90), eduplanner=0.701 (n=81), react-isd=0.624 (n=90), rpisd-agent=0.501 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -401,10 +713,27 @@ conditional (>=1 objective): addie-agent=0.668 (n=90), alignmentgraph-isd=0.871 
 | rpisd-agent | 90 | +0.3694 | [+0.3343, +0.4041] | 1.332e-15 | 9.326e-15 |
 | eduplanner | 89 | +0.1673 | [+0.1421, +0.1918] | 1.155e-14 | 5.196e-14 |
 
+failure=0 mean per agent: addie-agent=0.668 (n=90), alignmentgraph-isd=0.871 (n=90), baseline=0.575 (n=90), dick-carey-agent=0.758 (n=90), eduplanner=0.662 (n=90), react-isd=0.624 (n=90), rpisd-agent=0.501 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 90 | +0.2955 | [+0.2652, +0.3258] | 1.332e-15 |
+| react-isd | 90 | +0.2471 | [+0.2222, +0.2733] | 1.332e-15 |
+| dick-carey-agent | 90 | +0.1129 | [+0.0823, +0.1440] | 1.685e-09 |
+| addie-agent | 90 | +0.2023 | [+0.1756, +0.2306] | 1.332e-15 |
+| rpisd-agent | 90 | +0.3694 | [+0.3343, +0.4041] | 1.332e-15 |
+| eduplanner | 90 | +0.2084 | [+0.1772, +0.2423] | 1.776e-15 |
+
 ### Qwen3.5-9B
+**Missing outputs (complete-case layer is conditioned on these):** `baseline` 4 scenario(s), 4 agent-run cell(s), `eduplanner` 5 scenario(s), 5 agent-run cell(s)
+
 #### objective_assessment_similarity [correspondence]
 mean [bootstrap CI95] per agent: addie-agent=0.586 [0.573, 0.598] (n=90), alignmentgraph-isd=0.832 [0.821, 0.842] (n=90), baseline=0.562 [0.551, 0.573] (n=90), dick-carey-agent=0.557 [0.545, 0.568] (n=90), eduplanner=0.592 [0.578, 0.605] (n=90), react-isd=0.570 [0.558, 0.582] (n=90), rpisd-agent=0.451 [0.443, 0.460] (n=90)
 conditional (>=1 objective): addie-agent=0.586 (n=90), alignmentgraph-isd=0.832 (n=90), baseline=0.566 (n=88), dick-carey-agent=0.557 (n=90), eduplanner=0.598 (n=87), react-isd=0.570 (n=90), rpisd-agent=0.451 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -415,9 +744,24 @@ conditional (>=1 objective): addie-agent=0.586 (n=90), alignmentgraph-isd=0.832 
 | rpisd-agent | 90 | +0.3802 | [+0.3695, +0.3905] | 1.332e-15 | 9.326e-15 |
 | eduplanner | 90 | +0.2399 | [+0.2248, +0.2551] | 1.332e-15 | 9.326e-15 |
 
+failure=0 mean per agent: addie-agent=0.586 (n=90), alignmentgraph-isd=0.832 (n=90), baseline=0.554 (n=90), dick-carey-agent=0.557 (n=90), eduplanner=0.581 (n=90), react-isd=0.570 (n=90), rpisd-agent=0.451 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 90 | +0.2776 | [+0.2626, +0.2933] | 1.332e-15 |
+| react-isd | 90 | +0.2614 | [+0.2487, +0.2736] | 1.332e-15 |
+| dick-carey-agent | 90 | +0.2750 | [+0.2632, +0.2865] | 1.332e-15 |
+| addie-agent | 90 | +0.2460 | [+0.2335, +0.2584] | 1.332e-15 |
+| rpisd-agent | 90 | +0.3802 | [+0.3695, +0.3905] | 1.332e-15 |
+| eduplanner | 90 | +0.2504 | [+0.2321, +0.2693] | 1.332e-15 |
+
 #### objective_activity_similarity [correspondence]
 mean [bootstrap CI95] per agent: addie-agent=0.505 [0.495, 0.514] (n=90), alignmentgraph-isd=0.678 [0.671, 0.684] (n=90), baseline=0.572 [0.560, 0.583] (n=90), dick-carey-agent=0.547 [0.539, 0.555] (n=90), eduplanner=0.513 [0.502, 0.524] (n=90), react-isd=0.564 [0.554, 0.574] (n=90), rpisd-agent=0.543 [0.536, 0.550] (n=90)
 conditional (>=1 objective): addie-agent=0.505 (n=90), alignmentgraph-isd=0.678 (n=90), baseline=0.576 (n=88), dick-carey-agent=0.547 (n=90), eduplanner=0.519 (n=87), react-isd=0.564 (n=90), rpisd-agent=0.543 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -428,9 +772,24 @@ conditional (>=1 objective): addie-agent=0.505 (n=90), alignmentgraph-isd=0.678 
 | rpisd-agent | 90 | +0.1348 | [+0.1271, +0.1427] | 1.332e-15 | 9.326e-15 |
 | eduplanner | 90 | +0.1642 | [+0.1536, +0.1751] | 1.332e-15 | 9.326e-15 |
 
+failure=0 mean per agent: addie-agent=0.505 (n=90), alignmentgraph-isd=0.678 (n=90), baseline=0.563 (n=90), dick-carey-agent=0.547 (n=90), eduplanner=0.504 (n=90), react-isd=0.564 (n=90), rpisd-agent=0.543 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 90 | +0.1141 | [+0.0994, +0.1296] | 1.332e-15 |
+| react-isd | 90 | +0.1132 | [+0.1039, +0.1228] | 1.332e-15 |
+| dick-carey-agent | 90 | +0.1305 | [+0.1220, +0.1392] | 1.332e-15 |
+| addie-agent | 90 | +0.1729 | [+0.1634, +0.1831] | 1.332e-15 |
+| rpisd-agent | 90 | +0.1348 | [+0.1271, +0.1427] | 1.332e-15 |
+| eduplanner | 90 | +0.1741 | [+0.1610, +0.1874] | 1.332e-15 |
+
 #### objective_evaluation_similarity [correspondence]
 mean [bootstrap CI95] per agent: addie-agent=0.586 [0.573, 0.599] (n=90), alignmentgraph-isd=0.811 [0.800, 0.822] (n=90), baseline=0.516 [0.503, 0.529] (n=90), dick-carey-agent=0.557 [0.546, 0.568] (n=90), eduplanner=0.584 [0.568, 0.599] (n=90), react-isd=0.550 [0.536, 0.564] (n=90), rpisd-agent=0.458 [0.450, 0.466] (n=90)
 conditional (>=1 objective): addie-agent=0.586 (n=90), alignmentgraph-isd=0.811 (n=90), baseline=0.520 (n=88), dick-carey-agent=0.557 (n=90), eduplanner=0.590 (n=87), react-isd=0.550 (n=90), rpisd-agent=0.458 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -441,9 +800,24 @@ conditional (>=1 objective): addie-agent=0.586 (n=90), alignmentgraph-isd=0.811 
 | rpisd-agent | 90 | +0.3529 | [+0.3423, +0.3634] | 1.332e-15 | 9.326e-15 |
 | eduplanner | 90 | +0.2269 | [+0.2103, +0.2437] | 1.332e-15 | 9.326e-15 |
 
+failure=0 mean per agent: addie-agent=0.586 (n=90), alignmentgraph-isd=0.811 (n=90), baseline=0.508 (n=90), dick-carey-agent=0.557 (n=90), eduplanner=0.574 (n=90), react-isd=0.550 (n=90), rpisd-agent=0.458 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 90 | +0.3024 | [+0.2862, +0.3187] | 1.332e-15 |
+| react-isd | 90 | +0.2607 | [+0.2459, +0.2754] | 1.332e-15 |
+| dick-carey-agent | 90 | +0.2540 | [+0.2418, +0.2659] | 1.332e-15 |
+| addie-agent | 90 | +0.2251 | [+0.2122, +0.2379] | 1.332e-15 |
+| rpisd-agent | 90 | +0.3529 | [+0.3423, +0.3634] | 1.332e-15 |
+| eduplanner | 90 | +0.2370 | [+0.2172, +0.2572] | 1.332e-15 |
+
 #### assessment_objective_similarity [correspondence] — diagnostic, direction not one-way-good
 mean [bootstrap CI95] per agent: addie-agent=0.544 [0.533, 0.555] (n=90), alignmentgraph-isd=0.693 [0.682, 0.704] (n=90), baseline=0.475 [0.467, 0.482] (n=90), dick-carey-agent=0.570 [0.558, 0.582] (n=90), eduplanner=0.475 [0.467, 0.483] (n=90), react-isd=0.454 [0.442, 0.465] (n=90), rpisd-agent=0.395 [0.388, 0.402] (n=90)
 conditional (>=1 objective): addie-agent=0.544 (n=90), alignmentgraph-isd=0.693 (n=90), baseline=0.474 (n=88), dick-carey-agent=0.570 (n=90), eduplanner=0.475 (n=87), react-isd=0.454 (n=90), rpisd-agent=0.395 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -454,9 +828,24 @@ conditional (>=1 objective): addie-agent=0.544 (n=90), alignmentgraph-isd=0.693 
 | rpisd-agent | 90 | +0.2984 | [+0.2876, +0.3087] | 1.332e-15 | 9.326e-15 |
 | eduplanner | 90 | +0.2184 | [+0.2076, +0.2288] | 1.332e-15 | 9.326e-15 |
 
+failure=0 mean per agent: addie-agent=0.544 (n=90), alignmentgraph-isd=0.693 (n=90), baseline=0.468 (n=90), dick-carey-agent=0.570 (n=90), eduplanner=0.466 (n=90), react-isd=0.454 (n=90), rpisd-agent=0.395 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 90 | +0.2256 | [+0.2138, +0.2380] | 1.332e-15 |
+| react-isd | 90 | +0.2397 | [+0.2289, +0.2507] | 1.332e-15 |
+| dick-carey-agent | 90 | +0.1232 | [+0.1116, +0.1343] | 1.332e-15 |
+| addie-agent | 90 | +0.1493 | [+0.1396, +0.1587] | 1.332e-15 |
+| rpisd-agent | 90 | +0.2984 | [+0.2876, +0.3087] | 1.332e-15 |
+| eduplanner | 90 | +0.2271 | [+0.2132, +0.2410] | 1.332e-15 |
+
 #### objective_cognitive_congruence [cognitive]
 mean [bootstrap CI95] per agent: addie-agent=0.598 [0.561, 0.634] (n=90), alignmentgraph-isd=0.918 [0.903, 0.933] (n=90), baseline=0.662 [0.634, 0.690] (n=90), dick-carey-agent=0.795 [0.771, 0.818] (n=90), eduplanner=0.690 [0.661, 0.717] (n=90), react-isd=0.747 [0.714, 0.777] (n=90), rpisd-agent=0.473 [0.444, 0.504] (n=90)
 conditional (>=1 objective): addie-agent=0.598 (n=90), alignmentgraph-isd=0.918 (n=90), baseline=0.662 (n=88), dick-carey-agent=0.795 (n=90), eduplanner=0.691 (n=87), react-isd=0.747 (n=90), rpisd-agent=0.473 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -467,9 +856,24 @@ conditional (>=1 objective): addie-agent=0.598 (n=90), alignmentgraph-isd=0.918 
 | rpisd-agent | 90 | +0.4444 | [+0.4111, +0.4785] | 1.332e-15 | 9.326e-15 |
 | eduplanner | 90 | +0.2279 | [+0.1957, +0.2605] | 1.599e-14 | 3.264e-14 |
 
+failure=0 mean per agent: addie-agent=0.598 (n=90), alignmentgraph-isd=0.918 (n=90), baseline=0.650 (n=90), dick-carey-agent=0.795 (n=90), eduplanner=0.678 (n=90), react-isd=0.747 (n=90), rpisd-agent=0.473 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 90 | +0.2678 | [+0.2344, +0.3011] | 6.217e-15 |
+| react-isd | 90 | +0.1712 | [+0.1371, +0.2076] | 3.743e-12 |
+| dick-carey-agent | 90 | +0.1229 | [+0.0942, +0.1525] | 1.655e-10 |
+| addie-agent | 90 | +0.3199 | [+0.2815, +0.3590] | 2.220e-15 |
+| rpisd-agent | 90 | +0.4444 | [+0.4111, +0.4785] | 1.332e-15 |
+| eduplanner | 90 | +0.2401 | [+0.2073, +0.2736] | 1.199e-14 |
+
 #### porter_mean [cognitive]
 mean [bootstrap CI95] per agent: addie-agent=0.367 [0.352, 0.383] (n=90), alignmentgraph-isd=0.458 [0.446, 0.470] (n=90), baseline=0.305 [0.295, 0.316] (n=90), dick-carey-agent=0.393 [0.377, 0.410] (n=90), eduplanner=0.348 [0.335, 0.362] (n=90), react-isd=0.286 [0.274, 0.297] (n=90), rpisd-agent=0.286 [0.273, 0.300] (n=90)
 conditional (>=1 objective): addie-agent=0.367 (n=90), alignmentgraph-isd=0.458 (n=90), baseline=0.306 (n=88), dick-carey-agent=0.393 (n=90), eduplanner=0.348 (n=87), react-isd=0.286 (n=90), rpisd-agent=0.286 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -480,9 +884,24 @@ conditional (>=1 objective): addie-agent=0.367 (n=90), alignmentgraph-isd=0.458 
 | rpisd-agent | 90 | +0.1721 | [+0.1553, +0.1896] | 1.332e-15 | 9.326e-15 |
 | eduplanner | 90 | +0.1101 | [+0.0911, +0.1287] | 2.478e-13 | 4.956e-13 |
 
+failure=0 mean per agent: addie-agent=0.367 (n=90), alignmentgraph-isd=0.458 (n=90), baseline=0.301 (n=90), dick-carey-agent=0.393 (n=90), eduplanner=0.343 (n=90), react-isd=0.286 (n=90), rpisd-agent=0.286 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 90 | +0.1575 | [+0.1398, +0.1755] | 1.332e-15 |
+| react-isd | 90 | +0.1728 | [+0.1573, +0.1883] | 1.332e-15 |
+| dick-carey-agent | 90 | +0.0650 | [+0.0462, +0.0836] | 9.257e-09 |
+| addie-agent | 90 | +0.0911 | [+0.0744, +0.1074] | 1.132e-12 |
+| rpisd-agent | 90 | +0.1721 | [+0.1553, +0.1896] | 1.332e-15 |
+| eduplanner | 90 | +0.1157 | [+0.0958, +0.1355] | 2.132e-13 |
+
 #### webb_bloom_consistency [cognitive]
 mean [bootstrap CI95] per agent: addie-agent=0.591 [0.559, 0.623] (n=90), alignmentgraph-isd=0.866 [0.853, 0.878] (n=90), baseline=0.515 [0.493, 0.535] (n=90), dick-carey-agent=0.765 [0.740, 0.790] (n=90), eduplanner=0.669 [0.648, 0.689] (n=90), react-isd=0.621 [0.598, 0.643] (n=90), rpisd-agent=0.446 [0.418, 0.474] (n=90)
 conditional (>=1 objective): addie-agent=0.591 (n=90), alignmentgraph-isd=0.866 (n=90), baseline=0.512 (n=88), dick-carey-agent=0.765 (n=90), eduplanner=0.667 (n=87), react-isd=0.621 (n=90), rpisd-agent=0.446 (n=90)
+
+complete-case (over AVAILABLE outputs, not unconditional):
 
 | baseline | n | mean diff | 95% CI | p_holm | p_panel |
 |---|---|---|---|---|---|
@@ -493,7 +912,20 @@ conditional (>=1 objective): addie-agent=0.591 (n=90), alignmentgraph-isd=0.866 
 | rpisd-agent | 90 | +0.4195 | [+0.3901, +0.4492] | 1.332e-15 | 9.326e-15 |
 | eduplanner | 90 | +0.1964 | [+0.1758, +0.2173] | 1.332e-15 | 9.326e-15 |
 
-### Interaction (assessment-alignment DiD, Qwen3.5-9B - Qwen3.5-0.8B)
+failure=0 mean per agent: addie-agent=0.591 (n=90), alignmentgraph-isd=0.866 (n=90), baseline=0.506 (n=90), dick-carey-agent=0.765 (n=90), eduplanner=0.657 (n=90), react-isd=0.621 (n=90), rpisd-agent=0.446 (n=90)
+
+failure=0 (missing output scored 0):
+
+| baseline | n | mean diff | 95% CI | p_holm |
+|---|---|---|---|---|
+| baseline | 90 | +0.3596 | [+0.3363, +0.3831] | 1.332e-15 |
+| react-isd | 90 | +0.2450 | [+0.2208, +0.2692] | 1.332e-15 |
+| dick-carey-agent | 90 | +0.1004 | [+0.0710, +0.1300] | 2.434e-08 |
+| addie-agent | 90 | +0.2745 | [+0.2421, +0.3089] | 1.332e-15 |
+| rpisd-agent | 90 | +0.4195 | [+0.3901, +0.4492] | 1.332e-15 |
+| eduplanner | 90 | +0.2085 | [+0.1861, +0.2318] | 1.332e-15 |
+
+### Interaction (objective->assessment similarity DiD, Qwen3.5-9B - Qwen3.5-0.8B)
 DiD on the paired objective_assessment_similarity delta (proposed - baseline): value at the largest size (Qwen3.5-9B) minus the smallest (Qwen3.5-0.8B), per scenario; negative = the gap narrows as the model grows (i.e. widens toward small models). Bootstrap CI (10000, seed 42) + Wilcoxon p on the per-scenario DiD values.
 - vs baseline: n=70, DiD=-0.4839 CI[-0.5297, -0.4352] p=6.508e-13
 - vs react-isd: n=90, DiD=-0.0861 CI[-0.1116, -0.0614] p=4.812e-08
