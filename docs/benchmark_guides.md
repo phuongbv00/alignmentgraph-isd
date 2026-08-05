@@ -611,7 +611,7 @@ Input: 4 size × 3 run × 90 scenario, mỗi scenario đã có `Total` cho từn
 ## A.3 RQ2 — Alignment evaluation protocol
 
 File: [`metrics/alignment.py`](../isd-agent-benchmark/evaluator/src/isd_evaluator/metrics/alignment.py).
-Đặc tả chốt + rationale: `docs/summary.md` §"Alignment evaluation protocol".
+Đặc tả chốt + rationale: [`docs/rq2_protocol.md`](rq2_protocol.md).
 
 Chấm constructive alignment bằng một hàm cố định của văn bản — **zero lời gọi LLM trong đo lường, không sampling**.
 Đọc **chỉ text** (`objective_id`/`aligned_objective`/`level` tự khai **không** dùng để chấm, chỉ làm validation

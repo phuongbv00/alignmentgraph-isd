@@ -46,6 +46,13 @@
   .en { font-style: italic; }
   .note { font-size: 2.05vh; color: var(--muted); margin-top: auto; padding-top: 1vh; border-top: 1px dashed var(--line); }
 
+  /* Dense variant for the text-heavy result slides: these carry the scope
+     caveats that must not be cut, so shrink the type instead of the content. */
+  .slide.dense li { font-size: 2.5vh; line-height: 1.34; margin: 0.85vh 0; }
+  .slide.dense li ul li { font-size: 2.25vh; }
+  .slide.dense .note { font-size: 1.9vh; }
+  .slide.dense table { font-size: 2.0vh; }
+
   .cols { display: flex; gap: 2.5vw; flex: 1; min-height: 0; align-items: stretch; }
   .col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .col.narrow { flex: 0.72; }
@@ -360,7 +367,8 @@
       <ul>
         <li>Mọi so sánh đều <b>ghép cặp theo từng tình huống</b> (cùng đề, cùng model) — không so trung bình trần trụi; kiểm định + hiệu chỉnh so sánh bội + khoảng tin cậy, khai báo trước khi chạy.</li>
         <li>Kết quả phụ (tỉ lệ hỏng output, xu hướng theo cỡ model…) được dán nhãn <b>phụ/khám phá</b> — không trộn vào kết luận chính.</li>
-        <li class="neg"><b>Giới hạn khai báo minh bạch:</b> ô nào hệ đối sánh không tạo được output hợp lệ ở phần lớn tình huống (còn ≤5 tình huống so được) thì khai báo là <b>không kiểm định được bằng điểm</b> — bằng chứng tại đó lấy từ tỉ lệ failure.</li>
+        <li class="neg"><b>Giới hạn khai báo minh bạch:</b> ô nào hệ đối sánh không tạo được output hợp lệ ở phần lớn tình huống (còn ≤5 tình huống so được) thì khai báo là <b>không kiểm định được bằng điểm</b> — bằng chứng tại đó lấy từ tỉ lệ failure. Mọi bảng đều in <b>n của từng ô</b> kèm dấu sao, nên một ô tính trên 17/90 tình huống <b>không thể</b> bị đọc như ô tính trên 90/90.</li>
+        <li><b>Độ dao động báo đúng thước:</b> mỗi điểm ± là SD giữa 3 lần chạy <b>của chính tín hiệu đó</b> (SD của điểm nội dung không dùng cho điểm quy trình) — ghép sai thước có thể phóng đại độ dao động tới 16 lần.</li>
       </ul>
     </div>
   </div>
@@ -394,7 +402,7 @@
     </tr>
     <tr>
       <td class="l"><span class="badge b2">RQ2</span><b>Tín hiệu<br>alignment</b></td>
-      <td style="text-align:left"><b>Dùng lại output đã lưu của RQ1</b> — không chạy lại hệ, không gọi LLM. Chấm bằng quy trình tự động (encoder ngữ nghĩa + bộ phân loại tầng Bloom) → <b>bảng 7 tín hiệu, liên tục, không ngưỡng</b> → gộp → so ghép cặp từng tín hiệu + tương tác theo cỡ + <b>3 trục kiểm độ nhạy</b> (đổi encoder × 3, sàn từ vựng bỏ hẳn ngữ nghĩa, đổi hẳn bộ phân loại Bloom). Tổng <b>5 lần chấm × 1080 ô</b>, đều phủ 100%.</td>
+      <td style="text-align:left"><b>Dùng lại output đã lưu của RQ1</b> — không chạy lại hệ, không gọi LLM. Chấm bằng quy trình tự động (encoder ngữ nghĩa + bộ phân loại tầng Bloom) → <b>bảng 7 tín hiệu, liên tục, không ngưỡng</b> → gộp → so ghép cặp từng tín hiệu + tương tác theo cỡ + <b>sweep hình sao 5 arm trên 3 trục</b>: 3 arm đổi encoder (trong đó sàn TF-IDF bỏ hẳn ngữ nghĩa) + 1 arm đổi hẳn bộ phân loại Bloom, mỗi arm lệch <b>đúng một</b> trục khỏi cấu hình chính. Mỗi trục đọc trên tín hiệu <b>mà nó có thể làm đổi</b> (đổi Bloom không làm đổi cosine, và ngược lại). Tổng <b>5 lần chấm × 1080 ô</b>, đều phủ 100%.</td>
       <td><b>Quy trình tự động</b><br>(không LLM, thang 0–1)</td>
     </tr>
     <tr>
@@ -454,13 +462,14 @@
       <ul>
         <li class="pos"><b>Kết quả chính:</b> dẫn đầu ở <b>3/4 cỡ model</b>, ngang đối thủ mạnh nhất ở 9B. Đường của hệ đề xuất <b>cao và phẳng</b>: từ 9B xuống 0.8B chỉ giảm 5.8 điểm — chất lượng nội dung được duy trì phần lớn khi thu nhỏ model.</li>
         <li>Các hệ không có scaffold <b>suy sụp ở model nhỏ</b> (44–47 điểm ở 0.8B, và chỉ còn rất ít tình huống chấm được).</li>
+        <li class="neg"><b>Phải khai:</b> "dẫn đầu ở 0.8B" là <b>mô tả</b>, chưa phải kiểm định — chênh với Dick-Carey ở cỡ đó <b>+0,72, p = 0,125</b>: <b>chưa có ý nghĩa</b>.</li>
       </ul>
     </div>
   </div>
 </section>
 
 <!-- ============ 10. RQ1 PAIRED + SCALE ============ -->
-<section class="slide">
+<section class="slide dense">
   <div class="kicker">Kết quả — 3/7</div>
   <h2>RQ1 — Tương tác giữa harness và kích thước mô hình</h2>
   <div class="cols">
@@ -479,11 +488,11 @@
         <tr><td class="l">addie-agent</td><td>+6.91*</td><td>+7.72*</td><td>+6.06*</td><td>+5.80*</td></tr>
       </table>
       <ul>
-        <li class="pos"><b>Tương tác harness × kích thước mô hình:</b> so với đối thủ mạnh nhất (react-isd), lợi thế đi <b>+2.98 → +2.51 → +0.80 → −0.08</b>; kiểm định tương tác = <b>−3.06, p = 6×10⁻¹⁰</b>. Model càng yếu, khung càng đáng giá — đúng giả thuyết.</li>
-        <li class="pos">Thắng có ý nghĩa với <b>5/6 đối sánh ở mọi cỡ model</b> (ADDIE-agent, RPISD, Dick-Carey từ 2B, baseline, EduPlanner).</li>
+        <li class="pos"><b>Tương tác harness × kích thước mô hình:</b> so với đối thủ mạnh nhất (react-isd), lợi thế đi <b>+2.98 → +2.51 → +0.80 → −0.08</b>; kiểm định tương tác = <b>−3,06, p = 6×10⁻¹⁰</b> (ghép cặp trên <b>n = 90</b> tình huống). Model càng yếu, khung càng đáng giá — đúng giả thuyết.</li>
+        <li class="pos">Số đối sánh thắng <b>có ý nghĩa</b> thay đổi theo cỡ, phải nói đúng từng cỡ: <b>4/6</b> ở 0.8B → <b>6/6</b> ở 2B và 4B → <b>5/6</b> ở 9B.</li>
         <li class="neg"><b>Ghi nhận:</b> ở 0.8B Dick-Carey ngang hệ đề xuất (79.7 vs 80.5, không có ý nghĩa) → <b>cấu trúc quy trình nói chung</b> hỗ trợ model nhỏ, không riêng hệ này. Ở 9B react-isd bắt kịp hoàn toàn.</li>
       </ul>
-      <div class="note">* = có ý nghĩa sau Holm. Với Dick-Carey/RPISD chênh lệch <i>tăng</i> theo cỡ model, nhưng vì hai hệ đó không cải thiện theo size.</div>
+      <div class="note">* = có ý nghĩa sau Holm. Với Dick-Carey/RPISD chênh lệch <i>tăng</i> theo cỡ, nhưng vì hai hệ đó không cải thiện theo size. Phép so scale lấy <b>đối sánh mạnh nhất</b> (react-isd, n=90), <b>không</b> lấy baseline one-shot — ở 0.8B baseline chỉ còn 5 tình huống ghép được.</div>
     </div>
   </div>
 </section>
@@ -508,7 +517,7 @@
       </table>
       <ul>
         <li><b>Diễn giải:</b> hệ đề xuất <b>hơn về nội dung</b>, <b>kém về quy trình</b>, và điểm tổng ghép sẵn <b>triệt tiêu hai chiều đó</b> thành gần bằng không.</li>
-        <li class="neg"><b>Ghi nhận:</b> điểm quy trình thấp hơn react-isd ở <b>mọi cỡ</b> (−2.9 … −9.0) — kiến trúc nhiều tác tử + vòng tự kiểm tạo chuỗi thao tác dài, thang này thưởng quy trình gọn. Trên điểm tổng, hệ đề xuất thua ở 9B (−0.92) và hiệu ứng theo cỡ model <b>biến mất</b> (p = 0.17).</li>
+        <li class="neg"><b>Ghi nhận:</b> điểm quy trình thấp hơn react-isd ở <b>mọi cỡ</b> (−2.9 … −9.0) — kiến trúc nhiều tác tử + vòng tự kiểm tạo chuỗi thao tác dài, thang này thưởng quy trình gọn. Trên điểm tổng, hệ đề xuất thua <b>có ý nghĩa ở cả 4B (−0,36) và 9B (−0,92)</b>, và hiệu ứng theo cỡ model <b>biến mất</b> (p = 0,17).</li>
         <li class="pos"><b>Vì vậy thước dẫn là điểm nội dung:</b> câu hỏi nghiên cứu hỏi về chất lượng bản thiết kế, không hỏi độ gọn của chuỗi thao tác. Cả ba con số vẫn báo đủ — không ẩn số nào.</li>
       </ul>
     </div>
@@ -516,7 +525,7 @@
 </section>
 
 <!-- ============ 12. RQ2 PANEL ============ -->
-<section class="slide">
+<section class="slide dense">
   <div class="kicker">RQ2 — 5/7</div>
   <h2>RQ2 — Panel bảy tín hiệu độ ăn khớp theo kích thước mô hình</h2>
   <div class="cols">
@@ -534,16 +543,17 @@
         <tr><td class="l">á quân cùng ô</td><td>0.595</td><td>0.606</td><td>0.608</td><td>0.592</td></tr>
       </table>
       <ul>
-        <li class="pos"><b>Kết quả chính:</b> ở 4B và 9B dẫn đầu <b>cả 7 tín hiệu</b>, và giữ được cả khi hiệu chỉnh so sánh bội <b>trên toàn bảng</b> (không chỉ trong từng tín hiệu). Khoảng cách rất rộng: 0.83–0.85 vs á quân ~0.60, và <b>xa trần 1.0</b> — thang đo không bão hoà.</li>
-        <li class="pos"><b>Vế scale:</b> khoảng cách <b>nới rộng khi model nhỏ đi</b> — kiểm định tương tác âm có ý nghĩa với <b>5/6 đối sánh</b>.</li>
-        <li class="neg"><b>Hạn chế quan sát được:</b> tín hiệu <b>Webb</b> (nhìn từ phía bài kiểm tra) ở 0.8B: <b>0.68 vs Dick-Carey 0.85</b>, kém có ý nghĩa. Lý do đo được: hệ đề xuất sinh ~22 bài kiểm tra/tình huống so với ~5, nên câu ở tầng thấp bị đếm vào mẫu số. <b>Một chỉ số duy nhất sẽ che khuất mặt yếu này</b> — đó là lý do dùng bảng.</li>
+        <li class="pos"><b>Kết quả chính:</b> ở 4B–9B dẫn <b>cả 7 tín hiệu</b> và giữ được cả khi hiệu chỉnh <b>trên toàn bảng</b> (worst p = 8×10⁻⁶ / 2×10⁻⁸). Khoảng cách rộng: 0,83–0,85 vs á quân ~0,60, <b>xa trần 1,0</b> — thang không bão hoà.</li>
+        <li class="neg"><b>Giới hạn của chính claim đó:</b> ở 0.8B–2B chỉ dẫn 6/7 và tín hiệu yếu nhất <b>không sống</b> dưới hiệu chỉnh toàn bảng (p = 0,073 / 0,054) → câu đó <b>chỉ phát biểu được cho 4B–9B</b>.</li>
+        <li class="pos"><b>Vế scale:</b> khoảng cách <b>nới rộng khi model nhỏ đi</b> — tương tác âm <b>5/6</b> đối sánh, <b>có ý nghĩa 4/6</b>.</li>
+        <li class="neg"><b>Mặt yếu đo được:</b> tín hiệu <b>Webb</b> ở 0.8B kém có ý nghĩa (<b>0,68 vs 0,85</b>) — hệ sinh ~22 bài kiểm tra/tình huống so với ~5, nên câu tầng thấp vào mẫu số. <b>Một chỉ số duy nhất sẽ che mất mặt này</b> — lý do dùng bảng.</li>
       </ul>
     </div>
   </div>
 </section>
 
 <!-- ============ 13. RQ2 ROBUSTNESS ============ -->
-<section class="slide">
+<section class="slide dense">
   <div class="kicker">RQ2 — 6/7</div>
   <h2>RQ2 — Độ bền của thứ hạng qua ba trục kiểm định độ nhạy</h2>
   <div class="cols">
@@ -556,15 +566,16 @@
     <div class="col">
       <table>
         <tr><th class="l">Đổi dụng cụ đo</th><th>Đo lại trên</th><th>Hệ đề xuất<br>xếp nhất</th></tr>
-        <tr><td class="l">encoder #2 (XLM-R)</td><td>tương đồng</td><td>4/4 cỡ</td></tr>
-        <tr><td class="l">encoder #3 (ModernBERT)</td><td>tương đồng</td><td>4/4 cỡ</td></tr>
-        <tr><td class="l">sàn từ vựng (bỏ ngữ nghĩa)</td><td>tương đồng</td><td>4/4 cỡ</td></tr>
+        <tr><td class="l">encoder #2 — bge-m3</td><td>tương đồng</td><td>4/4 cỡ</td></tr>
+        <tr><td class="l">encoder #3 — granite-311m</td><td>tương đồng</td><td>4/4 cỡ</td></tr>
+        <tr><td class="l">sàn TF-IDF (bỏ ngữ nghĩa)</td><td>tương đồng</td><td>4/4 cỡ</td></tr>
         <tr><td class="l">đổi hẳn bộ phân loại Bloom</td><td>tầng nhận thức</td><td>4/4 cỡ</td></tr>
       </table>
       <ul>
-        <li class="pos"><b>Hệ đề xuất xếp nhất ở 16/16 ô</b> (4 dụng cụ × 4 cỡ model), mọi so sánh vẫn có ý nghĩa (p ≤ 4×10⁻¹³) → thứ hạng là <b>thuộc tính của bản thiết kế</b>, không phải của một dụng cụ đo.</li>
-        <li><b>Hai dụng cụ đo tầng nhận thức khác nhau thật:</b> một suy từ <b>bảng phân loại Bloom</b> (giải thích được từng quyết định), một học từ <b>21 380 mục tiêu do người gán nhãn</b>. Chúng chỉ đồng thuận nhau <b>κ 0.67</b> — nên cùng cho một thứ hạng là bằng chứng thật, không phải trùng lặp.</li>
-        <li class="pos"><b>Bằng chứng hiệu lực:</b> phép ghép mục tiêu↔bài kiểm tra tái tạo đúng <b>78% → 90%</b> (0.8B → 9B) liên kết mà chính hệ tự khai — trong khi nhãn tự khai <b>không bao giờ</b> dùng để chấm.</li>
+        <li class="pos"><b>Xếp nhất 16/16 ô</b> (4 dụng cụ × 4 cỡ), ρ thấp nhất 0,607 → thứ hạng là <b>thuộc tính của bản thiết kế</b>, không của một dụng cụ đo.</li>
+        <li class="neg"><b>Hiệu lực thống kê không bất biến tuyệt đối:</b> mỗi trục đọc trên tín hiệu nó <i>có thể</i> làm đổi (đổi Bloom không làm đổi cosine). Đọc đúng thì <b>worst Holm p = 0,017</b> (không phải 10⁻¹³) và <b>1/24 kết luận Holm đổi</b>. Thứ hạng bền; mức ý nghĩa sát ngưỡng ở một ô.</li>
+        <li><b>Hai dụng cụ đo tầng nhận thức khác nhau thật:</b> một suy từ <b>bảng Bloom</b>, một học từ <b>21 380 nhãn người</b>; chỉ đồng thuận <b>κ 0,67</b> → cùng cho một thứ hạng là bằng chứng thật, không trùng lặp.</li>
+        <li class="pos"><b>Bằng chứng hiệu lực:</b> phép ghép mục tiêu↔bài kiểm tra tái tạo đúng <b>78% → 90%</b> liên kết hệ tự khai — nhãn tự khai <b>không bao giờ</b> dùng để chấm.</li>
       </ul>
     </div>
   </div>
@@ -601,7 +612,7 @@
 </section>
 
 <!-- ============ 13c. ABLATION RQ2 ============ -->
-<section class="slide">
+<section class="slide dense">
   <div class="kicker">Ablation — 2/4</div>
   <h2>Ablation — hiệu ứng đơn và tương tác giữa hai cơ chế</h2>
   <div class="cols">
@@ -613,17 +624,17 @@
     </div>
     <div class="col">
       <ul>
-        <li class="pos"><b>Bộ nhớ đồ thị (khung phải):</b> dương, có ý nghĩa ở <b>mọi ô</b> dù tự kiểm bật hay tắt → <b>cơ chế chịu lực chính</b>, không phụ thuộc cái kia.</li>
-        <li class="pos"><b>Vòng tự kiểm (khung trái):</b> bộ nhớ đồ thị <b>bật</b> → sát 0, không có ý nghĩa; <b>tắt</b> → <b>+0,05…+0,08</b>, có ý nghĩa cả 4 cỡ (p ≤ 8×10⁻¹²). <b>Không vô hiệu, mà dư thừa.</b> — hai cơ chế xử lý cùng một dạng lỗi từ hai đầu: hai cơ chế xử lý cùng một dạng lỗi từ hai đầu — <b>phòng ngừa</b> vs <b>sửa chữa</b>. Đo từ log: tự kiểm chạy ở <b>100% tình huống</b>; bộ nhớ đồ thị bật thì số lỗi phải sửa giảm <b>3,73 → 1,31</b>, tắt thì <b>đứng yên 4,65 → 3,92</b>.</li>
+        <li class="pos"><b>Bộ nhớ đồ thị (khung phải):</b> dương, có ý nghĩa ở <b>mọi ô</b> dù tự kiểm bật hay tắt (<b>+0,076…+0,206</b>) → <b>cơ chế chịu lực chính</b>, không phụ thuộc cái kia.</li>
+        <li class="pos"><b>Vòng tự kiểm (khung trái):</b> bộ nhớ đồ thị <b>bật</b> → sát 0, không có ý nghĩa; <b>tắt</b> → <b>+0,05…+0,08</b>, có ý nghĩa cả 4 cỡ (p ≤ 8×10⁻¹²). <b>Không vô hiệu, mà dư thừa.</b> — hai cơ chế xử lý cùng một dạng lỗi từ hai đầu: hai cơ chế xử lý cùng một dạng lỗi từ hai đầu — <b>phòng ngừa</b> vs <b>sửa chữa</b>. Đo từ log: tự kiểm chạy ở <b>100% tình huống</b>; bộ nhớ đồ thị bật thì số lỗi phải sửa giảm <b>~2,8×</b> (3,73 → 1,31), tắt thì <b>đứng yên 4,65 → 3,92</b>.</li>
         <li class="neg"><b>Phạm vi của kết luận:</b> chạy factorial trên <b>cả 10 tín hiệu</b> cho thấy sự thay thế <b>không đồng đều</b> — đúng với các vế liên quan đánh giá (4/4 cỡ), <b>không đúng</b> với vế <b>hoạt động</b> (0/4). Phù hợp thiết kế: verifier kiểm quan hệ mục tiêu–đánh giá và tầng Bloom, không kiểm mục tiêu–hoạt động.</li>
       </ul>
-      <div class="note"><b>Phạm vi phát biểu:</b> trên cấu hình ship, tự kiểm <b>không đổi điểm nội dung</b> và <b>làm giảm điểm quy trình</b> (−0,6…−3,1) → kéo composite xuống. Giá trị là <b>lưới an toàn</b> + audit trail, phải nói kèm chi phí đó.</div>
+      <div class="note"><b>Phạm vi:</b> trên cấu hình ship, tự kiểm <b>không đổi điểm nội dung</b>, phần lớn <b>giảm điểm quy trình</b> (−0,6…−3,1; 3/4 cỡ). <b>Ngoại lệ phải khai:</b> ở 0.8B khi bộ nhớ đồ thị bật thì nó <b>tăng</b> điểm quy trình (+1,43, p = 0,042) — chiều hiệu ứng <b>không đồng nhất</b> qua các cỡ. p ở khung này <b>chưa hiệu chỉnh</b> (contrast cấu trúc tiền định).</div>
     </div>
   </div>
 </section>
 
 <!-- ============ 13d. ABLATION RQ1 ============ -->
-<section class="slide">
+<section class="slide dense">
   <div class="kicker">Ablation — 3/4</div>
   <h2>Ablation — độ nhạy của thước judge đối với độ ăn khớp</h2>
   <div class="cols">
@@ -642,7 +653,7 @@
         <tr><td class="l">A3 — tắt cả hai</td><td>81.5</td><td>84.9</td><td>86.4</td><td>86.3</td></tr>
       </table>
       <ul>
-        <li><b>Cùng tập phiên bản, hai thước cho kết luận trái ngược:</b> điểm nội dung gần như <b>bất biến</b> (chênh &lt; 1.3 điểm) trong khi độ ăn khớp dịch tới <b>0.215</b>.</li>
+        <li><b>Cùng tập phiên bản, hai thước cho kết luận trái ngược:</b> điểm nội dung gần như <b>bất biến</b> (chênh <b>≤ 1,58</b> điểm) trong khi độ tương đồng mục tiêu↔bài kiểm tra dịch tới <b>0,215</b>.</li>
         <li class="neg"><b>Kết quả ngược chiều:</b> có ô mà gỡ cơ chế ra lại làm điểm giám khảo <b>nhích lên</b> (A2 +1.24 ở 0.8B, có ý nghĩa).</li>
         <li class="pos"><b>Phát hiện chính:</b> muốn đo constructive alignment thì <b>phải có thước chuyên biệt</b> — rubric do LLM chấm không thay được (lý do tồn tại của đóng góp 2).</li>
         <li class="neg"><b>Hệ quả:</b> đóng góp của hai cơ chế <b>không bán được bằng điểm giám khảo</b> — bằng chứng nằm ở thước alignment và audit trail. Độ bền (100% output) đến từ khung ADDIE đa tác tử.</li>
@@ -658,7 +669,7 @@
   <ul>
     <li><span class="badge b3">Tích cực</span><b>Bộ nhớ đồ thị chung</b> là cơ chế chịu tải cho độ ăn khớp: giảm có ý nghĩa ở <b>cả 4 cỡ model</b> khi gỡ (p ≤ 10⁻¹²) — bằng chứng cấp cơ chế cho đóng góp trung tâm.</li>
     <li><span class="badge b3">Tích cực</span><b>Vòng tự kiểm là cơ chế dư thừa, không phải cơ chế vô hiệu.</b> Hai cơ chế tấn công <b>cùng một dạng lỗi từ hai đầu</b>: bộ nhớ đồ thị <b>phòng ngừa</b> (bơm trạng thái vào prompt trước khi sinh), tự kiểm <b>sửa chữa</b> (soát và vá sau khi sinh). Phòng ngừa hoạt động thì sửa chữa hết việc — đo được: khi tắt bộ nhớ đồ thị, tự kiểm bù +0.05…+0.08 ở cả 4 cỡ (p ≤ 8×10⁻¹², tương tác có ý nghĩa mọi cỡ). <i>Khai đúng chữ:</i> trên cấu hình được ship (A0) nó tốn token mà không đổi điểm; giá trị là <b>backstop</b> + audit trail.</li>
-    <li><span class="badge b3">Tích cực</span><b>Giám khảo LLM không phản ánh độ ăn khớp</b> (điểm nội dung chênh &lt; 1.3 giữa các phiên bản, trong khi độ ăn khớp dịch tới 0.215) → quy trình đánh giá alignment là đóng góp cần thiết, không phải phụ trợ.</li>
+    <li><span class="badge b3">Tích cực</span><b>Giám khảo LLM không phản ánh độ ăn khớp</b> (điểm nội dung chênh ≤ 1,58 giữa các phiên bản, trong khi độ tương đồng dịch tới 0,215) → quy trình đánh giá alignment là đóng góp cần thiết, không phải phụ trợ.</li>
     <li><span class="badge b1">Phạm vi</span><b>Độ bền</b> (100% output ở mọi phiên bản) đến từ khung ADDIE đa tác tử — khung này là nền của mọi phiên bản nên ablation chưa tách riêng được; claim giữ ở mức toàn hệ thống.</li>
   </ul>
   <h3 style="margin-top:1.4vh">Điều đã cải thiện so với đợt trước</h3>
@@ -699,14 +710,25 @@
 
 <!-- ============ 15. CONCLUSIONS ============ -->
 <section class="slide">
-  <h2>Kết luận — mức claim tương ứng với bằng chứng</h2>
+  <div class="kicker">Kết luận — 1/2</div>
+  <h2>Kết luận — độ bền và chất lượng nội dung (RQ1)</h2>
   <ul>
-    <li><b>1 · Độ bền:</b> output hợp lệ cho <b>100% (1080/1080 ô)</b> ở mọi cỡ model; hai hệ không có scaffold hỏng 83–85/90 ở 0.8B và 33–43/90 ở 2B — với model nhỏ, thiếu scaffold thì phần lớn <b>không tạo được output</b>.</li>
-    <li><b>2 · Chất lượng nội dung (RQ1):</b> dẫn đầu ở <b>3/4 cỡ model</b>, ngang đối thủ mạnh nhất ở 9B; thắng có ý nghĩa với 5/6 đối sánh. <i>Trung thực:</i> ngang Dick-Carey ở 0.8B; kém điểm quy trình ở mọi cỡ; trên điểm tổng ghép sẵn thua react-isd ở 9B.</li>
-    <li><b>3 · "Khung bù cho model nhỏ" — giữ được, đo trực tiếp:</b> lợi thế nội dung so với đối thủ mạnh nhất thu hẹp đều khi model lớn lên (+2.98 → −0.08; tương tác <b>−3.06, p = 6×10⁻¹⁰</b>); chênh lệch failure tập trung ở model nhỏ.</li>
-    <li><b>4 · Độ ăn khớp (RQ2):</b> dẫn đầu <b>7/7 tín hiệu ở 4B–9B</b>, 6/7 ở 0.8B–2B, giữ dưới hiệu chỉnh toàn bảng; khoảng cách nới rộng khi model nhỏ đi (5/6 đối sánh); <b>xếp nhất 16/16 ô</b> qua 4 dụng cụ đo. <i>Trung thực:</i> kém Webb ở 0.8B (0.68 vs 0.85).</li>
-    <li><b>5 · Ablation:</b> bộ nhớ đồ thị là cơ chế tạo ra độ ăn khớp (p ≤ 10⁻¹² mọi cỡ); vòng tự kiểm không đóng góp đo được → định vị lại là audit trail; điểm giám khảo bất biến trong khi độ ăn khớp dịch 0.215 → khẳng định giá trị của thước RQ2.</li>
+    <li><b>1 · Độ bền — bằng chứng mạnh nhất, không phụ thuộc thước đo nào:</b> output hợp lệ <b>100% (1080/1080 ô)</b> ở mọi cỡ; hai hệ prompt-một-lượt hỏng <b>92–94%</b> tình huống ở 0.8B (83–85/90) và 33–43/90 ở 2B. Đây là kết quả đếm được, không qua giám khảo.</li>
+    <li><b>2 · Chất lượng nội dung (RQ1):</b> dẫn đầu <b>3/4 cỡ</b>, ngang đối thủ mạnh nhất ở 9B. Số đối sánh thắng <b>có ý nghĩa</b> nói theo từng cỡ: <b>4/6 · 6/6 · 6/6 · 5/6</b>. <i>Phải khai:</i> ở 0.8B lead so với Dick-Carey <b>chưa có ý nghĩa</b> (+0,72, p = 0,125); kém điểm quy trình ở <b>mọi</b> cỡ; trên điểm tổng ghép sẵn thua có ý nghĩa ở <b>cả 4B và 9B</b>.</li>
+    <li><b>3 · "Khung bù cho model nhỏ" — giữ được, đo trực tiếp:</b> lợi thế nội dung so với đối thủ mạnh nhất thu hẹp đều khi model lớn lên (+2,98 → −0,08; tương tác <b>−3,06, p = 6×10⁻¹⁰, n = 90</b>); chênh lệch failure tập trung ở model nhỏ. Phép so lấy <b>đối sánh mạnh nhất</b>, không lấy baseline one-shot — ở 0.8B baseline chỉ còn 5 tình huống ghép được.</li>
   </ul>
+  <div class="note">Thứ tự trình bày theo <b>độ mạnh của bằng chứng</b>: kết quả đếm được (failure) trước, kết quả qua giám khảo sau, và mỗi claim đi kèm đúng phạm vi mà kiểm định cho phép.</div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Kết luận — 2/2</div>
+  <h2>Kết luận — độ ăn khớp (RQ2), cơ chế, và hệ quả phương pháp luận</h2>
+  <ul>
+    <li><b>4 · Độ ăn khớp (RQ2):</b> dẫn <b>7/7 tín hiệu ở 4B–9B</b> và <b>sống dưới hiệu chỉnh toàn bảng ở hai cỡ đó</b>; 6/7 ở 0.8B–2B. Khoảng cách nới rộng khi model nhỏ đi (âm 5/6, <b>có ý nghĩa 4/6</b>); <b>xếp nhất 16/16 ô</b> qua 4 dụng cụ đo. <i>Phải khai:</i> ở 0.8B–2B tín hiệu yếu nhất <b>không</b> sống dưới hiệu chỉnh toàn bảng (p = 0,073 / 0,054); kém Webb ở 0.8B (0,68 vs 0,85); worst Holm p của sweep độ nhạy là <b>0,017</b>, sát ngưỡng ở một ô.</li>
+    <li><b>5 · Ablation — cơ chế nào chịu lực:</b> <b>bộ nhớ đồ thị</b> là cơ chế tạo ra độ tương đồng (p_holm ≤ 1,2×10⁻¹² mọi cỡ; hiệu ứng đơn +0,076…+0,206 dưới <i>cả hai</i> trạng thái của tự kiểm). Vòng tự kiểm <b>dư thừa, không vô hiệu</b>: trên cấu hình ship không đổi điểm, nhưng khi bộ nhớ đồ thị tắt thì bù +0,05…+0,08 (4/4 cỡ) → định vị là <b>lưới an toàn + audit trail</b>.</li>
+    <li><b>6 · Kết quả có giá trị phương pháp luận nhất:</b> cùng 4 phiên bản, điểm giám khảo chênh <b>≤ 1,58</b> trong khi độ tương đồng dịch <b>0,215</b> → <b>giám khảo LLM không "nhìn thấy" độ ăn khớp</b>. Đây là lý do tồn tại của thước RQ2 — nhưng cũng có nghĩa đóng góp của harness <b>không bán được bằng bất kỳ thước judge nào</b>, kể cả ADDIE.</li>
+  </ul>
+  <div class="note"><b>Không nói được:</b> không claim độ ăn khớp <i>tuyệt đối</i> ("đã đủ ăn khớp") — mọi claim RQ2 ở mức <b>tương đối</b> giữa các hệ và theo scale; không claim đo <b>kết quả học tập</b>; không claim tốt hơn trên điểm tổng của benchmark hay trên điểm quy trình.</div>
 </section>
 
 <!-- ============ 16. LIMITATIONS & PLAN ============ -->

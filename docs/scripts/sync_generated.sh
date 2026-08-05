@@ -3,17 +3,18 @@
 #
 #   isd-agent-benchmark/results/generated/   -->   docs/generated/
 #     *.tex                                          (LaTeX \input targets)
-#     stats_summary.md, stats_ablation.md,
-#     stats_sensitivity.md                           (human-readable notes)
+#     stats_summary.md, stats_cost.md,
+#     stats_ablation.md, stats_sensitivity.md        (human-readable notes)
 #     figures/*.{pdf,png}                            (for \includegraphics)
 #
-# The 09_/10_/11_/12_/14_ generator scripts write ONLY into the benchmark's
+# The 09_/10_/11_/12_/13_/14_ generator scripts write ONLY into the benchmark's
 # results/generated/ (benchmark-local, gitignored); this script is the single
 # copy step into docs. The paper references these via relative paths
 # (e.g. ../../../generated/). Regenerate first:
 #   cd isd-agent-benchmark
 #   python scripts/alignmentgraph-isd-bench/09_gen_paper_tables.py
 #   python scripts/alignmentgraph-isd-bench/10_gen_paper_figures.py --runs-glob 'results/test_90_benchmark_*_r*'
+#   python scripts/alignmentgraph-isd-bench/13_gen_cost_table.py --runs-glob 'results/test_90_benchmark_*_r*'
 #   # ablation (if pooled_ablation.json exists):
 #   python scripts/alignmentgraph-isd-bench/ablation/11_gen_ablation_tables.py
 #   python scripts/alignmentgraph-isd-bench/ablation/12_gen_ablation_figures.py
@@ -29,10 +30,11 @@ DST="$ROOT/docs/generated"
 
 mkdir -p "$DST/figures"
 cp "$SRC"/*.tex "$SRC"/stats_summary.md "$DST"/
-# Notes from pipelines that may not have run yet (ablation, encoder sweep);
-# plain if-block: `[ ... ] && cp` would trip set -e when the file is absent
-for note in stats_ablation.md stats_sensitivity.md bloom_validation.md \
-            bloom_arms_validation.md; do
+# Notes from pipelines that may not have run yet (cost, ablation, encoder
+# sweep); plain if-block: `[ ... ] && cp` would trip set -e when the file is
+# absent. Every .md must be named here — the wholesale glob above is *.tex only.
+for note in stats_cost.md stats_ablation.md stats_sensitivity.md \
+            bloom_validation.md bloom_arms_validation.md; do
   if [ -f "$SRC/$note" ]; then
     cp "$SRC/$note" "$DST"/
   fi

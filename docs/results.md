@@ -30,8 +30,7 @@ correspondence do encoder đo; họ B cognitive demand do Bloom classifier đo).
 họ A là **mean-max cosine đã rectify** `max(0, cos)` trên [0,1] — đây là chọn thang, **không** phải ngưỡng khớp, và
 protocol không có ngưỡng ở bất kỳ đâu; `porter_mean` là **trung bình của ba chỉ số Porter đôi một**
 (mục tiêu↔đánh giá / ↔hoạt động / ↔lượng giá), không phải một chỉ số đơn. Multiplicity báo hai tầng: `p_holm`
-trong từng tín hiệu và `p_holm_panel` trên toàn panel × baseline. Đặc tả: `docs/summary.md` §"Alignment evaluation
-protocol (RQ2)".
+trong từng tín hiệu và `p_holm_panel` trên toàn panel × baseline. Đặc tả: `docs/rq2_protocol.md`.
 
 ## 0. Audit + output failure
 
