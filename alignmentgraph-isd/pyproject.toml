@@ -21,9 +21,30 @@ llm = [
     "langchain-openai>=0.1",
     "langchain-anthropic>=0.1",
 ]
+# Demo web app (alignmentgraph_isd.server + the built webapp/dist SPA).
+# NOT needed for the benchmark: the benchmark installs this package plain, and
+# `import alignmentgraph_isd` must never pull FastAPI in. See
+# tests/test_import_isolation.py, which is the guard for that rule.
+server = [
+    "alignmentgraph-isd[llm]",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlmodel>=0.0.22",
+    "pydantic-settings>=2",
+    "python-multipart>=0.0.9",
+]
 
 [project.scripts]
 alignmentgraph-isd = "alignmentgraph_isd.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/alignmentgraph_isd"]
+# webapp/ is a Vite project, not a Python package (no __init__.py). Only its
+# built output is shippable; the sources and node_modules never belong in a wheel.
+exclude = [
+    "src/alignmentgraph_isd/webapp/node_modules",
+    "src/alignmentgraph_isd/webapp/src",
+    "src/alignmentgraph_isd/webapp/*.json",
+    "src/alignmentgraph_isd/webapp/*.ts",
+    "src/alignmentgraph_isd/webapp/*.html",
+]

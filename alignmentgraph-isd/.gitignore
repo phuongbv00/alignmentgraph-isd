@@ -1,2 +1,11 @@
 __pycache__
 memory/
+
+# Demo web app (alignmentgraph_isd.server / webapp)
+src/alignmentgraph_isd/webapp/node_modules/
+src/alignmentgraph_isd/webapp/dist/
+.agisd-server-data/
+*.db
+*.db-wal
+*.db-shm
+.env

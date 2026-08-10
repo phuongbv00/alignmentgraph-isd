@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import re
+import time
 from abc import ABC, abstractmethod
 from ...config import HarnessRunConfig
 from ..graph import AlignmentGraph
@@ -618,9 +619,37 @@ class BaseISDAgent(ABC):
 
     def _invoke_with_retry(self, llm, messages: list[dict], max_retries: int) -> str:
         """Invoke the LLM, retrying once with a correction message if output is empty."""
+        # A single call can run for tens of seconds and nothing is recorded until
+        # it returns, so this is the only signal a live viewer has that the
+        # harness is working rather than wedged. Progress-only: records nothing.
+        self.trajectory.emit("llm_started", {
+            "agent": type(self).__name__,
+            "prompt_chars": sum(len(m.get("content", "")) for m in messages),
+            "message_count": len(messages),
+            "retries_left": max_retries,
+        })
+        started = time.time()
         result = llm.invoke(messages)
         content = result.content if hasattr(result, "content") else str(result)
         prompt_tokens, completion_tokens = _extract_token_usage(result)
+        duration_ms = (time.time() - started) * 1000
+        self.trajectory.emit("llm_finished", {
+            "agent": type(self).__name__,
+            "duration_ms": duration_ms,
+            "response_chars": len(content or ""),
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+        })
+        self.trajectory.log_action(
+            "llm_call",
+            agent=type(self).__name__,
+            duration_ms=duration_ms,
+            prompt_chars=sum(len(m.get("content", "")) for m in messages),
+            response_chars=len(content or ""),
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            attempt_of_retries_left=max_retries,
+        )
         self.trajectory.log_llm_call(prompt_tokens, completion_tokens)
         # salvage=False: judge validity strictly so the correction turns still
         # fire on malformed JSON; the deterministic salvage is only the final

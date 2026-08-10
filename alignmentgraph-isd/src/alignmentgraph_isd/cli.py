@@ -36,11 +36,65 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--temperature", type=float, default=None, help="Sampling temperature (env: AGENT_MODEL_TEMPERATURE).")
     run_parser.add_argument("--max-tokens", type=int, default=None, help="Max output tokens (env: AGENT_MODEL_MAX_TOKENS).")
 
+    serve_parser = subparsers.add_parser(
+        "serve", help="Run the demo web app. Requires: pip install 'alignmentgraph-isd[server]'."
+    )
+    serve_parser.add_argument("--host", default="127.0.0.1", help="Bind address (default 127.0.0.1).")
+    serve_parser.add_argument("--port", type=int, default=8000, help="Port (default 8000).")
+    serve_parser.add_argument("--reload", action="store_true", help="Reload on code changes (development).")
+    serve_parser.add_argument(
+        "--data-root",
+        default="",
+        help="Where runs and the database are stored (env: AGISD_SERVER_DATA_ROOT).",
+    )
+    serve_parser.add_argument(
+        "--serve-spa",
+        action="store_true",
+        help="Also serve the built webapp, so the demo is one process on one URL "
+             "(build it first: cd src/alignmentgraph_isd/webapp && npm run build).",
+    )
+
     args = parser.parse_args(argv)
     if args.command == "run":
         return _run(args)
+    if args.command == "serve":
+        return _serve(args)
     parser.error(f"Unsupported command: {args.command}")
     return 2
+
+
+def _serve(args: argparse.Namespace) -> int:
+    import os
+
+    # Settings are read from the environment, so flags are applied by setting it
+    # — one source of configuration rather than two that can disagree.
+    if args.data_root:
+        os.environ["AGISD_SERVER_DATA_ROOT"] = args.data_root
+    if args.serve_spa:
+        os.environ["AGISD_SERVER_SERVE_SPA"] = "1"
+
+    # Imported here, not at module scope: the benchmark installs this package
+    # without the [server] extra and must never pay for FastAPI on import.
+    try:
+        import uvicorn
+    except ImportError:
+        sys.stderr.write(
+            "alignmentgraph-isd serve needs the web app dependencies.\n"
+            "Install them with: pip install 'alignmentgraph-isd[server]'\n"
+        )
+        return 2
+
+    # Single process by design: live runs and their event buffers are in-process
+    # state, so a second worker would not find them. No --workers flag exists.
+    uvicorn.run(
+        "alignmentgraph_isd.server.app:get_app",
+        factory=True,
+        host=args.host,
+        port=args.port,
+        reload=args.reload,
+        log_level="info",
+    )
+    return 0
 
 
 def _run(args: argparse.Namespace) -> int:

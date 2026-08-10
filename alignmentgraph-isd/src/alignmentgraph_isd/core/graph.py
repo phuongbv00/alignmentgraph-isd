@@ -42,7 +42,13 @@ class AlignmentGraph:
         """Canonical id of the singleton section node for a type (e.g. ``objective_0``)."""
         return f"{node_type}{cls.SECTION_SUFFIX}"
 
-    def __init__(self) -> None:
+    def __init__(self, observer=None) -> None:
+        # Every read and write passes through this object, which makes it the
+        # one place that can see what an agent actually did with the graph —
+        # instrumenting the ~40 call sites individually would drift the first
+        # time one moved. Default None: no observer, no behaviour change, and
+        # nothing for the benchmark to notice.
+        self._observer = observer
         self._nodes: dict[str, dict] = {}
         self._edges: list[dict] = []
         # Adjacency index for neighbors()/traverse(). Rebuilt lazily on read
@@ -51,14 +57,51 @@ class AlignmentGraph:
         self._out_index: dict[str, list[dict]] = {}
         self._in_index: dict[str, list[dict]] = {}
 
+    def set_observer(self, observer) -> None:
+        """Attach the observer after construction.
+
+        Needed because the recorder and the graph each want a reference to the
+        other: the graph reports to the trajectory, and the trajectory's own
+        live-event wrapper needs the graph in order to attach snapshots.
+        """
+        self._observer = observer
+
+    def _observe(self, kind: str, **fields) -> None:
+        """Report one graph operation. Never load-bearing.
+
+        ``Exception`` only, so a cancellation raised by the consumer still
+        propagates — the same rule the trajectory hook follows.
+        """
+        if self._observer is None:
+            return
+        try:
+            self._observer(kind, fields)
+        except Exception:  # noqa: BLE001 - observation must not break a run
+            pass
+
     # ── nodes ───────────────────────────────────────────────────────────────
     def add_node(self, node_type: NodeType | str, node_id: str, data: dict | None = None) -> None:
+        existed = node_id in self._nodes
         self._nodes[node_id] = {"type": node_type, "id": node_id, "data": data or {}}
+        self._observe(
+            "node_write",
+            op="replace" if existed else "add",
+            node_id=node_id,
+            node_type=str(node_type),
+            fields=sorted(data or {}),
+        )
 
     def update_node(self, node_id: str, data: dict) -> None:
         """Merge new data into an existing node."""
         if node_id in self._nodes:
             self._nodes[node_id]["data"].update(data)
+            self._observe(
+                "node_write",
+                op="update",
+                node_id=node_id,
+                node_type=str(self._nodes[node_id]["type"]),
+                fields=sorted(data or {}),
+            )
 
     def add_element_node(
         self, node_type: NodeType | str, element_id: str, data: dict | None = None
@@ -73,19 +116,38 @@ class AlignmentGraph:
 
     def get_nodes(self, node_type: NodeType | str | None = None) -> list[dict]:
         if node_type is None:
-            return list(self._nodes.values())
-        return [n for n in self._nodes.values() if n["type"] == node_type]
+            found = list(self._nodes.values())
+        else:
+            found = [n for n in self._nodes.values() if n["type"] == node_type]
+        self._observe("node_read", query="get_nodes", node_type=str(node_type or "*"),
+                      result_count=len(found))
+        return found
 
     def section_nodes(self, node_type: NodeType | str) -> list[dict]:
         """Section nodes (the aggregate payload), excluding element nodes."""
-        return [n for n in self._nodes.values() if n["type"] == node_type and not self.is_element(n["id"])]
+        found = [
+            n for n in self._nodes.values()
+            if n["type"] == node_type and not self.is_element(n["id"])
+        ]
+        self._observe("node_read", query="section_nodes", node_type=str(node_type),
+                      result_count=len(found))
+        return found
 
     def element_nodes(self, node_type: NodeType | str) -> list[dict]:
         """First-class element nodes for one artifact type."""
-        return [n for n in self._nodes.values() if n["type"] == node_type and self.is_element(n["id"])]
+        found = [
+            n for n in self._nodes.values()
+            if n["type"] == node_type and self.is_element(n["id"])
+        ]
+        self._observe("node_read", query="element_nodes", node_type=str(node_type),
+                      result_count=len(found))
+        return found
 
     def get_node(self, node_id: str) -> dict | None:
-        return self._nodes.get(node_id)
+        found = self._nodes.get(node_id)
+        self._observe("node_read", query="get_node", node_id=node_id,
+                      result_count=1 if found else 0)
+        return found
 
     # ── edges ───────────────────────────────────────────────────────────────
     def add_edge(
@@ -118,6 +180,11 @@ class AlignmentGraph:
                 existing["rationale"] = rationale
             if established_by:
                 existing["established_by"] = established_by
+            self._observe(
+                "edge_write", op="refresh", edge_type=edge_type, source=source_id,
+                target=target_id, relation_id=relation_id,
+                established_by=established_by, evidence=evidence,
+            )
             return
         self._edges.append({
             "type": edge_type,
@@ -129,6 +196,14 @@ class AlignmentGraph:
             "established_by": established_by,
         })
         self._adj_dirty = True
+        # The alignment relations are the contribution, and until now the only
+        # trace of them was the finished dump — nothing said which step drew
+        # which link, or on what evidence.
+        self._observe(
+            "edge_write", op="add", edge_type=edge_type, source=source_id,
+            target=target_id, relation_id=relation_id,
+            established_by=established_by, evidence=evidence, rationale=rationale,
+        )
 
     def _find_edge(
         self, edge_type: str, source_id: str, target_id: str, relation_id: str
@@ -161,6 +236,10 @@ class AlignmentGraph:
             edges = [e for e in edges if e.get("target") == target]
         if source is not None:
             edges = [e for e in edges if e.get("source") == source]
+        self._observe(
+            "edge_read", query="get_edges", edge_type=edge_type or "*",
+            relation_id=relation_id or "*", result_count=len(edges),
+        )
         return list(edges)
 
     # ── traversal (adjacency index, lazily rebuilt) ─────────────────────────
@@ -187,6 +266,25 @@ class AlignmentGraph:
         ``direction="out"`` follows edges where ``node_id`` is the source
         (default); ``"in"`` follows edges where it is the target.
         """
+        result = self._neighbors_raw(node_id, edge_type, relation_id=relation_id, direction=direction)
+        self._observe(
+            "edge_walk", query="neighbors", node_id=node_id,
+            edge_type=edge_type or "*", direction=direction, result_count=len(result),
+        )
+        return result
+
+    def _neighbors_raw(
+        self,
+        node_id: str,
+        edge_type: str | None = None,
+        *,
+        relation_id: str | None = None,
+        direction: str = "out",
+    ) -> list[dict]:
+        """One hop, unobserved — the shared body of ``neighbors`` and
+        ``traverse``. Kept separate so a multi-hop traversal reports itself once
+        as the relation walk an agent actually asked for, rather than once per
+        hop and once per node visited."""
         self._ensure_index()
         index = self._out_index if direction == "out" else self._in_index
         result: list[dict] = []
@@ -196,7 +294,7 @@ class AlignmentGraph:
             if relation_id is not None and edge.get("relation_id") != relation_id:
                 continue
             other_id = edge["target"] if direction == "out" else edge["source"]
-            node = self.get_node(other_id)
+            node = self._nodes.get(other_id)
             if node is not None:
                 result.append(node)
         return result
@@ -216,16 +314,36 @@ class AlignmentGraph:
         to reach an objective through an intervening Design "plan" node.
         """
         frontier_ids = [start_id]
+        # Each hop is recorded with the frontier it started from and where it
+        # landed, so the walk can be replayed edge by edge rather than shown as
+        # a single before/after. Reaching an objective from a Development
+        # artifact is a two-hop path through a Design plan node, and seeing the
+        # intermediate hop is the whole point.
+        hops: list[dict] = []
         for edge_type in rel_path:
             next_ids: list[str] = []
             seen: set[str] = set()
+            edges_followed: list[dict] = []
             for node_id in frontier_ids:
-                for node in self.neighbors(node_id, edge_type, direction=direction):
+                for node in self._neighbors_raw(node_id, edge_type, direction=direction):
+                    edges_followed.append({"from": node_id, "to": node["id"]})
                     if node["id"] not in seen:
                         seen.add(node["id"])
                         next_ids.append(node["id"])
+            hops.append({
+                "edge_type": str(edge_type) if edge_type is not None else "*",
+                "from": list(frontier_ids),
+                "to": list(next_ids),
+                "edges": edges_followed,
+            })
             frontier_ids = next_ids
-        return [n for n in (self.get_node(nid) for nid in frontier_ids) if n is not None]
+        reached = [n for n in (self._nodes.get(nid) for nid in frontier_ids) if n is not None]
+        self._observe(
+            "edge_walk", query="traverse", node_id=start_id,
+            rel_path=[str(r) if r is not None else "*" for r in rel_path],
+            direction=direction, hops=hops, result_count=len(reached),
+        )
+        return reached
 
     def is_empty(self, node_type: NodeType | str) -> bool:
         """True if no non-empty node of this type exists."""

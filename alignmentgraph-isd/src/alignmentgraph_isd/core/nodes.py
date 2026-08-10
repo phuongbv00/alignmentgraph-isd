@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Annotated, TypedDict
 import operator
@@ -128,12 +129,42 @@ class NodeFactory:
             missing.extend(_empty_required_fields(section_type, data))
         return missing
 
+    # ── progress signalling ─────────────────────────────────────────────────
+    # Every recorded stream entry is written *after* the work it describes, so
+    # on their own they cannot tell a viewer that something is underway. These
+    # bracket each LangGraph node so a UI can show which phase is running during
+    # the minutes one takes. They record nothing (see TrajectoryLogger.emit).
+    @contextmanager
+    def _phase(self, phase: str, index: int, total: int):
+        self.trajectory.emit("phase_started", {"phase": phase, "index": index, "total": total})
+        started = time.time()
+        # Everything the phase does is attributed to it, including the graph
+        # operations recorded several layers down where no agent name is in scope.
+        with self.trajectory.acting_as("", phase=phase):
+            self.trajectory.log_action("phase_started", phase=phase, index=index, total=total)
+            try:
+                yield
+            finally:
+                duration_ms = (time.time() - started) * 1000
+                self.trajectory.log_action(
+                    "phase_finished", phase=phase, index=index, total=total,
+                    duration_ms=duration_ms,
+                )
+                self.trajectory.emit("phase_finished", {
+                    "phase": phase, "index": index, "total": total,
+                    "duration_ms": duration_ms,
+                })
+
     # ── generation nodes ────────────────────────────────────────────────────
-    def generation_node(self, node_name: str):
+    def generation_node(self, node_name: str, phase_index: int = 0, phase_total: int = 0):
         agent_cls = GENERATION_AGENTS[node_name]
         section_types = GENERATION_SECTIONS[node_name]
 
         def _node(state: ISDState) -> dict:
+            with self._phase(node_name, phase_index, phase_total):
+                return _generate(state)
+
+        def _generate(state: ISDState) -> dict:
             errors: list[str] = []
             budget = max(0, int(getattr(self.config, "regen_budget", EMPTY_SECTION_REGEN_BUDGET)))
             backoff = max(0.0, float(getattr(self.config, "regen_backoff_seconds", 0.0)))
@@ -148,13 +179,21 @@ class NodeFactory:
                 if attempt > 0 and backoff:
                     time.sleep(backoff * attempt)
                 try:
-                    agent_cls(*self._args()).run(self.design_brief)
+                    with self.trajectory.acting_as(agent_cls.__name__):
+                        agent_cls(*self._args()).run(self.design_brief)
                 except Exception as exc:
                     errors.append(f"{agent_cls.__name__}: {exc}")
+                    self.trajectory.log_action(
+                        "agent_error", agent=agent_cls.__name__, error=str(exc)[:400],
+                    )
                     continue
                 missing = self._empty_sections(section_types)
                 if not missing:
                     break
+                self.trajectory.log_action(
+                    "regen", agent=agent_cls.__name__, attempt=attempt + 1,
+                    empty_fields=list(missing),
+                )
                 self.trajectory.log_step(
                     agent_cls.__name__, "regen_empty_section",
                     f"attempt {attempt + 1}", "; ".join(missing),
@@ -166,7 +205,7 @@ class NodeFactory:
         return _node
 
     # ── per-agent quality-control node (verify owned types + repair) ─────────
-    def qc_node(self, agent_cls, task_name: str, budget: int = 2):
+    def qc_node(self, agent_cls, task_name: str, budget: int = 2, phase_index: int = 0, phase_total: int = 0):
         """Verify the checks ``agent_cls`` owns and let it repair them, in place,
         up to ``budget`` rounds. This is the quality-control tool each specialist
         owns; it runs after every generation node whenever
@@ -174,9 +213,16 @@ class NodeFactory:
         owned_types = agent_cls.OWNED_VIOLATION_TYPES
 
         def _node(state: ISDState) -> dict:
+            with self._phase(task_name, phase_index, phase_total):
+                return _qc(state)
+
+        def _qc(state: ISDState) -> dict:
             agent = agent_cls(*self._args())
             for _ in range(max(1, budget)):
-                violations = PedagogicalVerifierAgent(*self._args()).verify(self.design_brief)
+                # The verifier's own graph reads are attributed to it, not to
+                # the specialist it is checking.
+                with self.trajectory.acting_as("PedagogicalVerifierAgent"):
+                    violations = PedagogicalVerifierAgent(*self._args()).verify(self.design_brief)
                 owned = [v for v in violations if v.violation_type in owned_types]
                 self.trajectory.log_verifier_result([
                     {"node_id": v.node_id, "type": v.violation_type, "msg": v.message,
@@ -185,15 +231,21 @@ class NodeFactory:
                 ])
                 if not owned:
                     break
-                agent.repair(owned)
+                with self.trajectory.acting_as(agent_cls.__name__):
+                    agent.repair(owned)
             return {"task_attempts": self._bump_attempt(state, task_name)}
         return _node
 
     # ── aggregation (+ silent residual audit) ───────────────────────────────
-    def aggregate_node(self):
+    def aggregate_node(self, phase_index: int = 0, phase_total: int = 0):
         def _node(state: ISDState) -> dict:
+            with self._phase("aggregate", phase_index, phase_total):
+                return _aggregate(state)
+
+        def _aggregate(state: ISDState) -> dict:
             try:
-                addie_output = ADDIEOutputAggregator(*self._args()).aggregate()
+                with self.trajectory.acting_as("ADDIEOutputAggregator"):
+                    addie_output = ADDIEOutputAggregator(*self._args()).aggregate()
             except Exception:
                 addie_output = empty_addie()
             validation_errors = validate_addie(addie_output)
@@ -228,18 +280,28 @@ def build_graph(config, graph, trajectory, design_brief):
 
     nf = NodeFactory(config, graph, trajectory, design_brief)
     wf = StateGraph(ISDState)
-    wf.add_node("aggregate", nf.aggregate_node())
+
+    verifier_on = getattr(config, "enable_verifier", True)
+    # Only agents with checks get a QC node, and none do when the verifier is
+    # ablated away — so the phase count differs per arm. Counted up front purely
+    # so each phase_* progress event can report an honest "i of n".
+    qc_names = [n for n in GENERATION_ORDER if GENERATION_AGENTS[n].OWNED_VIOLATION_TYPES and verifier_on]
+    phase_total = len(GENERATION_ORDER) + len(qc_names) + 1  # + aggregate
+
+    wf.add_node("aggregate", nf.aggregate_node(phase_index=phase_total, phase_total=phase_total))
 
     prev = START
+    phase_index = 0
     for name in GENERATION_ORDER:
-        wf.add_node(name, nf.generation_node(name))
+        phase_index += 1
+        wf.add_node(name, nf.generation_node(name, phase_index=phase_index, phase_total=phase_total))
         wf.add_edge(prev, name)
-        agent_cls = GENERATION_AGENTS[name]
-        # Only agents with checks get a QC node, and none do when the verifier is
-        # ablated away.
-        if agent_cls.OWNED_VIOLATION_TYPES and getattr(config, "enable_verifier", True):
+        if name in qc_names:
             qc = f"{name}_qc"
-            wf.add_node(qc, nf.qc_node(agent_cls, qc))
+            phase_index += 1
+            wf.add_node(qc, nf.qc_node(
+                GENERATION_AGENTS[name], qc, phase_index=phase_index, phase_total=phase_total,
+            ))
             wf.add_edge(name, qc)
             prev = qc
         else:

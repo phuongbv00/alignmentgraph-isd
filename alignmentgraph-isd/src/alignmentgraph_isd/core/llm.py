@@ -34,6 +34,7 @@ def llm_factory_from_env(
     api_key: str = "",
     temperature: float | None = None,
     max_tokens: int | None = None,
+    http_client: Any = None,
 ) -> ChatModelFactory | None:
     """Build a chat-model factory from explicit args, falling back to env vars.
 
@@ -43,6 +44,13 @@ def llm_factory_from_env(
 
     Returns ``None`` when no model name can be resolved, so callers can keep
     their existing "llm_factory not configured" error path.
+
+    ``http_client`` lets a caller supply its own ``httpx.Client`` (OpenAI-
+    compatible endpoints only; ChatAnthropic does not accept one). The reason it
+    exists is cancellation: ``invoke`` blocks a whole thread, and Python cannot
+    interrupt a thread sitting in a socket read, so the only way to stop a call
+    in flight is for the caller to close the transport underneath it. Nothing
+    here closes it — that is the caller's business, and the caller's to clean up.
     """
     model = model_name or _env("AGENT_MODEL_NAME")
     if not model:
@@ -88,6 +96,8 @@ def llm_factory_from_env(
                 ) from exc
             if resolved_base_url:
                 kwargs["base_url"] = resolved_base_url
+            if http_client is not None:
+                kwargs["http_client"] = http_client
             return ChatOpenAI(**kwargs)
 
         raise ValueError(

@@ -1,0 +1,116 @@
+"""Database tables.
+
+Only small, queryable facts live here. The bulky per-run artifacts (the graph
+dump alone is ~100 KB) are files on disk; a row stores the directory holding
+them, relative to the configured data root.
+"""
+from __future__ import annotations
+
+import uuid
+from datetime import datetime, timezone
+
+from sqlmodel import Field, SQLModel
+
+
+def new_id() -> str:
+    return uuid.uuid4().hex
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class RunStatus:
+    RUNNING = "running"
+    CANCELLING = "cancelling"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    # A run whose worker thread died with the process. Set by the startup sweep,
+    # never by the run itself — by definition nothing was left to set it.
+    INTERRUPTED = "interrupted"
+
+    ACTIVE = (RUNNING, CANCELLING)
+    TERMINAL = (SUCCEEDED, FAILED, CANCELLED, INTERRUPTED)
+
+
+class Program(SQLModel, table=True):
+    """A training program: one design brief and the runs made from it."""
+
+    id: str = Field(default_factory=new_id, primary_key=True)
+    title: str = Field(default="Untitled program", index=True)
+    source: str = "freeform"  # freeform | import
+    brief_json: str = "{}"
+    brief_committed_at: datetime | None = None
+    latest_run_id: str | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
+class Session(SQLModel, table=True):
+    """A working session within a program.
+
+    Every program has exactly one today, created with it. The table exists so
+    that the messages and runs of a program are already grouped by session, and
+    a later feature can add a second one without a migration.
+    """
+
+    id: str = Field(default_factory=new_id, primary_key=True)
+    program_id: str = Field(foreign_key="program.id", index=True)
+    index: int = 0
+    kind: str = "initial"
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class Message(SQLModel, table=True):
+    """One turn of the planning conversation."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    session_id: str = Field(foreign_key="session.id", index=True)
+    seq: int = 0
+    role: str = "user"  # user | assistant
+    content: str = ""
+    # The assistant's structured side-channel: brief_patch, missing_fields,
+    # ready, warnings. Kept out of `content`, which is what the UI renders.
+    payload_json: str = "{}"
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class LLMSetting(SQLModel, table=True):
+    """The model the harness runs on, configured from the UI.
+
+    A single row (`id == "default"`). Stored so the demo is self-contained
+    rather than depending on what happened to be exported in the shell that
+    started the server; `AGENT_MODEL_*` remains the fallback, so the CLI and
+    benchmark habits still work.
+
+    The API key is held in clear text in the local SQLite file. That is a
+    deliberate limit of a local demo tool — it is never returned to the browser
+    (only whether one is set), and the UI says where it lives.
+    """
+
+    id: str = Field(default="default", primary_key=True)
+    model_name: str = ""
+    api_spec: str = "openai_compatible"
+    base_url: str = ""
+    api_key: str = ""
+    temperature: float | None = None
+    max_tokens: int | None = None
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
+class Run(SQLModel, table=True):
+    """One execution of the harness over a program's brief."""
+
+    id: str = Field(default_factory=new_id, primary_key=True)
+    program_id: str = Field(foreign_key="program.id", index=True)
+    session_id: str = Field(foreign_key="session.id", index=True)
+    status: str = Field(default=RunStatus.RUNNING, index=True)
+    artifact_dir: str = ""  # relative to settings.data_root
+    model_name: str = ""
+    error: str = ""
+    stats_json: str = "{}"
+    event_count: int = 0
+    created_at: datetime = Field(default_factory=utcnow)
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
