@@ -165,17 +165,3 @@ def test_format_valid_for_capability_low_bloom_levels_always_pass():
     assert alignment.format_valid_for_capability(1, 1) is True  # Remember: any format is fine
     assert alignment.format_valid_for_capability(1, 3) is False  # Apply: recognition-only fails
     assert alignment.format_valid_for_capability(6, 3) is True
-
-
-# ── multi-hop traversal (the Development <- plan <- objective chain) ─────
-
-def test_multi_hop_traversal_from_item_through_plan_to_objective():
-    graph = AlignmentGraph()
-    graph.add_element_node(NodeType.OBJECTIVE, "LO-01", {"id": "LO-01"})
-    graph.add_node("assessment_plan", "assessment_plan_0", {})
-    graph.add_element_node("assessment", "AT-01", {"item_id": "AT-01"})
-    graph.add_edge("rooted-in", "objective:LO-01", "assessment_plan_0", established_by="provenance")
-    graph.add_edge("realizes", "assessment_plan_0", "assessment:AT-01", relation_id="R6", established_by="type")
-
-    reached = graph.traverse("assessment:AT-01", ["realizes", "rooted-in"], direction="in")
-    assert [n["id"] for n in reached] == ["objective:LO-01"]

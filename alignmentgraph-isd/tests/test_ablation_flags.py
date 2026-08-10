@@ -55,7 +55,6 @@ def test_graph_context_off_returns_empty(fake_llm_factory):
     agent_off = AssessmentDesignAgent(off, graph, TrajectoryLogger())
     nodes = graph.element_nodes(NodeType.OBJECTIVE)
     assert agent_off._element_context(nodes) == ""
-    assert agent_off._traversal_context(["LO-01"], [None]) == ""
 
     on = HarnessRunConfig(llm_factory=fake_llm_factory)
     agent_on = AssessmentDesignAgent(on, graph, TrajectoryLogger())

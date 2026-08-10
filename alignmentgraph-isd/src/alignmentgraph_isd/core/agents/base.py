@@ -387,8 +387,8 @@ class BaseISDAgent(ABC):
         its own section. The
         caller passes exactly the nodes a relation calls for — e.g.
         ``self._element_context(self.graph.element_nodes(NodeType.OBJECTIVE))``
-        for "every learning objective", or the result of ``graph.traverse(...)``
-        for a relation-scoped neighborhood.
+        for "every learning objective", or a list assembled from
+        ``get_node``/``get_edges`` for a relation-scoped set.
 
         ``config.enable_graph_context`` (off only in ablation arms) gates ALL
         graph-context reads at once — including a specialist re-reading its own
@@ -406,29 +406,6 @@ class BaseISDAgent(ABC):
                 data_str = data_str[:max_chars] + "…"
             lines.append(f"[{str(node.get('type', '')).upper()}:{node.get('id', '')}]\n{data_str}")
         return "\n\n".join(lines)
-
-    def _traversal_context(
-        self,
-        start_ids: list[str],
-        rel_path: list[str | None],
-        *,
-        direction: str = "out",
-        max_chars: int = 600,
-    ) -> str:
-        """Relation-scoped context: follow ``rel_path`` from each of
-        ``start_ids`` and format the nodes reached (multi-hop). Gated by
-        ``config.enable_graph_context`` like ``_element_context`` (early return
-        also skips the traversal cost)."""
-        if not getattr(self.config, "enable_graph_context", True):
-            return ""
-        seen: set[str] = set()
-        nodes: list[dict] = []
-        for start_id in start_ids:
-            for node in self.graph.traverse(start_id, rel_path, direction=direction):
-                if node["id"] not in seen:
-                    seen.add(node["id"])
-                    nodes.append(node)
-        return self._element_context(nodes, max_chars=max_chars)
 
     def _decompose_elements(
         self,

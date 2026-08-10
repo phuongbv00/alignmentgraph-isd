@@ -297,12 +297,6 @@ def format_valid_for_capability(capability: int, objective_level: int | None) ->
     return capability > _RECALL_CAPABILITY_CEILING
 
 
-def format_valid(item_type: str, objective_level: int | None) -> bool:
-    """Can this assessment format elicit the objective's Bloom level?
-    Recognition-bound formats (MCQ, true/false) cannot demonstrate Apply+."""
-    return format_valid_for_capability(item_type_capability(item_type), objective_level)
-
-
 def bloom_format_violations(graph: AlignmentGraph) -> list[dict]:
     """The single boolean constructive-alignment rule this refactor keeps
     beyond coverage: an objective is violated only when NONE of the items

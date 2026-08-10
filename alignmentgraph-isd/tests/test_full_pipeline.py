@@ -8,8 +8,9 @@ from alignmentgraph_isd.core import alignment
 from conftest import FakeChatModel, load_brief
 
 # Relations establishable via provenance (recorded when generation is
-# conditioned on traversed nodes) vs. those establishable by id/type-match
-# alone (post-hoc bookkeeping on a specialist's own output).
+# conditioned on graph nodes the specialist read beforehand) vs. those
+# establishable by id/type-match alone (post-hoc bookkeeping on a
+# specialist's own output).
 _PROVENANCE_ONLY_RELATIONS = ("R1", "R2", "R7", "R8", "R10", "R11", "R13")
 _ID_TYPE_MATCH_RELATIONS = ("R3", "R4", "R5", "R6", "R9", "R12")
 

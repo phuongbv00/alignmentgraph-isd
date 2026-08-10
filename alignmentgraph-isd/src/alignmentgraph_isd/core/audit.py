@@ -81,19 +81,6 @@ class GraphAuditResult:
         }
 
     @property
-    def coverage_gaps(self) -> dict[str, list[str]]:
-        gaps = {
-            "measures": self.unmeasured_objectives,
-            "supports": self.unsupported_objectives,
-            "evaluates": self.unevaluated_objectives,
-        }
-        gaps.update({
-            relation_id: info["uncovered"]
-            for relation_id, info in self.relation_coverage.items()
-        })
-        return gaps
-
-    @property
     def residual_gap_count(self) -> int:
         """Total uncovered targets across all 13 relations — the "39->12"
         style number RQ2 reports, now spanning the full matrix."""

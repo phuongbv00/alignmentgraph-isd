@@ -51,11 +51,6 @@ class AlignmentGraph:
         self._observer = observer
         self._nodes: dict[str, dict] = {}
         self._edges: list[dict] = []
-        # Adjacency index for neighbors()/traverse(). Rebuilt lazily on read
-        # after any add_edge; edge dicts are shared by reference.
-        self._adj_dirty: bool = True
-        self._out_index: dict[str, list[dict]] = {}
-        self._in_index: dict[str, list[dict]] = {}
 
     def set_observer(self, observer) -> None:
         """Attach the observer after construction.
@@ -195,7 +190,6 @@ class AlignmentGraph:
             "relation_id": relation_id,
             "established_by": established_by,
         })
-        self._adj_dirty = True
         # The alignment relations are the contribution, and until now the only
         # trace of them was the finished dump — nothing said which step drew
         # which link, or on what evidence.
@@ -241,109 +235,6 @@ class AlignmentGraph:
             relation_id=relation_id or "*", result_count=len(edges),
         )
         return list(edges)
-
-    # ── traversal (adjacency index, lazily rebuilt) ─────────────────────────
-    def _ensure_index(self) -> None:
-        if not self._adj_dirty:
-            return
-        self._out_index = {}
-        self._in_index = {}
-        for edge in self._edges:
-            self._out_index.setdefault(edge["source"], []).append(edge)
-            self._in_index.setdefault(edge["target"], []).append(edge)
-        self._adj_dirty = False
-
-    def neighbors(
-        self,
-        node_id: str,
-        edge_type: str | None = None,
-        *,
-        relation_id: str | None = None,
-        direction: str = "out",
-    ) -> list[dict]:
-        """Nodes reachable from ``node_id`` by one alignment edge.
-
-        ``direction="out"`` follows edges where ``node_id`` is the source
-        (default); ``"in"`` follows edges where it is the target.
-        """
-        result = self._neighbors_raw(node_id, edge_type, relation_id=relation_id, direction=direction)
-        self._observe(
-            "edge_walk", query="neighbors", node_id=node_id,
-            edge_type=edge_type or "*", direction=direction, result_count=len(result),
-        )
-        return result
-
-    def _neighbors_raw(
-        self,
-        node_id: str,
-        edge_type: str | None = None,
-        *,
-        relation_id: str | None = None,
-        direction: str = "out",
-    ) -> list[dict]:
-        """One hop, unobserved — the shared body of ``neighbors`` and
-        ``traverse``. Kept separate so a multi-hop traversal reports itself once
-        as the relation walk an agent actually asked for, rather than once per
-        hop and once per node visited."""
-        self._ensure_index()
-        index = self._out_index if direction == "out" else self._in_index
-        result: list[dict] = []
-        for edge in index.get(node_id, []):
-            if edge_type is not None and edge["type"] != edge_type:
-                continue
-            if relation_id is not None and edge.get("relation_id") != relation_id:
-                continue
-            other_id = edge["target"] if direction == "out" else edge["source"]
-            node = self._nodes.get(other_id)
-            if node is not None:
-                result.append(node)
-        return result
-
-    def traverse(
-        self,
-        start_id: str,
-        rel_path: list[str | None],
-        *,
-        direction: str = "out",
-    ) -> list[dict]:
-        """Follow a chain of edge types from ``start_id``, hop by hop.
-
-        Each entry in ``rel_path`` is an edge type to follow at that hop (or
-        ``None`` to follow any edge type). Returns the node dicts reached after
-        the last hop. This is the multi-hop primitive Development specialists use
-        to reach an objective through an intervening Design "plan" node.
-        """
-        frontier_ids = [start_id]
-        # Each hop is recorded with the frontier it started from and where it
-        # landed, so the walk can be replayed edge by edge rather than shown as
-        # a single before/after. Reaching an objective from a Development
-        # artifact is a two-hop path through a Design plan node, and seeing the
-        # intermediate hop is the whole point.
-        hops: list[dict] = []
-        for edge_type in rel_path:
-            next_ids: list[str] = []
-            seen: set[str] = set()
-            edges_followed: list[dict] = []
-            for node_id in frontier_ids:
-                for node in self._neighbors_raw(node_id, edge_type, direction=direction):
-                    edges_followed.append({"from": node_id, "to": node["id"]})
-                    if node["id"] not in seen:
-                        seen.add(node["id"])
-                        next_ids.append(node["id"])
-            hops.append({
-                "edge_type": str(edge_type) if edge_type is not None else "*",
-                "from": list(frontier_ids),
-                "to": list(next_ids),
-                "edges": edges_followed,
-            })
-            frontier_ids = next_ids
-        reached = [n for n in (self._nodes.get(nid) for nid in frontier_ids) if n is not None]
-        self._observe(
-            "edge_walk", query="traverse", node_id=start_id,
-            rel_path=[str(r) if r is not None else "*" for r in rel_path],
-            direction=direction, hops=hops, result_count=len(reached),
-        )
-        return reached
 
     def is_empty(self, node_type: NodeType | str) -> bool:
         """True if no non-empty node of this type exists."""
@@ -416,5 +307,4 @@ class AlignmentGraph:
                     "relation_id": edge.get("relation_id", ""),
                     "established_by": edge.get("established_by", ""),
                 })
-        graph._adj_dirty = True
         return graph
