@@ -228,10 +228,15 @@ ngoại lệ.)*
    hướng dương sau Holm, không tín hiệu định hướng nào âm có ý nghĩa), rõ nhất ở `objective_assessment_similarity`;
    khoảng cách nới rộng khi model nhỏ đi (interaction âm).
 
-**9.3 Ablation** — graph-context là cơ chế giữ alignment (gỡ ra giảm có ý nghĩa mọi size, mạnh nhất model nhỏ); verifier
-đứng riêng không đổi điểm nhưng skeleton rớt sâu hơn −GraphCtx mọi size → verifier là backstop tương tác + nguồn audit
-trail; 0 output failure mọi arm → robustness đến từ decomposition + kiểm tra cấu trúc, không từ hai cơ chế bị ablate. (
-Hình dạng judge-bất-biến/alignment-dịch → hai cách đọc bắt buộc, mục 10.)
+**9.3 Ablation** — graph-context là cơ chế giữ alignment (trên panel RQ2), verifier là backstop + nguồn audit trail;
+0 output failure mọi arm → robustness đến từ decomposition, không từ hai cơ chế bị ablate. Hình dạng
+judge-bất-biến/alignment-dịch → hai cách đọc bắt buộc, mục 10.
+
+- **Buộc**: mỗi phát biểu nói rõ đang đứng trên **họ tín hiệu nào** — ADDIE (judge) và panel RQ2 cho hai kết luận khác
+  nhau, và đó là phát hiện, không phải mâu thuẫn cần giấu.
+- **Cấm** "graph-context mạnh nhất ở model nhỏ" và "skeleton rớt sâu hơn −GraphCtx mọi size" — cả hai không đỡ được
+  (rà 2026-08-10). Muốn nói về scale thì nói theo tín hiệu cụ thể.
+- **Cấm** claim verifier có hiệu ứng điểm trên cấu hình được ship.
 
 **9.4 Sensitivity** — thứ hạng (chiều so sánh theo cặp, KHÔNG phải ρ của thứ tự đầy đủ 7 hệ) giữ nguyên qua **3 trục** (
 encoder-independence, sàn TF-IDF, Bloom BERT↔lexicon — `rq2_protocol.md` §6) và qua lát cắt complete-case.
@@ -239,9 +244,9 @@ encoder-independence, sàn TF-IDF, Bloom BERT↔lexicon — `rq2_protocol.md` §
 **9.6 Cost/scalability** — ~22k token, 8 lời gọi cho một thiết kế ADDIE ở 2B/4B trên một GPU 24 GB; chi phí
 phẳng-đến-giảm theo scale. Nhưng **1,1–1,7× baseline trung vị**, **2,7–4,0× baseline rẻ nhất chạy trọn (react-isd)**;
 token/điểm ADDIE: đáng ở 0.8B–2B, tệ ở 4B, **lỗ ở 9B** (react-isd ngang-hơn với chi phí 1/3,6). Overhead theo thành
-phần (từ arm ablation): verifier +0,6–2,5% token; graph-context **+25–31% tổng** (+58–78% prompt) — cơ chế đắt nhất và
-đóng góp nhiều nhất. **Caveat coverage**: cột chi phí của `baseline`/`eduplanner` là **số của người sống sót** (ca đắt
-bị cắt cụt) — so sánh chi phí chỉ dùng đối sánh coverage đầy đủ. **Bẫy artifact**: `metadata.cost_usd` sai (giá API
+phần (từ arm ablation): verifier +0,6–2,5% token; graph-context **+25–31% tổng** (+58–78% prompt) — cơ chế đắt nhất, và
+đóng góp nhiều nhất **trên panel RQ2**. **Caveat coverage**: cột chi phí của `baseline`/`eduplanner` là **số của
+người sống sót** (ca đắt bị cắt cụt) — so sánh chi phí chỉ dùng đối sánh coverage đầy đủ. **Bẫy artifact**: `metadata.cost_usd` sai (giá API
 thương mại trên pod tự host); `metadata.total_tokens` top-level = 0 với 6/10 agent — chỉ đọc `token_usage.*`; wall-clock
 là **throughput có xếp hàng, không phải latency** (150 thiết kế in-flight) — không được gọi là latency.
 
@@ -250,8 +255,9 @@ footnote.
 
 ## 10. Discussion — `07_discussion.tex`
 
-- **10.1 Diễn giải**: cơ chế nào quan trọng (graph-context theo ablation), khớp giả thuyết (lợi thế lớn nhất ở model
-  nhỏ).
+- **10.1 Diễn giải**: cơ chế nào quan trọng (graph-context theo ablation, trên panel RQ2 — giới hạn câu chữ ở 9.3);
+  khớp giả thuyết (lợi thế lớn nhất ở model nhỏ). **Cấm** trộn hai thứ này trong một câu: "lợi thế lớn nhất ở model
+  nhỏ" là claim hệ thống vs. baseline từ ladder (RQ1), KHÔNG phải gradient của ablation.
 - **10.2** Không so trực tiếp số với nghiên cứu khác khi điều kiện thực nghiệm khác.
 - **10.4 Ý nghĩa thực tiễn — motivation triển khai retarget**: luận điểm là *"chạy được và đáng chạy ở đầu nhỏ"*, *
   *không phải "rẻ hơn"**. Hai mặt cost cùng hình dạng với DiD của RQ1 (lợi thế co khi model lớn). **Câu không bao giờ
@@ -296,7 +302,8 @@ Mỗi hướng tương lai xuất phát từ một hạn chế:
 ## 13. Conclusion — `09_conclusion.tex`
 
 6 bước của đề cương; giới hạn kết luận **hai mức**: claim hệ thống (vs. baseline, từ ladder) và claim cơ chế (từ
-ablation: graph-context có ý nghĩa mọi size, verifier backstop) — claim về decomposition chỉ ở mức hệ thống. **Cấm**:
+ablation: graph-context có ý nghĩa mọi size trên panel RQ2, kèm caveat ADDIE bất biến — mục 9.3; verifier backstop)
+— claim về decomposition chỉ ở mức hệ thống. **Cấm**:
 đưa claim/kết quả mới; nới phạm vi họ model.
 
 ## 14. Declarations

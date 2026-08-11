@@ -7,6 +7,12 @@
 > `results/pooled_ladder.json` + `pooled_ablation.json` → `09`/`10`/`11`/`12` → `docs/generated/`.
 > Mọi số dưới đây đọc từ hai file pooled đó; đừng sửa tay file này, hãy sửa nguồn rồi sinh lại.
 >
+> **Bản dump gộp để tra số**: `15_gen_facts_sheet.py` → `results/generated/facts.md` (đủ) và `facts_brief.md`
+> (mục 0–2). File này là **diễn giải**; facts.md là **số**. Trước khi viết bất kỳ câu nào có "mọi size", "mạnh nhất
+> ở…", "N/M tín hiệu", đọc roll-up đã tính sẵn ở facts §2.3–2.5 thay vì đếm ô bằng mắt — đặc biệt §2.5, bảng liệt kê
+> đúng những chỗ mà trích một họ tín hiệu thôi sẽ xuyên tạc kết quả. Toàn bộ số trong file này đã được đối chiếu với
+> facts.md (2026-08-10): khớp.
+>
 > Dataset `test_90`: 90 scenario (10 domain × 3 difficulty, stratified), 2 judge/entry, 4 kích thước Qwen3.5 × 3 run.
 
 ## Quy ước đo lường
@@ -241,7 +247,7 @@ chấm nhích lên.
 
 **Verifier: đọc theo 2×2 chứ không theo "vs A0".** *(Số sinh tự động: `tab_ablation_factorial.tex`,
 macro `\ablVerifCtxOff*` / `\ablInteraction*` / `\ablRepairs*`, hình `fig_ablation_factorial`, dump đầy đủ trong
-`stats_ablation.md` §"2x2 factorial".)* 4 arm là một **thiết kế giai thừa 2×2 đầy đủ** (verifier × graph
+`facts.md` §5.3 hoặc `stats_ablation.md` §"2x2 factorial".)* 4 arm là một **thiết kế giai thừa 2×2 đầy đủ** (verifier × graph
 context). Chỉ so từng arm với A0 là đọc *main effect*, và nó giấu mất thứ quan trọng nhất. Tách hiệu ứng của verifier
 theo từng điều kiện graph-context (paired per-scenario, n=90):
 
@@ -331,8 +337,9 @@ cùng một verifier, gấp ba khối lượng việc.
   Bloom classifier). Hiệu lực thống kê gần như bất biến nhưng **không tuyệt đối**: 1/24 verdict Holm đổi (arm
   `lexicon` @0.8B, 5/6 verdict giữ), và worst Holm p qua cả hai trục là 0.017.
 - Harness **không hỏng output lần nào** trên 1080 cell, trong khi hai hệ prompt-một-lượt hỏng 92–94% scenario ở 0.8B.
-- **Bộ nhớ đồ thị là cơ chế tạo ra textual correspondence** (obj→assessment similarity; ablation, p_holm ≤ 1.2e-12
-  mọi size).
+- **Graph context là cơ chế tạo ra tín hiệu alignment** — không riêng textual correspondence: gỡ nó ra (A2) làm
+  **28/28 ô của panel** (7 tín hiệu × 4 size) giảm và **cả 28 đều có ý nghĩa** dưới Holm toàn panel (Δ −0.073…−0.249;
+  riêng obj→assessment p_holm ≤ 1.2e-12 mọi size). Roll-up: facts §2.3.
 
 **Không nói được:**
 

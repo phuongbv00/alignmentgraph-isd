@@ -56,6 +56,7 @@ Script chung ở `scripts/`; pipeline ladder ở `scripts/alignmentgraph-isd-ben
 | `.../ablation/11_gen_ablation_tables.py`  | `tab_ablation.tex` + `abl_macros.tex` + `stats_ablation.md`          | 5.4 |
 | `.../ablation/12_gen_ablation_figures.py` | `figures/fig_ablation*`                                              | 5.4 |
 | `.../14_gen_sensitivity_table.py`         | `tab_sensitivity.tex` + `sens_macros.tex` từ `alignment_sensitivity` | 9   |
+| `.../15_gen_facts_sheet.py`               | `facts.md` (+ `facts_brief.md`): GỘP mọi số tổng hợp vào MỘT file    | 9.2 |
 | `.../99_audit_artifacts.py`               | cổng cuối: artifact/figure/table đủ, thật, mới, đã wire vào paper    | 9.1 |
 
 ---
@@ -475,6 +476,36 @@ Tất cả ghi vào `results/generated/` (benchmark-local, gitignored): `tab_rq1
 `tab_rq1_total.tex`/`tab_rq1_traj.tex` (Total/Trajectory song song, cùng logic §A.2), `tab_rq2_alignment.tex`
 (tín hiệu dẫn) kèm `tab_rq2_panel.tex` (panel đầy đủ 7 tín hiệu), `stats_macros.tex` (mọi con số trong prose là
 `\newcommand`), `stats_summary.md` (bản dump người đọc để cross-check).
+
+### 9.2 Facts sheet — gộp mọi số vào một file
+
+```bash
+python scripts/alignmentgraph-isd-bench/15_gen_facts_sheet.py           # → results/generated/facts.md (~135 KB)
+python scripts/alignmentgraph-isd-bench/15_gen_facts_sheet.py --brief   # → facts_brief.md (~21 KB, chỉ mục 0–2)
+```
+
+Chạy **sau** `09`/`11`/`13`/`14` (nó đọc `*_macros.tex` để dựng mục 10). Nguồn: `pooled_ladder.json` +
+`pooled_ablation.json` — không parse lại các `stats_*.md`, nên không có nguồn sự thật thứ hai.
+
+**Vì sao cần**: số hiện nằm ở 6 file `stats_*.md` với **quy ước dấu khác nhau**, và hai họ tín hiệu (JUDGE rubric
+/100 vs PANEL RQ2 [0,1]) **cho kết luận ngược nhau trên ablation**. Đọc một file rồi dừng là đủ để trích một con số
+mang nghĩa ngược. Cụ thể đã vấp: đọc bảng ADDIE rồi kết luận "graph context không giúp gì", trong khi bảng panel
+ngay dưới cùng file nói 28/28 ô ngược lại.
+
+Bố cục — mục **0 = hợp đồng đọc** (hai họ tín hiệu, quy ước dấu từng bảng, 2 tầng Holm, chính sách failure, và
+**những gì KHÔNG có trong file**); mục **2 = roll-up tính sẵn** để không ai đếm ô bằng mắt:
+
+- 2.1/2.2 — mỗi baseline × tín hiệu: thắng/thua/n.s. ở mấy size, khoảng Δ.
+- 2.3 — mỗi arm × họ: số ô âm/dương/có ý nghĩa, khoảng Δ. Cột in ra là **`arm − A0`** (JSON lưu `A0 − arm`, đã lật).
+- 2.4 — **kiểm gradient theo scale**: size nào giữ |Δ| lớn nhất, và verdict CONCENTRATED/SCATTERED. Đây là chốt chặn
+  cho các câu kiểu "mạnh nhất ở model nhỏ" (A2 trên panel: SCATTERED đều cả 4 size → không được claim).
+- 2.5 — **bảng bất đồng giữa hai họ**: mỗi dòng là một chỗ mà trích một họ thôi sẽ xuyên tạc kết quả.
+
+Mục 3–9 là bảng đầy đủ per-cell; mục 10 là index mọi `\newcommand` — số nào trong paper mà không có ở đây tức là
+**gõ tay**, vi phạm quy ước "số sinh tự động".
+
+`facts.md` là tài liệu để đọc/đưa cho LLM diễn giải, **không** phải artifact paper `\input` — nên `99_audit_artifacts.py`
+không kiểm nó.
 
 **Quy ước artifact (2026-07-30, enforce bằng `99_audit_artifacts.py` check I):** mọi text trong artifact là
 **tiếng Anh**, số dùng **dấu chấm** (`87.77`). Caption chỉ nói *bảng chiếu gì* và *một ô là gì*, ~100–250 ký tự;
