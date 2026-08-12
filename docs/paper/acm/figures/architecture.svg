@@ -1,116 +1,163 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 470" width="1180" height="470"
-     font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+  <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1080 540" width="1080" height="540" font-family="Avenir Next, Helvetica Neue, Arial, sans-serif" role="img" aria-label="AlignmentGraph-ISD overview">
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#5b6577"/>
+      </marker>
+      <marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#1f5fa8"/>
+      </marker>
+      <marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#a8322d"/>
+      </marker>
+      <marker id="arrG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#8a5a2e"/>
+      </marker>
+      <!-- little robot icon; colored via currentColor on <use> -->
+      <g id="bot">
+        <circle cx="0" cy="-21" r="2.6" fill="currentColor"/>
+        <line x1="0" y1="-18" x2="0" y2="-14" stroke="currentColor" stroke-width="1.8"/>
+        <rect x="-14" y="-14" width="28" height="22" rx="7" fill="#ffffff" stroke="currentColor" stroke-width="2"/>
+        <circle cx="-5.5" cy="-4.5" r="2.6" fill="currentColor"/>
+        <circle cx="5.5" cy="-4.5" r="2.6" fill="currentColor"/>
+        <path d="M -4.5 2 Q 0 5 4.5 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        <rect x="-9" y="11" width="18" height="8" rx="3.5" fill="#ffffff" stroke="currentColor" stroke-width="1.8"/>
+      </g>
+      <!-- specialist agent card: 150x64, label via two <text> in caller -->
+      <rect id="card" width="150" height="64" rx="12" fill="#eef4fb" stroke="#1f5fa8" stroke-width="1.8"/>
+    </defs>
 
-  <rect x="0" y="0" width="1180" height="470" fill="#FFFFFF"/>
+    <!-- Input -->
+    <rect x="12" y="244" width="132" height="76" rx="12" fill="#eef2f8" stroke="#1f5fa8" stroke-width="2"/>
+    <text x="78" y="277" text-anchor="middle" font-size="18" font-weight="700" fill="#1a2233">Design brief</text>
+    <text x="78" y="299" text-anchor="middle" font-size="13.5" fill="#5b6577">(ISD scenario)</text>
+    <line x1="144" y1="282" x2="166" y2="282" stroke="#5b6577" stroke-width="2.5" marker-end="url(#arr)"/>
 
-  <defs>
-    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4B5563"/>
-    </marker>
-    <marker id="arrMini" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6B7280"/>
-    </marker>
-    <marker id="arrOrange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#C0562D"/>
-    </marker>
-  </defs>
+    <!-- Harness container -->
+    <rect x="170" y="26" width="600" height="490" rx="16" fill="#ffffff" stroke="#c3cad6" stroke-width="2"/>
+    <text x="470" y="47" text-anchor="middle" font-size="14.5" font-weight="700" fill="#5b6577" letter-spacing="1.6">MULTI-AGENT HARNESS · 6 SPECIALIST LLM AGENTS</text>
 
-  <!-- ══════════ Harness boundary ══════════ -->
-  <rect x="20" y="44" width="1140" height="410" rx="14"
-        fill="none" stroke="#9CA3AF" stroke-width="1.6" stroke-dasharray="9 7"/>
-  <text x="40" y="34" font-size="14" font-weight="600" fill="#6B7280">AlignmentGraph-ISD harness&#160;&#160;(agent = harness + model)</text>
+    <!-- Specialist agents around the graph: 3 on top, 3 below -->
+    <g font-size="13.5" font-weight="600" fill="#1a2233">
+      <g transform="translate(192,68)" color="#1f5fa8">
+        <use href="#card"/><use href="#bot" transform="translate(28,33)"/>
+        <text x="52" y="28">Needs &amp;</text><text x="52" y="46">Context</text>
+      </g>
+      <g transform="translate(395,68)" color="#1f5fa8">
+        <use href="#card"/><use href="#bot" transform="translate(28,33)"/>
+        <text x="52" y="28">Objective</text><text x="52" y="46">Design</text>
+      </g>
+      <g transform="translate(598,68)" color="#1f5fa8">
+        <use href="#card"/><use href="#bot" transform="translate(28,33)"/>
+        <text x="52" y="28">Assessment</text><text x="52" y="46">Design</text>
+      </g>
+      <g transform="translate(192,414)" color="#1f5fa8">
+        <use href="#card"/><use href="#bot" transform="translate(28,33)"/>
+        <text x="52" y="28">Activity &amp;</text><text x="52" y="46">Material</text>
+      </g>
+      <g transform="translate(395,414)" color="#1f5fa8">
+        <use href="#card"/><use href="#bot" transform="translate(28,33)"/>
+        <text x="52" y="28">Implementation</text><text x="52" y="46">Plan</text>
+      </g>
+      <g transform="translate(598,414)" color="#1f5fa8">
+        <use href="#card"/><use href="#bot" transform="translate(28,33)"/>
+        <text x="52" y="28">Evaluation &amp;</text><text x="52" y="46">Revision</text>
+      </g>
+    </g>
 
-  <!-- ══════════ brief input ══════════ -->
-  <text x="150" y="90" font-size="12" fill="#374151" text-anchor="middle" font-style="italic">design brief b</text>
-  <line x1="150" y1="96" x2="150" y2="120" stroke="#4B5563" stroke-width="1.6" marker-end="url(#arr)"/>
+    <!-- agent <-> graph arrows (read/write) — all 6 specialists -->
+    <g stroke="#1f5fa8" stroke-width="2.1" fill="none">
+      <line x1="272" y1="136" x2="286" y2="170" marker-start="url(#arrB)" marker-end="url(#arrB)"/>
+      <line x1="665" y1="136" x2="566" y2="170" marker-start="url(#arrB)" marker-end="url(#arrB)"/>
+      <line x1="272" y1="406" x2="286" y2="392" marker-start="url(#arrB)" marker-end="url(#arrB)"/>
+      <line x1="665" y1="406" x2="566" y2="392" marker-start="url(#arrB)" marker-end="url(#arrB)"/>
+      <line x1="470" y1="410" x2="470" y2="392" marker-start="url(#arrB)" marker-end="url(#arrB)"/>
+      <line x1="435" y1="138" x2="435" y2="170" marker-end="url(#arrB)"/>
+      <line x1="485" y1="170" x2="485" y2="138" marker-end="url(#arrB)"/>
+    </g>
+    <text x="427" y="158" text-anchor="end" font-size="12.5" fill="#1f5fa8">write nodes &amp; edges</text>
+    <text x="493" y="158" font-size="12.5" fill="#1f5fa8">read graph context</text>
 
-  <!-- ══════════ Specialist pipeline (fixed ADDIE order) ══════════ -->
-  <rect x="60" y="122" width="290" height="300" rx="10" fill="#F8FAFC" stroke="#4A6FA5" stroke-width="1.5"/>
-  <text x="205" y="144" font-size="12.5" font-weight="600" fill="#243B5E" text-anchor="middle">Specialist agents · fixed ADDIE order <tspan font-weight="400" fill="#7189AC" font-size="10.5">§4.2</tspan></text>
+    <!-- Alignment graph (shifted left to clear the verifier) -->
+    <g transform="translate(-30,0)">
+    <rect x="250" y="176" width="350" height="210" rx="14" fill="#fdf3e7" stroke="#b3541e" stroke-width="2.2"/>
+    <text x="425" y="200" text-anchor="middle" font-size="16.5" font-weight="700" fill="#b3541e">Alignment Graph — shared design state</text>
 
-  <g font-size="11.5" fill="#374151" text-anchor="middle">
-    <rect x="82" y="156" width="196" height="30" rx="7" fill="#FFFFFF" stroke="#94A3B8"/>
-    <text x="180" y="175">Needs context</text>
-    <rect x="82" y="192" width="196" height="30" rx="7" fill="#FFFFFF" stroke="#94A3B8"/>
-    <text x="180" y="211">Objective design</text>
-    <rect x="82" y="228" width="196" height="30" rx="7" fill="#FFFFFF" stroke="#94A3B8"/>
-    <text x="180" y="247">Assessment design</text>
-    <rect x="82" y="264" width="196" height="30" rx="7" fill="#FFFFFF" stroke="#94A3B8"/>
-    <text x="180" y="283">Activity &amp; material</text>
-    <rect x="82" y="300" width="196" height="30" rx="7" fill="#FFFFFF" stroke="#94A3B8"/>
-    <text x="180" y="319">Implementation plan</text>
-    <rect x="82" y="336" width="196" height="30" rx="7" fill="#FFFFFF" stroke="#94A3B8"/>
-    <text x="180" y="355">Evaluation &amp; revision</text>
-    <rect x="82" y="378" width="196" height="30" rx="7" fill="#EEF2F7" stroke="#94A3B8"/>
-    <text x="180" y="397" font-style="italic">ADDIE aggregator</text>
-  </g>
-  <!-- sequential arrows down the pipeline -->
-  <g stroke="#4B5563" stroke-width="1.3" marker-end="url(#arr)">
-    <line x1="300" y1="186" x2="300" y2="192"/>
-    <line x1="300" y1="222" x2="300" y2="228"/>
-    <line x1="300" y1="258" x2="300" y2="264"/>
-    <line x1="300" y1="294" x2="300" y2="300"/>
-    <line x1="300" y1="330" x2="300" y2="336"/>
-    <line x1="300" y1="366" x2="300" y2="378"/>
-  </g>
+    <!-- unlabeled neighbour nodes + thin edges (it's a real graph) -->
+    <g stroke="#b08a5e" stroke-width="1.3">
+      <line x1="315" y1="278" x2="288" y2="248"/>
+      <line x1="303" y1="298" x2="275" y2="330"/>
+      <line x1="472" y1="228" x2="505" y2="216"/>
+      <line x1="472" y1="348" x2="507" y2="362"/>
+      <line x1="556" y1="277" x2="571" y2="242"/>
+    </g>
+    <g fill="#efe4d3" stroke="#b08a5e" stroke-width="1.4">
+      <circle cx="285" cy="244" r="7"/>
+      <circle cx="272" cy="334" r="7"/>
+      <circle cx="509" cy="214" r="7"/>
+      <circle cx="511" cy="364" r="7"/>
+      <circle cx="573" cy="238" r="7"/>
+    </g>
 
-  <!-- ══════════ Per-agent verify & repair (self-check tool) ══════════ -->
-  <rect x="384" y="150" width="196" height="86" rx="10" fill="#FAEAE3" stroke="#C0562D" stroke-width="1.5"/>
-  <circle cx="410" cy="178" r="11" fill="#FFFFFF" stroke="#C0562D" stroke-width="1.5"/>
-  <path d="M 404 178 L 408 183 L 416 173" fill="none" stroke="#C0562D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-  <text x="482" y="176" font-size="12" font-weight="600" fill="#6E2E15" text-anchor="middle">Verify &amp; repair</text>
-  <text x="482" y="193" font-size="10" fill="#B07B5E" text-anchor="middle">per-agent tool <tspan font-weight="600">§4.3</tspan></text>
-  <text x="482" y="222" font-size="9.5" fill="#8A5A44" text-anchor="middle" xml:space="preserve">repair owned Ω until ∅</text>
-  <!-- each specialist self-checks: loop between pipeline and QC -->
-  <path d="M 280 200 L 384 178" fill="none" stroke="#C0562D" stroke-width="1.4" marker-end="url(#arrOrange)"/>
-  <path d="M 384 210 L 280 250" fill="none" stroke="#C0562D" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#arrOrange)"/>
-  <text x="330" y="176" font-size="9" fill="#C0562D">verify</text>
-  <text x="316" y="244" font-size="9" fill="#C0562D">repair</text>
+    <!-- main nodes -->
+    <g font-size="13.5" text-anchor="middle" font-weight="700" fill="#1a2233">
+      <rect x="275" y="276" width="84" height="28" rx="14" fill="#e3ecf7" stroke="#1f5fa8" stroke-width="1.8"/>
+      <text x="317" y="295">Objective</text>
+      <rect x="405" y="222" width="80" height="28" rx="14" fill="#e5f2ea" stroke="#1e7a46" stroke-width="1.8"/>
+      <text x="445" y="241">Activity</text>
+      <rect x="399" y="330" width="94" height="28" rx="14" fill="#f7e7e6" stroke="#a8322d" stroke-width="1.8"/>
+      <text x="446" y="349">Assessment</text>
+      <rect x="504" y="276" width="88" height="28" rx="14" fill="#f0eef8" stroke="#5b4ea8" stroke-width="1.8"/>
+      <text x="548" y="295">Evaluation</text>
+    </g>
+    <!-- labeled alignment edges -->
+    <g stroke="#8a5a2e" stroke-width="1.7" fill="none">
+      <line x1="412" y1="248" x2="355" y2="276" marker-end="url(#arrG)"/>
+      <line x1="405" y1="332" x2="352" y2="304" marker-end="url(#arrG)"/>
+      <line x1="518" y1="272" x2="470" y2="252" marker-end="url(#arrG)"/>
+      <line x1="518" y1="308" x2="482" y2="328" marker-end="url(#arrG)"/>
+    </g>
+    <g font-size="12" fill="#8a5a2e" font-style="italic">
+      <text x="336" y="262">supports</text>
+      <text x="330" y="326">measures</text>
+      <text x="500" y="250" text-anchor="middle">evaluates</text>
+      <text x="512" y="330">evaluates</text>
+    </g>
+    </g>
 
-  <!-- ══════════ Alignment graph (center-right) ══════════ -->
-  <rect x="628" y="122" width="330" height="300" rx="12" fill="#F0F7F0" stroke="#5B8C5A" stroke-width="2"/>
-  <text x="793" y="145" font-size="14" font-weight="600" fill="#2C4A2B" text-anchor="middle">Alignment graph <tspan font-weight="400" fill="#7DA07C" font-size="11">§3.2</tspan></text>
-  <text x="793" y="163" font-size="10.5" fill="#6B7280" text-anchor="middle" xml:space="preserve"><tspan font-style="italic">G</tspan><tspan dy="3" font-size="8">t</tspan><tspan dy="-3"> = (V</tspan><tspan dy="3" font-size="8">t</tspan><tspan dy="-3">, E</tspan><tspan dy="3" font-size="8">t</tspan><tspan dy="-3">) · aligned(o)</tspan></text>
+    <!-- Pedagogical Verifier (agent) -->
+    <g transform="translate(614,244)" color="#a8322d">
+      <rect width="150" height="76" rx="12" fill="#fbeeed" stroke="#a8322d" stroke-width="1.8"/>
+      <use href="#bot" transform="translate(28,39)"/>
+      <text x="52" y="28" font-size="13.5" font-weight="700" fill="#a8322d">Pedagogical</text>
+      <text x="52" y="45" font-size="13.5" font-weight="700" fill="#a8322d">Verifier</text>
+      <text x="52" y="63" font-size="11.5" fill="#a8322d">alignment checks</text>
+    </g>
+    <!-- check: read graph -> verifier -->
+    <line x1="572" y1="282" x2="610" y2="282" stroke="#a8322d" stroke-width="2" marker-end="url(#arrR)"/>
+    <text x="591" y="272" text-anchor="middle" font-size="12" font-style="italic" fill="#a8322d">check</text>
+    <!-- repair: delegate back to the owning specialist -->
+    <g stroke="#a8322d" stroke-width="2" stroke-dasharray="6 4" fill="none">
+      <path d="M 689 244 C 700 208 704 168 700 138" marker-end="url(#arrR)"/>
+      <path d="M 689 324 C 700 358 704 388 700 410" marker-end="url(#arrR)"/>
+    </g>
+    <text x="706" y="186" text-anchor="middle" font-size="12" font-style="italic" fill="#a8322d">delegate repair</text>
+    <text x="706" y="380" text-anchor="middle" font-size="12" font-style="italic" fill="#a8322d">delegate repair</text>
 
-  <!-- mini graph edges -->
-  <line x1="690" y1="250" x2="772" y2="262" stroke="#6B7280" stroke-width="1.2" marker-end="url(#arrMini)"/>
-  <text x="726" y="243" font-size="9.5" font-style="italic" fill="#4A6FA5">measures</text>
-  <line x1="687" y1="336" x2="776" y2="276" stroke="#6B7280" stroke-width="1.2" marker-end="url(#arrMini)"/>
-  <line x1="692" y1="345" x2="770" y2="345" stroke="#6B7280" stroke-width="1.2" marker-end="url(#arrMini)"/>
-  <text x="729" y="366" font-size="9.5" font-style="italic" fill="#4A6FA5">supports</text>
-  <line x1="899" y1="295" x2="815" y2="273" stroke="#6B7280" stroke-width="1.2" marker-end="url(#arrMini)"/>
-  <text x="866" y="268" font-size="9.5" font-style="italic" fill="#4A6FA5">evaluates</text>
+    <!-- Aggregator + outputs -->
+    <line x1="770" y1="282" x2="792" y2="282" stroke="#5b6577" stroke-width="2.5" marker-end="url(#arr)"/>
+    <rect x="796" y="248" width="120" height="68" rx="12" fill="#eef2f8" stroke="#1f5fa8" stroke-width="2"/>
+    <text x="856" y="277" text-anchor="middle" font-size="16" font-weight="700" fill="#1a2233">Aggregator</text>
+    <text x="856" y="298" text-anchor="middle" font-size="12.5" fill="#5b6577">assemble ADDIE</text>
 
-  <!-- mini graph nodes -->
-  <circle cx="793" cy="199" r="19" fill="#E5E7EB" stroke="#6B7280" stroke-width="1.3"/>
-  <text x="793" y="203" font-size="10" font-weight="600" fill="#374151" text-anchor="middle">NC</text>
-  <circle cx="793" cy="265" r="19" fill="#DCEBDC" stroke="#5B8C5A" stroke-width="1.4"/>
-  <text x="793" y="269" font-size="10" font-weight="600" fill="#2C4A2B" text-anchor="middle">LO 1</text>
-  <circle cx="793" cy="345" r="19" fill="#DCEBDC" stroke="#5B8C5A" stroke-width="1.4"/>
-  <text x="793" y="349" font-size="10" font-weight="600" fill="#2C4A2B" text-anchor="middle">LO 2</text>
-  <circle cx="671" cy="247" r="19" fill="#FFFFFF" stroke="#4A6FA5" stroke-width="1.4"/>
-  <text x="671" y="251" font-size="10" font-weight="600" fill="#243B5E" text-anchor="middle">AS</text>
-  <circle cx="671" cy="345" r="19" fill="#FFFFFF" stroke="#4A6FA5" stroke-width="1.4"/>
-  <text x="671" y="349" font-size="10" font-weight="600" fill="#243B5E" text-anchor="middle">ACT</text>
-  <circle cx="917" cy="305" r="19" fill="#FFFFFF" stroke="#4A6FA5" stroke-width="1.4"/>
-  <text x="917" y="309" font-size="10" font-weight="600" fill="#243B5E" text-anchor="middle">EV</text>
+    <line x1="908" y1="252" x2="948" y2="152" stroke="#5b6577" stroke-width="2.2" marker-end="url(#arr)"/>
+    <line x1="908" y1="312" x2="948" y2="404" stroke="#5b6577" stroke-width="2.2" marker-end="url(#arr)"/>
 
-  <!-- legend -->
-  <circle cx="720" cy="400" r="7" fill="#DCEBDC" stroke="#5B8C5A" stroke-width="1.2"/>
-  <text x="733" y="404" font-size="9.5" fill="#4B5563">aligned objective (measures ∧ supports ∧ evaluates)</text>
+    <rect x="928" y="88" width="140" height="60" rx="12" fill="#e5f2ea" stroke="#1e7a46" stroke-width="2"/>
+    <text x="998" y="113" text-anchor="middle" font-size="16" font-weight="700" fill="#1e7a46">ADDIE output</text>
+    <text x="998" y="134" text-anchor="middle" font-size="12.5" fill="#1e7a46">full curriculum</text>
 
-  <!-- specialists ↔ graph : read/write (bounded scope) -->
-  <line x1="580" y1="300" x2="624" y2="300" stroke="#4B5563" stroke-width="1.6"
-        marker-end="url(#arr)" marker-start="url(#arr)"/>
-  <text x="602" y="290" font-size="9.5" fill="#4B5563" text-anchor="middle">read / write</text>
-  <text x="602" y="316" font-size="8.5" fill="#6B7280" text-anchor="middle">(bounded scope)</text>
-
-  <!-- ══════════ Output ══════════ -->
-  <rect x="1000" y="230" width="150" height="86" rx="10" fill="#EEF2F7" stroke="#4A6FA5" stroke-width="1.5"/>
-  <text x="1075" y="262" font-size="12" font-weight="600" fill="#243B5E" text-anchor="middle">ADDIE program</text>
-  <text x="1075" y="284" font-size="10" fill="#7189AC" text-anchor="middle">+ residual</text>
-  <text x="1075" y="298" font-size="10" fill="#7189AC" text-anchor="middle">audit §4.4</text>
-  <line x1="958" y1="273" x2="996" y2="273" stroke="#4B5563" stroke-width="1.6" marker-end="url(#arr)"/>
-  <text x="977" y="264" font-size="9" fill="#4B5563" text-anchor="middle">emit</text>
-
-</svg>
+    <rect x="928" y="406" width="140" height="62" rx="12" fill="#e5f2ea" stroke="#1e7a46" stroke-width="2"/>
+    <text x="998" y="430" text-anchor="middle" font-size="15.5" font-weight="700" fill="#1e7a46">Graph dump</text>
+    <text x="998" y="450" text-anchor="middle" font-size="12.5" fill="#1e7a46">JSON + DOT</text>
+    <text x="998" y="494" text-anchor="middle" font-size="13.5" font-weight="600" fill="#5b6577">educator audit &amp; override</text>
+  </svg>

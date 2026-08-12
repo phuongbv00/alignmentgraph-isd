@@ -3,6 +3,15 @@
 Canonical author/supervisor info for the paper (`docs/paper/acm/main.tex`) and thesis
 (`docs/thesis/Cover.tex`, `docs/thesis/Cover2.tex`). Update here first, then propagate.
 
+## Paper byline (both EN and VN, decided 2026-08-11)
+
+Order follows the international CS convention (senior/corresponding author last);
+supervisor roles are NOT annotated in the paper — they stay a thesis-only concept:
+
+1. **Phuong Viet Bui** — first author
+2. **Van-Tam Bui** — co-author
+3. **Hai Van Pham** — last author, **corresponding author** (`\authornote{Corresponding author.}` / VN: "Tác giả liên hệ.")
+
 ## Author
 
 - **Bùi Việt Phương** (Phuong Viet Bui)

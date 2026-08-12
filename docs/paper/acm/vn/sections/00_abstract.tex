@@ -1,29 +1,20 @@
 \begin{abstract}
-Các hệ tác tử dựa trên LLM có thể sinh chương trình giảng dạy chất lượng cao, nhưng vấn đề về chi phí và kiểm soát
-dữ liệu cản trở việc triển khai thực tiễn tại các cơ sở giáo dục.
-Mô hình ngôn ngữ nhỏ (small language model, SLM) là một sự lựa chọn đáng để cân nhắc, tuy nhiên,
-khi mô hình nền nhỏ đi, chất lượng của hệ tác tử phụ thuộc nhiều hơn vào bộ khung thực thi (harness)
-bao quanh mô hình; trong thiết kế hệ thống giảng dạy (instructional systems design, ISD),
-\emph{constructive alignment} giữa mục tiêu, hoạt động và đánh giá là thuộc tính dễ suy giảm
-nhưng khó quan sát nhất, vì từng phần của chương trình vẫn có thể đọc hợp lý dù không còn
-nhất quán với nhau.
-
-Dựa trên lý thuyết constructive alignment, chúng tôi đề xuất
-\textbf{AlignmentGraph-ISD}, một harness đa tác tử được dẫn hướng bằng đồ thị.
-Hệ thống biểu diễn các quan hệ giữa mục tiêu, hoạt động và đánh giá thành một \emph{alignment graph} tường minh,
-đóng vai trò trạng thái thiết kế trung tâm; các tác tử chuyên biệt lần lượt xây dựng đồ thị
-theo quy trình ADDIE kèm cơ chế kiểm chứng và sửa lỗi sư phạm, và toàn bộ đồ thị được kết
-xuất thành artifact mà chuyên gia có thể kiểm tra (auditable).
-Bài báo có ba đóng góp: (i) harness AlignmentGraph-ISD với alignment graph là trạng thái
-alignment tường minh và kiểm được; (ii) một quy trình đánh giá constructive alignment
-tự động, tất định và độc lập với hệ được đo---operationalize các chỉ số alignment đã
-được kiểm chứng trong đo lường giáo dục---đóng vai trò phần mở rộng của
-ISD-Agent-Bench; và (iii) bằng chứng thực nghiệm về hành vi chất lượng theo kích thước
-mô hình trên dải bốn SLM cùng họ Qwen (0,8B--9B), mỗi mô hình ba lượt chạy độc lập,
-đối sánh với sáu tác tử ISD tiêu biểu trên 90 scenario.
-
-Kết quả thực nghiệm cho thấy \TBD{tóm tắt RQ1: thứ hạng Total theo từng kích thước mô
-hình và mức thay đổi điểm khi thu nhỏ}. Theo các tiêu chí constructive alignment đã
-thiết lập, \TBD{tóm tắt RQ2: full alignment rate và composite của harness so với các
-đối sánh, và sự thay đổi của chênh lệch này khi mô hình nhỏ đi}.
+LLM thương mại hiện tại đã hỗ trợ rất tốt instructional systems design.
+Tuy nhiên, sự phụ thuộc vào API bên thứ 3, chi phí cao, kèm rủi ro an toàn dữ liệu gây khó khăn lớn trong triển khai thực
+tế tại các cơ sở giáo dục.
+SLM open-weight với khả năng triển khai nội bộ kèm chi phí hợp lý hơn mở ra một hướng đi khả thi, nhưng khi model nhỏ
+đi, chất lượng đầu ra ngày càng phụ thuộc vào lớp agent harness bao quanh nó.
+Các nghiên cứu về ISD agent đến nay cũng chưa đặt vấn đề duy trì chất lượng khi thu nhỏ model làm trọng tâm dù bài toán
+có ý nghĩa tính thực tiễn cao.
+Vì vậy, dựa trên lý thuyết constructive alignment, chúng tôi đề xuất AlignmentGraph-ISD -- một agent harness đa tác tử tổ
+chức quá trình ISD quanh một đồ thị trạng thái alignment tường minh.
+Đánh giá thực nghiệm sử dụng ISD-Agent-Bench kết hợp giao thức đo alignment tự phát triển trên ladder 4 kích thước model
+họ Qwen (0.8B--9B).
+Kết quả cho thấy khi model nhỏ dần, harness giữ độ bền với 0\% tỷ lệ lỗi, dẫn trên alignment panel ở mọi
+kích thước mô hình, và dẫn điểm ADDIE ở 3 kích thước nhỏ (0.8B--4B), khoảng cách nới rộng khi model nhỏ đi trước khi ngang
+baseline mạnh nhất tại 9B. Đổi lại, điểm Trajectory thấp hơn đáng kể so với các hệ single-loop dẫn đầu, và chi phí token
+cao hơn mức trung vị của các baseline.
+Bên cạnh các đo lường định lượng, đồ thị trạng thái alignment tường minh của harness cho phép instructional designer
+audit và tinh chỉnh kết quả cuối, hỗ trợ nguyên tắc teacher-in-the-loop trong giáo dục, đối nghịch với các pipeline
+sinh tự động thiếu tính khả kiểm.
 \end{abstract}
