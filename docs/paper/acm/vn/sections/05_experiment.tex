@@ -70,7 +70,7 @@ chung. Chúng tôi giới hạn generation ở 8192 token mỗi lời gọi --- 
 Do đó, việc một kiến trúc có hoàn thành trong giới hạn này hay không là deployment
 property được đo.
 
-\subsection{Chỉ số}
+\subsection{Chỉ số đánh giá}
 \label{sec:metrics}
 
 Với RQ1, hai judge cố định thuộc các họ tách biệt với agent ---
@@ -101,7 +101,7 @@ nó khớp construct mà RQ1 hỏi.
 
 Với RQ2, giao thức trong \Cref{sec:protocol} chạy offline trên output đã lưu;
 công cụ đo được cấu hình theo preset (\Cref{tab:rq2-arms}): cấu hình chính ghép
-encoder Nemotron với Bloom checkpoint BERT, và bốn arm sensitivity tạo thành một
+encoder Nemotron với checkpoint BERT fine-tuned, và bốn arm sensitivity tạo thành một
 star quanh cấu hình chính --- mỗi arm lệch đúng một trục, không phải grid.
 Checkpoint BERT luôn trả argmax còn lexicon có thể abstain, nên denominator của
 Family B có thể khác nhau giữa hai arm Bloom. Quy tắc đọc panel pre-specified: có
@@ -121,10 +121,10 @@ Cost telemetry chỉ đọc \texttt{metadata.token\_usage}.
     Arm & Embedding encoder & Bloom classifier & Trục kiểm tra \\
     \midrule
     Chính & Nemotron-8B~\cite{babakhin2025nemotron} &
-    BERT~\cite{li2022bloomclassification} & --- \\
-    BGE-M3 & BGE-M3~\cite{chen2024m3embedding} & BERT & lineage encoder \\
-    Granite & Granite-311M~\cite{awasthy2026granite} & BERT & lineage encoder \\
-    TF--IDF & TF--IDF char $n$-gram & BERT & floor không semantic \\
+    fine-tuned BERT~\cite{li2022bloomclassification} & --- \\
+    BGE-M3 & BGE-M3~\cite{chen2024m3embedding} & fine-tuned BERT & lineage encoder \\
+    Granite & Granite-311M~\cite{awasthy2026granite} & fine-tuned BERT & lineage encoder \\
+    TF--IDF & TF--IDF char $n$-gram & fine-tuned BERT & floor không semantic \\
     Lexicon & Nemotron-8B & verb lexicon~\cite{anderson2001taxonomy} &
     Bloom classifier \\
     \bottomrule
@@ -158,12 +158,3 @@ kiện trên một biến post-treatment: loại bỏ đúng các failure nặng
 kích thước nhỏ. RQ1 báo thêm \texttt{failure=min}; RQ2 không dùng layer này vì
 tín hiệu đã có floor 0. Output-failure rate được so sánh riêng bằng Fisher exact
 test với hiệu chỉnh Holm.
-
-\subsection{Khả năng tái lập}
-\label{sec:reproducibility}
-
-Mọi giá trị đo được được sinh từ artifact run, judge, alignment và ablation đã
-lưu, và chỉ đi vào bài qua các file trong \texttt{docs/generated/}. Mỗi ô bảng
-ghép mean với SD giữa các run của cùng tín hiệu. Manifest pin runtime và model
-setting; embedding cache có revision hỗ trợ re-analysis chính xác từ vector đã
-lưu. Kết quả sinh trước study pivot bị loại.

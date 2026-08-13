@@ -6,7 +6,7 @@ run của cùng một tín hiệu, và ô có ít hơn \ladderNumScenarios{} sce
 dấu trong footnote. Vì mọi so sánh điểm đều có điều kiện trên việc agent có sinh
 được output, chúng tôi trình bày độ vững của output trước.
 
-\subsection{Độ vững theo quy mô}
+\subsection{Độ vững của output theo kích thước model}
 \label{sec:robustness}
 
 AlignmentGraph-ISD sinh output dùng được cho mọi scenario ở mọi kích thước, trong
@@ -32,7 +32,7 @@ chính và complete-case làm sensitivity.
   \label{fig:failure-rate}
 \end{figure*}
 
-\subsection{RQ1: Chất lượng do judge chấm và quy mô}
+\subsection{RQ1: Chất lượng theo thang LLM-as-judge}
 \label{sec:rq1}
 
 Trên ADDIE, AlignmentGraph-ISD dẫn ở ba kích thước nhỏ và ngang ReAct-ISD tại 9B
@@ -80,7 +80,7 @@ complete-case rất nhỏ (cột $n$, \Cref{tab:rq1-ladder}): chúng là artifac
 failure rate và không đọc được như một khoảng cách chất lượng. Đây chính là hiệu
 ứng chọn mẫu mà layer \texttt{failure=0} tránh.
 
-\subsection{RQ2: Panel tín hiệu constructive alignment}
+\subsection{RQ2: Chất lượng theo panel tín hiệu alignment}
 \label{sec:rq2}
 
 Theo quy tắc đọc pre-specified, panel kết luận lợi thế cho AlignmentGraph-ISD ở
@@ -94,7 +94,11 @@ bằng chứng độc lập qua congruence, Porter và Webb. Tín hiệu chiều
 $\sigma_{\mathrm{rev}}$ chỉ mang tính chẩn đoán và không tham
 gia phép đếm có hướng.
 
-\input{../../../generated/tab_rq2_panel}
+% Bảng generated tự đặt \small cho khổ sigconf 2 cột; khổ manuscript hẹp hơn
+% nên ép font và tabcolsep cục bộ tại đây thay vì sửa file generated.
+{\let\small\footnotesize
+ \setlength{\tabcolsep}{4pt}%
+ \input{../../../generated/tab_rq2_panel}}
 
 \begin{figure*}[!htbp]
   \centering
@@ -128,7 +132,7 @@ $[\rqTwoSimDiDVsBaselineCILo,\rqTwoSimDiDVsBaselineCIHi]$,
 $p=\rqTwoSimDiDVsBaselineP$). $\beta_{\mathrm{webb}}$ là ngoại lệ bất lợi ở model nhỏ;
 profile vì vậy phải được đọc theo từng tín hiệu.
 
-\subsection{Ablation: Bằng chứng về cơ chế}
+\subsection{Ablation study: Bằng chứng về cơ chế}
 \label{sec:ablation}
 
 Kết quả ablation có hình dạng judge-invariant nhưng alignment-shifted: bỏ graph
@@ -160,7 +164,7 @@ này không xác lập score effect trong hệ shipped.
   \label{fig:ablation-components}
 \end{figure*}
 
-\subsection{Sensitivity của cách đọc RQ2}
+\subsection{Sensitivity theo cấu hình công cụ đo alignment}
 \label{sec:sensitivity}
 
 Chiều của các so sánh theo cặp nghiêng về AlignmentGraph-ISD được giữ nguyên qua
@@ -169,9 +173,10 @@ BERT--lexicon và lát cắt complete-case: trên trục encoder, hệ đứng �
 \rqTwoSensTopOneCellsEncoderAxis{} ô arm--kích thước; trên trục Bloom là
 \rqTwoSensTopOneCellsBloomAxis{} ô. Kết luận so sánh vì vậy không phụ thuộc vào
 một encoder cụ thể, vào semantic embedding như một lớp phương pháp, hay vào một
-Bloom classifier cụ thể; bảng chi tiết nằm trong artifact sinh tự động
-\texttt{tab\_sensitivity}. Kết quả complete-case là bằng chứng sensitivity, không
-phải phân tích unconditional.
+Bloom classifier cụ thể (\Cref{tab:rq2-sensitivity}). Kết quả complete-case là
+bằng chứng sensitivity, không phải phân tích unconditional.
+
+\input{../../../generated/tab_sensitivity}
 
 \subsection{Chi phí và throughput}
 \label{sec:cost}
