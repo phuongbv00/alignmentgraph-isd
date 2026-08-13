@@ -132,6 +132,18 @@ $[\rqTwoSimDiDVsBaselineCILo,\rqTwoSimDiDVsBaselineCIHi]$,
 $p=\rqTwoSimDiDVsBaselineP$). $\beta_{\mathrm{webb}}$ là ngoại lệ bất lợi ở model nhỏ;
 profile vì vậy phải được đọc theo từng tín hiệu.
 
+Cách đọc trên không phụ thuộc vào cấu hình công cụ đo. Chiều của các so sánh
+theo cặp nghiêng về AlignmentGraph-ISD được giữ nguyên qua các lineage neural
+encoder độc lập, lexical floor TF--IDF, trục Bloom BERT--lexicon và lát cắt
+complete-case: trên trục encoder, hệ đứng đầu trong
+\rqTwoSensTopOneCellsEncoderAxis{} ô arm--kích thước; trên trục Bloom là
+\rqTwoSensTopOneCellsBloomAxis{} ô. Kết luận so sánh vì vậy không phụ thuộc vào
+một encoder cụ thể, vào semantic embedding như một lớp phương pháp, hay vào một
+Bloom classifier cụ thể (\Cref{tab:rq2-sensitivity}). Kết quả complete-case là
+bằng chứng sensitivity, không phải phân tích unconditional.
+
+\input{../../../generated/tab_sensitivity}
+
 \subsection{Ablation study: Bằng chứng về cơ chế}
 \label{sec:ablation}
 
@@ -164,20 +176,6 @@ này không xác lập score effect trong hệ shipped.
   \label{fig:ablation-components}
 \end{figure*}
 
-\subsection{Sensitivity theo cấu hình công cụ đo alignment}
-\label{sec:sensitivity}
-
-Chiều của các so sánh theo cặp nghiêng về AlignmentGraph-ISD được giữ nguyên qua
-các lineage neural encoder độc lập, lexical floor TF--IDF, trục Bloom
-BERT--lexicon và lát cắt complete-case: trên trục encoder, hệ đứng đầu trong
-\rqTwoSensTopOneCellsEncoderAxis{} ô arm--kích thước; trên trục Bloom là
-\rqTwoSensTopOneCellsBloomAxis{} ô. Kết luận so sánh vì vậy không phụ thuộc vào
-một encoder cụ thể, vào semantic embedding như một lớp phương pháp, hay vào một
-Bloom classifier cụ thể (\Cref{tab:rq2-sensitivity}). Kết quả complete-case là
-bằng chứng sensitivity, không phải phân tích unconditional.
-
-\input{../../../generated/tab_sensitivity}
-
 \subsection{Chi phí và throughput}
 \label{sec:cost}
 
@@ -209,5 +207,4 @@ Cột token của Baseline và EduPlanner là survivor statistics, vì các ca b
 không để lại artifact; so sánh chi phí do đó chỉ dùng các baseline có coverage đầy
 đủ. Giá trị wall-clock đo throughput có xếp hàng, với tối đa
 \costMaxInflightDesigns{} thiết kế in-flight, và không được diễn giải là request
-latency. Mọi giá trị token lấy từ \texttt{metadata.token\_usage}; các trường cost
-top-level không nhất quán bị loại.
+latency.
