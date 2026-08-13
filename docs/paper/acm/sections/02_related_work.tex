@@ -1,81 +1,86 @@
 \section{Related Work}
 \label{sec:related-work}
 
-\subsection{LLM Agents for Instructional Design}
+\subsection{Constructive Alignment and Its Measurement}
 
-The systems closest to ours apply ISD theory to agent architecture.
-ISD-Agent-Bench~\cite{isdagentbench} implements four theory-grounded agents:
-ReAct-ADDIE (a ReAct loop over ISD tools~\cite{yao2023react}), ADDIE-Agent (a
-linear five-phase state graph~\cite{branch2009addie}), Dick-Carey-Agent (the
-systems approach with a formative-evaluation loop~\cite{dick1978systematic}), and
-RPISD-Agent (rapid prototyping~\cite{tripp1990rapid}). EduPlanner~\cite{zhang2025eduplanner}
-uses adversarial generate--evaluate--optimize collaboration among agents;
-LessonPlanner~\cite{lessonplanner2024} and GPT-4 teaching-plan
-studies~\cite{hu2024teachingplan} improve single artifacts; LearnLM~\cite{learnlm2024}
-tunes the model itself for pedagogy. All of these accept a brief and optimize the
-draft produced by a design pass, and all treat constructive alignment as something
-to be \emph{encouraged} through prompt design or scored after the fact---none
-represents alignment as state that the system checks per objective and repairs.
+Constructive alignment locates instructional quality in the relation among intended
+learning outcomes, teaching activities, and assessment rather than in any artifact
+alone~\cite{biggs1996enhancing,biggs2011teaching}. Quality Matters makes these
+relations reviewable by requiring measurable objectives and supporting assessments,
+materials, and activities~\cite{qm2018rubric}. Porter measures agreement between
+content--demand distributions, Fulmer examines interpretation of that index, and
+Webb evaluates facets including cognitive-demand consistency
+~\cite{porter2002measuring,fulmer2011estimating,webb1997criteria}. The revised
+Bloom taxonomy supplies a shared demand vocabulary~\cite{anderson2001taxonomy}.
+These foundations motivate several complementary signals, but concern curricula,
+standards, and assessments authored before measurement.
 
-\subsection{Benchmarks and Evaluation}
+\subsection{ISD and Lesson-Planning Agents}
 
-OpenLearnLM~\cite{openlearnlm2026}, EduBench~\cite{edubench2025},
-MathTutorBench~\cite{mathtutorbench2025}, and TutorBench~\cite{tutorbench2025}
-evaluate educational capabilities at the level of individual tasks.
-ISD-Agent-Bench~\cite{isdagentbench} goes further by scoring both artifact quality
-against an ADDIE rubric and the quality of the agent's trajectory, over synthetic
-scenarios spanning a Context~$\times$~ISD matrix, with multi-judge grading to
-reduce self-preference bias. We adopt it as our evaluation substrate for both
-research questions, and additionally report a deterministic \emph{residual
-alignment-defect audit} that measures a property the rubric does not directly
-score.
+ISD-Agent-Bench collects theory-grounded agents implementing iterative tool use,
+ADDIE, systematic design, and rapid prototyping~\cite{isdagentbench}; its ReAct
+variant draws on reasoning--acting orchestration~\cite{yao2023react}. The benchmark
+scores both artifacts and trajectories with LLM rubrics, but does not separately
+instrument relations among generated objectives, activities, and assessments.
+Related systems support pedagogy-guided authoring, direct plan generation, or
+multi-agent revision~\cite{lessonplanner2024,hu2024teachingplan,
+zhang2025eduplanner}. Across this work, preserving quality while reducing the
+foundation model is not a joint harness-design and evaluation target.
 
-\subsection{Consistency Control in Multi-Artifact Generation}
+\subsection{Deployment and Measurement Precedents}
 
-Theoretically, constructive alignment~\cite{biggs1996enhancing} defines the
-consistency standard among objectives, activities, and assessments, and the
-systems approach~\cite{dick1978systematic} justifies systematic verification.
-Bloom's taxonomy~\cite{anderson2001taxonomy} provides the cognitive-level standard
-an assessment must match. Technically, verifier and self-repair mechanisms such as
-Self-Refine~\cite{madaan2023selfrefine} and Reflexion~\cite{shinn2023reflexion}
-demonstrate the value of checking and correcting model output from outside the
-model---value that grows as base models saturate and as smaller models are
-deployed~\cite{cho2026harness,belcak2025slm}. In existing ISD systems, however,
-alignment is only encouraged through prompts or scored after generation; it is
-never represented as first-class state---a data structure whose links the system
-can check individually, whose affected regions it can mark on change, and through
-which it can propagate repairs under control.
+Nearby deployment work addresses only parts of that target. Small Models, Big
+Support uses self-hosted models for teacher-facing content and assessment but is
+not end-to-end agentic ISD~\cite{reza2025smallmodels}. LessonPlanLM fine-tunes a 7B
+model rather than testing one harness across sizes~\cite{zheng2025lessonplanlm},
+whereas Instructional Agents uses commercial APIs~\cite{yao2025instructionalagents}.
+Thus local authoring, compact-model specialization, and multi-agent course
+generation have been studied separately, not as a controlled scale test of a
+common open-weight ISD harness.
 
-\subsection{Synthesis and Positioning}
+Automated measurement supplies relevant components. Semantic traceability and
+embeddings recover relations among textual artifacts
+~\cite{clelandhuang2018traceability,feng2022labse}; other work maps assessment
+items to standards fixed before scoring. For cognitive demand, Li et al. provide
+the expert-labeled corpus used to fine-tune our Bloom classifier
+~\cite{li2022bloomclassification}, while BloomNet is a related classifier rather
+than the corpus source~\cite{waheed2021bloomnet}. These methods avoid a generative
+judge, but do not jointly assess artifacts emitted by the system being measured.
 
-\Cref{tab:related} summarizes the gap. Current ISD agents optimize a single pass,
-are evaluated on artifact and trajectory quality, and lack an explicit
-representation of alignment for control; none is evaluated on the SLM setting that
-increasingly governs deployment cost. AlignmentGraph-ISD fills the gap by making
-alignment the first-class graph state of the harness, decomposing generation
-around it so alignment holds by construction, verifying and repairing pedagogical
-constraints as per-agent tools, and evaluating the result on both an LLM and an
-SLM.
+\subsection{Synthesis}
 
+\Cref{tab:related} summarizes scope rather than system quality. It exposes two
+unresolved combinations: scale-sensitive evaluation of an on-premise ISD harness,
+and benchmark-integrated measurement of intrinsic relations within a generated
+design.
 \begin{table}[t]
-  \caption{Positioning against representative ISD agents.
-  AbC = alignment represented as \emph{checkable state} (not just prompted);
-  Ver = per-objective pedagogical verification;
-  Rep = automatic repair of detected violations;
-  SLM = evaluated on a small language model.}
+  \caption{Criteria-based positioning of related work. ISD = end-to-end agentic
+  instructional design; Local = local/open-weight SLM as a design condition;
+  Scale = controlled evaluation across model sizes; Intr. = intrinsic alignment
+  among wholly generated design artifacts; Bench = integration into an ISD
+  benchmark. \ding{51} = addressed; \ding{55} = not addressed; (\ding{51}) =
+  partially addressed.}
   \label{tab:related}
+  \centering
   \small
-  \begin{tabular}{@{}lcccc@{}}
+  \resizebox{\columnwidth}{!}{%
+  \begin{tabular}{@{}lccccc@{}}
     \toprule
-    Agent & AbC & Ver & Rep & SLM \\
+    Work or group & ISD & Local & Scale & Intr. & Bench \\
     \midrule
-    Baseline (single prompt)               & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
-    ReAct-ADDIE~\cite{isdagentbench,yao2023react}       & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
-    ADDIE-Agent~\cite{branch2009addie}     & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
-    Dick-Carey-Agent~\cite{dick1978systematic} & \ding{55} & (\ding{51}) & \ding{55} & \ding{55} \\
-    RPISD-Agent~\cite{tripp1990rapid}      & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
-    EduPlanner~\cite{zhang2025eduplanner}  & \ding{55} & (\ding{51}) & (\ding{51}) & \ding{55} \\
-    \textbf{AlignmentGraph-ISD} (ours)     & \ding{51} & \ding{51} & \ding{51} & \ding{51} \\
+    ISD-Agent-Bench and agents~\cite{isdagentbench} & \ding{51} & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
+    LLM lesson-planning systems~\cite{lessonplanner2024,hu2024teachingplan,zhang2025eduplanner} & (\ding{51}) & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
+    Small Models, Big Support~\cite{reza2025smallmodels} & \ding{55} & \ding{51} & \ding{55} & \ding{55} & \ding{55} \\
+    LessonPlanLM~\cite{zheng2025lessonplanlm} & \ding{55} & (\ding{51}) & \ding{55} & \ding{55} & \ding{55} \\
+    Instructional Agents~\cite{yao2025instructionalagents} & (\ding{51}) & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
+    Item--standards LM/embedding measurement & \ding{55} & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
+    BERT-based Bloom classifiers~\cite{li2022bloomclassification,waheed2021bloomnet} & \ding{55} & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
+    \textbf{AlignmentGraph-ISD} (this work) & \ding{51} & \ding{51} & \ding{51} & \ding{51} & \ding{51} \\
     \bottomrule
-  \end{tabular}
+  \end{tabular}}
 \end{table}
+
+AlignmentGraph-ISD studies the first combination across a common Qwen ladder. Its
+benchmark extension addresses the second with a flat panel whose embedding and
+Porter/Webb/Bloom families differ mechanically; neither family is presented as a
+new construct or as intrinsically superior to prior work.

@@ -1,49 +1,116 @@
 \section{Discussion}
 \label{sec:discussion}
 
-\paragraph{Interpretation.}
-The results support a specific reading of \emph{how} an agent harness improves
-instructional-design quality. AlignmentGraph-ISD leads all six baselines on the
-benchmark (\cref{sec:rq1}), and the ablation attributes that lead overwhelmingly to
-one mechanism: multi-agent decomposition over the alignment graph
-($+3.90$ composite, $+3.29$ ADDIE, $p_{\mathrm{Holm}}=2.3\times10^{-13}$).
-Decomposing generation among specialists with bounded write scope, over a shared
-graph that forces each alignment edge to be created as part of generation, is what
-turns constructive alignment from prompted prose into an enforced property. This is
-consistent with the harness-over-model thesis~\cite{cho2026harness}: the advantage
-comes from the execution environment, not from asking the model to try harder.
+The ladder and ablation support different claims. At the system level, the ADDIE
+advantage is largest at the small end of the Qwen 0.8B--9B ladder and contracts to
+parity with ReAct-ISD at 9B; the RQ2 profile satisfies its pre-specified rule at
+every size (\Cref{sec:rq1,sec:rq2}). At the mechanism level, removing graph context
+shifts the alignment panel downward while ADDIE remains nearly invariant
+(\Cref{sec:ablation}). Explicit shared state is therefore supported as the mechanism
+carrying the measured alignment profile, but not as an improvement to judge-scored
+quality or as a mechanism whose effect strengthens toward smaller models. The
+verifier has no score effect in the shipped configuration; it is a backstop and an
+audit trail.
 
-\paragraph{Scientific and practical implications.}
-Representing alignment as first-class graph state is not education-specific: any
-setting that generates many interdependent artifacts with a required correspondence
-among them---technical documentation, process definitions, curricula---faces the
-same invisible-defect problem and can reuse the pattern ``typed dependency graph +
-bounded-scope specialists + owned verification.'' Practically, because the
-advantage is structural rather than capability-driven, it is exactly the kind of
-advantage expected to matter most as deployment shifts to cost-efficient
-SLMs~\cite{belcak2025slm}, and the SLM run confirms this directly: the decomposition
-contribution roughly doubles ($+3.9 \rightarrow +7.9$) while the harness's absolute
-score barely moves and the baselines lose several points---the harness converts a
-structural design into robustness against model scale-down.
+Every ablation arm produced usable output, which locates robustness in the execution
+structure common to those arms rather than in graph context or verification alone.
+Because no monolithic arm exists, this remains a system-level attribution, not a
+causal estimate for decomposition. More broadly, the study complements evidence
+that harness sensitivity can be non-monotonic across model tiers
+~\cite{cho2026harness}: the observed interaction, rather than prior literature,
+supports the small-end result. Numerical comparison with studies using different
+models, tasks, budgets, or judges would not support the same inference.
 
-\paragraph{Failure analysis: verification/repair does not move the judged score.}
-Our most instructive negative result is that per-agent verification/repair
-contributes essentially nothing to the composite score ($+0.26$, n.s.), even though
-it demonstrably fires and repairs real pedagogical violations (\cref{sec:rq2}). Two
-observations explain this and guard against over-claiming. First, on a capable
-model the generated artifacts are already mostly well-aligned by construction, so
-the quality-control tools have little left to fix---their activation rate is low.
-Second, and more fundamentally, there is a \emph{construct gap}: the checks enforce
-formal pedagogical criteria (cognitive-level match, observable rubrics,
-active-practice coverage) that the ADDIE rubric, as scored by LLM judges, does not
-directly reward; and an earlier, over-strict measurability check that rewrote
-well-formed objective statements actively \emph{lowered} the judged score before we
-narrowed it to genuinely non-observable objectives and made it audit-only. The
-honest conclusion is that verification/repair is a \emph{guarantee} mechanism whose
-value is visible in the residual-defect audit rather than in the judge score; on a
-strong model it is close to a no-op on quality, and its case rests on the SLM
-setting and on deployments where undetected alignment defects carry real cost. We
-also observe a persistent trajectory-score pattern: the harness's structured
-multi-agent trace is scored no higher, sometimes lower, than a clean single ReAct
-loop, reflecting that trajectory judging rewards trace simplicity rather than the
-structural guarantees the trace encodes.
+The practical proposition is that the harness runs reliably and remains worth
+running at the small end within the serving envelope in \Cref{sec:assumptions}.
+Its case weakens as capacity rises: at the smallest size it loses to one baseline on
+\texttt{total\_score}, while at 9B ReAct-ISD is equal or better depending on the
+judge signal and uses substantially fewer tokens (\Cref{sec:cost}).
+AlignmentGraph-ISD is therefore decision support, not expert replacement. Its graph dump gives an
+educator an audit-and-override interface for tracing relations and verifier actions;
+professional review remains necessary for pedagogical suitability, context,
+accessibility, and use.
+
+The judge-invariant but alignment-shifted ablation admits two competing readings.
+On the favorable reading, general LLM judges are insensitive to alignment, which is
+the measurement gap addressed by the independent RQ2 protocol; known evaluator
+biases make that possibility credible~\cite{panickssery2024llm}. On the adversarial
+reading, only the instrument designed around the ablated construct separates the
+arms, while the mechanically independent judge family does not---the pattern
+expected under weak discriminant validity. The current evidence cannot choose
+between them. This ambiguity motivates the expert-validation direction specified
+below.
+
+These interpretations are bounded by the study design and the instruments that
+produce them. The following threats state those boundaries together with the
+corresponding mitigations, then derive the next experiments from what remains
+unresolved.
+
+\subsection{Threats to Validity and Limitations}
+\label{sec:threats-limitations}
+
+Internal validity is affected by the interaction between the 8192-token cap and
+architecture: decomposition can complete within a budget that truncates one-shot
+generation. This interaction is also part of the deployment condition, so we derive
+the cap from the checkable envelope in \Cref{sec:assumptions}, apply it uniformly,
+and report failures and truncation by agent and size (\Cref{sec:robustness}). A
+higher-cap run remains a separate sensitivity rather than a change to that condition.
+The only baseline-specific intervention was translating ReAct-ISD's prompt
+scaffolding into English; disclosure permits alternative translations while holding
+the method fixed. LLM-judge drift and self-preference remain possible
+~\cite{panickssery2024llm}, mitigated by the no-LLM second instrument, separate
+agent and judge families, and same-session ablation contrasts.
+
+External validity is bounded by one model family. The four Qwen checkpoints share a
+pretraining recipe, so size is confounded with recipe differences within that
+family. Conclusions therefore apply only across the Qwen 0.8B--9B ladder;
+generalization to Llama, Gemma, or Phi requires another experiment. The scenarios
+also come from one stratified benchmark rather than institutional practice. Domain
+and difficulty stratification mitigate narrow sampling, but educator-reviewed field
+replication is still needed.
+
+Construct validity is the central limitation: similarity is not alignment. Family A
+measures textual correspondence, and its bridge to constructive alignment rests on
+the protocol's evidence structure and established criteria
+~\cite{biggs2011teaching,porter2002measuring,webb1997criteria}, not its metric names.
+In particular, \texttt{assessment\_objective\_similarity} cannot distinguish useful
+coverage from restatement and is excluded from directional counts. The primary
+Bloom checkpoint is learned from one institution's coding convention
+~\cite{li2022bloomclassification}; its individual decisions are not traceable to
+Anderson--Krathwohl~\cite{anderson2001taxonomy}, nor has it been validated on
+machine-generated objectives. Encoder and classifier error may be differential
+across systems that paraphrase, repeat, or distribute content differently. The
+three-axis sensitivity star---independent neural lineages, a TF--IDF floor, and a
+BERT--lexicon substitution---reduces but does not remove this threat
+(\Cref{sec:sensitivity}). Pinned revisions and cached embeddings reproduce reported
+scores up to neural floating-point noise, not necessarily bit for bit.
+
+Conclusion validity depends on \ladderNumScenarios{} paired scenarios and
+\ladderNumRunsPerModel{} runs per cell. The run count limits variance estimation;
+between-run SDs, bootstrap intervals, and exact permutation nulls for small paired
+samples mitigate that limit. Within-signal and panel-wide Holm corrections expose
+the multiplicity trade-off. Output failure is post-treatment, so complete-case
+analysis can discard an agent's worst cases; \texttt{failure=0} is primary,
+complete-case is sensitivity rather than unconditional, and failure rates are
+reported separately (\Cref{sec:stats}). The failure policy and panel rule were fixed
+before pooled RQ2 results were inspected, limiting outcome-contingent interpretation
+without claiming external preregistration.
+
+\paragraph{Future directions.}
+\label{sec:future-work}
+Each next experiment follows from one of these limits. Because every ablation
+retains the specialist workflow, a monolithic arm in the same package and under the
+same per-scenario token budget should separate decomposition from codebase,
+prompting, and test-time compute. A higher-cap sensitivity on the rented 24\,GB
+device should test whether robustness and rankings persist when one-shot agents
+receive a larger serving allowance while prompts, scenarios, decoding, failure
+policy, and reporting rules remain fixed.
+
+The missing human evidence tier motivates a study in which two ISD experts
+blind-code a stratified sample, report inter-expert agreement, and test
+machine--human agreement with Cohen's $\kappa$ under a prediction fixed before
+labels are examined. That study would also adjudicate the competing ablation
+readings above. Finally, because the panel measures textual correspondence and
+cognitive-demand signals rather than learning outcomes, subsequent work must
+connect its profiles to educator decisions and learner outcomes before making
+claims about instructional effectiveness.

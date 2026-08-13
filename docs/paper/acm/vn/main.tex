@@ -1,10 +1,22 @@
-\documentclass[sigconf]{acmart}
+%\documentclass[sigconf]{acmart}
+\documentclass[manuscript,screen,review]{acmart}
 
 \usepackage{polyglossia}
 \setmainlanguage{vietnamese}
 \setotherlanguage{english}
 
 \usepackage{pifont}
+\usepackage[ruled,vlined]{algorithm2e}
+% Nới hạn ngạch float mỗi trang, nếu không các figure* dồn hàng đợi
+% và rớt hết xuống sau references (FloatBarrier không áp được cho float 2 cột).
+\setcounter{topnumber}{4}
+\setcounter{dbltopnumber}{4}
+\setcounter{totalnumber}{8}
+\renewcommand{\topfraction}{0.95}
+\renewcommand{\dbltopfraction}{0.95}
+\renewcommand{\textfraction}{0.03}
+\renewcommand{\floatpagefraction}{0.8}
+\renewcommand{\dblfloatpagefraction}{0.8}
 \usepackage[capitalise,english]{cleveref}
 
 % Placeholder cho số liệu chưa có: các thí nghiệm trên dải Qwen đang chạy;
@@ -12,11 +24,16 @@
 % (sync bằng docs/scripts/sync_generated.sh).
 \newcommand{\TBD}[1]{\textcolor{red}{[TBD: #1]}}
 
-% Macro thống kê sinh tự động từ artifact (demo placeholder khi chưa có số).
+% Macro thống kê sinh tự động từ artifact (docs/generated/, sync bằng sync_generated.sh).
+% Mọi con số thực nghiệm trong văn bản lấy từ các macro này — không gõ tay.
 \input{../../../generated/stats_macros}
+\input{../../../generated/cost_macros}
+\input{../../../generated/abl_macros}
+\input{../../../generated/sens_macros}
 
-% Shared assets (references.bib, figures/) live in the parent acm/ directory.
-\graphicspath{{../figures/}{figures/}}
+% Shared assets (references.bib, figures/) live in the parent acm/ directory;
+% hình sinh tự động nằm ở docs/generated/figures/.
+\graphicspath{{../figures/}{figures/}{../../../generated/figures/}}
 
 % Bản dịch tiếng Việt của main.tex --- xem CLAUDE.md và main.tex (bản gốc tiếng Anh)
 % cho các TODO trước khi nộp (venue, ISBN/DOI, CCS codes).
@@ -29,7 +46,7 @@
 \acmDOI{}
 \setcopyright{none}
 
-\title{AlignmentGraph-ISD: A Graph-Guided Multi-Agent Harness for Instructional Systems Design with Small Language Model}
+\title{AlignmentGraph-ISD: A Graph-Guided Multi-Agent Harness for Instructional Systems Design with Small Language Models}
 
 % TODO: xác nhận email và tên đơn vị công tác chính xác trước khi nộp.
 \author{Phuong Viet Bui}
@@ -41,8 +58,18 @@
 }
 \email{phuong.bv242011m@sis.hust.edu.vn}
 
+\author{Van-Tam Bui}
+\orcid{0009-0007-0064-266X}
+\affiliation{%
+  \department{Khoa Công nghệ Thông tin}
+  \institution{Trường Đại học Hải Phòng}
+  \city{Hải Phòng}
+  \country{Việt Nam}
+}
+\email{tambv@dhhp.edu.vn}
+
 \author{Hai Van Pham}
-\authornote{Giảng viên hướng dẫn chính.}
+\authornote{Tác giả liên hệ.}
 \affiliation{%
   \department{Trường Công nghệ Thông tin và Truyền thông}
   \institution{Đại học Bách khoa Hà Nội}
@@ -51,15 +78,7 @@
 }
 \email{haipv@soict.hust.edu.vn}
 
-%\author{Long Kim Cu}
-%\authornote{Giảng viên đồng hướng dẫn.}
-%\affiliation{%
-%  \institution{Center for Information Technology, Ministry of Science and Technology}
-%  \city{Hanoi}
-%  \country{Vietnam}
-%}
-
-\renewcommand{\shortauthors}{Bui và Pham}
+\renewcommand{\shortauthors}{Bui và cộng sự}
 
 % Cho phép TeX co giãn thêm ở bước cuối để tránh overfull hbox do các token dài
 % không ngắt được (vd AlignmentGraph-ISD, verification/repair) trong chế độ tiếng Việt.
@@ -93,25 +112,26 @@
 \ccsdesc[500]{Computing methodologies~Multi-agent systems}
 \ccsdesc[300]{Computing methodologies~Natural language processing}
 
-\keywords{instructional systems design, instructional design, LLM agent, agent harness, constructive alignment, multi-agent system, small language model}
+\keywords{instructional systems design, multi-agent LLM, constructive alignment, small language models, ADDIE, benchmark evaluation}
 
 \maketitle
 
 \input{sections/01_introduction}
 \input{sections/02_related_work}
-\input{sections/03_problem_formulation}
 \input{sections/04_method}
 \input{sections/05_experimental_methodology}
 \input{sections/06_results}
 \input{sections/07_discussion}
-\input{sections/08_threats_limitations}
 \input{sections/09_conclusion}
 
-\section*{Khả năng tiếp cận dữ liệu}
-ISD-Agent-Bench, sáu tác tử đối sánh và pipeline đánh giá đã được công bố công khai
-~\cite{isdagentbench}.
-Mã nguồn AlignmentGraph-ISD và các artifacts liên quan có thể được truy cập tại [PENDING].
+%\section*{Khả năng tiếp cận dữ liệu}
+%ISD-Agent-Bench, gồm sáu tác tử đối sánh và pipeline đánh giá, đã được công bố công
+%khai~\cite{isdagentbench}. Run manifest (model, judge, phiên bản prompt, seed và cấu
+%hình decoding), cấu hình ba arm ablation và mã nguồn của harness sẽ được công bố cùng
+%bản camera-ready của bài báo.
 
+% Xả toàn bộ float tồn đọng thành trang hình TRƯỚC references.
+\clearpage
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{../references}
 

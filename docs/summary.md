@@ -10,6 +10,15 @@
 > - **Số liệu**: mọi con số trong paper sinh tự động (`pooled_ladder.json` → `09/13/14_gen_*` + `ablation/11_gen_*` →
     `docs/generated/`), không gõ tay. Bản đọc cho người: `docs/results.md`. Mục 9 dưới đây chỉ mô tả **hình dạng** kết
     quả và thứ tự narrative.
+> - **Văn phong & độ dài (2026-08-11)**: bám khung 15 mục nhưng KHÔNG bôi cho đủ mục — mục ít nội dung viết ngắn;
+    văn xuôi lập luận liền mạch (topic sentence, chuyển ý), không "chép giàn ý thành câu"; độ dài paper vừa phải,
+    không ép số trang cụ thể.
+> - **SKELETON 7 MỤC (user chốt 2026-08-11, theo khảo sát 12 paper — đồng hình EduPlanner TLT 2025)**: thân bài =
+    Introduction / Related Work / **AlignmentGraph-ISD** (problem setting nén → harness → protocol) /
+    **Experimental Design** (đổi tên từ "Experimental Methodology") / Results / **Discussion** (kết bằng subsection
+    "Threats to validity and limitations" — giữ đủ construct/internal/external/conclusion + future work) /
+    Conclusion. File: `03_problem_formulation.tex` và `08_threats_limitations.tex` **bỏ** (nội dung gộp vào 04 và 07);
+    khung 15 mục dưới đây vẫn là danh mục NỘI DUNG phải có, không còn là danh mục section.
 
 ## 1. Title
 
@@ -48,8 +57,14 @@ Một đoạn thống nhất, 7 phần theo đúng trình tự; mỗi phần vi�
 
 **Ràng buộc:**
 
-- **Buộc**: cả ba tín hiệu judge (`addie_median`, `trajectory_score`, `total_score`) xuất hiện **ngang nhau** — không
-  có tín hiệu nào là endpoint; ADDIE chỉ dẫn narrative vì đo đúng construct của RQ1 (mục 8.6, 9.2).
+- Giới hạn tối đa 200 từ
+- **Đổi 2026-08-12 (user)**: abstract KHÔNG liệt kê đủ ba tín hiệu judge và **không nhắc `total_score`**; vế negative
+  trung thực của abstract = Trajectory thua react-isd + ADDIE-Agent mọi size + chi phí token trên trung vị baseline.
+  Ghi nhận `total_score` thua (hai đầu ladder) vẫn BUỘC ở Results (mục 9.2); nguyên tắc "ba tín hiệu ngang hàng, không
+  endpoint" vẫn áp cho bảng chính + Results.
+- **Buộc (số liệu đã verify 2026-08-12)**: ADDIE dẫn ở **3/4 size, ngang react-isd tại 9B** (mean −0.08 ns) — mọi chỗ
+  trong paper KHÔNG được viết "dẫn ADDIE mọi size" theo mean; Trajectory thua react-isd VÀ ADDIE-Agent mọi size (không
+  viết "chỉ thua react-isd"); coverage 38% = hệ tệ nhất, tính theo (scenario, run) có sinh artifact.
 - **Buộc**: RQ2 phát biểu ở mức "tín hiệu đo được của alignment", không phải "đo được alignment" (mục 8.1).
 - **Cấm**: nới phạm vi ra "SLM nói chung" — kết luận chỉ ở "trên dải Qwen 0.8B–9B" (mục 11).
 - **Cấm**: mọi biến thể của claim "tiết kiệm chi phí" (mục 10.4).
@@ -61,6 +76,23 @@ Một đoạn thống nhất, 7 phần theo đúng trình tự; mỗi phần vi�
 evaluation. Không lặp nguyên cụm của title.
 
 ## 4. Introduction — `01_introduction.tex`
+
+> **CẤU TRÚC MỚI (user chốt 2026-08-12, bám phần đầu abstract; làm bản VN trước, EN kệ):** 4 khối kinh điển:
+> (1) **Bối cảnh chung** — giới thiệu lĩnh vực + tầm quan trọng: LLM thương mại hỗ trợ tốt ISD end-to-end (có cite
+> củng cố; mức claim: chất lượng "tiệm cận, một số thiết lập ngang bằng Ở CẤP THÀNH PHẦN" — không claim parity cho
+> trọn bộ chương trình), rồi vấn đề triển khai — API bên thứ 3, chi phí cao, rủi ro an toàn dữ liệu (có cite;
+> **mức claim CHỐT 2026-08-12: "được ghi nhận là rào cản triển khai" — KHÔNG viết "gây khó khăn lớn"**, evidence chỉ
+> đỡ mức documented-barrier; caveat cite: zesch2024flexi không dùng cho vế privacy), dẫn tới hướng SLM on-premise +
+> vai trò harness khi model nhỏ đi;
+> (2) **Khoảng trống nghiên cứu** — 2 gap các nghiên cứu trước chưa giải quyết, phát biểu "chưa đặt làm trọng tâm"
+> (scope về mức ưu tiên, không phủ nhận tồn tại nghiên cứu đề cập; cite danger papers); **dạng phát biểu chốt
+> 2026-08-12: claim-về-công-trình ("chưa có công trình nào cho thấy…"), KHÔNG dùng claim-về-hệ ("chưa có hệ nào duy
+> trì…") — chỉ văn liệu là thứ khảo sát được;**
+> (3) **Câu hỏi nghiên cứu** — đúng 2 RQ lấp thẳng 2 gap, **KHÔNG tách RQ1a/RQ1b** (RQ1 một câu gộp cả mức lẫn
+> "khoảng cách có nới rộng khi thu nhỏ");
+> (4) **Ý nghĩa** — tóm tắt 2 đóng góp chính (mục 4.6) + một đoạn cấu trúc bài (4.7).
+> Khối "ý tưởng & phương pháp" (4.5 cũ) không còn là khối riêng trong intro — tiền đề decomposition + demarcation
+> vẫn BUỘC ở Method. Các mục 4.1–4.5 dưới đây giữ làm kho nội dung/ràng buộc, không còn là dàn bài intro.
 
 **4.1–4.2 Bối cảnh & vấn đề.** LLM thương mại sinh được chương trình giảng dạy chất lượng cao, nhưng chi phí suy luận,
 phụ thuộc API và việc chuyển dữ liệu người học qua bên thứ ba cản trở triển khai tại cơ sở giáo dục. Open-weight SLM
@@ -91,7 +123,9 @@ lượng toàn hệ phụ thuộc nhiều hơn vào **harness** (quản lý tr�
   sinh quanh trạng thái tường minh này giảm phụ thuộc vào khả năng tự duy trì nhất quán của model — khả năng suy giảm
   khi model nhỏ đi.
 
-**4.6 Đóng góp** (3, đúng thứ tự loại của đề cương):
+**4.6 Đóng góp** (CHỐT 2026-08-11: đúng **HAI** đóng góp — bỏ đóng góp 3 cũ "scale ladder"; thiết kế ladder 4 size ×
+3 run + SD giữa run giờ là đặc điểm rigor của methodology (mục 8.3, 9.7), nêu trong câu preview thực nghiệm của
+Introduction, KHÔNG đánh số đóng góp):
 
 1. **AlignmentGraph-ISD** — harness đa tác tử với alignment graph là trạng thái alignment tường minh, kiểm được, audit
    được, cho sinh chương trình ADDIE.
@@ -99,10 +133,8 @@ lượng toàn hệ phụ thuộc nhiều hơn vào **harness** (quản lý tr�
    trong đo lường, điểm là hàm cố định của văn bản; panel 7 tín hiệu phẳng không thứ bậc, hai họ instrument độc lập cơ
    chế; không claim construct mới — operationalize tiêu chí đã thiết lập (Biggs–Tang, QM, Porter/Webb); instrument mới
    không thừa hưởng validity qua trích dẫn — bắc cầu bằng bằng chứng (chưa có nhịp con người). Đặc tả + mức claim chính
-   xác: `docs/rq2_protocol.md`.
-3. **Scale ladder có kiểm soát với run-to-run variability lượng hoá** — 7 hệ × 4 size Qwen (0.8B→9B) × 3 run độc lập/ô,
-   chấm bằng cả hai họ instrument; điểm mới là **mỗi số đi kèm SD giữa các run** (literature hệ tác tử hầu như
-   single-run).
+   xác: `docs/rq2_protocol.md`. **Trình bày như phương pháp trong mục 7 (đề mục riêng SAU phần harness — xem 7.8),
+   không phải trong 8.6.**
 
 **4.7 Cấu trúc bài** — một đoạn, bắt buộc.
 
@@ -122,7 +154,12 @@ Tổ chức theo nhóm, không liệt kê từng bài:
   pháp.
 - **Cấm**: tuyên bố đề xuất *tốt hơn* trong Related Work.
 
-## 6. System Model & Problem Formulation — `03_problem_formulation.tex`
+## 6. System Model & Problem Formulation — GỘP VÀO `04_method.tex` (2026-08-11)
+
+> File `03_problem_formulation.tex` đã bỏ; nội dung mục này tinh giảm và trở thành phần mở đầu của mục 7 (Method):
+> giữ hình kiến trúc (`fig:architecture`), predicate `aligned(o)` (`eq:aligned`) và deployment envelope
+> (`sec:assumptions`) — ba thứ load-bearing; ký hiệu rút gọn tối đa (bảng notation bỏ được nếu thừa, kèm dọn hết
+> tham chiếu); problem statement + challenges nén thành một đoạn dẫn vào harness.
 
 - **6.1** Kiến trúc hệ: meta-agent LangGraph + specialist agents (
   needs/objective/assessment/activity/implementation/evaluation) + verifier + aggregator; hình kiến trúc tổng thể.
@@ -149,13 +186,35 @@ Tổ chức theo nhóm, không liệt kê từng bài:
 - **7.5** Pseudocode quy trình ISD cố định.
 - **7.7** Khác biệt với baseline gần nhất (react-isd, addie-agent…): trạng thái alignment tường minh dùng chung vs. văn
   xuôi/trajectory ngầm.
+- **7.8 Constructive-alignment evaluation protocol (đóng góp 2) — đề mục riêng trong Method, đặt SAU phần harness**
+  (chốt 2026-08-11): mô tả protocol như một phương pháp: mục tiêu đo (map thẳng 3 vế `aligned(o)` — `eq:aligned`),
+  panel 7 tín hiệu phẳng không endpoint, hai họ instrument (A: mean-max rectified cosine; B: Porter/Webb + Bloom),
+  không LLM / không threshold / không thành phần ngẫu nhiên, naming rule, mức claim ("tín hiệu đo được", không "đo
+  alignment"). Nội dung lấy từ `rq2_protocol.md` §2–§5. Mục 8.6 chỉ còn phần vận hành chấm (preset encoder/Bloom,
+  sensitivity star, quy tắc đọc panel, failure layer) + tham chiếu về đây.
 - **Phân định kiểm/kế thừa (buộc phải có)**: nghiên cứu kiểm **substrate** (graph-context + verifier, tách bằng
   ablation); **không** kiểm decomposition (tiền đề có nguồn, mục 4.5); ai muốn số riêng cho decomposition → future work
   arm monolithic (mục 12).
 
-## 8. Experimental Methodology — `05_experimental_methodology.tex`
+## 8. Experimental Design — `05_experimental_methodology.tex` (đổi tên section 2026-08-11, tên file giữ nguyên)
 
-**8.1 RQ** — mỗi câu một nhóm thí nghiệm, hai vế RQ1 **đồng hạng** (co-primary):
+**PHÁT BIỂU CƠ CHẾ BA TẦNG (chốt 2026-08-13, sửa theo comment reviewer):** ablation KHÔNG giải thích được khoảng
+cách RQ1 (lợi thế ADDIE còn nguyên khi tắt graph context) — cấm mọi câu gán khoảng cách ADDIE cho graph/verifier.
+Ba tầng tách bạch: (1) **phân rã** (chưa ablate) → robustness + khoảng cách ADDIE, chỉ ở cấp hệ thống, chưa quy
+nhân quả; (2) **graph context** (đã ablate) → các tín hiệu alignment; (3) **verifier** → không mua được cải thiện
+đo được, phần lớn kích thước còn giảm Trajectory; vai trò backstop + audit. Kèm 2 disclosure buộc ở RQ1: delta
+ADDIE không đồng đều (0.8B vs dick-carey ns; 4B +0.80; 9B −0.08 ns) và delta +34/+33 vs baseline/eduplanner ở 0.8B
+là artifact của failure rate (n=5–7 complete-case), không phải khoảng cách chất lượng.
+
+**8.1 RQ** — mỗi câu một nhóm thí nghiệm, hai vế RQ1 **đồng hạng** (co-primary). **Nhãn (user 2026-08-12): paper
+KHÔNG dán nhãn "RQ1a/RQ1b"** — RQ1 phát biểu một câu gộp hai vế (mức + khoảng cách nới rộng khi thu nhỏ); phần thống
+kê vẫn tách hai phép phân tích (per-size + DiD) nhưng gọi là "hai vế của RQ1".
+**Phát biểu RQ chốt lại 2026-08-12 (gap–RQ–experiment align, bản VN):** narrative intro = MỘT khoảng trống trung tâm
+(duy trì chất lượng khi thu nhỏ) → RQ1 dùng đúng từ khoá "duy trì chất lượng"; bài toán đo lường NẢY SINH khi trả lời
+RQ1 (LLM-judge bias + human-eval không scale + không cách nào làm tường minh tín hiệu alignment — thiết kế "nhìn qua
+có vẻ tốt" vẫn có thể hỏng alignment, khung CA) → giao thức → **RQ2 nhúng instrument trong câu hỏi** ("Khi được làm
+tường minh bằng giao thức đo không dùng LLM, các tín hiệu alignment nội tại... thay đổi thế nào theo kích thước
+model, và khoảng cách so sánh có nới rộng khi model nhỏ đi không?"). Không còn "hai khoảng trống" trong intro:
 
 - **RQ1a (mức)**: tại mỗi size Qwen 0.8B–9B, chất lượng AlignmentGraph-ISD vs. đối sánh? → paired Wilcoxon per-size.
 - **RQ1b (độ dốc)**: khoảng cách có nới rộng khi model nhỏ đi? → interaction `method × size` (bootstrap DiD,
@@ -187,10 +246,10 @@ session → delta arm−A0 không nhiễm judge drift; A0 in-session đối chi�
 - **RQ1**: ba tín hiệu judge báo song song, thống kê y hệt nhau, hiện ngang nhau ở abstract + bảng chính —
   `addie_median` (dẫn narrative: đo đúng construct của RQ1), `trajectory_score` (tuân thủ quy trình — construct khác),
   `total_score` (0.7/0.3 là trọng số của benchmark, giữ để so được với cách báo của ISD-Agent-Bench).
-- **RQ2**: panel 7 tín hiệu, chấm offline trên output đã lưu, không LLM, không ngưỡng. **Toàn bộ đặc tả (pipeline,
-  encoder/Bloom arm, quy tắc đặt tên, quy tắc đọc panel ≥4/6, mức claim tất
-  định): [`docs/rq2_protocol.md`](rq2_protocol.md)**. Câu chuẩn thay cho "deterministic protocol": *"quy trình chấm
-  không dùng LLM và không có thành phần ngẫu nhiên; kết quả tái lập được nhờ pin phiên bản encoder và cache embedding"*.
+- **RQ2**: đặc tả protocol nằm ở mục 7.8 (Method) — 8.6 KHÔNG lặp lại định nghĩa, chỉ nêu phần vận hành: chấm offline
+  trên output đã lưu, preset encoder/Bloom, quy tắc đọc panel ≥4/6, failure layer; kèm câu chuẩn thay cho
+  "deterministic protocol": *"quy trình chấm không dùng LLM và không có thành phần ngẫu nhiên; kết quả tái lập được
+  nhờ pin phiên bản encoder và cache embedding"*. Đặc tả đầy đủ: [`docs/rq2_protocol.md`](rq2_protocol.md).
 - Cost: token_usage per agent×size (chỉ đọc `metadata.token_usage.*` — bẫy artifact xem mục 9.6).
 
 **8.7 Thống kê**:
@@ -271,7 +330,7 @@ footnote.
       mô tả của **thiếu discriminant validity**. Cần một dự đoán phân biệt hai cách đọc nêu **trước** khi kiểm (
       `docs/review_q2.md` R2).
 
-## 11. Threats to Validity — `08_threats_limitations.tex`
+## 11. Threats to Validity — SUBSECTION CUỐI CỦA DISCUSSION trong `07_discussion.tex` (2026-08-11; file 08 bỏ)
 
 Mỗi nguy cơ kèm mitigation:
 
@@ -289,7 +348,7 @@ Mỗi nguy cơ kèm mitigation:
 - **Conclusion**: n=90 paired, 3 run/ô, exact test ở n nhỏ, Holm hai tầng; khai thời điểm chốt các lựa chọn phân tích
   (failure policy, quy tắc đọc panel — đều pre-specified trước khi đọc kết quả RQ2).
 
-## 12. Limitations & Future Work — `08_threats_limitations.tex`
+## 12. Limitations & Future Work — CÙNG SUBSECTION VỚI MỤC 11 trong `07_discussion.tex` (2026-08-11; file 08 bỏ)
 
 Mỗi hướng tương lai xuất phát từ một hạn chế:
 

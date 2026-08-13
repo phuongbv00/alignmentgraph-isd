@@ -1,136 +1,160 @@
-\section{The AlignmentGraph-ISD Harness}
+\section{AlignmentGraph-ISD}
 \label{sec:method}
 
-\subsection{Overview}
-\label{sec:overview}
+Instructional systems design is a set of mutually constrained artifacts rather than
+one long document. ADDIE supplies the process and output contract
+~\cite{branch2009addie}; constructive alignment requires objectives, activities,
+and assessment to agree~\cite{biggs1996enhancing,biggs2011teaching}. The design
+problem is therefore to produce a complete ADDIE program from an underspecified
+brief while preserving cross-artifact relations that remain checkable under a
+small model and a bounded call budget. AlignmentGraph-ISD addresses that problem by
+making those relations shared workflow state.
 
-The problem of \cref{sec:problem-statement} demands that alignment be produced and
-guaranteed independently of the model. The observation that drives our design is
-that everything this requires---persistent state, quality control, and specialist
-coordination---is a responsibility of the execution environment, not a capability
-of the model. AlignmentGraph-ISD therefore concentrates these responsibilities in
-a harness, leaving the model to generate content within it. A complete agent is
-the combination of the two (\emph{agent = harness + model}). Concretely, the
-harness (i)~decomposes generation among specialist agents that build the alignment
-graph under a fixed instructional-design order with bounded write scope
-(\cref{sec:decomposition}), so alignment forms by construction, and (ii)~gives
-each specialist pedagogical verification and repair as tools it runs within its own
-turn (\cref{sec:qc}), so violations are caught and fixed before generation
-proceeds. A final aggregation step (\cref{sec:aggregation}) emits the program and
-records a residual audit.
+\subsection{Architecture and Alignment State}
 
-\subsection{Multi-Agent Decomposition over the Graph}
+The harness is a LangGraph meta-agent with a fixed \texttt{StateGraph}. Six
+specialists handle needs and context, objectives, assessments, activities and
+materials, implementation, and evaluation in order. Each receives the brief and
+relevant state, writes only its assigned artifacts, and is followed by pedagogical
+verification. An aggregator renders the completed state into the benchmark's ADDIE
+schema (\Cref{fig:architecture}). The model proposes content; the harness controls
+decomposition, state transitions, verification, and assembly.
+
+\begin{figure*}
+  \centering
+  \includegraphics[width=0.92\textwidth]{figures/architecture.pdf}
+  \Description{A LangGraph meta-agent routes a design brief through six specialist
+  agents, pedagogical verification, a shared alignment graph, and an ADDIE
+  aggregator.}
+  \caption{AlignmentGraph-ISD architecture. Specialists coordinate through a shared
+  alignment graph; a run returns the ADDIE program and a separate JSON and DOT graph
+  dump for educator audit and override.}
+  \label{fig:architecture}
+\end{figure*}
+
+After step $t$, the graph $G_t=(V_t,E_t)$ contains typed objective, activity,
+material, assessment, implementation, and evaluation nodes. Section nodes retain
+complete phase artifacts, while element nodes expose individual relations. Edges
+record source, target, evidence, rationale, establishment mechanism, and a typed
+relation. For an objective $o$, the three central relations define structural
+coverage:
+\begin{multline}
+\label{eq:aligned}
+\mathrm{aligned}(o) \iff
+\big(\exists a\colon (a,o)\in E_{\mathrm{measures}}\big)\\
+\wedge\big(\exists x\colon (x,o)\in E_{\mathrm{supports}}\big)
+\wedge\big(\exists e\colon (e,o)\in E_{\mathrm{evaluates}}\big).
+\end{multline}
+Here $a$, $x$, and $e$ denote an assessment item, learning activity, and evaluation
+item. Edge presence makes coverage traceable; semantic validity also requires
+content and cognitive-demand compatibility. The graph is thus an auditable claim
+about relations, not proof that every recorded relation is sound.
+
+\subsection{Deployment Envelope}
+\label{sec:assumptions}
+
+The deployment target is a single 12--16\,GB GPU. At two bytes per parameter, bf16
+weights require approximately 1.6\,GB for 0.8B, 4\,GB for 2B, 8\,GB for 4B, and
+18\,GB for 9B. The 9B model therefore does not fit, making 4B the largest
+in-target checkpoint. The remaining VRAM must hold the KV cache and runtime
+overhead, leaving roughly 8k tokens per call. This checkable chain defines the
+serving condition independently of experiment timing; 9B is an out-of-target
+reference, not a proposed deployment configuration. We assume a supplied brief, a
+stateless backbone across calls, and the fixed ADDIE output schema; the harness,
+not the backbone, preserves state between calls.
+
+\subsection{Constrained Decomposition and Graph-Context Injection}
 \label{sec:decomposition}
 
-Each ISD concern is handled by a specialist agent---needs context, objective
-design, assessment design, activity and material, implementation plan, and
-evaluation---run in the fixed ADDIE order. Each agent $A_i$ is a graph-update
-operator whose write scope is bounded by its specialty:
-\[
-A_i : (G_t, c) \mapsto G_{t+1}, \qquad \Delta(G_t, G_{t+1}) \subseteq V^{(i)} \cup E^{(i)},
-\]
-where $\Delta(G_t, G_{t+1})$ denotes the nodes and edges added between the two
-graphs, and $V^{(i)}, E^{(i)}$ are the node and edge types agent $i$ may write.
-For example, the assessment agent writes only \texttt{assessment} nodes and
-\textsl{measures} edges: when it emits an assessment item it must name the
-objective the item grades, and that naming \emph{is} the \textsl{measures} edge.
-Because the objective agent runs first and deposits objectives into the shared
-graph, every later agent references existing objectives, and the alignment edges of
-\cref{eq:aligned} are created as a required part of generation. Alignment thus holds
-\emph{by construction}, rather than being hoped for in prose. The context each
-agent receives is $c = \rho(b) \cup \gamma(G_t) \cup \mu(M)$, where $\rho(b)$ is
-brief-derived context, $\gamma(G_t)$ is graph-context read from earlier nodes, and
-$\mu(M)$ is stable domain memory (ADDIE, Bloom, rubric templates).
+Each specialist owns a bounded set of node and edge types. The assessment
+specialist, for example, may add assessment items and \emph{measures} edges but
+cannot rewrite objectives. Before generation, it receives only the brief material,
+stable ISD guidance, and a relation-filtered one-hop graph slice needed for its
+work. The activity specialist analogously sees objectives, content modules,
+strategy, and media selections. The implementation resolves declared identifiers
+directly; it performs neither recursive expansion nor graph traversal. The
+$-$GraphContext ablation removes these reads while retaining graph writes.
 
-\subsection{Pedagogical Verification and Repair as Per-Agent Tools}
+Mandatory links arise from this constrained specialist contract, not from the mere
+existence of a graph. Each downstream item must name its upstream objective; the
+harness resolves that identifier and records the typed edge. Consequently, a small
+model need not reconstruct the full evolving program from prose in every call, and
+a downstream specialist cannot silently alter an upstream premise.
+
+\subsection{Verification, Aggregation, and Audit}
 \label{sec:qc}
 
-Construction alone guarantees that edges \emph{exist}; it does not guarantee that
-each edge is \emph{valid} or that every objective is covered. That is the job of
-verification and repair. Crucially, these are not a separate global phase run after
-all generation; they are tools each specialist runs \emph{within its own turn},
-right after writing its artifact. This keeps each agent's trajectory a clean
-generate\,$\rightarrow$\,self-check\,$\rightarrow$\,emit loop and lets relational
-checks work, because by the time an agent self-checks, the earlier artifacts it
-depends on are already in the shared graph.
+Structural links alone do not establish pedagogical fit. After each update, the
+verifier checks relation coverage and resolvability, Bloom action and declared-level
+consistency~\cite{anderson2001taxonomy}, assessment formats and scoring criteria,
+active practice, delivery feasibility, implementation guidance, and formative
+evaluation. Violations return to the specialist that owns the affected artifact for
+bounded, targeted repair. Deterministic fallbacks handle unusable responses and
+missing structural references; unresolved warnings remain visible when a safe
+local repair is unavailable.
 
-\paragraph{Verifier.} Let $\mathcal{V}$ denote the pedagogical verifier and
-$\Omega = \mathcal{V}(G)$ the violations it detects. It runs seven deterministic
-constraint families over the graph: objective coverage
-(\textsl{measures}/\textsl{supports}/\textsl{evaluates} existence per objective),
-Bloom-verb validity and verb--level consistency~\cite{anderson2001taxonomy},
-assessment--objective \emph{cognitive-level match} (a higher-order objective
-measured only by recognition-level items is flagged), rubric consistency
-(dangling objective references, missing or non-observable scoring criteria),
-active-practice coverage for higher-order objectives, delivery feasibility against
-the brief, and formative-evaluation concreteness. One check---objective
-\emph{measurability}---is reported for audit but not auto-repaired, because an
-observable Bloom verb already makes an objective measurable and rewriting
-well-formed statements degrades quality (\cref{sec:discussion}).
+The fixed workflow repeats scoped generation, verification, and repair across all
+six concerns, then aggregates the graph into the ADDIE output and runs a residual
+audit without repair. A separate JSON dump retains every node, edge, evidence,
+rationale, check, and repair, and a DOT rendering makes the settled state visible.
+Unlike the execution trajectory, this artifact lets an educator trace which
+assessment measures an objective, inspect unsupported relations, and edit or
+override the design. It supports professional review rather than replacing it.
 
-\paragraph{Owned repair.} Each violation type is owned by the specialist whose
-artifact can fix it. After agent $A_i$ generates, it verifies and repairs only the
-types it owns, up to a small budget $B$:
+\subsection{Tested Mechanisms and Inherited Premise}
+
+The ablation isolates graph-context injection and the verifier, which together
+constitute the tested alignment substrate. It does not isolate multi-agent
+decomposition: every arm uses the same specialist schedule. The tractability of
+narrower subtasks is inherited from decomposed prompting and small-model
+orchestration~\cite{zhou2023leasttomost,khot2023decomposed,ferraz2024decrim,
+shen2024multillmagent,belcak2025slm}; a monolithic comparison is future work
+(\Cref{sec:future-work}). The closest benchmark agents---ReAct-ISD, ADDIE-Agent,
+and Dick-Carey-Agent---coordinate cross-artifact information mainly through prompts,
+prose, or trajectory state~\cite{isdagentbench,yao2023react,branch2009addie,
+dick1978systematic}. AlignmentGraph-ISD instead preserves typed relations as state
+that can be queried, repaired, dumped, and overridden.
+
+\subsection{Constructive-Alignment Evaluation Protocol}
+\label{sec:protocol}
+
+The second contribution measures whether rendered outputs exhibit signals
+corresponding to the three legs of \Cref{eq:aligned}. It extracts objective,
+assessment, activity, and evaluation text from every system's saved ADDIE output;
+self-declared graph identifiers are used only as validity evidence. The protocol
+reports a pre-specified, flat seven-signal panel with no primary endpoint, because
+constructive alignment has multiple facets that should not be collapsed or ranked.
+
+Two mechanically independent instrument families carry the panel. Family A uses an
+encoder to measure textual correspondence. For source texts $X$ and target texts
+$Y$, it computes
 \[
-\text{repeat } \big[\, \Omega_i \leftarrow \{\omega \in \mathcal{V}(G) : \mathrm{owner}(\omega)=i\};\ G \leftarrow A_i^{\mathrm{repair}}(G, \Omega_i)\,\big]
+  |X|^{-1}\sum_{x\in X}\max_{y\in Y}\max(0,\cos(e_x,e_y)),
 \]
-until $\Omega_i = \emptyset$ or the budget is exhausted. A repair combines a
-targeted LLM revision of the flagged artifact with a deterministic fallback that
-guarantees convergence even when the model output is unusable. Because repair is
-owned by the same specialist that generates, removing decomposition
-(\cref{sec:experimental-methodology}) necessarily removes specialist repair too: a
-single-agent variant repairs itself holistically, so no specialist is smuggled back
-in.
+clipped above at one. This mean--max \emph{rectified} cosine is a scale choice on
+$[0,1]$, not a matching threshold: negative association is placed at the same floor
+as orthogonality, and no constant decides whether two texts match. The four signals
+are \texttt{objective\_assessment\_similarity},
+\texttt{objective\_activity\_similarity},
+\texttt{objective\_evaluation\_similarity}, and the reverse-direction
+\texttt{assessment\_objective\_similarity}. The first three map respectively to
+\emph{measures}, \emph{supports}, and \emph{evaluates}. The reverse signal is
+non-directional: a high value may reflect few orphan assessments or mere repetition,
+so it is reported but excluded from directional counts.
 
-\subsection{Aggregation and Residual Audit}
-\label{sec:aggregation}
+Family B measures cognitive demand without cosine. It reports
+\texttt{objective\_cognitive\_congruence}, the share of objectives whose best
+assessment reaches their Bloom level; \texttt{porter\_mean}, agreement between
+topic--Bloom distributions; and \texttt{webb\_bloom\_consistency}, item-side
+cognitive consistency~\cite{porter2002measuring,fulmer2011estimating,
+webb1997criteria}. Topic assignment and best-item selection use argmax, not a
+threshold.
 
-A final aggregator renders the graph into the ADDIE output contract and validates
-it against the schema. It also records a \emph{silent residual audit}: it replays
-the verifier once and stores any remaining violations as a metric, without
-repairing. This exposes, for every configuration, how many alignment defects
-survive---a measure of condition~(i) that is independent of the rubric score used
-in \cref{sec:results}.
-
-\subsection{Algorithm}
-\label{sec:algorithm}
-
-\begin{figure}[t]
-\small
-\hrule\vspace{2pt}
-\textbf{Algorithm 1:} AlignmentGraph-ISD generation\vspace{2pt}
-\hrule\vspace{4pt}
-\begin{tabbing}
-xx\=xx\=xx\=\kill
-\textbf{Input:} brief $b$; specialists $A_1,\dots,A_k$ in ADDIE order; budget $B$\\[1pt]
-$G \gets \emptyset$\\
-\textbf{for} $i = 1$ \textbf{to} $k$ \textbf{do}\\
-\>$c \gets \rho(b) \cup \gamma(G) \cup \mu(M)$\\
-\>$G \gets A_i(G, c)$ \quad // generate; create owned nodes/edges\\
-\>\textbf{for} $r = 1$ \textbf{to} $B$ \textbf{do} \quad // self-check in the turn\\
-\>\>$\Omega_i \gets \{\omega \in \mathcal{V}(G) : \mathrm{owner}(\omega)=i\}$\\
-\>\>\textbf{if} $\Omega_i = \emptyset$ \textbf{then break}\\
-\>\>$G \gets A_i^{\mathrm{repair}}(G, \Omega_i)$\\
-\textbf{return} $\mathrm{aggregate}(G)$, \ $\mathrm{residual}\gets\mathcal{V}(G)$
-\end{tabbing}
-\vspace{-4pt}\hrule
-\caption{Generation with per-agent self-check.}
-\label{alg:harness}
-\end{figure}
-
-\Cref{alg:harness} summarizes generation. The workflow is a fixed pipeline; no
-dynamic planner is used in the single-pass setting studied here (a planner-driven
-variant is retained for the multi-session extension of
-\cref{sec:threats-limitations}).
-
-\subsection{Difference from the Closest Baselines}
-\label{sec:diff}
-
-Against the strongest baselines the difference is representational, not just
-procedural. ReAct-ADDIE and the other theory-grounded agents pass alignment
-guidance through prompts and never materialize it; the objective they generate and
-the assessment they generate are never linked in a structure the system can check.
-AlignmentGraph-ISD instead makes each alignment relation a typed edge created at
-generation time and checked by an owned verifier, so the difference in input,
-control, and output is a difference in \emph{what state exists}: a graph the harness
-can enforce \cref{eq:aligned} over, versus text it can only prompt for.
+Signal names describe the operation computed: the word ``alignment'' names the
+protocol and the predicate in \Cref{eq:aligned}, never an individual metric, and no
+signal is called ``precision.'' Measurement invokes no LLM, prompt,
+sampling step, or matching threshold; once encoder and Bloom versions are pinned,
+the scores are fixed functions of the extracted text. We therefore claim measurable
+signals of constructive alignment, supported initially by established criteria and
+cross-family evidence. The protocol does not by itself validate the construct; an
+expert-human tier is required to complete that bridge.

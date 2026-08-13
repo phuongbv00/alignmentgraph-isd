@@ -1,96 +1,145 @@
 \section{Results}
 \label{sec:results}
 
-\subsection{RQ1: Quality on ISD-Agent-Bench}
+Every generated table pairs a mean with the between-run SD of the same signal.
+Cells with fewer than \ladderNumScenarios{} scenarios are marked in table
+footnotes, so output robustness precedes conditional score comparisons.
+
+\subsection{Robustness by Scale}
+\label{sec:robustness}
+
+AlignmentGraph-ISD produced usable output for every scenario at every size. The two
+least scaffolded agents lost most outputs at the small end, with Holm-corrected
+Fisher tests supporting their failure-rate differences from the harness. Their
+mechanisms differed: for \costWorstCoverageAgent{} at
+\costWorstCoverageSize{}, \costWorstCoverageTruncPct\% of missing artifacts ended
+in \texttt{LengthFinishReasonError} at exactly
+\texttt{completion\_tokens = 8192}, whereas EduPlanner failures were dominated by
+schema parsing. Under the envelope in \Cref{sec:assumptions}, the former is a
+deployability result: one-shot generation often cannot finish within the target
+call budget, while specialist calls remain below it. The generated
+\texttt{stats\_cost.md} reports the full failure and truncation roster. Because
+truncation does not explain every failure, score analyses use
+\texttt{failure=0} primarily and complete-case only as sensitivity.
+
+\subsection{RQ1: Judge-Scored Quality and Scale}
 \label{sec:rq1}
 
-\Cref{tab:rq1} reports the seven agents on \texttt{test\_90}. AlignmentGraph-ISD attains the highest composite and ADDIE rubric score under
-\emph{both} models (87.77 / 85.46 on the LLM; 86.47 / 83.96 on the SLM). Wilcoxon
-signed-rank tests paired by scenario, with Holm correction over the six
-comparisons, place it above every baseline in both runs with
-$p_{\mathrm{Holm}} < 1.4\times10^{-13}$ in all twelve comparisons; the mean paired
-margin ranges from $+2.20$ (vs.\ Baseline) to $+8.31$ (vs.\ EduPlanner) on the LLM,
-and from $+3.59$ (vs.\ Dick-Carey-Agent) to $+30.46$ (vs.\ EduPlanner) on the SLM,
-with bootstrap 95\% CIs excluding zero throughout. The advantage is concentrated in
-the artifact rubric rather than the trajectory score, consistent with the harness
-improving \emph{what} is produced rather than how the tool trace reads.
+AlignmentGraph-ISD leads ADDIE at every size but reaches parity with ReAct-ISD at
+the large end rather than separating from it. ADDIE leads this account because its
+rubric matches RQ1, not because it is a chosen endpoint. The Trajectory and
+\texttt{total\_score} tables have equal status and expose where the signals
+disagree.
 
-\begin{table}[t]
-  \caption{RQ1: ISD-Agent-Bench \texttt{test\_90} (two-judge means;
-  Total = composite, ADDIE = artifact rubric, Traj.\ = trajectory;
-  \textbf{bold} = best per column).}
-  \label{tab:rq1}
-  \small
-  \begin{tabular}{@{}lrrr@{\hskip 10pt}rrr@{}}
-    \toprule
-    & \multicolumn{3}{c}{DeepSeek-v4-flash (LLM)} & \multicolumn{3}{c}{Qwen3.5-9B (SLM)} \\
-    \cmidrule(lr){2-4}\cmidrule(lr){5-7}
-    Agent & Total & ADDIE & Traj. & Total & ADDIE & Traj. \\
-    \midrule
-    Baseline          & 85.56 & 84.24 & 88.64 & 80.81 & 77.97 & 87.44 \\
-    EduPlanner        & 79.47 & 76.16 & 87.20 & 56.01 & 43.49 & 85.23 \\
-    ADDIE-Agent       & 83.12 & 79.45 & 91.68 & 80.89 & 76.35 & 91.49 \\
-    RPISD-Agent       & 80.98 & 79.81 & 83.71 & 79.32 & 77.05 & 84.61 \\
-    Dick-Carey-Agent  & 84.71 & 82.28 & 90.38 & 82.88 & 79.78 & 90.14 \\
-    ReAct-ADDIE       & 83.37 & 79.20 & \textbf{93.08} & 80.08 & 74.50 & \textbf{93.10} \\
-    \textbf{AlignmentGraph-ISD} & \textbf{87.77} & \textbf{85.46} & \textbf{93.16} & \textbf{86.47} & \textbf{83.96} & 92.34 \\
-    \bottomrule
-  \end{tabular}
-\end{table}
+\input{../../generated/tab_rq1}
+\input{../../generated/tab_rq1_traj}
+\input{../../generated/tab_rq1_total}
 
-\paragraph{Model scale.} The harness is nearly invariant to scale: its composite
-falls only $1.30$ points from the LLM to the SLM ($87.77 \rightarrow 86.47$), while
-the baselines degrade far more---Baseline loses $4.75$ ($85.56 \rightarrow 80.81$)
-and EduPlanner collapses by $23.46$ ($79.47 \rightarrow 56.01$). Because the harness
-holds its quality while the model weakens, its paired margin over the strongest
-baseline \emph{widens} from $+2.20$ on the LLM (over Baseline) to $+3.59$ on the SLM
-(over Dick-Carey-Agent). This is the harness-over-model effect made concrete: the
-advantage comes from the execution environment, so it grows exactly where model
-capability shrinks.
+The decomposed generate--verify--repair process produces stronger ADDIE artifacts
+but a longer, less compact trace than single-loop designs, so Trajectory favors
+ReAct-ISD and ADDIE-Agent at every size (\Cref{tab:rq1-ladder-traj}) and the
+benchmark composite inherits the process penalty. At the smallest size,
+the harness loses to one baseline on \texttt{total\_score} despite leading ADDIE
+and the RQ2 panel. At the large end, its ADDIE difference from ReAct-ISD is
+$\rqOneDeltaBestAddieNineB$ with bootstrap 95\% CI
+$[\rqOneDeltaBestAddieCILoNineB,\rqOneDeltaBestAddieCIHiNineB]$, supporting parity
+rather than superiority.
 
-\subsection{RQ2: Ablation}
+The scale interaction is nevertheless clear. Against
+\rqOneDiDBaselineName{}, the largest-minus-smallest ADDIE DiD is
+$\rqOneDiDVsBestBaseline$ (95\% CI
+$[\rqOneDiDVsBestBaselineCILo,\rqOneDiDVsBestBaselineCIHi]$,
+$p=\rqOneDiDVsBestBaselineP$). In the primary layer, the advantage contracts with
+model growth on ADDIE, Trajectory, and \texttt{total\_score}. Failures concentrate
+at the small end, so complete-case cells for one-shot agents can be too sparse for
+meaningful inference; that selection is precisely what \texttt{failure=0} avoids.
+
+\subsection{RQ2: Constructive-Alignment Signal Panel}
 \label{sec:rq2}
 
-\Cref{tab:rq2} isolates each mechanism on both models. Removing multi-agent
-decomposition (\texttt{wo-ma}) is by far the most damaging: $+3.90$ composite and
-$+3.29$ ADDIE points on the LLM ($p_{\mathrm{Holm}} = 2.3\times10^{-13}$), and
-\emph{twice} as large on the SLM at $+7.94$ composite and $+7.79$ ADDIE
-($p_{\mathrm{Holm}} = 7.0\times10^{-14}$; 95\% CI $[+5.46, +10.85]$). The
-contribution of graph-based decomposition thus \emph{grows as the model shrinks},
-mirroring the harness-over-model effect of RQ1. Removing per-agent
-verification/repair (\texttt{wo-qc}) changes the composite by only $+0.26$ (LLM) and
-$+0.15$ (SLM) points, in both cases not statistically distinguishable from zero
-($p_{\mathrm{Holm}} = 0.89$ and $0.53$).
+Under the pre-specified rule, the panel favors AlignmentGraph-ISD at every size: at
+least four of six directional signals are significantly positive after
+within-signal Holm correction, and none is significantly negative. Family A
+separates most clearly on \texttt{objective\_assessment\_similarity}, the
+\emph{measures} leg of \Cref{eq:aligned}; the Bloom-based Family B independently
+contributes congruence, Porter, and Webb evidence. The reverse
+\texttt{assessment\_objective\_similarity} remains diagnostic and is not counted.
 
-\begin{table}[t]
-  \caption{RQ2 ablation (composite Total; contribution = \texttt{full} $-$ arm,
-  paired). The decomposition contribution roughly doubles on the SLM.}
-  \label{tab:rq2}
-  \small
-  \begin{tabular}{@{}lrr@{}}
-    \toprule
-    & DeepSeek (LLM) & Qwen3.5-9B (SLM) \\
-    \midrule
-    \texttt{full} (complete harness)   & 87.77 & 86.47 \\
-    \texttt{wo-ma} ($-$ decomposition) & 83.86 & 78.53 \\
-    \texttt{wo-qc} ($-$ verify/repair) & 87.51 & 86.33 \\
-    \midrule
-    \multicolumn{3}{@{}l}{\emph{Contribution (paired composite; $p_{\mathrm{Holm}}$):}}\\
-    \quad decomposition & $+3.90$ ($2.3{\times}10^{-13}$) & $+7.94$ ($7.0{\times}10^{-14}$) \\
-    \quad verify/repair & $+0.26$ (0.89, n.s.) & $+0.15$ (0.53, n.s.) \\
-    \bottomrule
-  \end{tabular}
-\end{table}
+\input{../../generated/tab_rq2_alignment}
+\input{../../generated/tab_rq2_panel}
 
-\paragraph{Does verify/repair do anything?} That its judge-score contribution is
-zero does not mean it is inactive. It fires on the high-value checks---Bloom-verb
-validity, rubric consistency, active-practice coverage, and assessment--objective
-cognitive-level match---and the residual audit shows it measurably reduces alignment
-defects. On the SLM, the \texttt{wo-qc} arm leaves $39$ residual content-level
-violations across the 90 outputs, whereas \texttt{full} leaves only $12$---a
-$69\%$ reduction, concentrated in exactly the checks the tools repair (Bloom
-validity, rubric consistency, cognitive-level match). Thus verification/repair does
-its job; that reduction is simply not rewarded by the rubric---a construct gap we
-return to in \cref{sec:discussion}. (The offline audit reconstructs the graph from
-output text without edges, so its absolute per-type counts are approximate; the
-across-arm comparison and the in-run repair activity are the reliable signals.)
+Repeated exposure of objectives to assessment, activity, and evaluation specialists
+explains the broad textual-correspondence profile, while Family B tests cognitive
+demand through a different mechanism. Their agreement supports multiple measurable
+signals, not a composite claim about the construct. The
+\texttt{objective\_assessment\_similarity} gap also widens toward smaller models:
+the DiD against ReAct-ISD is $\rqTwoSimDiDVsBaseline$ (95\% CI
+$[\rqTwoSimDiDVsBaselineCILo,\rqTwoSimDiDVsBaselineCIHi]$,
+$p=\rqTwoSimDiDVsBaselineP$). Webb consistency is the adverse small-model exception,
+which is why the profile must be read signal by signal.
+
+\subsection{Ablation: Mechanism Evidence}
+\label{sec:ablation}
+
+The ablation is judge-invariant but alignment-shifted: removing graph context
+changes little in ADDIE scores but lowers the RQ2 panel broadly. Removing the
+verifier from the shipped configuration likewise has no supported score effect,
+and no ablation arm fails to produce output.
+
+\input{../../generated/tab_ablation}
+
+Graph context is therefore the supported mechanism for the alignment-signal
+profile, whereas robustness is shared by every decomposed arm and cannot be
+causally assigned to decomposition without a monolithic control. The verifier
+remains a repair backstop and source of audit evidence. When graph context is
+absent, its simple effect on \texttt{objective\_assessment\_similarity} is positive
+at every size, from \ablVerifCtxOffNineB{} to
+\ablVerifCtxOffZeroEightB{}; this counterfactual does not establish a verifier
+score effect in the shipped system. Nor does the ablation support a uniform
+mechanism-by-scale claim.
+
+\subsection{Sensitivity of the RQ2 Reading}
+\label{sec:sensitivity}
+
+The pairwise direction favoring AlignmentGraph-ISD persists across independent
+neural-encoder lineages, the TF--IDF lexical floor, the BERT--lexicon Bloom axis,
+and the complete-case slice. On the encoder axis it remains first in
+\rqTwoSensTopOneCellsEncoderAxis{} arm--size cells and on the Bloom axis in
+\rqTwoSensTopOneCellsBloomAxis{} cells.
+
+\input{../../generated/tab_sensitivity}
+
+The comparison is therefore not tied to one encoder, semantic embeddings as a
+class, or one Bloom classifier. Table rank correlations summarize full agent
+vectors, but the claim concerns pairwise proposed-versus-baseline directions. The
+complete-case result remains sensitivity evidence, not an unconditional analysis.
+
+\subsection{Cost and Throughput}
+\label{sec:cost}
+
+The harness uses \costHarnessCallsTwoB{} calls and
+\costHarnessTokensTwoB{} thousand tokens per design at 2B, and
+\costHarnessCallsFourB{} calls and \costHarnessTokensFourB{} thousand tokens at
+4B. Its token use is \costTokenRatioVsMedianBaselineNineB$\times$--
+\costTokenRatioVsMedianBaselineZeroEightB$\times$ the median baseline and
+\costTokenRatioVsCheapestCompleteZeroEightB$\times$--
+\costTokenRatioVsCheapestCompleteTwoB$\times$ ReAct-ISD, the cheapest baseline
+with complete coverage.
+
+\input{../../generated/tab_cost}
+
+Tokens per ADDIE point favor the trade-off at the two smaller sizes, deteriorate at
+4B, and lose at 9B, where ReAct-ISD reaches parity or better while using
+approximately $1/\costTokenRatioVsCheapestCompleteNineB$ of the tokens. Component
+telemetry attributes \costVerifierTokenOverheadFourB\%--
+\costVerifierTokenOverheadTwoB\% token overhead to the verifier and
+\costGraphContextTokenOverheadZeroEightB\%--
+\costGraphContextTokenOverheadTwoB\% to graph context, the larger mechanism and the
+one supported by the RQ2 ablation.
+
+Baseline and EduPlanner token columns are survivor statistics because truncated
+cases leave no artifact; comparisons therefore use full-coverage baselines.
+Wall-clock values measure queued throughput with up to
+\costMaxInflightDesigns{} designs in flight, not request latency. All token values
+come from \texttt{metadata.token\_usage}; inconsistent top-level cost fields are
+excluded.

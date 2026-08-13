@@ -1,83 +1,73 @@
 \section{Introduction}
 \label{sec:introduction}
 
-Corporate training is produced at scale. Programs for onboarding, role
-transitions, and upskilling---the form instructional programs take in a corporate
-setting---are increasingly drafted with LLM-based agents, and the economics of
-inference are pushing organizations from large frontier models toward smaller,
-cheaper \emph{small language models} (SLMs) for these internal, high-volume tasks,
-precisely as base-model capability saturates on many benchmarks~\cite{belcak2025slm,deveci2025ouroboros,shukla2025scalingwall}.
-When raw model capability is no longer the lever, the quality of an agentic system
-depends increasingly on the \emph{harness} around the model rather than the model
-itself, and this effect is largest on small models~\cite{cho2026harness}.
+Commercial large language models (LLMs) can produce high-quality curricula and
+support instructional systems design (ISD) from needs analysis through assessment
+~\cite{isdagentbench}. Institutional use nevertheless brings recurring inference
+cost, external-API dependence, and third-party transfer of learner or institutional
+data. On-premise open-weight small language models (SLMs) offer more control, but as
+the model shrinks, the harness that manages state, coordinates calls, and checks
+outputs must carry more of the system-level burden.
 
-The scientific difficulty is that the quality of an instructional program is not a
-property of any single artifact but of the \emph{constructive
-alignment}~\cite{biggs1996enhancing} among them: every learning objective must be
-measured by an assessment, practiced by an activity, and appraised by an
-evaluation, at the intended cognitive level. Alignment is exactly the property
-that degrades first when a weaker model is used, and it is a \emph{cumulative,
-invisible} defect---each section still reads plausibly, and the program only fails
-when it reaches learners in the field. A conventional single prompt cannot
-guarantee alignment because it has no way to check, after the fact, whether the
-objective it wrote is actually measured by the assessment it wrote.
+Existing ISD and lesson-planning agents emphasize automation, personalization, or
+quality with capable foundation models. They do not treat preservation of
+instructional-design quality during model downscaling as a joint design and
+evaluation objective. A deployment-oriented study must establish both quality at
+each feasible size and whether the relative gap changes as capacity falls.
 
-Recent LLM-agent work on instructional systems design (ISD) does not close this
-gap. Theory-grounded agents such as ReAct-ADDIE, ADDIE-Agent, Dick-Carey-Agent,
-and RPISD-Agent~\cite{isdagentbench,yao2023react,branch2009addie,dick1978systematic,tripp1990rapid},
-as well as EduPlanner~\cite{zhang2025eduplanner}, apply ISD theory and learning
-principles to maximize the quality of a single design pass. But in all of them
-alignment is only \emph{encouraged}---through prompt instructions or post-hoc
-scoring---never \emph{represented} as state the system can inspect link by link,
-mark when it breaks, and repair under control. Consequently, whether the output is
-actually aligned is left to the raw capability of the underlying model, which is
-exactly the wrong dependency as deployment shifts to SLMs.
+A second gap concerns constructive alignment among learning objectives, activities,
+and assessments~\cite{biggs1996enhancing,biggs2011teaching}. ISD benchmarks assess
+this property mainly through LLM-judge rubrics~\cite{isdagentbench}, placing the
+measurement instrument in the same broad family as the generator. Porter/Webb
+indices and embedding methods can quantify correspondence to human-authored
+standards~\cite{porter2002measuring,webb1997criteria}, but no ISD benchmark uses
+such methods to examine the intrinsic alignment of a wholly machine-generated
+design, where both sides of every relation are system outputs.
 
-This is the gap we address: no existing ISD harness makes alignment a first-class,
-verifiable object so that it can be preserved regardless of model scale. Closing
-the gap requires turning alignment from a hoped-for property of the prose into an
-explicit data structure the harness owns and enforces.
+Our response begins from the deployment constraint. Each model call receives one
+bounded ISD concern rather than the full open-ended, multi-constraint task. The
+premise that narrower subproblems can be more tractable is inherited from work on
+decomposed prompting and small-model orchestration
+~\cite{zhou2023leasttomost,khot2023decomposed,ferraz2024decrim,
+shen2024multillmagent,belcak2025slm}; it is not tested here because every ablation
+retains decomposition. Nor do we assume that its benefit grows as models shrink:
+harness effects can be non-monotonic across model tiers~\cite{cho2026harness}, so
+the scale interaction is an empirical question.
 
-We propose \textbf{AlignmentGraph-ISD}, a graph-guided multi-agent harness
-developed under a design-science methodology~\cite{hevner2004design} and built on
-the premise that an agent is the combination of a harness and a model (\emph{agent =
-harness + model})---a framework in which the harness, not the model, owns quality. The harness reifies constructive alignment as an explicit
-\emph{alignment graph}---objectives, activities, materials, assessments,
-implementation, and evaluation as typed nodes, joined by typed \textsl{measures},
-\textsl{supports}, and \textsl{evaluates} edges---and organizes generation around
-it. Specialist agents build the graph under a fixed instructional-design workflow,
-each with a bounded write scope, so that alignment edges are created as a required
-part of generation and alignment holds \emph{by construction}. Verification and
-repair are not a separate global stage but tools each specialist runs within its
-own turn: after writing its artifact, an agent checks the pedagogical constraints
-it owns against the shared graph and repairs any violation before the next agent
-proceeds. The design is independent of whether the model behind it is a large LLM
-or a low-cost SLM.
+Decomposition creates its own problem: separately generated artifacts must retain
+one pedagogical intent. AlignmentGraph-ISD therefore uses constructive alignment to
+shape a shared graph of objectives, activities, assessments, and their relations.
+Specialists read only relevant graph context and update scoped state; a verifier
+checks the evolving design, and a graph dump exposes the final relations for audit.
+The graph is a substrate for constrained generation, not a claim that prose is
+aligned by construction (\Cref{sec:method}).
 
-This paper makes three contributions, in the order of the professor's structure
-guide (modeling, method, empirics):
+The evaluation separates quality level from scale interaction. RQ1a compares the
+harness with six agents at each Qwen size; RQ1b tests whether those gaps widen as
+the model shrinks. The \texttt{addie\_median}, \texttt{trajectory\_score}, and
+\texttt{total\_score} judge signals receive identical analyses and equal reporting
+status. ADDIE leads the narrative only because its artifact rubric matches RQ1's
+content-quality construct. RQ2 asks how measurable signals of constructive
+alignment vary across the same ladder, without claiming that automated scores
+validate the construct itself (\Cref{sec:rqs,sec:protocol}).
+
+This paper makes two contributions:
 \begin{enumerate}
-  \item \textbf{Modeling.} We formalize constructive alignment as a verifiable
-  \emph{alignment graph} state (\cref{sec:problem-formulation}) and state the
-  quality-preserving ISD generation problem: produce a complete program whose
-  every objective is aligned---at the right cognitive level---with quality
-  guaranteed by the harness rather than the model.
-  \item \textbf{Method.} We present the AlignmentGraph-ISD harness
-  (\cref{sec:method}): multi-agent decomposition over the graph with bounded
-  write scope, and pedagogical verification/repair as per-agent tools, so that
-  alignment is enforced without dependence on model scale.
-  \item \textbf{Empirics.} We provide evidence on ISD-Agent-Bench under two models
-  (\cref{sec:experimental-methodology,sec:results}): AlignmentGraph-ISD leads six
-  representative agents, and an ablation isolates each mechanism's contribution,
-  showing that graph-based decomposition is the dominant driver while
-  verification/repair acts as a guarantee whose value is visible in a residual
-  defect audit.
+  \item \textbf{AlignmentGraph-ISD}, a multi-agent ADDIE harness whose alignment
+  graph is explicit, checkable state and an auditable educator-facing artifact.
+  \item \textbf{An automated constructive-alignment evaluation protocol} extending
+  ISD-Agent-Bench with a no-LLM, non-hierarchical panel of seven signals from
+  mechanically independent textual-correspondence and cognitive-demand instrument
+  families. It operationalizes established criteria rather than proposing a new
+  construct~\cite{biggs2011teaching,qm2018rubric,porter2002measuring,
+  webb1997criteria}; cross-family agreement is an initial validity bridge, while
+  expert-human validation remains future work.
 \end{enumerate}
 
-The remainder of the paper is organized as follows.
-\cref{sec:related-work} reviews ISD agents, benchmarks, and consistency-control
-mechanisms. \cref{sec:problem-formulation} presents the system model and the
-formal problem. \cref{sec:method} describes the harness. \cref{sec:experimental-methodology}
-gives the experimental methodology and \cref{sec:results} the results.
-\cref{sec:discussion} interprets them, \cref{sec:threats-limitations} discusses
-threats and limitations, and \cref{sec:conclusion} concludes.
+The experiment spans four Qwen sizes from 0.8B to 9B, three independent runs per
+cell, and three ablations inside the ladder, with between-run variation reported
+for every estimate. Following this Introduction, \Cref{sec:related-work} locates
+the two gaps; \Cref{sec:method} presents the harness and evaluation protocol;
+\Cref{sec:experimental-methodology,sec:results} describe the experimental design
+and findings; \Cref{sec:discussion} interprets the results and bounds their
+validity; and \Cref{sec:conclusion} closes the paper.

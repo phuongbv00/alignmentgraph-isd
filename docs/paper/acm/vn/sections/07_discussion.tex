@@ -1,49 +1,107 @@
 \section{Thảo luận}
 \label{sec:discussion}
 
-\paragraph{Khung diễn giải theo hai câu hỏi nghiên cứu.}
-Vì số liệu cuối cùng được điền tự động từ artifact, phần này trình bày khung diễn giải
-đã định trước theo từng kịch bản kết quả, thay vì diễn giải hậu nghiệm. Với RQ1, nếu
-AlignmentGraph-ISD giữ thứ hạng dẫn đầu trên cả bốn kích thước và
-difference-in-differences cho thấy lợi thế lớn hơn ở kích thước nhỏ với khoảng tin cậy
-loại trừ 0, kết quả ủng hộ luận điểm harness-over-model~\cite{cho2026harness}: cách tổ
-chức môi trường thực thi bù một phần cho giới hạn của mô hình nền, và phần bù này lớn
-dần khi mô hình yếu đi. Nếu lợi thế ổn định nhưng không nới rộng, kết luận hẹp hơn:
-harness cải thiện chất lượng đồng đều nhưng không đặc biệt hữu ích hơn cho SLM. Nếu
-lợi thế thu hẹp ở kích thước nhỏ, giả thuyết thiết kế bị thách thức---các cơ chế của
-harness có thể đòi hỏi một năng lực mô hình tối thiểu để vận hành.
-\TBD{chốt diễn giải theo kịch bản xảy ra khi có số thực}.
+\TBD{}
 
-Với RQ2, các chỉ số alignment cho phép tách hai khả năng mà điểm judge không phân biệt
-được. Nếu full alignment rate và composite của harness cao hơn các đối sánh và khoảng
-cách nới rộng khi mô hình nhỏ đi, điều đó ủng hộ trực tiếp cơ chế trung tâm: alignment
-là thuộc tính suy giảm sớm trên mô hình nhỏ, và việc lưu nó thành trạng thái tường
-minh giúp giữ lại thuộc tính này. Ngược lại, nếu các chỉ số alignment của harness
-không tách khỏi các đối sánh dù điểm judge tách, thì lợi thế của harness đến từ các
-khía cạnh chất lượng khác ngoài alignment---một kết quả vẫn hữu ích nhưng đòi hỏi hạ
-claim về cơ chế. Sự đối chiếu giữa các chỉ số alignment và điểm judge cũng cho biết
-rubric tổng quát nhạy đến đâu với vi phạm alignment.
-\TBD{đối chiếu alignment--judge khi có số thực}.
-
-\paragraph{Alignment graph như artifact giải thích được.}
-Ngoài vai trò trạng thái cho máy, alignment graph còn là một sản phẩm cho con người.
-Toàn bộ node, cạnh và trạng thái kiểm chứng được kết xuất thành file JSON kèm biểu
-diễn Graphviz (\cref{sec:aggregation}), nên chuyên gia thiết kế giảng dạy có thể trả
-lời các câu hỏi kiểm toán cụ thể---mục tiêu nào chưa có assessment tương ứng, liên kết
-nào chưa qua kiểm chứng, sửa đổi nào đã kích hoạt kiểm tra lại---mà không cần đọc lại
-toàn bộ văn bản chương trình. Điều này định vị hệ thống là công cụ hỗ trợ ra quyết
-định (decision support) trong quy trình educator-in-the-loop: con người giữ quyền rà
-soát, chỉnh sửa và override, còn harness bảo đảm rằng các quan hệ cần rà soát là tường
-minh và truy vết được. Chúng tôi chủ ý tránh các claim kiểu ``đúng by construction'':
-cơ chế chỉ làm cho alignment kiểm tra được và sửa được, không bảo đảm nó đúng.
-
-\paragraph{Triển khai có trách nhiệm.}
-Một chương trình sinh tự động có thể sai theo cách khó nhận ra: mục tiêu hoặc
-assessment không phù hợp vẫn đọc trôi chảy. Vì vậy, đầu ra của hệ thống cần được
-chuyên gia phê duyệt trước khi dùng với người học, đặc biệt trong các ngữ cảnh có hệ
-quả cao; artifact đồ thị giảm chi phí của việc rà soát này nhưng không thay thế nó.
-Nội dung sinh cũng có thể mang thiên lệch văn hoá, ngôn ngữ hoặc rào cản tiếp cận thừa
-hưởng từ mô hình nền; các cơ chế của harness không kiểm tra các thuộc tính này và
-chúng cần quy trình rà soát riêng. Cuối cùng, động cơ về riêng tư và tự lưu trữ chỉ
-được hiện thực hoá trọn vẹn khi mô hình và judge chạy on-premise; cấu hình thực nghiệm
-hiện tại vẫn dùng API bên ngoài (\cref{sec:threats-limitations}).
+% ==== BẢN NHÁP CŨ (giữ tham khảo, sẽ viết lại) ====
+% Ladder và ablation ủng hộ hai loại claim khác nhau. Ở cấp hệ thống, lợi thế ADDIE
+% lớn nhất tại đầu nhỏ của ladder Qwen 0.8B--9B và co lại tới parity với ReAct-ISD
+% tại 9B; profile RQ2 thỏa quy tắc đọc pre-specified ở mọi kích thước
+% (\Cref{sec:rq1,sec:rq2}). Ở cấp cơ chế, bỏ graph context kéo panel alignment xuống
+% trong khi ADDIE gần như bất biến (\Cref{sec:ablation}). Như vậy, bằng chứng ủng hộ
+% trạng thái tường minh dùng chung như cơ chế tạo ra profile alignment đo được;
+% bằng chứng không ủng hộ nó như cơ chế cải thiện điểm judge, và cũng không cho thấy
+% effect mạnh dần về phía model nhỏ. Verifier không có score effect trong cấu hình
+% shipped; vai trò của nó là backstop và audit trail.
+%
+% Mọi ablation arm đều sinh output dùng được; điều này cho thấy robustness đến từ
+% cấu trúc thực thi chung, không phải từ graph context hay verifier. Do chưa có arm
+% monolithic, đây vẫn là attribution ở cấp hệ thống, không phải ước lượng nhân quả
+% cho decomposition. Rộng hơn, kết quả phù hợp với bằng chứng rằng độ nhạy với
+% harness không đơn điệu giữa các mức model~\cite{cho2026harness}: kết luận ở đầu
+% nhỏ đứng trên interaction đo được trong nghiên cứu này, không đứng trên văn liệu
+% trước đó. So sánh trực tiếp các con số với nghiên cứu dùng model, tác vụ, ngân
+% sách hoặc judge khác là không hợp lệ.
+%
+% Luận điểm thực tiễn là harness vận hành ổn định và vẫn đáng dùng ở đầu nhỏ trong
+% serving envelope tại \Cref{sec:assumptions}. Luận điểm này yếu đi khi năng lực
+% tăng: ở kích thước nhỏ nhất, hệ thua một baseline trên \texttt{total\_score}; tại
+% 9B, ReAct-ISD ngang hoặc tốt hơn tùy tín hiệu judge và dùng ít token hơn đáng kể
+% (\Cref{sec:cost}). Vì vậy, AlignmentGraph-ISD là decision support: graph dump cho
+% educator giao diện audit-and-override, còn review chuyên môn vẫn cần thiết cho
+% tính phù hợp sư phạm, ngữ cảnh và mục đích sử dụng.
+%
+% Hình dạng judge-invariant nhưng alignment-shifted của ablation có hai cách đọc
+% cạnh tranh. Cách đọc thứ nhất: LLM judge tổng quát không nhạy với alignment ---
+% đúng khoảng trống đo lường mà giao thức RQ2 được thiết kế để xử lý; các bias đã
+% biết của judge làm cách đọc này đáng cân nhắc~\cite{panickssery2024llm}. Cách đọc
+% thứ hai: chỉ instrument được thiết kế quanh construct bị ablate mới tách được các
+% arm, còn instrument độc lập về cơ chế thì không --- đây là hình dạng thường gặp
+% khi discriminant validity yếu. Bằng chứng hiện tại chưa phân xử được hai cách đọc;
+% sự mơ hồ này dẫn thẳng tới hướng expert validation nêu dưới đây.
+%
+% Các nguy cơ dưới đây nêu ranh giới của các diễn giải trên cùng biện pháp giảm
+% thiểu; từ những vấn đề chưa giải quyết, chúng tôi suy ra các thực nghiệm tiếp theo.
+%
+% \subsection{Nguy cơ đối với tính hợp lệ và hạn chế}
+% \label{sec:threats-limitations}
+%
+% Internal validity bị ảnh hưởng bởi interaction giữa trần 8192 token và kiến trúc:
+% hệ phân rã hoàn thành được trong ngân sách, còn generation một lượt bị truncate. Interaction này cũng thuộc điều kiện triển khai, nên chúng tôi suy ra
+% trần từ envelope kiểm chứng được trong \Cref{sec:assumptions}, áp dụng đồng nhất và
+% báo failure cùng truncation theo agent và kích thước (\Cref{sec:robustness}). Run
+% với trần cao hơn vẫn là sensitivity riêng, không phải thay đổi điều kiện đó. Can
+% thiệp duy nhất dành riêng cho baseline là dịch prompt scaffolding của ReAct-ISD
+% sang tiếng Anh; việc công bố cho phép dùng bản dịch khác trong khi giữ phương pháp
+% cố định. LLM-judge drift và self-preference vẫn có thể xảy ra
+% ~\cite{panickssery2024llm}; biện pháp giảm thiểu gồm instrument thứ hai không dùng
+% LLM, họ agent và judge tách biệt, cùng contrast ablation trong một session.
+%
+% External validity bị giới hạn bởi một họ model. Bốn checkpoint Qwen dùng chung
+% pretraining recipe, nên kích thước bị confound với khác biệt recipe nội bộ họ. Vì
+% vậy, kết luận chỉ áp dụng trên dải Qwen 0.8B--9B; khái quát sang Llama, Gemma hoặc
+% Phi đòi hỏi thực nghiệm khác. Scenario cũng đến từ một benchmark phân tầng thay vì
+% thực hành tại cơ sở. Phân tầng domain và difficulty giảm nguy cơ mẫu hẹp, nhưng vẫn
+% cần replication tại hiện trường có educator review.
+%
+% Construct validity là hạn chế trung tâm: similarity không phải alignment. Family A
+% đo textual correspondence; cầu nối tới constructive alignment nằm ở cấu trúc bằng
+% chứng của giao thức và các tiêu chí đã thiết
+% lập~\cite{biggs2011teaching,porter2002measuring,webb1997criteria}, không nằm trong
+% tên metric. \texttt{assessment\_objective\_similarity} không phân biệt coverage
+% hữu ích với việc lặp lại nên bị loại khỏi phép đếm có hướng. Bloom checkpoint
+% chính học từ quy ước gán nhãn của một cơ sở~\cite{li2022bloomclassification},
+% không truy được từng trường hợp về
+% Anderson--Krathwohl~\cite{anderson2001taxonomy}, và chưa được validate trên
+% objective do máy sinh; lỗi encoder và classifier cũng có thể mang tính
+% differential giữa các hệ. Sensitivity star ba trục giảm nhưng không loại bỏ nguy
+% cơ này (\Cref{sec:sensitivity}).
+%
+% Conclusion validity phụ thuộc vào \ladderNumScenarios{} scenario ghép cặp và
+% \ladderNumRunsPerModel{} run mỗi ô. Số run giới hạn khả năng ước lượng phương sai;
+% SD giữa các run, bootstrap interval và exact permutation null cho paired sample nhỏ
+% là các biện pháp giảm thiểu. Hiệu chỉnh Holm trong-tín-hiệu và toàn-panel phơi bày
+% đánh đổi multiplicity. Output failure là post-treatment, nên phân tích complete-case
+% có thể loại đúng những ca agent làm kém nhất; \texttt{failure=0} là layer chính,
+% complete-case là sensitivity chứ không phải unconditional, và failure rate được
+% báo riêng (\Cref{sec:stats}). Failure policy cùng quy tắc đọc panel đã được chốt
+% trước khi xem kết quả RQ2 pooled; điều này hạn chế diễn giải phụ thuộc outcome, dù
+% nghiên cứu không claim external preregistration.
+%
+% \paragraph{Hướng nghiên cứu tiếp theo.}
+% \label{sec:future-work}
+% Mỗi thực nghiệm tiếp theo bắt nguồn từ một hạn chế ở trên. Vì mọi ablation đều giữ
+% specialist workflow, một arm monolithic trong cùng package với cùng token budget
+% mỗi scenario sẽ tách được hiệu ứng của decomposition khỏi khác biệt về codebase,
+% prompt và test-time compute. Một phân tích sensitivity với trần cao hơn trên GPU
+% 24\,GB sẽ kiểm tra xem robustness và ranking có giữ nguyên khi agent một lượt được
+% cấp serving allowance lớn hơn, với prompt, scenario, decoding, failure policy và
+% quy tắc báo cáo giữ cố định.
+%
+% Việc thiếu tầng bằng chứng con người dẫn tới một expert study: hai chuyên gia ISD
+% blind-code một mẫu phân tầng, báo cáo inter-expert agreement, và kiểm tra
+% agreement máy--người bằng Cohen's $\kappa$ theo các dự đoán chốt trước khi xem
+% nhãn. Nghiên cứu đó đồng thời phân xử hai cách đọc ablation ở trên. Cuối cùng, vì
+% panel đo tín hiệu textual correspondence và cognitive demand chứ không đo learning
+% outcome, nghiên cứu sau cần nối profile với quyết định của educator và kết quả của
+% người học trước khi claim instructional effectiveness.

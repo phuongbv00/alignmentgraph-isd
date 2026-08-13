@@ -3,6 +3,15 @@
 \usepackage{pifont}       % \ding checkmarks/crosses in the related-work table
 \usepackage[capitalise]{cleveref}
 
+% Auto-generated numbers (docs/generated/, synced by docs/scripts/sync_generated.sh).
+% Every experimental number in the prose comes from these macros; tables and figures
+% are \input / \includegraphics from the same directory — never hand-typed.
+\input{../../generated/stats_macros}
+\input{../../generated/cost_macros}
+\input{../../generated/abl_macros}
+\input{../../generated/sens_macros}
+\graphicspath{{figures/}{../../generated/figures/}}
+
 % TODO before submission:
 %  - replace [preprint] with [anonymous,review] for double-blind venues;
 %  - fill in the real \acmConference/\acmISBN/\acmDOI from the rights form;
@@ -27,19 +36,8 @@
 }
 \email{phuong.bv242011m@sis.hust.edu.vn}
 
-\author{Hai Van Pham}
-\authornote{Primary supervisor.}
-\affiliation{%
-  \department{School of Information and Communication Technology}
-  \institution{Hanoi University of Science and Technology}
-  \city{Hanoi}
-  \country{Vietnam}
-}
-\email{haipv@soict.hust.edu.vn}
-
 \author{Van-Tam Bui}
 \orcid{0009-0007-0064-266X}
-\authornote{Co-supervisor.}
 \affiliation{%
   \department{Faculty of Information Technology}
   \institution{HaiPhong University}
@@ -47,6 +45,16 @@
   \country{Vietnam}
 }
 \email{tambv@dhhp.edu.vn}
+
+\author{Hai Van Pham}
+\authornote{Corresponding author.}
+\affiliation{%
+  \department{School of Information and Communication Technology}
+  \institution{Hanoi University of Science and Technology}
+  \city{Hanoi}
+  \country{Vietnam}
+}
+\email{haipv@soict.hust.edu.vn}
 
 \renewcommand{\shortauthors}{Bui et al.}
 
@@ -78,18 +86,16 @@
 \ccsdesc[500]{Computing methodologies~Multi-agent systems}
 \ccsdesc[300]{Computing methodologies~Natural language processing}
 
-\keywords{instructional systems design, LLM agents, agent harness, constructive alignment, multi-agent orchestration, small language models, pedagogical verification, ablation study}
+\keywords{instructional systems design, multi-agent LLM, constructive alignment, small language models, ADDIE, benchmark evaluation}
 
 \maketitle
 
 \input{sections/01_introduction}
 \input{sections/02_related_work}
-\input{sections/03_problem_formulation}
 \input{sections/04_method}
 \input{sections/05_experimental_methodology}
 \input{sections/06_results}
 \input{sections/07_discussion}
-\input{sections/08_threats_limitations}
 \input{sections/09_conclusion}
 
 \section*{Data Availability}
