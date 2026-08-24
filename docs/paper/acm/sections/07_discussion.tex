@@ -3,7 +3,7 @@
 
 The ladder and ablation support different claims. At the system level, the ADDIE
 advantage is largest at the small end of the Qwen 0.8B--9B ladder and contracts to
-parity with ReAct-ISD at 9B; the RQ2 profile satisfies its pre-specified rule at
+parity with ReAct-ISD at 9B; the alignment panel satisfies its pre-specified rule at
 every size (\Cref{sec:rq1,sec:rq2}). At the mechanism level, removing graph context
 shifts the alignment panel downward while ADDIE remains nearly invariant
 (\Cref{sec:ablation}). Explicit shared state is therefore supported as the mechanism
@@ -33,7 +33,7 @@ accessibility, and use.
 
 The judge-invariant but alignment-shifted ablation admits two competing readings.
 On the favorable reading, general LLM judges are insensitive to alignment, which is
-the measurement gap addressed by the independent RQ2 protocol; known evaluator
+what the independent alignment-signal measurement is meant to expose; known evaluator
 biases make that possibility credible~\cite{panickssery2024llm}. On the adversarial
 reading, only the instrument designed around the ablated construct separates the
 arms, while the mechanically independent judge family does not---the pattern
@@ -93,7 +93,7 @@ the multiplicity trade-off. Output failure is post-treatment, so complete-case
 analysis can discard an agent's worst cases; \texttt{failure=0} is primary,
 complete-case is sensitivity rather than unconditional, and failure rates are
 reported separately (\Cref{sec:stats}). The failure policy and panel rule were fixed
-before pooled RQ2 results were inspected, limiting outcome-contingent interpretation
+before pooled alignment results were inspected, limiting outcome-contingent interpretation
 without claiming external preregistration.
 
 \paragraph{Future directions.}
@@ -106,11 +106,38 @@ device should test whether robustness and rankings persist when one-shot agents
 receive a larger serving allowance while prompts, scenarios, decoding, failure
 policy, and reporting rules remain fixed.
 
-The missing human evidence tier motivates a study in which two ISD experts
-blind-code a stratified sample, report inter-expert agreement, and test
-machine--human agreement with Cohen's $\kappa$ under a prediction fixed before
-labels are examined. That study would also adjudicate the competing ablation
-readings above. Finally, because the panel measures textual correspondence and
+A further limit is the generation order itself. Each artifact family is produced
+once, in fixed ADDIE sequence, so verification can only repair inside the phase
+that has just run, and a problem that becomes visible only after a later family
+exists cannot send the harness back. The absence of a verifier score effect is
+consistent with that bound (\Cref{sec:ablation}): a check-and-repair backstop
+confined to one phase has little headroom. Feasibility is the clearest case, since
+total learner workload and resource demand are properties of the finished design
+that no phase-local check can act on. A state-driven variant would instead select
+the next specialist from the current graph, and would treat termination as a
+conjunctive property of that graph---structural completeness, constraint
+satisfaction, and a stated alignment condition---rather than as a completed visit
+list. Orchestrators that re-plan from shared state are established outside
+education~\cite{fourney2024magenticone,zhang2026patchboard}, and pedagogically
+driven course generation was posed as non-linear planning before LLMs
+~\cite{ullrich2008paigos}, but LLM-based instructional-design systems remain
+fixed-role pipelines~\cite{zhang2025eduplanner,yao2025instructionalagents,
+isdagentbench}. Two conditions would make such a study interpretable. The
+fixed-order harness reported here is the required baseline, because the contrast
+is orchestration policy rather than agent count. And the stopping condition must
+not be the alignment panel: driving generation with the same signal that
+evaluates it would separate that signal from the construct it stands for
+~\cite{gao2023scaling}, so the loop would have to stop on structural and
+constraint predicates while the panel remains an untouched post-hoc measurement.
+
+The missing human evidence tier motivates expert validation. A first round is
+designed and being fielded: three to five instructional-design experts
+independently rate a stratified, blinded sample of generated designs on
+alignment, feasibility, pedagogical soundness, and required revision, with
+inter-expert agreement and machine--human association analyzed under a
+prediction fixed before any labels are examined; that prediction is written to
+adjudicate the competing ablation readings above. A larger blind-coding study
+with Cohen's $\kappa$ against the full protocol remains future work. Finally, because the panel measures textual correspondence and
 cognitive-demand signals rather than learning outcomes, subsequent work must
 connect its profiles to educator decisions and learner outcomes before making
 claims about instructional effectiveness.

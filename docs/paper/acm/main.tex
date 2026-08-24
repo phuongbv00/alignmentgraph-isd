@@ -1,6 +1,17 @@
 \documentclass[sigconf,preprint]{acmart}
 
 \usepackage{pifont}       % \ding checkmarks/crosses in the related-work table
+\usepackage[ruled,vlined]{algorithm2e}
+% Relax per-page float quotas; otherwise the figure* queue backs up and every
+% float drops behind the references (FloatBarrier cannot fence two-column floats).
+\setcounter{topnumber}{4}
+\setcounter{dbltopnumber}{4}
+\setcounter{totalnumber}{8}
+\renewcommand{\topfraction}{0.95}
+\renewcommand{\dbltopfraction}{0.95}
+\renewcommand{\textfraction}{0.03}
+\renewcommand{\floatpagefraction}{0.8}
+\renewcommand{\dblfloatpagefraction}{0.8}
 \usepackage[capitalise]{cleveref}
 
 % Auto-generated numbers (docs/generated/, synced by docs/scripts/sync_generated.sh).
@@ -24,10 +35,10 @@
 \acmDOI{}
 \setcopyright{none}
 
-\title{AlignmentGraph-ISD: A Graph-Guided Multi-Agent Harness for Instructional Systems Design with Small Language Models}
+\title{AlignmentGraph-ISD: A Graph-Guided Multi-Agent Harness for Auditable Instructional Systems Design with Small Language Models}
 
 % TODO: confirm supervisor emails and exact affiliation wording before submission.
-\author{Phuong Viet Bui}
+\author{Viet-Phuong Bui}
 \affiliation{%
   \department{School of Information and Communication Technology}
   \institution{Hanoi University of Science and Technology}
@@ -35,6 +46,16 @@
   \country{Vietnam}
 }
 \email{phuong.bv242011m@sis.hust.edu.vn}
+
+\author{Van-Hai Pham}
+\authornote{Corresponding author.}
+\affiliation{%
+  \department{School of Information and Communication Technology}
+  \institution{Hanoi University of Science and Technology}
+  \city{Hanoi}
+  \country{Vietnam}
+}
+\email{haipv@soict.hust.edu.vn}
 
 \author{Van-Tam Bui}
 \orcid{0009-0007-0064-266X}
@@ -45,16 +66,6 @@
   \country{Vietnam}
 }
 \email{tambv@dhhp.edu.vn}
-
-\author{Hai Van Pham}
-\authornote{Corresponding author.}
-\affiliation{%
-  \department{School of Information and Communication Technology}
-  \institution{Hanoi University of Science and Technology}
-  \city{Hanoi}
-  \country{Vietnam}
-}
-\email{haipv@soict.hust.edu.vn}
 
 \renewcommand{\shortauthors}{Bui et al.}
 
@@ -93,7 +104,7 @@
 \input{sections/01_introduction}
 \input{sections/02_related_work}
 \input{sections/04_method}
-\input{sections/05_experimental_methodology}
+\input{sections/05_experiment}
 \input{sections/06_results}
 \input{sections/07_discussion}
 \input{sections/09_conclusion}
@@ -107,5 +118,18 @@ will be released with the camera-ready version of this paper.
 
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{references}
+
+\appendix
+
+\section{Additional Result Tables}
+\label{sec:appendix-tables}
+The remaining per-signal judge tables, the per-signal alignment table, and the
+detailed cost table; the main text reports ADDIE (\Cref{sec:rq1}), the panel
+summary (\Cref{sec:rq2}), and cost via the trade-off figure
+(\Cref{sec:cost}).
+\input{../../generated/tab_rq1_traj}
+\input{../../generated/tab_rq1_total}
+\input{../../generated/tab_rq2_alignment}
+\input{../../generated/tab_cost}
 
 \end{document}

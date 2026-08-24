@@ -6,25 +6,25 @@ assessments, and evaluation evidence are generated as one fluent document. Under
 small-model serving envelope, the harness must also preserve those relations without
 placing the whole task in one call.
 
-This paper contributes two responses: AlignmentGraph-ISD, which coordinates
-specialists through explicit graph state and exports that state for audit; and a
-no-LLM evaluation protocol that reports a flat panel of textual-correspondence and
-cognitive-demand signals. The protocol measures signals of constructive alignment,
-not the validated construct itself.
+This paper contributes AlignmentGraph-ISD, a harness that coordinates specialists
+through explicit graph state and exports that state for audit. Every system is
+scored both by the benchmark's LLM judges and by a no-LLM panel of
+textual-correspondence and cognitive-demand signals. That panel measures signals
+of constructive alignment, not the validated construct itself.
 
 Across the Qwen 0.8B--9B ladder, the harness produced usable output for every
-scenario, led ADDIE and the pre-specified RQ2 profile at every size, and showed its
+scenario, led ADDIE and the pre-specified alignment panel at every size, and showed its
 largest relative advantage toward the small end. The three judge signals remain
 co-equal: \texttt{total\_score} loses to one baseline at the smallest size, and
 ReAct-ISD reaches ADDIE parity at 9B.
 
-The ablation narrows the mechanism claim. Removing graph context lowers the RQ2
+The ablation narrows the mechanism claim. Removing graph context lowers the alignment
 panel at every size while leaving ADDIE nearly invariant; the verifier is a repair
 backstop and source of audit evidence, not a supported score effect in the shipped
 configuration. Because every arm retains specialist decomposition, its contribution
 to robustness is established only at the system level.
 
 The evidence supports educator-in-the-loop use of an auditable graph-guided harness
-within the evaluated ladder. A blind expert study is the next step for testing
-machine--human agreement and distinguishing the favorable and adversarial readings
-of the ablation.
+within the evaluated ladder. A blinded expert-validation round with a
+pre-specified prediction is underway to test machine--human agreement and to
+distinguish the favorable and adversarial readings of the ablation.

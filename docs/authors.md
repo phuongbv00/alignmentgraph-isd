@@ -3,30 +3,35 @@
 Canonical author/supervisor info for the paper (`docs/paper/acm/main.tex`) and thesis
 (`docs/thesis/Cover.tex`, `docs/thesis/Cover2.tex`). Update here first, then propagate.
 
-## Paper byline (both EN and VN, decided 2026-08-11)
+## Paper byline (per supervisor's international-standard instruction, 2026-08-17)
 
-Order follows the international CS convention (senior/corresponding author last);
-supervisor roles are NOT annotated in the paper — they stay a thesis-only concept:
+Name forms are hyphenated given names (chuẩn QT the supervisor specified in
+`Góp_ý_Phương.docx`); first position = main author, `*` = corresponding author,
+remaining authors are equal. Supervisor roles are NOT annotated in the paper —
+they stay a thesis-only concept:
 
-1. **Phuong Viet Bui** — first author
-2. **Van-Tam Bui** — co-author
-3. **Hai Van Pham** — last author, **corresponding author** (`\authornote{Corresponding author.}` / VN: "Tác giả liên hệ.")
+1. **Viet-Phuong Bui** — first author (main author)
+2. **Van-Hai Pham** — **corresponding author** (`\authornote{Corresponding author.}` / VN: "Tác giả liên hệ.") — *re-confirm the corresponding-author mark with the supervisor at submission time*
+3. **Van-Tam Bui** — co-author
+
+(Supersedes the 2026-08-11 ordering Phuong Viet Bui / Van-Tam Bui / Hai Van Pham,
+which used the senior-author-last convention and unhyphenated name forms.)
 
 ## Author
 
-- **Bùi Việt Phương** (Phuong Viet Bui)
+- **Bùi Việt Phương** (Viet-Phuong Bui)
 - School of Information and Communication Technology, Hanoi University of Science and Technology, Hanoi, Vietnam
 - Email: phuong.bv242011m@sis.hust.edu.vn
 
 ## Supervisor 1 (primary)
 
-- **Phạm Văn Hải** (Hai Van Pham) — PGS.TS.
+- **Phạm Văn Hải** (Van-Hai Pham) — PGS.TS.
 - School of Information and Communication Technology, Hanoi University of Science and Technology, Hanoi, Vietnam
 - Email: haipv@soict.hust.edu.vn
 
 ## Supervisor 2 (co-supervisor)
 
-- **Bùi Văn Tâm** (Van-Tam Bui)
+- **Bùi Văn Tâm** (Van-Tam Bui) — Trường Đại học Hải Phòng
 - Faculty of Information Technology, HaiPhong University, HaiPhong, Vietnam
 - Email: tambv@dhhp.edu.vn
 - ORCID: [0009-0007-0064-266X](https://orcid.org/0009-0007-0064-266X)

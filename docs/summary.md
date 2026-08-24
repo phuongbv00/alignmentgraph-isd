@@ -13,6 +13,13 @@
 > - **Văn phong & độ dài (2026-08-11)**: bám khung 15 mục nhưng KHÔNG bôi cho đủ mục — mục ít nội dung viết ngắn;
     văn xuôi lập luận liền mạch (topic sentence, chuyển ý), không "chép giàn ý thành câu"; độ dài paper vừa phải,
     không ép số trang cụ thể.
+> - **Quy tắc claim (thầy chốt 2026-08-17, `docs/review_q2.md` T5)**: CẤM "vượt trội toàn diện"/"tốt nhất mọi chỉ
+    số"/"verifier cải thiện chất lượng đầu ra"/"chứng minh constructive alignment đầy đủ". DÙNG: robustness dưới SLM +
+    token cap; ADDIE cạnh tranh — lợi ở model nhỏ, parity ở model lớn ("competitive and robust", không "superior");
+    graph context cải thiện *các tín hiệu đo được*; graph dump → auditability + teacher-in-the-loop; verifier =
+    backstop check/repair + nguồn evidence audit. **Paper không bao giờ đề cập RAG** (RAG chỉ thuộc luận văn).
+> - **Backlog Q2**: `docs/review_q2.md` (tái lập 2026-08-17 từ góp ý thầy; giữ nhãn R2/R4 cũ).
+> - **Bản VN (`acm/vn/`) đã freeze sau sync VN→EN 2026-08-17** — mọi chỉnh sửa từ nay trên bản EN.
 > - **SKELETON 7 MỤC (user chốt 2026-08-11, theo khảo sát 12 paper — đồng hình EduPlanner TLT 2025)**: thân bài =
     Introduction / Related Work / **AlignmentGraph-ISD** (problem setting nén → harness → protocol) /
     **Experimental Design** (đổi tên từ "Experimental Methodology") / Results / **Discussion** (kết bằng subsection
@@ -22,10 +29,10 @@
 
 ## 1. Title
 
-- **Đã chốt**: *AlignmentGraph-ISD: A Graph-Guided Multi-Agent Harness for Instructional Systems Design with Small
-  Language Models* (khớp `main.tex`).
-- Phủ: phương pháp (graph-guided multi-agent harness) + đối tượng (ISD) + bối cảnh (SLM — positioning của bài là
-  open-weight SLM triển khai tại chỗ).
+- **Đã chốt** (thầy chốt 2026-08-17, thêm "Auditable"): *AlignmentGraph-ISD: A Graph-Guided Multi-Agent Harness for
+  Auditable Instructional Systems Design with Small Language Models* (khớp `main.tex`).
+- Phủ: phương pháp (graph-guided multi-agent harness) + tính chất (auditable) + đối tượng (ISD) + bối cảnh (SLM —
+  positioning của bài là open-weight SLM triển khai tại chỗ).
 
 ## 2. Abstract — `00_abstract.tex`
 

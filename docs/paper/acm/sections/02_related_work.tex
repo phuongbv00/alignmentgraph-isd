@@ -1,6 +1,45 @@
 \section{Related Work}
 \label{sec:related-work}
 
+Three lines of work meet in this study: agent systems for instructional design,
+small and on-premise language models in education, and the measurement of
+constructive alignment.
+
+\subsection{LLM and Agent Systems for Instructional Design}
+
+ISD-Agent-Bench collects theory-grounded agents implementing iterative tool use,
+ADDIE, systematic design, and rapid prototyping~\cite{isdagentbench}; its ReAct
+variant draws on reasoning--acting orchestration~\cite{yao2023react}. The benchmark
+scores both artifacts and trajectories with LLM rubrics, but does not separately
+instrument relations among generated objectives, activities, and assessments.
+Related systems support pedagogy-guided authoring, direct plan generation,
+multi-agent revision, and multi-agent course generation over commercial APIs
+~\cite{lessonplanner2024,hu2024teachingplan,zhang2025eduplanner,
+yao2025instructionalagents}. Across this work, preserving quality while reducing
+the foundation model is not a joint harness-design and evaluation target.
+
+\subsection{Small and On-Premise Language Models in Education}
+
+A second line examines why and how institutions run language models locally.
+Financial constraints slow AI adoption in higher education~\cite{robert2025educause},
+learner-data privacy under third-party APIs remains an open ethical concern
+~\cite{yan2024ethical}, and universities have built their own gateways to control
+budgets and data~\cite{mithun2025aiverde}; self-hosting open-weight models is also
+cheaper than APIs at sufficient volume~\cite{pan2025onpremise}. Concrete educational
+deployments follow: open LLM infrastructure for a distance university
+~\cite{zesch2024flexi}, evaluations of self-hosted models for schools
+~\cite{chan2026bigger}, and locally run content authoring for privacy and cost
+~\cite{reza2025smallmodels}. On the capability side, SLMs are argued to suffice for
+much agentic workload when the architecture carries the coordination
+~\cite{belcak2025slm,sharma2025slmagents}, agent scaffolding retains most quality
+at the 0.5B--3B scale~\cite{kang2025agentdistill}, and decomposed multi-agent
+framing narrows the gap between small and large models
+~\cite{shen2024multillmagent}---although harness sensitivity is not monotonic
+across model tiers~\cite{cho2026harness}. Closest to ISD, recent studies touch one
+part of the problem each~\cite{jaldi2026slmassessment,zheng2025lessonplanlm,
+lee2026educlaw,wei2026slmeducation}; none evaluates an end-to-end ISD agent
+harness across a controlled range of model sizes.
+
 \subsection{Constructive Alignment and Its Measurement}
 
 Constructive alignment locates instructional quality in the relation among intended
@@ -15,37 +54,15 @@ Bloom taxonomy supplies a shared demand vocabulary~\cite{anderson2001taxonomy}.
 These foundations motivate several complementary signals, but concern curricula,
 standards, and assessments authored before measurement.
 
-\subsection{ISD and Lesson-Planning Agents}
-
-ISD-Agent-Bench collects theory-grounded agents implementing iterative tool use,
-ADDIE, systematic design, and rapid prototyping~\cite{isdagentbench}; its ReAct
-variant draws on reasoning--acting orchestration~\cite{yao2023react}. The benchmark
-scores both artifacts and trajectories with LLM rubrics, but does not separately
-instrument relations among generated objectives, activities, and assessments.
-Related systems support pedagogy-guided authoring, direct plan generation, or
-multi-agent revision~\cite{lessonplanner2024,hu2024teachingplan,
-zhang2025eduplanner}. Across this work, preserving quality while reducing the
-foundation model is not a joint harness-design and evaluation target.
-
-\subsection{Deployment and Measurement Precedents}
-
-Nearby deployment work addresses only parts of that target. Small Models, Big
-Support uses self-hosted models for teacher-facing content and assessment but is
-not end-to-end agentic ISD~\cite{reza2025smallmodels}. LessonPlanLM fine-tunes a 7B
-model rather than testing one harness across sizes~\cite{zheng2025lessonplanlm},
-whereas Instructional Agents uses commercial APIs~\cite{yao2025instructionalagents}.
-Thus local authoring, compact-model specialization, and multi-agent course
-generation have been studied separately, not as a controlled scale test of a
-common open-weight ISD harness.
-
 Automated measurement supplies relevant components. Semantic traceability and
 embeddings recover relations among textual artifacts
 ~\cite{clelandhuang2018traceability,feng2022labse}; other work maps assessment
-items to standards fixed before scoring. For cognitive demand, Li et al. provide
-the expert-labeled corpus used to fine-tune our Bloom classifier
-~\cite{li2022bloomclassification}, while BloomNet is a related classifier rather
-than the corpus source~\cite{waheed2021bloomnet}. These methods avoid a generative
-judge, but do not jointly assess artifacts emitted by the system being measured.
+items to standards fixed before scoring~\cite{xu2025itemalignment}. For cognitive
+demand, Li et al. provide the expert-labeled corpus used to fine-tune our Bloom
+classifier~\cite{li2022bloomclassification}, while BloomNet is a related classifier
+rather than the corpus source~\cite{waheed2021bloomnet}. These methods avoid a
+generative judge, but do not jointly assess artifacts emitted by the system being
+measured.
 
 \subsection{Synthesis}
 
@@ -80,7 +97,7 @@ design.
   \end{tabular}}
 \end{table}
 
-AlignmentGraph-ISD studies the first combination across a common Qwen ladder. Its
-benchmark extension addresses the second with a flat panel whose embedding and
-Porter/Webb/Bloom families differ mechanically; neither family is presented as a
-new construct or as intrinsically superior to prior work.
+AlignmentGraph-ISD studies the first combination across a common Qwen ladder. The
+evaluation addresses the second by extending ISD-Agent-Bench with a flat panel
+whose embedding and Porter/Webb/Bloom families differ mechanically; neither family
+is presented as a new construct or as intrinsically superior to prior work.

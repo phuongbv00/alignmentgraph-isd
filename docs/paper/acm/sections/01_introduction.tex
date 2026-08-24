@@ -1,73 +1,110 @@
 \section{Introduction}
 \label{sec:introduction}
 
-Commercial large language models (LLMs) can produce high-quality curricula and
-support instructional systems design (ISD) from needs analysis through assessment
-~\cite{isdagentbench}. Institutional use nevertheless brings recurring inference
-cost, external-API dependence, and third-party transfer of learner or institutional
-data. On-premise open-weight small language models (SLMs) offer more control, but as
-the model shrinks, the harness that manages state, coordinates calls, and checks
-outputs must carry more of the system-level burden.
+In recent years, commercial large language models (LLMs) have progressed from
+supporting individual writing tasks to handling nearly the full instructional
+systems design (ISD) process: systems based on GPT-4 and comparable models can
+generate lesson plans, assessment sets, and even complete course-material packages
+from a single design request
+~\cite{yao2025instructionalagents,zhang2025eduplanner,agentlesson2026,zeng2026coma,hu2024teachingplan}.
+Several comparative studies have validated quality at the component level:
+learning objectives comparable to faculty-authored versions~\cite{doyle2025objectives},
+multiple-choice questions comparable to human-written items~\cite{doughty2024mcq},
+lesson plans indistinguishable from colleagues' work under blind review
+~\cite{cooper2026indistinguishable}, and classroom effectiveness that is not
+inferior~\cite{karaman2024chatgptlesson}. With simulation--refinement loops,
+quality can reach the level of experienced teachers~\cite{hu2025teachingsim}.
+These tools have also entered instructional designers' practice
+~\cite{yang2025idpractice,lessonplanner2024}.
 
-Existing ISD and lesson-planning agents emphasize automation, personalization, or
-quality with capable foundation models. They do not treat preservation of
-instructional-design quality during model downscaling as a joint design and
-evaluation objective. A deployment-oriented study must establish both quality at
-each feasible size and whether the relative gap changes as capacity falls.
+Deploying these systems in educational institutions nevertheless remains difficult
+because they depend on commercial APIs. A complete ISD workflow requires many model
+calls and therefore accumulates substantial cost; higher-education surveys report
+that financial constraints are slowing AI adoption~\cite{robert2025educause}.
+Learner data must also pass through third-party infrastructure even though privacy
+concerns remain inadequately addressed~\cite{yan2024ethical}. Many universities
+have built internal gateways to control budgets and data~\cite{mithun2025aiverde},
+and self-hosting open-weight models becomes cheaper than API use at sufficient
+volume~\cite{pan2025onpremise}. Cost and data safety are thus documented barriers
+to institutional deployment, motivating interest in open-weight small language
+models (SLMs) that run on-premise: open LLM infrastructure for distance-learning
+universities~\cite{zesch2024flexi}, evaluations of self-hosted models for schools
+~\cite{chan2026bigger}, and locally run content-authoring frameworks motivated by
+privacy and cost~\cite{reza2025smallmodels}.
 
-A second gap concerns constructive alignment among learning objectives, activities,
-and assessments~\cite{biggs1996enhancing,biggs2011teaching}. ISD benchmarks assess
-this property mainly through LLM-judge rubrics~\cite{isdagentbench}, placing the
-measurement instrument in the same broad family as the generator. Porter/Webb
-indices and embedding methods can quantify correspondence to human-authored
-standards~\cite{porter2002measuring,webb1997criteria}, but no ISD benchmark uses
-such methods to examine the intrinsic alignment of a wholly machine-generated
-design, where both sides of every relation are system outputs.
+With SLMs, the weaker foundation model makes output quality more dependent on the
+surrounding harness---how it decomposes work, coordinates execution, and controls
+quality. Small models remain weak at tool use, but decomposed multi-agent
+frameworks narrow the gap with larger models~\cite{shen2024multillmagent}; agent
+scaffolding helps 0.5B--3B models approach the quality of larger groups
+~\cite{kang2025agentdistill}; and SLMs may suffice for most agentic workloads
+~\cite{belcak2025slm,sharma2025slmagents}. Harness sensitivity is not monotonic
+across model sizes~\cite{cho2026harness}, however, so the relationship among
+quality, harness design, and model size must be measured rather than assumed.
 
-Our response begins from the deployment constraint. Each model call receives one
-bounded ISD concern rather than the full open-ended, multi-constraint task. The
-premise that narrower subproblems can be more tractable is inherited from work on
-decomposed prompting and small-model orchestration
-~\cite{zhou2023leasttomost,khot2023decomposed,ferraz2024decrim,
-shen2024multillmagent,belcak2025slm}; it is not tested here because every ablation
-retains decomposition. Nor do we assume that its benefit grows as models shrink:
-harness effects can be non-monotonic across model tiers~\cite{cho2026harness}, so
-the scale interaction is an empirical question.
+This context reveals the central research gap: existing ISD and lesson-planning
+agents are built and evaluated on capable commercial models, while the closest
+studies each address only one part of the problem
+~\cite{jaldi2026slmassessment,zheng2025lessonplanlm,reza2025smallmodels,lee2026educlaw,wei2026slmeducation}.
+To our knowledge, no study has shown that an agent system can retain end-to-end ISD
+quality on small models without fine-tuning, nor has any study evaluated that
+quality systematically across a model-size ladder.
 
-Decomposition creates its own problem: separately generated artifacts must retain
-one pedagogical intent. AlignmentGraph-ISD therefore uses constructive alignment to
-shape a shared graph of objectives, activities, assessments, and their relations.
-Specialists read only relevant graph context and update scoped state; a verifier
-checks the evolving design, and a graph dump exposes the final relations for audit.
-The graph is a substrate for constrained generation, not a claim that prose is
-aligned by construction (\Cref{sec:method}).
+This gap also raises a measurement problem because both common evaluation tools
+have limitations. LLM-judge rubric scoring---used by current ISD and education
+benchmarks~\cite{isdagentbench,edubench2025,tutorbench2025,mathtutorbench2025}---
+exhibits documented systematic biases
+~\cite{zheng2023judging,panickssery2024llm,norman2026reliability}; here, the judge
+model family also overlaps with the generator family. Human-expert evaluation is
+more trustworthy but does not scale to a ladder with multiple sizes, runs, and
+systems. More importantly, constructive alignment locates design quality in the
+relationships among objectives, activities, and assessments
+~\cite{biggs1996enhancing}: a design may read fluently and appear sound while
+remaining seriously misaligned. Neither evaluation approach makes such alignment
+signals explicit, and existing automated alignment methods score agreement with a
+pre-authored standard or reference
+~\cite{porter2002measuring,webb1997criteria,xu2025itemalignment,silva2026lessonbench},
+which a wholly machine-generated design does not provide. Evaluating quality
+retention therefore requires measures that read alignment signals from the
+generated design itself; this study assembles such measures from established
+criteria and reports them alongside the judge scores (\Cref{sec:metrics}).
 
-The evaluation separates quality level from scale interaction. RQ1a compares the
-harness with six agents at each Qwen size; RQ1b tests whether those gaps widen as
-the model shrinks. The \texttt{addie\_median}, \texttt{trajectory\_score}, and
-\texttt{total\_score} judge signals receive identical analyses and equal reporting
-status. ADDIE leads the narrative only because its artifact rubric matches RQ1's
-content-quality construct. RQ2 asks how measurable signals of constructive
-alignment vary across the same ladder, without claiming that automated scores
-validate the construct itself (\Cref{sec:rqs,sec:protocol}).
+This study aims to retain ISD quality as models shrink by using a multi-agent
+harness with explicit alignment state (\Cref{sec:method}). We pursue this aim
+through four objectives:
+\begin{itemize}
+  \item \textbf{Objective 1 (design).} Build a multi-agent ADDIE harness that
+  keeps alignment state explicit throughout generation and exports it for audit.
+  \item \textbf{Objective 2 (judge scale).} Compare the harness with six
+  benchmark agents on ISD-Agent-Bench's LLM-judge scores at each size of the Qwen
+  0.8B--9B ladder, and test whether the gap widens as the model shrinks.
+  \item \textbf{Objective 3 (alignment signals).} Measure the same outputs on a
+  panel of alignment signals computed without an LLM, and test the same size
+  interaction.
+  \item \textbf{Objective 4 (mechanism).} Attribute the observed behaviour to
+  parts of the harness by disabling graph context and the verifier.
+\end{itemize}
 
-This paper makes two contributions:
-\begin{enumerate}
-  \item \textbf{AlignmentGraph-ISD}, a multi-agent ADDIE harness whose alignment
-  graph is explicit, checkable state and an auditable educator-facing artifact.
-  \item \textbf{An automated constructive-alignment evaluation protocol} extending
-  ISD-Agent-Bench with a no-LLM, non-hierarchical panel of seven signals from
-  mechanically independent textual-correspondence and cognitive-demand instrument
-  families. It operationalizes established criteria rather than proposing a new
-  construct~\cite{biggs2011teaching,qm2018rubric,porter2002measuring,
-  webb1997criteria}; cross-family agreement is an initial validity bridge, while
-  expert-human validation remains future work.
-\end{enumerate}
+This paper contributes AlignmentGraph-ISD: a multi-agent harness that organizes
+ADDIE program generation around an alignment graph---explicit alignment state that
+is inspectable and auditable. At the end of each run, the complete graph is
+exported so that an instructional designer can inspect each
+objective--activity--assessment relation and intervene when needed, following the
+teacher-in-the-loop principle.
 
-The experiment spans four Qwen sizes from 0.8B to 9B, three independent runs per
-cell, and three ablations inside the ladder, with between-run variation reported
-for every estimate. Following this Introduction, \Cref{sec:related-work} locates
-the two gaps; \Cref{sec:method} presents the harness and evaluation protocol;
-\Cref{sec:experimental-methodology,sec:results} describe the experimental design
-and findings; \Cref{sec:discussion} interprets the results and bounds their
-validity; and \Cref{sec:conclusion} closes the paper.
+Judge-based rubric scores alone cannot show whether the alignment relations hold
+in a generated design. The evaluation therefore extends ISD-Agent-Bench with an
+alignment-signal measurement that uses no LLM, defines every score as a fixed
+function of text, and reports a panel of seven equally ranked signals from two
+mechanically independent instrument families (\Cref{sec:metrics}). It
+operationalizes established criteria
+~\cite{biggs1996enhancing,porter2002measuring,webb1997criteria} rather than
+proposing a new construct, and interpretation is limited to the signals it
+measures.
+
+The remainder of the paper is organized as follows. \Cref{sec:related-work}
+reviews related work; \Cref{sec:method} describes AlignmentGraph-ISD;
+\Cref{sec:experimental-methodology} presents the experimental design and the
+measures; \Cref{sec:results} reports the results;
+\Cref{sec:discussion} discusses the findings and threats to validity; and
+\Cref{sec:conclusion} concludes the paper.
