@@ -1,85 +1,32 @@
 from __future__ import annotations
-from ..graph import NodeType
-from ..schema import DesignBrief
+from ..alignment_graph import NodeType
+from ..brief import DesignBrief
 from copy import deepcopy
-from .. import alignment
+from ..alignment_graph import alignment
 from .base import BaseISDAgent
 
 
 class ADDIEOutputAggregator(BaseISDAgent):
+    """Not an agent in the pipeline sense — no design role, no self-validation,
+    no feedback signal in/out. Adapter/serializer: reads the graph AFTER all 5
+    Designers have run, and computes ``addie_output``
+    directly from real nodes/edges. There is no longer a
+    NeedsContext/Evaluation/ContentStructure/StoryboardPlan "container" node
+    to read a phase off of — every ``analysis``/``evaluation`` field and
+    ``design.content_structure``/``design.storyboard`` are derived here from
+    Gap/Topic/LearnerProfile/Constraint/Improvement/the Assessment pool/
+    Content/Media elements. See the architecture plan's aggregation matrix for
+    the full field-by-field mapping this function implements."""
+
     def run(self, design_brief: DesignBrief) -> None:
         pass  # call aggregate() directly
 
     def aggregate(self) -> dict:
-        # Aggregate from section nodes only; element nodes carry single items and
-        # would otherwise pollute the merged section payload.
-        nc_data = _merge_node_data(self.graph.section_nodes(NodeType.NEEDS_CONTEXT))
-        obj_data = _merge_node_data(self.graph.section_nodes(NodeType.OBJECTIVE))
-        asm_data = _merge_node_data(self.graph.section_nodes(NodeType.ASSESSMENT))
-        act_data = _merge_node_data(self.graph.section_nodes(NodeType.ACTIVITY))
-        mat_data = _merge_node_data(self.graph.section_nodes(NodeType.MATERIAL)) or act_data
-        con_data = _merge_node_data(self.graph.section_nodes(NodeType.IMPLEMENTATION_PLAN))
-        ev_data = _merge_node_data(self.graph.section_nodes(NodeType.EVALUATION))
-
-        # Design is decomposed across several singleton "plan" nodes (see
-        # objective_design.py's 2-call split) — this is their ONE home under
-        # graph coordination. In the wo-graph arm there is NO such split: the
-        # whole Design blob lives in objective_0, so each field falls back to
-        # obj_data (the pre-refactor single-blob layout).
-        plan_data = _merge_node_data(self.graph.section_nodes("assessment_plan")) or obj_data.get("assessment_plan", {})
-        content_data = _merge_node_data(self.graph.section_nodes("content_structure")) or obj_data.get("content_structure", {})
-        strategy_data = _merge_node_data(self.graph.section_nodes("instructional_strategies")) or obj_data.get("instructional_strategies", {})
-        non_instr_data = _merge_node_data(self.graph.section_nodes("non_instructional_strategies")) or obj_data.get("non_instructional_strategies", {})
-        storyboard_data = _merge_node_data(self.graph.section_nodes("storyboard_plan"))
-        media_items = [n["data"] for n in self.graph.element_nodes("media")] or obj_data.get("media_selection", [])
-        storyboard = storyboard_data.get("storyboard", []) or obj_data.get("storyboard", [])
-
-        analysis = {
-            "needs_analysis": nc_data.get("needs_analysis", {}),
-            "learner_analysis": nc_data.get("learner_analysis", {}),
-            "context_analysis": nc_data.get("context_analysis", {}),
-            "task_analysis": nc_data.get("task_analysis", {}),
-        }
-
-        design = {
-            "learning_objectives": obj_data.get("learning_objectives", []),
-            "assessment_plan": plan_data,
-            "content_structure": content_data,
-            "instructional_strategies": strategy_data,
-            "non_instructional_strategies": non_instr_data,
-            "learning_activities": act_data.get("learning_activities", []),
-            "media_selection": media_items,
-            "storyboard": storyboard,
-        }
-
-        # assessment_tools/expert_review live in the dedicated assessment node;
-        # the activity (development) node is kept as a fallback source.
-        development = {
-            "learner_materials": act_data.get("learner_materials", mat_data.get("learner_materials", [])),
-            "instructor_guide": act_data.get("instructor_guide", mat_data.get("instructor_guide", {})),
-            "operator_manual": act_data.get("operator_manual", mat_data.get("operator_manual", {})),
-            "assessment_tools": (
-                asm_data.get("assessment_tools")
-                or act_data.get("assessment_tools", [])
-            ),
-            "expert_review": (
-                asm_data.get("expert_review")
-                or act_data.get("expert_review", {})
-            ),
-        }
-
-        implementation = {
-            "instructor_orientation": con_data.get("instructor_orientation", {}),
-            "system_check": con_data.get("system_check", {}),
-            "prototype_execution": con_data.get("prototype_execution", {}),
-            "monitoring": con_data.get("monitoring", {}),
-        }
-
-        evaluation = {
-            "formative": ev_data.get("formative", {}),
-            "summative": ev_data.get("summative", {}),
-            "improvement_plan": ev_data.get("improvement_plan", {}),
-        }
+        analysis = self._build_analysis()
+        design = self._build_design()
+        development = self._build_development()
+        implementation = self._build_implementation()
+        evaluation = self._build_evaluation()
 
         output = {
             "analysis": analysis,
@@ -89,6 +36,469 @@ class ADDIEOutputAggregator(BaseISDAgent):
             "evaluation": evaluation,
         }
         return _strengthen_alignment(output, self.graph)
+
+    # ── analysis phase: computed from real Gap/Topic/LearnerProfile/Constraint elements ──
+    def _build_analysis(self) -> dict:
+        gaps = [n["data"] for n in self.graph.element_nodes(NodeType.GAP)]
+        topics = [n["data"] for n in self.graph.element_nodes(NodeType.TOPIC)]
+        constraints = [n["data"] for n in self.graph.element_nodes(NodeType.CONSTRAINT)]
+        learner = _merge_node_data(self.graph.section_nodes(NodeType.LEARNER_PROFILE))
+        # Each analysis section = its element pool + the narrative fields the
+        # elements cannot express (problem_definition, priority_matrix,
+        # prerequisites, review_summary, ...), which OutcomeDesignerAgent
+        # parks on the matching section node. See
+        # OutcomeDesignerAgent._store_analysis_narrative.
+        return {
+            "needs_analysis": {
+                **_merge_node_data(self.graph.section_nodes(NodeType.GAP)), "gaps": gaps,
+            },
+            "learner_analysis": learner,
+            "context_analysis": {
+                **_merge_node_data(self.graph.section_nodes(NodeType.CONSTRAINT)),
+                "constraints": constraints,
+            },
+            "task_analysis": {
+                **_merge_node_data(self.graph.section_nodes(NodeType.TOPIC)), "topics": topics,
+            },
+        }
+
+    # ── design phase ──────────────────────────────────────────────────────
+    def _build_design(self) -> dict:
+        objectives = [n["data"] for n in self.graph.element_nodes(NodeType.OBJECTIVE)]
+        activities = [n["data"] for n in self.graph.element_nodes(NodeType.ACTIVITY)]
+        content_modules = [n["data"] for n in self.graph.element_nodes(NodeType.CONTENT)]
+        media = [n["data"] for n in self.graph.element_nodes(NodeType.MEDIA_SELECTION)]
+        plan_node = _merge_node_data(self.graph.section_nodes(NodeType.ACTIVITY_PLAN))
+
+        design = {
+            "learning_objectives": objectives,
+            "learning_activities": activities,
+            "assessment_plan": _merge_node_data(self.graph.section_nodes(NodeType.ASSESSMENT_PLAN)),
+            "content_structure": {"modules": content_modules},
+            "instructional_strategies": plan_node.get("instructional_strategies", {}),
+            "non_instructional_strategies": plan_node.get("non_instructional_strategies", {}),
+            "media_selection": media,
+        }
+        design["storyboard"] = _compute_storyboard(design["instructional_strategies"], content_modules)
+        return design
+
+    # ── development phase ─────────────────────────────────────────────────
+    def _build_development(self) -> dict:
+        materials = [n["data"] for n in self.graph.element_nodes(NodeType.MATERIAL)]
+        assessment_tools = _attach_rubrics(
+            [n["data"] for n in self.graph.element_nodes(NodeType.ASSESSMENT)],
+            [n["data"] for n in self.graph.element_nodes(NodeType.RUBRIC)],
+        )
+        impl_data = _merge_node_data(self.graph.section_nodes(NodeType.IMPLEMENTATION_PLAN))
+        # development.expert_review is ALWAYS the audit record (2026-08-27):
+        # the model-authored review was removed from every generation schema —
+        # a review written by the same model, in the same call, before the
+        # artifacts it purports to review exist, is fiction, and it collided
+        # with the thesis's separate REAL expert-validation package. This
+        # record REPORTS the verification that genuinely ran — self-validation
+        # rounds and repairs from the trajectory plus the graph's relation
+        # coverage — and says so; it never fabricates a human SME panel.
+        expert_review = self._expert_review_from_audit()
+        return {
+            "learner_materials": materials,
+            "assessment_tools": assessment_tools,
+            "expert_review": expert_review,
+            "instructor_guide": impl_data.get("instructor_guide", {}),
+            "operator_manual": impl_data.get("operator_manual", {}),
+        }
+
+    def _expert_review_from_audit(self) -> dict:
+        """An internal-review record built from evidence, not invention.
+
+        Beyond the aggregate counts it itemises WHAT the review examined and
+        found: one finding row per violated criterion (issues found, repairs
+        applied, one verbatim example issue) and the per-relation core
+        alignment coverage — all read from the trajectory and the graph, so
+        every row is traceable to a recorded event. It still never fabricates
+        a human SME panel."""
+        rounds = self.trajectory.check_events
+        repairs = self.trajectory.repair_events
+        found, by_type, findings, phases = _review_findings(rounds, repairs)
+        coverage = alignment.all_relations_coverage(self.graph)
+        core = {rid: c for rid, c in coverage.items() if c.get("tier") == "core"}
+        core_full = sum(1 for c in core.values() if c.get("coverage") == 1.0)
+        return {
+            "review_type": "internal_automated",
+            "reviewers": [
+                "Automated pedagogical self-validation suite (deterministic checks over the alignment graph)",
+            ],
+            "review_criteria": sorted(
+                {f"{rid}: {c['label']}" for rid, c in core.items()}
+                | set(by_type),
+            ),
+            "review_process": (
+                f"{len(rounds)} deterministic validation round(s) ran across "
+                f"{len(phases)} design step(s)"
+                + (f" ({', '.join(sorted(phases))})" if phases else "")
+                + ", checking within-artifact quality and cross-artifact alignment "
+                "coverage during generation."
+            ),
+            "findings": findings,
+            "alignment_coverage": {
+                rid: {"label": c.get("label", ""), "coverage": c.get("coverage")}
+                for rid, c in sorted(core.items())
+            },
+            "feedback_summary": (
+                f"{len(rounds)} self-validation round(s) inspected the design and found "
+                f"{found} issue(s); {len(repairs)} repair(s) were applied. "
+                f"Core alignment coverage after repair: {core_full}/{len(core)} relations fully covered. "
+                "This record reports the automated verification that ran during generation; "
+                "no external human expert review was performed."
+            ),
+        }
+
+    # ── implementation phase (ImplementationPlannerAgent's own section) ──
+    def _build_implementation(self) -> dict:
+        con_data = _merge_node_data(self.graph.section_nodes(NodeType.IMPLEMENTATION_PLAN))
+        return {
+            "instructor_orientation": con_data.get("instructor_orientation", {}),
+            "system_check": con_data.get("system_check", {}),
+            "prototype_execution": con_data.get("prototype_execution", {}),
+            "monitoring": con_data.get("monitoring", {}),
+        }
+
+    # ── evaluation phase: synthesized from the Assessment pool + AssessmentPlan + Improvement ──
+    def _build_evaluation(self) -> dict:
+        assessment_tools = _attach_rubrics(
+            [n["data"] for n in self.graph.element_nodes(NodeType.ASSESSMENT)],
+            [n["data"] for n in self.graph.element_nodes(NodeType.RUBRIC)],
+        )
+        plan_data = _merge_node_data(self.graph.section_nodes(NodeType.ASSESSMENT_PLAN))
+        improvements = [n["data"] for n in self.graph.element_nodes(NodeType.IMPROVEMENT)]
+
+        formative_items = [t for t in assessment_tools if str(t.get("plan_category", "")).lower() == "formative"]
+        summative_items = [t for t in assessment_tools if str(t.get("plan_category", "")).lower() == "summative"]
+
+        # The formative half of ADDIE Evaluation is scored on more than a list
+        # of instruments: the rubric asks which areas learners struggled with,
+        # why, and what first-round revision follows. Nothing generates that
+        # narrative since EvaluationRevisionAgent was retired, so Assessment
+        # Designer's plan hop now produces it (pilot_data_plan) and it is
+        # surfaced here rather than left implicit in the plan section.
+        pilot = plan_data.get("pilot_data_plan", {})
+        pilot = pilot if isinstance(pilot, dict) else {}
+        formative = {
+            "data_collection": {
+                "methods": plan_data.get("formative_methods", []),
+                "collection_points": pilot.get("collection_points", []),
+            },
+            "anticipated_difficulties": pilot.get("anticipated_difficulties", []),
+            "revision_plan": [
+                {
+                    "problem_area": entry.get("area", ""),
+                    "evidence_source": entry.get("detected_by", ""),
+                    "action": entry.get("first_revision", ""),
+                }
+                for entry in (pilot.get("anticipated_difficulties") or [])
+                if isinstance(entry, dict)
+            ],
+            "assessment_tools": formative_items,
+        }
+        objective_ids = {t.get("aligned_objective") for t in summative_items if t.get("aligned_objective")}
+        # Effectiveness/adoption synthesis: the prior design asked a dedicated
+        # LLM call for these (EvaluationRevisionAgent's summative call);
+        # summative is now just the "summative"-tagged slice of the unified
+        # Assessment pool (see AssessmentDesignerAgent), so nothing generates
+        # this narrative anymore. Deterministic synthesis keeps these ADDIE
+        # sub-items non-empty rather than silently thin.
+        summative = {
+            "assessment_tools": summative_items,
+            "effectiveness_analysis": {
+                "learning_outcomes": {
+                    "details": f"{len(summative_items)} summative item(s) covering {len(objective_ids)} objective(s)."
+                },
+            },
+            "adoption_decision": {
+                "decision": "adopt" if summative_items else "pending",
+                "rationale": (
+                    "Summative evidence exists for the covered objectives; proceed to pilot review."
+                    if summative_items else
+                    "No summative evidence was generated; adoption cannot be recommended yet."
+                ),
+            },
+        }
+        # feedback_summary/next_iteration_goals are Outcome Designer's (they
+        # come from the same call as the improvements, grounded in the gaps).
+        # Reading them off the ASSESSMENT plan — as the first version did —
+        # silently yielded "" on every run, because that node never carried
+        # them.
+        improvement_plan = {
+            **_merge_node_data(self.graph.section_nodes(NodeType.IMPROVEMENT)),
+            "improvements": improvements,
+        }
+        improvement_plan.setdefault("feedback_summary", "")
+        return {"formative": formative, "summative": summative, "improvement_plan": improvement_plan}
+
+
+def _attach_rubrics(items: list, criteria: list) -> list:
+    """Attach each assessment item's rubric criteria (mapped by the RC
+    elements' own ``aligned_assessment`` field — identical logic on both
+    substrates, no graph needed) as a structured ``rubric`` list next to the
+    item's ``scoring_criteria``. Without this the RubricDesigner's levels
+    lived only in the graph dump and the deliverable shipped assessments
+    without their rubrics — the opposite of practice, where an assessment is
+    designed WITH its scoring rubric. Returns new dicts; never mutates the
+    node/store data it reads."""
+    by_assessment: dict[str, list[dict]] = {}
+    for rc in criteria:
+        if not isinstance(rc, dict):
+            continue
+        target = str(rc.get("aligned_assessment", "") or "")
+        if not target:
+            continue
+        by_assessment.setdefault(target, []).append({
+            "id": rc.get("id", ""),
+            "criterion": rc.get("description", ""),
+            "evidence_type": rc.get("evidence_type", ""),
+            "levels": rc.get("levels", {}),
+        })
+    out: list = []
+    for item in items:
+        if isinstance(item, dict):
+            rubric = by_assessment.get(str(item.get("item_id", "") or ""))
+            out.append({**item, "rubric": rubric} if rubric else dict(item))
+        else:
+            out.append(item)
+    return out
+
+
+def _review_findings(rounds: list[dict], repairs: list[dict]) -> tuple[int, dict, list[dict], set]:
+    """Itemised, evidence-backed review rows shared by both arms' synthesized
+    expert_review: (total issues, issues by criterion, finding rows, phases
+    inspected). Every number and example comes from a recorded trajectory
+    event — nothing is invented."""
+    found = sum(e["context"].get("violation_count", 0) for e in rounds)
+    by_type: dict[str, int] = {}
+    phases = {e["context"].get("phase") for e in rounds if e["context"].get("phase")}
+    for event in rounds:
+        for vtype, count in (event["context"].get("by_type") or {}).items():
+            by_type[vtype] = by_type.get(vtype, 0) + count
+    repairs_by_type: dict[str, int] = {}
+    example_by_type: dict[str, str] = {}
+    for event in repairs:
+        context = event["context"]
+        vtype = context.get("violation_type") or ""
+        if not vtype:
+            continue
+        repairs_by_type[vtype] = repairs_by_type.get(vtype, 0) + 1
+        example_by_type.setdefault(vtype, str(context.get("input_summary") or ""))
+    findings = [
+        {
+            "criterion": vtype,
+            "issues_found": count,
+            "repairs_applied": repairs_by_type.get(vtype, 0),
+            **({"example_issue": example_by_type[vtype]} if example_by_type.get(vtype) else {}),
+        }
+        for vtype, count in sorted(by_type.items())
+        if count
+    ]
+    return found, by_type, findings, phases
+
+
+def aggregate_prose(store, trajectory) -> dict:
+    """The prose arm's aggregator: assemble ``addie_output`` from the
+    blackboard documents alone. Same output schema as the graph aggregator,
+    assembled by plain key-mapping — the documents already sit in schema
+    shape, which is the point of the blackboard.
+
+    Differences from the graph aggregator, all deliberate and all part of the
+    ablated alignment machinery (never silent implementation drift):
+
+    - no ``design.alignment_matrix`` — it is built from established edges and
+      has no graph-free equivalent;
+    - no output-level C2 coverage net (``_ensure_assessment_coverage``) — a
+      cross-artifact safeguard;
+    - ``expert_review`` fallback reports the within-artifact validation
+      rounds only, with no relation-coverage sentence.
+
+    Kept: the storyboard computation, ``objective_assessment_map`` and
+    ``_strengthen_implementation`` — deterministic serialization/polish of
+    fields the documents already declare, no cross-artifact repair.
+    """
+    def doc(key: str) -> dict:
+        value = store.get(key)
+        return value if isinstance(value, dict) else {}
+
+    def items(key: str, field: str) -> list:
+        return store.items(key, field)
+
+    analysis_doc = doc("analysis")
+    analysis = {
+        "needs_analysis": analysis_doc.get("needs_analysis") or {},
+        "learner_analysis": analysis_doc.get("learner_analysis") or {},
+        "context_analysis": analysis_doc.get("context_analysis") or {},
+        "task_analysis": analysis_doc.get("task_analysis") or {},
+    }
+
+    activity_plan = doc("activity_plan")
+    content_modules = items("content", "content_modules")
+    instructional_strategies = activity_plan.get("instructional_strategies") or {}
+    design = {
+        "learning_objectives": items("objective", "learning_objectives"),
+        "learning_activities": items("activity", "learning_activities"),
+        "assessment_plan": doc("assessment_plan"),
+        "content_structure": {"modules": content_modules},
+        "instructional_strategies": instructional_strategies,
+        "non_instructional_strategies": activity_plan.get("non_instructional_strategies") or {},
+        "media_selection": items("content", "media_selections"),
+    }
+    design["storyboard"] = _compute_storyboard(instructional_strategies, content_modules)
+
+    assessment_tools = _attach_rubrics(
+        items("assessment", "assessment_tools"), items("rubric", "rubric_criteria"))
+    impl_doc = doc("implementation_plan")
+    # ALWAYS synthesized (see the graph aggregator's matching note): the
+    # prose arm's honest record covers only the within-artifact validation
+    # that ran — no relation coverage exists to report.
+    rounds = trajectory.check_events
+    repairs = trajectory.repair_events
+    found, by_type, findings, phases = _review_findings(rounds, repairs)
+    expert_review = {
+        "review_type": "internal_automated",
+        "reviewers": [
+            "Automated within-artifact self-validation suite (deterministic content checks)",
+        ],
+        "review_criteria": sorted(by_type),
+        "review_process": (
+            f"{len(rounds)} deterministic validation round(s) ran across "
+            f"{len(phases)} design step(s)"
+            + (f" ({', '.join(sorted(phases))})" if phases else "")
+            + ", checking within-artifact quality during generation."
+        ),
+        "findings": findings,
+        "feedback_summary": (
+            f"{len(rounds)} self-validation round(s) inspected the design and found "
+            f"{found} issue(s); {len(repairs)} repair(s) were applied. "
+            "This record reports the automated verification that ran during generation; "
+            "no external human expert review was performed."
+        ),
+    }
+    development = {
+        "learner_materials": items("material", "learner_materials"),
+        "assessment_tools": assessment_tools,
+        "expert_review": expert_review,
+        "instructor_guide": impl_doc.get("instructor_guide") or {},
+        "operator_manual": impl_doc.get("operator_manual") or {},
+    }
+
+    implementation = {
+        "instructor_orientation": impl_doc.get("instructor_orientation") or {},
+        "system_check": impl_doc.get("system_check") or {},
+        "prototype_execution": impl_doc.get("prototype_execution") or {},
+        "monitoring": impl_doc.get("monitoring") or {},
+    }
+
+    plan_data = doc("assessment_plan")
+    improvement_doc = analysis_doc.get("improvement_plan") or {}
+    formative_items = [t for t in assessment_tools
+                       if isinstance(t, dict) and str(t.get("plan_category", "")).lower() == "formative"]
+    summative_items = [t for t in assessment_tools
+                       if isinstance(t, dict) and str(t.get("plan_category", "")).lower() == "summative"]
+    pilot = plan_data.get("pilot_data_plan", {})
+    pilot = pilot if isinstance(pilot, dict) else {}
+    formative = {
+        "data_collection": {
+            "methods": plan_data.get("formative_methods", []),
+            "collection_points": pilot.get("collection_points", []),
+        },
+        "anticipated_difficulties": pilot.get("anticipated_difficulties", []),
+        "revision_plan": [
+            {
+                "problem_area": entry.get("area", ""),
+                "evidence_source": entry.get("detected_by", ""),
+                "action": entry.get("first_revision", ""),
+            }
+            for entry in (pilot.get("anticipated_difficulties") or [])
+            if isinstance(entry, dict)
+        ],
+        "assessment_tools": formative_items,
+    }
+    objective_ids_covered = {t.get("aligned_objective") for t in summative_items if t.get("aligned_objective")}
+    summative = {
+        "assessment_tools": summative_items,
+        "effectiveness_analysis": {
+            "learning_outcomes": {
+                "details": f"{len(summative_items)} summative item(s) covering {len(objective_ids_covered)} objective(s)."
+            },
+        },
+        "adoption_decision": {
+            "decision": "adopt" if summative_items else "pending",
+            "rationale": (
+                "Summative evidence exists for the covered objectives; proceed to pilot review."
+                if summative_items else
+                "No summative evidence was generated; adoption cannot be recommended yet."
+            ),
+        },
+    }
+    improvement_plan = {
+        **{k: v for k, v in improvement_doc.items() if k != "improvements"},
+        "improvements": improvement_doc.get("improvements") or [],
+    }
+    improvement_plan.setdefault("feedback_summary", "")
+    evaluation = {"formative": formative, "summative": summative, "improvement_plan": improvement_plan}
+
+    output = {
+        "analysis": analysis,
+        "design": design,
+        "development": development,
+        "implementation": implementation,
+        "evaluation": evaluation,
+    }
+    objective_ids = [lo.get("id") for lo in design["learning_objectives"]
+                     if isinstance(lo, dict) and lo.get("id")]
+    if objective_ids:
+        development["objective_assessment_map"] = {
+            lo_id: [
+                item.get("item_id")
+                for item in assessment_tools
+                if isinstance(item, dict) and item.get("aligned_objective") == lo_id
+            ]
+            for lo_id in objective_ids
+        }
+    _strengthen_implementation(implementation)
+    return output
+
+
+def _compute_storyboard(instructional_strategies: dict, content_modules: list[dict]) -> list[dict]:
+    """Deterministic, kept in spirit from the old ``_fallback_storyboard``:
+    one frame per Gagné event in the committed sequence; falls back to one
+    frame per content module when the sequence is unusable. No longer
+    written by Content Designer as a stored node — computed here, since it
+    never needed to be anything but a deterministic view of already-designed
+    content (see the "no floating containers" principle)."""
+    sequence = instructional_strategies.get("sequence") if isinstance(instructional_strategies, dict) else None
+    frames: list[dict] = []
+    if isinstance(sequence, list):
+        for event in sequence:
+            if not isinstance(event, dict):
+                continue
+            title = str(event.get("event") or "").strip() or f"Step {len(frames) + 1}"
+            activity = str(event.get("activity") or "").strip()
+            resources = event.get("resources") or []
+            frames.append({
+                "frame_number": len(frames) + 1,
+                "screen_title": title,
+                "visual_description": activity or f"Screen supporting the '{title}' step of the lesson.",
+                "interaction": f"Learners engage with the '{title}' activity and receive guidance.",
+                "notes": ", ".join(str(r) for r in resources) if isinstance(resources, list) else str(resources),
+            })
+    if frames:
+        return frames
+    for module in content_modules:
+        title = str(module.get("title") or module.get("id") or f"Module {len(frames) + 1}").strip()
+        frames.append({
+            "frame_number": len(frames) + 1,
+            "screen_title": title,
+            "visual_description": f"Screen presenting the module '{title}'.",
+            "interaction": "Learners work through the module content and check their understanding.",
+            "notes": "",
+        })
+    return frames
 
 
 def _merge_node_data(nodes: list[dict]) -> dict:
@@ -128,16 +538,7 @@ def _merge_lists(left: list, right: list) -> list:
 
 def _stable_key(item) -> str:
     if isinstance(item, dict):
-        for key in (
-            "id",
-            "item_id",
-            "title",
-            "activity_name",
-            "media_type",
-            "event",
-            "frame_number",
-            "session",
-        ):
+        for key in ("id", "item_id", "title", "activity_name", "media_type", "event", "frame_number", "session"):
             if item.get(key) is not None:
                 return f"{key}:{item[key]}"
         return repr(sorted(item.items()))
@@ -152,7 +553,6 @@ def _strengthen_alignment(output: dict, graph) -> dict:
     design = output.setdefault("design", {})
     development = output.setdefault("development", {})
     implementation = output.setdefault("implementation", {})
-    evaluation = output.setdefault(NodeType.EVALUATION, {})
 
     objectives = design.get("learning_objectives", []) or []
     assessment_tools = development.get("assessment_tools", []) or []
@@ -160,7 +560,7 @@ def _strengthen_alignment(output: dict, graph) -> dict:
     objective_ids = [lo.get("id") for lo in objectives if isinstance(lo, dict) and lo.get("id")]
     if objective_ids:
         # Last-resort coverage net (when the repair budget ran out before
-        # closing every R3 gap).
+        # closing every C2 gap).
         _ensure_assessment_coverage(objectives, assessment_tools, graph)
         design["alignment_matrix"] = _build_alignment_matrix(objective_ids, graph)
         development["objective_assessment_map"] = {
@@ -173,24 +573,6 @@ def _strengthen_alignment(output: dict, graph) -> dict:
         }
 
     _strengthen_implementation(implementation)
-
-    formative = evaluation.get("formative", {})
-    if isinstance(formative, dict) and formative.get("data_collection"):
-        evaluation.setdefault("pilot_data_collection", formative["data_collection"])
-
-    prototype = implementation.get("prototype_execution", {})
-    if isinstance(prototype, dict) and prototype:
-        prototype.setdefault("success_criteria", [
-            "At least 80% of pilot learners complete the core scenario task.",
-            "Learners demonstrate measurable progress on the aligned formative assessment.",
-            "Critical delivery or access issues are resolved before large-group rollout.",
-        ])
-        prototype.setdefault("data_collection", [
-            "Learning platform or lab access logs",
-            "Instructor observation checklist",
-            "Learner feedback survey",
-        ])
-
     return output
 
 
@@ -216,8 +598,8 @@ def _ensure_assessment_coverage(objectives: list, assessment_tools: list, graph)
             "type": "performance_task",
             "question": f"Demonstrate the target performance for {lo_id}: {objective.get('statement', '')}",
             "aligned_objective": lo_id,
+            "plan_category": "summative",
             "scoring_criteria": "Rubric scores task completion, communication accuracy, context appropriateness, peer-feedback quality, and transfer.",
-            "difficulty": "hard",
             "coverage_repair": True,
         })
         covered.add(lo_id)
@@ -225,22 +607,30 @@ def _ensure_assessment_coverage(objectives: list, assessment_tools: list, graph)
 
 def _build_alignment_matrix(objective_ids: list[str], graph) -> list[dict]:
     """Per-objective alignment record built from **established** edges
-    (relation_id, established_by, evidence) — the real R1/R2/R3/R4/R5 picture,
-    replacing the old index-paired ``LO[i] <-> activity[i]`` guess."""
+    (relation_id, established_by, evidence) — the real C1/C2/C3/C7 picture."""
     objective_relations = [
         rid for rid, relation in alignment.REGISTRY.items()
-        if NodeType.OBJECTIVE in relation.target_node_types
+        if NodeType.OBJECTIVE in relation.target_node_types or (
+            relation.coverage_side == "source" and relation.source_node_type == NodeType.OBJECTIVE
+        )
     ]
     matrix: list[dict] = []
     for lo_id in objective_ids:
         target_id = f"{NodeType.OBJECTIVE}{graph.ELEMENT_SEP}{lo_id}"
         entry = {"objective_id": lo_id, "relations": {}}
         for relation_id in objective_relations:
-            edges = graph.get_edges(relation_id=relation_id, target=target_id)
+            relation = alignment.REGISTRY[relation_id]
+            # LO is the edge's target for C1/C7 (id "measures"/"decomposes_to"
+            # direction), but the edge's SOURCE for C2/C3 (the id-reverse
+            # relations) — read whichever side actually names an objective.
+            if relation.coverage_side == "source" and relation.source_node_type == NodeType.OBJECTIVE:
+                edges = graph.get_edges(relation_id=relation_id, source=target_id)
+            else:
+                edges = graph.get_edges(relation_id=relation_id, target=target_id)
             entry["relations"][relation_id] = [
                 {
-                    "label": alignment.REGISTRY[relation_id].label,
-                    "source": e["source"],
+                    "label": relation.label,
+                    "counterpart": e["target"] if e["source"] == target_id else e["source"],
                     "established_by": e.get("established_by", ""),
                     "evidence": e.get("evidence", ""),
                 }
@@ -254,8 +644,7 @@ def _strengthen_implementation(implementation: dict) -> None:
     """Polish NON-EMPTY implementation sections (setdefault-style). An entirely
     empty section is left empty: painting hardcoded content onto nothing turns
     a dead generation into a partially-scored output and masks the failure from
-    both the completeness tier and the judge (exactly how a truncated run once
-    scored 40% on Implementation while every other phase was 0)."""
+    both the completeness tier and the judge."""
     orientation = implementation.setdefault("instructor_orientation", {})
     if isinstance(orientation, dict) and orientation:
         objectives = orientation.get("orientation_objectives", [])

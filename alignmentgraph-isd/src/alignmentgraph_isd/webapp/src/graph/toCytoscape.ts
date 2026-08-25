@@ -3,19 +3,24 @@ import type { AlignmentGraphPayload, GraphEdge } from '../api/types'
 /**
  * Turning an alignment-graph dump into something legible.
  *
- * A real run is ~58 nodes and ~127 edges, and left unfiltered dagre draws a
- * hairball: 25 of those edges are internal scaffolding with no relation id
- * (the DOT export drops them too), and of the rest the great majority are
- * provenance edges fanning out of the single `needs_context_0` hub.
+ * A real run is dozens of nodes and >100 edges, and left unfiltered dagre
+ * draws a hairball: the structural edges carry no relation id (the DOT export
+ * drops them too), and the secondary relations fan out of a handful of hubs.
  *
- * So edges come in three layers, switched independently:
+ * So edges come in three layers, switched independently, split exactly the way
+ * `alignment.py::REGISTRY` splits its 18 relations:
  *
- *  - `alignment` — established by matching ids or types (R3/R4/R5/R6/R9/R12).
- *    This is constructive alignment itself: which assessment measures which
- *    objective, which activity supports it, which summative item evaluates it.
- *    On by default, because it is the thing worth looking at.
- *  - `provenance` — where an artifact came from (R1/R2/R7/R8/R10/R11/R13).
- *  - `scaffolding` — the relation-less structural edges.
+ *  - `alignment` — the CORE relations C1–C7, the construct-validity backbone:
+ *    goal decomposes to LO, LO assessed by AT / practiced by TLA, TLA prepares
+ *    for AT, content module supports TLA, AT evaluated by rubric, rubric
+ *    measures LO. On by default, because it is the thing worth looking at.
+ *    The layer is the relation CLASS, not the establishment mechanism — C1/C5/
+ *    C6 are provenance-established but are still core alignment (the old
+ *    mechanism-based rule silently hid content modules and the AT↔rubric leg
+ *    from this view).
+ *  - `provenance` — the secondary relations P1–P11: traceability only, never
+ *    claimed as construct-validity evidence.
+ *  - `scaffolding` — the relation-less structural edges (`narrates` etc.).
  */
 
 export type EdgeLayer = 'alignment' | 'provenance' | 'scaffolding'
@@ -40,7 +45,7 @@ export interface CyElement {
 
 export function edgeLayer(edge: GraphEdge): EdgeLayer {
   if (!edge.relation_id) return 'scaffolding'
-  return edge.established_by === 'id' || edge.established_by === 'type' ? 'alignment' : 'provenance'
+  return edge.relation_id.startsWith('C') ? 'alignment' : 'provenance'
 }
 
 /** Element nodes carry one artifact item (`objective:LO-01`); section nodes
@@ -101,11 +106,14 @@ export function toCytoscape(
     // Dropped rather than rendered dangling: an edge to a node that failed the
     // visibility rule above would draw into empty space.
     if (!present.has(edge.source) || !present.has(edge.target)) continue
-    const targetFlags = alignment[edge.target]
-    // A "measures" edge into an objective whose Bloom level does not hold up is
-    // the single most important defect the graph can show, so it is called out
-    // in red rather than left to the badge alone.
-    const bloomViolation = edge.relation_id === 'R3' && targetFlags?.bloom_ok === false
+    // An assessed_by/practiced_by edge out of an objective whose Bloom level
+    // does not hold up is the single most important defect the graph can show,
+    // so it is called out in red rather than left to the badge alone. C2/C3
+    // are id-reverse relations — the LO is the edge SOURCE — and the same
+    // C2/C3-on-a-violated-source rule drives the DOT export's red edges.
+    const sourceFlags = alignment[edge.source]
+    const bloomViolation =
+      (edge.relation_id === 'C2' || edge.relation_id === 'C3') && sourceFlags?.bloom_ok === false
 
     elements.push({
       group: 'edges',
@@ -121,7 +129,9 @@ export function toCytoscape(
       },
       classes: [
         `by-${edge.established_by || 'none'}`,
-        edge.relation_id === 'R5' ? 'evaluates' : '',
+        // Secondary (P*) relations render dotted, mirroring the DOT export's
+        // solid-core / dotted-secondary distinction.
+        edge.relation_id?.startsWith('P') ? 'secondary' : '',
         bloomViolation ? 'bloom-violation' : '',
       ]
         .filter(Boolean)

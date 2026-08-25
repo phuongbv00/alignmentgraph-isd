@@ -71,15 +71,20 @@ def test_the_deep_trajectory_is_written_and_served(client, ready_program, wait_f
     assert deep["format"] == "deep"
     assert deep["summary"]["action_count"] == len(deep["actions"])
 
-    kinds = {a["kind"] for a in deep["actions"]}
+    kinds = {a["action"] for a in deep["actions"]}
     # The work that v1 never recorded at all.
     assert "node_read" in kinds, "graph reads are missing"
     assert "edge_write" in kinds, "alignment edges are missing"
     assert "node_write" in kinds
 
-    # And every one of them is attributed.
-    assert deep["summary"]["actors"], "no agent was credited with any action"
-    assert any(a["actor"] == "PedagogicalVerifierAgent" for a in deep["actions"])
+    # And every one of them is attributed — every action has a real agent
+    # (2026-08-27: PedagogicalVerifierAgent was retired; self-validation now
+    # runs inline under each specialist's own identity, never blank).
+    assert deep["summary"]["agents"], "no agent was credited with any action"
+    assert all(a["agent"] for a in deep["actions"]), "an action was credited to nobody"
+
+    check_actions = [a for a in deep["actions"] if a["action"] == "check"]
+    assert check_actions and all(a["agent"] for a in check_actions)
 
 
 def test_deep_actions_reach_the_live_stream(client, ready_program):
@@ -140,8 +145,9 @@ def test_a_run_that_produced_nothing_is_reported_as_failed():
 
     barren = {
         "graph": {"nodes": [], "edges": []},
-        "trajectory": {"llm_calls": 0},
-        "metadata": {"errors": [f"Agent{i}: Connection refused" for i in range(6)]},
+        "trajectory": {},
+        "metadata": {"token_usage": {"llm_calls": 0},
+                     "errors": [f"Agent{i}: Connection refused" for i in range(6)]},
     }
     message = _barren_run_error(barren)
     assert "every specialist failed" in message
@@ -152,8 +158,9 @@ def test_a_run_that_produced_nothing_is_reported_as_failed():
     # still worth looking at.
     partial = {
         "graph": {"nodes": [{"id": "objective_0"}]},
-        "trajectory": {"llm_calls": 3},
-        "metadata": {"errors": ["EvaluationRevisionAgent: timed out"]},
+        "trajectory": {},
+        "metadata": {"token_usage": {"llm_calls": 3},
+                     "errors": ["EvaluationRevisionAgent: timed out"]},
     }
     assert _barren_run_error(partial) == ""
 
@@ -191,10 +198,13 @@ def test_node_detail_is_fetched_by_id(client, ready_program, wait_for_terminal):
     wait_for_terminal(run_id)
 
     graph = client.get(f"/api/runs/{run_id}/graph").json()
-    section = next(n["id"] for n in graph["nodes"] if n["id"] == "objective_0")
+    # objective has no section node any more — element nodes are the single
+    # source of truth for the LO list (2026-08-27) — so the "fetch a section"
+    # half uses implementation_plan, one of the few types still singleton.
+    section = next(n["id"] for n in graph["nodes"] if n["id"] == "implementation_plan_0")
     body = client.get(f"/api/runs/{run_id}/nodes/{section}").json()
-    assert body["id"] == "objective_0"
-    assert body["data"]["learning_objectives"]
+    assert body["id"] == "implementation_plan_0"
+    assert body["data"]["instructor_orientation"]
 
     element = next(n["id"] for n in graph["nodes"] if n["id"].startswith("objective:"))
     assert client.get(f"/api/runs/{run_id}/nodes/{element}").json()["data"]
@@ -207,7 +217,7 @@ def test_artifacts_are_served_by_name_only(client, ready_program, wait_for_termi
     wait_for_terminal(run_id)
 
     assert client.get(f"/api/runs/{run_id}/artifacts/addie_output").json()["design"]
-    assert client.get(f"/api/runs/{run_id}/artifacts/trajectory").json()["agent_steps"]
+    assert client.get(f"/api/runs/{run_id}/artifacts/trajectory").json()["tool_calls"]
     assert "digraph" in client.get(f"/api/runs/{run_id}/artifacts/graph_dot").text
 
     # Not a path: an arbitrary name must not reach the filesystem.
@@ -224,7 +234,11 @@ def test_objective_alignment_survives_to_the_api(client, ready_program, wait_for
     assert alignment
     for flags in alignment.values():
         assert set(flags) >= {"measured", "supported", "evaluated", "bloom_ok", "aligned"}
-    assert set(graph["relation_coverage"]) == {f"R{i}" for i in range(1, 14)}
+    # 18 relations total: 7 core (C1-C7) + 11 secondary (P1-P11) — see
+    # alignment.py::REGISTRY (renamed from the old R1..R13 scheme).
+    from alignmentgraph_isd.core.alignment_graph import alignment as alignment_module
+    assert set(graph["relation_coverage"]) == set(alignment_module.REGISTRY)
+    assert len(alignment_module.REGISTRY) == 18
 
 
 # ── cancellation and restart ─────────────────────────────────────────────────

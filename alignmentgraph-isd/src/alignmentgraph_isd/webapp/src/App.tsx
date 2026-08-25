@@ -2,12 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { api } from './api/client'
 import { BriefTab } from './components/BriefTab'
-import { DeepTimeline } from './components/DeepTimeline'
+import { PhaseTimeline } from './components/PhaseTimeline'
 import { GraphView } from './components/GraphView'
 import { ModelSettings } from './components/ModelSettings'
 import { ProgramSidebar } from './components/ProgramSidebar'
 import { RunHeader } from './components/RunHeader'
-import { TrajectoryTimeline } from './components/TrajectoryTimeline'
 import { InspectorPanel } from './components/inspector/InspectorPanel'
 import { useRunStream } from './state/useRunStream'
 import type {
@@ -283,7 +282,7 @@ export default function App() {
                 Brief
               </button>
               <button className={`tab${tab === 'trajectory' ? ' active' : ''}`} onClick={() => setTab('trajectory')}>
-                Trajectory{stream.events.length > 0 ? ` (${stream.events.length})` : ''}
+                Activity{deepActions.length > 0 ? ` (${deepActions.length})` : ''}
               </button>
               <button className={`tab${tab === 'graph' ? ' active' : ''}`} onClick={() => setTab('graph')}>
                 Graph{graph ? ` (${graph.nodes.length})` : ''}
@@ -319,22 +318,11 @@ export default function App() {
                 />
               )}
               {tab === 'trajectory' && (
-                // The deep record when there is one — live, or reloaded for a
-                // finished run. The event-based view remains for runs made
-                // before the deep trajectory existed.
-                deepActions.length > 0 ? (
-                  <DeepTimeline
-                    actions={deepActions}
-                    selection={selection}
-                    onSelect={(value) => { setSelection(value); setInspectorCollapsed(false) }}
-                  />
-                ) : (
-                  <TrajectoryTimeline
-                    events={stream.events}
-                    selection={selection}
-                    onSelect={(value) => { setSelection(value); setInspectorCollapsed(false) }}
-                  />
-                )
+                <PhaseTimeline
+                  actions={deepActions}
+                  selection={selection}
+                  onSelect={(value) => { setSelection(value); setInspectorCollapsed(false) }}
+                />
               )}
               {tab === 'graph' && (
                 <GraphView

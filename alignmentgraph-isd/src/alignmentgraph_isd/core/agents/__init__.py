@@ -1,20 +1,21 @@
-from .needs_context import NeedsContextAgent
-from .objective_design import ObjectiveDesignAgent
-from .assessment_design import AssessmentDesignAgent
-from .activity_material import ActivityMaterialAgent
-from .implementation_plan import ImplementationPlanAgent
-from .evaluation_revision import EvaluationRevisionAgent
-from .pedagogical_verifier import PedagogicalVerifierAgent, VerifierViolation
+from .outcome_designer import OutcomeDesignerAgent
+from .assessment_designer import AssessmentDesignerAgent
+from .activity_designer import ActivityDesignerAgent
+from .content_designer import ContentDesignerAgent
+from .rubric_designer import RubricDesignerAgent
+from .implementation_planner import ImplementationPlannerAgent
+from .single_designer import SingleDesignerAgent
 from .addie_aggregator import ADDIEOutputAggregator
+from ..checks import Violation
 
 __all__ = [
-    "NeedsContextAgent",
-    "ObjectiveDesignAgent",
-    "AssessmentDesignAgent",
-    "ActivityMaterialAgent",
-    "ImplementationPlanAgent",
-    "EvaluationRevisionAgent",
-    "PedagogicalVerifierAgent",
-    "VerifierViolation",
+    "OutcomeDesignerAgent",
+    "AssessmentDesignerAgent",
+    "ActivityDesignerAgent",
+    "ContentDesignerAgent",
+    "RubricDesignerAgent",
+    "ImplementationPlannerAgent",
+    "SingleDesignerAgent",
+    "Violation",
     "ADDIEOutputAggregator",
 ]

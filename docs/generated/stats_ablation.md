@@ -79,11 +79,11 @@ A0 (full pipeline) is pooled here from the same ladder runs as the ladder's own 
 - Qwen3.5-9B / alignmentgraph-isd-no-graph-ctx: ok
 - Qwen3.5-9B / alignmentgraph-isd-skeleton: ok
 
-## RQ2 alignment panel (paired, every signal)
+## Alignment panel (paired, every score)
 
 Direction in this section: **arm − A0** (negative = removing the component lowered the signal, positive = raised it); flipped from the pooled JSON, which stores A0 − arm.
 
-A FLAT PANEL of 7 signals, no primary endpoint and no composite: every signal is reported win or lose. The four textual-correspondence signals are mean-max RECTIFIED cosine, max(0, cos) on [0,1] — a scale choice, not a matching cutoff; there is no similarity threshold anywhere in the protocol. `assessment_objective_similarity` is NON-DIRECTIONAL: a high value can mean "no orphan assessment items" or "items merely restate the objectives". The three cognitive-demand signals involve no similarity, and `porter_mean` is the MEAN of the three pairwise Porter indices, not a single index.
+A FLAT PANEL of 7 signals, no primary endpoint and no composite: every score is reported win or lose. The four textual-correspondence signals are mean-max RECTIFIED cosine, max(0, cos) on [0,1] — a scale choice, not a matching cutoff; there is no similarity threshold anywhere in the protocol. `assessment_objective_similarity` is NON-DIRECTIONAL: a high value can mean "no orphan assessment items" or "items merely restate the objectives". The three cognitive-demand signals involve no similarity, and `porter_mean` is the MEAN of the three pairwise Porter indices, not a single index.
 
 Per-arm means come from the `align_descriptive` layer (per-agent mean over per-scenario values), so their difference need not equal the paired Δ to the last digit. Δ, CI and p are the paired complete-case `comparisons` layer: Wilcoxon two-sided, bootstrap 95% CI (10000 resamples, seed 42). Multiplicity is reported twice: `p_holm` = Holm within one signal (across the arms), `p_holm_panel` = Holm over the whole panel × arm family for that size. Complete-case is over AVAILABLE outputs, never unconditional.
 
@@ -185,7 +185,7 @@ Direction in this section: **component ON − component OFF** (positive = having
 
 p-values here are uncorrected. Note that the `verifier | ctx ON` and `graphctx | verif ON` columns are the A0-vs-A1 and A0-vs-A2 comparisons, which the sections above report Holm-corrected within their family; only the `| ... OFF` columns and `interaction` are contrasts unique to this section.
 
-Signals in this section are on two scales: `addie_median`, `trajectory_score` and `total_score` are rubric points out of 100; the 7 RQ2 panel signals are on [0,1]. Magnitudes are not comparable across the two groups.
+Signals in this section are on two scales: `addie_median`, `trajectory_score` and `total_score` are rubric points out of 100; the 7 alignment scores are on [0,1]. Magnitudes are not comparable across the two groups.
 
 ### addie_median (rubric points /100)
 

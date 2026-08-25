@@ -15,7 +15,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from ..core.schema import DesignBrief, DesignBriefConstraints, DesignBriefContext
+from ..core.brief import DesignBrief, DesignBriefConstraints, DesignBriefContext
 
 # Fields the planner may write. `id` is ours to assign and `refinement_request`
 # is not part of this flow.

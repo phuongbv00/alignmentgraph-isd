@@ -49,8 +49,8 @@ Script chung ở `scripts/`; pipeline ladder ở `scripts/alignmentgraph-isd-ben
 | `.../04_repair_ladder_results.py`         | chấm lại judge cho agent lỗi transient, **không** sinh lại output    | 6.4 |
 | `.../05_sync_embed_pod_env.py`            | sync embed pod → `EMBED_SLOTS` + `<SLOT>_EMBED_*` vào `.env`         | 7   |
 | `.../06_score_alignment.py`               | chấm alignment RQ2 (không LLM), sweep nhiều encoder trong một lệnh   | 7   |
-| `.../07_pool_ladder_runs.py`              | pool 12 run → `pooled_ladder.json` + stats + token usage             | 8   |
-| `.../ablation/08_pool_ablation_runs.py`   | pool 4 arm từ chính run dir ladder → `pooled_ablation.json`          | 5.4 |
+| `.../07_pool_ladder_runs.py`              | pool 12 run → `pooled_ladder.bk.json` + stats + token usage             | 8   |
+| `.../ablation/08_pool_ablation_runs.py`   | pool 4 arm từ chính run dir ladder → `pooled_ablation.bk.json`          | 5.4 |
 | `.../09_gen_paper_tables.py`              | `.tex` + macro số liệu → `results/generated/`                        | 9   |
 | `.../10_gen_paper_figures.py`             | hình RQ1/RQ2 → `results/generated/figures/`                          | 9   |
 | `.../ablation/11_gen_ablation_tables.py`  | `tab_ablation.tex` + `abl_macros.tex` + `stats_ablation.md`          | 5.4 |
@@ -228,7 +228,28 @@ thiếu; chỉ xoá dir cũ **sau khi** pool xác nhận dir mới đủ 90 scen
 ### 5.3 Rate limit
 
 `RATE_LIMIT` (default `turbo`) là preset toàn cục đặt worker count + `BENCHMARK_DELAY`. Override per-slot bằng
-`<SLOT>_RATE_LIMIT`. Rate được echo lúc launch và ghi vào manifest.
+`<SLOT>_RATE_LIMIT`. Rate được echo lúc launch và ghi vào manifest. `run_benchmark.py` publish posture của nó ra env
+dưới dạng `BENCHMARK_RATE_LIMIT` + `BENCHMARK_DELAY` — không biết gì về knob nội bộ của agent nào.
+
+**Concurrency bên trong một agent (2026-08-31).** `max_workers` × `scenario_max_workers` chỉ chặn số **agent** chạy
+đồng thời. Agent nào tự fan-out bên trong thì nằm ngoài posture đó: `alignmentgraph-isd` chạy `content_designer` và
+`rubric_designer` trong cùng một superstep, mỗi family lại phát một call cho mỗi work set, nên **một agent đạt đỉnh
+~12 request đồng thời** (đo trên fixture test) trong khi scheduler ngoài vẫn đếm nó là 1 unit. Endpoint dùng chung trả
+`429 Per-user concurrency limit exceeded` và **chỉ đánh vào hai arm multi** (9–25 lỗi/run qua ba run, so với 0–2 ở hai
+arm single chạy tuần tự) — tức nhiễu throttling rơi đúng vào trục ablation `agent_mode`.
+
+Agent nào tự fan-out thì phải tự chặn mình. Adapter `alignmentgraph-isd` đọc `BENCHMARK_RATE_LIMIT` và map sang cap
+của riêng nó (`LLM_CONCURRENCY_BY_RATE_LIMIT`: conservative 2 / moderate 3 / aggressive 4 / turbo 6 — preset lạ hoặc
+không có thì dùng 4), rồi truyền vào `HarnessRunConfig.llm_max_concurrency`. Ghi đè bằng
+`HARNESS_LLM_MAX_CONCURRENCY` (đặt `0` để tắt hẳn); `HARNESS_LLM_MIN_INTERVAL` giãn thời điểm bắt đầu call cho endpoint
+đo theo rate thay vì theo concurrency, mặc định tắt.
+
+Tổng request in-flight = `max_workers × scenario_max_workers × cap`. Gate là **per-run**, không process-wide: gate chung
+sẽ khiến fan-out của arm này xếp hàng trước call của arm kia và thổi phồng `execution_time_seconds` của arm kia.
+Cap thực tế được ghi vào `metadata.run_config.llm_max_concurrency` nên mỗi results dir tự nói được nó chạy posture nào.
+
+**Hệ quả cần biết:** arm multi sẽ chậm hơn trước vì fan-out bị chia thành nhiều đợt. Đó là cái giá để hai phía của trục
+`agent_mode` chịu cùng một điều kiện phục vụ. Mọi số multi-vs-single đo trước 2026-08-31 đều dính nhiễu này.
 
 ### 5.4 Ablation (4 arm, nằm trong chính run của ladder)
 
@@ -236,17 +257,30 @@ thiếu; chỉ xoá dir cũ **sau khi** pool xác nhận dir mới đủ 90 scen
 và mọi arm được chấm trong **cùng judge session** per scenario → delta arm-vs-A0 không dính judge drift. A0 **chính là**
 `alignmentgraph-isd` của ladder, nên không bảng nào cần chú thích hoà giải hai con số A0.
 
-| Arm              | agent_id                          | enable_verifier | enable_graph_context |
-|------------------|-----------------------------------|-----------------|----------------------|
-| A0 full pipeline | `alignmentgraph-isd`              | True            | True                 |
-| A1 −Verifier     | `alignmentgraph-isd-no-verifier`  | False           | True                 |
-| A2 −GraphContext | `alignmentgraph-isd-no-graph-ctx` | True            | False                |
-| A3 skeleton      | `alignmentgraph-isd-skeleton`     | False           | False                |
+Ma trận 2×2 = `agent_mode` (decomposition) × `context_mode` (alignment machinery):
 
-Flag là **kwargs cố định theo agent_id** trong registry của `run_benchmark.py` (không phải env var) → không chạy nhầm
+| Arm            | agent_id                          | agent_mode | context_mode |
+|----------------|-----------------------------------|------------|--------------|
+| multi + graph  | `alignmentgraph-isd`              | multi      | graph        |
+| multi + prose  | `alignmentgraph-isd-multi-prose`  | multi      | prose        |
+| single + graph | `alignmentgraph-isd-single-graph` | single     | graph        |
+| single + prose | `alignmentgraph-isd-single-prose` | single     | prose        |
+
+`context_mode="prose"` là **prose blackboard graph-free** (`core/prose_store.py::ProseStore`), KHÔNG phải một cách render
+khác của cùng dữ liệu graph: mỗi step lưu nguyên cục JSON đã parse vào một document key; step sau đọc lại verbatim
+theo read-list tĩnh (pattern named-slice của các agent không-graph); safeguard chỉ còn 5 within-artifact check
+(bloom verbs, measurability, rubric consistency, evaluation quality, actionability) + self-repair/regen dùng chung;
+không routing, không docket, không residual audit, và run **không có** key `graph`/`graph_dot` → không có file
+`<agent_id>_graph.json/.dot` cho hai arm prose (đó chính là contrast auditability, không phải thiếu file); thay vào đó
+hai arm prose ghi `<agent_id>_prose.json` — dump nguyên văn các document trên blackboard (artifact để inspect/debug,
+KHÔNG phải audit: không relation, không coverage). Trục vì
+vậy là một **bundle** ("bỏ máy alignment thì harness còn gì") và phải được disclose như bundle, không claim
+single-variable.
+
+Axes là **kwargs cố định theo agent_id** trong registry của `run_benchmark.py` (không phải env var) → không chạy nhầm
 config được; mỗi run ghi `metadata.run_config` vào trajectory và script pool **hard-fail** nếu flag không khớp agent_id.
 
-Post-processing chạy **sau khi ladder xong** (consistency check cần `pooled_ladder.json`):
+Post-processing chạy **sau khi ladder xong** (consistency check cần `pooled_ladder.bk.json`):
 
 ```bash
 python scripts/alignmentgraph-isd-bench/ablation/08_pool_ablation_runs.py \
@@ -256,8 +290,8 @@ python scripts/alignmentgraph-isd-bench/ablation/11_gen_ablation_tables.py
 python scripts/alignmentgraph-isd-bench/ablation/12_gen_ablation_figures.py
 ```
 
-**Đọc theo lưới 2×2, không chỉ theo "vs A0".** Bốn arm là một **thiết kế giai thừa đầy đủ** (verifier × graph
-context). So từng arm với A0 chỉ là *main effect*, và nó **giấu mất** trường hợp một cơ chế trông như vô dụng chỉ vì
+**Đọc theo lưới 2×2, không chỉ theo "vs A0".** Bốn arm là một **thiết kế giai thừa đầy đủ** (decomposition ×
+alignment machinery). So từng arm với A0 (= multi+graph) chỉ là *main effect*, và nó **giấu mất** trường hợp một cơ chế trông như vô dụng chỉ vì
 cơ chế kia đã ngăn lỗi từ trước. `08` vì vậy sinh thêm hai khối:
 
 - **`factorial`** — simple effect của từng cơ chế dưới **cả hai trạng thái** của cơ chế kia, cộng **tương tác**
@@ -274,12 +308,12 @@ Artifact tương ứng: `tab_ablation_factorial.tex` (dẫn 1 tín hiệu chính
 
 Diễn giải cần ghi trong paper:
 
-- Hướng delta trong bảng/hình = **arm − A0** (âm = gỡ thành phần làm giảm chất lượng); trong `pooled_ablation.json` các
+- Hướng delta trong bảng/hình = **arm − A0** (âm = gỡ thành phần làm giảm chất lượng); trong `pooled_ablation.bk.json` các
   row comparison lưu chiều A0 − arm (contribution).
 - `07_pool_ladder_runs.py` chỉ xét proposed + 6 baseline nên 3 arm nằm cùng run dir **không bị nuốt** vào phía ladder.
-- Khi QC tắt (A1/A3), edge alignment-tier mà verifier re-establish trong vòng repair không được tạo → edge coverage
-  giảm là **một phần của hiệu ứng đo được**, không phải bug. Khi graph-context tắt (A2/A3), graph vẫn được **ghi** đầy
-  đủ — chỉ tắt chiều **đọc** vào prompt. Safety net của aggregator, residual audit và regen loop **bật ở mọi arm**.
+- Ở hai arm prose, mọi cơ chế cross-artifact (edge checks, docket, plan_coverage, routing, residual audit,
+  aggregator coverage-net, `design.alignment_matrix`) **vắng theo thiết kế** — chênh lệch từ đó là **một phần của
+  hiệu ứng đo được**, không phải bug. Regen loop + 5 within-artifact check + self-repair **bật ở mọi arm**.
 - `a0_consistency` giờ là **invariant check**: delta phải ~0. Khác 0 = hai lần pool đọc lệch nhau trên cùng dữ liệu →
   lỗi cần sửa, không phải drift để giải thích.
 
@@ -340,6 +374,7 @@ activities / evaluation) có rỗng không. Quan trọng: output parse được 
 | `기본 출력 반환` / stub marker         | Baseline ghi default output   | Loại scenario/run, tìm nguyên nhân rỗng    |
 | `응답 길이: 0`                       | Model trả rỗng                | Kiểm non-thinking flag + pod log           |
 | `token_usage = 0` hàng loạt      | Accounting hỏng               | Sửa trước khi chạy tiếp — số token sai hết |
+| `token_usage = 0` ở **một số** agent | Agent đó dùng `LLMConfig` đã tách khỏi counter của run | Counter đi theo lineage của config: `_get_agent_runner` mở scope bằng `new_token_scope()`, `copy_with()` chia sẻ lại. Chạy `pytest shared/tests/test_token_accounting_reaches_agents.py` |
 | Model name metadata ≠ run dir    | Nhầm URL pod ↔ slot           | Loại run, kiểm managed block               |
 | `evaluation_error` trong summary | Judge chết giữa chừng         | `04_repair_ladder_results.py` (xem dưới)   |
 | Pod EXITED giữa run              | OOM/crash server              | Xem RunPod console log, kiểm VRAM          |
@@ -484,8 +519,8 @@ python scripts/alignmentgraph-isd-bench/15_gen_facts_sheet.py           # → re
 python scripts/alignmentgraph-isd-bench/15_gen_facts_sheet.py --brief   # → facts_brief.md (~21 KB, chỉ mục 0–2)
 ```
 
-Chạy **sau** `09`/`11`/`13`/`14` (nó đọc `*_macros.tex` để dựng mục 10). Nguồn: `pooled_ladder.json` +
-`pooled_ablation.json` — không parse lại các `stats_*.md`, nên không có nguồn sự thật thứ hai.
+Chạy **sau** `09`/`11`/`13`/`14` (nó đọc `*_macros.tex` để dựng mục 10). Nguồn: `pooled_ladder.bk.json` +
+`pooled_ablation.bk.json` — không parse lại các `stats_*.md`, nên không có nguồn sự thật thứ hai.
 
 **Vì sao cần**: số hiện nằm ở 6 file `stats_*.md` với **quy ước dấu khác nhau**, và hai họ tín hiệu (JUDGE rubric
 /100 vs PANEL RQ2 [0,1]) **cho kết luận ngược nhau trên ablation**. Đọc một file rồi dừng là đủ để trích một con số
@@ -550,14 +585,14 @@ file), figure phải đủ cặp `.pdf`+`.png` (F), `\input`/`\includegraphics` 
 chiếu (G), và macro nào prose dùng mà không generator nào định nghĩa (H — `Undefined control sequence`, lỗi build
 mà kiểm tra file không bao giờ thấy).
 
-Cái gì là *bắt buộc* phụ thuộc pooled layer đang có: artifact ablation chỉ bị đòi khi có `pooled_ablation.json`,
+Cái gì là *bắt buộc* phụ thuộc pooled layer đang có: artifact ablation chỉ bị đòi khi có `pooled_ablation.bk.json`,
 sensitivity khi pooled ladder có `alignment_sensitivity`; hai file bloom validation luôn chỉ WARN vì cần checkpoint
 train tay. Exit 0 = không RED (và không WARN nếu `--strict`).
 
 ## 10. Teardown
 
 - **Tắt/xoá pod RunPod ngay** (thao tác console, không có script) — tính tiền theo giờ kể cả idle.
-- Giữ nguyên vẹn: mọi `results/test_90_benchmark_*_r*/`, mọi `ladder_manifest.json`, `pooled_ladder.json`,
+- Giữ nguyên vẹn: mọi `results/test_90_benchmark_*_r*/`, mọi `ladder_manifest.json`, `pooled_ladder.bk.json`,
   `scenarios/*_metadata.json`, và managed block trong `.env`.
 - Số và hình trong paper regenerate được bất kỳ lúc nào từ raw results bằng chuỗi mục 7 → 8 → 9.
 
@@ -664,17 +699,21 @@ evidence). Mọi giá trị trong [0, 1]. **Không có scalar tổng hợp và k
 **Panel = hai họ instrument độc lập cơ chế**, mỗi họ một trục sensitivity riêng. Đây là câu trả lời *cấu trúc* cho
 chỉ trích "panel chỉ là 7 biến thể của cosine": không họ nào một mình gánh construct.
 
-*Họ A — textual correspondence (encoder), 4 tín hiệu:*
+*Họ A — textual correspondence (encoder), 3 tín hiệu = đúng 3 cạnh tam giác Biggs:*
 
 - `objective_assessment_similarity` — trung bình trên objectives của **max cosine tới bất kỳ assessment item nào**
   (liên tục, không ngưỡng): vế `measures`, quan hệ trung tâm của constructive alignment (Biggs). Lý do bỏ ngưỡng:
   ngưỡng 0,25 quá lỏng (best-match cosine p10 ≈ 0,4–0,69) → coverage bão hoà ~1,00 cho mọi hệ, không phân biệt và mở
   câu hỏi "why this threshold". Đo liên tục phân biệt rất mạnh: harness ~0,83–0,86 vs baseline 0,19–0,64.
-- `objective_activity_similarity`, `objective_evaluation_similarity` — cùng công thức với activities / evaluation
-  texts (vế `supports` / `evaluates`).
-- `assessment_objective_similarity` — chiều ngược (mean-max cosine assessment→objective): có item mồ côi không.
-  **Hướng không đơn nghĩa** — rất cao có thể là "không thừa item" mà cũng có thể là "assessment chỉ chép lại
-  objective" — nên đọc như diagnostic, KHÔNG cộng vào đếm "thắng bao nhiêu vế" (`NON_DIRECTIONAL_SIGNALS`).
+- `objective_activity_similarity` — cùng công thức với activities (vế `supports`, C3).
+- `activity_assessment_similarity` — cạnh thứ ba (mean-max cosine activity→assessment, C4 `prepares_for`). Không phụ
+  thuộc objectives, nên vẫn có giá trị khi objectives của output không parse được.
+
+**Đã xoá khỏi phép đo 2026-08-30**: `objective_evaluation_similarity`, `assessment_objective_similarity`, cặp Porter
+`objectives↔evaluation` và toàn bộ đường dẫn text pha evaluation (`extract_evaluation_texts`, `counts["evaluation"]`).
+Evaluation-phase text không ứng với quan hệ core nào sau khi `evaluation` bị bỏ khỏi `NodeType`. Hệ quả phải khai:
+`porter_mean` **đổi định nghĩa** (nay là trung bình trên 3 cạnh tam giác, không phải 3 cặp objective-vs-X), nên số
+`porter_*` trước 2026-08-30 không so sánh được.
 
 *Họ B — cognitive demand (Bloom classifier), 3 tín hiệu, không dùng similarity:*
 

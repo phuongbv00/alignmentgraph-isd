@@ -15,29 +15,17 @@ from typing import Any
 # ``additionalProperties`` is implicitly allowed: unknown keys never error, so an
 # LLM that adds extra detail is fine. Only declared fields are type-checked.
 _SECTION_FIELDS: dict[str, dict[str, tuple[type | tuple[type, ...], bool]]] = {
-    "needs_context": {
-        "needs_analysis": (dict, True),
-        "learner_analysis": (dict, True),
-        "context_analysis": (dict, True),
-        "task_analysis": (dict, True),
-    },
-    # Design is now decomposed across several singleton nodes (see
-    # objective_design.py's 2-call split) — objective_0 only holds
-    # learning_objectives; the rest live in their own node types below.
+    # objective_0 only holds learning_objectives; CourseGoal is its own
+    # singleton node (no section-field schema needed — just {"statement": str}).
     "objective": {
         "learning_objectives": (list, True),
     },
     "assessment_plan": {
-        "diagnostic": (list, False),
-        "formative": (list, False),
-        "summative": (list, False),
+        "lo_coverage_targets": (dict, True),
+        "formative_methods": (list, False),
     },
-    "instructional_strategies": {
-        "model": (str, False),
-        "sequence": (list, True),
-    },
-    "content_structure": {
-        "modules": (list, True),
+    "activity_plan": {
+        "instructional_strategies": (dict, True),
     },
     "assessment": {
         "assessment_tools": (list, True),
@@ -45,32 +33,66 @@ _SECTION_FIELDS: dict[str, dict[str, tuple[type | tuple[type, ...], bool]]] = {
     },
     "activity": {
         "learning_activities": (list, True),
-        "instructor_guide": (dict, False),
-    },
-    "material": {
-        "learner_materials": (list, True),
     },
     "implementation_plan": {
         "instructor_orientation": (dict, True),
         "system_check": (dict, True),
         "prototype_execution": (dict, True),
         "monitoring": (dict, True),
-    },
-    "evaluation": {
-        "formative": (dict, True),
-        "summative": (dict, True),
-        "improvement_plan": (dict, True),
+        "instructor_guide": (dict, True),
+        "operator_manual": (dict, True),
     },
 }
 
 _ID_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_:\-]*$")
+
+# A leaf string that IS a schema placeholder copied verbatim into the output
+# (e.g. "<detailed system setup guide>", "<obj>"). Whole-string match only, and
+# no nested angle brackets, so real content that merely contains markup
+# ("<p>…</p>", "a < b") never matches. Small models copy these out of the
+# prompt schemas; the value is then non-empty, so the plain required-field
+# check waves it through while the judge scores the field as absent (measured
+# 2026-08-28: an operator_manual shipping "<detailed system setup guide>").
+_PLACEHOLDER_TOKEN = re.compile(r"^<[^<>]{1,80}>$")
+
+#: Suffix shared by every placeholder error, so the regen loop can filter for
+#: them exactly like `required field is missing or empty` (see workflow.py).
+PLACEHOLDER_FIELD_MARKER = "schema placeholder text left unfilled"
+
+_PLACEHOLDER_SCAN_DEPTH = 6
+_PLACEHOLDER_REPORT_CAP = 3  # errors per field; one is enough to trigger regen
+
+
+def _placeholder_paths(value: Any, path: str = "", depth: int = _PLACEHOLDER_SCAN_DEPTH) -> list[str]:
+    """Dotted paths of every leaf string under ``value`` that is a bare
+    schema placeholder token."""
+    if depth < 0:
+        return []
+    if isinstance(value, str):
+        return [path] if _PLACEHOLDER_TOKEN.match(value.strip()) else []
+    found: list[str] = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            found.extend(_placeholder_paths(item, f"{path}.{key}" if path else str(key), depth - 1))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            found.extend(_placeholder_paths(item, f"{path}[{index}]", depth - 1))
+    return found
+
+
+def _placeholder_errors(node_type: str, field: str, value: Any) -> list[str]:
+    paths = _placeholder_paths(value)
+    return [
+        f"{node_type}.{field}{('' if p.startswith('[') else '.') + p if p else ''}: "
+        f"{PLACEHOLDER_FIELD_MARKER}"
+        for p in paths[:_PLACEHOLDER_REPORT_CAP]
+    ]
 
 # Item-level id fields per section list, validated for non-empty well-formed ids.
 _LIST_ITEM_ID_FIELD = {
     "objective": ("learning_objectives", "id"),
     "assessment": ("assessment_tools", "item_id"),
     "activity": ("learning_activities", "id"),
-    "material": ("learner_materials", "id"),
 }
 
 
@@ -99,6 +121,8 @@ def validate_section(node_type: str, data: Any) -> list[str]:
                 f"{node_type}.{field}: expected {_type_name(expected_type)}, "
                 f"got {type(data[field]).__name__}"
             )
+        elif required:
+            errors.extend(_placeholder_errors(node_type, field, data[field]))
 
     list_field_id = _LIST_ITEM_ID_FIELD.get(node_type)
     if list_field_id:
@@ -132,6 +156,8 @@ _ADDIE_PHASE_FIELDS: dict[str, dict[str, tuple[type | tuple[type, ...], bool]]] 
         "learner_materials": (list, True),
         "assessment_tools": (list, True),
         "expert_review": (dict, False),
+        "instructor_guide": (dict, True),
+        "operator_manual": (dict, True),
     },
     "implementation": {
         "instructor_orientation": (dict, True),
@@ -171,4 +197,6 @@ def validate_addie(addie_output: Any) -> list[str]:
                     f"{phase}.{field}: expected {_type_name(expected_type)}, "
                     f"got {type(section[field]).__name__}"
                 )
+            elif required:
+                errors.extend(_placeholder_errors(phase, field, section[field]))
     return errors

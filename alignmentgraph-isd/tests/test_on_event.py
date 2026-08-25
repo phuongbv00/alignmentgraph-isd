@@ -11,7 +11,7 @@ import inspect
 import pytest
 
 from alignmentgraph_isd import HarnessCancelled, run_design_brief
-from alignmentgraph_isd.core.nodes import GENERATION_ORDER
+from alignmentgraph_isd.core.workflow import GENERATION_ORDER
 from alignmentgraph_isd.core.trajectory import TrajectoryLogger
 
 from conftest import load_brief
@@ -88,7 +88,7 @@ def test_a_raising_consumer_cannot_break_a_run(brief, fake_config):
 def test_every_recorded_stream_is_mirrored(brief, fake_config):
     _, events = collect(brief, fake_config)
     seen = set(kinds(events))
-    for kind in ("agent_step", "node_edit", "llm_call", "validation_event", "verifier_event"):
+    for kind in ("agent_step", "node_edit", "llm_call", "validation_event", "check_event"):
         assert kind in seen, f"no {kind} event reached the consumer"
 
 
@@ -97,9 +97,24 @@ def test_phases_are_bracketed_in_order(brief, fake_config):
     started = [p["phase"] for k, p in events if k == "phase_started"]
     finished = [p["phase"] for k, p in events if k == "phase_finished"]
 
-    assert started == finished, "every phase that starts must finish"
-    # Six specialists in ADDIE order, each followed by its QC node, then aggregate.
-    assert [p for p in started if p in GENERATION_ORDER] == GENERATION_ORDER
+    # Every phase that starts must finish, exactly once -- but NOT necessarily
+    # in the same relative order: content_designer/rubric_designer run on
+    # separate LangGraph worker threads (a pre-existing parallel fan-out;
+    # every dev-plan fan-out family adds the same kind of sibling-thread
+    # execution for its own dispatch/develop/finalize nodes), so which one's
+    # phase_finished lands first is a genuine scheduling race, not a bug.
+    assert sorted(started) == sorted(finished), "every phase that starts must finish, exactly once"
+
+    # Six specialists in ADDIE order; content_designer/rubric_designer are the
+    # one genuinely-parallel pair and may start in either relative order, but
+    # both must sit strictly between activity_designer and
+    # implementation_planner.
+    order = [p for p in started if p in GENERATION_ORDER]
+    assert set(order) == set(GENERATION_ORDER)
+    index = {phase: i for i, phase in enumerate(order)}
+    assert index["outcome_designer"] < index["assessment_designer"] < index["activity_designer"]
+    assert index["activity_designer"] < index["content_designer"] < index["implementation_planner"]
+    assert index["activity_designer"] < index["rubric_designer"] < index["implementation_planner"]
     assert started[-1] == "aggregate"
 
     totals = {p["total"] for _, p in events if p.get("total")}

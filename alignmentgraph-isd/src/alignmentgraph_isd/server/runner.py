@@ -23,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 from ..config import HarnessRunConfig
-from ..core.schema import DesignBrief
+from ..core.brief import DesignBrief
 from ..exceptions import HarnessCancelled
 from . import artifacts, llm_settings
 from .db import session_scope
@@ -40,7 +40,7 @@ _FORWARDED = frozenset({
     EventKind.PHASE_STARTED, EventKind.PHASE_FINISHED,
     EventKind.LLM_STARTED, EventKind.LLM_FINISHED,
     EventKind.AGENT_STEP, EventKind.NODE_EDIT, EventKind.LLM_CALL,
-    EventKind.VALIDATION, EventKind.VERIFIER, EventKind.REPAIR, EventKind.RETRIEVAL,
+    EventKind.VALIDATION, EventKind.CHECK, EventKind.REPAIR, EventKind.RETRIEVAL,
 })
 
 
@@ -291,11 +291,11 @@ def _barren_run_error(result: dict) -> str:
     errors travel in the metadata either way.
     """
     graph = result.get("graph") or {}
-    trajectory = result.get("trajectory") or {}
-    if graph.get("nodes") or trajectory.get("llm_calls"):
+    metadata = result.get("metadata") or {}
+    if graph.get("nodes") or (metadata.get("token_usage") or {}).get("llm_calls"):
         return ""
 
-    errors = (result.get("metadata") or {}).get("errors") or []
+    errors = metadata.get("errors") or []
     if not errors:
         return "The run produced no design output."
 
@@ -317,11 +317,13 @@ def _stats_from_result(result: dict) -> dict:
         "edge_count": len(graph.get("edges") or []),
         "objective_count": len(alignment),
         "aligned_objective_count": sum(1 for v in alignment.values() if v.get("aligned")),
-        "llm_calls": trajectory.get("llm_calls", 0),
-        "token_usage": trajectory.get("token_usage", {}),
-        "agent_steps": len(trajectory.get("agent_steps") or []),
-        "verifier_rounds": len(trajectory.get("verifier_events") or []),
-        "repair_events": len(trajectory.get("repair_events") or []),
+        "llm_calls": (metadata.get("token_usage") or {}).get("llm_calls", 0),
+        "token_usage": metadata.get("token_usage", {}),
+        "agent_steps": len(trajectory.get("tool_calls") or []),
+        "check_rounds": sum(1 for e in trajectory.get("events") or []
+                            if e.get("action") == "check"),
+        "repair_events": sum(1 for e in trajectory.get("events") or []
+                             if e.get("action") == "repair"),
         "validation_errors": len(metadata.get("validation_errors") or []),
         "model_name": (metadata.get("llm") or {}).get("model_name", ""),
     }

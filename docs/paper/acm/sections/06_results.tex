@@ -2,7 +2,7 @@
 \label{sec:results}
 
 Tables and figures in this section are generated from artifacts; every mean is
-paired with the between-run SD of the same signal, and cells with fewer than
+paired with the between-run SD of the same score, and cells with fewer than
 \ladderNumScenarios{} scenarios are marked in footnotes. Because every score
 comparison is conditional on an agent producing output at all, we present
 output robustness first.
@@ -35,15 +35,15 @@ as sensitivity.
   \label{fig:failure-rate}
 \end{figure*}
 
-\subsection{Objective 2: Quality on the LLM-as-judge scale}
+\subsection{Objective 2: Quality on LLM judge scores}
 \label{sec:rq1}
 
 On ADDIE, AlignmentGraph-ISD leads at the three smaller sizes and reaches
 parity with ReAct-ISD at 9B (\Cref{tab:rq1-ladder}, \Cref{fig:rq1-components}).
 ADDIE leads this account because its rubric matches the construct Objective~2
-addresses, not because it was chosen as an endpoint; the three judge signals have
+addresses, not because it was chosen as an endpoint; the three LLM judge scores have
 equal standing, and their disagreements are stated directly below. Full
-per-signal tables for Trajectory and \texttt{total\_score} appear in
+per-score tables for Trajectory and \texttt{total\_score} appear in
 \Cref{sec:appendix-tables}.
 
 \input{../../generated/tab_rq1}
@@ -52,9 +52,9 @@ per-signal tables for Trajectory and \texttt{total\_score} appear in
   \centering
   \includegraphics[width=0.95\textwidth]{fig_rq1_components.pdf}
   \Description{Three panels: ADDIE, Trajectory, and Total scores by model size for seven agents.}
-  \caption{The three judge signals by model size. ADDIE: the harness leads at
+  \caption{The three LLM judge scores by model size. ADDIE: the MAS leads at
   the three smaller sizes and converges with ReAct-ISD at 9B. Trajectory: the
-  harness scores below ReAct-ISD and ADDIE-Agent at every size. Total: the
+  MAS scores below ReAct-ISD and ADDIE-Agent at every size. Total: the
   composite inherits Trajectory's process penalty.}
   \label{fig:rq1-components}
 \end{figure*}
@@ -64,7 +64,7 @@ architecture with a verify--repair loop yields a longer, less compact trace
 than single-loop designs, so Trajectory favors ReAct-ISD and ADDIE-Agent at
 every size (\Cref{fig:rq1-components}, middle panel), and the
 \texttt{total\_score} composite inherits this process penalty: at the smallest
-size, the harness reaches \rqOneHarnessTotalZeroEightB{} versus
+size, the MAS reaches \rqOneHarnessTotalZeroEightB{} versus
 \rqOneBestBaselineTotalZeroEightB{} for \rqOneBestBaselineNameZeroEightB{},
 despite leading ADDIE and the alignment panel. The ADDIE gap is also uneven: at
 0.8B, the delta against the strongest baseline
@@ -79,26 +79,26 @@ a conclusion of parity, not superiority.
 The scale interaction, by contrast, is clear: against \rqOneDiDBaselineName{},
 the largest-minus-smallest ADDIE DiD is $\rqOneDiDVsBestBaseline$ (95\% CI
 $[\rqOneDiDVsBestBaselineCILo,\rqOneDiDVsBestBaselineCIHi]$,
-$p=\rqOneDiDVsBestBaselineP$). In the primary layer, the harness's advantage
-contracts as the model grows on all three judge signals. Failures concentrate
+$p=\rqOneDiDVsBestBaselineP$). In the primary layer, the MAS's advantage
+contracts as the model grows on all three LLM judge scores. Failures concentrate
 at the small end, so the very large deltas against Baseline and EduPlanner at
 0.8B stand on very small complete-case scenario counts (column $n$,
 \Cref{tab:rq1-ladder}): they are artifacts of failure rate and cannot be read
 as quality gaps. This is precisely the selection effect that the
 \texttt{failure=0} layer avoids.
 
-\subsection{Objective 3: Quality on the alignment-signal panel}
+\subsection{Objective 3: Quality on alignment scores}
 \label{sec:rq2}
 
 Under the pre-specified interpretation rule, the panel concludes an advantage
 for AlignmentGraph-ISD at every size: at least four of the six directional
-signals are significantly positive after within-signal Holm correction, and no
-signal is significantly negative (\Cref{tab:rq2-panel}; the full 7-signal
+scores are significantly positive after within-score Holm correction, and no
+score is significantly negative (\Cref{tab:rq2-panel}; the full 7-score
 $\times$ 7-agent picture is in \Cref{fig:rq2-components}). Family A separates
-most clearly on $\sigma_{\mathrm{meas}}$, the signal corresponding to the
+most clearly on $\sigma_{\mathrm{meas}}$, the score corresponding to the
 \emph{measures} facet of \Cref{eq:aligned}; the Bloom-based Family B
 contributes independent evidence through congruence, Porter, and Webb. The
-reverse-direction signal $\sigma_{\mathrm{rev}}$ remains diagnostic and does
+reverse-direction score $\sigma_{\mathrm{rev}}$ remains diagnostic and does
 not participate in the directional count.
 
 \input{../../generated/tab_rq2_panel}
@@ -106,8 +106,8 @@ not participate in the directional count.
 \begin{figure*}[!htbp]
   \centering
   \includegraphics[width=0.98\textwidth]{fig_rq2_components.pdf}
-  \Description{Heatmap of seven alignment signals for seven agents, one grid cell per model size.}
-  \caption{The seven-signal alignment panel by agent and model size; each cell
+  \Description{Heatmap of seven alignment scores for seven agents, one grid cell per model size.}
+  \caption{The seven-score alignment panel by agent and model size; each cell
   shows the mean value, white rules separate the two instrument families, and
   red text marks survivor cells with small $n$. Exact numbers with SD:
   \Cref{tab:rq2-panel}.}
@@ -117,10 +117,10 @@ not participate in the directional count.
 \begin{figure*}[!htbp]
   \centering
   \includegraphics[width=0.9\textwidth]{fig_rq2_forest.pdf}
-  \Description{Forest plot of per-signal alignment deltas between the proposed system and ReAct-ISD by model size.}
-  \caption{Per-signal panel $\Delta$ (proposed $-$ ReAct-ISD) with bootstrap
-  95\% CI, failure=0 layer; filled markers = within-signal
-  $p_{\mathrm{Holm}} < 0.05$; \dag{} = non-directional signal.}
+  \Description{Forest plot of per-score alignment deltas between the proposed system and ReAct-ISD by model size.}
+  \caption{Per-score panel $\Delta$ (proposed $-$ ReAct-ISD) with bootstrap
+  95\% CI, failure=0 layer; filled markers = within-score
+  $p_{\mathrm{Holm}} < 0.05$; \dag{} = non-directional score.}
   \label{fig:rq2-forest}
 \end{figure*}
 
@@ -129,12 +129,12 @@ generation call; this explains the broad textual-correspondence profile, while
 Family B checks cognitive demand through an entirely different mechanism, so
 the agreement of the two families supports multiple measurable signals rather
 than one composite claim. Against ReAct-ISD, the strongest comparator, the
-per-signal deltas are significantly positive at every size
+per-score deltas are significantly positive at every size
 (\Cref{fig:rq2-forest}), and the $\sigma_{\mathrm{meas}}$ gap widens toward
 smaller models: the DiD is $\rqTwoSimDiDVsBaseline$ (95\% CI
 $[\rqTwoSimDiDVsBaselineCILo,\rqTwoSimDiDVsBaselineCIHi]$,
 $p=\rqTwoSimDiDVsBaselineP$). $\beta_{\mathrm{webb}}$ is the adverse exception
-at small models; the profile must therefore be read signal by signal.
+at small models; the profile must therefore be read score by score.
 
 \label{sec:sensitivity}
 This reading does not depend on the instrument configuration. The direction of
@@ -161,9 +161,9 @@ produces complete output. The mechanism picture thus separates into three
 layers. The decomposition layer (kept by every arm, not ablated) is associated
 with what persists across all arms---robustness and the ADDIE advantage over
 baselines: that advantage remains intact even with graph context disabled, so
-the ablation does not explain the judge-scale gap, and without a monolithic control no
+the ablation does not explain the gap on LLM judge scores, and without a monolithic control no
 causal credit can be assigned to decomposition. The graph-context layer is the
-mechanism supported by the evidence for the alignment signals. The verifier
+mechanism supported by the evidence for the alignment scores. The verifier
 layer produces no measurable improvement in the shipped configuration and at
 most sizes lowers Trajectory; its role is a repair backstop and a source of
 audit evidence. When graph context is disabled, the verifier's simple effect
@@ -176,8 +176,8 @@ does not establish a score effect in the shipped system.
 \begin{figure*}[!htbp]
   \centering
   \includegraphics[width=0.98\textwidth]{fig_ablation_components.pdf}
-  \Description{Heatmap of seven alignment signals for four ablation arms, one grid cell per model size.}
-  \caption{The seven-signal panel across the four ablation arms. A1 (verifier
+  \Description{Heatmap of seven alignment scores for four ablation arms, one grid cell per model size.}
+  \caption{The seven-score alignment panel across the four ablation arms. A1 (verifier
   removed) nearly coincides with A0; A2 and A3 (graph context removed) decline
   broadly at every size---the alignment-shifted half of the pattern; the
   judge-invariant half is in \Cref{tab:ablation}.}
@@ -187,7 +187,7 @@ does not establish a score effect in the shipped system.
 \subsection{Cost and throughput}
 \label{sec:cost}
 
-The harness uses \costHarnessCallsTwoB{} calls and \costHarnessTokensTwoB{}
+The MAS uses \costHarnessCallsTwoB{} calls and \costHarnessTokensTwoB{}
 thousand tokens per design at 2B; its token use is
 \costTokenRatioVsMedianBaselineNineB$\times$--
 \costTokenRatioVsMedianBaselineZeroEightB$\times$ the median baseline and
@@ -207,7 +207,7 @@ the larger overhead and is also the mechanism supported by the alignment-panel a
   \centering
   \includegraphics[width=0.8\textwidth]{fig_cost_quality.pdf}
   \Description{ADDIE score versus token cost for seven agents across four model sizes.}
-  \caption{ADDIE quality versus token cost by model size. The harness's
+  \caption{ADDIE quality versus token cost by model size. The MAS's
   trade-off is favorable at the small end and erodes as the model grows.}
   \label{fig:cost-quality}
 \end{figure*}

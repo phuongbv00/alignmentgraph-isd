@@ -4,8 +4,11 @@ import re
 import time
 from abc import ABC, abstractmethod
 from ...config import HarnessRunConfig
-from ..graph import AlignmentGraph
-from ..schema import DesignBrief
+from ..alignment_graph import alignment
+from .. import checks
+from ..alignment_graph import AlignmentGraph
+from ..brief import DesignBrief
+from ..ratelimit import gate_for
 from ..trajectory import TrajectoryLogger
 
 
@@ -326,16 +329,16 @@ def _format_design_brief(design_brief: DesignBrief) -> str:
     return "\n".join(lines) + "\n\n" + _DESIGN_GUIDANCE
 
 
-# Default execution-strategy hint per ADDIE task for on-demand retrieval. The
+# Default execution-strategy hint per Designer task for on-demand retrieval. The
 # specialist's decision call can override; broad analysis/creation tasks lean
 # parallel, narrowly-scoped design tasks lean single.
 RETRIEVAL_STRATEGY_HINTS = {
-    "needs_context": "parallel",
-    "objective_design": "single",
-    "assessment_design": "single",
-    "activity_material": "parallel",
+    "outcome_designer": "parallel",
+    "assessment_designer": "single",
+    "activity_designer": "single",
+    "content_designer": "parallel",
+    "rubric_designer": "single",
     "implementation_plan": "single",
-    "evaluation_revision": "single",
     "full_design": "parallel",
 }
 
@@ -355,6 +358,14 @@ or
  "queries": {"<agent name>": "<what to fetch, specific>"}}"""
 
 
+# ── retired: narrative prose rendering ────────────────────────────────────────
+# An earlier `prose` arm rendered the SAME graph-selected nodes as sentences
+# (per-type templates), which made the arm a costume on the graph: selection,
+# docket, checks, routing and aggregation all still ran on the graph, so the
+# axis measured surface form only. The current `prose` arm replaces the store
+# itself (see core/prose_store.py); the sentence templates were deleted with it.
+
+
 class BaseISDAgent(ABC):
     # Verifier violation types this specialist is responsible for. Each specialist
     # self-checks and repairs its own artifact at the end of its turn (a quality
@@ -362,50 +373,224 @@ class BaseISDAgent(ABC):
     # subclass; empty means "no self-check".
     OWNED_VIOLATION_TYPES: frozenset[str] = frozenset()
 
-    def __init__(self, config: HarnessRunConfig, graph: AlignmentGraph, trajectory: TrajectoryLogger) -> None:
+    def __init__(self, config: HarnessRunConfig, graph: AlignmentGraph | None,
+                 trajectory: TrajectoryLogger, store=None) -> None:
         self.config = config
+        # Exactly one of the two context substrates is live per run: the
+        # AlignmentGraph in graph mode, the ProseStore blackboard in prose
+        # mode. The other is None so an arm can never quietly lean on the
+        # substrate it claims not to use.
         self.graph = graph
+        self.store = store
         self.trajectory = trajectory
+
+    @property
+    def _graph_mode(self) -> bool:
+        return getattr(self.config, "context_mode", "graph") == "graph"
+
+    def _store_context(self, keys: tuple[str, ...], max_chars: int = 600) -> str:
+        """Prose-arm context injection: the named blackboard documents as
+        verbatim JSON text (see ``core/prose_store.py``). The read-list is a static
+        design-time decision per step — no selection logic, no derived facts."""
+        if self.store is None:
+            return ""
+        return self.store.context(keys, max_chars=max_chars)
 
     @abstractmethod
     def run(self, design_brief: DesignBrief) -> None:
         ...
 
-    # Verifier violation types this specialist owns. A workflow's QC node reads
-    # this to decide which violations the agent should self-repair. Quality
-    # control is driven by the workflow (see core/nodes.py::NodeFactory.qc_node),
-    # not by the agent itself — so the agent stays a pure generation module.
+    # Verifier violation types this specialist owns. A Designer's own
+    # self-validation step reads this to decide which violations it should
+    # repair itself before committing (inline, not a separate QC graph node).
     def repair(self, violations: list) -> list:  # noqa: D401 - overridden by specialists
         """Default no-op repair; specialists override to fix owned violations."""
         return violations
 
-    def _element_context(self, nodes: list[dict], max_chars: int = 600) -> str:
-        """Format specific element/section nodes for prompt injection.
+    #: Caps for the alignment-state block. Edges are illustrative (the model
+    #: needs the pattern, not the census); gap ids are the actionable
+    #: checklist, so their cap is higher. Both caps disclose what they cut.
+    _EDGE_LINE_CAP = 12
+    _GAP_ID_CAP = 20
 
-        This is graph-context retrieval (core, not RAG): each agent reads what
-        earlier agents already deposited in the AlignmentGraph before generating
-        its own section. The
-        caller passes exactly the nodes a relation calls for — e.g.
+    def _alignment_state(self, *, edges: tuple[str, ...] = (),
+                         gaps: tuple[str, ...] = (),
+                         plan_pairs: bool = False) -> dict:
+        """**Alignment-state scaffolding** (canonical mechanism name — see the
+        package README): the shared fact source both context representations
+        render from.
+
+        Three kinds of facts, all computed deterministically from the graph at
+        call time, none of them a restatement of the rules already in the
+        system prompt:
+
+        - ``edges``: established links for the named relations — connectivity
+          the model otherwise has to reconstruct from ID fields inside node
+          JSON.
+        - ``gaps``: the named relations' coverage obligations INSTANTIATED
+          against current state — "ILO-03 has no assessed_by link yet", not
+          "every objective needs one". SLMs apply an enumerated checklist far
+          more reliably than a universally-quantified rule; measured on this
+          very harness: with the quantified rule alone in the prompt, a 9B
+          model produced 16 diagnostic / 1 summative items against a plan
+          promising 1 / 5.
+        - ``plan_pairs``: the (objective x plan_category) pairs the assessment
+          plan promises that no item yet realises (``checks.plan_coverage`` —
+          the instantiation of exactly that measured failure).
+
+        The system prompt keeps the LAW (static, stated once, prefix-cache
+        friendly, arm-parity guaranteed by the ``_rules`` derivation); this
+        block carries the DOCKET (per-run state the system prompt cannot
+        contain). Splitting by staticness is the design decision — putting
+        rule text here as well would pay its tokens twice.
+        """
+        facts: dict = {"edges": [], "gaps": [], "plan_pairs": []}
+        for rid in edges:
+            relation = alignment.REGISTRY[rid]
+            for edge in self.graph.get_edges(relation_id=rid):
+                facts["edges"].append({
+                    "source": edge["source"], "target": edge["target"],
+                    "relation": relation.key,
+                })
+        for rid in gaps:
+            relation = alignment.REGISTRY[rid]
+            _, uncovered = alignment.relation_coverage(self.graph, rid)
+            if uncovered:
+                facts["gaps"].append({
+                    "relation": relation.key, "label": relation.label,
+                    "nodes": uncovered,
+                })
+        if plan_pairs:
+            for violation in checks.plan_coverage(self.graph):
+                facts["plan_pairs"].append({
+                    "objective": violation.metadata.get("lo_id", ""),
+                    "category": violation.metadata.get("plan_category", ""),
+                })
+        return facts
+
+    def _alignment_state_context(self, *, edges: tuple[str, ...] = (),
+                                 gaps: tuple[str, ...] = (),
+                                 plan_pairs: bool = False) -> str:
+        """The alignment-state block. Graph mode only: the docket is a product
+        of the alignment machinery (coverage instantiated against graph
+        state), so the prose arm has no equivalent — its prompts carry the LAW
+        (the rules in the system prompt, shared by both arms) but never an
+        instantiated docket. Call sites sit inside graph-mode branches."""
+        facts = self._alignment_state(edges=edges, gaps=gaps, plan_pairs=plan_pairs)
+        if not (facts["edges"] or facts["gaps"] or facts["plan_pairs"]):
+            return ""
+        return self._render_state_structured(facts)
+
+    @staticmethod
+    def _bare(node_id: str) -> str:
+        return node_id.split(":", 1)[-1]
+
+    def _render_state_structured(self, facts: dict) -> str:
+        lines: list[str] = ["=== ALIGNMENT STATE ==="]
+        if facts["edges"]:
+            lines.append("[EDGES]")
+            for edge in facts["edges"][: self._EDGE_LINE_CAP]:
+                # bare ids: namespaced ids in prompts leak into model output
+                # and break the bare-id matchers (see _node_header).
+                lines.append(f"{self._bare(edge['source'])} --{edge['relation']}--> {self._bare(edge['target'])}")
+            extra = len(facts["edges"]) - self._EDGE_LINE_CAP
+            if extra > 0:
+                lines.append(f"... and {extra} more edges")
+        if facts["gaps"]:
+            lines.append("[GAPS — your output must close these]")
+            for gap in facts["gaps"]:
+                ids = ", ".join(self._bare(n) for n in gap["nodes"][: self._GAP_ID_CAP])
+                extra = len(gap["nodes"]) - self._GAP_ID_CAP
+                more = f" (+{extra} more)" if extra > 0 else ""
+                lines.append(f"{gap['relation']} missing for: {ids}{more}")
+        if facts["plan_pairs"]:
+            lines.append("[PLAN-PROMISED PAIRS, NOT YET REALISED — produce exactly these]")
+            lines.append("; ".join(f"{p['objective']} x {p['category']}" for p in facts["plan_pairs"]))
+        return "\n".join(lines)
+
+    def _element_context(self, nodes: list[dict], max_chars: int = 600) -> str:
+        """**Relation-scoped context injection** (canonical mechanism name —
+        see the package README): format specific element/section nodes for
+        prompt injection, one ``[TYPE:ID]`` block per node, its ``data`` as
+        truncated JSON.
+
+        Graph mode only — this is graph-context retrieval (core, not RAG):
+        each agent reads what earlier agents already deposited in the
+        AlignmentGraph before generating its own section. The caller passes
+        exactly the nodes a relation calls for — e.g.
         ``self._element_context(self.graph.element_nodes(NodeType.OBJECTIVE))``
         for "every learning objective", or a list assembled from
-        ``get_node``/``get_edges`` for a relation-scoped set.
+        ``get_node``/``get_edges`` for a relation-scoped set. Never pass "the
+        whole graph" — each Designer's own docstring/prompt states exactly
+        which node types it reads, and that list is the token budget.
 
-        ``config.enable_graph_context`` (off only in ablation arms) gates ALL
-        graph-context reads at once — including a specialist re-reading its own
-        earlier output and any repair-time context — by returning ``""`` here;
-        every call site guards ``if prior_ctx:`` so the prompt cleanly falls back
-        to the bare design brief. Graph WRITES are untouched.
+        The prose arm never calls this: its counterpart is ``_store_context``,
+        which reads whole blackboard documents by a static read-list (no
+        selection — that is part of what the axis ablates).
         """
-        if not getattr(self.config, "enable_graph_context", True):
-            return ""
-        import json
         lines: list[str] = []
         for node in nodes:
             data_str = json.dumps(node.get("data", {}), ensure_ascii=False)
             if len(data_str) > max_chars:
                 data_str = data_str[:max_chars] + "…"
-            lines.append(f"[{str(node.get('type', '')).upper()}:{node.get('id', '')}]\n{data_str}")
+            lines.append(f"{self._node_header(node)}\n{data_str}")
         return "\n\n".join(lines)
+
+    @staticmethod
+    def _node_header(node: dict) -> str:
+        """``[TYPE:BARE-ID]`` — deliberately the BARE element id, never the
+        namespaced node id. Rendering ``[OBJECTIVE:objective:ILO-01]`` taught
+        models the namespaced form, which they then echoed into reference
+        fields ("objective:ILO-01"), silently breaking every bare-id matcher
+        (measured: a 2B single-graph run keyed lo_coverage_targets by
+        namespaced ids and plan_coverage reported 14/14 false gaps). Section
+        nodes render as plain ``[TYPE]``."""
+        node_type = str(node.get("type", ""))
+        node_id = str(node.get("id", ""))
+        if node_id.startswith(f"{node_type}:"):
+            return f"[{node_type.upper()}:{node_id[len(node_type) + 1:]}]"
+        if node_id == f"{node_type}_0":
+            return f"[{node_type.upper()}]"
+        return f"[{node_type.upper()}:{node_id}]"
+
+    def _element_context_joined(self, parents: list[dict], children: list[dict],
+                                relation_id: str, verb: str, max_chars: int = 600) -> str:
+        """**Relation-join context injection**: the same nodes as two flat
+        ``_element_context`` lists, but pre-joined along the established
+        ``relation_id`` edges — each parent block carries the child blocks its
+        edges point at, and children no edge claims are listed under an
+        explicit NOT-YET-LINKED header instead of disappearing.
+
+        This is the generation-time work only the graph can do: handing the
+        model resolved evidence chains (objective -> its assessment items)
+        instead of two parallel lists it must cross-reference by id itself.
+        The prose arm has no counterpart by design — re-deriving the join is
+        exactly the alignment machinery the axis ablates. Same per-node cap
+        as the flat rendering; graph mode only."""
+        child_by_id = {child["id"]: child for child in children}
+        claimed: set[str] = set()
+        blocks: list[str] = []
+        for parent in parents:
+            kids: list[dict] = []
+            for edge in self.graph.get_edges(relation_id=relation_id, source=parent["id"]):
+                child = child_by_id.get(edge["target"])
+                if child is not None and child["id"] not in {k["id"] for k in kids}:
+                    kids.append(child)
+                    claimed.add(child["id"])
+            block = self._element_context([parent], max_chars=max_chars)
+            if kids:
+                kid_text = self._element_context(kids, max_chars=max_chars)
+                indented = "\n".join(f"    {line}" for line in kid_text.splitlines())
+                block += f"\n  {verb}:\n{indented}"
+            blocks.append(block)
+        orphans = [child for child in children if child["id"] not in claimed]
+        if orphans:
+            orphan_type = str(orphans[0].get("type", "")).upper() or "CHILD"
+            blocks.append(
+                f"[{orphan_type} NOT YET LINKED — align these or leave deliberately]\n"
+                + self._element_context(orphans, max_chars=max_chars)
+            )
+        return "\n\n".join(blocks)
 
     def _decompose_elements(
         self,
@@ -456,6 +641,52 @@ class BaseISDAgent(ABC):
             data.setdefault("id", element_id)
             node_ids.append(self.graph.add_element_node(node_type, element_id, data))
         return node_ids
+
+    # ── fan-out finalize: per-set regen ─────────────────────────────────────
+
+    def _regen_missing_sets(self, work_sets: list, payloads: list[dict], developer,
+                            design_brief: DesignBrief, family: str, *,
+                            identity: str | None = None) -> list[dict]:
+        """Re-invoke ``developer`` for any work set whose payload came back
+        with zero items, up to ``config.regen_budget`` attempts — the
+        fan-out's per-set retry story, called from a family's ``finalize()``.
+
+        Runs single-threaded inside finalize (not a separate LangGraph node),
+        so it needs no ``acting_as`` of its own: the Developer already names
+        itself in every log call it makes (``log_step``/``_call_llm``'s
+        internal logging both pass ``type(self).__name__`` explicitly), and
+        the recovery event below names it too — ``identity`` defaults to
+        ``type(developer).__name__`` (every multi-arm Developer class), but
+        the single arm passes its OWN identity explicitly since its per-set
+        caller is a same-instance adapter method, not a distinct class
+        deserving its own name in the trace. Returns ``payloads`` plus
+        whatever the regenerated attempts produced — callers merge with
+        :func:`core.dev_plans.remap_and_tag`, which is itself indifferent to
+        how many payloads named the same set.
+        """
+        from .. import dev_plans as _dev_plans
+
+        identity = identity or type(developer).__name__
+        budget = max(0, int(getattr(self.config, "regen_budget", 2)))
+        backoff = max(0.0, float(getattr(self.config, "regen_backoff_seconds", 0.0)))
+        payloads = list(payloads)
+        by_id = {ws.set_id: ws for ws in work_sets}
+        for attempt in range(1, budget + 1):
+            pending_ids = _dev_plans.pending_set_ids(work_sets, payloads)
+            if not pending_ids:
+                break
+            if backoff:
+                time.sleep(backoff * attempt)
+            for set_id in pending_ids:
+                work_set = by_id.get(set_id)
+                if work_set is None:
+                    continue
+                self.trajectory.log_recovery_event(
+                    identity, "regen_empty_section",
+                    f"attempt {attempt}", f"{family}:{set_id}",
+                )
+                payloads.append(developer.run_worker(work_set, design_brief))
+        return payloads
 
     # ── On-demand agentic retrieval (RAG as a tool the specialist decides to use) ──
 
@@ -562,7 +793,7 @@ class BaseISDAgent(ABC):
         """
         if self.config.llm_factory is None:
             self.trajectory.log_llm_call(0, 0)
-            self.trajectory.log_step(type(self).__name__, "llm_error", "", "llm_factory not set — cannot call LLM")
+            self.trajectory.log_recovery_event(type(self).__name__, "llm_error", "", "llm_factory not set — cannot call LLM")
             return ""
         raw_llm = self.config.llm_factory()
         json_llm = raw_llm
@@ -583,7 +814,7 @@ class BaseISDAgent(ABC):
             if _is_truncation_error(exc):
                 try:
                     content = self._invoke_with_retry(raw_llm, messages, 0)
-                    self.trajectory.log_step(
+                    self.trajectory.log_recovery_event(
                         type(self).__name__, "salvage_truncated", str(exc)[:80], content[:100],
                     )
                     if content:
@@ -591,7 +822,7 @@ class BaseISDAgent(ABC):
                 except Exception:
                     pass
             self.trajectory.log_llm_call(0, 0)
-            self.trajectory.log_step(type(self).__name__, "llm_error", "", str(exc))
+            self.trajectory.log_recovery_event(type(self).__name__, "llm_error", "", str(exc))
             return ""
 
     def _invoke_with_retry(self, llm, messages: list[dict], max_retries: int) -> str:
@@ -606,7 +837,12 @@ class BaseISDAgent(ABC):
             "retries_left": max_retries,
         })
         started = time.time()
-        result = llm.invoke(messages)
+        # One slot from the run's call gate for the duration of the request:
+        # the multi arm fans out content/rubric Developer calls in one
+        # superstep, and an endpoint that caps concurrent requests per user
+        # answers the overflow with 429 (see core/ratelimit.py).
+        with gate_for(self.config).hold():
+            result = llm.invoke(messages)
         content = result.content if hasattr(result, "content") else str(result)
         prompt_tokens, completion_tokens = _extract_token_usage(result)
         duration_ms = (time.time() - started) * 1000
@@ -635,7 +871,7 @@ class BaseISDAgent(ABC):
             # Output was not valid JSON — send a targeted correction turn quoting
             # the exact parse error so the model can fix that specific spot.
             hint = _json_error_hint(content)
-            self.trajectory.log_step(type(self).__name__, "retry", hint or "empty/invalid JSON", content[:100])
+            self.trajectory.log_recovery_event(type(self).__name__, "retry", hint or "empty/invalid JSON", content[:100])
             correction_messages = messages + [
                 {"role": "assistant", "content": content},
                 {"role": "user", "content": (

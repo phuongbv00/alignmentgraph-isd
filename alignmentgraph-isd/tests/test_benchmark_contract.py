@@ -20,39 +20,50 @@ from alignmentgraph_isd.core.trajectory import TrajectoryLogger
 
 from conftest import load_brief
 
-# Recorded from results/test_90_benchmark_Qwen3.5-9B_r2_20260726_160306, i.e. a
-# run made before the on_event hook existed.
 # What the benchmark reads. `trajectory_deep` is additive and deliberately not
-# in this set — the point of the assertion below is that adding it did not
-# disturb any of these.
+# in this set. The judge surface is exactly `tool_calls`/`reasoning_steps`/
+# `agent_interactions` (the evaluator's `_format_trajectory`); everything else
+# an agent did travels in the single type-tagged `events` list (2026-08-27:
+# it replaced the six per-type streams, and the token/latency scalars moved to
+# `metadata.token_usage` where the benchmark's uniform accounter overwrites
+# them — the pooling script `ablation/08_pool_ablation_runs.py` reads `events`
+# with a per-stream fallback for pre-existing runs).
 RESULT_KEYS = {"addie_output", "trajectory", "metadata", "graph", "graph_dot"}
 
-TRAJECTORY_LISTS = {
-    "tool_calls", "reasoning_steps", "agent_interactions", "agent_steps",
-    "node_edits", "validation_events", "verifier_events", "repair_events",
-    "retrieval_events",
+TRAJECTORY_LISTS = {"tool_calls", "reasoning_steps", "agent_interactions", "events"}
+EVENT_ACTIONS = {
+    "retry", "regen_empty_section", "agent_error", "llm_error", "salvage_truncated",
+    "invalid_action", "submit_rejected", "submit_invalid_final", "repeated_tool_call",
+    "commit_invalid_section", "agentic_fallback", "repair", "node_add", "node_update",
+    "validate", "check", "audit", "retrieval", "dev_plan",
 }
-TRAJECTORY_SCALARS = {"llm_calls": int, "latency_ms": float}
-TOKEN_USAGE_KEYS = {"prompt_tokens", "completion_tokens"}
+TOKEN_USAGE_KEYS = {"prompt_tokens", "completion_tokens", "total_tokens", "llm_calls"}
 
+# `violations` and `schema_violations` were dropped 2026-08-27: both were
+# byte-for-byte copies of `audit.violations` / `audit.schema_violations`
+# with no reader anywhere (benchmark, scripts, server, tests).
 METADATA_KEYS = {
-    "llm", "run_config", "design_brief_id", "violations", "errors",
-    "validation_errors", "schema_violations", "audit", "task_attempts",
+    "llm", "token_usage", "run_config", "design_brief_id", "errors",
+    "validation_errors", "audit", "task_attempts",
     "repair_metrics",
 }
 RUN_CONFIG_KEYS = {
-    "enable_verifier", "enable_graph_context", "use_rag",
-    "regen_budget", "regen_backoff_seconds",
+    "agent_mode", "context_mode",
+    "use_rag", "regen_budget", "regen_backoff_seconds",
+    # Serving posture: how many requests the run was allowed to keep in flight
+    # (core/ratelimit.py). Recorded because a 429-throttled arm and a clean one
+    # are otherwise indistinguishable in a results dir.
+    "llm_max_concurrency", "llm_min_interval_seconds",
 }
 AUDIT_KEYS = {
     "node_counts", "missing_node_types", "missing_section_keys", "schema_violations",
     "objective_node_id", "objective_ids", "objective_count", "unmeasured_objectives",
-    "unsupported_objectives", "unevaluated_objectives", "verifier_violations",
+    "unsupported_objectives", "unevaluated_objectives", "violations",
     "ready_to_aggregate", "relation_coverage", "summary",
 }
 REPAIR_METRIC_KEYS = {
     "repair_events", "repair_success_rate", "validation_error_count",
-    "verifier_rounds", "peak_violation_count", "residual_violation_count",
+    "check_rounds", "peak_violation_count", "residual_violation_count",
 }
 ADDIE_PHASES = {"analysis", "design", "development", "implementation", "evaluation"}
 GRAPH_KEYS = {"nodes", "edges", "objective_alignment", "relation_coverage", "metadata"}
@@ -100,35 +111,48 @@ def test_the_deep_trajectory_is_additive(result):
     assert deep["actions"] and deep["summary"]["action_count"] == len(deep["actions"])
 
     # It describes the same run without touching the recorded streams.
-    assert set(result["trajectory"]) == TRAJECTORY_LISTS | set(TRAJECTORY_SCALARS) | {"token_usage"}
+    assert set(result["trajectory"]) == TRAJECTORY_LISTS
     assert "actions" not in result["trajectory"]
 
-    # Every action says who did it and what kind of work it was.
+    # Every action has the stable timestamp/agent/action/context envelope,
+    # and — 2026-08-27 — a real, non-empty agent: harness-level events (phase
+    # boundaries, routing checkpoints, the residual audit) are attributed to
+    # WORKFLOW_ORCHESTRATOR rather than falling back to whoever acted last.
     for action in deep["actions"]:
-        assert action["kind"]
-        assert "actor" in action and "phase" in action
-        assert action["seq"] >= 1
+        assert list(action) == ["timestamp", "agent", "action", "context"]
+        assert action["agent"], action
+        assert action["action"]
+        assert isinstance(action["context"], dict)
 
 
 def test_trajectory_streams(result):
     trajectory = result["trajectory"]
-    assert set(trajectory) == TRAJECTORY_LISTS | set(TRAJECTORY_SCALARS) | {"token_usage"}
+    assert set(trajectory) == TRAJECTORY_LISTS
     for key in TRAJECTORY_LISTS:
         assert isinstance(trajectory[key], list), f"{key} is no longer a list"
-    for key, expected in TRAJECTORY_SCALARS.items():
-        assert isinstance(trajectory[key], expected), f"{key} changed type"
-    assert set(trajectory["token_usage"]) == TOKEN_USAGE_KEYS
+    # Every event has the same concurrent-writer-safe envelope, agent included.
+    for event in trajectory["events"]:
+        assert event["action"] in EVENT_ACTIONS, event
+        assert list(event) == ["timestamp", "agent", "action", "context"]
+        assert event["agent"], event
+    assert set(result["metadata"]["token_usage"]) == TOKEN_USAGE_KEYS
 
 
 def test_agent_step_record_shape(result):
-    """`agent_steps` is the complete trace; `tool_calls` is the BFCL-style view
-    the benchmark's trajectory scorer reads."""
-    step = result["trajectory"]["agent_steps"][0]
-    assert set(step) == {"agent_name", "action", "input_summary", "output_summary", "timestamp"}
-
+    """`tool_calls` is the BFCL-style view the benchmark's trajectory scorer
+    reads; the full untruncated step record lives only in the deep action log.
+    `agent_interactions` carries exactly the fields the scorer formats
+    (agent/action/iteration) — no second copy of the output summary."""
     call = result["trajectory"]["tool_calls"][0]
     assert set(call) == {"step", "tool", "args", "result", "timestamp"}
     assert set(call["args"]) == {"agent", "action", "input_summary"}
+
+    interaction = result["trajectory"]["agent_interactions"][0]
+    assert set(interaction) == {"iteration", "agent", "action", "timestamp"}
+
+    step_action = next(a for a in result["trajectory_deep"]["actions"]
+                       if a["action"] == "agent_step")
+    assert {"agent_action", "input_summary", "output_summary"} <= set(step_action["context"])
 
 
 def test_metadata_keys(result):
@@ -149,7 +173,9 @@ def test_graph_dump_shape(result):
     assert set(graph) == GRAPH_KEYS
     assert set(graph["nodes"][0]) == NODE_KEYS
     assert set(graph["edges"][0]) == EDGE_KEYS
-    assert set(graph["relation_coverage"]) == {f"R{i}" for i in range(1, 14)}
+    from alignmentgraph_isd.core.alignment_graph import alignment
+    assert set(graph["relation_coverage"]) == set(alignment.REGISTRY)
+    assert len(alignment.REGISTRY) == 18
 
     for flags in graph["objective_alignment"].values():
         assert set(flags) == {"measured", "supported", "evaluated", "bloom_ok", "aligned"}
@@ -162,6 +188,35 @@ def test_graph_dump_shape(result):
 
 def test_graph_dot_is_a_digraph(result):
     assert result["graph_dot"].lstrip().startswith("digraph")
+
+
+def test_prose_arm_omits_graph_keys_but_keeps_the_rest_of_the_contract():
+    """The prose arm runs graph-free, so ``graph``/``graph_dot`` are ABSENT —
+    the benchmark writes ``<agent_id>_graph.json``/``.dot`` only when the keys
+    exist, so absence (never an empty placeholder) is the contract. Everything
+    else the benchmark reads keeps its shape; ``metadata.audit`` is empty
+    (nothing to audit is the auditability contrast, not a missing field)."""
+    from conftest import FakeChatModel
+
+    config = HarnessRunConfig(context_mode="prose")
+    config.llm_factory = lambda: FakeChatModel()
+    result = run_design_brief(load_brief("java_oop_brief.json"), config)
+
+    assert (RESULT_KEYS - {"graph", "graph_dot"}) <= set(result)
+    assert "graph" not in result and "graph_dot" not in result
+    # Its inspectability artifact is the raw blackboard instead (saved as
+    # <agent_id>_prose.json): verbatim per-step documents, no relations, no
+    # coverage — content dump, not an audit.
+    prose = result["prose"]
+    assert set(prose) == {"documents", "metadata"}
+    assert prose["documents"]["objective"]["learning_objectives"]
+    assert prose["metadata"]["document_count"] == len(prose["documents"])
+    assert set(result["addie_output"]) == ADDIE_PHASES
+    assert set(result["metadata"]) == METADATA_KEYS
+    assert set(result["metadata"]["run_config"]) == RUN_CONFIG_KEYS
+    assert result["metadata"]["audit"] == {}
+    assert set(result["trajectory"]) == TRAJECTORY_LISTS
+    assert set(result["metadata"]["token_usage"]) == TOKEN_USAGE_KEYS
 
 
 def test_scenario_id_still_maps_to_brief_id():

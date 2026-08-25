@@ -60,8 +60,6 @@ type Action =
   | { type: 'graph'; graph: AlignmentGraphPayload }
   | { type: 'connected'; value: boolean }
 
-const TERMINAL: RunStatus[] = ['succeeded', 'failed', 'cancelled', 'interrupted']
-
 function reducer(state: RunStreamState, action: Action): RunStreamState {
   switch (action.type) {
     case 'reset':
@@ -166,11 +164,15 @@ export function useRunStream(runId: string | null): RunStreamState {
     source.addEventListener('hello', (message) => {
       const payload = JSON.parse((message as MessageEvent).data) as HelloPayload
       dispatch({ type: 'hello', payload })
-      // A run that was already over when we connected: the replay has been
-      // delivered in full, so stop rather than let EventSource retry.
-      if (payload.replay && TERMINAL.includes(payload.status)) {
-        setTimeout(close, 0)
-      }
+      // Do NOT close here even for an already-terminal replay: `hello` is
+      // only the first SSE frame, and the hundreds of events that follow it
+      // in the same response have not necessarily been received yet — SSE
+      // delivers messages as the browser parses them, not all at once when
+      // the response completes. Closing on `hello` raced that delivery and
+      // truncated the replay at an arbitrary point (2026-08-27 bug: the same
+      // finished run showed a different action count on every reload).
+      // `onEvent` below closes once the real terminal event arrives, by
+      // which point everything before it is guaranteed already dispatched.
     })
 
     source.addEventListener('graph', (message) => {
@@ -189,7 +191,7 @@ export function useRunStream(runId: string | null): RunStreamState {
     const kinds = [
       'run_started', 'phase_started', 'phase_finished', 'llm_started', 'llm_finished',
       'action',
-      'agent_step', 'node_edit', 'llm_call', 'validation_event', 'verifier_event',
+      'agent_step', 'node_edit', 'llm_call', 'validation_event', 'check_event',
       'repair_event', 'retrieval_event', 'run_cancelling',
       'run_finished', 'run_failed', 'run_cancelled',
     ]

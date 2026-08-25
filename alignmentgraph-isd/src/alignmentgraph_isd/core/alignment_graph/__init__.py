@@ -1,0 +1,27 @@
+"""The AlignmentGraph subsystem — the artifact graph and everything only it
+powers. This package is exactly the bundle the `context_mode` ablation axis
+ablates: a `prose` run uses nothing from here (see config.py). Module-level
+imports of ``NodeType`` do exist outside this package — it is a ``StrEnum``
+whose members double as artifact-family keys — but every call that touches a
+real graph is gated on ``context_mode`` (``BaseISDAgent._graph_mode``,
+``NodeFactory._graph_mode``, ``RepairContext.graph_mode``), and a prose run
+holds ``graph = None``, so a stray call raises rather than leaking silently.
+
+- ``graph.py`` — ``AlignmentGraph`` + ``NodeType``: the element/section node
+  store and its edge list.
+- ``alignment.py`` — the 18-relation ``REGISTRY`` (C1–C7 core + P1–P11
+  provenance) and the deterministic establishers.
+- ``audit.py`` — ``GraphAuditor``: the residual audit (unmeasured/
+  unsupported/unevaluated objectives, relation coverage).
+- ``viz.py`` — node-link/DOT dumps (`<agent_id>_graph.json` / `.dot`).
+
+``AlignmentGraph`` and ``NodeType`` are re-exported here so the package move
+kept every ``from .alignment_graph import AlignmentGraph, NodeType`` import
+site working unchanged.
+"""
+from .graph import AlignmentGraph, NodeType
+from . import alignment
+from . import audit
+from . import viz
+
+__all__ = ["AlignmentGraph", "NodeType", "alignment", "audit", "viz"]

@@ -33,13 +33,13 @@ class EventKind:
     LLM_STARTED = "llm_started"
     LLM_FINISHED = "llm_finished"
     # One entry of the deep trajectory: a graph read, a relation walk, a node
-    # write, an alignment edge, a model call, a verification, a repair.
+    # write, an alignment edge, a model call, a check, a repair.
     ACTION = "action"
     AGENT_STEP = "agent_step"
     NODE_EDIT = "node_edit"
     LLM_CALL = "llm_call"
     VALIDATION = "validation_event"
-    VERIFIER = "verifier_event"
+    CHECK = "check_event"
     REPAIR = "repair_event"
     RETRIEVAL = "retrieval_event"
     # Not terminal: the request has been accepted but the run is still winding

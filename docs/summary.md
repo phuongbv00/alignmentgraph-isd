@@ -7,7 +7,7 @@
 > - Đặc tả canonical RQ2 protocol (đầy đủ, không nén): [`docs/rq2_protocol.md`](rq2_protocol.md) — paper được cập nhật
     TỪ file đó.
 > - Workflow benchmark + metrics reference: [`docs/benchmark_guides.md`](benchmark_guides.md).
-> - **Số liệu**: mọi con số trong paper sinh tự động (`pooled_ladder.json` → `09/13/14_gen_*` + `ablation/11_gen_*` →
+> - **Số liệu**: mọi con số trong paper sinh tự động (`pooled_ladder.bk.json` → `09/13/14_gen_*` + `ablation/11_gen_*` →
     `docs/generated/`), không gõ tay. Bản đọc cho người: `docs/results.md`. Mục 9 dưới đây chỉ mô tả **hình dạng** kết
     quả và thứ tự narrative.
 > - **Văn phong & độ dài (2026-08-11)**: bám khung 15 mục nhưng KHÔNG bôi cho đủ mục — mục ít nội dung viết ngắn;
@@ -18,10 +18,16 @@
     token cap; ADDIE cạnh tranh — lợi ở model nhỏ, parity ở model lớn ("competitive and robust", không "superior");
     graph context cải thiện *các tín hiệu đo được*; graph dump → auditability + teacher-in-the-loop; verifier =
     backstop check/repair + nguồn evidence audit. **Paper không bao giờ đề cập RAG** (RAG chỉ thuộc luận văn).
+> - **Thuật ngữ điểm số (chốt 2026-08-29)**: điểm từ ISD-Agent-Bench = **"LLM judge score(s)"** (không "judge
+    signal" / "judge-based measures"); giá trị panel = **"alignment score(s)"** (không "alignment signal" / "panel
+    signal"); tập hợp vẫn là "alignment panel". Tên từng score vẫn theo phép toán (`*_similarity`, congruence,
+    Porter, Webb), không score nào tên "precision". Riêng câu guard *"measurable signals of constructive
+    alignment"* giữ nguyên chữ "signal" — vai trò claim-scoping (score là tín-hiệu-của construct, không phải
+    construct).
 > - **Backlog Q2**: `docs/review_q2.md` (tái lập 2026-08-17 từ góp ý thầy; giữ nhãn R2/R4 cũ).
-> - **Bản VN (`acm/vn/`) đã freeze sau sync VN→EN 2026-08-17** — mọi chỉnh sửa từ nay trên bản EN.
+> - **Bản VN (`acm/vn/`) đã XOÁ 2026-08-29** (freeze từ 2026-08-17, khôi phục được qua git history nếu cần) — chỉ còn bản EN.
 > - **SKELETON 7 MỤC (user chốt 2026-08-11, theo khảo sát 12 paper — đồng hình EduPlanner TLT 2025)**: thân bài =
-    Introduction / Related Work / **AlignmentGraph-ISD** (problem setting nén → harness → protocol) /
+    Introduction / Related Work / **AlignmentGraph-ISD** (problem setting nén → MAS → protocol) /
     **Experimental Design** (đổi tên từ "Experimental Methodology") / Results / **Discussion** (kết bằng subsection
     "Threats to validity and limitations" — giữ đủ construct/internal/external/conclusion + future work) /
     Conclusion. File: `03_problem_formulation.tex` và `08_threats_limitations.tex` **bỏ** (nội dung gộp vào 04 và 07);
@@ -40,16 +46,17 @@ Một đoạn thống nhất, 7 phần theo đúng trình tự; mỗi phần vi�
 
 1. **Bối cảnh** (1 câu): LLM thương mại sinh được chương trình giảng dạy chất lượng cao và ngày càng được dùng trong
    ISD.
-2. **Vấn đề** (1 câu): chi phí suy luận, phụ thuộc API, dữ liệu người học qua bên thứ ba → cơ sở giáo dục cần
-   open-weight SLM tại chỗ; nhưng model nhỏ đi thì chất lượng — trước hết là sự ăn khớp mục tiêu↔hoạt động↔đánh giá —
-   phụ thuộc nhiều hơn vào harness.
-3. **Khoảng trống** (1–2 câu, hạn chế cụ thể, không chung chung): (a) duy trì chất lượng khi thu nhỏ model nền chưa
-   được nghiên cứu như mục tiêu thiết kế + đánh giá của hệ tác tử ISD; (b) constructive alignment hiện chỉ được chấm
-   gián tiếp qua LLM-judge rubric — cùng họ instrument với thứ sinh ra đầu ra.
-4. **Phương pháp** (2 câu, map đúng 2 khoảng trống): (a) AlignmentGraph-ISD — harness đa tác tử tổ chức sinh quanh
-   alignment graph, trạng thái alignment tường minh + kiểm được + audit được (graph dump); (b) automated
-   constructive-alignment evaluation protocol mở rộng ISD-Agent-Bench — không LLM trong đo lường, panel 7 tín hiệu
-   không thứ bậc.
+2. **Vấn đề** (1–2 câu, sửa 2026-08-29 — burden-shift, KHÔNG viết "phụ thuộc vào MAS" vì MAS là giải pháp đề xuất,
+   không phải tiên đề): chi phí suy luận, phụ thuộc API, dữ liệu người học qua bên thứ ba → cơ sở giáo dục cần
+   open-weight SLM tại chỗ; model nhỏ đi thì gánh nặng chất lượng dịch chuyển từ model sang hệ bao quanh nó — và thứ
+   lâm nguy trước tiên là sự ăn khớp mục tiêu↔hoạt động↔đánh giá (constructive alignment), vốn được các hệ hiện có phó
+   thác cho model tự duy trì ngầm.
+3. **Khoảng trống** (1 câu, MỘT gap duy nhất — chốt 2026-08-29, bỏ gap đo lường khỏi hàng gap): duy trì chất lượng
+   khi thu nhỏ model nền chưa được nghiên cứu như mục tiêu thiết kế + đánh giá của hệ tác tử ISD.
+4. **Phương pháp** (1 câu, map vào gap duy nhất): AlignmentGraph-ISD — MAS tổ chức sinh quanh alignment graph, trạng
+   thái alignment tường minh + kiểm được + audit được (graph dump). Phép đo alignment không-LLM KHÔNG đứng thành câu
+   phương pháp/đóng góp riêng — chỉ xuất hiện trong câu evaluation của phần thiết lập ("We evaluate it with
+   ISD-Agent-Bench and a deterministic, no-LLM alignment-score measurement…").
 5. **Thiết lập thực nghiệm** (1 câu): 90 scenario ISD-Agent-Bench, 6 hệ đối sánh, dải Qwen 0.8B–9B (4 size × 3 run độc
    lập), chấm bằng cả judge rubric lẫn alignment panel; ablation 3 arm bên trong ladder.
 6. **Kết quả định lượng** (2–3 câu, số nổi bật nhất — lấy từ macro `docs/generated/`, không gõ tay):
@@ -59,8 +66,10 @@ Một đoạn thống nhất, 7 phần theo đúng trình tự; mỗi phần vi�
       mọi size; nếu nêu total_score thì nói thật chỗ thua ở size nhỏ nhất.
     - Alignment + scale: dẫn panel mọi size theo quy tắc đọc pre-specified; khoảng cách nới rộng khi model nhỏ đi
       (DiD + p).
-7. **Ý nghĩa** (1 câu): cơ chế cấp harness giữ chất lượng và tín hiệu alignment ổn định hơn khi thu nhỏ model trên dải
-   Qwen 0.8B–9B → hướng triển khai ISD bằng SLM tại chỗ, kèm quy trình audit alignment tái sử dụng được.
+7. **Ý nghĩa** (1 câu): cơ chế cấp MAS giữ chất lượng và tín hiệu alignment ổn định hơn khi thu nhỏ model trên dải
+   Qwen 0.8B–9B → hướng triển khai ISD bằng SLM tại chỗ, kèm alignment graph xuất được để audit
+   (teacher-in-the-loop) — KHÔNG nêu "quy trình audit tái sử dụng được" (protocol không còn là deliverable,
+   2026-08-29).
 
 **Ràng buộc:**
 
@@ -84,41 +93,59 @@ evaluation. Không lặp nguyên cụm của title.
 
 ## 4. Introduction — `01_introduction.tex`
 
-> **CẤU TRÚC MỚI (user chốt 2026-08-12, bám phần đầu abstract; làm bản VN trước, EN kệ):** 4 khối kinh điển:
+> **CẤU TRÚC (cập nhật 2026-08-29 — lean: MỘT gap, MỘT đóng góp; thay khối 2026-08-12):** 4 khối kinh điển:
 > (1) **Bối cảnh chung** — giới thiệu lĩnh vực + tầm quan trọng: LLM thương mại hỗ trợ tốt ISD end-to-end (có cite
 > củng cố; mức claim: chất lượng "tiệm cận, một số thiết lập ngang bằng Ở CẤP THÀNH PHẦN" — không claim parity cho
 > trọn bộ chương trình), rồi vấn đề triển khai — API bên thứ 3, chi phí cao, rủi ro an toàn dữ liệu (có cite;
 > **mức claim CHỐT 2026-08-12: "được ghi nhận là rào cản triển khai" — KHÔNG viết "gây khó khăn lớn"**, evidence chỉ
-> đỡ mức documented-barrier; caveat cite: zesch2024flexi không dùng cho vế privacy), dẫn tới hướng SLM on-premise +
-> vai trò harness khi model nhỏ đi;
-> (2) **Khoảng trống nghiên cứu** — 2 gap các nghiên cứu trước chưa giải quyết, phát biểu "chưa đặt làm trọng tâm"
-> (scope về mức ưu tiên, không phủ nhận tồn tại nghiên cứu đề cập; cite danger papers); **dạng phát biểu chốt
-> 2026-08-12: claim-về-công-trình ("chưa có công trình nào cho thấy…"), KHÔNG dùng claim-về-hệ ("chưa có hệ nào duy
-> trì…") — chỉ văn liệu là thứ khảo sát được;**
-> (3) **Câu hỏi nghiên cứu** — đúng 2 RQ lấp thẳng 2 gap, **KHÔNG tách RQ1a/RQ1b** (RQ1 một câu gộp cả mức lẫn
-> "khoảng cách có nới rộng khi thu nhỏ");
-> (4) **Ý nghĩa** — tóm tắt 2 đóng góp chính (mục 4.6) + một đoạn cấu trúc bài (4.7).
+> đỡ mức documented-barrier; caveat cite: zesch2024flexi không dùng cho vế privacy), dẫn tới hướng SLM on-premise,
+> rồi KẾT bằng **nấc alignment** (chốt 2026-08-29): (i) burden-shift — model nhỏ đi thì gánh nặng chất lượng dịch
+> chuyển sang hệ bao quanh, decomposition là lối ra có literature đỡ nhưng KHÔNG đơn điệu (`cho2026harness`) nên
+> phải đo; **KHÔNG viết "chất lượng phụ thuộc vào MAS"** — MAS chỉ xuất hiện từ phần method trở đi; (ii) cái khó
+> của ISD trọn gói là constructive alignment — chất lượng nằm ở quan hệ objective↔activity↔assessment; hệ hiện có
+> để coherence này NGẦM trong model (văn xuôi + context); khả năng tự giữ nhất quán dài hơi là thứ **kỳ vọng** suy
+> giảm trước khi model nhỏ đi (mức claim: expectation có cơ sở, không phải định luật) → alignment vỡ trước, theo
+> kiểu "đọc mượt nhưng lệch" (câu fluent-but-misaligned kéo từ đoạn measurement cũ lên đây);
+> (2) **Khoảng trống nghiên cứu** — **MỘT gap duy nhất, thuần thiết kế** (2026-08-29; gap đo lường cũ bị hạ khỏi
+> hàng gap): hệ hiện có xây/kiểm chứng trên model thương mại mạnh, và không hệ nào trong số khảo sát biểu diễn quan
+> hệ objective–activity–assessment thành trạng thái tường minh kiểm được (claim khảo sát được về văn liệu); **dạng
+> phát biểu giữ nguyên chốt 2026-08-12: claim-về-công-trình ("chưa có công trình nào cho thấy…"), KHÔNG
+> claim-về-hệ**; cite danger papers;
+> (3) **Aim + objectives** — aim mang câu cầu nối (từ 4.5): thay vì trông vào model tự giữ nhất quán ngầm, hệ duy
+> trì quan hệ alignment thành trạng thái tường minh mà model cỡ nào cũng kiểm được; 4 objectives giữ nguyên
+> (objective 3 = alignment panel, phát biểu như objective ĐÁNH GIÁ, không phải đóng góp);
+> (4) **Đóng góp (MỘT — mục 4.6) + preview đánh giá 2–3 câu + đoạn cấu trúc bài (4.7)** — phép đo alignment justify
+> như **instrument requirement sinh từ chính claim** (judge không lộ được quan hệ alignment; phép đo sẵn có cần bộ
+> chuẩn tiền-soạn mà thiết kế máy sinh không có → lắp tín hiệu deterministic từ tiêu chí established, đặc tả ở
+> Experimental Design §Measures); **KHÔNG claim novelty của phép đo, KHÔNG gọi nó là protocol/method/đóng góp** —
+> văn phong "we assemble/operationalize established criteria".
 > Khối "ý tưởng & phương pháp" (4.5 cũ) không còn là khối riêng trong intro — tiền đề decomposition + demarcation
-> vẫn BUỘC ở Method. Các mục 4.1–4.5 dưới đây giữ làm kho nội dung/ràng buộc, không còn là dàn bài intro.
+> vẫn BUỘC ở Method; riêng CÂU CẦU NỐI (giả thuyết ngoại hiện hoá coherence) phải có mặt trong khối (1)/(3) dạng
+> nén, nếu không gap→method thành non sequitur. Các mục 4.1–4.5 dưới đây giữ làm kho nội dung/ràng buộc, không còn
+> là dàn bài intro.
 
 **4.1–4.2 Bối cảnh & vấn đề.** LLM thương mại sinh được chương trình giảng dạy chất lượng cao, nhưng chi phí suy luận,
 phụ thuộc API và việc chuyển dữ liệu người học qua bên thứ ba cản trở triển khai tại cơ sở giáo dục. Open-weight SLM
-triển khai tại chỗ là cân bằng thực tế hơn (chất lượng / chi phí / kiểm soát dữ liệu) — nhưng model nhỏ đi thì chất
-lượng toàn hệ phụ thuộc nhiều hơn vào **harness** (quản lý trạng thái, điều phối, kiểm soát chất lượng).
+triển khai tại chỗ là cân bằng thực tế hơn (chất lượng / chi phí / kiểm soát dữ liệu) — nhưng model nhỏ đi thì gánh
+nặng chất lượng dịch chuyển từ model sang **hệ bao quanh nó** (phân rã, điều phối, kiểm soát chất lượng), và thứ lâm
+nguy trước tiên là constructive alignment, vốn đang được model tự duy trì ngầm (sửa 2026-08-29 — không viết "phụ
+thuộc vào MAS": premise phải trung tính, MAS là giải pháp).
 
-**4.3–4.4 Hạn chế nghiên cứu trước & khoảng trống** (chi tiết ở mục 5):
+**4.3–4.4 Hạn chế nghiên cứu trước & khoảng trống** (chi tiết ở mục 5; từ 2026-08-29 chỉ còn MỘT gap):
 
-1. Nghiên cứu ISD/lesson-plan tập trung tự động hoá, cá nhân hoá, chất lượng trên model mạnh; **duy trì chất lượng khi
-   thu nhỏ model nền chưa được nghiên cứu như một mục tiêu thiết kế + đánh giá** của hệ tác tử ISD.
-2. Benchmark hiện có (kể cả ISD-Agent-Bench) chấm chủ yếu bằng LLM-judge rubric. Đo alignment tự động không mới (
-   Porter/Webb, embedding item↔standards — arXiv 2510.05129), nhưng chúng đo ăn khớp với **bộ chuẩn có sẵn do người soạn
-   **; chưa ai đo alignment **nội tại** của thiết kế **do máy sinh** (mục tiêu, hoạt động, đánh giá đều là đầu ra của hệ
-   được đo), và **không benchmark ISD nào tích hợp thước đo như vậy** → constructive alignment chỉ được đánh giá gián
-   tiếp qua cùng họ instrument với thứ sinh ra đầu ra.
+1. Nghiên cứu ISD/lesson-plan tập trung tự động hoá, cá nhân hoá, chất lượng trên model mạnh; không hệ nào biểu diễn
+   quan hệ objective–activity–assessment thành trạng thái tường minh kiểm được trong lúc sinh; **duy trì chất lượng
+   khi thu nhỏ model nền chưa được nghiên cứu như một mục tiêu thiết kế + đánh giá** của hệ tác tử ISD.
+2. *(Hạ cấp 2026-08-29 — không còn là gap/đóng góp, chỉ là **justification cho instrument** trong Experimental
+   Design và Related Work §5.3):* benchmark hiện có chấm chủ yếu bằng LLM-judge rubric (bias hệ thống, cùng họ với
+   generator, không lộ quan hệ alignment); đo alignment tự động sẵn có (Porter/Webb, embedding item↔standards) cần
+   **bộ chuẩn tiền-soạn** mà thiết kế do máy sinh không có → phải lắp tín hiệu deterministic từ tiêu chí established
+   để chấm chính thiết kế được sinh. KHÔNG phát biểu các câu này dưới dạng gap-claim ("chưa ai…", "không benchmark
+   nào tích hợp…") ở bất kỳ đâu trong paper.
 
 **4.5 Ý tưởng & phương pháp** (nén — lập luận đầy đủ ở mục 7):
 
-- Ràng buộc triển khai → SLM → SLM yếu ở tác vụ mở, đa ràng buộc → hướng cấp harness: **thu hẹp tác vụ mỗi lời gọi model
+- Ràng buộc triển khai → SLM → SLM yếu ở tác vụ mở, đa ràng buộc → hướng cấp MAS: **thu hẹp tác vụ mỗi lời gọi model
   phải gánh** (phân rã theo mối quan tâm ISD).
 - Tiền đề "tác vụ hẹp nằm trong tầm với model yếu hơn tác vụ rộng" **kế thừa từ literature** (`zhou2023leasttomost`,
   `khot2023decomposed`, `ferraz2024decrim`, `shen2024multillmagent`, `belcak2025slm`), **không phải claim nghiên cứu này
@@ -126,22 +153,22 @@ lượng toàn hệ phụ thuộc nhiều hơn vào **harness** (quản lý tr�
 - **Cấm**: viết như thể literature bảo chứng vế mạnh hơn "lợi ích phân rã lớn dần khi model nhỏ đi" — `cho2026harness`
   cho kết quả không đơn điệu; quan hệ đó là **thứ được đo** (RQ1b, DiD).
 - Phân rã sinh vấn đề mới: các mảnh phải nhất quán với nhau — trong ISD, chính là **ăn khớp sư phạm** → cần substrate
-  chung, lược đồ do constructive alignment (Biggs–Tang) định hình → **alignment graph**. Giả thuyết: harness tổ chức
+  chung, lược đồ do constructive alignment (Biggs–Tang) định hình → **alignment graph**. Giả thuyết: MAS tổ chức
   sinh quanh trạng thái tường minh này giảm phụ thuộc vào khả năng tự duy trì nhất quán của model — khả năng suy giảm
   khi model nhỏ đi.
 
-**4.6 Đóng góp** (CHỐT 2026-08-11: đúng **HAI** đóng góp — bỏ đóng góp 3 cũ "scale ladder"; thiết kế ladder 4 size ×
-3 run + SD giữa run giờ là đặc điểm rigor của methodology (mục 8.3, 9.7), nêu trong câu preview thực nghiệm của
-Introduction, KHÔNG đánh số đóng góp):
+**4.6 Đóng góp** (CHỐT 2026-08-29: đúng **MỘT** đóng góp — hạ "evaluation protocol" khỏi hàng đóng góp theo hướng
+paper lean; thay chốt HAI đóng góp 2026-08-11. Ladder 4 size × 3 run + SD giữa run vẫn là đặc điểm rigor của
+methodology (mục 8.3, 9.7), nêu trong câu preview thực nghiệm, KHÔNG đánh số đóng góp):
 
-1. **AlignmentGraph-ISD** — harness đa tác tử với alignment graph là trạng thái alignment tường minh, kiểm được, audit
+1. **AlignmentGraph-ISD** — MAS với alignment graph là trạng thái alignment tường minh, kiểm được, audit
    được, cho sinh chương trình ADDIE.
-2. **Automated constructive-alignment evaluation protocol / benchmark extension** — mở rộng ISD-Agent-Bench: không LLM
-   trong đo lường, điểm là hàm cố định của văn bản; panel 7 tín hiệu phẳng không thứ bậc, hai họ instrument độc lập cơ
-   chế; không claim construct mới — operationalize tiêu chí đã thiết lập (Biggs–Tang, QM, Porter/Webb); instrument mới
-   không thừa hưởng validity qua trích dẫn — bắc cầu bằng bằng chứng (chưa có nhịp con người). Đặc tả + mức claim chính
-   xác: `docs/rq2_protocol.md`. **Trình bày như phương pháp trong mục 7 (đề mục riêng SAU phần harness — xem 7.8),
-   không phải trong 8.6.**
+
+Phép đo alignment không-LLM: trình bày trọn trong mục 8.6 (Experimental Design §Measures) như **measurement setup**
+— văn phong "assemble/operationalize established criteria", không claim novelty, không đánh số đóng góp, không có
+đề mục "protocol" trong Method. Đặc tả kỹ thuật + mức claim vẫn theo `docs/rq2_protocol.md` (file đó là spec nội
+bộ; positioning trong paper đã hạ cấp — xem note đầu file đó). Nếu sau này nhắm venue khác muốn nâng lại thành
+đóng góp: nâng ngược từ 8.6 lên, spec không đổi.
 
 **4.7 Cấu trúc bài** — một đoạn, bắt buộc.
 
@@ -157,19 +184,28 @@ Tổ chức theo nhóm, không liệt kê từng bài:
   Instructional Agents (báo cost nhưng vẫn API thương mại); precedent đo alignment bằng LM/embedding (arXiv 2510.05129);
   BERT-Bloom classification (Li et al. 2022 EDM; BloomBERT chỉ là related work). Phạm vi khảo sát:
   `docs/paper/refs-deployment-survey.md`.
-- **5.4 Bảng so sánh + vị trí đề xuất** — kết mục bằng bảng tiêu chí đã/chưa đáp ứng; khoảng trống dẫn thẳng tới phương
-  pháp.
-- **Cấm**: tuyên bố đề xuất *tốt hơn* trong Related Work.
+- **5.4 Bảng so sánh + vị trí đề xuất** (sửa 2026-08-29 theo hướng MỘT gap): bảng positioning theo tiêu chí **hệ**
+  (ISD end-to-end / Local SLM / Scale / Explicit alignment state) — bỏ hai cột đo lường (Intr./Bench) và hai hàng
+  measurement-only; synthesis nêu MỘT unresolved combination (hệ ISD on-premise đánh giá theo dải size + trạng thái
+  alignment tường minh), dẫn thẳng tới phương pháp. Mảng đo lường (5.3) giữ nguyên trong prose làm justification
+  cho instrument của 8.6, không claim gap.
+- **Cấm**: tuyên bố đề xuất *tốt hơn* trong Related Work; phát biểu gap-claim cho phép đo ("chưa ai đo…", "không
+  benchmark nào tích hợp…").
 
 ## 6. System Model & Problem Formulation — GỘP VÀO `04_method.tex` (2026-08-11)
 
 > File `03_problem_formulation.tex` đã bỏ; nội dung mục này tinh giảm và trở thành phần mở đầu của mục 7 (Method):
 > giữ hình kiến trúc (`fig:architecture`), predicate `aligned(o)` (`eq:aligned`) và deployment envelope
 > (`sec:assumptions`) — ba thứ load-bearing; ký hiệu rút gọn tối đa (bảng notation bỏ được nếu thừa, kèm dọn hết
-> tham chiếu); problem statement + challenges nén thành một đoạn dẫn vào harness.
+> tham chiếu); problem statement + challenges nén thành một đoạn dẫn vào MAS.
 
 - **6.1** Kiến trúc hệ: meta-agent LangGraph + specialist agents (
   needs/objective/assessment/activity/implementation/evaluation) + verifier + aggregator; hình kiến trúc tổng thể.
+  **Positioning "đa tác tử" (chốt 2026-08-26)**: gọi đúng loại hệ là **workflow-style / role-decomposed multi-agent**
+  (họ SOP-style như MetaGPT: điều phối tĩnh, không negotiation/dynamic planning — nói rõ, không claim quá). Hai cơ chế
+  cấu thành tính multi-agent, nêu tường minh trong §6.1: (1) **role specialization** — mỗi specialist một persona +
+  phạm vi artifact riêng; (2) **scoped state access** — mỗi agent chỉ đọc/ghi phần trạng thái thuộc phạm vi mình
+  (graph-context injection).
 - **6.2–6.4** Ký hiệu: đồ thị node kiểu `objective/activity/material/assessment/implementation/evaluation`, edge kiểu
   `measures/supports/evaluates`; predicate **`aligned(o)` 3 vế** (measures/supports/evaluates) — RQ2 protocol map thẳng
   vào 3 vế này.
@@ -193,12 +229,10 @@ Tổ chức theo nhóm, không liệt kê từng bài:
 - **7.5** Pseudocode quy trình ISD cố định.
 - **7.7** Khác biệt với baseline gần nhất (react-isd, addie-agent…): trạng thái alignment tường minh dùng chung vs. văn
   xuôi/trajectory ngầm.
-- **7.8 Constructive-alignment evaluation protocol (đóng góp 2) — đề mục riêng trong Method, đặt SAU phần harness**
-  (chốt 2026-08-11): mô tả protocol như một phương pháp: mục tiêu đo (map thẳng 3 vế `aligned(o)` — `eq:aligned`),
-  panel 7 tín hiệu phẳng không endpoint, hai họ instrument (A: mean-max rectified cosine; B: Porter/Webb + Bloom),
-  không LLM / không threshold / không thành phần ngẫu nhiên, naming rule, mức claim ("tín hiệu đo được", không "đo
-  alignment"). Nội dung lấy từ `rq2_protocol.md` §2–§5. Mục 8.6 chỉ còn phần vận hành chấm (preset encoder/Bloom,
-  sensitivity star, quy tắc đọc panel, failure layer) + tham chiếu về đây.
+- **7.8 — BỎ (2026-08-29, đảo chốt 2026-08-11)**: Method KHÔNG có đề mục evaluation protocol. Toàn bộ phép đo
+  alignment (panel 7 tín hiệu, hai họ instrument, naming rule, mức claim "tín hiệu đo được") nằm trong mục 8.6
+  (Experimental Design §Measures) như measurement setup — xem 4.6 và 8.6. Method chỉ giữ predicate `aligned(o)`
+  (`eq:aligned`) mà phép đo map vào.
 - **Phân định kiểm/kế thừa (buộc phải có)**: nghiên cứu kiểm **substrate** (graph-context + verifier, tách bằng
   ablation); **không** kiểm decomposition (tiền đề có nguồn, mục 4.5); ai muốn số riêng cho decomposition → future work
   arm monolithic (mục 12).
@@ -253,10 +287,14 @@ session → delta arm−A0 không nhiễm judge drift; A0 in-session đối chi�
 - **RQ1**: ba tín hiệu judge báo song song, thống kê y hệt nhau, hiện ngang nhau ở abstract + bảng chính —
   `addie_median` (dẫn narrative: đo đúng construct của RQ1), `trajectory_score` (tuân thủ quy trình — construct khác),
   `total_score` (0.7/0.3 là trọng số của benchmark, giữ để so được với cách báo của ISD-Agent-Bench).
-- **RQ2**: đặc tả protocol nằm ở mục 7.8 (Method) — 8.6 KHÔNG lặp lại định nghĩa, chỉ nêu phần vận hành: chấm offline
-  trên output đã lưu, preset encoder/Bloom, quy tắc đọc panel ≥4/6, failure layer; kèm câu chuẩn thay cho
-  "deterministic protocol": *"quy trình chấm không dùng LLM và không có thành phần ngẫu nhiên; kết quả tái lập được
-  nhờ pin phiên bản encoder và cache embedding"*. Đặc tả đầy đủ: [`docs/rq2_protocol.md`](rq2_protocol.md).
+- **RQ2** (2026-08-29 — 8.6 là NƠI DUY NHẤT trong paper trình bày phép đo, sau khi bỏ 7.8): mở đầu bằng
+  justification instrument (judge bias + không lộ quan hệ alignment; phép đo sẵn có cần bộ chuẩn tiền-soạn), rồi
+  toàn bộ đặc tả: panel 7 tín hiệu phẳng không endpoint, hai họ instrument (A: mean-max rectified cosine; B:
+  Porter/Webb + Bloom), không LLM / không threshold, naming rule, mức claim ("tín hiệu đo được", không "đo
+  alignment"), phần vận hành (chấm offline, preset encoder/Bloom, sensitivity star, quy tắc đọc panel ≥4/6, failure
+  layer). Văn phong: measurement setup — "the measurement", không "the protocol"/"our protocol"; kèm câu chuẩn:
+  *"quy trình chấm không dùng LLM và không có thành phần ngẫu nhiên; kết quả tái lập được nhờ pin phiên bản encoder
+  và cache embedding"*. Đặc tả đầy đủ: [`docs/rq2_protocol.md`](rq2_protocol.md).
 - Cost: token_usage per agent×size (chỉ đọc `metadata.token_usage.*` — bẫy artifact xem mục 9.6).
 
 **8.7 Thống kê**:

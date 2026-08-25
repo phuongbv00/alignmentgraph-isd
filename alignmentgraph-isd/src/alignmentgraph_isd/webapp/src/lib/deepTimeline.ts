@@ -1,33 +1,31 @@
 import type { DeepAction } from '../api/types'
 
 /**
- * Turning the deep trajectory into something a person can read.
+ * Turning the deep trajectory into something a person can read — in TIME order.
  *
- * A run logs well over a thousand actions, most of them graph reads. Listed one
- * per row that is not a trajectory, it is a wall. So the log is folded twice:
- *
- *  1. **Runs of the same kind of work collapse.** Forty consecutive lookups by
- *     one agent become "read the graph 40×", expandable. This is where almost
- *     all the volume goes.
- *  2. **Rows group under the agent that performed them.** The question the view
- *     has to answer is "what did this agent do", and that only reads as an
- *     answer when the agent's work is in one place.
- *
- * What deliberately never collapses is the work that carries meaning on its
- * own: a model call, an alignment edge being drawn, a verification round, a
- * repair. Those are the story; the reads are the machinery.
+ * A run logs well over a thousand actions, most of them graph reads. The fold
+ * strictly follows the recorded order: only an unbroken run of the same kind
+ * of work collapses into one row, which stays at its chronological position.
+ * Different kinds are never merged across time, so a self-check loop reads as
+ * it happened — check (5 violations) → repair → check (0) — instead of the
+ * repairs being filed under a separate per-kind pile (the earlier grid did
+ * exactly that, and it read as "5 violations became 0 with nothing between").
  */
 
 export type WorkKind =
   | 'read'      // looked at the graph
   | 'walk'      // followed relations
   | 'write'     // wrote nodes
-  | 'link'      // drew alignment edges
+  | 'link'      // drew a NEW alignment edge (op=add: real establishment)
+  | 'relink'    // re-verified existing edges (op=refresh: the deterministic
+                // establishers re-derived them — self-validation
+                // machinery confirming the alignment still holds, not design)
   | 'model'     // called the model
   | 'step'      // recorded a step of its own
-  | 'verify'
+  | 'check'
   | 'repair'
   | 'validate'
+  | 'audit'     // the residual whole-graph audit, at aggregation
   | 'retrieval'
   | 'error'
   | 'phase'
@@ -35,7 +33,7 @@ export type WorkKind =
 
 export interface DeepRow {
   id: string
-  seq: number
+  action: string
   kind: WorkKind
   title: string
   detail: string
@@ -43,16 +41,6 @@ export interface DeepRow {
   /** Collapsed runs show how many were folded together. */
   count: number
   tone?: 'good' | 'warn' | 'bad'
-}
-
-export interface AgentGroup {
-  id: string
-  actor: string
-  phase: string
-  rows: DeepRow[]
-  /** Headline counts for the group, so it reads without expanding. */
-  tally: Partial<Record<WorkKind, number>>
-  elapsedMs: number
 }
 
 const KIND_OF: Record<string, WorkKind> = {
@@ -63,65 +51,72 @@ const KIND_OF: Record<string, WorkKind> = {
   edge_write: 'link',
   llm_call: 'model',
   agent_step: 'step',
-  verify: 'verify',
+  check: 'check',
   repair: 'repair',
   validate: 'validate',
+  audit: 'audit',
   retrieval: 'retrieval',
   retrieval_query: 'retrieval',
   agent_error: 'error',
+  llm_error: 'error',
+  salvage_truncated: 'error',
+  invalid_action: 'error',
+  submit_rejected: 'error',
+  submit_invalid_final: 'error',
+  repeated_tool_call: 'error',
+  commit_invalid_section: 'error',
+  agentic_fallback: 'error',
+  retry: 'error',
   regen: 'warn' as WorkKind,
+  regen_empty_section: 'error',
   phase_started: 'phase',
   phase_finished: 'phase',
 }
 
-/** Kinds worth a row each — collapsing them would hide the run's actual story. */
-const NEVER_COLLAPSE: ReadonlySet<WorkKind> = new Set<WorkKind>([
-  'model', 'verify', 'repair', 'validate', 'error', 'step', 'retrieval',
-])
-
 export function workKind(action: DeepAction): WorkKind {
-  if (action.kind === 'regen') return 'error'
-  return KIND_OF[action.kind] ?? 'other'
+  // Same taxonomy action, two different kinds of work: an `edge_write` with
+  // op=add establishes a new alignment edge; op=refresh only re-derives an
+  // existing one (idempotent re-verification at self-validation).
+  // Telling them apart is what keeps "the orchestrator drew 146 edges" from
+  // ever appearing — the orchestrator only re-verifies.
+  if (action.action === 'edge_write' && action.context.op === 'refresh') return 'relink'
+  return KIND_OF[action.action] ?? 'other'
 }
 
-export function groupDeepActions(actions: DeepAction[]): AgentGroup[] {
-  const groups: AgentGroup[] = []
-  const ordered = [...actions].sort((a, b) => a.seq - b.seq)
+/** Never folded into a run, even when consecutive: each of these is one
+ *  distinct beat of the story (its own round, its own fix, its own step). */
+const ONE_PER_ROW = new Set<WorkKind>(
+  ['check', 'repair', 'validate', 'audit', 'step', 'model', 'error'],
+)
 
-  for (const action of ordered) {
+export function foldChronological(actions: DeepAction[]): DeepRow[] {
+  const rows: DeepRow[] = []
+
+  for (const action of actions) {
     // Phase markers define the boundaries; they are not work in themselves.
-    if (action.kind === 'phase_started' || action.kind === 'phase_finished') continue
-
-    const actor = action.actor || '(harness)'
-    let group = groups[groups.length - 1]
-    if (!group || group.actor !== actor || group.phase !== action.phase) {
-      group = {
-        id: `${action.phase}-${actor}-${action.seq}`,
-        actor,
-        phase: action.phase,
-        rows: [],
-        tally: {},
-        elapsedMs: action.elapsed_ms,
-      }
-      groups.push(group)
-    }
-    group.elapsedMs = action.elapsed_ms
+    if (action.action === 'phase_started' || action.action === 'phase_finished') continue
 
     const kind = workKind(action)
-    group.tally[kind] = (group.tally[kind] ?? 0) + 1
-
-    const last = group.rows[group.rows.length - 1]
-    if (last && last.kind === kind && !NEVER_COLLAPSE.has(kind)) {
-      last.actions.push(action)
-      last.count = last.actions.length
-      last.title = titleFor(kind, last.actions)
-      last.detail = detailFor(kind, last.actions)
+    const previous = rows[rows.length - 1]
+    // Only an UNBROKEN run of the same kind of bulk work collapses; the row
+    // stays at its chronological position, so nothing is reordered.
+    if (
+      previous &&
+      previous.kind === kind &&
+      previous.action === action.action &&
+      previous.actions[previous.actions.length - 1].agent === action.agent &&
+      !ONE_PER_ROW.has(kind)
+    ) {
+      previous.actions.push(action)
+      previous.count = previous.actions.length
+      previous.title = titleFor(kind, previous.actions)
+      previous.detail = detailFor(kind, previous.actions)
       continue
     }
 
-    group.rows.push({
-      id: `a-${action.seq}`,
-      seq: action.seq,
+    rows.push({
+      id: `row-${rows.length}-${action.action}-${kind}`,
+      action: action.action,
       kind,
       title: titleFor(kind, [action]),
       detail: detailFor(kind, [action]),
@@ -131,100 +126,132 @@ export function groupDeepActions(actions: DeepAction[]): AgentGroup[] {
     })
   }
 
-  return groups
+  return rows
 }
 
+// Titles name the action, present tense (verb first — "Generate", not "Called
+// the model"): this is a label for a kind of work, not a narration of history.
 function titleFor(kind: WorkKind, actions: DeepAction[]): string {
   const first = actions[0]
+  const context = first.context
   const n = actions.length
   switch (kind) {
     case 'read':
-      return n === 1 ? 'Read the graph' : `Read the graph ${n}×`
+      return n === 1 ? 'Read graph' : `Read graph ${n}×`
     case 'walk':
-      return n === 1 ? 'Followed relations' : `Followed relations ${n}×`
+      return n === 1 ? 'Follow relations' : `Follow relations ${n}×`
     case 'write':
-      return n === 1 ? `Wrote ${first.node_id}` : `Wrote ${n} nodes`
+      return n === 1 ? `Write ${context.node_id}` : `Write ${n} nodes`
     case 'link':
       return n === 1
-        ? `Linked ${first.source} → ${first.target}`
-        : `Drew ${n} alignment edges`
+        ? `Link ${context.source} → ${context.target}`
+        : `Draw ${n} alignment edges`
+    case 'relink':
+      return n === 1
+        ? `Re-verify ${context.source} → ${context.target}`
+        : `Re-verify ${n} alignment edges`
     case 'model':
-      return 'Called the model'
+      return 'Generate'
     case 'step':
-      return String(first.action ?? 'Step')
-    case 'verify':
-      return `Verification round ${first.round ?? ''}`.trim()
+      return String(context.agent_action ?? 'Step')
+    case 'check': {
+      // Count-first, not round-first: the stored round number is a run-global
+      // counter, so "round 4" as the first check of a phase only confuses.
+      const violations = Number(context.violation_count ?? 0)
+      return violations === 0
+        ? 'Self-check — clean'
+        : `Self-check — ${violations} violation${violations === 1 ? '' : 's'}`
+    }
     case 'repair':
-      return `Repaired ${first.violation_type} on ${first.node_id}`
+      return context.violation_type
+        ? `Repair ${context.violation_type} on ${context.node_id ?? 'design'}`
+        : 'Apply design revision'
     case 'validate':
-      return `Validated ${first.scope}`
+      return `Validate ${context.scope ?? 'output'}`
+    case 'audit':
+      return 'Audit graph'
     case 'retrieval':
-      if (first.kind === 'retrieval_query') {
+      if (first.action === 'retrieval_query') {
         return n === 1
-          ? `Queried ${first.retrieval_agent}`
-          : `Queried ${n} sources`
+          ? `Query ${context.retrieval_agent}`
+          : `Query ${n} sources`
       }
-      return `Retrieval: ${first.decision}`
+      return `Retrieval: ${context.decision}`
     case 'error':
-      return first.kind === 'regen'
-        ? `Regenerated (attempt ${first.attempt})`
-        : 'Agent failed'
+      return RECOVERY_LABEL[first.action] ?? first.action
     default:
-      return first.kind
+      return first.action
   }
 }
 
 function detailFor(kind: WorkKind, actions: DeepAction[]): string {
   const first = actions[0]
+  const context = first.context
   switch (kind) {
     case 'read': {
-      const byQuery = countBy(actions, (a) => String(a.query ?? '?'))
-      const found = actions.reduce((sum, a) => sum + Number(a.result_count ?? 0), 0)
+      const byQuery = countBy(actions, (a) => String(a.context.query ?? '?'))
+      const found = actions.reduce((sum, a) => sum + Number(a.context.result_count ?? 0), 0)
       return `${byQuery}, ${found} nodes/edges seen`
     }
     case 'walk': {
-      const hops = actions.reduce((sum, a) => sum + (a.hops?.length ?? 0), 0)
+      const hops = actions.reduce((sum, a) => sum + (a.context.hops?.length ?? 0), 0)
       return `${hops} hop${hops === 1 ? '' : 's'} along ${
-        actions.map((a) => (a.rel_path ?? []).join(' → ')).filter(Boolean).join('; ') || 'relations'
+        actions.map((a) => (a.context.rel_path ?? []).join(' → ')).filter(Boolean).join('; ') || 'relations'
       }`
     }
     case 'write':
-      return countBy(actions, (a) => String(a.node_type ?? '?'))
-    case 'link': {
+      return countBy(actions, (a) => String(a.context.node_type ?? '?'))
+    case 'link':
+    case 'relink': {
       // The relation and how it was established is the whole point of an edge.
-      const rel = countBy(actions, (a) => String(a.edge_type || a.relation_id || 'rooted-in'))
-      const mech = countBy(actions, (a) => String(a.established_by || 'structural'))
+      const rel = countBy(actions, (a) => String(a.context.edge_type || a.context.relation_id || 'rooted-in'))
+      const mech = countBy(actions, (a) => String(a.context.established_by || 'structural'))
       return `${rel} · by ${mech}`
     }
     case 'model':
       return [
-        first.duration_ms ? `${Math.round(Number(first.duration_ms) / 1000)}s` : '',
-        first.completion_tokens ? `${first.completion_tokens} tokens out` : '',
+        context.duration_ms ? `${Math.round(Number(context.duration_ms) / 1000)}s` : '',
+        context.completion_tokens ? `${context.completion_tokens} tokens out` : '',
       ].filter(Boolean).join(' · ')
     case 'step':
-      return truncate(String(first.output_summary ?? ''), 140)
-    case 'verify': {
-      const count = Number(first.violation_count ?? 0)
-      return count === 0 ? 'No violations' : `${count} violation${count === 1 ? '' : 's'}`
+      return truncate(String(context.output_summary ?? ''), 140)
+    case 'check': {
+      const byType = context.by_type as Record<string, number> | undefined
+      if (byType && Object.keys(byType).length > 0) {
+        return Object.entries(byType).map(([type, n]) => `${type}(${n})`).join(', ')
+      }
+      return 'No violations'
     }
     case 'repair':
-      return `Rewrote ${(first.repaired_fields as string[] | undefined)?.join(', ') || 'the section'}`
+      // The repair record now carries the rule's own narrative — the most
+      // informative one-liner it has.
+      if (context.output_summary) return truncate(String(context.output_summary), 140)
+      return (context.repaired_fields as string[] | undefined)?.length
+        ? `Rewrote ${(context.repaired_fields as string[]).join(', ')}`
+        : String(context.rule ?? 'Applied deterministic repair')
     case 'validate': {
-      const errors = Number(first.error_count ?? 0)
+      const errors = Number(context.error_count ?? 0)
       return errors === 0 ? 'Schema valid' : `${errors} problem${errors === 1 ? '' : 's'}`
     }
+    case 'audit': {
+      const gaps = Number(context.residual_gap_count ?? 0)
+      const gapped = (context.gapped_relations as string[] | undefined) ?? []
+      return gaps === 0
+        ? 'No relation gaps'
+        : `${gaps} gap${gaps === 1 ? '' : 's'} (${gapped.join(', ')})`
+    }
     case 'error':
-      return first.kind === 'regen'
-        ? `Empty: ${(first.empty_fields as string[] | undefined)?.join(', ')}`
-        : truncate(String(first.error ?? ''), 160)
+      return truncate(
+        String(context.output_summary ?? context.error ?? context.input_summary ?? ''), 160,
+      )
     case 'retrieval':
-      if (first.kind === 'retrieval_query') {
-        return countBy(actions, (a) => `${a.retrieval_agent}: ${a.status}`)
+      if (first.action === 'retrieval_query') {
+        return countBy(actions, (a) => `${a.context.retrieval_agent}: ${a.context.status}`)
       }
       return [
-        first.strategy && `${first.strategy} strategy`,
-        first.snippet_count ? `${first.snippet_count} snippets` : '',
-        (first.retrieval_agents as string[] | undefined)?.join(', '),
+        context.strategy && `${context.strategy} strategy`,
+        context.snippet_count ? `${context.snippet_count} snippets` : '',
+        (context.retrieval_agents as string[] | undefined)?.join(', '),
       ].filter(Boolean).join(' · ')
     default:
       // An action kind this build has never heard of. Rather than an empty row,
@@ -234,11 +261,24 @@ function detailFor(kind: WorkKind, actions: DeepAction[]): string {
   }
 }
 
+const RECOVERY_LABEL: Record<string, string> = {
+  retry: 'Retry model call',
+  regen_empty_section: 'Regenerate empty section',
+  agent_error: 'Agent error',
+  llm_error: 'Model error',
+  salvage_truncated: 'Salvage truncated response',
+  invalid_action: 'Reject invalid action',
+  submit_rejected: 'Reject invalid submission',
+  submit_invalid_final: 'Reject final submission',
+  repeated_tool_call: 'Skip repeated tool call',
+  commit_invalid_section: 'Skip invalid section',
+  agentic_fallback: 'Use fallback',
+}
+
 /** Best-effort one-liner for an action kind with no bespoke formatter. */
 function summariseUnknown(action: DeepAction): string {
-  const skip = new Set(['seq', 'kind', 'actor', 'phase', 'elapsed_ms', 'timestamp'])
-  return Object.entries(action)
-    .filter(([key, value]) => !skip.has(key) && value !== '' && value != null)
+  return Object.entries(action.context)
+    .filter(([, value]) => value !== '' && value != null)
     .slice(0, 4)
     .map(([key, value]) => `${key}=${typeof value === 'object' ? JSON.stringify(value).slice(0, 40) : value}`)
     .join(' · ')
@@ -248,8 +288,9 @@ function toneFor(kind: WorkKind, action: DeepAction): DeepRow['tone'] {
   if (kind === 'error') return 'bad'
   if (kind === 'repair') return 'good'
   if (kind === 'link') return 'good'
-  if (kind === 'verify') return Number(action.violation_count ?? 0) === 0 ? 'good' : 'warn'
-  if (kind === 'validate') return Number(action.error_count ?? 0) === 0 ? 'good' : 'bad'
+  if (kind === 'check') return Number(action.context.violation_count ?? 0) === 0 ? 'good' : 'warn'
+  if (kind === 'validate') return Number(action.context.error_count ?? 0) === 0 ? 'good' : 'bad'
+  if (kind === 'audit') return Number(action.context.residual_gap_count ?? 0) === 0 ? 'good' : 'warn'
   return undefined
 }
 
@@ -270,5 +311,5 @@ function truncate(text: string, limit: number): string {
   return text.length <= limit ? text : `${text.slice(0, limit - 1).trimEnd()}…`
 }
 
-/** Readable name for a phase, reused from the v1 timeline's vocabulary. */
-export { phaseLabel } from './mergeTimeline'
+/** Readable name for a phase; the vocabulary lives with the phase timeline. */
+export { phaseLabel } from './phaseTimeline'

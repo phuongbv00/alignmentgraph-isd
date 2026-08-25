@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Circle, CircleCheck, CircleSlash, CircleX, Loader2, Play, RotateCw, Square } from 'lucide-react'
 import type { RunStreamState } from '../state/useRunStream'
-import { phaseLabel } from '../lib/mergeTimeline'
+import { phaseLabel } from '../lib/phaseTimeline'
 
 interface Props {
   stream: RunStreamState

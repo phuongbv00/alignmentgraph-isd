@@ -16,7 +16,7 @@ Related systems support pedagogy-guided authoring, direct plan generation,
 multi-agent revision, and multi-agent course generation over commercial APIs
 ~\cite{lessonplanner2024,hu2024teachingplan,zhang2025eduplanner,
 yao2025instructionalagents}. Across this work, preserving quality while reducing
-the foundation model is not a joint harness-design and evaluation target.
+the foundation model is not a joint MAS-design and evaluation target.
 
 \subsection{Small and On-Premise Language Models in Education}
 
@@ -34,11 +34,11 @@ much agentic workload when the architecture carries the coordination
 ~\cite{belcak2025slm,sharma2025slmagents}, agent scaffolding retains most quality
 at the 0.5B--3B scale~\cite{kang2025agentdistill}, and decomposed multi-agent
 framing narrows the gap between small and large models
-~\cite{shen2024multillmagent}---although harness sensitivity is not monotonic
+~\cite{shen2024multillmagent}---although MAS sensitivity is not monotonic
 across model tiers~\cite{cho2026harness}. Closest to ISD, recent studies touch one
 part of the problem each~\cite{jaldi2026slmassessment,zheng2025lessonplanlm,
-lee2026educlaw,wei2026slmeducation}; none evaluates an end-to-end ISD agent
-harness across a controlled range of model sizes.
+lee2026educlaw,wei2026slmeducation}; none evaluates an end-to-end ISD multi-agent
+system across a controlled range of model sizes.
 
 \subsection{Constructive Alignment and Its Measurement}
 
@@ -51,7 +51,7 @@ content--demand distributions, Fulmer examines interpretation of that index, and
 Webb evaluates facets including cognitive-demand consistency
 ~\cite{porter2002measuring,fulmer2011estimating,webb1997criteria}. The revised
 Bloom taxonomy supplies a shared demand vocabulary~\cite{anderson2001taxonomy}.
-These foundations motivate several complementary signals, but concern curricula,
+These foundations motivate several complementary measures, but concern curricula,
 standards, and assessments authored before measurement.
 
 Automated measurement supplies relevant components. Semantic traceability and
@@ -66,38 +66,39 @@ measured.
 
 \subsection{Synthesis}
 
-\Cref{tab:related} summarizes scope rather than system quality. It exposes two
-unresolved combinations: scale-sensitive evaluation of an on-premise ISD harness,
-and benchmark-integrated measurement of intrinsic relations within a generated
-design.
+\Cref{tab:related} summarizes scope rather than system quality. It exposes one
+unresolved combination: no surveyed work evaluates an end-to-end ISD agent
+system on local open-weight models across a controlled range of model sizes,
+and none of the generation systems maintains the
+objective--activity--assessment relations as explicit state during generation.
 \begin{table}[t]
   \caption{Criteria-based positioning of related work. ISD = end-to-end agentic
   instructional design; Local = local/open-weight SLM as a design condition;
-  Scale = controlled evaluation across model sizes; Intr. = intrinsic alignment
-  among wholly generated design artifacts; Bench = integration into an ISD
-  benchmark. \ding{51} = addressed; \ding{55} = not addressed; (\ding{51}) =
-  partially addressed.}
+  Scale = controlled evaluation across model sizes; State = alignment relations
+  kept as explicit, checkable state during generation. \ding{51} = addressed;
+  \ding{55} = not addressed; (\ding{51}) = partially addressed.}
   \label{tab:related}
   \centering
   \small
   \resizebox{\columnwidth}{!}{%
-  \begin{tabular}{@{}lccccc@{}}
+  \begin{tabular}{@{}lcccc@{}}
     \toprule
-    Work or group & ISD & Local & Scale & Intr. & Bench \\
+    Work or group & ISD & Local & Scale & State \\
     \midrule
-    ISD-Agent-Bench and agents~\cite{isdagentbench} & \ding{51} & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
-    LLM lesson-planning systems~\cite{lessonplanner2024,hu2024teachingplan,zhang2025eduplanner} & (\ding{51}) & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
-    Small Models, Big Support~\cite{reza2025smallmodels} & \ding{55} & \ding{51} & \ding{55} & \ding{55} & \ding{55} \\
-    LessonPlanLM~\cite{zheng2025lessonplanlm} & \ding{55} & (\ding{51}) & \ding{55} & \ding{55} & \ding{55} \\
-    Instructional Agents~\cite{yao2025instructionalagents} & (\ding{51}) & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
-    Item--standards LM/embedding measurement & \ding{55} & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
-    BERT-based Bloom classifiers~\cite{li2022bloomclassification,waheed2021bloomnet} & \ding{55} & \ding{55} & \ding{55} & \ding{55} & \ding{55} \\
-    \textbf{AlignmentGraph-ISD} (this work) & \ding{51} & \ding{51} & \ding{51} & \ding{51} & \ding{51} \\
+    ISD-Agent-Bench and agents~\cite{isdagentbench} & \ding{51} & \ding{55} & \ding{55} & \ding{55} \\
+    LLM lesson-planning systems~\cite{lessonplanner2024,hu2024teachingplan,zhang2025eduplanner} & (\ding{51}) & \ding{55} & \ding{55} & \ding{55} \\
+    Small Models, Big Support~\cite{reza2025smallmodels} & \ding{55} & \ding{51} & \ding{55} & \ding{55} \\
+    LessonPlanLM~\cite{zheng2025lessonplanlm} & \ding{55} & (\ding{51}) & \ding{55} & \ding{55} \\
+    Instructional Agents~\cite{yao2025instructionalagents} & (\ding{51}) & \ding{55} & \ding{55} & \ding{55} \\
+    \textbf{AlignmentGraph-ISD} (this work) & \ding{51} & \ding{51} & \ding{51} & \ding{51} \\
     \bottomrule
   \end{tabular}}
 \end{table}
 
-AlignmentGraph-ISD studies the first combination across a common Qwen ladder. The
-evaluation addresses the second by extending ISD-Agent-Bench with a flat panel
-whose embedding and Porter/Webb/Bloom families differ mechanically; neither family
-is presented as a new construct or as intrinsically superior to prior work.
+AlignmentGraph-ISD addresses this combination across a common Qwen ladder,
+keeping the alignment relations as explicit shared state during generation. The
+measurement foundations above shape its evaluation setup: because the existing
+alignment measures presuppose standards authored before measurement, the
+experimental design assembles deterministic alignment scores from those established
+criteria and applies them to the generated designs themselves
+(\Cref{sec:metrics}); no new construct is claimed.

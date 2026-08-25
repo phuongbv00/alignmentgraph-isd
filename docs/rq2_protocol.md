@@ -11,8 +11,17 @@
 
 ## 1. Định vị & claim
 
-Tên gọi: **automated constructive-alignment evaluation protocol operationalizing established criteria** (VN: quy trình
-đánh giá constructive alignment tự động, operationalize các tiêu chí đã được thiết lập). **Không phải metric mới**;
+> **Positioning trong paper (chốt 2026-08-29, hướng paper lean)**: protocol **KHÔNG còn là đóng góp** và không được
+> trình bày như một phương pháp/đề mục trong Method. Trong paper nó là **measurement setup** trong Experimental
+> Design §Measures, justify như instrument requirement (judge không lộ quan hệ alignment; phép đo sẵn có cần bộ
+> chuẩn tiền-soạn), văn phong "assemble/operationalize established criteria", không claim novelty, chữ dùng là
+> "the measurement" thay vì "the/our protocol". Thuật ngữ điểm số trong paper (2026-08-29): giá trị panel =
+> **"alignment score(s)"**, điểm benchmark = **"LLM judge score(s)"**; tên từng score vẫn operation-named.
+> File này vẫn là **spec canonical** cho code + số liệu + mức claim;
+> tên "protocol" giữ trong tài liệu nội bộ. Chi tiết: `docs/summary.md` mục 4.6, 8.6.
+
+Tên gọi (nội bộ): **automated constructive-alignment evaluation protocol operationalizing established criteria**
+(VN: quy trình đánh giá constructive alignment tự động, operationalize các tiêu chí đã được thiết lập). **Không phải metric mới**;
 không claim kế thừa validity của Porter/Webb/QM sang implementation — validity được bắc cầu bằng validation evidence
 (mục 7). Chữ "proxy" chỉ dùng trong limitations như đặc tính phải khai, không dùng làm tên gọi. Mọi claim RQ2 ở mức
 **tương đối** (comparative primary); mức tuyệt đối chỉ báo descriptive (mean + CI).
@@ -81,7 +90,7 @@ phục vụ objective; (iv) cognitive demand tương thích. Map thẳng vào pr
       majority floor 27,1% và oracle ceiling 77,6%. Chính paper đó báo **κ = 0,63 giữa hai human coder** trên cùng bộ
       dữ liệu ⇒ lexicon **ngang mức đồng thuận chuyên gia**. Artifact: `docs/generated/bloom_validation.md`.
 
-   **Vai trò của Bloom trong panel.** Bloom nuôi **3/7 tín hiệu** — `objective_cognitive_congruence`, `porter_*`,
+   **Vai trò của Bloom trong panel.** Bloom nuôi **3 trong 6 tín hiệu panel** — `objective_cognitive_congruence`, `porter_*`,
    `webb_bloom_consistency` — cộng `sanity.*` ở tầng validity. Vì panel không có endpoint chính (§4), họ tín hiệu này
    phải có **trục sensitivity riêng**, y hệt encoder:
 
@@ -127,7 +136,7 @@ phục vụ objective; (iv) cognitive demand tương thích. Map thẳng vào pr
 - **KHÔNG được claim**: tất định bit-wise của **bất kỳ thành phần neural nào** — cả encoder lẫn Bloom classifier
   chính. Forward pass trên GPU không đảm bảo tái lập từng bit khi đổi batch composition / phiên bản runtime / loại
   GPU (thứ tự reduction của matmul khác nhau). Với encoder, sai số cỡ **1e-6** trên cosine — nhỏ hơn khoảng cách đo
-  được (0.19–0.30 giữa harness và á quân) khoảng **5 bậc** nên không đảo được thứ hạng. Với Bloom, hệ quả khác về
+  được (0.19–0.30 giữa MAS và á quân) khoảng **5 bậc** nên không đảo được thứ hạng. Với Bloom, hệ quả khác về
   chất: đầu ra là **argmax rời rạc**, nên nhiễu dấu phẩy động ở ranh giới hai lớp có thể **lật hẳn một nhãn** thay vì
   dịch một số. Mitigation: checkpoint được pin bằng file trên đĩa (không tải về), và tín hiệu họ B là **tỉ lệ trên
   ~90 scenario** nên một nhãn lật không dịch được con số báo cáo. Vẫn phải khai đúng là *reproducible up to
@@ -176,24 +185,81 @@ biến thể của cosine"*: **không họ nào một mình gánh construct**.
 
 **Họ A — textual correspondence** (đo bằng encoder; 4 tín hiệu):
 
-| Tín hiệu                          | Trả lời câu gì                                                                  | Hướng               |
-|-----------------------------------|---------------------------------------------------------------------------------|---------------------|
-| `objective_assessment_similarity` | vế `measures` của `aligned(o)` — mean-max rectified cosine objective→assessment | cao = tốt           |
-| `objective_activity_similarity`   | vế `supports` — cùng công thức, với activities                                  | cao = tốt           |
-| `objective_evaluation_similarity` | vế `evaluates` — cùng công thức, với evaluation texts                           | cao = tốt           |
-| `assessment_objective_similarity` | chiều ngược: có assessment item mồ côi không                                    | **không đơn nghĩa** |
+**Họ A đúng bằng ba cạnh của tam giác Constructive Alignment (Biggs)** — ILO↔AT, ILO↔TLA, TLA↔AT — và mỗi cạnh ứng
+1-1 với một quan hệ core của graph (C2/C3/C4). Không tín hiệu panel nào đo thứ mà ontology không mô hình hoá.
+
+| Tín hiệu                          | Trả lời câu gì                                                                  | Quan hệ core | Hướng     |
+|-----------------------------------|---------------------------------------------------------------------------------|--------------|-----------|
+| `objective_assessment_similarity` | vế `measures` của `aligned(o)` — mean-max rectified cosine objective→assessment | C2 `assessed_by`  | cao = tốt |
+| `objective_activity_similarity`   | vế `supports` — cùng công thức, với activities                                  | C3 `practiced_by` | cao = tốt |
+| `activity_assessment_similarity`  | cạnh thứ ba: activity có chuẩn bị cho assessment không — mean-max activity→assessment | C4 `prepares_for` | cao = tốt |
 
 **Họ B — cognitive demand** (đo bằng Bloom classifier; 3 tín hiệu, không dùng similarity):
 
 | Tín hiệu                         | Trả lời câu gì                                                                                                                         | Hướng     |
 |----------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|-----------|
 | `objective_cognitive_congruence` | % objective mà best assessment item (argmax, không ngưỡng) có Bloom level ≥ level của objective, trên objectives classifiable hai phía | cao = tốt |
-| `porter_mean` (+ 3 cặp)          | phân bố topic×level của objectives vs counterpart có cân không (Porter/Fulmer)                                                         | cao = tốt |
+| `porter_mean` (+ 3 cặp)          | phân bố topic×level của hai đầu mỗi cạnh có cân không (Porter/Fulmer), trung bình trên **đúng 3 cạnh của họ A**   | cao = tốt |
 | `webb_bloom_consistency`         | nhất quán mức nhận thức nhìn từ phía item (Webb)                                                                                       | cao = tốt |
 
-`assessment_objective_similarity` là chỗ duy nhất **hướng không đơn nghĩa**: rất cao có thể là "không có item thừa",
-mà cũng có thể là "assessment chỉ chép lại objective". Nó vẫn nằm trong panel và vẫn có test, nhưng khai là
-**diagnostic không định hướng** — đọc kèm, KHÔNG cộng vào đếm "thắng bao nhiêu vế".
+**Vì sao congruence chỉ nhìn MỘT assessment item.** Muốn dùng "mọi item liên quan tới objective" thì phải có một hằng
+số quyết định thế nào là liên quan, tức là một ngưỡng, thứ mà panel loại bỏ có chủ đích. Lấy hết mọi item không lọc thì
+tín hiệu hỏng theo cách khác: một đề 40 câu chỉ cần có một câu ở cấp Create là mọi objective đều được tính congruent,
+kể cả objective thực tế chỉ được hỏi ở cấp Remember, vì phép đo không còn biết item nào đo objective nào. Trọng số theo
+similarity thì không cần ngưỡng nhưng lại cần chọn dạng hàm trọng số, tức đổi một hằng số tuỳ ý lấy một hằng số tuỳ ý
+khác. `argmax` là cách duy nhất chọn được đúng một đối tác mà không so với hằng số nào, và nó theo đúng nguyên tắc
+*central performance* của Webb. Các item còn lại không hề bị bỏ qua: `webb_bloom_consistency` duyệt từng item một
+không sót cái nào, `porter_mean` đưa toàn bộ item vào ma trận phân bố.
+
+**Congruence và Webb dùng hai quy ước chọn đối tác khác nhau, có chủ đích.** Congruence lấy argmax trên **toàn bộ**
+assessment item, rồi bỏ objective đó khỏi mẫu số nếu item vừa chọn không phân loại được. Webb lấy argmax **trong số
+các objective phân loại được**. Hai quy ước trả lời hai câu khác nhau. Congruence nói item gần nhất là item đại diện
+cho objective này, không chấm được nó thì không kết luận. Webb chấp nhận thay bằng ứng viên gần nhất chấm được. Quy
+ước của congruence chặt hơn, vì nó không thay thầm một item khác với item thực sự đại diện.
+
+**Hệ quả phải khai: mẫu số của congruence co theo coverage của Bloom arm.** Arm chính `bertbloom` không bao giờ abstain
+nên chuyện này không xảy ra lần nào, và mọi số RQ2 headline đều thuộc arm này. Arm sensitivity `lexicon` abstain
+khoảng 17% nên nó xảy ra thường xuyên. Đo trên toàn bộ run dir `r1` (4 size × 10 agent × 90 scenario, encoder
+`nemotron` đọc từ embedding cache, 16 784 objective có cấp phân loại được): **2 018 objective bị loại, tức 12,0%**,
+trong đó 1 786 vẫn chấm được nếu dùng quy ước của Webb. Đây cùng loại với chênh lệch mẫu số đã khai giữa hai arm
+(coverage 84% vs 100%) và được xử lý giống hệt: khai ra chứ không chỉnh cho hai arm bằng nhau. Thứ hạng sống sót qua
+hai instrument có mẫu số lệch nhau là bằng chứng mạnh hơn thứ hạng đo trên hai instrument đã được chỉnh cho giống nhau.
+
+**Hai họ đo CÙNG ba cạnh, chỉ khác instrument (sửa 2026-08-30).** Porter trước đây luôn lấy objectives làm mốc
+(`objectives↔assessment`, `↔activities`, `↔evaluation`) — khung của thiết kế cũ, có từ trước khi C4 vào panel. Hệ quả:
+cạnh `activity↔assessment` chỉ được đo bằng textual correspondence, trong khi hai cạnh kia được đo bằng cả hai họ. Nay
+`PORTER_PAIRS` = `objective_assessment`, `objective_activity`, `activity_assessment`, khớp 1-1 với họ A. Hai họ khác
+nhau ở **instrument** và không khác gì nữa — đó mới là lý do có hai họ.
+
+**Đã xoá hẳn khỏi phép đo (2026-08-30):**
+
+- `objective_evaluation_similarity` — tín hiệu họ A **duy nhất không ứng với quan hệ core nào**. Sau khi kiến trúc bỏ
+  `evaluation` khỏi `NodeType`, nó đo phần text mà graph không mô hình hoá.
+- `assessment_objective_similarity` — chiều ngược, **hướng không đơn nghĩa**: rất cao có thể là "không có item thừa",
+  mà cũng có thể là "assessment chỉ chép lại objective".
+- **Cặp Porter `objectives↔evaluation`** — cùng một lý do. Giữ nó lại thì evaluation bị đuổi khỏi họ A rồi quay lại
+  panel qua họ B, chiếm 1/3 của `porter_mean`, và lập luận "đã bỏ evaluation" chỉ đúng hai phần ba.
+- Kéo theo: `extract_evaluation_texts`, `counts["evaluation"]`, `best_evaluation*` trong `details.objectives`,
+  `NON_PANEL_DIAGNOSTICS`, `NON_DIRECTIONAL_SIGNALS`. Không còn tín hiệu nào đọc text pha evaluation.
+
+Trước đây hai tín hiệu đầu được giữ lại làm diagnostic để "số cũ truy hồi được". Lý do đó không còn: panel đã phải
+re-score toàn bộ (xem §4 degenerate), nên không có tập số nào đang sống mà việc xoá làm gãy. Giữ code chết quanh một
+phép đo là cách chắc chắn để nó bò lại vào bảng.
+
+Về mối lo mất khả năng phát hiện item mồ côi/thừa khi bỏ chiều ngược: mối lo đó chuyển sang **phía sinh**, nơi
+`checks.plan_coverage` của MAS buộc sinh đúng các cặp (objective, plan_category) mà assessment plan đã hứa và không
+sinh filler. Đây là dịch chuyển thật, phải khai: panel không còn *đo* được item thừa.
+
+**Thời điểm thay đổi.** Đổi panel sau khi đã thấy kết quả là đúng dạng selective reporting mà panel phẳng sinh ra để
+chặn. Ba điều giữ cho thay đổi này hợp lệ, và phải nêu cả ba khi viết: (1) căn cứ là **lý thuyết** — hoàn tất tam giác
+CA ở cả hai họ và buộc mọi tín hiệu ứng với một quan hệ core — không phải kết quả; (2) tín hiệu bị bỏ là tín hiệu hệ
+thống đang **THẮNG** (`objective_evaluation_similarity`: +0.072…+0.326, mọi so sánh đều có ý nghĩa trên train_30), nên
+đây là bỏ tín hiệu có lợi, ngược với cherry-pick; (3) `test_90` **chưa** được score với kiến trúc mới, nên đây là thời
+điểm hợp lệ cuối cùng để chốt thước đo.
+
+**`porter_mean` đổi định nghĩa, phải khai.** Nó không còn là trung bình của ba cặp objective-vs-X mà là trung bình
+trên ba cạnh tam giác. Số cũ trong `docs/results.md` và `docs/generated/` **không so sánh được** với số mới; mọi con số
+`porter_*` trong paper phải sinh lại từ đợt re-score sau 2026-08-30.
 
 **Quy tắc đọc panel — pre-specified, phải viết trước khi đọc kết quả.** Không có endpoint chính thì kết luận RQ2 phụ
 thuộc vào việc đọc profile, mà đọc profile không có quy tắc thì mọi hình dạng kết quả đều kể được thành một câu chuyện
@@ -204,29 +270,41 @@ thuận. Vì vậy quy tắc quyết định được chốt trước, áp dụn
 > dạng khác — kể cả "5 dương, 1 âm có ý nghĩa" — được báo là **hỗn hợp**, và phải mô tả đúng vế thua, không được gộp
 > thành một câu "vượt trội".
 
-Mẫu số là **6, không phải 7**: `assessment_objective_similarity` bị loại khỏi phép đếm vì hướng không đơn nghĩa (đoạn
-trên) — đây là quy tắc viết trước, không phải nhận xét sau khi thấy nó rơi vào phía nào. Quy tắc này **không phải
+Mẫu số là **6 = toàn bộ panel**: sau khi tín hiệu không đơn nghĩa ra khỏi panel, mọi tín hiệu panel đều đơn hướng nên
+không còn tín hiệu nào bị loại khỏi phép đếm (`NON_DIRECTIONAL_SIGNALS` rỗng theo cấu trúc). Quy tắc này **không phải
 composite**: nó không cộng/chuẩn hoá tín hiệu nào thành một số, mỗi tín hiệu vẫn được báo riêng với p riêng; nó chỉ cố
 định trước cách phát biểu kết luận từ một tập tín hiệu.
 
 Ngoài panel: `details.validation.declared_link_agreement` và `details.sanity.*` **không phải tín hiệu panel** — chúng
 đo instrument chứ không đo agent, nằm ở tầng validity evidence (§7).
 
-- Degenerate: no objectives → 3 tín hiệu similarity họ A = 0.0; congruence undefined; set trống → tín hiệu tương ứng
-  0.0 + note.
+- **Degenerate input — phân biệt lỗi của agent với giới hạn của instrument (sửa 2026-08-30).** Hai sự kiện này
+  trước đây cùng cho `None` nên cùng bị loại khỏi mẫu số khi pooling. Quy tắc chốt:
+    - **Agent không sinh ra set** (không objective, không assessment item, không activity) là **lỗi của agent** và
+      phải nhận **0.0 + note**, không phải undefined. Áp dụng cho *mọi* tín hiệu phía objective, kể cả
+      `objective_cognitive_congruence`, `porter_*`, `webb_bloom_consistency`. Nếu để undefined thì output tệ nhất
+      lại rời khỏi mẫu số thay vì bị tính điểm, và tỉ lệ parse-fail cao ở model nhỏ nên phần thiếu tương quan
+      thẳng với biến độc lập của RQ1.
+    - **Set có nhưng classifier không gán được cấp Bloom** là **giới hạn instrument** và giữ `None` (undefined).
+      Đây mới là trường hợp đúng để loại khỏi mẫu số.
+    - **C4 (`activity_assessment_similarity`) không phụ thuộc objective** nên luôn được tính khi có đủ activity và
+      assessment, kể cả khi không có objective nào. Cả hai phía trống → 0.0 + note (không phải undefined: sinh ra
+      không gì cả không được điểm cao hơn sinh ra một phía).
+  Hệ quả cho §5: layer `failure=0` chỉ còn phải bù các cell **không có file output**; cell có output nhưng rỗng đã
+  được chấm 0.0 ngay từ scorer.
 - Per-objective audit trail trong `details.objectives`: best_item/activity/evaluation + similarity liên tục + Bloom
   level. Toàn số thực, không có cờ boolean matched/covered nào.
 
 ## 5. Statistical analysis
 
-**Multiplicity — hai tầng, báo cả hai.** Panel không có thứ bậc *báo cáo* (§4) nhưng vẫn cần neo *hiệu chỉnh*: 7 tín
-hiệu × 6 so sánh × 4 size = 168 test, không hiệu chỉnh thì reviewer gọi đúng tên là fishing — và mỉa mai là nó hạ giá
+**Multiplicity — hai tầng, báo cả hai.** Panel không có thứ bậc *báo cáo* (§4) nhưng vẫn cần neo *hiệu chỉnh*: 6 tín
+hiệu × 6 so sánh × 4 size = 144 test, không hiệu chỉnh thì reviewer gọi đúng tên là fishing — và mỉa mai là nó hạ giá
 chính cái panel.
 
 - **Chính = Holm riêng cho từng tín hiệu**: mỗi tín hiệu một family = 6 so sánh/size. Phòng thủ chống selective
   reporting nằm ở chỗ **mọi tín hiệu đều báo cho mọi so sánh**, thắng hay thua, chứ không nằm ở việc gộp family.
   Giữ nguyên power.
-- **Footnote = Holm chung toàn panel** (family = 7 tín hiệu × 6 so sánh mỗi size). Cùng dữ liệu, chỉ khác cách hiệu
+- **Footnote = Holm chung toàn panel** (family = 6 tín hiệu × 6 so sánh mỗi size). Cùng dữ liệu, chỉ khác cách hiệu
   chỉnh, nên miễn phí về tính toán — và có nó thì câu *"kể cả hiệu chỉnh chung toàn panel, kết luận không đổi"* là
   miễn phí về lập luận. Key pooled: `comparisons[].p_holm_panel`.
 
@@ -262,7 +340,7 @@ nào cho câu hỏi đang hỏi ("thứ hạng có phụ thuộc lựa chọn in
 kiểm.
 
 Panel có hai họ instrument (§4) thì **mỗi họ phải có trục riêng** — đó là lý do trục 3 tồn tại: nếu chỉ sweep encoder,
-3/7 tín hiệu (họ B) không được kiểm bởi trục nào cả.
+3 trong 6 tín hiệu (họ B) không được kiểm bởi trục nào cả.
 
 **Trục 1 — Encoder independence (chính).** Chấm lại toàn bộ bằng E2 `bge-m3` và E3 `granite-r2`
 (ghi ra `alignment_scores.{bgem3,granite}.json`). Câu hỏi: *thứ
@@ -286,7 +364,7 @@ toàn — một từ 21 380 nhãn người, một từ A&K Table 5.1 — và **�
 Chi phí trục này gần bằng 0: Bloom chạy CPU, embedding lấy từ cache SQLite (`--embed-cache-only`), nên arm BERT
 **không cần dựng pod**. Chi phí thật chỉ là một lần fine-tune (~21k dòng, vài phút GPU).
 
-**Thống kê nào được báo.** Claim của paper là *harness > từng đối sánh*, nên số liệu robustness đúng là **chiều so
+**Thống kê nào được báo.** Claim của paper là *MAS > từng đối sánh*, nên số liệu robustness đúng là **chiều so
 sánh theo cặp giữ nguyên qua các arm**, KHÔNG phải ρ Spearman của thứ tự đầy đủ 7 hệ — 5 hệ giữa bảng bám nhau quá
 sát nên thứ tự giữa chúng vốn không phân giải được, và paper chưa bao giờ claim thứ tự đó.
 
@@ -333,6 +411,22 @@ chứng trên, không nằm ở tên metric (§4) và bản thân cách đặt t
   việc fine-tune BERT trên learning objective (thiết kế classifier của ta khác họ, xem mục 3.4). Kèm dòng BERT/LLM
   Bloom nói chung: fine-tuned BERT for MOOCs (IRRODL); BloomLLM 2024 (Springer).
 - Item–standards alignment bằng LM/embeddings (precedent): arXiv 2510.05129 (2025).
+- **Related-work contrast — các họ quantification khác cho CA/alignment** (thêm 2026-08-30, deep-research xác nhận gap):
+  cả ba đều KHÔNG đo trọn tam giác Biggs bằng panel tự động deterministic, nên trích để khoanh gap chứ không phải để
+  kế thừa phương pháp.
+   - `zhao2023alignment` — áp dụng Porter formula thực nghiệm (2 trường phổ thông, κ liên-rater 0,781), chỉ ra
+     instruction↔assessment thường đạt "high alignment" (P>0,5) trong khi alignment với objectives/standards thấp hơn.
+     Dùng làm precedent cho việc Porter/Webb khi áp dụng thực tế cần một **ngưỡng** — tương phản trực tiếp với thiết kế
+     **không ngưỡng** của panel (§4).
+   - `barthakur2022aligning` — multidimensional IRT kiểm định thống kê cấu trúc alignment outcome↔assessment từ dữ
+     liệu **phản hồi sinh viên** (không phải text). Trích ở related work để phân biệt: protocol của ta text-based, áp
+     dụng được ngay lúc sinh output, không cần dữ liệu điểm số người học.
+   - `rossnagel2021revisiting` — thang tự báo cáo CALEQ đo CA **cảm nhận** của sinh viên (perceived alignment), không
+     đo trực tiếp trên artifact. Trích để tương phản: panel của ta đo trên chính output (objective/assessment/activity
+     text), deterministic, không qua khảo sát.
+   - `pawar2018similarity` — "Bloom Index": similarity cặp động từ cho Bloom-level matching. Thêm vào dòng rule-based
+     Bloom cùng Omar/Haris/Jayakodi — precedent gần nhất cho thiết kế `LexiconBloomClassifier` (dẫn từ động từ, không
+     học từ nhãn).
 - **Tiền đề task decomposition** (giàn ý `summary.md` mục 4.5, nợ R7 — **đã trả**, metadata đã verify, đã có trong
   `docs/paper/acm/references.bib`): zhou2023leasttomost (Least-to-Most, ICLR 2023), khot2023decomposed (Decomposed
   Prompting, ICLR 2023), ferraz2024decrim (DeCRIM, Findings of EMNLP 2024), shen2024multillmagent (Small LLMs Are Weak

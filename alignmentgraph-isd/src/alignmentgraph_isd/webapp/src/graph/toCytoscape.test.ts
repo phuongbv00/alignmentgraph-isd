@@ -5,6 +5,9 @@ import type { AlignmentGraphPayload, GraphEdge } from '../api/types'
 /**
  * A miniature dump with the same structure as a real one: element and section
  * nodes, all three edge layers, an aligned objective and an unaligned one.
+ * Relations follow the current C1–C7 / P1–P11 registry; note that C5/C6 are
+ * core relations established by PROVENANCE — the case the old mechanism-based
+ * layering silently hid.
  */
 function fixture(): AlignmentGraphPayload {
   const edge = (
@@ -13,30 +16,33 @@ function fixture(): AlignmentGraphPayload {
 
   return {
     nodes: [
-      { id: 'needs_context_0', type: 'needs_context' },
+      { id: 'course_goal_0', type: 'course_goal' },
       { id: 'gap:GAP-01', type: 'gap' },
-      { id: 'objective_0', type: 'objective' },
       { id: 'objective:LO-01', type: 'objective' },
       { id: 'objective:LO-02', type: 'objective' },
-      { id: 'assessment_0', type: 'assessment' },
+      { id: 'assessment_plan_0', type: 'assessment_plan' },
       { id: 'assessment:AT-01', type: 'assessment' },
       { id: 'activity:ACT-01', type: 'activity' },
-      { id: 'summative:SA-01', type: 'summative' },
-      { id: 'media:MED-01', type: 'media' },
+      { id: 'content:MOD-01', type: 'content' },
+      { id: 'rubric:RC-01', type: 'rubric' },
+      { id: 'material:MAT-01', type: 'material' },
+      { id: 'improvement_0', type: 'improvement' },
     ],
     edges: [
-      // alignment layer: matched ids / types
-      edge('R3', 'R3-measures', 'assessment:AT-01', 'objective:LO-01', 'id'),
-      edge('R4', 'R4-supports', 'activity:ACT-01', 'objective:LO-01', 'id'),
-      edge('R5', 'R5-evaluates', 'summative:SA-01', 'objective:LO-01', 'id'),
-      edge('R6', 'R6-realizes', 'assessment_0', 'assessment:AT-01', 'type'),
-      // provenance layer
-      edge('R1', 'R1-informs', 'gap:GAP-01', 'objective:LO-01', 'provenance'),
-      edge('R1', 'R1-informs', 'gap:GAP-01', 'objective:LO-02', 'provenance'),
-      edge('R11', 'R11-constrains', 'needs_context_0', 'media:MED-01', 'provenance'),
+      // alignment layer = the CORE relations C1–C7, whatever established them
+      edge('C1', 'C1-decomposes_to', 'course_goal_0', 'objective:LO-01', 'provenance'),
+      edge('C2', 'C2-assessed_by', 'objective:LO-01', 'assessment:AT-01', 'id'),
+      edge('C3', 'C3-practiced_by', 'objective:LO-01', 'activity:ACT-01', 'id'),
+      edge('C5', 'C5-supports', 'content:MOD-01', 'activity:ACT-01', 'provenance'),
+      edge('C6', 'C6-evaluated_by', 'assessment:AT-01', 'rubric:RC-01', 'provenance'),
+      edge('C7', 'C7-measures', 'rubric:RC-01', 'objective:LO-01', 'id'),
+      // provenance layer = the secondary relations P1–P11 — including P3,
+      // which is TYPE-established but still secondary
+      edge('P1', 'P1-informs', 'gap:GAP-01', 'objective:LO-01', 'provenance'),
+      edge('P3', 'P3-realizes', 'assessment_plan_0', 'assessment:AT-01', 'type'),
+      edge('P5', 'P5-covers', 'content:MOD-01', 'material:MAT-01', 'provenance'),
       // scaffolding: no relation id, dropped by the DOT export too
-      edge('', 'rooted-in', 'objective:LO-01', 'objective_0', ''),
-      edge('', 'rooted-in', 'assessment:AT-01', 'assessment_0', ''),
+      edge('', 'narrates', 'improvement_0', 'objective:LO-01', ''),
     ],
     objective_alignment: {
       'objective:LO-01': { measured: true, supported: true, evaluated: true, bloom_ok: true, aligned: true },
@@ -64,26 +70,43 @@ describe('node id conventions', () => {
 })
 
 describe('edge layers', () => {
-  it('classifies by how the relation was established', () => {
+  it('classifies by relation class (C = core alignment, P = secondary), not by mechanism', () => {
     const graph = fixture()
-    expect(edgeLayer(graph.edges[0])).toBe('alignment') // established by id
-    expect(edgeLayer(graph.edges[3])).toBe('alignment') // established by type
-    expect(edgeLayer(graph.edges[4])).toBe('provenance')
-    expect(edgeLayer(graph.edges[7])).toBe('scaffolding') // no relation id
+    expect(edgeLayer(graph.edges[0])).toBe('alignment') // C1, provenance-established
+    expect(edgeLayer(graph.edges[1])).toBe('alignment') // C2, id-established
+    expect(edgeLayer(graph.edges[3])).toBe('alignment') // C5, provenance-established
+    expect(edgeLayer(graph.edges[4])).toBe('alignment') // C6, provenance-established
+    expect(edgeLayer(graph.edges[6])).toBe('provenance') // P1
+    expect(edgeLayer(graph.edges[7])).toBe('provenance') // P3, TYPE-established but secondary
+    expect(edgeLayer(graph.edges[9])).toBe('scaffolding') // no relation id
   })
 
   it('counts each layer for the controls', () => {
-    expect(layerCounts(fixture())).toEqual({ alignment: 4, provenance: 3, scaffolding: 2 })
+    expect(layerCounts(fixture())).toEqual({ alignment: 6, provenance: 3, scaffolding: 1 })
   })
 })
 
 describe('toCytoscape', () => {
   it('shows only the alignment layer by default', () => {
     const elements = toCytoscape(fixture(), DEFAULT_FILTERS)
-    expect(edges(elements)).toHaveLength(4)
-    // The provenance hub and the media node it constrains are not pulled in.
-    expect(ids(nodes(elements))).not.toContain('needs_context_0')
-    expect(ids(nodes(elements))).not.toContain('media:MED-01')
+    expect(edges(elements)).toHaveLength(6)
+    // Secondary-only nodes are not pulled in.
+    expect(ids(nodes(elements))).not.toContain('gap:GAP-01')
+    expect(ids(nodes(elements))).not.toContain('assessment_plan_0')
+    expect(ids(nodes(elements))).not.toContain('material:MAT-01')
+  })
+
+  it('keeps content modules and the AT↔rubric leg visible in the alignment view', () => {
+    // C5 (content supports activity) and C6 (assessment evaluated by rubric)
+    // are provenance-ESTABLISHED but core relations; the old mechanism-based
+    // layering dropped them, which hid every content module and the whole
+    // rubric leg from the default view.
+    const elements = toCytoscape(fixture(), DEFAULT_FILTERS)
+    expect(ids(nodes(elements))).toContain('content:MOD-01')
+    expect(ids(nodes(elements))).toContain('rubric:RC-01')
+    const relationIds = edges(elements).map((e) => e.data.relationId)
+    expect(relationIds).toContain('C5')
+    expect(relationIds).toContain('C6')
   })
 
   it('keeps every objective visible even with no edges at all', () => {
@@ -96,12 +119,13 @@ describe('toCytoscape', () => {
 
   it('adds nodes as the layers they touch are switched on', () => {
     const withProvenance = toCytoscape(fixture(), { ...DEFAULT_FILTERS, provenance: true })
-    expect(ids(nodes(withProvenance))).toContain('needs_context_0')
-    expect(ids(nodes(withProvenance))).toContain('media:MED-01')
+    expect(ids(nodes(withProvenance))).toContain('gap:GAP-01')
+    expect(ids(nodes(withProvenance))).toContain('assessment_plan_0')
+    expect(ids(nodes(withProvenance))).toContain('material:MAT-01')
 
     const everything = toCytoscape(fixture(), { alignment: true, provenance: true, scaffolding: true })
-    expect(nodes(everything)).toHaveLength(10)
-    expect(edges(everything)).toHaveLength(9)
+    expect(nodes(everything)).toHaveLength(11)
+    expect(edges(everything)).toHaveLength(10)
   })
 
   it('never emits an edge whose endpoints are not both visible', () => {
@@ -136,19 +160,34 @@ describe('toCytoscape', () => {
 
   it('marks section nodes so they read as holding a whole ADDIE section', () => {
     const elements = toCytoscape(fixture(), { alignment: true, provenance: true, scaffolding: true })
-    expect(nodes(elements).find((n) => n.data.id === 'assessment_0')!.classes).toContain('section')
+    expect(nodes(elements).find((n) => n.data.id === 'assessment_plan_0')!.classes).toContain('section')
     expect(nodes(elements).find((n) => n.data.id === 'assessment:AT-01')!.classes).toContain('element')
   })
 
-  it('flags a measures edge into an objective whose Bloom level does not hold', () => {
+  it('flags an assessed_by edge out of an objective whose Bloom level does not hold', () => {
+    // C2/C3 are id-reverse: the LO is the edge SOURCE, so the flags are read
+    // from the source side — the mirror of the DOT export's red-edge rule.
     const graph = fixture()
     graph.edges.push({
-      relation_id: 'R3', type: 'R3-measures', source: 'assessment:AT-01',
-      target: 'objective:LO-02', established_by: 'id', evidence: '', rationale: '',
+      relation_id: 'C2', type: 'C2-assessed_by', source: 'objective:LO-02',
+      target: 'assessment:AT-01', established_by: 'id', evidence: '', rationale: '',
     })
     const elements = toCytoscape(graph, DEFAULT_FILTERS)
-    const flagged = edges(elements).find((e) => e.data.target === 'objective:LO-02')!
+    const flagged = edges(elements).find((e) => e.data.source === 'objective:LO-02')!
     expect(flagged.classes).toContain('bloom-violation')
+    // The healthy objective's own C2 edge stays unflagged.
+    const healthy = edges(elements).find(
+      (e) => e.data.source === 'objective:LO-01' && e.data.relationId === 'C2',
+    )!
+    expect(healthy.classes).not.toContain('bloom-violation')
+  })
+
+  it('renders secondary relations dotted via the secondary class', () => {
+    const elements = toCytoscape(fixture(), { alignment: true, provenance: true, scaffolding: false })
+    const secondary = edges(elements).find((e) => e.data.relationId === 'P1')!
+    expect(secondary.classes).toContain('secondary')
+    const core = edges(elements).find((e) => e.data.relationId === 'C2')!
+    expect(core.classes).not.toContain('secondary')
   })
 
   it('gives every edge a stable unique id', () => {

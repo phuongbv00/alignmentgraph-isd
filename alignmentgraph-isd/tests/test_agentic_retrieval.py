@@ -7,7 +7,7 @@ from alignmentgraph_isd import DesignBrief, HarnessRunConfig, run_design_brief
 from alignmentgraph_isd.core.rag.agent import RetrievalAgent, RetrievalTool
 from alignmentgraph_isd.core.rag.sandbox import RetrievalSandbox
 
-from conftest import FakeChatModel, _payload_for_system, load_brief
+from conftest import events_of, FakeChatModel, _payload_for_system, load_brief
 
 BRIEF = DesignBrief(
     id="b1", title="Software Testing Fundamentals", domain="Software Engineering",
@@ -47,8 +47,8 @@ def test_use_rag_off_is_zero_cost_and_prompt_stable(fake_llm_factory):
     result_gated = run_design_brief(brief, config_gated)
 
     for result in (result_plain, result_gated):
-        assert result["trajectory"]["retrieval_events"] == []
-    assert result_plain["trajectory"]["llm_calls"] == result_gated["trajectory"]["llm_calls"]
+        assert events_of(result["trajectory"], "retrieval") == []
+    assert result_plain["metadata"]["token_usage"]["llm_calls"] == result_gated["metadata"]["token_usage"]["llm_calls"]
 
 
 def test_use_rag_on_with_empty_registry_is_zero_cost(fake_llm_factory):
@@ -56,7 +56,7 @@ def test_use_rag_on_with_empty_registry_is_zero_cost(fake_llm_factory):
     config = HarnessRunConfig(use_rag=True)
     config.llm_factory = fake_llm_factory
     result = run_design_brief(brief, config)
-    assert result["trajectory"]["retrieval_events"] == []
+    assert events_of(result["trajectory"], "retrieval") == []
 
 
 # ── On-demand flow: specialist decides, sandbox executes, prompt gets material ─
@@ -112,13 +112,13 @@ def test_on_demand_retrieval_flow_end_to_end():
 
     result = run_design_brief(brief, config)
 
-    events = result["trajectory"]["retrieval_events"]
-    retrieved = [e for e in events if e["decision"] == "retrieve"]
+    events = events_of(result["trajectory"], "retrieval")
+    retrieved = [e for e in events if e["context"]["decision"] == "retrieve"]
     assert retrieved, "expected at least one specialist to retrieve"
-    assert retrieved[0]["strategy"] == "single"
-    assert retrieved[0]["retrieval_agents"] == ["testing_corpus"]
-    assert retrieved[0]["snippets"] >= 1
-    assert all(e["executions"][0]["status"] == "ok" for e in retrieved)
+    assert retrieved[0]["context"]["strategy"] == "single"
+    assert retrieved[0]["context"]["retrieval_agents"] == ["testing_corpus"]
+    assert retrieved[0]["context"]["snippets"] >= 1
+    assert all(e["context"]["executions"][0]["status"] == "ok" for e in retrieved)
     assert model.seen_domain_material >= 1, "retrieved material should reach specialist prompts"
 
 

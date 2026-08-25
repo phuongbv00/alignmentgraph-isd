@@ -60,7 +60,7 @@ export interface RunStats {
   llm_calls?: number
   token_usage?: { prompt_tokens?: number; completion_tokens?: number }
   agent_steps?: number
-  verifier_rounds?: number
+  check_rounds?: number
   repair_events?: number
   duration_seconds?: number
   event_count?: number
@@ -207,7 +207,7 @@ export type EventKind =
   | 'node_edit'
   | 'llm_call'
   | 'validation_event'
-  | 'verifier_event'
+  | 'check_event'
   | 'repair_event'
   | 'retrieval_event'
   | 'run_cancelling'
@@ -225,20 +225,15 @@ export interface RunEvent {
 /**
  * One entry of the deep trajectory: something an agent actually did.
  *
- * Open-ended on purpose — the fields carried depend on the kind of work (a
- * graph read carries a query and a result count, an edge carries a relation and
- * its evidence), and pinning every variant here would mean editing this type
- * every time the harness records something new.
+ * All action-specific details live in `context`. This leaves a stable envelope
+ * for concurrent writers: time, responsible agent, action, then its details.
  */
 export interface DeepAction {
-  seq: number
-  kind: string
-  /** The agent that did it; empty for work the harness did outside an agent. */
-  actor: string
-  phase: string
-  elapsed_ms: number
   timestamp: string
-  [field: string]: any
+  /** The agent that did it; empty for work the harness did outside an agent. */
+  agent: string
+  action: string
+  context: Record<string, any>
 }
 
 export interface DeepTrajectory {
@@ -246,9 +241,9 @@ export interface DeepTrajectory {
   actions: DeepAction[]
   summary: {
     action_count: number
-    by_kind: Record<string, number>
-    by_actor: Record<string, Record<string, number>>
-    actors: string[]
+    by_action: Record<string, number>
+    by_agent: Record<string, Record<string, number>>
+    agents: string[]
     latency_ms: number
   }
 }

@@ -23,7 +23,7 @@ needs--objective--assessment--activity--implementation--evaluation concerns
 s_{\mathrm{act}},\,s_{\mathrm{impl}},\,s_{\mathrm{eval}}\},
 \]
 each responsible for exactly one concern in this order (\Cref{tab:specialists}).
-On this basis, multi-agent decomposition is the harness's inherited architectural
+On this basis, multi-agent decomposition is the MAS's inherited architectural
 foundation; the next two subsections describe the graph-context and verifier
 mechanisms built on that foundation.
 
@@ -106,7 +106,7 @@ structural coverage when there is a node that measures it (an assessment item), 
 node that supports it (a learning activity), and a node that evaluates it (an
 evaluation item)---the same three facets required in Quality Matters review.
 
-The graph coordinates specialists through the tool set that the harness provides
+The graph coordinates specialists through the tool set that the MAS provides
 to each one. Every $s\in\mathcal{S}$ operates as a triple
 \begin{gather*}
 s=\langle C(s),\; g_s,\; W(s)\rangle,\\
@@ -118,7 +118,7 @@ W(s)=(\mathcal{T}_s,\mathcal{R}_s),\quad
 comprising three operations for reading the graph, generating content, and writing
 to the graph:
 \begin{itemize}
-  \item \emph{Read}---context slice $C(s)$: before generation, the harness gives
+  \item \emph{Read}---context slice $C(s)$: before generation, the MAS gives
   $s$ a one-hop graph slice filtered to the relationships needed by $s$'s concern,
   together with the design brief and stable ISD guidance. Upstream premises thus
   enter the call in structured form, and the model need not reconstruct the program
@@ -127,7 +127,7 @@ to the graph:
   from the prepared context; each generated item must declare the identifier of
   the upstream objective it serves.
   \item \emph{Write}---contract $W(s)$: $s$ may write only nodes with types in
-  $\mathcal{T}_s$ and edges with types in $\mathcal{R}_s$; the harness resolves
+  $\mathcal{T}_s$ and edges with types in $\mathcal{R}_s$; the MAS resolves
   declared identifiers by direct lookup (without traversal) and writes typed edges.
   Required links originate in this write step, and later specialists cannot
   silently modify upstream premises.
@@ -166,7 +166,7 @@ missing, malformed, or inconsistent with its own instructions. For example, the
 existence of a \emph{measures} edge does not mean that the assessment actually
 measures the objective's content and cognitive level. Prior work shows that
 post-generation checking can improve compliance
-~\cite{ferraz2024decrim,madaan2023selfrefine}; the harness therefore places a
+~\cite{ferraz2024decrim,madaan2023selfrefine}; the MAS therefore places a
 backstop after each generation call: a pedagogical verifier checks automatically
 testable \emph{necessary conditions} for pedagogical appropriateness and triggers
 repair when they are violated.
@@ -209,7 +209,7 @@ without a verify-and-repair stage.
   \end{tabular}
 \end{table}
 
-When a check detects a violation, the harness does not regenerate the entire phase.
+When a check detects a violation, the MAS does not regenerate the entire phase.
 It packages the violation with the relevant nodes and edges and returns it to the
 specialist that owns the artifact under $W(s)$; that specialist issues a targeted
 generation call $\mathrm{repair}_s$ over the violated artifacts alone, and the
@@ -234,8 +234,8 @@ determines what is available when. The verify-and-repair loop is local to the
 specialist that has just written, and only the two post-loop steps
 $\mathrm{aggregate}(G)$ and $\mathrm{audit}(G)$ read the whole graph. Roles remain
 distinct throughout: the model proposes content only through the generation calls
-$g_s$ and $\mathrm{repair}_s$; the harness controls decomposition, state
-transitions, checking, and assembly. The harness assumes that the design brief has
+$g_s$ and $\mathrm{repair}_s$; the MAS controls decomposition, state
+transitions, checking, and assembly. The MAS assumes that the design brief has
 been supplied and that the backbone is stateless across calls; graph $G$ retains
 cross-call state.
 
@@ -272,6 +272,6 @@ then revise or override the design according to the teacher-in-the-loop principl
 The three components carry different levels of evidence in this study, and we
 claim them accordingly: decomposition is the inherited architectural foundation
 associated with output robustness at the system level; graph context is the
-mechanism whose effect on the alignment signals the ablation tests directly;
+mechanism whose effect on the alignment scores the ablation tests directly;
 and the verifier is a check-and-repair backstop and a source of audit evidence,
 not a component claimed to raise scores (\Cref{sec:conditions,sec:ablation}).

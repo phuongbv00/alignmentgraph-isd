@@ -181,10 +181,13 @@ function AlignmentFlags({ flags }: { flags: ObjectiveAlignment }) {
   return (
     <>
       <div className="section-title">Constructive alignment</div>
+      {/* The three legs mirror viz.objective_annotations: measured = C2
+          assessed_by, supported = C3 practiced_by, evaluated = C7 measures
+          (scored by a rubric criterion). */}
       <div className="flags">
-        <Flag on={flags.measured} label="measured by an assessment" />
-        <Flag on={flags.supported} label="supported by an activity" />
-        <Flag on={flags.evaluated} label="evaluated summatively" />
+        <Flag on={flags.measured} label="assessed by an assessment task (C2)" />
+        <Flag on={flags.supported} label="practiced by an activity (C3)" />
+        <Flag on={flags.evaluated} label="scored by a rubric criterion (C7)" />
         <Flag on={flags.bloom_ok} label="Bloom level consistent" />
       </div>
       <div className="small muted" style={{ marginTop: 6 }}>
@@ -348,22 +351,23 @@ function EventDetail({ events }: { events: RunEvent[] }) {
  */
 function ActionDetail({ actions }: { actions: DeepAction[] }) {
   const first = actions[0]
-  const traversals = actions.filter((a) => Array.isArray(a.hops) && a.hops.length > 0)
+  const context = first.context
+  const traversals = actions.filter((a) => Array.isArray(a.context.hops) && a.context.hops.length > 0)
 
   return (
     <div className="inspector-body">
       <div className="section-title">Action</div>
       <dl className="kv">
-        <dt>Kind</dt><dd className="mono">{first.kind}</dd>
-        <dt>Agent</dt><dd>{first.actor || '(harness)'}</dd>
-        <dt>Phase</dt><dd>{first.phase || '—'}</dd>
-        <dt>At</dt><dd>{(Number(first.elapsed_ms) / 1000).toFixed(1)}s into the run</dd>
-        {actions.length > 1 && <><dt>Folded</dt><dd>{actions.length} actions</dd></>}
+        <dt>Action</dt><dd className="mono">{first.action}</dd>
+        <dt>Agent</dt><dd>{first.agent || '(harness)'}</dd>
+        <dt>Phase</dt><dd>{String(context.phase ?? '—')}</dd>
+        <dt>Recorded</dt><dd>{new Date(first.timestamp).toLocaleString()}</dd>
+        {actions.length > 1 && <><dt>Occurrences</dt><dd>{actions.length} actions</dd></>}
       </dl>
 
       {traversals.map((action, index) => (
-        <Collapsible key={index} title={`Relation walk: ${(action.rel_path ?? []).join(' → ')}`}>
-          {(action.hops as any[]).map((hop, hopIndex) => (
+        <Collapsible key={index} title={`Relation walk: ${(action.context.rel_path ?? []).join(' → ')}`}>
+          {(action.context.hops as any[]).map((hop, hopIndex) => (
             <div key={hopIndex} className="hop">
               <div className="hop-head small">
                 hop {hopIndex + 1} via <span className="mono">{hop.edge_type}</span>

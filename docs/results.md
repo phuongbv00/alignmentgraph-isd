@@ -4,7 +4,7 @@
 > `isd-agent-benchmark/results/test_90_benchmark_Qwen3.5-{0.8B,2B,4B,9B}_r{1.2.3}_20260726_*`
 > (chạy 2026-07-26, **10 agent trong cùng mỗi run**: 6 đối sánh + harness + 3 arm ablation) →
 > `04_audit_postrun.py` → `06_score_alignment.py` (5 arm instrument) → `07_pool_ladder_runs.py` →
-> `results/pooled_ladder.json` + `pooled_ablation.json` → `09`/`10`/`11`/`12` → `docs/generated/`.
+> `results/pooled_ladder.json` + `pooled_ablation.bk.json` → `09`/`10`/`11`/`12` → `docs/generated/`.
 > Mọi số dưới đây đọc từ hai file pooled đó; đừng sửa tay file này, hãy sửa nguồn rồi sinh lại.
 >
 > **Bản dump gộp để tra số**: `15_gen_facts_sheet.py` → `results/generated/facts.md` (đủ) và `facts_brief.md`

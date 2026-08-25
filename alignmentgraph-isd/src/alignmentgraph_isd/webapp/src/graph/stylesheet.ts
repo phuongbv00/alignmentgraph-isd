@@ -2,53 +2,53 @@ import type { StylesheetStyle } from 'cytoscape'
 
 /**
  * The visual grammar, kept deliberately close to the package's own DOT export
- * (`core/viz.py`) so a screenshot from the app and one from `dot -Tsvg` read as
- * the same picture.
+ * (`core/alignment_graph/viz.py`) so a screenshot from the app and one from
+ * `dot -Tsvg` read as the same picture.
  *
- * `viz.py` only styles the seven types in `NodeType`, but a real dump contains
- * twenty — the analysis decomposition (gap, task, learner) and the design
- * scaffolding (content, media, storyboard, the various plans) are graph nodes
- * too. They get shapes here rather than falling into an undifferentiated blob.
+ * The type list mirrors `NodeType` exactly: the six core types (course goal,
+ * objective, assessment, activity, content, rubric — the C1–C7 participants)
+ * plus the support types the P-relations touch. Cytoscape has no folder/note
+ * shapes, so those map to the closest available polygon.
  */
 
 const SHAPES: Record<string, string> = {
-  // Straight from viz._NODE_STYLE.
+  // Core types, straight from viz._NODE_STYLE.
+  course_goal: 'diamond',
   objective: 'round-rectangle',
   assessment: 'ellipse',
   activity: 'ellipse',
-  material: 'round-rectangle',
-  evaluation: 'diamond',
-  needs_context: 'hexagon',
-  implementation_plan: 'hexagon',
-  // The rest, grouped by role: analysis inputs are hexagons like their source,
-  // evaluation outputs are diamonds, design scaffolding is plain rectangles.
+  content: 'rectangle', // viz: folder
+  rubric: 'tag', // viz: note
+  // Support types (visible mostly with the provenance layer on): analysis
+  // inputs are hexagons, evaluation outputs diamonds, plans plain rectangles.
   gap: 'hexagon',
-  task: 'hexagon',
-  learner: 'hexagon',
-  summative: 'diamond',
+  topic: 'hexagon',
+  learner_profile: 'hexagon',
+  constraint: 'hexagon',
   improvement: 'diamond',
-  content: 'rectangle',
-  media: 'rectangle',
-  storyboard: 'rectangle',
+  media_selection: 'rectangle',
+  material: 'rectangle', // viz: folder
   assessment_plan: 'rectangle',
-  instructional_strategies: 'rectangle',
-  non_instructional_strategies: 'rectangle',
-  content_structure: 'rectangle',
-  storyboard_plan: 'rectangle',
+  activity_plan: 'rectangle',
+  implementation_plan: 'hexagon', // viz: component
 }
 
 const FILLS: Record<string, string> = {
+  course_goal: '#fef3c7',
   assessment: '#dbeafe',
   activity: '#dcfce7',
+  content: '#f3f4f6',
+  rubric: '#ede9fe',
   material: '#f3f4f6',
-  evaluation: '#ede9fe',
-  summative: '#ede9fe',
-  improvement: '#f5f3ff',
-  needs_context: '#f3f4f6',
   implementation_plan: '#f3f4f6',
   gap: '#fef2f2',
-  task: '#f0fdfa',
-  learner: '#fff7ed',
+  topic: '#f0fdfa',
+  learner_profile: '#fff7ed',
+  constraint: '#fefce8',
+  improvement: '#f5f3ff',
+  media_selection: '#f3f4f6',
+  assessment_plan: '#f3f4f6',
+  activity_plan: '#f3f4f6',
 }
 
 const FALLBACK_SHAPE = 'ellipse'
@@ -161,7 +161,9 @@ export function buildStylesheet(): StylesheetStyle[] {
         label: '',
       },
     },
-    { selector: 'edge.evaluates', style: { 'line-style': 'dashed' } },
+    // Secondary (P1–P11) relations: dotted, as in the DOT export — core
+    // relations stay solid so the constructive-alignment backbone reads first.
+    { selector: 'edge.secondary', style: { 'line-style': 'dotted' } },
     {
       selector: 'edge.bloom-violation',
       style: {
@@ -179,18 +181,24 @@ export function buildStylesheet(): StylesheetStyle[] {
   ]
 }
 
+// Edge colour = HOW the relation was established (the evidence mechanism);
+// the Alignment/Provenance toggles = WHICH relation class (C1–C7 core vs
+// P1–P11 secondary, solid vs dotted). The two axes are independent: C1/C5/C6
+// are core yet provenance-established, so a grey edge can still be core.
 export const LEGEND = {
   edges: [
-    { label: 'measures / supports / evaluates (matched ids)', colour: EDGE_COLOURS.id },
-    { label: 'realises (matched types)', colour: EDGE_COLOURS.type },
-    { label: 'provenance (derived from)', colour: EDGE_COLOURS.provenance },
-    { label: 'Bloom mismatch on a measures edge', colour: '#dc2626' },
+    { label: 'established by matched ids (assessed_by / practiced_by / prepares_for / measures)', colour: EDGE_COLOURS.id },
+    { label: 'established by matched types (realizes)', colour: EDGE_COLOURS.type },
+    { label: 'established by provenance (decomposes_to / supports / evaluated_by, …)', colour: EDGE_COLOURS.provenance },
+    { label: 'Bloom mismatch on an assessed_by / practiced_by edge', colour: '#dc2626' },
   ],
   nodes: [
-    { label: 'objective, fully aligned', colour: '#bbf7d0' },
-    { label: 'objective, missing a leg', colour: '#fde68a' },
-    { label: 'assessment', colour: '#dbeafe' },
-    { label: 'activity', colour: '#dcfce7' },
-    { label: 'evaluation / summative', colour: '#ede9fe' },
+    { label: 'objective (LO), fully aligned', colour: '#bbf7d0' },
+    { label: 'objective (LO), missing a leg', colour: '#fde68a' },
+    { label: 'course goal', colour: '#fef3c7' },
+    { label: 'assessment task (AT)', colour: '#dbeafe' },
+    { label: 'activity (TLA)', colour: '#dcfce7' },
+    { label: 'content module / material', colour: '#f3f4f6' },
+    { label: 'rubric criterion', colour: '#ede9fe' },
   ],
 }

@@ -3,18 +3,18 @@
 
 Constructive alignment becomes difficult to inspect when objectives, activities,
 assessments, and evaluation evidence are generated as one fluent document. Under a
-small-model serving envelope, the harness must also preserve those relations without
+small-model serving envelope, the MAS must also preserve those relations without
 placing the whole task in one call.
 
-This paper contributes AlignmentGraph-ISD, a harness that coordinates specialists
+This paper contributes AlignmentGraph-ISD, a multi-agent system that coordinates specialists
 through explicit graph state and exports that state for audit. Every system is
 scored both by the benchmark's LLM judges and by a no-LLM panel of
-textual-correspondence and cognitive-demand signals. That panel measures signals
-of constructive alignment, not the validated construct itself.
+alignment scores (textual correspondence and cognitive demand). That panel
+measures signals of constructive alignment, not the validated construct itself.
 
-Across the Qwen 0.8B--9B ladder, the harness produced usable output for every
+Across the Qwen 0.8B--9B ladder, the MAS produced usable output for every
 scenario, led ADDIE and the pre-specified alignment panel at every size, and showed its
-largest relative advantage toward the small end. The three judge signals remain
+largest relative advantage toward the small end. The three LLM judge scores remain
 co-equal: \texttt{total\_score} loses to one baseline at the smallest size, and
 ReAct-ISD reaches ADDIE parity at 9B.
 
@@ -24,7 +24,7 @@ backstop and source of audit evidence, not a supported score effect in the shipp
 configuration. Because every arm retains specialist decomposition, its contribution
 to robustness is established only at the system level.
 
-The evidence supports educator-in-the-loop use of an auditable graph-guided harness
+The evidence supports educator-in-the-loop use of an auditable graph-guided multi-agent system
 within the evaluated ladder. A blinded expert-validation round with a
 pre-specified prediction is underway to test machine--human agreement and to
 distinguish the favorable and adversarial readings of the ablation.

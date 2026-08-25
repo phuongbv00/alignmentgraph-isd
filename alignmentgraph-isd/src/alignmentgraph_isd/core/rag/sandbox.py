@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
-from ..schema import DesignBrief
+from ..brief import DesignBrief
 from .agent import RetrievalAgent
 
 STRATEGIES = ("single", "sequential", "parallel")

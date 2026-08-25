@@ -1,7 +1,7 @@
 from .core.runner import MetaAgent
-from .core.graph import AlignmentGraph
+from .core.alignment_graph import AlignmentGraph
 from .config import HarnessRunConfig
-from .core.schema import DesignBrief, DesignBriefContext, DesignBriefConstraints
+from .core.brief import DesignBrief, DesignBriefContext, DesignBriefConstraints
 from .core.rag.agent import RetrievalTool, RetrievalAgent, RetrievalAgentRegistry
 from .core.llm import llm_factory_from_env
 from .exceptions import HarnessCancelled

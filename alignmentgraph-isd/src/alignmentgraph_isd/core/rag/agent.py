@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from ..schema import DesignBrief
+from ..brief import DesignBrief
 
 
 # ── Tool ───────────────────────────────────────────────────────────────────────

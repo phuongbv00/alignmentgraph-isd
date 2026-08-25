@@ -1,6 +1,6 @@
 from __future__ import annotations
 from ...config import HarnessRunConfig
-from ..schema import DesignBrief
+from ..brief import DesignBrief
 from .agent import RetrievalAgentRegistry
 
 

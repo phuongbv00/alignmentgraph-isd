@@ -7,9 +7,9 @@ import shutil
 import subprocess
 
 from alignmentgraph_isd import HarnessRunConfig, run_design_brief
-from alignmentgraph_isd.core import viz
+from alignmentgraph_isd.core.alignment_graph import viz
 from alignmentgraph_isd.core.agents.base import _extract_token_usage
-from alignmentgraph_isd.core.graph import AlignmentGraph, NodeType
+from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
 
 from conftest import FakeChatModel, load_brief
 
@@ -45,8 +45,8 @@ def test_run_records_nonzero_token_usage():
     config = HarnessRunConfig()
     config.llm_factory = lambda: TokenModel()
     result = run_design_brief(load_brief("minimal_brief.json"), config)
-    usage = result["trajectory"]["token_usage"]
-    calls = result["trajectory"]["llm_calls"]
+    usage = result["metadata"]["token_usage"]
+    calls = usage["llm_calls"]
     assert calls > 0
     assert usage["prompt_tokens"] == 1000 * calls
     assert usage["completion_tokens"] == 500 * calls
@@ -70,7 +70,8 @@ def test_result_carries_full_graph_dump_separate_from_trajectory():
     # edges keep the structural fields the alignment analysis needs
     typed_edges = [e for e in graph["edges"] if e.get("relation_id")]
     assert typed_edges and all("established_by" in e for e in typed_edges)
-    assert set(graph["relation_coverage"]) == {f"R{i}" for i in range(1, 14)}
+    from alignmentgraph_isd.core.alignment_graph import alignment
+    assert set(graph["relation_coverage"]) == set(alignment.REGISTRY)
     # dump metadata: brief id, timestamp, counts by type
     meta = graph["metadata"]
     assert meta["design_brief_id"] and meta["generated_at"]
@@ -156,10 +157,11 @@ def test_graph_dump_written_when_env_opts_in(tmp_path, monkeypatch):
 
 def test_objective_annotation_flags_unaligned_objective():
     graph = AlignmentGraph()
-    graph.add_element_node(NodeType.OBJECTIVE, "LO-01", {"id": "LO-01", "level": "Apply"})
-    graph.add_element_node("assessment", "AT-01", {"item_id": "AT-01"})
-    graph.add_edge("R3-measures", "assessment:AT-01", "objective:LO-01", relation_id="R3", established_by="id")
-    # measured only — no supports/evaluates edge -> not fully aligned
-    ann = viz.objective_annotations(graph)["objective:LO-01"]
+    graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01", "level": "apply"})
+    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01"})
+    # C2 (assessed_by) is id-reverse: source=LO, target=Assessment.
+    graph.add_edge("C2-assessed_by", "objective:ILO-01", "assessment:AT-01", relation_id="C2", established_by="id")
+    # measured (assessed) only — no practiced/rubric-measured edge -> not fully aligned
+    ann = viz.objective_annotations(graph)["objective:ILO-01"]
     assert ann["measured"] and not ann["supported"] and not ann["evaluated"]
     assert ann["aligned"] is False

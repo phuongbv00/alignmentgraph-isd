@@ -4,7 +4,7 @@
 \subsection{Objectives and analyses}
 \label{sec:rqs}
 
-Objective~1 is met by the harness in \Cref{sec:method}; the remaining three map
+Objective~1 is met by the MAS in \Cref{sec:method}; the remaining three map
 onto the analyses as follows. Objective~2 has two parts---the level at each size
 and the scale interaction---which have equal standing and are tested by two separate analyses
 (per-size and difference-in-differences, \Cref{sec:stats}); significance at one
@@ -70,27 +70,27 @@ this limit is therefore a measured deployment property.
 \label{sec:metrics}
 
 Two measurement families are applied to the same saved outputs: the benchmark's
-LLM-judge rubric scores, and a deterministic alignment-signal measurement that
+LLM judge scores, and a deterministic alignment-score measurement that
 uses no LLM. They are mechanically independent, so agreement between them carries
 more weight than either family alone.
 
-\subsubsection{Judge-based measures}
+\subsubsection{LLM judge scores}
 
 For Objective~2, two fixed judges from families separate from the agents---
 \texttt{openai/gpt-4o-mini} and \texttt{google/gemini-2.5-flash-lite}---score
 every artifact; this separation reduces self-preference
 risk~\cite{panickssery2024llm}. The scenario score is the mean of the two
-judges. The three judge signals are reported in parallel with identical
+judges. The three LLM judge scores are reported in parallel with identical
 analyses and equal standing (\Cref{tab:judge-signals}); ADDIE leads the
 narrative because its rubric matches the construct Objective~2 addresses.
 
 \begin{table}[t]
-  \caption{The three judge signals (scale /100).}
+  \caption{The three LLM judge scores (scale /100).}
   \label{tab:judge-signals}
   \small
   \begin{tabular}{@{}lp{0.35\columnwidth}p{0.24\columnwidth}@{}}
     \toprule
-    Signal & Measured construct & Role \\
+    Score & Measured construct & Role \\
     \midrule
     \texttt{addie\_median} & content quality of the design (artifact rubric) &
     leads the narrative \\
@@ -102,11 +102,11 @@ narrative because its rubric matches the construct Objective~2 addresses.
   \end{tabular}
 \end{table}
 
-\subsubsection{Alignment-signal measures}
+\subsubsection{Alignment scores}
 \label{sec:alignment-measures}
 
-The judge scores above are produced by LLMs, whose rubric-scoring biases are
-systematically documented~\cite{zheng2023judging,panickssery2024llm,norman2026reliability},
+The LLM judge scores above inherit the systematically documented biases of
+rubric-scoring LLMs~\cite{zheng2023judging,panickssery2024llm,norman2026reliability},
 and here the judge and generator families overlap. The study therefore adds a
 second, mechanically independent measurement that reads the semantic layer
 corresponding to the structural relations the graph makes explicit: it measures
@@ -122,10 +122,10 @@ principles:
   every system is measured on the same basis.
 \end{itemize}
 
-The panel contains seven signals from two mechanically independent instrument
+The panel contains seven alignment scores from two mechanically independent instrument
 families: \emph{Family A} measures textual correspondence between artifacts with
 embeddings; \emph{Family B} measures cognitive demand through Bloom levels and
-does not use cosine similarity. From each system output, the protocol extracts four
+does not use cosine similarity. From each system output, the measurement extracts four
 text sets: $\mathcal{O}$ (objectives), $\mathcal{A}$ (assessment items),
 $\mathcal{X}$ (learning activities), and $\mathcal{E}$ (evaluation items). Family
 A uses the mean--max rectified-cosine operator
@@ -135,12 +135,12 @@ A uses the mean--max rectified-cosine operator
 \]
 where $e_u$ is the embedding of text span $u$; $\max(0,\cdot)$ is a scale choice
 on $[0,1]$, not a matching threshold. \Cref{tab:panel-signals} specifies the seven
-panel signals: four Family A signals correspond to the three facets of
-\Cref{eq:aligned} plus a reverse diagnostic direction, while three Family B signals
+scores: four Family A scores correspond to the three facets of
+\Cref{eq:aligned} plus a reverse diagnostic direction, while three Family B scores
 directly inherit established alignment instruments from educational measurement.
 
 \begin{table*}[t]
-  \caption{The seven panel signals. Family A applies the $\mathrm{sim}$ operator
+  \caption{The seven alignment scores. Family A applies the $\mathrm{sim}$ operator
   to four text sets extracted from output; Family B uses Bloom levels and does not
   use cosine similarity. \dag{} = non-directional and excluded from directional
   counts under the panel interpretation rule. Parenthetical names are the
@@ -193,19 +193,20 @@ Both underlying instruments are version-pinned. The embedding encoder maps each
 text span to vector $e_u$ for the $\mathrm{sim}$ operator; the primary
 configuration uses Nemotron-8B, and \Cref{tab:rq2-arms} specifies alternative
 encoder arms. The Bloom classifier assigns an Anderson--Krathwohl level to each
-objective and assessment item for the three Family B signals; the primary
+objective and assessment item for the three Family B scores; the primary
 configuration is a BERT checkpoint fine-tuned on an expert-labeled learning-
 objective corpus~\cite{li2022bloomclassification}, with a verb lexicon as the
 comparison arm (\Cref{tab:rq2-arms}).
 
-Finally, we report the seven signals as a pre-specified flat panel with no primary
+Finally, we report the seven alignment scores as a pre-specified flat panel with no primary
 endpoint. There are two reasons: constructive alignment has multiple facets, and
 any composite would impose weights without a theoretical basis. The two
 mechanically independent instrument families also enable triangulation: conclusions
-are stronger only when different mechanisms agree. Signal names describe the
-computed operation; ``alignment'' names only the protocol and the predicate in
-\Cref{eq:aligned}, and no signal is called ``precision.'' We therefore claim only
-measurable signals of constructive alignment. The protocol does not itself validate
+are stronger only when different mechanisms agree. Each score is named after the
+operation it computes, and none is called ``precision''; \emph{alignment score}
+is the collective term for the panel values, while the construct itself lives in
+\Cref{eq:aligned}. We therefore claim only
+measurable signals of constructive alignment. The measurement does not itself validate
 the construct; that bridge requires a human-expert evaluation layer.
 Scoring runs offline on saved outputs; instruments are configured by preset
 (\Cref{tab:rq2-arms}): the primary
@@ -214,10 +215,10 @@ and four sensitivity arms form a star around it---each arm deviates on exactly
 one axis, not a grid. The BERT checkpoint always returns an argmax whereas the
 lexicon can abstain, so Family-B denominators may differ between the two Bloom
 arms. The panel interpretation rule is pre-specified: a size shows an advantage
-when at least four of the six directional signals are significantly positive
-after within-signal Holm correction and no signal is significantly negative;
+when at least four of the six directional scores are significantly positive
+after within-score Holm correction and no score is significantly negative;
 the reversed pattern indicates disadvantage, and all other patterns are mixed.
-The seventh, non-directional signal is still reported. Operationally, scoring
+The seventh, non-directional score is still reported. Operationally, scoring
 uses no LLM and has no stochastic component; results are reproducible given
 pinned encoder versions and the embedding cache. Cost telemetry reads only
 \texttt{metadata.token\_usage}.
@@ -248,20 +249,20 @@ pinned encoder versions and the embedding cache. Cost telemetry reads only
 
 The unit of inference is a scenario's mean over three runs. For the level part
 of Objective~2, paired Wilcoxon signed-rank tests compare A0 with each baseline at
-every size and on all three judge signals; Objective~3 applies the same test to each
-panel signal. When a paired sample has $n\leq25$, we use the exact permutation
+every size and on all three LLM judge scores; Objective~3 applies the same test to each
+alignment score. When a paired sample has $n\leq25$, we use the exact permutation
 null. We report paired mean differences, rank-biserial effects, and bootstrap
 95\% confidence intervals from 10{,}000 scenario resamples with seed 42.
 
 Holm correction covers the six proposed-versus-baseline comparisons per size,
-separately for each signal. Objective~3 additionally reports panel-wide Holm correction
-over seven signals and six comparisons as multiplicity sensitivity; this
-correction creates no hierarchy among signals. For the scale part of Objective~2, let
+separately for each score. Objective~3 additionally reports panel-wide Holm correction
+over seven scores and six comparisons as multiplicity sensitivity; this
+correction creates no hierarchy among scores. For the scale part of Objective~2, let
 $\Delta_s$ be the paired A0-minus-baseline gap at size $s$. The pre-specified
 interaction is $\Delta_{\mathrm{largest}}-\Delta_{\mathrm{smallest}}$, tested
 with paired Wilcoxon and a bootstrap interval; a negative value means a larger
 A0 advantage at the small end. Objective~3 uses the same interaction, with
-$\sigma_{\mathrm{meas}}$ leading the scale narrative and the other signals
+$\sigma_{\mathrm{meas}}$ leading the scale narrative and the other scores
 reported alongside it.
 
 For missing outputs, the primary layer assigns \texttt{failure=0}: an agent
@@ -269,7 +270,7 @@ that produces no output has quality zero, not missing data. Complete-case
 inference is only a sensitivity analysis and never unconditional, because it
 conditions on a post-treatment variable: it removes precisely the most severe
 failures, especially at smaller sizes. Objective~2 additionally reports
-\texttt{failure=min}; Objective~3 does not use this layer because its signals already
+\texttt{failure=min}; Objective~3 does not use this layer because its scores already
 have floor zero. Output-failure rates are compared separately with Fisher's
 exact test under Holm correction.
 
@@ -279,6 +280,6 @@ exact test under Holm correction.
 All measured values are generated from saved run, judge, alignment, and
 ablation artifacts and enter the paper only through generated files; no number
 is hand-typed. Every table cell pairs its mean with the between-run SD of the
-same signal. Manifests pin runtime and model settings; revision-aware embedding
+same score. Manifests pin runtime and model settings; revision-aware embedding
 caches support exact re-analysis from saved vectors. Results produced before
 the study pivot are excluded.

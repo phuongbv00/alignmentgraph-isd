@@ -423,68 +423,168 @@ input, textarea { font: inherit; }
 .timeline-title { font-size: 13px; }
 .timeline-detail { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
-/* ── deep trajectory ────────────────────────────────────────────────────── */
+/* ── phase timeline (the Activity tab) ──────────────────────────────────── */
 
-.deep-timeline { padding: 6px 0 20px; }
+.phase-timeline { padding: 10px 16px 24px; }
 
-.agent-block { border-bottom: 1px solid var(--border); }
-.agent-head {
+.pt-toolbar {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
-  flex-wrap: wrap;
-  padding: 9px 16px 6px;
-  background: #f8fafc;
-  border-top: 1px solid var(--border);
-}
-.agent-name { font-weight: 600; font-size: 13px; }
-.agent-phase { flex: 0 0 auto; }
-.agent-tally { display: flex; gap: 5px; flex-wrap: wrap; margin-left: auto; }
-
-.work-row {
-  display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 6px;
-  padding-left: 13px;
-  /* The left edge encodes the kind of work, so a column of rows reads as a
-     shape before any of it is read as words. */
-  border-left: 3px solid transparent;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
 }
-.work-row:hover { background: #f8fafc; }
-.work-row.selected { background: var(--accent-soft); border-left-color: var(--accent); }
-.work-row.read { border-left-color: #cbd5e1; }
-.work-row.walk { border-left-color: #7c3aed; }
-.work-row.write { border-left-color: #2563eb; }
-.work-row.link { border-left-color: var(--good); }
-.work-row.model { border-left-color: #d946ef; }
-.work-row.verify { border-left-color: var(--warn); }
-.work-row.repair { border-left-color: var(--good); }
-.work-row.error { border-left-color: var(--bad); }
+.pt-chip {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+}
+.pt-audit-toggle { margin-left: auto; }
+.pt-audit-toggle.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 
-.work-main {
-  flex: 1 1 auto;
+.pt-rail {
+  border-left: 2px solid var(--border-strong);
+  margin-left: 6px;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pt-item {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 14px;
   min-width: 0;
+}
+.pt-dot {
+  position: absolute;
+  left: -27px;
+  top: -1px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--bg);
+}
+.pt-dimmed { opacity: 0.35; }
+
+.pt-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pt-head-icon { color: var(--muted); flex: 0 0 auto; }
+.pt-title { font-size: 13px; font-weight: 600; }
+.pt-meta { margin-left: auto; flex: 0 0 auto; }
+.pt-pill {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #334155;
+  white-space: nowrap;
+}
+.pt-ok { background: #dcfce7; color: #166534; }
+.pt-gap { background: #fef3c7; color: #92400e; }
+.pt-bad { background: #fee2e2; color: #991b1b; }
+
+.pt-line {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  border: none;
-  background: none;
-  text-align: left;
-  padding: 6px 4px 6px 0;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 4px;
+  min-width: 0;
 }
-.work-icon { flex: 0 0 auto; color: var(--muted); align-self: center; }
-.work-title { flex: 0 0 auto; font-size: 13px; }
-.work-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.work-expand { align-self: center; margin-right: 12px; padding: 1px 7px; font-size: 11px; }
+.pt-line > span { min-width: 0; overflow-wrap: break-word; }
+.pt-line strong { color: var(--text); font-weight: 500; }
+.pt-line-icon { flex: 0 0 auto; align-self: center; }
+.pt-good { color: var(--good); }
+.pt-warn { color: var(--warn); }
+.pt-recovery { color: var(--warn); margin-left: 8px; }
 
-.work-children {
-  padding: 4px 16px 8px 30px;
-  border-left: 3px solid var(--border);
-  background: #fcfcfd;
+/* A fan-out of concurrent phases: same top-to-bottom order they started in,
+ * boxed together so it reads as one concurrent group rather than two-column
+ * layout that has to fight for width against mono audit rows and long edge
+ * labels. */
+.pt-parallel-group {
+  position: relative;
+  border: 1px dashed var(--border-strong);
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pt-parallel-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: -2px 0 -2px 2px;
+}
+/* The group carries the rail's one marker (same position as a plain .pt-item's
+ * — both sit at the same left edge under .pt-rail); the items inside it don't
+ * each need their own. */
+.pt-parallel-group .pt-item .pt-dot { display: none; }
+
+.pt-audit-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 1px 8px;
+}
+.pt-audit-chip:hover { border-color: var(--border-strong); color: var(--text); }
+
+.pt-audit-rows {
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  /* A checkpoint can fold 700+ graph reads into this list — bounded height +
+   * its own scrollbar keeps one expanded card from taking over the timeline. */
   max-height: 320px;
   overflow-y: auto;
 }
-.work-child { color: var(--muted); line-height: 1.6; overflow-wrap: anywhere; }
+.pt-audit-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-left: 3px solid var(--border);
+  border-radius: 3px;
+  background: none;
+  padding: 3px 8px;
+  font: inherit;
+}
+.pt-audit-row:hover { background: #f8fafc; }
+.pt-audit-row.selected { background: var(--accent-soft); border-left-color: var(--accent); }
+.pt-audit-row.good { border-left-color: var(--good); }
+.pt-audit-row.warn { border-left-color: var(--warn); }
+.pt-audit-row.bad { border-left-color: var(--bad); }
+.pt-audit-title { font-size: 12px; font-weight: 500; flex: 0 0 auto; }
+.pt-audit-action { color: var(--muted); font-size: 10px; flex: 0 0 auto; }
+.pt-audit-detail {
+  /* A flex item's default min-width is auto (its own min-content), which
+   * overrides overflow:hidden and lets it push the row wider instead of
+   * shrinking to fit — flex: 1 1 auto + min-width: 0 makes it the one that
+   * actually gives way and ellipsizes. */
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .hop { margin-bottom: 8px; }
 .hop-head { font-weight: 500; margin-bottom: 2px; }
@@ -550,7 +650,12 @@ input, textarea { font: inherit; }
 .flag.on { background: #f0fdf4; color: var(--good); }
 .flag.off { background: #fef2f2; color: var(--bad); }
 
-.json-tree { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; line-height: 1.55; }
+.json-tree {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.55;
+  overflow-y: auto;
+}
 .json-tree ul { list-style: none; margin: 0; padding-left: 14px; border-left: 1px dotted var(--border-strong); }
 .json-key { color: #7c3aed; }
 .json-string { color: #0f766e; overflow-wrap: anywhere; }

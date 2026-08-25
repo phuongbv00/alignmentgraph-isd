@@ -32,75 +32,77 @@ universities~\cite{zesch2024flexi}, evaluations of self-hosted models for school
 ~\cite{chan2026bigger}, and locally run content-authoring frameworks motivated by
 privacy and cost~\cite{reza2025smallmodels}.
 
-With SLMs, the weaker foundation model makes output quality more dependent on the
-surrounding harness---how it decomposes work, coordinates execution, and controls
-quality. Small models remain weak at tool use, but decomposed multi-agent
-frameworks narrow the gap with larger models~\cite{shen2024multillmagent}; agent
-scaffolding helps 0.5B--3B models approach the quality of larger groups
+With SLMs, the weaker foundation model can carry less of the work on its own, so
+end-to-end quality depends more on the system built around it---how it
+decomposes the task into narrower calls, coordinates their execution, and
+controls quality. Multi-agent decomposition is the documented route: small
+models remain weak at tool use, but decomposed multi-agent frameworks narrow the
+gap with larger models~\cite{shen2024multillmagent}; agent scaffolding helps
+0.5B--3B models approach the quality of larger groups
 ~\cite{kang2025agentdistill}; and SLMs may suffice for most agentic workloads
-~\cite{belcak2025slm,sharma2025slmagents}. Harness sensitivity is not monotonic
+~\cite{belcak2025slm,sharma2025slmagents}. The benefit is not monotonic
 across model sizes~\cite{cho2026harness}, however, so the relationship among
-quality, harness design, and model size must be measured rather than assumed.
+quality, system design, and model size must be measured rather than assumed.
 
-This context reveals the central research gap: existing ISD and lesson-planning
-agents are built and evaluated on capable commercial models, while the closest
-studies each address only one part of the problem
+For ISD, what such a system must preserve is specific. Constructive alignment
+locates design quality in the relationships among learning objectives,
+teaching--learning activities, and assessments rather than in any artifact alone
+~\cite{biggs1996enhancing}: a design may read fluently and appear sound while
+remaining seriously misaligned. In existing agent systems this coherence is
+implicit---carried in prose passed between steps and in the model's own
+context---so it rests on the model's capacity to keep a long, multiply
+constrained generation consistent, precisely the capacity expected to diminish
+first as the model shrinks. Downscaling therefore puts alignment at risk before
+fluency, and in a form that neither a reader nor a generic rubric readily sees.
+
+This context reveals the central research gap. Existing ISD and lesson-planning
+agents are built and evaluated on capable commercial models
+~\cite{yao2025instructionalagents,zhang2025eduplanner,agentlesson2026,hu2024teachingplan,isdagentbench},
+and none of the surveyed systems represents the
+objective--activity--assessment relations as explicit, checkable state during
+generation---coherence is entrusted to the model (\Cref{sec:related-work}). The
+closest studies each address only one part of the problem
 ~\cite{jaldi2026slmassessment,zheng2025lessonplanlm,reza2025smallmodels,lee2026educlaw,wei2026slmeducation}.
 To our knowledge, no study has shown that an agent system can retain end-to-end ISD
 quality on small models without fine-tuning, nor has any study evaluated that
 quality systematically across a model-size ladder.
 
-This gap also raises a measurement problem because both common evaluation tools
-have limitations. LLM-judge rubric scoring---used by current ISD and education
-benchmarks~\cite{isdagentbench,edubench2025,tutorbench2025,mathtutorbench2025}---
-exhibits documented systematic biases
-~\cite{zheng2023judging,panickssery2024llm,norman2026reliability}; here, the judge
-model family also overlaps with the generator family. Human-expert evaluation is
-more trustworthy but does not scale to a ladder with multiple sizes, runs, and
-systems. More importantly, constructive alignment locates design quality in the
-relationships among objectives, activities, and assessments
-~\cite{biggs1996enhancing}: a design may read fluently and appear sound while
-remaining seriously misaligned. Neither evaluation approach makes such alignment
-signals explicit, and existing automated alignment methods score agreement with a
-pre-authored standard or reference
-~\cite{porter2002measuring,webb1997criteria,xu2025itemalignment,silva2026lessonbench},
-which a wholly machine-generated design does not provide. Evaluating quality
-retention therefore requires measures that read alignment signals from the
-generated design itself; this study assembles such measures from established
-criteria and reports them alongside the judge scores (\Cref{sec:metrics}).
-
-This study aims to retain ISD quality as models shrink by using a multi-agent
-harness with explicit alignment state (\Cref{sec:method}). We pursue this aim
-through four objectives:
+This study aims to retain ISD quality as models shrink by taking the coherence
+burden off the model: instead of relying on the model to keep the design
+consistent implicitly, the proposed multi-agent system (MAS),
+AlignmentGraph-ISD, maintains the alignment relations as explicit shared state
+that a model of any size can be checked against (\Cref{sec:method}). We pursue this aim through four objectives:
 \begin{itemize}
-  \item \textbf{Objective 1 (design).} Build a multi-agent ADDIE harness that
+  \item \textbf{Objective 1 (design).} Build a multi-agent ADDIE system that
   keeps alignment state explicit throughout generation and exports it for audit.
-  \item \textbf{Objective 2 (judge scale).} Compare the harness with six
-  benchmark agents on ISD-Agent-Bench's LLM-judge scores at each size of the Qwen
+  \item \textbf{Objective 2 (judge scale).} Compare the MAS with six
+  benchmark agents on ISD-Agent-Bench's LLM judge scores at each size of the Qwen
   0.8B--9B ladder, and test whether the gap widens as the model shrinks.
-  \item \textbf{Objective 3 (alignment signals).} Measure the same outputs on a
-  panel of alignment signals computed without an LLM, and test the same size
+  \item \textbf{Objective 3 (alignment scores).} Measure the same outputs on a
+  panel of alignment scores computed without an LLM, and test the same size
   interaction.
   \item \textbf{Objective 4 (mechanism).} Attribute the observed behaviour to
-  parts of the harness by disabling graph context and the verifier.
+  parts of the MAS by disabling graph context and the verifier.
 \end{itemize}
 
-This paper contributes AlignmentGraph-ISD: a multi-agent harness that organizes
+This paper contributes AlignmentGraph-ISD: a multi-agent system that organizes
 ADDIE program generation around an alignment graph---explicit alignment state that
 is inspectable and auditable. At the end of each run, the complete graph is
 exported so that an instructional designer can inspect each
 objective--activity--assessment relation and intervene when needed, following the
 teacher-in-the-loop principle.
 
-Judge-based rubric scores alone cannot show whether the alignment relations hold
-in a generated design. The evaluation therefore extends ISD-Agent-Bench with an
-alignment-signal measurement that uses no LLM, defines every score as a fixed
-function of text, and reports a panel of seven equally ranked signals from two
-mechanically independent instrument families (\Cref{sec:metrics}). It
-operationalizes established criteria
-~\cite{biggs1996enhancing,porter2002measuring,webb1997criteria} rather than
-proposing a new construct, and interpretation is limited to the signals it
-measures.
+Evaluating this aim requires an instrument that can see alignment. LLM judge
+rubric scoring---the instrument of current ISD and education benchmarks
+~\cite{isdagentbench,edubench2025,tutorbench2025,mathtutorbench2025}---exhibits
+documented systematic biases~\cite{zheng2023judging,panickssery2024llm} and does
+not expose the alignment relations themselves, while existing automated
+alignment measures score agreement with a pre-authored standard
+~\cite{porter2002measuring,webb1997criteria,xu2025itemalignment,silva2026lessonbench}
+that a wholly generated design does not provide. The evaluation therefore
+reports, alongside ISD-Agent-Bench's LLM judge scores, a panel of deterministic
+alignment scores assembled from these established criteria; the measurement
+setup is specified in \Cref{sec:metrics}.
 
 The remainder of the paper is organized as follows. \Cref{sec:related-work}
 reviews related work; \Cref{sec:method} describes AlignmentGraph-ISD;
