@@ -1,4 +1,4 @@
-"""ProseStore — the prose arm's blackboard (core/store.py)."""
+"""ProseStore — the prose arm's blackboard (core/prose_store.py)."""
 from __future__ import annotations
 
 from alignmentgraph_isd.core.prose_store import PRIMARY_STORE_FIELDS, ProseStore, primary_items

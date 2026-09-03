@@ -8,7 +8,7 @@ import subprocess
 
 from alignmentgraph_isd import HarnessRunConfig, run_design_brief
 from alignmentgraph_isd.core.alignment_graph import viz
-from alignmentgraph_isd.core.agents.base import _extract_token_usage
+from alignmentgraph_isd.core.llm_io import _extract_token_usage
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
 
 from conftest import FakeChatModel, load_brief
@@ -163,5 +163,6 @@ def test_objective_annotation_flags_unaligned_objective():
     graph.add_edge("C2-assessed_by", "objective:ILO-01", "assessment:AT-01", relation_id="C2", established_by="id")
     # measured (assessed) only — no practiced/rubric-measured edge -> not fully aligned
     ann = viz.objective_annotations(graph)["objective:ILO-01"]
-    assert ann["measured"] and not ann["supported"] and not ann["evaluated"]
+    assert ann["measured"] and not ann["supported"]
+    assert "evaluated" not in ann
     assert ann["aligned"] is False

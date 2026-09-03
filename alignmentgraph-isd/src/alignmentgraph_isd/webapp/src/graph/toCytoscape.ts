@@ -8,15 +8,14 @@ import type { AlignmentGraphPayload, GraphEdge } from '../api/types'
  * drops them too), and the secondary relations fan out of a handful of hubs.
  *
  * So edges come in three layers, switched independently, split exactly the way
- * `alignment.py::REGISTRY` splits its 18 relations:
+ * `alignment.py::REGISTRY` splits its relations:
  *
- *  - `alignment` — the CORE relations C1–C7, the construct-validity backbone:
+ *  - `alignment` — the CORE relations C1–C5, the construct-validity backbone:
  *    goal decomposes to LO, LO assessed by AT / practiced by TLA, TLA prepares
- *    for AT, content module supports TLA, AT evaluated by rubric, rubric
- *    measures LO. On by default, because it is the thing worth looking at.
- *    The layer is the relation CLASS, not the establishment mechanism — C1/C5/
- *    C6 are provenance-established but are still core alignment (the old
- *    mechanism-based rule silently hid content modules and the AT↔rubric leg
+ *    for AT, content module supports TLA. On by default, because it is the
+ *    thing worth looking at. The layer is the relation CLASS, not the
+ *    establishment mechanism — C1/C5 are provenance-established but are still
+ *    core alignment (the old mechanism-based rule silently hid content modules
  *    from this view).
  *  - `provenance` — the secondary relations P1–P11: traceability only, never
  *    claimed as construct-validity evidence.
@@ -93,8 +92,10 @@ export function toCytoscape(
         label: shortLabel(node.id, node.type),
         type: node.type,
         kind: isElementNode(node.id) ? 'element' : 'section',
-        // Rendered as a ✓/✗ badge: measured / supported / evaluated.
-        badge: flags ? `${flags.measured ? '✓' : '✗'}${flags.supported ? '✓' : '✗'}${flags.evaluated ? '✓' : '✗'}` : '',
+        // Rendered as a ✓/✗ badge: measured / supported. There is no rubric
+        // leg any more — a criterion is a field of the item that measures the
+        // objective, so that flag was true whenever `measured` was.
+        badge: flags ? `${flags.measured ? '✓' : '✗'}${flags.supported ? '✓' : '✗'}` : '',
         aligned: flags ? flags.aligned : null,
         bloomOk: flags ? flags.bloom_ok : null,
       },

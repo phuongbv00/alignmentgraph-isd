@@ -24,6 +24,9 @@ class TrajectoryAction(StrEnum):
     NODE_UPDATE = "node_update"
     EDGE_READ = "edge_read"
     EDGE_WRITE = "edge_write"
+    #: No emitter since traversal was removed 2026-08-10 (measured: 0 of 1179
+    #: graph reads were walks). Kept so an archived run still parses, and read
+    #: by string from the webapp timelines.
     EDGE_WALK = "edge_walk"
     LLM_CALL = "llm_call"
     AGENT_STEP = "agent_step"
@@ -43,8 +46,74 @@ class TrajectoryAction(StrEnum):
     SUBMIT_INVALID_FINAL = "submit_invalid_final"
     REPEATED_TOOL_CALL = "repeated_tool_call"
     COMMIT_INVALID_SECTION = "commit_invalid_section"
+    #: An accepted submit that re-sent what was already committed —
+    #: how an agent answers "anything more for this stage?" with "no".
+    #: A call was spent, so the trace has to show it; it is not a
+    #: second design STEP, which the judge would score as redundancy.
+    DUPLICATE_SUBMIT = "duplicate_submit"
+    #: A submit whose payload was the artifact itself rather than the
+    #: {key: artifact} envelope its tool declares — wrapped rather than
+    #: rejected. See ToolLoop._wrap_bare_artifact.
+    BARE_ARTIFACT_WRAPPED = "bare_artifact_wrapped"
+    #: The window filled and the oldest turns were folded into a note. Says how
+    #: many went and whether a model call kept anything of them. Recorded
+    #: because it is a real model call that produces no design step — and
+    #: because how OFTEN each arm reaches it is the decomposition mechanism
+    #: measuring itself.
+    CONTEXT_COMPACTED = "context_compacted"
     AGENTIC_FALLBACK = "agentic_fallback"
+    #: The backend accepted no tool binding, so the stage has no act->observe
+    #: loop and gives up at once rather than spending MAX_TURNS discovering the
+    #: same thing. On the ladder this must never fire (vLLM runs
+    #: --enable-auto-tool-choice); it exists so that a misconfigured endpoint is
+    #: visible in the trace instead of silently costing the run its artifacts.
+    TOOL_BINDING_UNAVAILABLE = "tool_binding_unavailable"
+    #: The serving-side tool-call parser left a correctly-formed call as plain
+    #: text and the loop recovered it (``tools.parse_tool_call_markup``). Not a
+    #: model mistake — recorded so the RATE is visible per size, because it
+    #: bounds how much of the agentic arm's behaviour is really the serving
+    #: stack's.
+    TOOL_CALL_MARKUP_RECOVERED = "tool_call_markup_recovered"
+    #: The single arm's ReAct loop ran out of turns with stages still open.
+    #: Reported for BOTH arms (`autonomy.via_budget_exhaustion`) because the
+    #: parity claim is not that the budgets are equal — `multi` spends a number
+    #: of turns that is a function of how many work sets it planned — but that
+    #: the budget CUT neither arm.
+    BUDGET_EXHAUSTED = "budget_exhausted"
+    #: A step ended without the agent producing a valid artifact. Until
+    #: 2026-09-01 a scripted single-shot wrote one instead and this was called
+    #: `agentic_fallback`; it was writing 26-35% of the full pipeline's
+    #: artifacts, and only in the multi arm, so the decomposition axis was
+    #: measuring who got rescued. The deterministic repair net catches what is
+    #: left, for both arms.
+    AGENTIC_GAVE_UP = "agentic_gave_up"
+    #: One document written to the prose blackboard. The graph arm records
+    #: every artifact it produces as ``node_add``; without this the prose arm
+    #: recorded NOTHING it produced, so "what did this run make" was auditable
+    #: in one context mode and blind in the other — an asymmetry in the AUDIT
+    #: SURFACE, not in the treatment. (Judge input is unaffected: the judge
+    #: reads tool_calls/reasoning_steps/agent_interactions, never ``events``.)
+    DOC_WRITE = "doc_write"
+    #: A residual cross-artifact violation handed to the family that owns it,
+    #: after the last stage. See ``core/agentic/run.py::_reconcile``.
+    RECONCILE = "reconcile"
     DEV_PLAN = "dev_plan"
+    #: A repair that must SUPPLY a missing artifact asked the model to write it
+    #: and got nothing usable back, so it wrote nothing. Recorded because the
+    #: alternative — a template that filled the hole — was removed precisely
+    #: for being invisible: the check passed, the artifact existed, and nothing
+    #: in the trace said no design work had happened. This is a recovery event,
+    #: so it never reaches the judge; it is how the RATE of unfilled repairs is
+    #: read per size while tuning.
+    REPAIR_UNFILLED = "repair_unfilled"
+    #: An OPTIONAL submit argument arrived as text where a structure was
+    #: declared, so it was removed and the rest of the submit accepted. The
+    #: alternative — refusing the whole submit — threw away a Developer's
+    #: complete set of assessment items because the criteria beside them were
+    #: malformed. Recorded so the rate stays visible: if it is high, the
+    #: secondary output is not really being produced and the repair that
+    #: covers it is doing the work.
+    DROPPED_ARGUMENT = "dropped_argument"
 
 
 _RECOVERY_ACTIONS = frozenset({
@@ -58,14 +127,26 @@ _RECOVERY_ACTIONS = frozenset({
     TrajectoryAction.SUBMIT_INVALID_FINAL,
     TrajectoryAction.REPEATED_TOOL_CALL,
     TrajectoryAction.COMMIT_INVALID_SECTION,
+    TrajectoryAction.DUPLICATE_SUBMIT,
+    TrajectoryAction.BARE_ARTIFACT_WRAPPED,
+    TrajectoryAction.CONTEXT_COMPACTED,
     TrajectoryAction.AGENTIC_FALLBACK,
+    # Replaced AGENTIC_FALLBACK on 2026-09-01 and was never added here, so
+    # every give-up was missing from `recovery_events` — the one view that is
+    # supposed to answer "what went wrong in this run".
+    TrajectoryAction.AGENTIC_GAVE_UP,
+    TrajectoryAction.BUDGET_EXHAUSTED,
+    TrajectoryAction.TOOL_BINDING_UNAVAILABLE,
+    TrajectoryAction.TOOL_CALL_MARKUP_RECOVERED,
+    TrajectoryAction.REPAIR_UNFILLED,
+    TrajectoryAction.DROPPED_ARGUMENT,
     TrajectoryAction.REPAIR,
 })
 
 # Identity for events that belong to the pipeline itself, not any specialist —
 # phase boundaries. Never leave ``agent`` to fall back to "whoever acted last"
 # for these: a phase_started fires before its specialist has set an identity,
-# and phase_finished fires after run_generation_step's trailing self-validation
+# and phase_finished fires after the stage's trailing self-validation
 # loop has already exited that specialist's `acting_as` block, so the natural
 # fallback is stale or empty, not this phase's owner.
 WORKFLOW_ORCHESTRATOR = "WorkflowOrchestrator"
@@ -106,15 +187,20 @@ class TrajectoryLogger:
         # evaluator) plus structured audit events — and each fact appears in
         # exactly one of them, never in two.
         self.actions: list[dict] = []
-        # Who/what phase is "currently acting" is thread-local, not a plain
-        # instance attribute: the multi-agent graph genuinely runs specialists
-        # concurrently (e.g. content_designer / rubric_designer both fan out
-        # from the same join and execute on separate LangGraph worker
-        # threads), and one shared `self._actor` would let one thread's
-        # `acting_as` exit reset the actor out from under another thread still
-        # mid-flight — the mechanism behind an intermittent empty/misattributed
-        # agent that a single-threaded test run never reproduces.
-        self._local = threading.local()
+        # Who/what phase is "currently acting". Plain instance state since
+        # 2026-09-04: it was thread-local while the LangGraph pipeline ran
+        # specialists on separate worker threads (content_designer and
+        # rubric_designer fanned out from one join), where a shared attribute
+        # let one thread's `acting_as` exit reset the actor out from under
+        # another. The executor is sequential — no `ThreadPoolExecutor` in
+        # `core/` outside RAG — so there is no longer a thread to isolate from,
+        # and thread-local state would now be actively WRONG for the one place
+        # concurrency remains: a retrieval worker thread would read an empty
+        # actor instead of the agent that dispatched it. Restore it if any
+        # concurrent fan-out comes back.
+        self._actor: str = ""
+        self._phase: str = ""
+        self._identity: str = ""
         self.tool_calls: list[dict] = []
         self.reasoning_steps: list[str] = []
         self.agent_interactions: list[dict] = []
@@ -127,34 +213,11 @@ class TrajectoryLogger:
         self.llm_calls: int = 0
         self.token_usage: dict = {"prompt_tokens": 0, "completion_tokens": 0}
         self.latency_ms: float = 0.0
-        # Guards the read-modify-write increments in log_llm_call: concurrent
-        # specialists can each report a completed model call at the same time.
+        # Guards the read-modify-write increments in log_llm_call. KEPT even
+        # though the pipeline is sequential: RAG's parallel retrieval plans run
+        # on worker threads (`core/rag/sandbox.py`) and each is handed
+        # ``log_llm_call`` directly.
         self._counter_lock = threading.Lock()
-
-    # ── thread-local "who/what is acting right now" ─────────────────────────
-    @property
-    def _actor(self) -> str:
-        return getattr(self._local, "actor", "")
-
-    @_actor.setter
-    def _actor(self, value: str) -> None:
-        self._local.actor = value
-
-    @property
-    def _phase(self) -> str:
-        return getattr(self._local, "phase", "")
-
-    @_phase.setter
-    def _phase(self, value: str) -> None:
-        self._local.phase = value
-
-    @property
-    def _identity(self) -> str:
-        return getattr(self._local, "identity", "")
-
-    @_identity.setter
-    def _identity(self, value: str) -> None:
-        self._local.identity = value
 
     # ── observation hook ────────────────────────────────────────────────────
     def _emit(self, kind: str, payload: dict) -> None:
@@ -166,6 +229,16 @@ class TrajectoryLogger:
             # Deliberately Exception, not BaseException: HarnessCancelled must
             # propagate so a consumer can stop a run.
             pass
+
+    @property
+    def is_observed(self) -> bool:
+        """Whether anyone is watching this run.
+
+        Emitting is a no-op without a consumer, but BUILDING an emit's payload
+        is not: a context snapshot serializes the whole transcript, and doing
+        that once per turn for nobody would put a cost on every benchmark run
+        to serve a viewer that is not there."""
+        return self._on_event is not None
 
     def emit(self, kind: str, payload: dict) -> None:
         """Progress-only signal: records nothing, changes no state.
@@ -189,7 +262,7 @@ class TrajectoryLogger:
         ``force_identity`` also overrides the ``agent_name`` that ``log_step``,
         ``log_recovery_event`` and ``log_repair_event`` are given. Needed by
         the ablation's ``single`` arm: shared routines (the repair toolbox,
-        the scaffolding in ``run_generation_step``) log under whoever calls
+        the scaffolding around a stage loop) log under whoever calls
         them, and an earlier version of this arm ran the Designer classes as
         internal steps and emitted a trajectory naming six distinct agents —
         byte-identical in shape to the multi-agent arm, which left the
@@ -296,9 +369,17 @@ class TrajectoryLogger:
         """Record ONE real, successful, purposeful action — the judge-visible
         surface (``tool_calls``/``reasoning_steps``/``agent_interactions``).
 
-        Call this exactly once per genuine LLM call that produced the final
-        result a Designer commits: one per hop/step (Hop A/B, Hop 1/2, the 3
-        steps of Content Designer).
+        Since the pivot there are exactly TWO kinds, and both are acts of the
+        tool loop: a tool call the loop answered with an observation, and a
+        submit it accepted. Nothing else reaches these lists. (It used to be
+        "one per hop" — Hop A/B, the Content Designer's three steps — which is
+        machinery that no longer exists; the name ``agent_step`` is kept because
+        an act->observe turn IS a step the agent took, and because the string is
+        in every recorded run.)
+
+        The fan-out is here too: a Developer's submit is its own step under its
+        own identity, which is what makes the second tier visible to the judge
+        at all.
 
         Do NOT call this for internal recovery plumbing (empty-output regen,
         truncation salvage, JSON-correction retries) — those go through
@@ -411,7 +492,7 @@ class TrajectoryLogger:
 
         ``agent`` should be passed explicitly by callers whose self-validation
         loop runs after the specialist's own ``acting_as`` block has exited
-        (``run_generation_step``'s trailing loop is exactly this case) —
+        (a stage's trailing self-validation loop is exactly this case) —
         otherwise this falls back to whoever last set the actor, not the
         specialist actually being validated.
 
@@ -460,6 +541,38 @@ class TrajectoryLogger:
         self.log_action(TrajectoryAction.REPAIR, agent=agent, violation_type=violation_type,
                         node_id=node_id, repaired_fields=list(repaired_fields or []), **detail)
 
+    def log_doc_write(self, key: str, document: object, *, agent: str = "") -> None:
+        """One prose-blackboard document write — the prose counterpart of
+        ``log_node_edit``. Counts only: the documents themselves ship in
+        ``result["prose"]``; this records WHEN one was written and BY WHOM."""
+        size = len(document) if isinstance(document, (list, dict)) else 0
+        self._record_event(
+            TrajectoryAction.DOC_WRITE, "doc_write_event", agent=agent,
+            key=key, field_count=size)
+        # Mirrored into the deep action log for the same reason ``log_dev_plan``
+        # is: that log is what the live consumer streams and what the story view
+        # replays, so an artifact recorded only in ``events`` is one the run
+        # cannot be watched producing.
+        self.log_action(TrajectoryAction.DOC_WRITE, agent=agent,
+                        key=key, field_count=size)
+
+    def log_reconcile_result(self, family: str, violations: list, *, agent: str = "") -> None:
+        """One routed batch in the post-stage reconciliation pass.
+
+        Recorded in ``events``, not only in the deep action log: routing is the
+        decomposition axis expressed at repair time, so a results dir has to
+        say which family a residual violation went to and how many went with
+        it. Counts and types only — the violations themselves are already in
+        ``metadata.audit``; this is a pointer, not a second copy."""
+        context = {
+            "family": family,
+            "routed": len(violations),
+            "violation_types": sorted({v.violation_type for v in violations}),
+        }
+        self._record_event(
+            TrajectoryAction.RECONCILE, "reconcile_event", agent=agent, **context)
+        self.log_action(TrajectoryAction.RECONCILE, agent=agent, **context)
+
     def log_audit_result(self, residual, *, agent: str = "") -> None:
         """The residual whole-graph audit (``GraphAuditor.audit()``), run once
         at aggregation over the final settled graph. Duck-typed on
@@ -486,7 +599,6 @@ class TrajectoryLogger:
             objective_count=residual.objective_count,
             unmeasured_count=len(residual.unmeasured_objectives),
             unsupported_count=len(residual.unsupported_objectives),
-            unevaluated_count=len(residual.unevaluated_objectives),
             residual_gap_count=residual.residual_gap_count,
             gapped_relations=gapped,
             ready_to_aggregate=residual.ready_to_aggregate,
@@ -498,7 +610,6 @@ class TrajectoryLogger:
             objective_count=residual.objective_count,
             unmeasured_count=len(residual.unmeasured_objectives),
             unsupported_count=len(residual.unsupported_objectives),
-            unevaluated_count=len(residual.unevaluated_objectives),
             residual_gap_count=residual.residual_gap_count,
             gapped_relations=gapped,
             ready_to_aggregate=residual.ready_to_aggregate,
@@ -515,6 +626,7 @@ class TrajectoryLogger:
         fallback_used: bool,
         dropped_refs: int,
         appended_sets: int,
+        oversized_splits: int = 0,
         agent: str = "",
     ) -> None:
         """Record one family's dev-plan normalization result: how a fan-out's
@@ -526,18 +638,24 @@ class TrajectoryLogger:
         ``WORKFLOW_ORCHESTRATOR``: it answers "who fixed the work list", the
         same question every other family action answers. ``sets`` is a
         compact summary (id + objectives/categories per set) the caller
-        caps; full WorkSet payloads are not logged here."""
+        caps; full WorkSet payloads are not logged here.
+
+        ``oversized_splits`` is how many of the planner's own sets the harness
+        had to cut because they were too large to answer. The planner is told
+        the budget and asked to scope its sets itself; this is the only number
+        that separates a plan doing that job from one the backstop is
+        carrying."""
         self._record_event(
             TrajectoryAction.DEV_PLAN, "dev_plan_event", agent=agent,
             family=family, set_count=set_count, pair_count=pair_count, sets=sets,
             source=source, fallback_used=fallback_used, dropped_refs=dropped_refs,
-            appended_sets=appended_sets,
+            appended_sets=appended_sets, oversized_splits=oversized_splits,
         )
         self.log_action(
             TrajectoryAction.DEV_PLAN, agent=agent,
             family=family, set_count=set_count, pair_count=pair_count, sets=sets,
             source=source, fallback_used=fallback_used, dropped_refs=dropped_refs,
-            appended_sets=appended_sets,
+            appended_sets=appended_sets, oversized_splits=oversized_splits,
         )
 
     def log_retrieval_event(

@@ -1,8 +1,8 @@
-"""EXPERIMENTAL agentic arm: the same 7 artifact families, each produced by an
-LLM tool loop (act→observe over the alignment graph) instead of a scripted
-call sequence. Opt-in only — nothing in ``core/`` imports this subpackage; it
-is reached solely via the benchmark registry (``alignmentgraph-isd-agentic``)
-or a direct ``run_agentic_brief`` call. See ``run.py`` for the design notes.
+"""The executor: the 6 artifact families, each produced by a native
+tool-calling act→observe loop.
+
+It honours both ablation axes; ``core/runner.py::run_workflow`` dispatches
+here. See ``run.py`` for the design notes and ``loop.py`` for the transport.
 """
 from .run import run_agentic_brief
 

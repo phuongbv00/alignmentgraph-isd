@@ -4,7 +4,7 @@ import {
 } from 'lucide-react'
 import { api } from '../../api/client'
 import { BriefDetail } from './BriefDetail'
-import { Collapsible, JsonRoot, MaybeJson } from './JsonTree'
+import { Collapsible, JsonRoot } from './JsonTree'
 import type {
   AlignmentGraphPayload,
   Brief,
@@ -12,7 +12,6 @@ import type {
   GraphEdge,
   GraphNode,
   ObjectiveAlignment,
-  RunEvent,
   Selection,
 } from '../../api/types'
 
@@ -74,7 +73,6 @@ function title(selection: Selection): string {
     case 'brief': return 'Design brief'
     case 'graph-node': return 'Graph node'
     case 'graph-edge': return 'Alignment relation'
-    case 'event': return 'Trajectory step'
     case 'action': return 'Agent action'
     case 'artifact': return 'Artifact'
     default: return 'Details'
@@ -89,8 +87,6 @@ function Body({ selection, brief, graph, runId, onSelect }: Omit<Props, 'collaps
       return <NodeDetail runId={runId} nodeId={selection.id} graph={graph} onSelect={onSelect} />
     case 'graph-edge':
       return <EdgeDetail edge={selection.edge} graph={graph} onSelect={onSelect} />
-    case 'event':
-      return <EventDetail events={selection.events} />
     case 'action':
       return <ActionDetail actions={selection.actions} />
     case 'artifact':
@@ -181,13 +177,17 @@ function AlignmentFlags({ flags }: { flags: ObjectiveAlignment }) {
   return (
     <>
       <div className="section-title">Constructive alignment</div>
-      {/* The three legs mirror viz.objective_annotations: measured = C2
-          assessed_by, supported = C3 practiced_by, evaluated = C7 measures
-          (scored by a rubric criterion). */}
+      {/* Mirrors viz.objective_annotations: measured = C2 assessed_by,
+          supported = C3 practiced_by. There is no rubric leg since
+          2026-09-02 — a criterion is a field of the item that measures the
+          objective, so it was true whenever `measured` was. An archived run
+          still carries the flag and is still shown its own answer. */}
       <div className="flags">
         <Flag on={flags.measured} label="assessed by an assessment task (C2)" />
         <Flag on={flags.supported} label="practiced by an activity (C3)" />
-        <Flag on={flags.evaluated} label="scored by a rubric criterion (C7)" />
+        {flags.evaluated !== undefined && (
+          <Flag on={flags.evaluated} label="scored by a rubric criterion (C7, retired)" />
+        )}
         <Flag on={flags.bloom_ok} label="Bloom level consistent" />
       </div>
       <div className="small muted" style={{ marginTop: 6 }}>
@@ -295,50 +295,6 @@ export function CoverageBar({ value }: { value: number }) {
 
 // ── trajectory step ──────────────────────────────────────────────────────────
 
-/**
- * A trajectory row, shown exactly as the run recorded it.
- *
- * The prompt and output are the summaries the harness writes into the
- * trajectory, not a separate fuller copy — so what is on screen is what the
- * stored artifact contains, and a reader can trust the two match.
- *
- * `events` is what the row folded together; a run of node edits is one row
- * over many events.
- */
-function EventDetail({ events }: { events: RunEvent[] }) {
-  const event = events[events.length - 1]
-  const prompt = event.payload.input_summary as string | undefined
-  const output = event.payload.output_summary as string | undefined
-
-  return (
-    <div className="inspector-body">
-      <div className="section-title">Step</div>
-      <dl className="kv">
-        <dt>Kind</dt><dd className="mono">{event.kind}</dd>
-        <dt>Sequence</dt><dd>{events[0].seq}</dd>
-        <dt>Time</dt><dd className="small">{new Date(events[0].ts).toLocaleTimeString()}</dd>
-        {events.length > 1 && <><dt>Events</dt><dd>{events.length}</dd></>}
-      </dl>
-
-      {typeof prompt === 'string' && (
-        // Folded by default: it is the brief restated, which is rarely what
-        // someone opened the step to look at.
-        <Collapsible title="Prompt given to the agent" defaultOpen={false} note={`${prompt.length} chars`}>
-          <MaybeJson text={prompt} />
-        </Collapsible>
-      )}
-      {typeof output === 'string' && (
-        <Collapsible title="What it produced" note={`${output.length} chars`}>
-          <MaybeJson text={output} />
-        </Collapsible>
-      )}
-
-      <Collapsible title="Raw payload" defaultOpen={false}>
-        <JsonRoot value={event.payload} defaultOpenDepth={2} />
-      </Collapsible>
-    </div>
-  )
-}
 
 // ── deep-trajectory action ───────────────────────────────────────────────────
 

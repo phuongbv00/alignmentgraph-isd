@@ -2,21 +2,30 @@ import type { DeepAction } from '../api/types'
 
 /**
  * Folding the deep trajectory into the run's STORY: a chronological sequence
- * of phase blocks — one per workflow node execution — instead of a per-agent
- * grid that loses time.
+ * of phase blocks — one per ADDIE stage — instead of a per-agent grid that
+ * loses time.
  *
- * The spine is the workflow's own phase order (`phase_started`/`phase_finished`
- * bracket every node), which makes three things legible that the grid hid:
+ * The spine is the run's own stage order (`phase_started`/`phase_finished`
+ * bracket every stage), which makes three things legible that the grid hid:
  *
- *  - the pipeline order itself ("at time t, agent A did X");
- *  - genuine concurrency: content/rubric fan out on separate LangGraph worker
- *    threads, and their actions interleave. Every action carries its own
- *    `context.phase` (thread-local), so interleaved work still folds into the
- *    right block; overlapping blocks are marked as one parallel group.
+ *  - the stage order itself ("at time t, agent A did X");
+ *  - the two tiers inside one stage: a stage that fans out dispatches work
+ *    sets to Developers, which act under their own identity but inside their
+ *    Designer's phase — so they fold into the SAME block, and the block names
+ *    every agent that acted in it rather than only the last one.
  *
- * Two altitudes: each block carries a story summary (model calls, artifacts
- * written, self-check rounds) AND the full action list for the audit view —
- * nothing is dropped, only demoted.
+ * Overlapping blocks are still marked as one parallel group. The current
+ * design never produces one — stages run in sequence and Developers run one
+ * set at a time — but archived runs from the concurrent pipeline replay
+ * through this same folding, so the bracket-driven grouping stays.
+ *
+ * Two altitudes: each block carries a story summary (model turns, work sets
+ * dispatched, artifacts submitted, self-check rounds) AND the full action list
+ * for the audit view — nothing is dropped, only demoted.
+ *
+ * Every stage is an act->observe tool loop (`core/agentic/`), so a "model call"
+ * here is one TURN of that loop, and an artifact is written by a `submit` tool
+ * call the harness accepted — never written by the harness on its behalf.
  */
 
 export type BlockKind = 'generation' | 'aggregate'
@@ -30,8 +39,14 @@ export interface PhaseBlock {
   total: number
   startedAt: string
   durationMs: number | null
-  /** The specialist who acted in this block ('' for pure-harness blocks). */
+  /** The agent that OWNS this block: the first to act in it, which is the
+   *  stage's Designer — not the last, which after a fan-out is whichever
+   *  Developer happened to finish the final set. '' for pure-harness blocks. */
   agent: string
+  /** Every agent that acted in the block, in first-seen order: the Designer
+   *  and any Developers it dispatched. Drives the filter chips, so a
+   *  Developer is selectable instead of hidden behind its Designer. */
+  agents: string[]
 
   modelCalls: number
   /** node_write op=add counts by node type. */
@@ -45,6 +60,17 @@ export interface PhaseBlock {
   recoveries: Record<string, number>
   /** Graph reads/walks — audit detail, not story. */
   graphOps: number
+
+  /** Work sets this stage dispatched to its Developers (fan-out), and their
+   *  ids. Zero for a stage that does its own work and for the single arm,
+   *  which has no Developer tier at all. */
+  workSets: number
+  workSetIds: string[]
+  /** Residual cross-artifact violations routed to this block's family in the
+   *  reconciliation pass, and which kinds. Routing only happens in graph
+   *  mode — prose has nothing cross-family to route. */
+  routedViolations: number
+  routedViolationTypes: string[]
 
   /** Aggregate fields (kind === 'aggregate'); null/empty elsewhere. */
   schemaErrors: number | null
@@ -61,10 +87,27 @@ export interface PhaseBlock {
   parallelGroup: number | null
 }
 
+// Mirrors `_RECOVERY_ACTIONS` in core/trajectory.py. `agentic_gave_up` replaced
+// `agentic_fallback` when the scripted rescue was removed (2026-09-01): a stage
+// that ends without a valid artifact now leaves it to the deterministic repair
+// net instead of having one written for it, so the two are not the same event
+// under a new name and old runs must keep reading as what they were.
 const RECOVERY_ACTIONS = new Set([
   'retry', 'regen_empty_section', 'agent_error', 'llm_error', 'salvage_truncated',
   'invalid_action', 'submit_rejected', 'submit_invalid_final', 'repeated_tool_call',
-  'commit_invalid_section', 'agentic_fallback',
+  'commit_invalid_section', 'agentic_gave_up', 'budget_exhausted',
+  'tool_binding_unavailable', 'tool_call_markup_recovered',
+  // Added 2026-09-04: these four were live in `_RECOVERY_ACTIONS` but missing
+  // here, so `absorb()` fell through to `default:` and they were counted
+  // NOWHERE on a phase card. `context_compacted` was the costly one — how
+  // often each arm compacts is how the `agent_mode` axis reports its price,
+  // and `single` (one context all run) reaches it far sooner than `multi`.
+  'duplicate_submit', 'bare_artifact_wrapped', 'dropped_argument',
+  'context_compacted',
+  'agentic_fallback',
+  // Two members of `_RECOVERY_ACTIONS` are deliberately NOT here: `repair`
+  // has its own case in absorb(), and `repair_unfilled` can no longer be
+  // emitted (no repair calls the model since 2026-09-03).
 ])
 
 function blockKind(phase: string): BlockKind {
@@ -92,6 +135,11 @@ function newBlock(action: DeepAction, sequence: number): PhaseBlock {
     repairs: 0,
     recoveries: {},
     graphOps: 0,
+    agents: [],
+    workSets: 0,
+    workSetIds: [],
+    routedViolations: 0,
+    routedViolationTypes: [],
     schemaErrors: null,
     auditGapCount: null,
     auditGappedRelations: [],
@@ -103,13 +151,16 @@ function newBlock(action: DeepAction, sequence: number): PhaseBlock {
 
 function absorb(block: PhaseBlock, action: DeepAction): void {
   block.actions.push(action)
+  if (action.agent && !block.agents.includes(action.agent)) block.agents.push(action.agent)
   const context = action.context
   switch (action.action) {
     case 'llm_call':
       block.modelCalls += 1
       return
     case 'agent_step':
-      if (action.agent) block.agent = action.agent
+      // First writer wins: the Designer opens the stage, its Developers step
+      // afterwards, and the card must stay named after the stage's owner.
+      if (action.agent) block.agent ||= action.agent
       return
     case 'node_write':
       if (context.op === 'add') {
@@ -136,6 +187,27 @@ function absorb(block: PhaseBlock, action: DeepAction): void {
       block.auditGapCount = Number(context.residual_gap_count ?? 0)
       block.auditGappedRelations = (context.gapped_relations as string[] | undefined) ?? []
       block.auditReady = Boolean(context.ready_to_aggregate)
+      return
+    case 'doc_write': {
+      // The prose arm's counterpart of node_write: without it a prose block
+      // would report model turns and nothing produced.
+      const key = String(context.key ?? 'document')
+      block.writes[key] = (block.writes[key] ?? 0) + 1
+      return
+    }
+    case 'dev_plan':
+      block.workSets += Number(context.set_count ?? 0)
+      block.workSetIds.push(
+        ...((context.sets as { set_id?: string }[] | undefined) ?? [])
+          .map((set) => String(set.set_id ?? ''))
+          .filter(Boolean),
+      )
+      return
+    case 'reconcile':
+      block.routedViolations += Number(context.routed ?? 0)
+      block.routedViolationTypes.push(
+        ...((context.violation_types as string[] | undefined) ?? []),
+      )
       return
     case 'node_read':
     case 'edge_read':
@@ -199,7 +271,7 @@ export function buildPhaseTimeline(actions: DeepAction[]): PhaseBlock[] {
 export function timelineAgents(blocks: PhaseBlock[]): string[] {
   return [...new Set(
     blocks.filter((block) => block.kind === 'generation')
-      .map((block) => block.agent)
+      .flatMap((block) => block.agents)
       .filter(Boolean),
   )]
 }
@@ -214,22 +286,25 @@ export function writesSummary(writes: Record<string, number>, cap = 3): string {
 
 // ── phase vocabulary ─────────────────────────────────────────────────────────
 
-// Phase names are the workflow's node names (core/workflow.py): one per
-// Designer, and the final aggregate. `monolithic_designer` is the ablation's
-// single-agent arm.
-// Deliberately no ADDIE-phase prefix (no "Design —", "Development —"): the
-// workflow does not run phase-by-phase — each specialist designs AND
-// develops its own concern, then hands off — so a phase-name prefix would
-// claim a sequencing that isn't real. `aggregate` is the one exception: it
-// genuinely files everything into the ADDIE-shaped output artifact.
+// Phase names are the agentic stage names (`STEPS` in
+// core/agentic/specialists.py), plus the final aggregate. The single arm runs
+// one ReAct loop over all of them, so it reports a single `design` phase — the
+// absence of per-stage brackets there IS the decomposition axis, not a gap in
+// the record; what it worked on, and in what order, is in
+// `metadata.autonomy.design`.
+// Deliberately no ADDIE-phase prefix (no "Design —", "Development —"): a stage
+// designs AND develops its own concern before handing off, so a phase-name
+// prefix would claim a sequencing that isn't real. `aggregate` is the one
+// exception: it genuinely files everything into the ADDIE-shaped output.
 const PHASE_LABELS: Record<string, string> = {
-  outcome_designer: 'Goals & objectives',
-  assessment_designer: 'Assessment — plan & tasks',
-  activity_designer: 'Learning activities',
-  content_designer: 'Content & materials',
-  rubric_designer: 'Rubrics',
-  implementation_planner: 'Delivery plan',
-  monolithic_designer: 'All artifacts (single agent)',
+  analysis: 'Needs & context analysis',
+  outcomes: 'Goals & objectives',
+  assessment: 'Assessment — plan, tasks & rubrics',
+  activities: 'Learning activities',
+  content: 'Content & materials',
+  implementation: 'Delivery plan',
+  design: 'Whole design (one agent, one loop)',
+  reconcile: 'Reconciling cross-artifact violations',
   aggregate: 'Assembling the ADDIE output',
 }
 
@@ -244,32 +319,35 @@ function humanise(text: string): string {
 
 // ── agent colours ────────────────────────────────────────────────────────────
 
-/** One fixed hue per specialist so every panel speaks the same colour. */
+/** One fixed hue per agent so every panel speaks the same colour. A Developer
+ *  shares the hue of the Designer that dispatched it — the fan-out is the same
+ *  concern at a finer grain, and the pill already spells out which tier acted.
+ *  There is no RubricDeveloper: rubrics are written by the Assessment
+ *  Developer that wrote the items they mark. */
 const AGENT_HUES: Record<string, { bg: string; fg: string; dot: string }> = {
+  NeedsAnalystAgent: { bg: '#fef3c7', fg: '#92400e', dot: '#f59e0b' },
   OutcomeDesignerAgent: { bg: '#ede9fe', fg: '#5b21b6', dot: '#8b5cf6' },
   AssessmentDesignerAgent: { bg: '#dbeafe', fg: '#1e40af', dot: '#3b82f6' },
+  AssessmentDeveloperAgent: { bg: '#dbeafe', fg: '#1e40af', dot: '#3b82f6' },
   ActivityDesignerAgent: { bg: '#dcfce7', fg: '#166534', dot: '#22c55e' },
+  ActivityDeveloperAgent: { bg: '#dcfce7', fg: '#166534', dot: '#22c55e' },
   ContentDesignerAgent: { bg: '#ffedd5', fg: '#9a3412', dot: '#f97316' },
-  RubricDesignerAgent: { bg: '#fce7f3', fg: '#9d174d', dot: '#ec4899' },
+  MaterialDeveloperAgent: { bg: '#ffedd5', fg: '#9a3412', dot: '#f97316' },
   ImplementationPlannerAgent: { bg: '#cffafe', fg: '#155e75', dot: '#06b6d4' },
   SingleDesignerAgent: { bg: '#ede9fe', fg: '#5b21b6', dot: '#8b5cf6' },
+  WorkflowOrchestrator: { bg: '#f1f5f9', fg: '#334155', dot: '#64748b' },
   ADDIEOutputAggregator: { bg: '#f1f5f9', fg: '#334155', dot: '#64748b' },
 }
 
 const FALLBACK_HUE = { bg: '#f1f5f9', fg: '#334155', dot: '#94a3b8' }
 
 export function agentHue(agent: string): { bg: string; fg: string; dot: string } {
-  if (AGENT_HUES[agent]) return AGENT_HUES[agent]
-  // Agentic-arm personas ("AgenticOutcomeDesigner") share their scripted
-  // counterpart's colour.
-  for (const [name, hue] of Object.entries(AGENT_HUES)) {
-    const stem = name.replace(/Agent$/, '')
-    if (agent.includes(stem.replace('Designer', ''))) return hue
-  }
-  return FALLBACK_HUE
+  return AGENT_HUES[agent] ?? FALLBACK_HUE
 }
 
-/** "OutcomeDesignerAgent" → "OutcomeDesigner" — pills stay short. */
+/** "OutcomeDesignerAgent" → "OutcomeDesigner" — pills stay short. The
+ *  Designer/Developer distinction survives the trim, which is the one thing a
+ *  reader must not lose: it says which tier acted. */
 export function agentShortName(agent: string): string {
   return agent.replace(/Agent$/, '')
 }

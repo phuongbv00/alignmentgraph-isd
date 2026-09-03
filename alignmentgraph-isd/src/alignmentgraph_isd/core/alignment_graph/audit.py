@@ -66,10 +66,9 @@ class GraphAuditResult:
     objective_count: int = 0
     unmeasured_objectives: list[str] = field(default_factory=list)
     unsupported_objectives: list[str] = field(default_factory=list)
-    unevaluated_objectives: list[str] = field(default_factory=list)
     violations: list[dict] = field(default_factory=list)
     ready_to_aggregate: bool = False
-    # Per-relation coverage for all 18 relations (C1..C7 core + P1..P11
+    # Per-relation coverage for all 16 relations (C1..C5 core + P1..P11
     # secondary), computed from established edges as data (see alignment.py).
     relation_coverage: dict[str, dict] = field(default_factory=dict)
 
@@ -84,7 +83,6 @@ class GraphAuditResult:
             "objective_count": self.objective_count,
             "unmeasured_objectives": self.unmeasured_objectives,
             "unsupported_objectives": self.unsupported_objectives,
-            "unevaluated_objectives": self.unevaluated_objectives,
             "violations": self.violations,
             "ready_to_aggregate": self.ready_to_aggregate,
             "relation_coverage": self.relation_coverage,
@@ -93,7 +91,7 @@ class GraphAuditResult:
 
     @property
     def residual_gap_count(self) -> int:
-        """Total uncovered elements across all 18 relations — the "39->12"
+        """Total uncovered elements across all 16 relations — the "39->12"
         style number RQ2 reports, now spanning the full matrix."""
         return sum(len(info["uncovered"]) for info in self.relation_coverage.values())
 
@@ -106,8 +104,6 @@ class GraphAuditResult:
             parts.append(f"unmeasured={','.join(self.unmeasured_objectives)}")
         if self.unsupported_objectives:
             parts.append(f"unsupported={','.join(self.unsupported_objectives)}")
-        if self.unevaluated_objectives:
-            parts.append(f"unevaluated={','.join(self.unevaluated_objectives)}")
         if self.schema_violations:
             parts.append(f"schema_invalid={','.join(self.schema_violations)}")
         if self.violations:
@@ -142,14 +138,14 @@ class GraphAuditor:
         objective_node_id = objective_node.get("id", "") if objective_node else ""
         objective_ids = self._objective_ids(objective_node)
 
-        # C2/C3 are id-reverse (LO is the edge SOURCE, not target); C7 keeps
-        # the old target-side direction. "unevaluated" is repurposed from the
-        # retired R5 (summative folded into the unified C2 pool, see
-        # alignment.py's module docstring) to "not measured by any rubric
-        # criterion" (C7) — same field name, kept for output-shape stability.
-        unmeasured = self._uncovered_objectives("C2", objective_node_id, objective_ids, reverse=True)
-        unsupported = self._uncovered_objectives("C3", objective_node_id, objective_ids, reverse=True)
-        unevaluated = self._uncovered_objectives("C7", objective_node_id, objective_ids, reverse=False)
+        # C2/C3 are id-reverse: the objective is the edge SOURCE, not target.
+        #
+        # ``unevaluated`` is gone with C7 (2026-09-02): it asked which
+        # objectives no rubric criterion measured, and a criterion is now a
+        # field of the item that measures the objective — so the question
+        # collapsed into ``unmeasured`` and could not have a different answer.
+        unmeasured = self._uncovered_objectives("C2", objective_node_id, objective_ids)
+        unsupported = self._uncovered_objectives("C3", objective_node_id, objective_ids)
         violations = violations or []
         blocking_violations = [v for v in violations if v.get("type") not in AUDIT_ONLY_VIOLATION_TYPES]
         relation_cov = alignment.all_relations_coverage(self.graph)
@@ -161,7 +157,6 @@ class GraphAuditor:
             and bool(objective_ids)
             and not unmeasured
             and not unsupported
-            and not unevaluated
             and not blocking_violations
         )
 
@@ -175,7 +170,6 @@ class GraphAuditor:
             objective_count=len(objective_ids),
             unmeasured_objectives=unmeasured,
             unsupported_objectives=unsupported,
-            unevaluated_objectives=unevaluated,
             violations=violations,
             ready_to_aggregate=ready,
             relation_coverage=relation_cov,
@@ -190,20 +184,18 @@ class GraphAuditor:
         relation_id: str,
         objective_node_id: str,
         objective_ids: list[str],
-        *,
-        reverse: bool = False,
     ) -> list[str]:
         """Coverage over objective element nodes (first-class), not just objective_0.
 
-        ``reverse=True`` is for the id-reverse core relations (C2/C3): the LO
-        is the edge's SOURCE, not target, so coverage is checked on the
-        source side. ``reverse=False`` (C7 and the old-style relations) keeps
-        checking the target side. Falls back to the legacy evidence-on-section
-        check when no element nodes exist yet.
+        Every relation this is asked about (C2/C3) is id-reverse: the LO is the
+        edge's SOURCE, not its target, so coverage is checked on the source
+        side. The target-side variant went with C7 (2026-09-02), its only
+        caller. Falls back to the legacy evidence-on-section check when no
+        element nodes exist yet.
         """
         elements = self.graph.element_nodes(NodeType.OBJECTIVE)
         edges = self.graph.get_edges(relation_id=relation_id)
-        covered_side = {edge.get("source") if reverse else edge.get("target") for edge in edges}
+        covered_side = {edge.get("source") for edge in edges}
         covered_evidence = {edge.get("evidence") for edge in edges if edge.get("evidence")}
         if elements:
             uncovered: list[str] = []

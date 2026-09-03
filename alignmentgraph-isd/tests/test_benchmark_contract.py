@@ -31,12 +31,38 @@ from conftest import load_brief
 RESULT_KEYS = {"addie_output", "trajectory", "metadata", "graph", "graph_dot"}
 
 TRAJECTORY_LISTS = {"tool_calls", "reasoning_steps", "agent_interactions", "events"}
+# Every action that can reach `events` (the ones `_record_event` writes). Listed
+# explicitly, because this file exists to PIN the contract — and checked against
+# the taxonomy below, because the list went stale silently once already:
+# `reconcile` had been recorded since 2026-08-27 and never appeared here, since
+# the fixture happened to leave no residual cross-family violation to route.
 EVENT_ACTIONS = {
+    # recovery events
     "retry", "regen_empty_section", "agent_error", "llm_error", "salvage_truncated",
     "invalid_action", "submit_rejected", "submit_invalid_final", "repeated_tool_call",
-    "commit_invalid_section", "agentic_fallback", "repair", "node_add", "node_update",
-    "validate", "check", "audit", "retrieval", "dev_plan",
+    "commit_invalid_section", "agentic_fallback", "agentic_gave_up", "budget_exhausted",
+    "tool_binding_unavailable", "tool_call_markup_recovered", "repair_unfilled",
+    "duplicate_submit", "bare_artifact_wrapped", "context_compacted",
+    "dropped_argument",
+    # structured records
+    "repair", "node_add", "node_update", "doc_write", "validate", "check", "audit",
+    "retrieval", "dev_plan", "reconcile",
 }
+
+#: Actions that only ever reach the deep action log, never `events`.
+ACTION_LOG_ONLY = {
+    "phase_started", "phase_finished", "node_read", "node_write", "edge_read",
+    "edge_write", "edge_walk", "llm_call", "agent_step", "retrieval_query",
+}
+
+
+def test_the_event_vocabulary_is_the_whole_taxonomy():
+    """A new action that can land in `events` must be declared here, or the
+    contract test above silently stops covering it."""
+    from alignmentgraph_isd.core.trajectory import TrajectoryAction
+
+    assert EVENT_ACTIONS | ACTION_LOG_ONLY == {a.value for a in TrajectoryAction}
+    assert not EVENT_ACTIONS & ACTION_LOG_ONLY
 TOKEN_USAGE_KEYS = {"prompt_tokens", "completion_tokens", "total_tokens", "llm_calls"}
 
 # `violations` and `schema_violations` were dropped 2026-08-27: both were
@@ -46,9 +72,16 @@ METADATA_KEYS = {
     "llm", "token_usage", "run_config", "design_brief_id", "errors",
     "validation_errors", "audit", "task_attempts",
     "repair_metrics",
+    # Per-stage autonomy record. Its context_len series is what the
+    # decomposition axis is read off, so it is part of the contract, not a
+    # debugging extra.
+    "autonomy",
 }
 RUN_CONFIG_KEYS = {
     "agent_mode", "context_mode",
+    # The trim budget the stages ran under: it changes what a results dir
+    # means, so it is self-describing.
+    "max_turns", "submit_budget", "history_char_budget",
     "use_rag", "regen_budget", "regen_backoff_seconds",
     # Serving posture: how many requests the run was allowed to keep in flight
     # (core/ratelimit.py). Recorded because a 429-throttled arm and a clean one
@@ -58,7 +91,7 @@ RUN_CONFIG_KEYS = {
 AUDIT_KEYS = {
     "node_counts", "missing_node_types", "missing_section_keys", "schema_violations",
     "objective_node_id", "objective_ids", "objective_count", "unmeasured_objectives",
-    "unsupported_objectives", "unevaluated_objectives", "violations",
+    "unsupported_objectives", "violations",
     "ready_to_aggregate", "relation_coverage", "summary",
 }
 REPAIR_METRIC_KEYS = {
@@ -175,10 +208,10 @@ def test_graph_dump_shape(result):
     assert set(graph["edges"][0]) == EDGE_KEYS
     from alignmentgraph_isd.core.alignment_graph import alignment
     assert set(graph["relation_coverage"]) == set(alignment.REGISTRY)
-    assert len(alignment.REGISTRY) == 18
+    assert len(alignment.REGISTRY) == 16   # C6/C7 went with the rubric node type
 
     for flags in graph["objective_alignment"].values():
-        assert set(flags) == {"measured", "supported", "evaluated", "bloom_ok", "aligned"}
+        assert set(flags) == {"measured", "supported", "bloom_ok", "aligned"}
 
     assert set(graph["metadata"]) >= {
         "design_brief_id", "generated_at", "node_count", "edge_count",

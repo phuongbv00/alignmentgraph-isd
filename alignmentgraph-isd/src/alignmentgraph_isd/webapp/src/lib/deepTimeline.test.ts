@@ -9,7 +9,7 @@ function action(name: string, agent: string, context: Record<string, unknown> = 
     timestamp: new Date(2026, 0, 1, 12, 0, 0, tick).toISOString(),
     agent,
     action: name,
-    context: { phase: 'assessment_designer', ...context },
+    context: { phase: 'assessment', ...context },
   }
 }
 
@@ -70,7 +70,7 @@ describe('foldChronological', () => {
     const rows = foldChronological([
       action('phase_started', 'WorkflowOrchestrator', {}),
       action('node_read', 'ContentDesignerAgent', { query: 'get_node', result_count: 1 }),
-      action('node_read', 'RubricDesignerAgent', { query: 'get_node', result_count: 1 }),
+      action('node_read', 'MaterialDeveloperAgent', { query: 'get_node', result_count: 1 }),
       action('phase_finished', 'WorkflowOrchestrator', {}),
     ])
     expect(rows).toHaveLength(2)
@@ -97,6 +97,70 @@ describe('foldChronological', () => {
     expect(rows[0].title).toBe('Audit graph')
     expect(rows[0].detail).toBe('No relation gaps')
     expect(rows[0].tone).toBe('good')
+  })
+
+  it('describes a fan-out as the dispatch it was, and flags a fallback split', () => {
+    tick = 0
+    const [chosen] = foldChronological([
+      action('dev_plan', 'WorkflowOrchestrator', {
+        family: 'activity_designer', set_count: 2, source: 'llm', dropped_refs: 0,
+        appended_sets: 0, sets: [{ set_id: 'AS1' }, { set_id: 'AS2' }],
+      }),
+    ])
+    expect(chosen.kind).toBe('plan')
+    expect(chosen.title).toBe('Split activity_designer into 2 work sets')
+    expect(chosen.detail).toContain('grouping from llm')
+    expect(chosen.detail).toContain('AS1, AS2')
+    // A grouping the agent proposed is the intended path; one the harness had
+    // to derive for it is the fact a reader most needs off this row.
+    expect(chosen.tone).toBe('good')
+
+    const [derived] = foldChronological([
+      action('dev_plan', 'WorkflowOrchestrator', {
+        family: 'activity_designer', set_count: 1, source: 'fallback',
+        dropped_refs: 2, appended_sets: 1, sets: [{ set_id: 'AS1' }],
+      }),
+    ])
+    expect(derived.tone).toBe('warn')
+    expect(derived.detail).toContain('2 dangling refs dropped')
+    expect(derived.detail).toContain('1 sets appended for coverage')
+  })
+
+  it('names the family a residual violation was routed to', () => {
+    tick = 0
+    const [row] = foldChronological([
+      action('reconcile', 'AssessmentDesignerAgent', {
+        family: 'assessment_designer', routed: 3,
+        violation_types: ['item_completeness', 'plan_coverage'],
+      }),
+    ])
+    // Routing is the decomposition axis expressed at repair time, so the row
+    // has to say who it went to, not only that something was repaired.
+    expect(row.kind).toBe('route')
+    expect(row.title).toBe('Route 3 residual violations to assessment_designer')
+    expect(row.detail).toBe('item_completeness, plan_coverage')
+  })
+
+  it('reads a prose write as an artifact, keyed by its document', () => {
+    tick = 0
+    const [row] = foldChronological([
+      action('doc_write', 'OutcomeDesignerAgent', { key: 'objective', field_count: 4 }),
+    ])
+    expect(row.kind).toBe('write')
+    expect(row.detail).toBe('objective')
+  })
+
+  it('labels the agentic loop\'s own failure modes', () => {
+    tick = 0
+    const rows = foldChronological([
+      action('agentic_gave_up', 'ContentDesignerAgent', { output_summary: 'no valid submit' }),
+      action('tool_call_markup_recovered', 'ContentDesignerAgent', { output_summary: 'text call' }),
+    ])
+    expect(rows.map((row) => row.kind)).toEqual(['error', 'error'])
+    expect(rows[0].title).toBe('Give up on this step')
+    // Not a model mistake: the serving stack left a well-formed call as text
+    // and the loop recovered it. It is on this list so the RATE stays visible.
+    expect(rows[1].title).toBe('Recover tool call left as text')
   })
 
   it('flags a gapped residual audit as a warning', () => {

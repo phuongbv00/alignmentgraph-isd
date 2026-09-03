@@ -5,7 +5,7 @@ these tests pin the shape and the WORKFLOW_ORCHESTRATOR attribution.
 
 The cross-agent routing mechanism this file also used to cover (a router
 that could send a Designer back for a narrow revision) was removed
-2026-08-28 — see ``core/workflow.py``'s module docstring — so there is no
+2026-08-28 — see ``core/agentic/run.py``'s module docstring — so there is no
 ``"route"`` trajectory action left to test.
 """
 from __future__ import annotations
@@ -45,15 +45,12 @@ def test_the_residual_audit_is_logged_and_matches_the_metadata_copy():
     assert "node_counts" not in context
 
 
-def test_the_agentic_arm_also_logs_the_residual_audit():
-    from alignmentgraph_isd.core.agentic.run import run_agentic_brief
-
-    config = HarnessRunConfig(llm_factory=lambda: FakeChatModel())
-    result = run_agentic_brief(config, load_brief("java_oop_brief.json"))
-
-    audit_events = [e for e in result["trajectory"]["events"] if e["action"] == "audit"]
-    assert len(audit_events) == 1
-    assert audit_events[0]["agent"] == WORKFLOW_ORCHESTRATOR
+# `test_the_agentic_arm_also_logs_the_residual_audit` was removed 2026-09-04.
+# It called `run_agentic_brief` directly with the same config and brief as the
+# test above, which reaches the same function through `run_design_brief` — one
+# executor, so "also" named a second one that does not exist — and then made a
+# strict subset of that test's assertions. What is worth distinguishing is the
+# PROSE arm, which is the test below.
 
 
 def test_the_prose_arm_has_no_graph_and_therefore_no_audit_event():

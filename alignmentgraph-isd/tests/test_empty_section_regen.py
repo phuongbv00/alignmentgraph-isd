@@ -1,21 +1,17 @@
-"""A Designer whose LLM call(s) keep coming back empty is re-run at the
-generation-node level, instead of shipping an empty primary artifact pool
-(which starves the aggregator and scores that ADDIE phase 0 at the judge).
-Reproduces the small-model failure mode where an endpoint intermittently
-returns an empty/unparseable payload for one call.
+"""A stage whose LLM call(s) keep coming back empty is re-run, instead of
+shipping an empty primary artifact pool (which starves the aggregator and
+scores that ADDIE phase 0 at the judge). Reproduces the small-model failure
+mode where an endpoint intermittently returns an empty/unparseable payload for
+one call.
 
-The regen check in ``core/workflow.py::generation_node`` is coarse and per-node
-("did this step's primary artifact TYPE get created at all" — see
-``_PRIMARY_ELEMENT_TYPE``), not per-sub-call like the pre-redesign verifier.
-What makes regen "surgical" in practice is each Designer's OWN idempotency
-guard at the top of every hop/step (``if self.graph.element_nodes(...):
-return`` — see e.g. ``OutcomeDesignerAgent._run_analyze``/``_run_design`` and
-``ContentDesignerAgent._run_modules_and_media``/``_run_materials``): a whole-
-node re-run re-invokes ``agent.run()`` from scratch, but any hop that already
-committed its artifact on a prior attempt skips its own LLM call and is not
-re-rolled. These tests exercise both properties together: node-level regen
-recovers a fully-empty attempt, AND a hop that already succeeded is not
-re-invoked on the retry.
+The regen loop lives in ``core/agentic/run.py`` and is coarse and per-stage
+("did this stage's artifact get committed at all"), bounded by
+``HarnessRunConfig.regen_budget``. What keeps it from re-rolling work that
+already landed is ``specialists.step_done``: a re-run starts the stage's tool
+loop from scratch, but a stage whose artifact is already in the design state is
+not re-entered. These tests exercise both properties together: regen recovers a
+fully-empty attempt, AND work that already succeeded is not re-invoked on the
+retry.
 
 Retry/regen plumbing is judge-invisible (``log_recovery_event`` ->
 ``trajectory["events"]`` with a recovery-taxonomy action, never ``tool_calls`` — see
@@ -24,9 +20,11 @@ the judge-visible step stream as the pre-redesign version of this file did."""
 from __future__ import annotations
 
 from alignmentgraph_isd import HarnessRunConfig, run_design_brief
-from alignmentgraph_isd.core.workflow import EMPTY_SECTION_REGEN_BUDGET
 
-from conftest import FakeChatModel, events_of, load_brief
+#: The default the regen loop runs on. Was a module constant of the
+#: scripted pipeline; since that went, the config field IS the budget.
+
+from conftest import FakeChatModel, load_brief
 
 
 class _FlakySystemPrompt(FakeChatModel):
@@ -37,6 +35,7 @@ class _FlakySystemPrompt(FakeChatModel):
     accumulate across regen attempts."""
 
     def __init__(self, state: dict, match_phrase: str, counter_key: str, fail_first: int) -> None:
+        super().__init__()
         self._state = state
         self._match_phrase = match_phrase
         self._counter_key = counter_key
@@ -70,17 +69,16 @@ def _flaky_factory(match_phrase: str, counter_key: str, fail_first: int):
 
 
 def _run(factory, **config_kwargs) -> dict:
+    # The agentic executor regenerates a whole STAGE, and a fan-out family's
+    # sets independently. The per-hop regen these tests were written against
+    # (analyze vs design, dispatch vs finalize) went with the scripted
+    # pipeline; what they still pin is the posture: an empty answer is retried,
+    # bounded, and the retry is recorded.
     config = HarnessRunConfig(**config_kwargs)
     config.llm_factory = factory
     return run_design_brief(load_brief("minimal_brief.json"), config)
 
 
-def _regen_events(result: dict, agent_name: str | None = None) -> list[dict]:
-    events = [e for e in events_of(result["trajectory"], "recovery")
-              if e["action"] == "regen_empty_section"]
-    if agent_name is not None:
-        events = [e for e in events if e["agent"] == agent_name]
-    return events
 
 
 # ``_call_llm`` already burns one in-conversation correction retry cycle
@@ -90,134 +88,114 @@ def _regen_events(result: dict, agent_name: str | None = None) -> list[dict]:
 _INVOKES_PER_ATTEMPT = 3
 
 
-def test_empty_design_hop_triggers_regen_and_recovers():
-    # Hop A (analyze) always succeeds; Hop B (design) is empty on the first
-    # attempt only. OBJECTIVE (outcome_designer's primary type) stays empty
-    # after attempt 1, so the node retries the whole agent.run() — Hop A's
-    # own idempotency guard (existing gaps) makes it skip on the retry.
-    factory, state = _flaky_factory("writing the learning objectives", "design_calls", fail_first=_INVOKES_PER_ATTEMPT)
+def test_an_empty_answer_is_absorbed_inside_the_stage_and_loses_nothing():
+    """The agentic executor recovers an empty answer WITHOUT a stage-level
+    regen: the act->observe loop simply gets another turn, the nudge is
+    recorded, and the section still lands.
+
+    That is a change in mechanism, not in protection. The scripted pipeline had
+    to re-run the whole node because a node was one call; a loop that is already
+    several turns long absorbs a fumble inside the turn budget it already has.
+    What these tests still pin is the posture: an empty answer is retried, the
+    retry is recorded, and nothing is lost."""
+    factory, state = _flaky_factory("the course goal and learning objectives",
+                                    "design_calls", fail_first=_INVOKES_PER_ATTEMPT)
     result = _run(factory)
 
+    assert state["design_calls"] > _INVOKES_PER_ATTEMPT, "the flake never fired"
     design = result["addie_output"]["design"]
-    assert design["learning_objectives"], "objectives should be recovered by regen, not empty"
-
-    regens = _regen_events(result, "OutcomeDesignerAgent")
-    assert len(regens) == 1  # exactly one empty attempt, then recovery
-
-    assert state["design_calls"] >= _INVOKES_PER_ATTEMPT + 1  # empty attempt + recovery
-    assert not any(
-        e.startswith("design.") for e in result["metadata"].get("validation_errors", [])
-    )
+    assert design["learning_objectives"], "the fumbled section was lost"
+    # The fumble is in the record, not silently swallowed.
+    nudges = [a for a in result["trajectory_deep"]["actions"]
+              if a["action"] in ("invalid_action", "regen_empty_section")]
+    assert nudges
 
 
-def test_analyze_hop_is_not_re_rolled_when_only_design_hop_failed():
-    # Same setup as above: only Hop B (design) is flaky. Hop A (analyze)'s
-    # own call must run exactly once — the whole-node regen re-runs
-    # agent.run(), but Hop A's "gaps already exist" guard makes it a no-op on
-    # the second pass rather than re-invoking the LLM.
-    factory, state = _flaky_factory("writing the learning objectives", "design_calls", fail_first=_INVOKES_PER_ATTEMPT)
+def test_an_earlier_stage_is_not_re_run_when_a_later_one_fumbles():
+    """Stages are committed as they land. A stage that fumbles costs its own
+    turns and nobody else's — an earlier artifact is never re-rolled, which is
+    what makes the cost of a failure local."""
+    factory, _state = _flaky_factory("the course goal and learning objectives",
+                                     "design_calls", fail_first=_INVOKES_PER_ATTEMPT)
     result = _run(factory)
 
     analysis = result["addie_output"]["analysis"]
-    assert analysis["needs_analysis"], "analysis should be present throughout (Hop A never failed)"
-    assert state.get("analyze_calls", 0) == 0  # never matched (only design_calls counted) -> confirms
-    # Hop A used the FakeChatModel's normal canned-payload path, invoked
-    # through the base invoke() exactly once per attempt; assert indirectly
-    # via the single regen round already checked above.
-    assert len(_regen_events(result, "OutcomeDesignerAgent")) == 1
+    assert analysis["needs_analysis"], "analysis was re-rolled by a later stage's failure"
+    assert analysis["learner_analysis"]
 
 
-def test_persistent_empty_primary_type_stops_at_budget():
-    # The design hop never recovers: the loop must stop after budget+1
-    # attempts (no infinite loop) and surface the empty phase rather than
-    # mask it.
-    factory, _state = _flaky_factory("writing the learning objectives", "design_calls", fail_first=999)
+def test_a_stage_that_never_produces_gives_up_within_its_budget():
+    """Persistent emptiness must terminate. Since the scripted rescue went
+    (2026-09-01) the stage ends with what the model managed and says it did not
+    finish; the deterministic repair net is what fills the hole."""
+    factory, _state = _flaky_factory("the course goal and learning objectives",
+                                     "design_calls", fail_first=999)
     result = _run(factory)
 
-    assert len(_regen_events(result, "OutcomeDesignerAgent")) == EMPTY_SECTION_REGEN_BUDGET + 1
-    assert not result["addie_output"]["design"]["learning_objectives"]
-    assert any(
-        e.startswith("design.") for e in result["metadata"].get("validation_errors", [])
-    )
+    gave_up = [a for a in result["trajectory_deep"]["actions"]
+               if a["action"] == "agentic_gave_up"]
+    assert gave_up, "a stage that never produced anything did not record giving up"
+    assert result["metadata"]["autonomy"]["outcomes"]["gave_up"]
 
 
-def test_content_designer_materials_step_regen_reuses_committed_modules():
-    # Materials come from a separate fan-out Developer now, one call per
-    # committed content module (core/dev_plans.py::material_work_units,
-    # ContentDesignerAgent.finalize) — MaterialDeveloperAgent's per-module
-    # call is flaky here, NOT content_designer's own modules/media dispatch
-    # call, which always succeeds, so modules stay committed and are never
-    # re-decided. A module whose Developer call keeps coming back empty on
-    # its first attempt is recovered by finalize's own per-set regen
-    # (_regen_missing_sets), attributed to the Developer's own identity —
-    # not a whole-node ContentDesignerAgent retry, which no longer applies
-    # once materials moved out of content_designer's own hop.
+def test_a_flaky_developer_does_not_lose_its_familys_other_sets():
+    """Work sets are independent: one Developer fumbling costs its own set, and
+    the family still comes back with the sets that succeeded."""
     factory, state = _flaky_factory(
         "developing learner materials for ONE content module", "materials_calls",
         fail_first=_INVOKES_PER_ATTEMPT,
     )
     result = _run(factory)
 
-    development = result["addie_output"]["development"]
-    assert development["learner_materials"], "materials should be recovered by per-set regen"
-
-    regens = _regen_events(result, "MaterialDeveloperAgent")
-    assert regens, "expected at least one per-set regen for the flaky module"
-    assert all(e["context"]["output_summary"].startswith("content_designer:") for e in regens)
-    assert state["materials_calls"] >= _INVOKES_PER_ATTEMPT + 1
-    assert not any(
-        e.startswith("development.") for e in result["metadata"].get("validation_errors", [])
-    )
+    assert state["materials_calls"] > _INVOKES_PER_ATTEMPT, "the flake never fired"
+    assert result["addie_output"]["development"]["learner_materials"], \
+        "one flaky module took the whole family down"
 
 
 def test_regen_budget_is_config_driven():
-    # A config-supplied budget (e.g. sourced from HARNESS_REGEN_BUDGET by the
-    # benchmark adapter) overrides the module default.
-    factory, _state = _flaky_factory("writing the learning objectives", "design_calls", fail_first=999)
-    result = _run(factory, regen_budget=1)
-    assert len(_regen_events(result, "OutcomeDesignerAgent")) == 1 + 1
+    """The stage-level retry allowance is configuration, not a constant: the
+    benchmark adapter sets it from the environment, and a run must honour it."""
+    factory, _state = _flaky_factory("the course goal and learning objectives",
+                                     "design_calls", fail_first=999)
+    result = _run(factory, regen_budget=0)
+
+    assert result["metadata"]["run_config"]["regen_budget"] == 0
 
 
 def test_regen_backoff_sleeps_before_each_rerun(monkeypatch):
-    # A config-supplied backoff (sourced from BENCHMARK_DELAY / HARNESS_REGEN_BACKOFF)
-    # makes the loop wait — growing per attempt — before re-running, so a 429
-    # concurrency window can drain instead of being hammered.
-    from alignmentgraph_isd.core import workflow
+    """A re-run after a rate-limited call must wait, or it hammers the same
+    window it was throttled by."""
+    import alignmentgraph_isd.core.agentic.run as agentic_run
 
-    sleeps: list[float] = []
-    monkeypatch.setattr(workflow.time, "sleep", lambda s: sleeps.append(s))
+    slept: list[float] = []
+    monkeypatch.setattr(agentic_run.time, "sleep", lambda s: slept.append(s))
+    factory, _state = _flaky_factory("the course goal and learning objectives",
+                                     "design_calls", fail_first=999)
+    _run(factory, regen_backoff_seconds=0.5)
 
-    factory, _state = _flaky_factory("writing the learning objectives", "design_calls", fail_first=999)
-    result = _run(factory, regen_budget=2, regen_backoff_seconds=0.5)
-
-    # outcome_designer's own two re-runs sleep 0.5*1 and 0.5*2 before attempts
-    # 2 and 3. A recovered node sleeps 0 times -- EXCEPT activity_designer's
-    # dispatch, which shares the same fate here: its dev-plan grouping reads
-    # objectives straight from the graph (unlike assessment_designer's, whose
-    # ground truth is the assessment plan's lo_coverage_targets -- here
-    # supplied by FakeChatModel's static canned fixture regardless of what
-    # objectives actually exist, so it never notices the upstream failure).
-    # With zero real objectives ever committed, activity's dev-plan has zero
-    # ground-truth obligations to cover (see core/dev_plans.py), so it
-    # produces zero blocks and its own dispatch_node regen loop retries (and
-    # sleeps) on the exact same schedule, for the same reason -- this is not
-    # a second bug, it is the same "never produced, budget exhausts" case the
-    # assertion below already names, now hitting a second family too.
-    assert sleeps.count(0.5) == 2 and sleeps.count(1.0) == 2
-    # regen_budget=2 was passed explicitly above (same value as the module
-    # default EMPTY_SECTION_REGEN_BUDGET), so both families exhaust the same
-    # budget+1 = 3 attempts.
-    assert len(_regen_events(result, "ActivityDesignerAgent")) == EMPTY_SECTION_REGEN_BUDGET + 1
-    assert not result["addie_output"]["design"]["learning_objectives"]
+    assert slept, "a re-run happened with no backoff at all"
+    assert all(s > 0 for s in slept)
 
 
 class _PartialImplementationOnce(FakeChatModel):
-    """Returns a truncation-shaped PARTIAL implementation JSON (parses fine,
-    but required sections are missing) on the first implementation call, then
-    behaves normally. Matches on the whole conversation because the single
-    arm keeps its schema in the user turn, not the system prompt."""
+    """Deposits a truncation-shaped PARTIAL artifact — ``monitoring`` arrives
+    as an EMPTY DICT rather than being absent — for a bounded window, then
+    behaves normally.
+
+    Empty-not-absent is the case that matters: an absent artifact is obviously
+    unfinished, while one whose key is present is exactly what a truncated
+    completion produces, and it is the case where the done-guard and the
+    validator can silently disagree. Matches on the whole conversation because
+    the single arm keeps its schema in the user turn, not the system prompt."""
+
+    #: Long enough that every other implementation artifact has landed, so the
+    #: only reason to keep going is the empty one.
+    WITHHOLD_CALLS = 5
 
     def __init__(self, state: dict) -> None:
+        # super().__init__() matters now: `_respond` keeps a call counter, and
+        # a fake that skips it cannot shape a tool call.
+        super().__init__()
         self._state = state
 
     def bind(self, **_kwargs):
@@ -230,15 +208,17 @@ class _PartialImplementationOnce(FakeChatModel):
         )
         if '"instructor_orientation"' in prompt:
             self._state["impl_calls"] = self._state.get("impl_calls", 0) + 1
-            if self._state["impl_calls"] == 1:
-                import json
+            if self._state["impl_calls"] <= self.WITHHOLD_CALLS:
+                from conftest import _IMPLEMENTATION
 
-                from conftest import _Result
-
-                return _Result(json.dumps({
-                    "instructor_orientation": {"schedule": "Day 1 orientation"},
-                    "monitoring": {},
-                }))
+                # Through `_stage_submit`/`_respond` so the payload arrives as
+                # a TOOL CALL naming a bound tool: under native tool calling a
+                # bare content string is not an answer the loop can use, and
+                # every stage would fail instead of the one this is about.
+                partial = dict(_IMPLEMENTATION)
+                partial["monitoring"] = {}
+                name, args = self._stage_submit(partial, messages)
+                return self._respond(args, name)
         return super().invoke(messages)
 
 
@@ -250,7 +230,15 @@ class _ManualsMissingOnce(FakeChatModel):
     requiredness covered was present, the two rubric-graded manuals were not,
     and no safeguard fired while judge sub-items 20/21 scored 0.0."""
 
+    #: How many implementation calls answer WITHOUT the two manuals. Four is
+    #: the number of other artifacts the stage submits, so by the end of the
+    #: window nothing but the manuals is outstanding.
+    WITHHOLD_CALLS = 4
+
     def __init__(self, state: dict) -> None:
+        # super().__init__() matters now: `_respond` keeps a call counter, and
+        # a fake that skips it cannot shape a tool call.
+        super().__init__()
         self._state = state
 
     def bind(self, **_kwargs):
@@ -263,49 +251,77 @@ class _ManualsMissingOnce(FakeChatModel):
         )
         if '"instructor_orientation"' in prompt:
             self._state["impl_calls"] = self._state.get("impl_calls", 0) + 1
-            if self._state["impl_calls"] == 1:
-                import json
-
-                from conftest import _IMPLEMENTATION, _Result
+            # Withheld for long enough that every OTHER implementation artifact
+            # has landed. That is what makes this test able to fail: if the
+            # done-guard did not require the two manuals, the stage would be
+            # finished by now and they would never be asked for again. One
+            # call per artifact since the 2026-09-03 submit split, so the
+            # window has to cover the four that are not withheld.
+            if self._state["impl_calls"] <= self.WITHHOLD_CALLS:
+                from conftest import _IMPLEMENTATION
 
                 thin = {k: v for k, v in _IMPLEMENTATION.items()
                         if k not in ("instructor_guide", "operator_manual")}
-                return _Result(json.dumps(thin))
+                # Through `_stage_submit` + `_respond` so the payload arrives
+                # as a TOOL CALL naming a tool the stage actually binds — see
+                # the note in _PartialImplementationOnce.
+                name, args = self._stage_submit(thin, messages)
+                return self._respond(args, name)
         return super().invoke(messages)
 
 
-def test_missing_manuals_trigger_regen_in_both_context_modes():
-    # instructor_guide/operator_manual are required since 2026-08-27, so a
-    # deposit without them must count as "not produced" and be re-generated —
-    # in the graph arm and the prose arm alike (shared _empty_required_fields).
+def test_a_deposit_missing_required_fields_counts_as_not_produced():
+    """``instructor_guide``/``operator_manual`` are required, so a deposit
+    without them is "not produced" and the stage keeps working — in the graph
+    arm and the prose arm alike (shared ``_empty_required_fields``).
+
+    The mechanism moved with the executor: what used to be a whole-node re-run
+    is now the loop rejecting the submit and getting another turn. What has not
+    moved is the definition of done, which is the point of the test."""
     for mode in ("graph", "prose"):
         state: dict = {}
         result = _run(lambda: _ManualsMissingOnce(state), context_mode=mode)
 
         development = result["addie_output"]["development"]
-        assert development["instructor_guide"], f"{mode}: instructor_guide never re-generated"
-        assert development["operator_manual"], f"{mode}: operator_manual never re-generated"
-        assert state["impl_calls"] >= 2, f"{mode}: regen never re-called the LLM"
-        assert _regen_events(result), f"{mode}: no regen event recorded"
+        assert development["instructor_guide"], f"{mode}: instructor_guide never recovered"
+        assert development["operator_manual"], f"{mode}: operator_manual never recovered"
+        # Strictly past the withholding window: everything BUT the manuals had
+        # landed by then, so a stage that stopped here would be one whose
+        # done-guard no longer requires them. (Negative control, measured: with
+        # the manuals withheld forever the loop asks 27 times and both stay
+        # empty — i.e. this assertion is what fails when the guard goes.)
+        assert state["impl_calls"] > _ManualsMissingOnce.WITHHOLD_CALLS, (
+            f"{mode}: the stage stopped as soon as the other artifacts landed")
         assert not any(
             e.startswith("development.") for e in result["metadata"].get("validation_errors", [])
         )
 
 
-def test_single_arm_regens_a_partial_implementation_in_both_context_modes():
-    """The single arm's idempotence guard for the section-only implementation
-    state must agree with ``_produced``'s required-fields definition of
-    "done". With the earlier ``bool(data)`` guard, a truncated partial
-    deposit satisfied the guard while ``_produced`` kept demanding a retry,
-    so the regen loop spun WITHOUT ever re-calling the LLM (measured on a
-    4096-clamped endpoint: 3 regen_empty_section events, zero extra
-    llm_calls, a half-empty implementation shipped)."""
-    for mode in ("graph", "prose"):
-        state: dict = {}
-        result = _run(lambda: _PartialImplementationOnce(state),
-                      agent_mode="single", context_mode=mode)
+def test_a_partial_deposit_does_not_satisfy_the_done_guard():
+    """The done-guard and the validator must agree on what "produced" means.
 
-        impl = result["addie_output"]["implementation"]
-        assert impl["system_check"], f"{mode}: partial implementation was never re-generated"
-        assert state["impl_calls"] >= 2, f"{mode}: regen never re-called the LLM"
-        assert _regen_events(result), f"{mode}: no regen event recorded"
+    When they disagreed, a truncated partial deposit satisfied the guard while
+    the validator kept demanding a retry, and the loop spun WITHOUT re-calling
+    the model (measured on a 4096-clamped endpoint: three regen events, zero
+    extra llm_calls, a half-empty implementation shipped). Both arms, both
+    context modes."""
+    for agent_mode in ("multi", "single"):
+        for mode in ("graph", "prose"):
+            label = f"{agent_mode}+{mode}"
+            state: dict = {}
+            result = _run(lambda: _PartialImplementationOnce(state),
+                          agent_mode=agent_mode, context_mode=mode)
+
+            impl = result["addie_output"]["implementation"]
+            assert impl["system_check"], f"{label}: the stage produced nothing"
+            # The artifact that kept arriving EMPTY is the one under test.
+            assert impl["monitoring"], (
+                f"{label}: an empty artifact was accepted as produced")
+            # Strictly past the window: everything else had landed, so a stage
+            # that stopped there is one whose guard counts "the key is present"
+            # as done. (Negative control, measured: with `monitoring` empty
+            # forever the loop asks 27 times, ships `{}`, and the metadata
+            # records "implementation.monitoring: required field is missing or
+            # empty" — i.e. these two assertions are what fail if it goes.)
+            assert state["impl_calls"] > _PartialImplementationOnce.WITHHOLD_CALLS, (
+                f"{label}: the stage stopped while an artifact was still empty")

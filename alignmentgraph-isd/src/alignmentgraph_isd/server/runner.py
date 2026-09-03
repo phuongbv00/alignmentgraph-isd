@@ -10,7 +10,7 @@ has three rules it must not break:
    "snapshot" or a dict-changed-size error mid-iteration.
 2. **Never touch the database here.** A SQLAlchemy session is not thread-safe,
    and a run's progress must not depend on the database being reachable.
-3. **Never block.** The consumer runs inside a LangGraph node; anything slow
+3. **Never block.** The consumer runs inside the agent's own tool loop; anything slow
    here slows the run itself.
 """
 from __future__ import annotations
@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -33,8 +34,12 @@ from .settings import Settings
 
 logger = logging.getLogger(__name__)
 
-# Harness event kinds forwarded to the browser as-is. `graph_snapshot` is
-# deliberately absent: the graph is carried as state, not replayed as events.
+# Harness event kinds forwarded to the browser as-is. Not an exhaustive mirror
+# of what the harness emits: `graph_snapshot` is deliberately absent (the graph
+# is carried as state, not replayed as events), and the five typed streams
+# (`recovery_event`, `doc_write_event`, `reconcile_event`, `audit_event`,
+# `dev_plan_event`) are absent because each of their call sites ALSO calls
+# `log_action`, so their payload already reaches the browser as `action`.
 _FORWARDED = frozenset({
     EventKind.ACTION,
     EventKind.PHASE_STARTED, EventKind.PHASE_FINISHED,
@@ -156,6 +161,13 @@ class RunManager:
                 # within roughly one model call rather than instantly.
                 raise HarnessCancelled()
 
+            if kind == "context_snapshot":
+                # State, not a forwarded event: a transcript is large and only
+                # its finished form is worth reading. Handled here on the
+                # worker thread for the same reason the graph is.
+                state.add_context(payload)
+                return
+
             if kind == "graph_snapshot":
                 # Serialized here, on this thread, while the payload is still
                 # the state it describes. See rule 1 in the module docstring.
@@ -174,7 +186,7 @@ class RunManager:
 
         directory = artifacts.resolve(self.settings, artifact_dir)
         design_brief = DesignBrief.model_validate(brief)
-        config = HarnessRunConfig(llm_factory=factory)
+        config = HarnessRunConfig(llm_factory=factory, **_window_settings())
 
         started = datetime.now(timezone.utc)
         status, error, stats, result = RunStatus.SUCCEEDED, "", {}, None
@@ -182,6 +194,17 @@ class RunManager:
             from ..core.runner import run_workflow
 
             result = run_workflow(config, design_brief, on_event=self._make_consumer(state))
+            # Carried on the result so `write_result` persists it with the rest:
+            # a context that only existed in memory would be gone the moment the
+            # process restarted, and "what did this agent see" is the question
+            # you come back to a finished run with.
+            #
+            # The HARNESS's own list wins when it has one (core.memory keeps
+            # every transcript now, whether or not anyone was watching); the
+            # live one collected off the event stream is what the page shows
+            # while the run is still going, and is the fallback for a result
+            # produced before ``core.memory`` existed.
+            result["contexts"] = result.get("contexts") or list(state.contexts)
             stats = _stats_from_result(result)
             # The harness is built to survive a failing specialist, so it
             # completes even when every one of them failed — leaving an empty
@@ -213,6 +236,12 @@ class RunManager:
         if result is not None:
             state.model_name = (result.get("metadata", {}).get("llm") or {}).get("model_name", "")
 
+        # Flush what the run produced BEFORE marking it terminal. `finish`
+        # closes the live stream, so a reader that was following the run
+        # returns at that instant — and anything still unflushed is not on disk
+        # for the replay that a restart, or a second reader, falls back to. The
+        # second flush writes the terminal event itself.
+        self._flush_state(state, directory)
         state.finish(status, error, stats)
         self._flush_state(state, directory)
         self._persist_terminal(run_id, state, started, finished)
@@ -268,6 +297,27 @@ class RunManager:
                     handle.write(json.dumps(event.to_dict(), ensure_ascii=False) + "\n")
         except Exception as exc:  # noqa: BLE001 - the run matters, the log does not
             logger.warning("could not append events for run %s: %s", state.run_id, exc)
+
+
+def _window_settings() -> dict:
+    """The serving window, from the same env the CLI and benchmark read.
+
+    Without it the harness falls back to its historical 24,000-character
+    transcript budget, which is a number unrelated to whatever model this app
+    is pointed at — and the Context tab then reports a budget the run was never
+    actually held to. Unset changes nothing.
+    """
+    settings: dict[str, int] = {}
+    for env_name, key in (("AGENT_MODEL_CONTEXT_WINDOW", "llm_context_window"),
+                          ("AGENT_MODEL_MAX_TOKENS_CAP", "llm_completion_reserve")):
+        raw = os.getenv(env_name)
+        if raw is None:
+            continue
+        try:
+            settings[key] = int(raw)
+        except ValueError:
+            logger.warning("ignoring %s=%r: not an integer", env_name, raw)
+    return settings
 
 
 def _light_graph(full: dict) -> dict:

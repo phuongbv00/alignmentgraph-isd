@@ -15,11 +15,12 @@ Two artifacts:
       dot -Tsvg <stem>.dot -o <stem>.svg
 
 Colouring is the structural alignment state, not decoration:
-- objective nodes: green when measured+supported+evaluated and the Bloom/format
-  rule holds, amber otherwise.
+- objective nodes: green when measured (C2) and supported (C3) and the
+  Bloom/format rule holds, amber otherwise. The third leg went with C7 on
+  2026-09-02, when a rubric criterion became a field of its assessment item.
 - edges by establishment mechanism: id-match solid green, type-match solid blue,
-  provenance solid grey; a ``measures`` edge that fails the Bloom/format rule is
-  red-dashed (e.g. an MCQ measuring an Apply objective).
+  provenance solid grey; a C2/C3 edge that fails the Bloom/format rule is
+  red-dashed (e.g. an MCQ assessing an Apply objective).
 """
 from __future__ import annotations
 
@@ -35,7 +36,6 @@ _NODE_STYLE = {
     NodeType.ASSESSMENT: {"shape": "ellipse", "style": "filled", "fillcolor": "#dbeafe"},
     NodeType.ACTIVITY: {"shape": "ellipse", "style": "filled", "fillcolor": "#dcfce7"},
     NodeType.CONTENT: {"shape": "folder", "style": "filled", "fillcolor": "#f3f4f6"},
-    NodeType.RUBRIC: {"shape": "note", "style": "filled", "fillcolor": "#ede9fe"},
     NodeType.MATERIAL: {"shape": "folder", "style": "filled", "fillcolor": "#f3f4f6"},
     NodeType.IMPLEMENTATION_PLAN: {"shape": "component", "style": "filled", "fillcolor": "#f3f4f6"},
 }
@@ -46,11 +46,10 @@ _INVALID_EDGE = "#dc2626"      # red — a measures edge failing the Bloom/forma
 
 
 def objective_annotations(graph: AlignmentGraph) -> dict[str, dict]:
-    """Per-objective structural alignment: is it assessed / practiced /
-    measured (by a rubric), and does the Bloom cross-check hold? All read
-    from the graph's established edges via the single alignment definition.
-    C2 (assessed_by) and C3 (practiced_by) are id-reverse — the LO is the
-    edge SOURCE — while C7 (measures) keeps the target-side direction."""
+    """Per-objective structural alignment: is it assessed and practiced, and
+    does the Bloom cross-check hold? All read from the graph's established
+    edges via the single alignment definition. C2 (assessed_by) and C3
+    (practiced_by) are both id-reverse — the LO is the edge SOURCE."""
     bloom_violated = {v["node_id"] for v in alignment.bloom_assessment_violations(graph)}
     bloom_violated |= {v["node_id"] for v in alignment.bloom_activity_violations(graph)}
     out: dict[str, dict] = {}
@@ -58,14 +57,17 @@ def objective_annotations(graph: AlignmentGraph) -> dict[str, dict]:
         node_id = node["id"]
         assessed = bool(graph.get_edges(relation_id="C2", source=node_id))
         practiced = bool(graph.get_edges(relation_id="C3", source=node_id))
-        rubric_scored = bool(graph.get_edges(relation_id="C7", target=node_id))
         bloom_ok = node_id not in bloom_violated
+        # No rubric leg since 2026-09-02: a criterion is a field of the item it
+        # marks, so "is this objective scored by a rubric" was true for every
+        # objective that had an item at all. It never varied, so it never
+        # narrowed `aligned` — dropping it changes the definition and not the
+        # answer.
         out[node_id] = {
             "measured": assessed,
             "supported": practiced,
-            "evaluated": rubric_scored,
             "bloom_ok": bloom_ok,
-            "aligned": assessed and practiced and rubric_scored and bloom_ok,
+            "aligned": assessed and practiced and bloom_ok,
         }
     return out
 
@@ -105,7 +107,6 @@ def _node_label(node: dict, annotations: dict) -> str:
             flags = "".join([
                 "M" if ann["measured"] else "·",
                 "S" if ann["supported"] else "·",
-                "E" if ann["evaluated"] else "·",
                 "" if ann["bloom_ok"] else " ⚠bloom",
             ])
             lines.append(("✓ " if ann["aligned"] else "✗ ") + flags)
@@ -121,7 +122,7 @@ def _node_label(node: dict, annotations: dict) -> str:
 def _legend() -> list[str]:
     """A compact legend cluster: what edge colours and node fills mean.
 
-    The edge label is just the relation key ("R3-measures"); the *mechanism*
+    The edge label is just the relation key ("C2-assessed_by"); the *mechanism*
     (id/type/provenance) is carried by colour and explained here, so the graph
     itself stays low-ink."""
     return [
@@ -131,7 +132,7 @@ def _legend() -> list[str]:
         f'    leg_type [label="type-match edge", shape=plaintext, fontcolor="{_EDGE_COLOR["type"]}"];',
         f'    leg_prov [label="provenance edge", shape=plaintext, fontcolor="{_EDGE_COLOR["provenance"]}"];',
         f'    leg_bad [label="Bloom/format ⚠ (invalid)", shape=plaintext, fontcolor="{_INVALID_EDGE}"];',
-        f'    leg_ok [label="objective aligned (M/S/E ok)", shape=box, style="filled,rounded", fillcolor="{_ALIGNED_FILL}"];',
+        f'    leg_ok [label="objective aligned (M/S ok)", shape=box, style="filled,rounded", fillcolor="{_ALIGNED_FILL}"];',
         f'    leg_gap [label="objective has a gap", shape=box, style="filled,rounded", fillcolor="{_UNALIGNED_FILL}"];',
         "    leg_id -> leg_type -> leg_prov -> leg_bad [style=invis];",
         "  }",

@@ -12,9 +12,9 @@ from conftest import FakeChatModel, load_brief
 # conditioned on graph nodes the specialist read beforehand) vs. those
 # establishable by id/id-list/type-match alone (post-hoc bookkeeping on a
 # specialist's own output).
-_PROVENANCE_ONLY_RELATIONS = ("C1", "C5", "C6", "P1", "P2", "P4", "P5", "P7", "P8", "P9",
+_PROVENANCE_ONLY_RELATIONS = ("C1", "C5", "P1", "P2", "P4", "P5", "P7", "P8", "P9",
                               "P10", "P11")
-_ID_TYPE_MATCH_RELATIONS = ("C2", "C3", "C4", "C7", "P3", "P6")
+_ID_TYPE_MATCH_RELATIONS = ("C2", "C3", "C4", "P3", "P6")
 
 
 def _graph_edges(result: dict) -> list[dict]:
@@ -36,13 +36,13 @@ def test_default_config_produces_contract():
     assert addie["design"]["learning_objectives"]
 
 
-def test_run_establishes_all_18_relations_and_repairs_gaps():
+def test_run_establishes_every_relation_and_repairs_gaps():
     config = HarnessRunConfig()
     config.llm_factory = lambda: FakeChatModel()
     result = run_design_brief(load_brief("minimal_brief.json"), config)
     audit = result["metadata"]["audit"]
 
-    # The run builds the graph: element nodes + edges spanning all 18 relations.
+    # The run builds the graph: element nodes + edges spanning all 16 relations.
     assert _element_nodes(result) and _graph_edges(result)
     established = {e.get("relation_id") for e in _graph_edges(result)}
     assert set(alignment.REGISTRY.keys()) - {"P6"} <= established  # P6 is fuzzy/audit-only
@@ -52,7 +52,18 @@ def test_run_establishes_all_18_relations_and_repairs_gaps():
     checkable = [r for r in _PROVENANCE_ONLY_RELATIONS + _ID_TYPE_MATCH_RELATIONS if r != "P6"]
     for relation_id in checkable:
         assert audit["relation_coverage"][relation_id]["coverage"] > 0.0, relation_id
-    unresolved = {rid for rid in checkable if audit["relation_coverage"][rid]["uncovered"]}
+    # A gap only "survives repair" if some family could have repaired it. Two
+    # kinds cannot. P7, P10 and P11 are secondary provenance relations
+    # ``OWNED_BY_FAMILY`` assigns to nobody. And ``REPORT_ONLY`` relations are
+    # owned but deliberately never repaired: closing C3/C5/C6 meant writing a
+    # templated activity/module/criterion whose only property was existing, so
+    # the gap is now reported instead. Residual coverage on either is what the
+    # audit is FOR, not a failure. Assert on what a repair can actually close.
+    from alignmentgraph_isd.core import repairs
+
+    repairable = [rid for rid in checkable
+                  if rid in repairs.OWNER_BY_VIOLATION and rid not in repairs.REPORT_ONLY]
+    unresolved = {rid for rid in repairable if audit["relation_coverage"][rid]["uncovered"]}
     assert not unresolved, f"relation gaps survived repair: {unresolved}"
 
 
@@ -141,7 +152,7 @@ def test_expert_review_is_always_the_audit_record():
     reports the verification that actually ran (self-validation rounds,
     repairs, relation coverage) and says so; it never fabricates an SME panel."""
     from alignmentgraph_isd import HarnessRunConfig
-    from alignmentgraph_isd.core.agents.addie_aggregator import ADDIEOutputAggregator
+    from alignmentgraph_isd.core.aggregate import ADDIEOutputAggregator
     from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
     from alignmentgraph_isd.core.trajectory import TrajectoryLogger
 
@@ -178,7 +189,7 @@ def test_expert_review_itemises_findings_and_relation_coverage():
     criterion (issues found, repairs applied) and the per-relation core
     coverage — every row traceable to a recorded trajectory event."""
     from alignmentgraph_isd import HarnessRunConfig
-    from alignmentgraph_isd.core.agents.addie_aggregator import ADDIEOutputAggregator
+    from alignmentgraph_isd.core.aggregate import ADDIEOutputAggregator
     from alignmentgraph_isd.core.alignment_graph import AlignmentGraph
     from alignmentgraph_isd.core.trajectory import TrajectoryLogger
 
@@ -200,7 +211,7 @@ def test_expert_review_itemises_findings_and_relation_coverage():
     assert by_criterion["C4"]["issues_found"] == 1
     assert by_criterion["C4"]["repairs_applied"] == 0
     # per-relation core coverage, keyed by relation id with its label
-    assert set(review["alignment_coverage"]) == {f"C{i}" for i in range(1, 8)}
+    assert set(review["alignment_coverage"]) == {f"C{i}" for i in range(1, 6)}
     assert all("label" in row and "coverage" in row for row in review["alignment_coverage"].values())
     assert review["review_process"]
 
@@ -213,7 +224,7 @@ def test_assessment_items_ship_with_their_rubrics():
     next to scoring_criteria, in development AND the evaluation slices, on
     both substrates."""
     from alignmentgraph_isd import HarnessRunConfig
-    from alignmentgraph_isd.core.agents.addie_aggregator import (
+    from alignmentgraph_isd.core.aggregate import (
         ADDIEOutputAggregator, aggregate_prose,
     )
     from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
@@ -233,26 +244,30 @@ def test_assessment_items_ship_with_their_rubrics():
                      "needs_improvement": "few"}}
 
     graph = AlignmentGraph()
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", item)
+    # The criterion is filed ON the item when it is written, so the aggregator
+    # only has to put it in the shape the deliverable declares.
+    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {**item, "rubric": [rc]})
     graph.add_element_node(NodeType.ASSESSMENT, "AT-02", bare)
-    graph.add_element_node(NodeType.RUBRIC, "RC-01", rc)
     aggregator = ADDIEOutputAggregator(HarnessRunConfig(), graph, TrajectoryLogger())
 
     development = aggregator._build_development()
     by_id = {t["item_id"]: t for t in development["assessment_tools"]}
     assert by_id["AT-01"]["rubric"][0]["levels"]["excellent"] == "all points"
+    # `description` in the generation schema, `criterion` in the deliverable.
+    assert by_id["AT-01"]["rubric"][0]["criterion"] == rc["description"]
     assert "rubric" not in by_id["AT-02"]
-    # the graph node itself is untouched — the attach never mutates node data
+    # the graph node itself is untouched — the shaping never mutates node data
     node = graph.get_node(f"{NodeType.ASSESSMENT}{graph.ELEMENT_SEP}AT-01")
-    assert "rubric" not in node["data"]
+    assert node["data"]["rubric"] == [rc]
     # the evaluation slices carry it too (summative slice holds AT-01)
     evaluation = aggregator._build_evaluation()
     summative = {t["item_id"]: t for t in evaluation["summative"]["assessment_tools"]}
     assert summative["AT-01"]["rubric"]
 
+    # Same on the blackboard: no separate `rubric` document any more, the
+    # criteria are on the item there too.
     store = ProseStore()
-    store.put("assessment", {"assessment_tools": [dict(item), dict(bare)]})
-    store.put("rubric", {"rubric_criteria": [dict(rc)]})
+    store.put("assessment", {"assessment_tools": [{**item, "rubric": [dict(rc)]}, dict(bare)]})
     prose_out = aggregate_prose(store, TrajectoryLogger())
     prose_by_id = {t["item_id"]: t for t in prose_out["development"]["assessment_tools"]}
     assert prose_by_id["AT-01"]["rubric"][0]["id"] == "RC-01"

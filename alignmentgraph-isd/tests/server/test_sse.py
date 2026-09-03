@@ -131,3 +131,41 @@ def test_a_finished_run_replays_from_disk_and_closes(client, ready_program, wait
 
 def test_streaming_an_unknown_run_is_404(client):
     assert client.get("/api/runs/nope/events").status_code == 404
+
+
+def test_contexts_stream_live_and_replace_rather_than_pile_up():
+    """The Context tab is live now: a loop republishes its context after every
+    turn, so a viewer watches the transcript grow instead of seeing it appear
+    only once its agent has finished.
+
+    Two things make that affordable. The frame carries the ROWS without their
+    transcripts — the whole of the list view, small enough to push per turn —
+    and each republish REPLACES the snapshot before it, or the tab would be a
+    list of prefixes of itself.
+
+    What "the same context" means is decided ONCE, by the harness
+    (``core.memory.context_id``), and travels in the payload as ``id``: this
+    side never has to know what that identity is made of.
+    """
+    from alignmentgraph_isd.server.events import RunState
+
+    state = RunState(run_id="r", program_id="p")
+    first = {"id": "aaaaaaaaaaaa",
+             "agent": "OutcomeDesignerAgent", "phase": "outcomes", "label": "outcomes",
+             "attempt": 1, "messages": [{"role": "system", "content": "x"}],
+             "tools": [{"function": {"name": "submit_course_goal"}}],
+             "total_tokens": 300, "token_budget": 8000}
+    state.add_context(first)
+    state.add_context({**first, "messages": first["messages"] * 4, "total_tokens": 900})
+    state.add_context({**first, "id": "bbbbbbbbbbbb", "attempt": 2, "total_tokens": 120})
+
+    assert len(state.contexts) == 2, "a republished context replaced the one before it"
+    assert state.contexts[0]["total_tokens"] == 900, "the latest snapshot wins"
+    assert state.contexts_rev == 3, "every change is a revision the stream can follow"
+
+    rows = state.contexts_light()
+    assert [r["turns"] for r in rows] == [4, 1], "the row says how far the agent has got"
+    assert all("messages" not in r and "tools" not in r for r in rows), (
+        "the live frame must not carry the transcripts — they are the large half")
+    assert rows[0]["total_tokens"] == 900 and rows[0]["token_budget"] == 8000, (
+        "the meter is drawn from the row, so it has to carry the numbers")

@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from alignmentgraph_isd.config import HarnessRunConfig
 from alignmentgraph_isd.core import checks, repairs
-from alignmentgraph_isd.core.agents.assessment_designer import AssessmentDesignerAgent
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType, alignment
 from alignmentgraph_isd.core.trajectory import TrajectoryLogger
 
@@ -57,10 +56,13 @@ def test_prompt_context_renders_bare_ids_only():
     graph = AlignmentGraph()
     graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01", "statement": "Apply X."})
     graph.add_node(NodeType.ASSESSMENT_PLAN, "assessment_plan_0", {"formative": ["intent"]})
-    config = HarnessRunConfig(llm_factory=lambda: None)
-    agent = AssessmentDesignerAgent(config, graph, TrajectoryLogger())
+    # `tools.render_nodes` is where this rendering lives now; it was
+    # `BaseISDAgent._element_context` while the scripted specialists existed,
+    # and the property is the same one: what the model is shown must use BARE
+    # ids, because it echoes back whatever it is shown.
+    from alignmentgraph_isd.core.agentic import tools
 
-    ctx = agent._element_context(
+    ctx = tools.render_nodes(
         graph.element_nodes(NodeType.OBJECTIVE) + graph.section_nodes(NodeType.ASSESSMENT_PLAN)
     )
     assert "[OBJECTIVE:ILO-01]" in ctx
@@ -82,10 +84,11 @@ def _c4_fixture():
         "id": "TLA-01", "activity_name": "Practice", "aligned_objectives": ["ILO-01"],
         "prepares_for_assessment": ["TLA-GHOST", "TLA-GHOST"],
     })
+    from conftest import RepairActor
+
     config = HarnessRunConfig(llm_factory=lambda: None)
-    from alignmentgraph_isd.core.agents.activity_designer import ActivityDesignerAgent
-    agent = ActivityDesignerAgent(config, graph, TrajectoryLogger())
-    return graph, repairs.context_for(agent)
+    return graph, RepairActor("ActivityDesignerAgent", config, graph=graph,
+                              trajectory=TrajectoryLogger()).ctx()
 
 
 class _Violation:
@@ -120,29 +123,13 @@ def test_c4_repair_never_appends_activity_ids_and_dedups_across_rounds():
         assert all(not r.startswith("TLA") for r in prep), f"{node['id']}: activity id leaked into item refs: {prep}"
 
 
-def test_joined_context_groups_items_under_their_objective():
-    graph = AlignmentGraph()
-    graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01", "statement": "Apply X."})
-    graph.add_element_node(NodeType.OBJECTIVE, "ILO-02", {"id": "ILO-02", "statement": "Design Y."})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01", "aligned_objective": "ILO-01"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-99", {"item_id": "AT-99", "aligned_objective": ""})
-    alignment.match_id_reverse(graph, "C2", field="aligned_objective")
-
-    config = HarnessRunConfig(llm_factory=lambda: None)
-    agent = AssessmentDesignerAgent(config, graph, TrajectoryLogger())
-    ctx = agent._element_context_joined(
-        graph.element_nodes(NodeType.OBJECTIVE),
-        graph.element_nodes(NodeType.ASSESSMENT), "C2", "assessed by")
-
-    # AT-01 nests under ILO-01, after its parent block.
-    assert ctx.index("[OBJECTIVE:ILO-01]") < ctx.index("assessed by:") < ctx.index("[ASSESSMENT:AT-01]")
-    # ILO-02 has no join block.
-    ilo2_block = ctx.split("[OBJECTIVE:ILO-02]", 1)[1].split("[", 1)[0]
-    assert "assessed by:" not in ilo2_block
-    # The unlinked item is surfaced, not dropped.
-    assert "NOT YET LINKED" in ctx and "[ASSESSMENT:AT-99]" in ctx
-
-
+# The joined parent/child rendering this file used to check went with the
+# scripted specialists: the agentic arm reads nodes and edges through separate
+# tools and asks `coverage_gaps` what is still unlinked, so there is nothing
+# left that groups children under a parent in one block. Rebuilding it only to
+# test it would be dead code. The property it guarded — an unlinked item is
+# SURFACED, not dropped — is now `coverage_gaps`, covered in test_alignment.py
+# and exercised end to end in test_agentic_loop.py.
 def test_no_full_list_sections_remain_in_a_graph_run(fake_llm_factory):
     """The legacy full-list sections (objective_0/assessment_0/activity_0
     carrying every element twice) are retired: element nodes are the single

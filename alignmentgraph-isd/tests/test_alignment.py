@@ -1,67 +1,9 @@
-"""alignment.py: the 18-relation matrix's establishers, coverage, and the
+"""alignment.py: the relation registry's establishers, coverage, and the
 Bloom cross-checks. All deterministic — no LLM calls anywhere here."""
 from __future__ import annotations
 
 from alignmentgraph_isd.core.alignment_graph import alignment
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
-
-
-# ── id-match, standard direction (C7) ─────────────────────────────────────
-
-def test_match_id_establishes_edge_on_resolvable_reference():
-    graph = AlignmentGraph()
-    graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01"})
-    graph.add_element_node(NodeType.RUBRIC, "RC-01", {"id": "RC-01", "aligned_objective": "ILO-01"})
-    violations = alignment.match_id(graph, "C7", field="aligned_objective")
-    assert violations == []
-    edges = graph.get_edges(relation_id="C7")
-    assert len(edges) == 1
-    assert edges[0]["source"] == "rubric:RC-01"
-    assert edges[0]["target"] == "objective:ILO-01"
-    assert edges[0]["established_by"] == "id"
-
-
-def test_match_id_reports_dangling_reference():
-    graph = AlignmentGraph()
-    graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01"})
-    graph.add_element_node(NodeType.RUBRIC, "RC-01", {"id": "RC-01", "aligned_objective": "ILO-99"})
-    violations = alignment.match_id(graph, "C7", field="aligned_objective")
-    assert len(violations) == 1
-    assert violations[0]["relation_id"] == "C7"
-    assert not graph.get_edges(relation_id="C7")
-
-
-def test_match_id_is_idempotent():
-    graph = AlignmentGraph()
-    graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01"})
-    graph.add_element_node(NodeType.RUBRIC, "RC-01", {"id": "RC-01", "aligned_objective": "ILO-01"})
-    alignment.match_id(graph, "C7", field="aligned_objective")
-    alignment.match_id(graph, "C7", field="aligned_objective")
-    assert len(graph.get_edges(relation_id="C7")) == 1
-
-
-# ── id-match, REVERSED direction (C2) ─────────────────────────────────────
-
-def test_match_id_reverse_stores_edge_source_as_resolved_target():
-    """C2 (assessed_by): Assessment declares the field, but the edge is
-    stored source=LO, target=Assessment — the reverse of who declared it."""
-    graph = AlignmentGraph()
-    graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01", "aligned_objective": "ILO-01"})
-    violations = alignment.match_id_reverse(graph, "C2", field="aligned_objective")
-    assert violations == []
-    edges = graph.get_edges(relation_id="C2")
-    assert len(edges) == 1
-    assert edges[0]["source"] == "objective:ILO-01"
-    assert edges[0]["target"] == "assessment:AT-01"
-
-
-def test_match_id_reverse_reports_dangling_reference():
-    graph = AlignmentGraph()
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01", "aligned_objective": "ILO-99"})
-    violations = alignment.match_id_reverse(graph, "C2", field="aligned_objective")
-    assert len(violations) == 1 and violations[0]["relation_id"] == "C2"
-    assert not graph.get_edges(relation_id="C2")
 
 
 # ── id-list match, standard direction (C4) ────────────────────────────────
@@ -131,7 +73,7 @@ def test_match_p6_realizes_normalizes_aliases():
     assert graph.get_edges(relation_id="P6")[0]["source"] == "media_selection:MED-01"
 
 
-# ── provenance (C1, C5, C6, P1, P2, P4, P5, P7, P8, P9) ───────────────────
+# ── provenance (C1, C5, P1, P2, P4, P5, P7, P8, P9, P10, P11) ───────────────────
 
 def test_record_provenance_establishes_edge_from_every_source():
     graph = AlignmentGraph()
@@ -154,16 +96,16 @@ def test_record_provenance_is_a_noop_for_missing_target():
 # ── coverage aggregation ──────────────────────────────────────────────────
 
 def test_relation_coverage_target_side_reports_fraction_and_uncovered_ids():
-    """C7 (measures) checks the target side: does every LO have >=1
-    evaluating criterion."""
+    """C5 (supports) checks the TARGET side: does every activity have >=1
+    supporting content module."""
     graph = AlignmentGraph()
-    graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01"})
-    graph.add_element_node(NodeType.OBJECTIVE, "ILO-02", {"id": "ILO-02"})
-    graph.add_element_node(NodeType.RUBRIC, "RC-01", {"id": "RC-01", "aligned_objective": "ILO-01"})
-    alignment.match_id(graph, "C7", field="aligned_objective")
-    coverage, uncovered = alignment.relation_coverage(graph, "C7")
+    graph.add_element_node(NodeType.ACTIVITY, "TLA-01", {"id": "TLA-01"})
+    graph.add_element_node(NodeType.ACTIVITY, "TLA-02", {"id": "TLA-02"})
+    graph.add_element_node(NodeType.CONTENT, "MOD-01", {"id": "MOD-01"})
+    alignment.record_provenance(graph, "C5", ["content:MOD-01"], "activity:TLA-01")
+    coverage, uncovered = alignment.relation_coverage(graph, "C5")
     assert coverage == 0.5
-    assert uncovered == ["objective:ILO-02"]
+    assert uncovered == ["activity:TLA-02"]
 
 
 def test_relation_coverage_source_side_reports_fraction_and_uncovered_ids():
@@ -181,7 +123,7 @@ def test_relation_coverage_source_side_reports_fraction_and_uncovered_ids():
 
 def test_relation_coverage_full_when_no_required_targets_exist():
     graph = AlignmentGraph()
-    coverage, uncovered = alignment.relation_coverage(graph, "C7")
+    coverage, uncovered = alignment.relation_coverage(graph, "C5")
     assert coverage == 1.0 and uncovered == []
 
 
@@ -189,9 +131,18 @@ def test_all_relations_coverage_covers_the_whole_registry():
     graph = AlignmentGraph()
     result = alignment.all_relations_coverage(graph)
     assert set(result.keys()) == set(alignment.REGISTRY.keys())
-    assert len(result) == 18
-    assert sum(1 for r in alignment.REGISTRY.values() if r.tier == "core") == 7
+    assert len(result) == len(alignment.REGISTRY)
+    # FIVE core relations since 2026-09-02, not seven. C6/C7 went with the
+    # rubric node type: a criterion is written by the same call as the item it
+    # marks and the rules require it to name that item's objective, so neither
+    # relation could fail — measured coverage 1.0 on both, in all 28 recorded
+    # runs. A relation that cannot fail is not construct-validity evidence, so
+    # the backbone is five that genuinely break rather than seven of which two
+    # are guaranteed.
+    assert sum(1 for r in alignment.REGISTRY.values() if r.tier == "core") == 5
     assert sum(1 for r in alignment.REGISTRY.values() if r.tier == "secondary") == 11
+    # Every core relation still carries the theory it claims.
+    assert all(r.theory for r in alignment.REGISTRY.values() if r.tier == "core")
 
 
 # ── Bloom cross-checks (attribute-based, not an edge) ─────────────────────

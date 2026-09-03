@@ -1,4 +1,5 @@
 import type {
+  AgentContext,
   AlignmentGraphPayload,
   Brief,
   BriefResponse,
@@ -91,4 +92,27 @@ export const api = {
     request<unknown>(`/runs/${runId}/artifacts/${name}`),
 
   eventsUrl: (runId: string, after = 0) => `${BASE}/runs/${runId}/events?after=${after}`,
+
+  getContexts: (runId: string) => request<AgentContext[]>(`/runs/${runId}/contexts`),
+
+  /** ONE context, whole. The live stream carries the rows without their
+   *  transcripts or tool schemas — those are the large half and a context is
+   *  republished after every turn — so opening a row is where they are
+   *  fetched, and re-fetched as it grows. */
+  getContext: (runId: string, contextId: string) =>
+    request<AgentContext[]>(`/runs/${runId}/contexts?context=${encodeURIComponent(contextId)}`)
+      .then((rows) => rows[0] ?? null),
+
+  /** One agent's transcript, or the whole run's, as readable Markdown.
+   *  JSON for tooling is already at `getContexts`; this is the artifact a
+   *  person reads end to end. */
+  transcriptExportUrl: (runId: string, contextId?: string) =>
+    `${BASE}/runs/${runId}/transcript/export`
+    + (contextId === undefined ? '' : `?context=${encodeURIComponent(contextId)}`),
+
+  /** The trajectory as one file. A plain URL, not a `request()` call: the
+   *  server sets the filename in Content-Disposition, and fetching the JSON
+   *  into memory only to re-serialize it here would drop that and re-encode a
+   *  file that is already exactly what should land on disk. */
+  trajectoryExportUrl: (runId: string) => `${BASE}/runs/${runId}/trajectory/export`,
 }

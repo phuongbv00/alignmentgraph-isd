@@ -11,9 +11,11 @@ import pytest
 from alignmentgraph_isd.server import llm_settings
 
 
-# Captured at import, before any fixture patches the module. All three are
-# needed: `probe` calls `build_factory`, so restoring only the first two leaves
-# the fake model in place and every configuration looks valid.
+# Captured at import, before any fixture patches the module. `resolve` and
+# `build_factory` are the two the shared `client` fixture stubs, so those two
+# restores are what make `real_settings` real. `probe` is captured and restored
+# defensively — nothing stubs it today (tests/server/conftest.py says so
+# explicitly), so that one line is a no-op until something does.
 _real_resolve = llm_settings.resolve
 _real_probe = llm_settings.probe
 _real_build_factory = llm_settings.build_factory

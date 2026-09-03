@@ -1,7 +1,7 @@
 """The canonical rulebook: generation schema + rules per artifact family.
 
 Single source of the ISD generation contract, shared by BOTH decomposition
-arms. Each specialist prompt in ``core/agents/*`` composes persona + intro +
+arms. Each stage prompt (``core/agentic/specialists.py``) composes persona + intro +
 ``SCHEMA_<FAMILY>`` + ``RULES_<FAMILY>``; the single arm's state machine asks
 ``rules_for(state)`` for the same rule text (merged across the artifact
 families a collapsed state covers) and pairs it with its own merged schemas.
@@ -14,13 +14,6 @@ Schemas and rules are DATA (what a valid artifact is); personas and task
 granularity are the decomposition axis and live with the agents.
 """
 from __future__ import annotations
-
-#: The one closing line every generation prompt ends with.
-JSON_ONLY = (
-    "Every <angle-bracket text> in the schema is a placeholder: replace it with real, "
-    "scenario-specific content, never copy it into the output. "
-    "Output ONLY the JSON object, no markdown, no explanation."
-)
 
 SCHEMA_ANALYSIS = """\
 {
@@ -102,33 +95,16 @@ it is the only such objective.
 ``level`` must be one of: remember, understand, apply, analyze, evaluate, create.
 Use only these bloom_verb values: recall, explain, apply, analyze, evaluate, design."""
 
-# SCHEMA_OUTCOMES/RULES_OUTCOMES stay byte-identical (core/agentic/specialists.py
-# references both directly, not through rules_for) — the 2026-08-28 course-goal/
-# objectives split below is additive, not a rename. Only the multi arm's own
-# Hop B actually splits into two calls (course goal, then objectives grounded
-# in it — see OutcomeDesignerAgent._run_goal/_run_design); the single arm's
-# "outcomes" state keeps asking for both in one merged call (collapsing that
-# split is what the decomposition axis measures), so it composes BOTH rule
-# blocks below via rules_for("outcomes") (see _STATE_FAMILIES).
-
-SCHEMA_COURSE_GOAL = """\
-{
-  "course_goal": {"statement": "<one overarching goal for the whole course/program>"}
-}"""
-
+# ``RULES_COURSE_GOAL`` is reachable only through ``rules_for("outcomes")``,
+# which nothing currently calls — kept because that lookup is generic over
+# ``_STATE_FAMILIES``. The matching SCHEMA_COURSE_GOAL / SCHEMA_LEARNING_OBJECTIVES
+# split constants were removed 2026-09-04: SCHEMA_OUTCOMES carries both verbatim
+# and is what every live step uses.
 RULES_COURSE_GOAL = """\
 course_goal.statement must be ONE overarching outcome for the whole course/program — broad enough
 that every learning objective can be read as decomposing it, concrete enough to name the actual
 capability learners end up with (not a restatement of the topic, and not a generic "learners will
 understand X"). Always return a non-empty statement; this call produces nothing else."""
-
-SCHEMA_LEARNING_OBJECTIVES = """\
-{
-  "learning_objectives": [
-    {"id": "ILO-01", "level": "<bloom level>", "statement": "<objective>", "bloom_verb": "<verb>"},
-    {"id": "ILO-02", "level": "<bloom level>", "statement": "<objective>", "bloom_verb": "<verb>"}
-  ]
-}"""
 
 SCHEMA_ASSESSMENT_PLAN = """\
 {
@@ -164,9 +140,12 @@ to act on without further analysis."""
 SCHEMA_ASSESSMENT_ITEMS = """\
 {
   "assessment_tools": [
-    {"item_id": "AT-01", "type": "multiple_choice", "question": "<question>", "options": ["<option A>", "<option B>", "<option C>", "<option D>"], "correct_answer": "<the correct option, verbatim>", "aligned_objective": "ILO-01", "plan_category": "diagnostic", "required_cognitive_process": "remember", "scoring_criteria": "<criteria>"},
-    {"item_id": "AT-02", "type": "short_answer", "question": "<question>", "aligned_objective": "ILO-02", "plan_category": "formative", "required_cognitive_process": "understand", "scoring_criteria": "<criteria>"},
-    {"item_id": "AT-03", "type": "performance_task", "question": "<question>", "aligned_objective": "ILO-03", "plan_category": "summative", "required_cognitive_process": "apply", "scoring_criteria": "<criteria>"}
+    {"type": "multiple_choice", "question": "<question>", "options": ["<option A>", "<option B>", "<option C>", "<option D>"], "correct_answer": "<the correct option, verbatim>", "aligned_objective": "ILO-01", "plan_category": "diagnostic", "required_cognitive_process": "remember", "scoring_criteria": "<criteria>",
+     "rubric": [{"id": "RC-01", "description": "<observable, scorable description of what full marks looks like>", "evidence_type": "multiple_choice", "levels": {"excellent": "<descriptor>", "satisfactory": "<descriptor>", "needs_improvement": "<descriptor>"}}]},
+    {"type": "short_answer", "question": "<question>", "aligned_objective": "ILO-02", "plan_category": "formative", "required_cognitive_process": "understand", "scoring_criteria": "<criteria>",
+     "rubric": [{"id": "RC-02", "description": "<observable, scorable description>", "evidence_type": "short_answer", "levels": {"excellent": "<descriptor>", "satisfactory": "<descriptor>", "needs_improvement": "<descriptor>"}}]},
+    {"type": "performance_task", "question": "<question>", "aligned_objective": "ILO-03", "plan_category": "summative", "required_cognitive_process": "apply", "scoring_criteria": "<criteria>",
+     "rubric": [{"id": "RC-03", "description": "<observable, scorable description>", "evidence_type": "performance_task", "levels": {"excellent": "<descriptor>", "satisfactory": "<descriptor>", "needs_improvement": "<descriptor>"}}]}
   ]
 }"""
 
@@ -217,6 +196,8 @@ not name."""
 #: instrument set, not the whole plan, so the count/filler rule is scoped to
 #: that set instead of the plan's full lo_coverage_targets.
 RULES_ASSESSMENT_ITEMS_SET = """\
+Do NOT write an id for the artifacts you produce — ids are assigned when your set is
+committed, so that two Developers working at the same time cannot name the same thing.
 YOUR ASSIGNED SET below already fixes how many items are needed: produce exactly one item for
 every (objective, plan_category) pair it lists, and no filler beyond that. If the set spans more
 than one objective, its items must share a common stem/scenario (the instrument the set
@@ -269,8 +250,8 @@ given — do not introduce content unrelated to them."""
 SCHEMA_ACTIVITIES = """\
 {
   "learning_activities": [
-    {"id": "TLA-01", "activity_name": "<name>", "duration": "<time>", "description": "<desc>", "materials_needed": "<free-text description of what content/resources this activity needs>", "aligned_objectives": ["ILO-01"], "prepares_for_assessment": ["AT-01"], "learner_cognitive_process": "apply", "prerequisite_activities": []},
-    {"id": "TLA-02", "activity_name": "<name>", "duration": "<time>", "description": "<desc>", "materials_needed": "<...>", "aligned_objectives": ["ILO-02"], "prepares_for_assessment": ["AT-02"], "learner_cognitive_process": "understand", "prerequisite_activities": ["TLA-01"]}
+    {"activity_name": "<name>", "duration": "<time>", "description": "<desc>", "materials_needed": "<free-text description of what content/resources this activity needs>", "aligned_objectives": ["ILO-01"], "prepares_for_assessment": ["AT-01"], "learner_cognitive_process": "apply", "prerequisite_activities": []},
+    {"activity_name": "<name>", "duration": "<time>", "description": "<desc>", "materials_needed": "<...>", "aligned_objectives": ["ILO-02"], "prepares_for_assessment": ["AT-02"], "learner_cognitive_process": "understand", "prerequisite_activities": [1]}
   ]
 }"""
 
@@ -282,25 +263,53 @@ would help, a later step will source it. ``learner_cognitive_process`` must be o
 understand, apply, analyze, evaluate, create — and must be at or above the level of
 every objective it aligns to (an Apply+ objective needs a hands-on activity: lab, exercise,
 project, simulation — never only lecture/reading/video). ``prerequisite_activities`` lists
-earlier activity ids this one builds on, if any."""
+earlier activities in YOUR OWN submission that this one builds on, by position ([1] = the
+first you wrote), if any."""
 
 SCHEMA_ACTIVITY_DEV_PLAN = """\
 {
   "activity_blocks": [
     {"set_id": "BLOCK-01", "objectives": ["ILO-01", "ILO-02"],
      "block_theme": "<what ties these activities together, e.g. a shared progression>",
+     "expected_activities": 3,
      "rationale": "<why these objectives belong in one block, or why one alone>"}
   ]
 }"""
 
 RULES_ACTIVITY_DEV_PLAN = """\
-Group the learning objectives into activity blocks: every objective must appear in exactly one
-block. Most blocks should cover a single objective — only group several into one block when the
-activities for them genuinely form one theme or progression, never merely to produce fewer
-blocks. Never invent an objective the plan did not name."""
+Group the learning objectives into activity blocks. Every objective must appear in at least one
+block, and no two blocks may cover the same ground: a separate developer writes each block
+without seeing the others, so two blocks whose scopes overlap produce duplicate activities.
+Never invent an objective the plan did not name.
+
+``expected_activities`` is how many activities that block actually needs — you are the only step
+that knows whether a block is one exercise or a six-step progression.
+
+Keep every block small enough to write in ONE response: at most %(max_activities)d activities. An
+objective that needs more than that gets SEVERAL blocks, and each one must carry a
+``block_theme`` that states its own distinct scope — the stage of the progression it covers
+("first contact with the tool", "unaided practice on a real case", "peer critique and revision"),
+not a restatement of the objective. The theme is what keeps two blocks for the same objective
+from being written twice.
+
+Only group several objectives into one block when their activities genuinely form one theme or
+progression, never merely to produce fewer blocks."""
+
+# The budget the planner is held to is the SAME number the deterministic split
+# uses, imported rather than written twice: a planner told "at most 8" while the
+# harness splits at 6 would have its own grouping taken apart behind it, and the
+# scopes it wrote would stop matching the sets that were actually dispatched.
+from .dev_plans import max_units as _max_units  # noqa: E402  (cycle-free: dev_plans imports nothing local)
+
+RULES_ACTIVITY_DEV_PLAN = RULES_ACTIVITY_DEV_PLAN % {"max_activities": _max_units("activity")}
 
 #: Per-set rewrite of RULES_ACTIVITIES: a Developer sees only its own block.
 RULES_ACTIVITIES_SET = """\
+Do NOT write an id for the artifacts you produce — ids are assigned when your set is
+committed, so that two Developers working at the same time cannot name the same thing.
+``prerequisite_activities`` therefore names activities BY POSITION in the list you are
+submitting: [1] is the first activity you wrote, [2] the second. Leave it empty unless one
+of your own activities genuinely has to come first.
 Every activity must list ``aligned_objectives`` (existing ILO ids it practices, TLA = Teaching/
 Learning Activity, drawn ONLY from YOUR ASSIGNED BLOCK's objectives) and
 ``prepares_for_assessment`` (existing assessment item ids it prepares learners for).
@@ -335,7 +344,7 @@ needs to know which media belong to which module."""
 SCHEMA_MATERIALS = """\
 {
   "learner_materials": [
-    {"id": "MAT-01", "title": "<material title>", "type": "video", "format": "mp4", "content": "<description of the actual content>", "linked_module": "MOD-01"}
+    {"title": "<material title>", "type": "video", "format": "mp4", "content": "<description of the actual content>", "linked_module": "MOD-01"}
   ]
 }"""
 
@@ -351,6 +360,8 @@ what the content would contain."""
 #: Per-module rewrite of RULES_MATERIALS: a Developer sees ONE module + its
 #: own media selections + the constraints those media declared.
 RULES_MATERIALS_UNIT = """\
+Do NOT write an id for the artifacts you produce — ids are assigned when your set is
+committed, so that two Developers working at the same time cannot name the same thing.
 Produce materials ONLY for the ONE content module given — ``linked_module`` must be that
 module's id on every material. Its ``type``/``format`` must realize one of the media selections
 given for this module, respecting the constraints those media declared.
@@ -360,31 +371,17 @@ video/slides — several sentences of scenario-specific detail, never a one-line
 what the content would contain. Because you are developing one module at a time, give this
 module's materials the full length and detail a learner would actually need."""
 
-SCHEMA_RUBRICS = """\
-{
-  "rubric_criteria": [
-    {"id": "RC-01", "aligned_assessment": "AT-01", "aligned_objective": "ILO-01", "description": "<observable, scorable description of what full marks looks like>", "evidence_type": "written_response", "levels": {"excellent": "<descriptor>", "satisfactory": "<descriptor>", "needs_improvement": "<descriptor>"}}
-  ]
-}"""
 
-RULES_RUBRICS = """\
-Every assessment item must have at least one rubric criterion. ``aligned_assessment`` must name
-an existing assessment item id; ``aligned_objective`` must name the SAME objective that item
-already measures. ``description`` must be observable and scorable (avoid vague words like
-"good"/"appropriate" without a rubric/score/percent/criteria anchor). ``evidence_type`` must be
-one of: true_false, matching, multiple_choice, quiz, short_answer, performance_task — and must
-be achievable by the assessment item's own format (do not require performance_task evidence from
-a multiple_choice item)."""
-
-#: Per-item rewrite of RULES_RUBRICS: a Developer sees ONE assessment item.
+#: The rubric rules a Developer gets: it writes the criteria inside the very
+#: items it is writing, so there is no id to point back at. There is no
+#: whole-family variant any more — the `rubrics` state went with the stage.
 RULES_RUBRICS_ITEM = """\
-Write at least one rubric criterion for the ONE assessment item given. ``aligned_assessment``
-must name that item's id; ``aligned_objective`` must name the SAME objective that item already
-measures. ``description`` must be observable and scorable (avoid vague words like
-"good"/"appropriate" without a rubric/score/percent/criteria anchor). ``evidence_type`` must be
-one of: true_false, matching, multiple_choice, quiz, short_answer, performance_task — and must
-be achievable by the assessment item's own format (do not require performance_task evidence from
-a multiple_choice item)."""
+Give every item you write at least one entry in its own ``rubric`` list — the criterion goes
+INSIDE the item, never in a separate list. ``description`` must be observable and scorable
+(avoid vague words like "good"/"appropriate" without a rubric/score/percent/criteria anchor).
+``evidence_type`` must be one of: true_false, matching, multiple_choice, quiz, short_answer,
+performance_task — and must be achievable by that item's own ``type`` (do not require
+performance_task evidence from a multiple_choice item)."""
 
 SCHEMA_IMPLEMENTATION = """\
 {
@@ -452,7 +449,6 @@ _STATE_FAMILIES: dict[str, tuple[str, ...]] = {
     "assessment": ("ASSESSMENT_PLAN", "ASSESSMENT_ITEMS"),
     "activities": ("ACTIVITY_PLAN", "ACTIVITIES"),
     "content": ("CONTENT_MODULES", "MATERIALS"),
-    "rubrics": ("RUBRICS",),
     "implementation": ("IMPLEMENTATION",),
 }
 

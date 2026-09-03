@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from contextlib import contextmanager
 from enum import StrEnum
 
 
@@ -11,10 +12,10 @@ class NodeType(StrEnum):
     and interoperate with the plain strings that output deserialization produces
     (``NodeType.OBJECTIVE == "objective"``).
 
-    Core (participate in the C1-C7 construct-validity relations, see
+    Core (participate in the C1-C5 construct-validity relations, see
     ``alignment.py::REGISTRY``): ``COURSE_GOAL``, ``OBJECTIVE`` (Intended Learning
     Outcome / ILO), ``ASSESSMENT`` (Assessment Task / AT), ``ACTIVITY``
-    (Teaching/Learning Activity / TLA), ``CONTENT`` (Content Module), ``RUBRIC``.
+    (Teaching/Learning Activity / TLA), ``CONTENT`` (Content Module).
 
     Support (participate in the P1-P11 secondary/provenance relations, or are
     "plan" artifacts a core type executes against — see ``alignment.py``):
@@ -38,7 +39,6 @@ class NodeType(StrEnum):
     ASSESSMENT = "assessment"
     ACTIVITY = "activity"
     CONTENT = "content"
-    RUBRIC = "rubric"
 
     GAP = "gap"
     TOPIC = "topic"
@@ -118,6 +118,19 @@ class AlignmentGraph:
             pass
 
     # ── nodes ───────────────────────────────────────────────────────────────
+    @contextmanager
+    def transaction(self):
+        """Hold the graph lock across a read-then-write.
+
+        Individual writes are already locked, which is not the same thing: a
+        commit that READS the ids already present and then adds nodes based on
+        what it saw is only correct if nothing lands in between. The fan-out
+        commits one work set at a time and is sequential today, so nothing does
+        — this is what keeps that true if it ever stops being sequential, and
+        it is re-entrant, so a caller already inside one costs nothing."""
+        with self._lock:
+            yield self
+
     def add_node(self, node_type: NodeType | str, node_id: str, data: dict | None = None) -> None:
         # A malformed LLM response can hand a section field back as a bare
         # string/list instead of an object (e.g. "learner_analysis": "..."
@@ -222,8 +235,8 @@ class AlignmentGraph:
     ) -> None:
         """Add an alignment edge.
 
-        ``edge_type`` is the relation key ("R3-measures"); ``relation_id``
-        (R1..R13) and ``established_by`` (id|type|provenance) are resolved by
+        ``edge_type`` is the relation key ("C2-assessed_by"); ``relation_id``
+        (C1..C5/P1..P11) and ``established_by`` (id|type|provenance) are resolved by
         callers from the (source_type, target_type) pair via ``alignment.py``'s
         registry, not here (avoids a graph<->alignment import cycle).
 
@@ -337,7 +350,7 @@ class AlignmentGraph:
         """Complete, JSON-serializable dump of the alignment state for auditing.
 
         Everything is included: every node (id, type, full ``data`` payload),
-        every edge (source, target, relation key like "R3-measures",
+        every edge (source, target, relation key like "C2-assessed_by",
         ``relation_id``, ``established_by``, evidence, rationale), the
         per-objective / per-relation alignment annotations from the single
         alignment definition (``alignment.py`` via ``viz.py``), plus a

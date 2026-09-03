@@ -1,25 +1,38 @@
+"""Assemble the ADDIE output contract from the design state.
+
+Moved out of the retired ``core/agents/`` on 2026-09-01: this was never an agent. It has no
+design role, no persona, no self-validation and no model call — it reads the
+graph (or the blackboard) after the run and serializes it into the shape
+``core/validation.py`` defines. It belongs beside that contract, not beside the
+things that produce artifacts.
+
+It used to subclass ``BaseISDAgent`` for two attributes, which is also why it
+dragged 886 lines of model-calling machinery behind it. It takes them directly
+now.
+"""
 from __future__ import annotations
-from ..alignment_graph import NodeType
-from ..brief import DesignBrief
+
 from copy import deepcopy
-from ..alignment_graph import alignment
-from .base import BaseISDAgent
+
+from .alignment_graph import NodeType, alignment
 
 
-class ADDIEOutputAggregator(BaseISDAgent):
-    """Not an agent in the pipeline sense — no design role, no self-validation,
-    no feedback signal in/out. Adapter/serializer: reads the graph AFTER all 5
-    Designers have run, and computes ``addie_output``
-    directly from real nodes/edges. There is no longer a
-    NeedsContext/Evaluation/ContentStructure/StoryboardPlan "container" node
-    to read a phase off of — every ``analysis``/``evaluation`` field and
-    ``design.content_structure``/``design.storyboard`` are derived here from
-    Gap/Topic/LearnerProfile/Constraint/Improvement/the Assessment pool/
-    Content/Media elements. See the architecture plan's aggregation matrix for
-    the full field-by-field mapping this function implements."""
+class ADDIEOutputAggregator:
+    """Reads the finished design state and computes ``addie_output`` from real
+    nodes and edges.
 
-    def run(self, design_brief: DesignBrief) -> None:
-        pass  # call aggregate() directly
+    There is no NeedsContext/Evaluation/ContentStructure/StoryboardPlan
+    "container" node to read a phase off of — every ``analysis``/``evaluation``
+    field and ``design.content_structure``/``design.storyboard`` is derived
+    here from Gap/Topic/LearnerProfile/Constraint/Improvement elements, the
+    Assessment pool, and Content/Media."""
+
+    def __init__(self, config=None, graph=None, trajectory=None) -> None:
+        # `config` is accepted and unused: every caller passes it positionally,
+        # and an aggregator that reads state and writes no prompt has nothing
+        # to configure.
+        self.graph = graph
+        self.trajectory = trajectory
 
     def aggregate(self) -> dict:
         analysis = self._build_analysis()
@@ -45,9 +58,9 @@ class ADDIEOutputAggregator(BaseISDAgent):
         learner = _merge_node_data(self.graph.section_nodes(NodeType.LEARNER_PROFILE))
         # Each analysis section = its element pool + the narrative fields the
         # elements cannot express (problem_definition, priority_matrix,
-        # prerequisites, review_summary, ...), which OutcomeDesignerAgent
-        # parks on the matching section node. See
-        # OutcomeDesignerAgent._store_analysis_narrative.
+        # prerequisites, review_summary, ...), which the analysis commit parks
+        # on the matching section node — see
+        # ``core/agentic/specialists.py::_store_narrative``.
         return {
             "needs_analysis": {
                 **_merge_node_data(self.graph.section_nodes(NodeType.GAP)), "gaps": gaps,
@@ -85,10 +98,10 @@ class ADDIEOutputAggregator(BaseISDAgent):
     # ── development phase ─────────────────────────────────────────────────
     def _build_development(self) -> dict:
         materials = [n["data"] for n in self.graph.element_nodes(NodeType.MATERIAL)]
-        assessment_tools = _attach_rubrics(
-            [n["data"] for n in self.graph.element_nodes(NodeType.ASSESSMENT)],
-            [n["data"] for n in self.graph.element_nodes(NodeType.RUBRIC)],
-        )
+        # The criteria are already ON the items (see `fanout._attach_to_parent`),
+        # so there is nothing left to join here.
+        assessment_tools = _shape_rubrics(
+            [n["data"] for n in self.graph.element_nodes(NodeType.ASSESSMENT)])
         impl_data = _merge_node_data(self.graph.section_nodes(NodeType.IMPLEMENTATION_PLAN))
         # development.expert_review is ALWAYS the audit record (2026-08-27):
         # the model-authored review was removed from every generation schema —
@@ -164,10 +177,10 @@ class ADDIEOutputAggregator(BaseISDAgent):
 
     # ── evaluation phase: synthesized from the Assessment pool + AssessmentPlan + Improvement ──
     def _build_evaluation(self) -> dict:
-        assessment_tools = _attach_rubrics(
-            [n["data"] for n in self.graph.element_nodes(NodeType.ASSESSMENT)],
-            [n["data"] for n in self.graph.element_nodes(NodeType.RUBRIC)],
-        )
+        # The criteria are already ON the items (see `fanout._attach_to_parent`),
+        # so there is nothing left to join here.
+        assessment_tools = _shape_rubrics(
+            [n["data"] for n in self.graph.element_nodes(NodeType.ASSESSMENT)])
         plan_data = _merge_node_data(self.graph.section_nodes(NodeType.ASSESSMENT_PLAN))
         improvements = [n["data"] for n in self.graph.element_nodes(NodeType.IMPROVEMENT)]
 
@@ -235,35 +248,33 @@ class ADDIEOutputAggregator(BaseISDAgent):
         return {"formative": formative, "summative": summative, "improvement_plan": improvement_plan}
 
 
-def _attach_rubrics(items: list, criteria: list) -> list:
-    """Attach each assessment item's rubric criteria (mapped by the RC
-    elements' own ``aligned_assessment`` field — identical logic on both
-    substrates, no graph needed) as a structured ``rubric`` list next to the
-    item's ``scoring_criteria``. Without this the RubricDesigner's levels
-    lived only in the graph dump and the deliverable shipped assessments
-    without their rubrics — the opposite of practice, where an assessment is
-    designed WITH its scoring rubric. Returns new dicts; never mutates the
-    node/store data it reads."""
-    by_assessment: dict[str, list[dict]] = {}
-    for rc in criteria:
-        if not isinstance(rc, dict):
-            continue
-        target = str(rc.get("aligned_assessment", "") or "")
-        if not target:
-            continue
-        by_assessment.setdefault(target, []).append({
-            "id": rc.get("id", ""),
-            "criterion": rc.get("description", ""),
-            "evidence_type": rc.get("evidence_type", ""),
-            "levels": rc.get("levels", {}),
-        })
+def _shape_rubrics(items: list) -> list:
+    """Put each item's rubric into the shape the deliverable declares.
+
+    The criteria already sit on the item — filed there when they were written
+    (``fanout._attach_to_parent``), on either substrate — so this no longer
+    joins anything. What it still does is narrow each criterion to the four
+    fields the output contract names, and rename ``description`` to
+    ``criterion``: the generation schema and the deliverable disagree on that
+    word, and the deliverable wins.
+
+    Returns new dicts; never mutates the node/store data it reads.
+    """
     out: list = []
     for item in items:
-        if isinstance(item, dict):
-            rubric = by_assessment.get(str(item.get("item_id", "") or ""))
-            out.append({**item, "rubric": rubric} if rubric else dict(item))
-        else:
+        if not isinstance(item, dict):
             out.append(item)
+            continue
+        criteria = [rc for rc in (item.get("rubric") or []) if isinstance(rc, dict)]
+        if not criteria:
+            out.append({k: v for k, v in item.items() if k != "rubric"})
+            continue
+        out.append({**item, "rubric": [{
+            "id": rc.get("id", ""),
+            "criterion": rc.get("criterion", rc.get("description", "")),
+            "evidence_type": rc.get("evidence_type", ""),
+            "levels": rc.get("levels", {}),
+        } for rc in criteria]})
     return out
 
 
@@ -349,8 +360,7 @@ def aggregate_prose(store, trajectory) -> dict:
     }
     design["storyboard"] = _compute_storyboard(instructional_strategies, content_modules)
 
-    assessment_tools = _attach_rubrics(
-        items("assessment", "assessment_tools"), items("rubric", "rubric_criteria"))
+    assessment_tools = _shape_rubrics(items("assessment", "assessment_tools"))
     impl_doc = doc("implementation_plan")
     # ALWAYS synthesized (see the graph aggregator's matching note): the
     # prose arm's honest record covers only the within-artifact validation
@@ -501,12 +511,22 @@ def _compute_storyboard(instructional_strategies: dict, content_modules: list[di
     return frames
 
 
+#: Keys a plan section carries for the HARNESS, never for the ADDIE output.
+#: ``dev_plan`` is the work-set plan the fan-out reads back (see
+#: ``commit_assessment``): it belongs in the graph and its dump, where an
+#: auditor can see how the family was divided up, and not in the deliverable,
+#: which is what the judge scores.
+_HARNESS_ONLY_SECTION_KEYS = ("dev_plan",)
+
+
 def _merge_node_data(nodes: list[dict]) -> dict:
     merged: dict = {}
     for node in nodes:
         data = node.get("data", {})
         if isinstance(data, dict):
             _deep_merge(merged, data)
+    for key in _HARNESS_ONLY_SECTION_KEYS:
+        merged.pop(key, None)
     return merged
 
 
@@ -607,7 +627,7 @@ def _ensure_assessment_coverage(objectives: list, assessment_tools: list, graph)
 
 def _build_alignment_matrix(objective_ids: list[str], graph) -> list[dict]:
     """Per-objective alignment record built from **established** edges
-    (relation_id, established_by, evidence) — the real C1/C2/C3/C7 picture."""
+    (relation_id, established_by, evidence) — the real C1/C2/C3 picture."""
     objective_relations = [
         rid for rid, relation in alignment.REGISTRY.items()
         if NodeType.OBJECTIVE in relation.target_node_types or (
@@ -620,7 +640,7 @@ def _build_alignment_matrix(objective_ids: list[str], graph) -> list[dict]:
         entry = {"objective_id": lo_id, "relations": {}}
         for relation_id in objective_relations:
             relation = alignment.REGISTRY[relation_id]
-            # LO is the edge's target for C1/C7 (id "measures"/"decomposes_to"
+            # LO is the edge's target for C1 (id "decomposes_to"
             # direction), but the edge's SOURCE for C2/C3 (the id-reverse
             # relations) — read whichever side actually names an objective.
             if relation.coverage_side == "source" and relation.source_node_type == NodeType.OBJECTIVE:

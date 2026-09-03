@@ -87,7 +87,7 @@ def gate_for(config) -> CallGate:
     """The run's gate, built once per config object and cached on it.
 
     Every agent in a run is handed the SAME ``HarnessRunConfig`` instance (see
-    ``workflow.NodeFactory._args``), which is what makes the cache per-run.
+    the run's own config object), which is what makes the cache per-run.
     A config object that will not hold the attribute (a bare stub in a test)
     gets a fresh unbounded gate rather than an error.
     """

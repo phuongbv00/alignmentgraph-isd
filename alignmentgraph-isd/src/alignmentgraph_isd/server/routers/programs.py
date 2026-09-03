@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFil
 from sqlmodel import Session as DBSession
 from sqlmodel import select
 
-from .. import artifacts, briefs
+from .. import briefs
 from ..db import get_session
 from ..models import Message, Program, Run, Session, utcnow
 from ..runner import RunManager

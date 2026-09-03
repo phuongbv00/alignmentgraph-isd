@@ -4,13 +4,13 @@ Measured 2026-08-28 (Qwen3.5-2B single run): every multiple_choice item in the
 main arm's output carried only question + scoring_criteria — no options, no
 correct_answer — because the generation schema never asked for them. Such an
 item cannot be administered, and the judge scores instrument completeness
-directly (rubric items 22/30). The check flags it, the repair completes it via
-one persona-free LLM attempt, and an item the LLM cannot complete is
-reformatted as short_answer (deterministic, administrable as written).
+directly (rubric items 22/30). The check flags it and the deterministic
+salvage reformats a keyless choice item as short_answer — administrable as
+written. No model call is involved: no repair has called the model since
+2026-09-03.
 """
 from __future__ import annotations
 
-import json
 
 from alignmentgraph_isd.core import repairs
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
@@ -59,37 +59,22 @@ def _graph_with_mcq() -> AlignmentGraph:
     return graph
 
 
-def _ctx(graph, response: str) -> repairs.RepairContext:
+def _ctx(graph) -> repairs.RepairContext:
     return repairs.RepairContext(
         graph=graph, store=None, trajectory=TrajectoryLogger(),
-        call_llm=lambda *a, **k: response, actor="AssessmentDesignerAgent",
+        actor="AssessmentDesignerAgent",
     )
 
 
-def test_repair_completes_item_when_llm_cooperates():
-    graph = _graph_with_mcq()
-    response = json.dumps({"items": [{
-        "item_id": "AT-01",
-        "options": ["Analysis", "Design", "Implementation", "Evaluation"],
-        "correct_answer": "Design",
-    }]})
-    violations = item_completeness_items(
-        [(n["id"], n["data"]) for n in graph.element_nodes(NodeType.ASSESSMENT)])
-    repairs.repair_item_completeness(_ctx(graph, response), violations)
-
-    data = graph.get_node(f"{NodeType.ASSESSMENT}{graph.ELEMENT_SEP}AT-01")["data"]
-    assert data["options"] == ["Analysis", "Design", "Implementation", "Evaluation"]
-    assert data["correct_answer"] == "Design"
-    assert data["type"] == "multiple_choice"
-    # and the item now passes the check
-    assert item_completeness_items([("assessment:AT-01", data)]) == []
-
-
-def test_repair_falls_back_to_short_answer_when_llm_fails():
+def test_repair_reformats_a_keyless_item_as_short_answer():
+    """The deterministic salvage, and the whole of it: writing the options is
+    the agent's job and it has already had its repair turns by the time this
+    runs. A keyless choice item administers as nothing, so it is reformatted
+    into the one format its question and scoring_criteria already support."""
     graph = _graph_with_mcq()
     violations = item_completeness_items(
         [(n["id"], n["data"]) for n in graph.element_nodes(NodeType.ASSESSMENT)])
-    ctx = _ctx(graph, "not json at all")
+    ctx = _ctx(graph)
     repairs.repair_item_completeness(ctx, violations)
 
     data = graph.get_node(f"{NodeType.ASSESSMENT}{graph.ELEMENT_SEP}AT-01")["data"]
@@ -109,7 +94,7 @@ def test_repair_works_on_the_prose_substrate():
     violations = item_completeness_items([("AT-01", data)])
     ctx = repairs.RepairContext(
         graph=None, store=store, trajectory=TrajectoryLogger(),
-        call_llm=lambda *a, **k: "", actor="SingleDesignerAgent",
+        actor="SingleDesignerAgent",
     )
     repairs.repair_item_completeness(ctx, violations)
 

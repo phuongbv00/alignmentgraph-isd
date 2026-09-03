@@ -6,6 +6,7 @@ with no network or API key, so smoke tests stay deterministic and fast.
 """
 from __future__ import annotations
 
+import copy
 import json
 import re
 from pathlib import Path
@@ -130,6 +131,17 @@ def _assessment_tools() -> list[dict]:
             "required_cognitive_process": cognitive[lo_idx],
             "scoring_criteria": "Rubric scores correctness, design quality, and explanation against observable criteria (0-4 each).",
             "difficulty": ["easy", "medium", "hard"][i % 3],
+            # The criterion is written INSIDE the item it marks (2026-09-02):
+            # no `aligned_assessment`/`aligned_objective` back-references, and
+            # no separate `rubric_criteria` list.
+            "rubric": [{
+                "id": f"RC-{i + 1:02d}",
+                "description": ("Full marks require correct application with justification "
+                                "citing concrete evidence, scored 0-3."),
+                "evidence_type": types[i % 3],
+                "levels": {"excellent": "all criteria met", "satisfactory": "most met",
+                           "needs_improvement": "few met"},
+            }],
         }
         if item["type"] == "multiple_choice":
             # a well-formed model response ships the response set + answer key
@@ -182,11 +194,11 @@ _ACTIVITIES = {
         {"id": "TLA-02", "activity_name": "Inheritance lab", "duration": "60m",
          "description": "Model a class hierarchy and refactor for reuse.", "materials_needed": "A starter repo with a partial class hierarchy.",
          "aligned_objectives": ["ILO-03"], "prepares_for_assessment": ["AT-03", "AT-08"],
-         "learner_cognitive_process": "apply", "prerequisite_activities": ["TLA-01"]},
+         "learner_cognitive_process": "apply", "prerequisite_activities": [1]},   # by POSITION: the harness names the ids
         {"id": "TLA-03", "activity_name": "Design review", "duration": "60m",
          "description": "Critique a provided design against SOLID principles.", "materials_needed": "A design checklist and a sample design to critique.",
          "aligned_objectives": ["ILO-04", "ILO-05"], "prepares_for_assessment": ["AT-04", "AT-05", "AT-09", "AT-10"],
-         "learner_cognitive_process": "evaluate", "prerequisite_activities": ["TLA-02"]},
+         "learner_cognitive_process": "evaluate", "prerequisite_activities": [2]},
     ],
 }
 
@@ -211,15 +223,6 @@ _MATERIALS = {
          "content": "Lab scaffolding with TODOs and tests.", "linked_module": "MOD-01"},
         {"id": "MAT-03", "title": "Design checklist", "type": "document", "format": "pdf",
          "content": "SOLID review checklist with concrete prompts.", "linked_module": "MOD-02"},
-    ],
-}
-
-_RUBRICS = {
-    "rubric_criteria": [
-        {"id": f"RC-{i:02d}", "aligned_assessment": f"AT-{i:02d}", "aligned_objective": f"ILO-0{(i - 1) % 5 + 1}",
-         "description": "Full marks require correct application with justification citing concrete evidence, scored 0-3.",
-         "evidence_type": _assessment_tools()[i - 1]["type"]}
-        for i in range(1, 11)
     ],
 }
 
@@ -286,6 +289,16 @@ _IMPLEMENTATION = {
 #: instead), so its prompt contains BOTH keys and must not match the
 #: multi-agent arm's half-payload on the first key it happens to share.
 _PAYLOAD_BY_SCHEMA_KEY = (
+    # The single arm's ReAct blocks come FIRST: that agent has no Developers,
+    # so its stage block shows the plan schema AND the item schemas, and the
+    # dispatch-only entries below would otherwise out-match and answer with a
+    # plan the loop can never close the stage on.
+    (('"pilot_data_plan"', '"instrument_sets"', '"assessment_tools"'),
+     {**_ASSESSMENT_PLAN, **_ASSESSMENT_DEV_PLAN, **_ASSESSMENT_ITEMS}),
+    (('"non_instructional_strategies"', '"activity_blocks"', '"learning_activities"'),
+     {**_ACTIVITY_PLAN, **_ACTIVITY_DEV_PLAN, **_ACTIVITIES}),
+    (('"media_selections"', '"learner_materials"', '"content_modules"'),
+     {**_MODULES, **_MATERIALS}),
     (('"pilot_data_plan"', '"instrument_sets"'), {**_ASSESSMENT_PLAN, **_ASSESSMENT_DEV_PLAN}),
     (('"non_instructional_strategies"', '"activity_blocks"'), {**_ACTIVITY_PLAN, **_ACTIVITY_DEV_PLAN}),
     # core/agentic/specialists.py's merged schemas are manual copies of the
@@ -312,12 +325,11 @@ _PAYLOAD_BY_SCHEMA_KEY = (
     (('"learning_activities"',), _ACTIVITIES),
     (('"media_selections"',), _MODULES),
     (('"learner_materials"',), _MATERIALS),
-    (('"rubric_criteria"',), _RUBRICS),
     (('"instructor_orientation"',), _IMPLEMENTATION),
 )
 
 
-def _payload_for_system(system_prompt: str) -> dict:
+def _payload_for_system(system_prompt: str, whole: str = "") -> dict:
     """The canned payload a prompt is asking for.
 
     Keyed on the prompt's SCHEMA, never on its persona sentence: the single
@@ -326,8 +338,52 @@ def _payload_for_system(system_prompt: str) -> dict:
     suite into a test of the regen loop."""
     for keys, payload in _PAYLOAD_BY_SCHEMA_KEY:
         if all(key in system_prompt for key in keys):
-            return payload
+            # Ids are scraped from the WHOLE conversation, not from the slice
+            # the schema was matched in: the schema arrives as a `stage_brief`
+            # tool result now, and the ids a plan refers to are back in the
+            # stage turn's docket.
+            return _named_from_prompt(payload, whole or system_prompt)
     return {}
+
+
+#: `*_ids` fields whose values a real model can only get by READING the
+#: artifacts it is referring to, and the prefix those artifacts carry.
+_ID_REFERENCE_FIELDS = {"activity_ids": "TLA", "material_ids": "MAT"}
+
+
+def _named_from_prompt(payload: dict, prompt: str) -> dict:
+    """Replace canned id references with ids this prompt actually showed.
+
+    The implementation plan names the activities it schedules and the
+    materials it hands out (P10/P11), and the canned payload names ``TLA-01``
+    because that is what the rulebook's schema example shows. A real
+    ImplementationPlanner does not work from the example: it can read
+    ACTIVITY and MATERIAL, and its docket lists the P10/P11 gaps by id, so it
+    names ids it has been shown.
+
+    The distinction started mattering when artifact ids became composite
+    (``TLA-0203`` = third artifact of the second work set, see
+    ``dev_plans._composite_id``): a fixture that answers with the schema
+    example is then referring to something that does not exist, and the test
+    reports a harness failure that is really a fixture one."""
+    found = {
+        field: re.findall(rf"\b{prefix}-\d+\b", prompt)
+        for field, prefix in _ID_REFERENCE_FIELDS.items()
+    }
+    if not any(found.values()):
+        return payload
+
+    def named(value):
+        if isinstance(value, dict):
+            return {key: (list(dict.fromkeys(found[key]))[:len(value[key])] or value[key])
+                    if key in found and isinstance(value.get(key), list)
+                    else named(value[key])
+                    for key in value}
+        if isinstance(value, list):
+            return [named(item) for item in value]
+        return value
+
+    return named(payload)
 
 
 # ── dev-plan fan-out: per-set canned slices ─────────────────────────────────
@@ -404,6 +460,21 @@ def _sliced_payload_for_set(raw_prompt: str) -> dict | None:
                         "scoring_criteria": ("Rubric scores correctness and justification against "
                                              "observable criteria (0-3)."),
                     })
+            # ...each with the criterion that marks it, INSIDE the item: an
+            # Assessment Developer writes both in one answer, and since
+            # 2026-09-02 a criterion is a field of its item rather than a
+            # parallel list with back-references. A fixture returning bare
+            # items would leave that half of the design untested and silently
+            # exercised by the repair net instead.
+            for item in items:
+                item["rubric"] = [{
+                    "id": f"RC-{item['item_id']}",
+                    "description": ("Full marks require correct application with justification "
+                                    "citing concrete evidence, scored 0-3."),
+                    "evidence_type": item["type"],
+                    "levels": {"excellent": "0 absent", "satisfactory": "1 partial",
+                               "needs_improvement": "2 full"},
+                }]
             return {"assessment_tools": items}
     if "=== YOUR ASSIGNED BLOCK ===" in raw_prompt and '"learning_activities"' in raw_prompt:
         objectives = _parse_assigned_objectives(raw_prompt)
@@ -438,44 +509,51 @@ def _sliced_payload_for_set(raw_prompt: str) -> dict | None:
         if modules:
             items = [m for m in _MATERIALS["learner_materials"] if m.get("linked_module") in modules]
             return {"learner_materials": items}
-    if "=== YOUR ASSIGNED ITEM ===" in raw_prompt and '"rubric_criteria"' in raw_prompt:
-        assigned_items = _parse_assigned_assessment_items(raw_prompt)
-        if assigned_items:
-            by_assessment_id = {rc["aligned_assessment"]: rc for rc in _RUBRICS["rubric_criteria"]}
-            criteria = []
-            for item in assigned_items:
-                item_id = str(item.get("item_id", ""))
-                if item_id in by_assessment_id:
-                    criteria.append(by_assessment_id[item_id])
-                else:
-                    # A repair-synthesized assessment item (e.g. "AT-F-ILO-01"
-                    # from repairs.repair_plan_coverage) has no entry in the
-                    # canned fixture above -- write a generic-but-valid
-                    # criterion from the item itself rather than returning
-                    # nothing, exactly as a real model would for an item it
-                    # has never seen a worked example of.
-                    criteria.append({
-                        "id": f"RC-{item_id}", "aligned_assessment": item_id,
-                        "aligned_objective": str(item.get("aligned_objective", "")),
-                        "description": ("Full marks require correct application with "
-                                        "justification citing concrete evidence, scored 0-3."),
-                        "evidence_type": str(item.get("type") or "short_answer"),
-                    })
-            return {"rubric_criteria": criteria}
     return None
 
 
 class _Result:
-    def __init__(self, content: str) -> None:
+    def __init__(self, content: str = "", tool_calls: list | None = None) -> None:
         self.content = content
+        self.tool_calls = tool_calls or []
         self.usage_metadata = None
 
 
 class FakeChatModel:
-    """Network-free chat model that returns canned, schema-valid JSON."""
+    """Network-free chat model that returns canned, schema-valid JSON.
+
+    Speaks BOTH transports: bound with tools (every stage loop) it answers
+    with one ``submit`` call carrying the canned payload; unbound (a caller
+    that binds nothing) it answers with the same payload as JSON text."""
+
+    def __init__(self) -> None:
+        self._tools_bound = False
+        self._calls = 0
 
     def bind(self, **_kwargs) -> "FakeChatModel":
         return self
+
+    def bind_tools(self, specs, **_kwargs) -> "FakeChatModel":
+        bound = copy.copy(self)
+        bound._tools_bound = True
+        # Which submits the caller is offering. A stage loop binds one
+        # `submit_<artifact>` per top-level artifact of that stage; the single
+        # arm's ReAct loop binds a `submit_<stage>` per INCOMPLETE stage. The
+        # names have the same shape either way, so the arms are told apart by
+        # `stage_brief`'s SIGNATURE — see below.
+        names = tuple(str(spec.get("function", {}).get("name", ""))
+                      for spec in (specs or []))
+        bound._bound = names
+        bound._submits = tuple(n for n in names if n.startswith("submit"))
+        # BOTH arms bind `stage_brief` now — the artifact contract is fetched,
+        # not pushed. They are told apart by its parameters: the ReAct loop
+        # works all six stages so its version takes one, while a stage loop is
+        # already in its stage and takes none.
+        bound._react = any(
+            spec.get("function", {}).get("name") == "stage_brief"
+            and (spec.get("function", {}).get("parameters", {}).get("properties"))
+            for spec in (specs or []))
+        return bound
 
     def invoke(self, messages):
         # The WHOLE conversation, not just the system turn: the single-agent
@@ -486,6 +564,19 @@ class FakeChatModel:
             m.get("content", "") for m in messages
             if isinstance(m, dict) and isinstance(m.get("content"), str)
         )
+        #: Kept untruncated: the schema is matched in the slice from the last
+        #: stage marker, but the ids a plan refers to live in the stage turn's
+        #: docket, which is behind it.
+        raw_all = raw_prompt
+        # ...but only from the CURRENT stage onward when the transcript carries
+        # several. The agentic single arm accumulates every stage in one
+        # conversation, so matching over the whole thing makes the earliest
+        # stage's schema out-match the live one and the fake answers the wrong
+        # artifact — a fixture artifact that would masquerade as exactly the
+        # context degradation the decomposition axis is meant to measure.
+        marker = raw_prompt.rfind("--- STAGE:")
+        if marker != -1:
+            raw_prompt = raw_prompt[marker:]
         # A Developer's own work-set slice, read from the RAW prompt (the
         # generic stripping below would remove "=== YOUR ASSIGNED SET/BLOCK
         # ===" along with every other non-SCENARIO header) — checked first so
@@ -493,16 +584,79 @@ class FakeChatModel:
         # the whole family's canned list.
         sliced = _sliced_payload_for_set(raw_prompt)
         if sliced is not None:
-            return _Result(json.dumps(sliced, ensure_ascii=False))
+            name, args = self._stage_submit(sliced, messages)
+            return self._respond(args, name)
         # Strip injected prior-artifact context ("=== <HEADER> ===\n...\n\n===
         # SCENARIO ===") before matching: the prose arm injects earlier
         # documents as VERBATIM JSON, so their schema keys would otherwise
         # out-match the schema this step is actually asking for (the graph
         # arm's plan-node JSON leaks keys the same way — it just happened to
         # land on merged entries). Only the task/schema text may key payloads.
+        stage = self._react_stage()
+        if stage is not None:
+            whole = "\n".join(str(m.get("content", "")) for m in messages
+                               if isinstance(m, dict))
+            if f"--- STAGE: {stage} ---" not in whole:
+                # The schema lives behind `stage_brief` now, so ask for it —
+                # which is what the loop's protocol tells a real agent to do.
+                self._calls += 1
+                return _Result(tool_calls=[{"name": "stage_brief",
+                                            "args": {"stage": stage},
+                                            "id": f"c{self._calls}"}])
+            # ReAct mode: the whole workflow is in the system turn, so match on
+            # the chosen stage's block alone. Matching the lot would let the
+            # first stage's schema answer for every one of them.
+            block = re.search(rf"--- STAGE: {stage} ---(.*?)(?=--- STAGE: |=== SCENARIO ===|\Z)",
+                              whole, flags=re.S)
+            payload = _payload_for_system(block.group(1) if block else raw_prompt)
+            return self._respond(payload, f"submit_{stage}")
         prompt = re.sub(r"=== (?!SCENARIO)[^=]+? ===.*?(?==== SCENARIO ===)", "", raw_prompt, flags=re.S)
-        payload = _payload_for_system(prompt)
-        return _Result(json.dumps(payload, ensure_ascii=False))
+        payload = _payload_for_system(prompt, raw_all)
+        if not payload and "stage_brief" in getattr(self, "_bound", ()):
+            # The schema is behind a tool now, for both arms: a stage turn
+            # carries the task and the contract is fetched. A real agent is
+            # told to call `stage_brief` before it submits, so the fixture does
+            # the same rather than answering a prompt it has not read yet.
+            self._calls += 1
+            return _Result(tool_calls=[{"name": "stage_brief", "args": {},
+                                        "id": f"c{self._calls}"}])
+        name, args = self._stage_submit(payload, messages)
+        return self._respond(args, name)
+
+    def _react_stage(self):
+        """The first still-open stage, or None when this is a stage loop."""
+        if not getattr(self, "_react", False):
+            return None
+        staged = [n[len("submit_"):] for n in getattr(self, "_submits", ())
+                  if n.startswith("submit_")]
+        return staged[0] if staged else None
+
+    def _stage_submit(self, payload: dict, messages: list) -> tuple[str, dict]:
+        """ONE artifact per call, which is what a stage loop now binds.
+
+        The fixture answers like an agent working through the list: the first
+        offered ``submit_<key>`` whose artifact this payload carries and which
+        this conversation has not already sent. Sending them all at once is
+        exactly what the split exists to stop, so the fake must not do it
+        either — otherwise every parts-completion path goes untested."""
+        already = {m.get("name") for m in messages
+                   if isinstance(m, dict) and m.get("role") == "tool"}
+        for name in getattr(self, "_submits", ()):
+            key = name[len("submit_"):]
+            if key in payload and name not in already:
+                return name, {key: payload[key]}
+        # Nothing left to add: answer the first offered submit with what it
+        # asks for, so the loop still gets a well-formed call to judge.
+        name = (getattr(self, "_submits", ()) or ("submit",))[0]
+        key = name[len("submit_"):]
+        return name, ({key: payload[key]} if key in payload else payload)
+
+    def _respond(self, payload, tool: str = "submit") -> _Result:
+        if not self._tools_bound:
+            return _Result(content=json.dumps(payload, ensure_ascii=False))
+        self._calls += 1
+        return _Result(tool_calls=[{"name": tool, "args": payload,
+                                    "id": f"c{self._calls}"}])
 
 
 @pytest.fixture
@@ -523,11 +677,21 @@ def load_brief(name: str) -> DesignBrief:
 
 
 _EVENT_ACTIONS = {
+    # Mirrors `_RECOVERY_ACTIONS` in core/trajectory.py.
     "recovery": {
         "retry", "regen_empty_section", "agent_error", "llm_error", "salvage_truncated",
         "invalid_action", "submit_rejected", "submit_invalid_final", "repeated_tool_call",
-        "commit_invalid_section", "agentic_fallback", "repair", "revision",
+        "commit_invalid_section", "agentic_fallback", "agentic_gave_up", "budget_exhausted",
+        "tool_binding_unavailable", "tool_call_markup_recovered", "repair_unfilled",
+    "duplicate_submit", "bare_artifact_wrapped", "context_compacted",
+        "dropped_argument", "repair",
     },
+    #: A generative repair that asked the model for the missing artifact and got
+    #: nothing usable, so it wrote nothing. Its own group: it is the opposite of
+    #: a `repair`, and counting the two together would hide exactly the number
+    #: this distinction exists to expose.
+    "repair_unfilled": {"repair_unfilled"},
+    "reconcile": {"reconcile"},
     "node_edit": {"node_add", "node_update"},
     "validation": {"validate"},
     "check": {"check"},
@@ -539,3 +703,28 @@ _EVENT_ACTIONS = {
 def events_of(trajectory: dict, event_type: str) -> list[dict]:
     """Filter the unified event log by a named taxonomy group for tests."""
     return [e for e in trajectory["events"] if e["action"] in _EVENT_ACTIONS[event_type]]
+
+
+class RepairActor:
+    """The surface ``repairs.context_for`` needs, without a full agent object.
+
+    The six specialist Designers went with the StateGraph pipeline on
+    2026-09-01, but a handful of verifier tests only ever used one as a way to
+    build a :class:`RepairContext` and name an actor. This is that, and nothing
+    else: the repair toolbox itself is unchanged and shared by both context
+    modes."""
+
+    def __init__(self, name: str, config=None, graph=None, store=None, trajectory=None):
+        self._name = name
+        self.graph = graph
+        self.store = store
+        self.trajectory = trajectory
+
+    def ctx(self):
+        """A :class:`RepairContext` naming this actor. Built directly rather
+        than through ``repairs.context_for``, which reads the actor off the
+        class name — a real agent's identity, which this is standing in for."""
+        from alignmentgraph_isd.core.repairs import RepairContext
+
+        return RepairContext(graph=self.graph, store=self.store,
+                             trajectory=self.trajectory, actor=self._name)

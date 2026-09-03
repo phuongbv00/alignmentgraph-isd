@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
 
 from alignmentgraph_isd import AlignmentGraph
 from alignmentgraph_isd.server import artifacts
@@ -170,9 +169,11 @@ def test_a_run_that_produced_nothing_is_reported_as_failed():
     ).lower()
 
 
-def test_a_partial_run_is_still_a_success(client, ready_program, wait_for_terminal):
-    """The barren check must not fire on a run that produced some of the design;
-    a partial result is worth looking at."""
+def test_a_complete_run_reports_succeeded_with_stats(client, ready_program, wait_for_terminal):
+    """Renamed 2026-09-04: it was called `test_a_partial_run_is_still_a_success`
+    but never built a partial run — the fake model completes every stage, so it
+    asserted the happy path twice over. The partial-vs-barren boundary it
+    claimed to guard is asserted directly on `_barren_run_error` above."""
     run_id = start(client, ready_program)
     detail = wait_for_terminal(run_id)
     assert detail["run"]["status"] == "succeeded"
@@ -233,12 +234,12 @@ def test_objective_alignment_survives_to_the_api(client, ready_program, wait_for
     alignment = graph["objective_alignment"]
     assert alignment
     for flags in alignment.values():
-        assert set(flags) >= {"measured", "supported", "evaluated", "bloom_ok", "aligned"}
-    # 18 relations total: 7 core (C1-C7) + 11 secondary (P1-P11) — see
+        assert set(flags) >= {"measured", "supported", "bloom_ok", "aligned"}
+    # 16 relations total: 5 core (C1-C5) + 11 secondary (P1-P11) — see
     # alignment.py::REGISTRY (renamed from the old R1..R13 scheme).
     from alignmentgraph_isd.core.alignment_graph import alignment as alignment_module
     assert set(graph["relation_coverage"]) == set(alignment_module.REGISTRY)
-    assert len(alignment_module.REGISTRY) == 18
+    assert len(alignment_module.REGISTRY) == 16   # C6/C7 went with the rubric node type
 
 
 # ── cancellation and restart ─────────────────────────────────────────────────
@@ -366,3 +367,205 @@ def test_startup_sweep_reconciles_runs_left_by_a_dead_process(client, ready_prog
 
     # And the program is not left blocked behind the one-active-run rule.
     assert client.post(f"/api/programs/{ready_program}/runs").status_code == 202
+
+
+# ── trajectory export ───────────────────────────────────────────────────────
+
+def test_export_carries_the_trajectory_and_only_the_trajectory(
+    client, ready_program, wait_for_terminal,
+):
+    """Both halves of the trace — the judge-visible trio plus event log, and the
+    full-fidelity action log — are one record split for size, so both travel.
+
+    Nothing else does. Metadata, the graph and the ADDIE output are each their
+    own artifact with their own endpoint; folding them in would make "export
+    trajectory" mean "export the run", and then nobody could export the
+    trajectory."""
+    run_id = start(client, ready_program)
+    wait_for_terminal(run_id)
+
+    response = client.get(f"/api/runs/{run_id}/trajectory/export")
+    assert response.status_code == 200
+    assert "attachment" in response.headers["content-disposition"]
+    assert f"trajectory-{run_id}.json" in response.headers["content-disposition"]
+
+    payload = response.json()
+    assert payload["complete"] is True
+    assert payload["run_id"] == run_id
+    assert payload["trajectory"]["tool_calls"]
+    assert payload["trajectory"]["events"]
+    assert payload["trajectory_deep"]["actions"]
+
+    assert set(payload) == {"export_version", "complete", "run_id",
+                            "trajectory", "trajectory_deep"}
+    assert json.loads(response.text) == payload
+
+
+def test_exporting_mid_run_gives_what_was_recorded_and_says_it_is_partial(
+    client, ready_program, blocked_run, wait_for_terminal,
+):
+    """The moment the trace is most wanted is while a run looks stuck. Returning
+    a partial file under the same shape as a finished one would be a trap, so
+    the live wire events travel under their own key and `complete` is false."""
+    run_id = start(client, ready_program)
+
+    response = client.get(f"/api/runs/{run_id}/trajectory/export")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["complete"] is False
+    assert payload["run_id"] == run_id
+    assert "trajectory" not in payload
+    assert "live_events" in payload
+    assert f"trajectory-partial-{run_id}.json" in response.headers["content-disposition"]
+
+    blocked_run["open"] = True
+    wait_for_terminal(run_id)
+    assert client.get(f"/api/runs/{run_id}/trajectory/export").json()["complete"] is True
+
+
+def test_exporting_an_unknown_run_is_a_404(client):
+    assert client.get("/api/runs/does-not-exist/trajectory/export").status_code == 404
+
+
+# ── agent contexts ──────────────────────────────────────────────────────────
+
+def test_every_agent_context_is_recorded_with_its_transcript_and_tools(
+    client, ready_program, wait_for_terminal,
+):
+    """What an agent was SHOWN is the first question about why it produced what
+    it did, and until now nothing recorded it: `autonomy` had `context_len`, a
+    number, and the transcript itself lived only in the loop's memory.
+
+    Under native tool calling the SCHEMAS are half of what the model sees, so a
+    context without them is half a context."""
+    run_id = start(client, ready_program)
+    wait_for_terminal(run_id)
+
+    contexts = client.get(f"/api/runs/{run_id}/contexts").json()
+    assert contexts, "no agent context was published"
+
+    for entry in contexts:
+        assert entry["agent"] and entry["label"]
+        assert entry["messages"], f"{entry['label']} recorded no transcript"
+        assert entry["messages"][0]["role"] == "system"
+        assert entry["chars"] > 0
+        # JSON-safe: the transcript is MIXED — the tool-call round trip leaves
+        # the model's own message objects in it — so anything not serialized
+        # here would have failed to reach disk at all.
+        assert json.dumps(entry)
+
+    labelled = {entry["label"] for entry in contexts}
+    assert "analysis" in labelled and "outcomes" in labelled
+    # A Developer's context is its own, separate from the stage that dispatched
+    # it: that is the fan-out at its second scale, and merging them would hide
+    # the tier the multi-agent claim rests on.
+    assert any(":" in label for label in labelled), labelled
+
+
+def test_the_context_survives_the_run_and_is_served_from_disk(
+    client, ready_program, settings, wait_for_terminal,
+):
+    run_id = start(client, ready_program)
+    wait_for_terminal(run_id)
+
+    directory = settings.data_root / artifacts.relative_run_dir(ready_program, run_id)
+    saved = json.loads((directory / "contexts.json").read_text(encoding="utf-8"))
+    assert saved
+    assert client.get(f"/api/runs/{run_id}/contexts").json() == saved
+
+
+def test_a_run_with_no_context_yet_serves_an_empty_list(client, ready_program, blocked_run):
+    run_id = start(client, ready_program)
+    assert client.get(f"/api/runs/{run_id}/contexts").json() == []
+
+
+# ── transcript export ───────────────────────────────────────────────────────
+
+def test_the_transcript_downloads_as_readable_markdown(
+    client, ready_program, wait_for_terminal,
+):
+    """Markdown, not JSON: `/contexts` already serves the JSON a tool would
+    want, and this is the one artifact a PERSON reads end to end. A 27-message
+    conversation as a JSON array is not that."""
+    run_id = start(client, ready_program)
+    wait_for_terminal(run_id)
+
+    response = client.get(f"/api/runs/{run_id}/transcript/export")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/markdown")
+    assert f"transcript-{run_id}.md" in response.headers["content-disposition"]
+
+    body = response.text
+    contexts = client.get(f"/api/runs/{run_id}/contexts").json()
+    # Every agent is in it, and every message: the point of downloading a
+    # transcript is to read exactly what the model was shown.
+    for entry in contexts:
+        assert f"## {entry['agent']} — {entry['label']}" in body
+    total_messages = sum(len(c["messages"]) for c in contexts)
+    assert body.count("\n### ") >= total_messages
+
+
+def test_one_agent_can_be_exported_by_its_context_id(client, ready_program, wait_for_terminal):
+    """By ID, not by label and not by position.
+
+    Not by label because a regenerated stage publishes one context per attempt
+    and they share a name. Not by position — which is what this addressed
+    first — because a context is republished after every turn now, so the list
+    is only stable once the run is over, and a link a reader kept would follow
+    the ordinal rather than the conversation it was for."""
+    run_id = start(client, ready_program)
+    wait_for_terminal(run_id)
+
+    contexts = client.get(f"/api/runs/{run_id}/contexts").json()
+    assert len(contexts) > 1
+    wanted = contexts[1]
+    assert wanted["id"], "the harness names every context it publishes"
+
+    response = client.get(f"/api/runs/{run_id}/transcript/export?context={wanted['id']}")
+    assert response.status_code == 200
+    assert wanted["agent"] in response.text
+    # Only that one.
+    assert response.text.count("\n---\n") == 1
+    # The id identifies; the LABEL is what a reader recognises in a downloads
+    # folder, so that is what the filename carries.
+    assert wanted["label"].replace(":", "-") in response.headers["content-disposition"]
+
+    assert client.get(
+        f"/api/runs/{run_id}/transcript/export?context=nope").status_code == 404
+
+
+def test_exporting_a_transcript_that_was_never_recorded_is_a_404(
+    client, ready_program, blocked_run,
+):
+    """``blocked_run`` holds the worker at the gate, so the condition in the
+    name is actually forced. Without it the run may well have finished and
+    published contexts, and the assertion had to accept 200 as well as 404 —
+    which made it a check that the route does not crash, nothing more."""
+    run_id = start(client, ready_program)
+    assert client.get(f"/api/runs/{run_id}/transcript/export").status_code == 404
+
+
+def test_one_context_can_be_fetched_whole_while_the_run_is_live(
+    client, ready_program, wait_for_terminal,
+):
+    """The row a reader OPENS is where the transcript and the tool schemas are
+    fetched.
+
+    The live stream carries the rows without either — they are the large half
+    and a context is republished after every turn — so a row that is merely
+    listed costs almost nothing, and the one being looked at is re-fetched as
+    it grows. Regression: when live rows first landed, the Tool schemas section
+    rendered empty, because the row it was reading has no schemas by design."""
+    run_id = start(client, ready_program)
+    wait_for_terminal(run_id)
+
+    rows = client.get(f"/api/runs/{run_id}/contexts").json()
+    assert rows
+    wanted = rows[0]["id"]
+
+    one = client.get(f"/api/runs/{run_id}/contexts?context={wanted}").json()
+    assert len(one) == 1 and one[0]["id"] == wanted
+    assert one[0]["tools"], "the schemas are half of what the model sees"
+    assert one[0]["messages"]
+
+    assert client.get(f"/api/runs/{run_id}/contexts?context=nope").json() == []

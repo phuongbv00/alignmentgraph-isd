@@ -8,13 +8,12 @@ Tests are scoped to the right layer:
 from __future__ import annotations
 
 from alignmentgraph_isd import (
-    DesignBrief,
     HarnessRunConfig,
     RetrievalAgent,
     RetrievalAgentRegistry,
     RetrievalTool,
 )
-from alignmentgraph_isd.core.agents.base import _format_design_brief
+from alignmentgraph_isd.core.brief import _format_design_brief
 from alignmentgraph_isd.core.rag.planner import RetrievalPlanner
 
 from conftest import load_brief

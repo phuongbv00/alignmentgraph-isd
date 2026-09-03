@@ -4,13 +4,17 @@ Graphs here always populate ELEMENT nodes (one per artifact), mirroring how
 the real Designers build the graph — not the old single section-node blob.
 
 ``test_alignment.py`` already covers the establishers/coverage primitives in
-``core/alignment.py`` (``match_id``, ``relation_coverage``, the Bloom
+``core/alignment_graph/alignment.py`` (the establishers, ``relation_coverage``, the Bloom
 cross-checks) in depth; this file covers the checks layered on top in
 ``core/checks.py`` (measurability, rubric_consistency, evaluation_quality,
 activity_engagement, orphan_content, evidence_alignment, feasibility,
 actionability) plus repair-to-convergence without an LLM for a
 representative check per Designer."""
 from __future__ import annotations
+
+from conftest import RepairActor
+
+from alignmentgraph_isd.core import repairs
 
 from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core import checks
@@ -175,36 +179,48 @@ def test_orphan_content_fires_for_material_with_no_module():
 # ── Rubric Designer's own checks: rubric_consistency, evidence_alignment ────
 
 def test_rubric_consistency_fires_for_vague_description():
+    """A criterion is a FIELD of the item it marks (2026-09-02), so the check
+    reads it off the item — the same way the prose arm always has, which is
+    what lets both substrates run the identical implementation."""
     graph = AlignmentGraph()
-    graph.add_element_node(NodeType.RUBRIC, "RC-01", {"id": "RC-01", "description": "good"})
-    violations = [v for v in checks.rubric_consistency(graph) if v.violation_type == "rubric_consistency"]
-    assert violations
+    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {
+        "item_id": "AT-01", "type": "short_answer",
+        "rubric": [{"id": "RC-01", "description": "good"}]})
+    violations = [v for v in checks.rubric_consistency(graph)
+                  if v.violation_type == "rubric_consistency"]
+    assert violations and violations[0].metadata["rc_id"] == "RC-01"
 
 
 def test_rubric_consistency_silent_for_observable_description():
     graph = AlignmentGraph()
-    graph.add_element_node(NodeType.RUBRIC, "RC-01", {
-        "id": "RC-01",
-        "description": "Full marks require correct application with justification citing concrete evidence, scored 0-3.",
-    })
-    assert checks.rubric_consistency(graph) == []
+    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {
+        "item_id": "AT-01", "type": "short_answer",
+        "rubric": [{"id": "RC-01", "description":
+                    "Scored 0-3: cites at least two pieces of observable evidence "
+                    "and states the trade-off each one implies."}]})
+    assert not [v for v in checks.rubric_consistency(graph)
+                if v.violation_type == "rubric_consistency"]
 
 
 def test_evidence_alignment_fires_when_item_cannot_produce_required_evidence():
+    """The item is the criterion's PARENT now, not the far end of a C6 edge, so
+    the lookup is direct and the "no linked item" case cannot occur."""
     graph = AlignmentGraph()
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01", "type": "multiple_choice"})
-    graph.add_element_node(NodeType.RUBRIC, "RC-01", {"id": "RC-01", "evidence_type": "performance_task"})
-    graph.add_edge("evaluated_by", "assessment:AT-01", "rubric:RC-01", relation_id="C6", established_by="provenance")
-    violations = [v for v in checks.evidence_alignment(graph) if v.violation_type == "evidence_alignment"]
+    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {
+        "item_id": "AT-01", "type": "multiple_choice",
+        "rubric": [{"id": "RC-01", "evidence_type": "performance_task"}]})
+    violations = [v for v in checks.evidence_alignment(graph)
+                  if v.violation_type == "evidence_alignment"]
     assert violations and violations[0].metadata["rc_id"] == "RC-01"
 
 
 def test_evidence_alignment_silent_when_item_can_produce_evidence():
     graph = AlignmentGraph()
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01", "type": "performance_task"})
-    graph.add_element_node(NodeType.RUBRIC, "RC-01", {"id": "RC-01", "evidence_type": "performance_task"})
-    graph.add_edge("evaluated_by", "assessment:AT-01", "rubric:RC-01", relation_id="C6", established_by="provenance")
-    assert checks.evidence_alignment(graph) == []
+    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {
+        "item_id": "AT-01", "type": "performance_task",
+        "rubric": [{"id": "RC-01", "evidence_type": "short_answer"}]})
+    assert not [v for v in checks.evidence_alignment(graph)
+                if v.violation_type == "evidence_alignment"]
 
 
 # ── ImplementationPlannerAgent's own checks: feasibility, actionability ─────
@@ -239,7 +255,7 @@ def test_actionability_silent_with_concrete_orientation_and_checklist():
     assert checks.actionability(graph) == []
 
 
-# ── relation_coverage(): re-runs rerunnable establishers + full 18-relation check ──
+# ── relation_coverage(): re-runs rerunnable establishers + full 16-relation check ──
 
 def test_relation_coverage_flags_uncovered_core_relation():
     graph = AlignmentGraph()
@@ -275,25 +291,33 @@ def test_bloom_mismatches_tags_assessment_and_activity_separately():
 
 # ── Verify -> repair convergence without an LLM (deterministic repairs) ─────
 
-def test_rubric_consistency_repairs_to_convergence_without_llm():
-    from alignmentgraph_isd.core.agents.rubric_designer import RubricDesignerAgent
-
+def test_a_vague_rubric_criterion_is_reported_and_left_alone():
+    """`rubric_consistency` has no repair. The one that existed overwrote every
+    flagged criterion with the SAME sentence, on both substrates: a description
+    that says nothing about the item it scores, and a check that passes because
+    the words changed."""
     graph = AlignmentGraph()
-    graph.add_element_node(NodeType.RUBRIC, "RC-01", {"id": "RC-01", "description": "good"})
-    config = HarnessRunConfig()  # no llm_factory -> repair must be pure graph mutation
+    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {
+        "item_id": "AT-01", "type": "short_answer",
+        "rubric": [{"id": "RC-01", "description": "good"}]})
     trajectory = TrajectoryLogger()
 
     before = [v for v in checks.rubric_consistency(graph) if v.violation_type == "rubric_consistency"]
     assert before
 
-    RubricDesignerAgent(config, graph, trajectory).repair(before)
+    remaining = repairs.repair(
+        "rubric_designer", before,
+        RepairActor("RubricDesignerAgent", HarnessRunConfig(), graph=graph,
+                    trajectory=trajectory).ctx())
 
-    after = checks.rubric_consistency(graph)
-    assert after == []
+    assert remaining == before, "an unrepairable violation must be handed back, not swallowed"
+    assert checks.rubric_consistency(graph) == before
+    kept = graph.get_node("assessment:AT-01")["data"]["rubric"][0]
+    assert kept["description"] == "good", "the criterion is left exactly as written"
+    assert not trajectory.repair_events, "nothing changed, so nothing is logged as a repair"
 
 
 def test_orphan_content_repairs_by_linking_to_an_existing_activity_without_llm():
-    from alignmentgraph_isd.core.agents.content_designer import ContentDesignerAgent
 
     graph = AlignmentGraph()
     graph.add_element_node(NodeType.CONTENT, "MOD-01", {"id": "MOD-01"})
@@ -304,29 +328,35 @@ def test_orphan_content_repairs_by_linking_to_an_existing_activity_without_llm()
     before = [v for v in checks.orphan_content(graph) if v.violation_type == "orphan_content"]
     assert before
 
-    ContentDesignerAgent(config, graph, trajectory).repair(before)
+    repairs.repair("content_designer", before, RepairActor("ContentDesignerAgent", config, graph=graph, trajectory=trajectory).ctx())
 
     assert checks.orphan_content(graph) == []
 
 
-def test_activity_engagement_repairs_by_adding_active_practice_without_llm():
-    from alignmentgraph_isd.core.agents.activity_designer import ActivityDesignerAgent
-
+def test_a_passively_practiced_objective_is_reported_and_no_activity_is_invented():
+    """`activity_engagement` has no repair. The one that existed added a
+    "Hands-on practice for ILO-01" activity described as practice "on a
+    realistic task with feedback" — an activity in shape only, which satisfied
+    the check by existing."""
     graph = AlignmentGraph()
     graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01", "level": "apply"})
     graph.add_element_node(NodeType.ACTIVITY, "TLA-01", {
         "id": "TLA-01", "activity_name": "X lecture", "description": "Instructor presentation on X concepts.",
     })
     graph.add_edge("practiced_by", "objective:ILO-01", "activity:TLA-01", relation_id="C3", established_by="id")
-    config = HarnessRunConfig()
     trajectory = TrajectoryLogger()
 
     before = [v for v in checks.activity_engagement(graph) if v.violation_type == "activity_engagement"]
     assert before
 
-    ActivityDesignerAgent(config, graph, trajectory).repair(before)
+    remaining = repairs.repair(
+        "activity_designer", before,
+        RepairActor("ActivityDesignerAgent", HarnessRunConfig(), graph=graph,
+                    trajectory=trajectory).ctx())
 
-    assert checks.activity_engagement(graph) == []
+    assert remaining == before
+    assert len(graph.element_nodes(NodeType.ACTIVITY)) == 1, "no activity was manufactured"
+    assert not trajectory.repair_events
 
 
 # ── plan -> execute coverage (the check the 2-hop design implied but lacked) ──
@@ -370,74 +400,25 @@ def test_plan_coverage_silent_when_every_promised_pair_exists():
     assert checks.plan_coverage(graph) == []
 
 
-def test_plan_coverage_repairs_to_convergence_without_llm():
-    from alignmentgraph_isd.core.agents.assessment_designer import AssessmentDesignerAgent
-
+def test_an_unrealised_plan_promise_needs_the_model_and_is_not_filled_without_it():
+    """Writing the missing item is a generation, so with no model there is no
+    item. The deterministic stand-in that used to fill it built the question
+    out of the objective's own statement, which reads to any text-similarity
+    measure as perfect objective-assessment correspondence."""
     graph = _plan_graph(
         {"ILO-01": ["diagnostic", "summative"], "ILO-02": ["formative", "summative"]},
         [("ILO-01", "summative")],
     )
     before = checks.plan_coverage(graph)
     assert before
+    trajectory = TrajectoryLogger()
 
-    AssessmentDesignerAgent(HarnessRunConfig(), graph, TrajectoryLogger()).repair(before)
+    repairs.repair("assessment_designer", before,
+                   RepairActor("AssessmentDesignerAgent", HarnessRunConfig(), graph=graph,
+                               trajectory=trajectory).ctx())
 
-    assert checks.plan_coverage(graph) == []
-    # An Apply-level objective must not be repaired with a recognition-only
-    # item, or the Bloom cross-check would fire on the repair itself.
+    assert checks.plan_coverage(graph) == before, "the promise stays open, and stays reported"
+    assert not trajectory.repair_events
     assert not alignment.bloom_assessment_violations(graph)
 
 
-# ── orphan_rubric: the island invisible to both coverage sides ───────────────
-
-def test_orphan_rubric_fires_for_fully_unlinked_criterion():
-    """C6's coverage side is the assessment, C7's is the objective, so a
-    criterion naming neither sits on the unchecked side of both. Measured: a
-    repaired criterion shipped with no aligned_assessment and no
-    aligned_objective and reached the final graph dump as an isolated element
-    node — the class of island the reachability invariant forbids."""
-    graph = AlignmentGraph()
-    graph.add_element_node(NodeType.RUBRIC, "RC-2", {"id": "RC-2", "description": "Scored 0-3."})
-    violations = checks.orphan_rubric(graph)
-    assert [v.metadata["rc_id"] for v in violations] == ["RC-2"]
-
-
-def test_orphan_rubric_silent_when_either_edge_exists():
-    graph = AlignmentGraph()
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01"})
-    graph.add_element_node(NodeType.RUBRIC, "RC-01", {"id": "RC-01"})
-    alignment.record_provenance(graph, "C6", ["assessment:AT-01"], "rubric:RC-01")
-    assert checks.orphan_rubric(graph) == []
-
-    graph2 = AlignmentGraph()
-    graph2.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01"})
-    graph2.add_element_node(NodeType.RUBRIC, "RC-01", {"id": "RC-01", "aligned_objective": "ILO-01"})
-    alignment.match_id(graph2, "C7", field="aligned_objective")
-    assert checks.orphan_rubric(graph2) == []
-
-
-def test_orphan_rubric_repair_prefers_uncovered_item_and_converges():
-    from alignmentgraph_isd.core.agents.rubric_designer import RubricDesignerAgent
-
-    graph = AlignmentGraph()
-    graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01", "level": "apply"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {
-        "item_id": "AT-01", "type": "performance_task", "aligned_objective": "ILO-01"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-02", {
-        "item_id": "AT-02", "type": "short_answer", "aligned_objective": "ILO-01"})
-    graph.add_element_node(NodeType.RUBRIC, "RC-A", {
-        "id": "RC-A", "aligned_assessment": "AT-01", "aligned_objective": "ILO-01",
-        "description": "Scored 0-3 against observable criteria."})
-    alignment.record_provenance(graph, "C6", ["assessment:AT-01"], "rubric:RC-A")
-    graph.add_element_node(NodeType.RUBRIC, "RC-2", {"id": "RC-2", "description": "Scored 0-3."})
-
-    before = checks.orphan_rubric(graph)
-    assert before
-    RubricDesignerAgent(HarnessRunConfig(), graph, TrajectoryLogger()).repair(before)
-
-    assert checks.orphan_rubric(graph) == []
-    # attached to the item that had no criterion, closing a real C6 gap
-    # instead of piling a second criterion onto AT-01
-    data = graph.get_node("rubric:RC-2")["data"]
-    assert data["aligned_assessment"] == "AT-02"
-    assert data["aligned_objective"] == "ILO-01"

@@ -124,7 +124,7 @@ class RetrievalAgent:
 
     def run_agentic(self, llm, query: str, task_name: str, *, log_llm_call=None) -> dict:
         """Run the bounded JSON tool loop and return a standard result dict."""
-        from ..agents.base import parse_json_response
+        from ..llm_io import parse_json_response
 
         tool_index = {tool.name: tool for tool in self.tools}
         tool_descriptions = "\n".join(f"- {t.name}: {t.description}" for t in self.tools)

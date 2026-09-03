@@ -124,8 +124,51 @@ that only appear under load:
    "snapshot" or a dictionary-changed-size error mid-iteration.
 2. **Never touch the database from the callback.** A SQLAlchemy session is not
    thread-safe, and a run's progress must not depend on the database.
-3. **Never block in the callback.** It runs inside a LangGraph node; anything
+3. **Never block in the callback.** It runs inside the agent's own tool loop; anything
    slow there slows the run itself.
+
+### Agent contexts
+
+`GET /api/runs/{id}/contexts` returns one entry per agent — its system turn, the
+whole transcript it accumulated, and the tool schemas it was bound. The harness
+publishes them through `on_event` (`context_snapshot`) as each agent finishes;
+they are held as run state and saved as `contexts.json`.
+
+State rather than forwarded events, for the reason the graph is: a transcript is
+large and only its finished form is worth reading. And deliberately NOT folded
+into `trajectory`/`trajectory_deep` — the judge reads those and the benchmark
+compares them across arms, so doubling their size to serve a viewer would change
+what is measured.
+
+### Downloading a transcript
+
+`GET /api/runs/{id}/transcript/export` returns every agent's transcript as
+Markdown — the system turn, each message in order, and the tool schemas bound
+alongside them. `?index=N` picks one context out of the list.
+
+Markdown rather than JSON because `/contexts` already serves the JSON a tool
+would want, and this is the artifact a PERSON reads end to end. An INDEX rather
+than a label because labels repeat: a stage that was regenerated publishes one
+context per attempt, told apart by position and `attempt`, not by name.
+
+### Exporting a run
+
+`GET /api/runs/{id}/trajectory/export` returns the whole trace as ONE
+downloadable file — `metadata` (per-stage `autonomy`, the residual audit,
+repair metrics, token usage), `trajectory` (the judge-visible trio plus the
+structured event log) and `trajectory_deep` (the full-fidelity action log),
+under the run's identity.
+
+The pieces are each served by `/artifacts/{name}` already, which is what the UI
+reads. That is not an export: reassembling a run from four fetches is the step
+someone doing it by hand gets wrong, and the four are only interpretable
+together — an action log without `autonomy` cannot say whether a stage ran out
+of turns, and `autonomy` without the log cannot say what it did with them.
+
+Exporting mid-run returns what has been recorded so far, from the live event
+log, under `live_events` with `complete: false`. A run that looks stuck is the
+one you most want to read; giving that file the same shape as a finished one
+would be a trap, so the wire events keep their own key.
 
 ### Events, and why the graph is not one
 

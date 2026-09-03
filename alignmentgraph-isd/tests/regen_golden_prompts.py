@@ -15,51 +15,41 @@ from pathlib import Path
 
 
 def composed_prompts() -> dict[str, str]:
-    """Every prompt constant the golden fixture pins, keyed
-    ``"<module-shortname>.<CONSTANT_NAME>"``. Kept as one function (not
-    inlined in the test) so the test and the regen script can never drift
-    from each other on WHICH constants are pinned."""
-    from alignmentgraph_isd.core.agents import (
-        activity_designer, activity_developer, assessment_designer, assessment_developer,
-        content_designer, implementation_planner, material_developer,
-        outcome_designer, rubric_developer, single_designer,
-    )
+    """Every prompt the golden fixture pins.
 
-    return {
-        "outcome._SYSTEM_ANALYZE": outcome_designer._SYSTEM_ANALYZE,
-        # Course goal (Hop B1) then objectives grounded in it (Hop B2) —
-        # split 2026-08-28 from one combined call (see
-        # OutcomeDesignerAgent's docstring).
-        "outcome._SYSTEM_GOAL": outcome_designer._SYSTEM_GOAL,
-        "outcome._SYSTEM_DESIGN": outcome_designer._SYSTEM_DESIGN,
-        # Assessment: dispatch (plan, then dev-plan grouping) + per-set Developer.
-        "assessment._SYSTEM_PLAN": assessment_designer._SYSTEM_PLAN,
-        "assessment._SYSTEM_DEV_PLAN": assessment_designer._SYSTEM_DEV_PLAN,
-        "assessment_developer._SYSTEM": assessment_developer._SYSTEM,
-        # Activities: same shape as assessment.
-        "activity._SYSTEM_PLAN": activity_designer._SYSTEM_PLAN,
-        "activity._SYSTEM_DEV_PLAN": activity_designer._SYSTEM_DEV_PLAN,
-        "activity_developer._SYSTEM": activity_developer._SYSTEM,
-        # Content: dispatch is deterministic grouping (no dev-plan LLM call).
-        "content._SYSTEM_MODULES": content_designer._SYSTEM_MODULES,
-        "material_developer._SYSTEM": material_developer._SYSTEM,
-        # Rubrics: no dispatch call at all — only the per-item Developer.
-        "rubric_developer._SYSTEM": rubric_developer._SYSTEM,
-        "implementation._SYSTEM": implementation_planner._SYSTEM,
-        # Single arm: one persona + one task per state (dispatch task for the
-        # three dev-plan families, plus their own per-set task).
-        "single._SYSTEM": single_designer._SYSTEM,
-        "single._TASK_ANALYSIS": single_designer._TASK_ANALYSIS,
-        "single._TASK_OUTCOMES": single_designer._TASK_OUTCOMES,
-        "single._TASK_ASSESSMENT": single_designer._TASK_ASSESSMENT,
-        "single._TASK_ASSESSMENT_ITEMS": single_designer._TASK_ASSESSMENT_ITEMS,
-        "single._TASK_ACTIVITIES": single_designer._TASK_ACTIVITIES,
-        "single._TASK_ACTIVITY_SET": single_designer._TASK_ACTIVITY_SET,
-        "single._TASK_CONTENT": single_designer._TASK_CONTENT,
-        "single._TASK_MATERIALS_UNIT": single_designer._TASK_MATERIALS_UNIT,
-        "single._TASK_RUBRICS": single_designer._TASK_RUBRICS,
-        "single._TASK_IMPLEMENTATION": single_designer._TASK_IMPLEMENTATION,
+    Until 2026-09-01 this also pinned the six scripted specialists' and
+    ``SingleDesignerAgent``'s prompt constants; they went with the StateGraph
+    pipeline. What remains is what both decomposition arms actually compose
+    from — the agentic step table and its bound tool schemas — which is now the
+    whole comparability surface rather than half of it.
+    """
+    return _agentic_prompts()
+
+
+def _agentic_prompts() -> dict[str, str]:
+    """The executor's own comparability surface.
+
+    Under native tool calling the prompt is only half of what the model sees —
+    the bound TOOL SCHEMAS are the other half, and a change to either is a
+    change to what the ladder measured. So both are pinned: the per-stage block
+    (task + schema + rules), the shared workflow overview, and the serialized
+    tool specs for each stage in each context mode."""
+    from alignmentgraph_isd.core.agentic import tools as agentic_tools
+    from alignmentgraph_isd.core.agentic.loop import _WORKFLOW_OVERVIEW
+    from alignmentgraph_isd.core.agentic.specialists import SINGLE_PERSONA, STEPS
+
+    pinned: dict[str, str] = {
+        "agentic._WORKFLOW_OVERVIEW": _WORKFLOW_OVERVIEW,
+        "agentic.SINGLE_PERSONA": SINGLE_PERSONA,
     }
+    for step in STEPS:
+        pinned[f"agentic.{step.name}.persona"] = step.persona
+        pinned[f"agentic.{step.name}.task_block"] = step.task_block()
+        for context_mode, graph_mode in (("graph", True), ("prose", False)):
+            specs = agentic_tools.tool_specs(step, graph_mode=graph_mode)
+            pinned[f"agentic.{step.name}.tools.{context_mode}"] = json.dumps(
+                specs, ensure_ascii=False, indent=2, sort_keys=True)
+    return pinned
 
 
 def main() -> None:

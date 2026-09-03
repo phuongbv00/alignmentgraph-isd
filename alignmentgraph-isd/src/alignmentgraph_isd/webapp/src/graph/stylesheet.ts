@@ -5,8 +5,9 @@ import type { StylesheetStyle } from 'cytoscape'
  * (`core/alignment_graph/viz.py`) so a screenshot from the app and one from
  * `dot -Tsvg` read as the same picture.
  *
- * The type list mirrors `NodeType` exactly: the six core types (course goal,
- * objective, assessment, activity, content, rubric — the C1–C7 participants)
+ * The type list mirrors `NodeType` exactly: the five core types (course goal,
+ * objective, assessment, activity, content — the C1–C5 participants; the sixth
+ * was RUBRIC, retired 2026-09-02)
  * plus the support types the P-relations touch. Cytoscape has no folder/note
  * shapes, so those map to the closest available polygon.
  */
@@ -18,7 +19,6 @@ const SHAPES: Record<string, string> = {
   assessment: 'ellipse',
   activity: 'ellipse',
   content: 'rectangle', // viz: folder
-  rubric: 'tag', // viz: note
   // Support types (visible mostly with the provenance layer on): analysis
   // inputs are hexagons, evaluation outputs diamonds, plans plain rectangles.
   gap: 'hexagon',
@@ -38,7 +38,6 @@ const FILLS: Record<string, string> = {
   assessment: '#dbeafe',
   activity: '#dcfce7',
   content: '#f3f4f6',
-  rubric: '#ede9fe',
   material: '#f3f4f6',
   implementation_plan: '#f3f4f6',
   gap: '#fef2f2',
@@ -182,14 +181,14 @@ export function buildStylesheet(): StylesheetStyle[] {
 }
 
 // Edge colour = HOW the relation was established (the evidence mechanism);
-// the Alignment/Provenance toggles = WHICH relation class (C1–C7 core vs
+// the Alignment/Provenance toggles = WHICH relation class (C1–C5 core vs
 // P1–P11 secondary, solid vs dotted). The two axes are independent: C1/C5/C6
 // are core yet provenance-established, so a grey edge can still be core.
 export const LEGEND = {
   edges: [
-    { label: 'established by matched ids (assessed_by / practiced_by / prepares_for / measures)', colour: EDGE_COLOURS.id },
+    { label: 'established by matched ids (assessed_by / practiced_by / prepares_for)', colour: EDGE_COLOURS.id },
     { label: 'established by matched types (realizes)', colour: EDGE_COLOURS.type },
-    { label: 'established by provenance (decomposes_to / supports / evaluated_by, …)', colour: EDGE_COLOURS.provenance },
+    { label: 'established by provenance (decomposes_to / supports, …)', colour: EDGE_COLOURS.provenance },
     { label: 'Bloom mismatch on an assessed_by / practiced_by edge', colour: '#dc2626' },
   ],
   nodes: [
@@ -199,6 +198,5 @@ export const LEGEND = {
     { label: 'assessment task (AT)', colour: '#dbeafe' },
     { label: 'activity (TLA)', colour: '#dcfce7' },
     { label: 'content module / material', colour: '#f3f4f6' },
-    { label: 'rubric criterion', colour: '#ede9fe' },
   ],
 }

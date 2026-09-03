@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import {
-  ChevronDown, ChevronUp, GitBranch, Layers, ShieldCheck, Sparkles,
+  ChevronDown, ChevronUp, Download, GitBranch, Layers, Loader2, ShieldCheck, Sparkles,
 } from 'lucide-react'
+import { api } from '../api/client'
 import {
   agentHue, agentShortName, buildPhaseTimeline, phaseLabel,
   timelineAgents, writesSummary, type PhaseBlock,
@@ -11,6 +12,10 @@ import type { DeepAction, Selection } from '../api/types'
 
 interface Props {
   actions: DeepAction[]
+  /** Null before the first run of this program. */
+  runId: string | null
+  runStarted: boolean
+  runActive: boolean
   selection: Selection
   onSelect: (selection: Selection) => void
 }
@@ -18,13 +23,16 @@ interface Props {
 /**
  * The run as a story: a vertical, phase-anchored timeline.
  *
- * Time flows down the rail; each workflow phase is one card summarised to its
- * beats (model calls → artifacts written → self-check), and concurrent
- * fan-out phases sit side by side. The full
+ * Time flows down the rail; each ADDIE stage is one card summarised to its
+ * beats (model turns → work sets dispatched → artifacts submitted →
+ * self-check). The parallel-group rendering is retained for archived runs from
+ * the concurrent pipeline; the executor is sequential today. The full
  * audit detail is behind each card's "N graph ops" chip (or all at once via
  * the Audit toggle) — demoted, never dropped.
  */
-export function PhaseTimeline({ actions, selection, onSelect }: Props) {
+export function PhaseTimeline({
+  actions, runId, runStarted, runActive, selection, onSelect,
+}: Props) {
   const blocks = useMemo(() => buildPhaseTimeline(actions), [actions])
   const agents = useMemo(() => timelineAgents(blocks), [blocks])
   const [agentFilter, setAgentFilter] = useState<string | null>(null)
@@ -61,6 +69,27 @@ export function PhaseTimeline({ actions, selection, onSelect }: Props) {
           >
             {audit ? 'Story' : 'Audit'}
           </button>
+          {runId && runStarted && (
+            // Here rather than in the run header: what it exports is THIS view's
+            // data, and an export control sitting next to Run/Cancel reads as a
+            // run-level action that would carry the whole run with it.
+            //
+            // A link, not a fetch-and-blob: the server names the file in
+            // Content-Disposition, and pulling the JSON into memory only to
+            // re-serialize it here would drop that name and re-encode a file
+            // that is already exactly what should land on disk.
+            <a
+              className="btn small icon-label"
+              href={api.trajectoryExportUrl(runId)}
+              download
+              title={runActive
+                ? 'Download what has been recorded so far (marked incomplete)'
+                : 'Download this trajectory: the judge-visible streams and the full action log'}
+            >
+              <Download size={12} />
+              {runActive ? 'Export so far' : 'Export'}
+            </a>
+          )}
         </div>
 
         <div className="pt-rail">
@@ -104,8 +133,11 @@ export function PhaseTimeline({ actions, selection, onSelect }: Props) {
 
 function isDimmed(block: PhaseBlock, agentFilter: string | null): boolean {
   // Harness blocks (aggregate) stay visible under any filter: they are the
-  // connective tissue the filtered agent's work runs through.
-  return agentFilter !== null && block.kind === 'generation' && block.agent !== agentFilter
+  // connective tissue the filtered agent's work runs through. A stage block
+  // matches on any agent that acted in it, so filtering to a Developer keeps
+  // the stage it worked inside.
+  return agentFilter !== null && block.kind === 'generation'
+    && !block.agents.includes(agentFilter)
 }
 
 /** Consecutive blocks sharing a parallel group id render side by side. */
@@ -165,8 +197,23 @@ function PhaseCard({
             {agentShortName(block.agent)}
           </span>
         )}
+        {/* The Developers this stage dispatched to, named: the fan-out is the
+            multi-agent claim at its second scale, and a card that showed only
+            the Designer would hide it. */}
+        {block.agents.slice(1).map((agent) => {
+          const developerHue = agentHue(agent)
+          return (
+            <span
+              key={agent}
+              className="pt-pill"
+              style={{ background: developerHue.bg, color: developerHue.fg, opacity: 0.75 }}
+            >
+              {agentShortName(agent)}
+            </span>
+          )
+        })}
         <span className="pt-meta muted small">
-          {block.durationMs !== null ? `${Math.round(block.durationMs / 1000)}s` : 'running…'}
+          {block.durationMs !== null ? `${Math.round(block.durationMs / 1000)}s` : <Loader2 size={13} className="spin" />}
         </span>
       </header>
 
@@ -192,13 +239,31 @@ function PhaseCard({
           <div className="pt-line">
             <Sparkles size={13} className="pt-line-icon" />
             <span>
-              {block.modelCalls} model call{block.modelCalls === 1 ? '' : 's'}
+              {/* One turn of the act->observe loop, not one generation: a stage
+                  reads, submits, and is answered, so turns and artifacts are
+                  different counts and both matter. */}
+              {block.modelCalls} model turn{block.modelCalls === 1 ? '' : 's'}
+              {block.workSets > 0 && (
+                <> · dispatch <strong>{block.workSets} work set{block.workSets === 1 ? '' : 's'}</strong></>
+              )}
               {Object.keys(block.writes).length > 0 && (
-                <> → write <strong>{writesSummary(block.writes)}</strong></>
+                <> → submit <strong>{writesSummary(block.writes)}</strong></>
               )}
               {block.edgesDrawn > 0 && <> · draw {block.edgesDrawn} edges</>}
             </span>
           </div>
+          {block.routedViolations > 0 && (
+            <div className="pt-line">
+              <GitBranch size={13} className="pt-line-icon" />
+              <span>
+                routed <strong>{block.routedViolations}</strong> residual violation
+                {block.routedViolations === 1 ? '' : 's'} here
+                {block.routedViolationTypes.length > 0 && (
+                  <span className="muted"> ({[...new Set(block.routedViolationTypes)].join(', ')})</span>
+                )}
+              </span>
+            </div>
+          )}
           {(block.checkRounds.length > 0 || recoveryTotal > 0) && (
             <div className="pt-line">
               <ShieldCheck size={13} className="pt-line-icon" />

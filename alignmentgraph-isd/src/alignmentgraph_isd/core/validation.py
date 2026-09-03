@@ -1,10 +1,10 @@
 """Structural schema validation for graph sections and the ADDIE aggregate.
 
-This is deliberately separate from ``PedagogicalVerifierAgent``: this module
-only checks *structure* (required fields present, correct JSON types, well-formed
-ids), while the verifier checks *pedagogy* (alignment, Bloom, coverage,
-feasibility). Schema errors found here are routed back to the owning specialist
-agent through the auditor, exactly like a coverage gap.
+This is deliberately separate from ``core/checks.py``: this module only checks
+*structure* (required fields present, correct JSON types, well-formed ids),
+while the checks module checks *pedagogy* (alignment, Bloom, coverage,
+feasibility). Schema errors found here reach the residual audit exactly like a
+coverage gap.
 """
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ _ID_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_:\-]*$")
 _PLACEHOLDER_TOKEN = re.compile(r"^<[^<>]{1,80}>$")
 
 #: Suffix shared by every placeholder error, so the regen loop can filter for
-#: them exactly like `required field is missing or empty` (see workflow.py).
+#: them exactly like `required field is missing or empty` (see outputs.py).
 PLACEHOLDER_FIELD_MARKER = "schema placeholder text left unfilled"
 
 _PLACEHOLDER_SCAN_DEPTH = 6

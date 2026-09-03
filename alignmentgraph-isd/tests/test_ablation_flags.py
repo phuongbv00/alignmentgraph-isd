@@ -4,84 +4,18 @@ switches exactly its own mechanism, independent of the other."""
 from __future__ import annotations
 
 from alignmentgraph_isd import HarnessRunConfig, run_design_brief
-from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
-from alignmentgraph_isd.core.workflow import build_workflow
-from alignmentgraph_isd.core.agents.assessment_designer import AssessmentDesignerAgent
+from alignmentgraph_isd.core.alignment_graph import AlignmentGraph
 from alignmentgraph_isd.core.prose_store import ProseStore
 from alignmentgraph_isd.core.trajectory import TrajectoryLogger
 
+from alignmentgraph_isd.core.agentic.specialists import STEPS
 from conftest import FakeChatModel, events_of, load_brief
-
-MULTI_AGENT_NODES = {
-    "outcome_designer", "assessment_designer", "activity_designer",
-    "content_designer", "rubric_designer", "implementation_planner", "aggregate",
-}
-
-
-def _compiled_node_names(config, brief):
-    compiled = build_workflow(config, AlignmentGraph(), TrajectoryLogger(), brief)
-    return set(compiled.get_graph().nodes)
 
 
 def test_flags_default_on():
     config = HarnessRunConfig()
     assert config.agent_mode == "multi"
     assert config.context_mode == "graph"
-
-
-def test_multi_mode_wires_all_six_designers(fake_config):
-    brief = load_brief("minimal_brief.json")
-    names = _compiled_node_names(fake_config, brief)
-    assert MULTI_AGENT_NODES <= names
-
-
-def test_single_mode_wires_one_monolithic_node(fake_llm_factory):
-    config = HarnessRunConfig(llm_factory=fake_llm_factory, agent_mode="single")
-    brief = load_brief("minimal_brief.json")
-    names = _compiled_node_names(config, brief)
-    assert "monolithic_designer" in names
-    assert not (MULTI_AGENT_NODES - {"aggregate"}) & names
-    # Aggregation stays; the implementation planner does NOT get its own node
-    # here — the single agent covers it as one of its own states, so wiring it
-    # separately would run implementation twice and reintroduce a second persona.
-    assert "aggregate" in names
-    assert "implementation_planner" not in names
-
-
-#: The dev-plan fan-out (2026-08-28) gives assessment/activity/content/rubric
-#: three nodes each (dispatch keeps the family's own name, so it is already
-#: in MULTI_AGENT_NODES) instead of one flat node — see core/workflow.py's
-#: FANOUT_FAMILIES / _FANOUT_NODE_PREFIX.
-FANOUT_DEVELOP_FINALIZE_NODES = {
-    f"{prefix}_{suffix}"
-    for prefix in ("assessment", "activity", "content", "rubric")
-    for suffix in ("developer", "finalize")
-}
-
-
-def test_graph_and_prose_multi_mode_share_the_same_topology(fake_llm_factory):
-    """`context_mode` swaps only the substrate a Designer reads/writes
-    (AlignmentGraph vs. the graph-free ProseStore blackboard), never the
-    wiring: both build the identical topology — the linear six-Designer
-    pipeline, with four of those families expanded into their own
-    dispatch/develop/finalize fan-out (2026-08-28) — with no checkpoint/
-    router/revision-plumbing nodes at all (removed 2026-08-28 — see
-    core/workflow.py's module docstring)."""
-    brief = load_brief("minimal_brief.json")
-
-    graph_config = HarnessRunConfig(llm_factory=fake_llm_factory)
-    graph_names = _compiled_node_names(graph_config, brief)
-
-    prose_config = HarnessRunConfig(llm_factory=fake_llm_factory, context_mode="prose")
-    compiled = build_workflow(prose_config, None, TrajectoryLogger(), brief, ProseStore())
-    prose_names = set(compiled.get_graph().nodes)
-
-    assert MULTI_AGENT_NODES <= graph_names
-    assert MULTI_AGENT_NODES <= prose_names
-    assert FANOUT_DEVELOP_FINALIZE_NODES <= graph_names
-    assert FANOUT_DEVELOP_FINALIZE_NODES <= prose_names
-    assert graph_names == prose_names, "the two substrates must build the IDENTICAL topology"
-    assert not any("validate" in n or "_set_ctx" in n for n in graph_names | prose_names)
 
 
 def test_prose_store_context_is_verbatim_json_of_deposited_documents():
@@ -187,6 +121,8 @@ def test_prose_prompts_carry_no_docket_and_no_graph_records(fake_llm_factory):
                  if isinstance(m, dict) and m.get("role") == "user"), ""))
             return super().invoke(messages)
 
+    # No graph-derived fact may reach a prose prompt.
+    captured.clear()
     config = HarnessRunConfig(context_mode="prose")
     config.llm_factory = lambda: _Spy()
     run_design_brief(brief, config)
@@ -194,142 +130,94 @@ def test_prose_prompts_carry_no_docket_and_no_graph_records(fake_llm_factory):
     joined = "\n".join(captured)
     for marker in ("=== ALIGNMENT STATE ===", "missing for:", "PLAN-PROMISED",
                    "--C2-assessed_by-->", "[OBJECTIVE:objective:"):
-        assert marker not in joined, f"prose prompt carries graph-derived marker {marker!r}"
-    # Prior documents do reach later specialists, verbatim.
-    assert "[OBJECTIVE]" in joined and "[ASSESSMENT_PLAN]" in joined
-    # 2026-08-28: assessment_designer's dev-plan hop reads objectives + the
-    # plan it just committed (not analysis context, which only the FIRST
-    # hop -- planning the strategy itself -- needs), so this is the header
-    # its dev-plan call carries, not the pre-fan-out single-call header.
-    assert any("=== LEARNING OBJECTIVES + ASSESSMENT PLAN ===" in u for u in captured)
+        assert marker not in joined, (
+            f"prose prompt carries graph-derived marker {marker!r}")
+
+    # Prior documents are no longer INJECTED into the prompt: the prose arm
+    # offers ``read_document`` and the model calls it, symmetric with
+    # ``read_nodes`` in graph mode. So what this file asserts is the absence
+    # above; that the documents are reachable AT ALL is covered end to end by
+    # test_agentic_run.py, and the tool's own allowlist by test_agentic_loop.py.
+    from alignmentgraph_isd.core.agentic import tools
+    from alignmentgraph_isd.core.agentic.specialists import STEPS
+
+    prose_tools = tools.tool_names(tools.tool_specs(STEPS[2], graph_mode=False))
+    assert "read_document" in prose_tools and "read_nodes" not in prose_tools
 
 
 def test_single_mode_reports_one_agent_identity_not_five(fake_llm_factory):
-    """The decomposition axis has to be observable in the trajectory, not just
-    in the LangGraph topology. The arm originally reused the five
-    Designer classes as internal steps and each of those hardcodes its own
-    class name in its log_step call, so the `single` arm was emitting a trace
-    naming six distinct agents — identical in shape to the `multi` arm down to
-    the tool-name order. Measured consequence: the judge scored the two arms
-    on byte-identical input, and multi-minus-single on trajectory_score came
-    out at -0.008 to -0.317, i.e. noise around zero by construction."""
+    """The decomposition axis has to be observable in the TRAJECTORY, not only
+    in the configuration.
+
+    The arm once reused the specialist classes as internal steps, and each
+    hardcodes its own name in its log_step call, so `single` emitted a trace
+    naming six distinct agents — identical in shape to `multi` down to the
+    tool-name order. Measured consequence: the judge scored the two arms on
+    byte-identical input and multi-minus-single on trajectory_score came out
+    between -0.008 and -0.317, i.e. noise around zero by construction."""
     brief = load_brief("minimal_brief.json")
 
-    multi = run_design_brief(brief, HarnessRunConfig(llm_factory=fake_llm_factory, agent_mode="multi"))
-    single = run_design_brief(brief, HarnessRunConfig(llm_factory=fake_llm_factory, agent_mode="single"))
+    def run(mode):
+        return run_design_brief(brief, HarnessRunConfig(
+            llm_factory=fake_llm_factory, agent_mode=mode))
 
     def identities(result):
         return {c["args"]["agent"] for c in result["trajectory"]["tool_calls"]}
 
-    # The implementation planner is a specialist now, not a bolt-on, so the
-    # single arm covers it too: one persona for the whole job against NINE —
-    # six Designers (rubric_designer makes no LLM call of its own, so it
-    # never appears here) plus the four dev-plan fan-out families' own
-    # Developer classes (2026-08-28).
-    assert identities(single) == {"SingleDesignerAgent"}
-    assert len(identities(multi)) == 9
+    agentic_multi = run("multi")
+    agentic_single = run("single")
+    # The multi arm reports the stage specialists AND the Developer identities
+    # it spawns per work set (fanout.py); which Developers appear depends on
+    # which families this scenario fans out, so the assertion is on the SHAPE:
+    # single is one actor, multi is many, and only multi spawns Developers.
+    assert identities(agentic_single) == {"SingleDesignerAgent"}
+    developers = {"AssessmentDeveloperAgent", "ActivityDeveloperAgent",
+                  "MaterialDeveloperAgent"}
+    assert identities(agentic_multi) & developers, "the multi arm spawned no Developer"
+    assert not (identities(agentic_single) & developers)
+    assert len(identities(agentic_multi)) > 6
+    assert ([c["tool"] for c in agentic_single["trajectory"]["tool_calls"]]
+            != [c["tool"] for c in agentic_multi["trajectory"]["tool_calls"]])
 
-    single_tools = [c["tool"] for c in single["trajectory"]["tool_calls"]]
-    assert not any(t.startswith(("OutcomeDesigner", "AssessmentDesigner", "AssessmentDeveloper",
-                                 "ActivityDesigner", "ActivityDeveloper", "ContentDesigner",
-                                 "MaterialDeveloper", "RubricDesigner", "RubricDeveloper"))
-                   for t in single_tools)
-    # The two arms must not be indistinguishable to the judge.
-    assert single_tools != [c["tool"] for c in multi["trajectory"]["tool_calls"]]
+    # No second pair of runs: the block that used to sit here re-ran the whole
+    # pipeline twice more and then asserted a strict subset of the above. Its
+    # one distinct check was that no tool name is prefixed with a specialist's,
+    # which the identity assertion already implies — a tool is recorded as
+    # f"{agent}.{action}" (trajectory.py), so `identities(single) ==
+    # {"SingleDesignerAgent"}` is the same fact, stated once.
 
 
 # ── the axis must change its own mechanism and nothing else ─────────────────
 
-def _work_set_total(result) -> int:
-    """Per-work-set LLM calls in a run: one call per set, in BOTH arms."""
-    return sum(int((e.get("context") or {}).get("set_count") or 0)
-               for e in result["trajectory"]["events"] if e["action"] == "dev_plan")
 
-
-def test_retry_ceiling_and_validation_count_match_across_the_decomposition_axis(
-        fake_llm_factory, monkeypatch):
-    """Two scaffolding asymmetries the audit of 2026-08-30 found, both
-    favouring the single arm and neither part of the manipulation:
-
-    * a fan-out state carries the per-set retry story INSIDE
-      ``_run_fanout_state`` (``_regen_missing_sets``, ceiling ``1 + budget``
-      per set). Running it through ``run_generation_step``'s outer
-      ``_regen_loop`` as well stacked the budgets: ``(1+budget)^2`` = 9
-      attempts on a stubborn set against the multi arm's 3.
-    * self-validation is once per FAMILY in the multi arm. The single arm's
-      ``analysis`` and ``outcomes`` are two states of the SAME family, so it
-      ran seven passes to multi's six.
-    """
-    from alignmentgraph_isd.core import workflow as wf
-    from alignmentgraph_isd.core.agents import base as agent_base
-
-    validated: dict[str, list[str]] = {}
-    inner_regens: dict[str, int] = {}
-    orig_validate = wf.NodeFactory._self_validate
-    orig_inner = agent_base.BaseISDAgent._regen_missing_sets
-
-    brief = load_brief("minimal_brief.json")
-    for mode in ("multi", "single"):
-        validated[mode], inner_regens[mode] = [], 0
-
-        def _validate(self, agent, identity, node_name, _tag=mode):
-            validated[_tag].append(node_name)
-            return orig_validate(self, agent, identity, node_name)
-
-        def _inner(self, *a, _tag=mode, **k):
-            inner_regens[_tag] += 1
-            return orig_inner(self, *a, **k)
-
-        monkeypatch.setattr(wf.NodeFactory, "_self_validate", _validate)
-        monkeypatch.setattr(agent_base.BaseISDAgent, "_regen_missing_sets", _inner)
-        run_design_brief(brief, HarnessRunConfig(llm_factory=fake_llm_factory, agent_mode=mode))
-
-    # One self-validation pass per family, in both arms — no family twice.
-    for mode in ("multi", "single"):
-        assert len(validated[mode]) == len(set(validated[mode])), (
-            f"{mode} arm validated a family more than once: {validated[mode]}")
-    assert sorted(validated["multi"]) == sorted(validated["single"]), (
-        f"validated families differ: multi={sorted(validated['multi'])} "
-        f"single={sorted(validated['single'])}")
-
-    # Each arm applies the per-set retry at exactly ONE level. The multi arm's
-    # level is `_regen_missing_sets` inside `finalize_node` (its worker nodes
-    # sit outside any regen loop); the single arm's is the outer `_regen_loop`
-    # re-entering its re-entrant `_run_fanout_state`. If the single arm also
-    # called `_regen_missing_sets`, the two would multiply.
-    assert inner_regens["multi"] > 0, "multi arm lost its per-set retry"
-    assert inner_regens["single"] == 0, (
-        "single arm runs an INNER per-set retry underneath the outer regen "
-        "loop — the ceiling becomes (1+budget)^2 against the multi arm's "
-        "1+budget")
 
 def _flaky_design_factory():
-    """Empty payload for every call whose schema carries learning_objectives,
-    so only node-level regen can recover them. Matches the multi arm's
-    outcome_designer Hop B2 (``_SYSTEM_DESIGN``, per the 2026-08-28 course_goal/
-    LO hop split) and the single arm's still-merged outcomes task — NOT the
-    multi arm's Hop B1 (course_goal alone), whose emptiness doesn't blank
-    OBJECTIVE elements and so wouldn't trigger the outer regen this test
-    checks for."""
+    """Empty payload the FIRST time a call asks for learning objectives, and
+    normal behaviour after that.
+
+    Once, not always: the point is that a fumbled answer is recovered, and a
+    model that fails every time cannot be recovered from by any mechanism. It
+    also has to be once because the single arm's whole workflow — every stage's
+    schema — is in one system prompt, so a fixture keyed on a schema string
+    fires on every call there and would blank the entire run rather than one
+    section."""
     from conftest import _Result
+
+    state = {"failed": False}
 
     class _Flaky(FakeChatModel):
         def bind(self, **_kwargs):
             return self
 
         def invoke(self, messages):
-            # Whole conversation, keyed on the SCHEMA: the single arm carries a
-            # stable persona in `system` and puts the task and schema in
-            # `user`, so a system-only, persona-keyed flake would never fire
-            # there and the test would silently check only one arm.
-            prompt = "\n".join(m.get("content", "") for m in messages
-                               if isinstance(m, dict) and isinstance(m.get("content"), str))
-            if '"learning_objectives"' in prompt:
+            prompt = "\n".join(str(m.get("content", "")) for m in messages
+                                if isinstance(m, dict))
+            if '"learning_objectives"' in prompt and not state["failed"]:
+                state["failed"] = True
                 return _Result("")
             return super().invoke(messages)
 
     return lambda: _Flaky()
-
 
 def test_both_arms_get_the_same_generation_scaffolding(fake_llm_factory):
     """`multi - single` must measure decomposition, not robustness. The single
@@ -339,8 +227,14 @@ def test_both_arms_get_the_same_generation_scaffolding(fake_llm_factory):
     check_events were a constant 1.00/scenario against multi's 7.20, which
     the ablation pooling then reported as mechanism evidence."""
     brief = load_brief("minimal_brief.json")
+    # The single arm asks fewer, broader questions because it collapses the
+    # plan/execute splits — that call-count difference IS the treatment, not a
+    # confound. What the axis claim actually rests on is stated and checked in
+    # ``test_the_agentic_arms_are_two_shapes_not_two_settings``: neither arm was
+    # CUT by its turn budget.
     runs = {
-        mode: run_design_brief(brief, HarnessRunConfig(llm_factory=fake_llm_factory, agent_mode=mode))
+        mode: run_design_brief(brief, HarnessRunConfig(
+            llm_factory=fake_llm_factory, agent_mode=mode,))
         for mode in ("multi", "single")
     }
     multi, single = runs["multi"]["trajectory"], runs["single"]["trajectory"]
@@ -353,10 +247,15 @@ def test_both_arms_get_the_same_generation_scaffolding(fake_llm_factory):
         assert events_of(single, event_type), \
             f"single arm produced no {event_type} events — scaffolding is missing there"
         assert events_of(multi, event_type)
-    # One judge-visible tool call per real model call, in both arms.
+    # No judge-visible tool call without a real model call, in either arm, and
+    # no model call that is neither a step nor a RECORDED recovery. Repairs are
+    # on neither side of this any more: none of them calls the model.
     llm_calls = {m: runs[m]["metadata"]["token_usage"]["llm_calls"] for m in runs}
     for name, trace in (("multi", multi), ("single", single)):
-        assert len(trace["tool_calls"]) == llm_calls[name], f"{name} leaks non-model steps"
+        recovery = len(events_of(runs[name]["trajectory"], "recovery"))
+        assert len(trace["tool_calls"]) <= llm_calls[name], f"{name} leaks non-model steps"
+        assert llm_calls[name] - len(trace["tool_calls"]) <= recovery, (
+            f"{name} made a model call that is neither a step nor a recorded recovery")
 
     # ...and the axis itself still separates them.
     ids = lambda t: {c["args"]["agent"] for c in t["tool_calls"]}  # noqa: E731
@@ -370,202 +269,80 @@ def test_both_arms_get_the_same_generation_scaffolding(fake_llm_factory):
     # arm spending ~44% MORE calls than multi at 9B precisely because its own
     # output inflated the fan-out. Asserting on the raw total would pin a
     # fixture artifact and state the real-world direction backwards.
-    fixed = {name: llm_calls[name] - _work_set_total(runs[name]) for name in runs}
-    assert fixed["single"] < fixed["multi"], (
-        "the single arm should ask fewer, broader FIXED questions (it collapses "
-        "three plan/execute splits); equal counts would mean a split survived")
+    # NOT equal, and not ordered either. The single arm plans its own batching
+    # and the multi arm's set count is a function of its own upstream output,
+    # so call totals are an OUTCOME of each run rather than a property of the
+    # axis — the 2026-08-30 audit measured the single arm spending ~44% MORE
+    # calls than multi at 9B for exactly that reason. What must hold is that
+    # both arms did real work and neither was cut off by its ceiling.
+    assert all(count > len(STEPS) for count in llm_calls.values()), llm_calls
+    for name, result in runs.items():
+        autonomy = result["metadata"]["autonomy"]
+        assert not any(stage.get("via_budget_exhaustion") for stage in autonomy.values()), name
 
 
-def test_single_mode_regenerates_an_empty_section_like_multi_does():
-    """Empty-output regen is scaffolding, not an ablated mechanism. The single
-    arm had none, so on a weak model it would lose artifacts the multi arm
-    retries into existence -- a robustness gap read as a decomposition effect."""
+def test_the_agentic_arms_are_two_shapes_not_two_settings(fake_llm_factory):
+    """The decomposition axis, since the single arm became a ReAct loop.
+
+    It is deliberately a BUNDLE now, not one variable: context boundary, who
+    walks the stages, how many personas, and whether work is delegated. That is
+    what "multi-agent vs single-agent" means to a reader, and it is disclosed as
+    a bundle exactly as `context_mode` is. Equal model effort is therefore NOT
+    the parity requirement any more — an agent that plans its own order and
+    writes its own item batches cannot spend the same number of calls as a
+    harness walking a fixed plan with Developers.
+
+    What is still checkable, and is what the claim rests on: neither arm was
+    CUT by its turn budget. While that holds, a difference in outcome cannot be
+    blamed on the ceiling."""
     brief = load_brief("minimal_brief.json")
-    results = {}
+    runs = {
+        mode: run_design_brief(brief, HarnessRunConfig(
+            llm_factory=fake_llm_factory, agent_mode=mode))
+        for mode in ("multi", "single")
+    }
+    autonomy = {m: runs[m]["metadata"]["autonomy"] for m in runs}
+
+    # Shape: six stage records against one loop record.
+    from alignmentgraph_isd.core.agentic.specialists import STEPS as AGENTIC_STEPS
+
+    assert set(autonomy["multi"]) == {step.name for step in AGENTIC_STEPS}
+    assert set(autonomy["single"]) == {"design"}
+
+    # One actor against many, and only one arm delegates.
+    ids = lambda r: {c["args"]["agent"] for c in r["trajectory"]["tool_calls"]}
+    assert ids(runs["single"]) == {"SingleDesignerAgent"}
+    assert len(ids(runs["multi"])) > 1
+    assert any(i.endswith("DeveloperAgent") for i in ids(runs["multi"]))
+
+    # Both arms still run the shared safeguards — the axis is decomposition,
+    # not "one arm gets checked and the other does not".
+    for mode in runs:
+        assert events_of(runs[mode]["trajectory"], "check"), f"{mode} ran no checks"
+
+    # Neither arm hit its ceiling.
+    assert not autonomy["single"]["design"]["via_budget_exhaustion"]
+    assert not any(s.get("via_budget_exhaustion") for s in autonomy["multi"].values())
+
+def test_an_empty_first_answer_loses_no_artifact_in_either_arm():
+    """Recovery from an empty answer is scaffolding, not an ablated mechanism:
+    an arm that loses artifacts a weaker model fumbled would read as a
+    decomposition effect when it is a robustness gap.
+
+    The two arms recover DIFFERENTLY, which is the axis and not a difference in
+    protection: `multi` re-runs the stage (`regen_empty_section`), while in
+    `single` the stage simply stays open — its `submit_<stage>` tool is still
+    bound — and the agent submits again. So the assertion is on the OUTCOME,
+    which is arm-neutral: nothing is lost either way."""
+    brief = load_brief("minimal_brief.json")
     for mode in ("multi", "single"):
         config = HarnessRunConfig(agent_mode=mode)
         config.llm_factory = _flaky_design_factory()
-        results[mode] = run_design_brief(brief, config)
+        result = run_design_brief(brief, config)
 
-    for mode, result in results.items():
-        regens = [e for e in events_of(result["trajectory"], "recovery")
-                  if e["action"] == "regen_empty_section"]
-        assert regens, f"{mode} arm did not retry an empty section at all"
-
-
-def test_single_mode_uses_one_persona_not_five_specialist_prompts():
-    """Role decomposition lives in the SYSTEM PROMPT. The five Designers are
-    five personas plus five graph-write routines, so an arm that kept all five
-    personas was still a five-specialist pipeline to the model however few
-    LangGraph nodes it ran in — measured: `single` sent ten specialist system
-    prompts byte-identical to `multi`'s.
-
-    The steps themselves stay: the full ADDIE output measures ~37k completion
-    tokens against the ladder's 8192 cap, so a one-call arm would fail by
-    truncation and stand in a token-budget artifact for a decomposition effect.
-    """
-    brief = load_brief("minimal_brief.json")
-    seen: dict[str, list[str]] = {}
-
-    def spy(tag):
-        class _Spy(FakeChatModel):
-            def bind(self, **_kwargs):
-                return self
-
-            def invoke(self, messages):
-                seen.setdefault(tag, []).append(next(
-                    (m.get("content", "") for m in messages
-                     if isinstance(m, dict) and m.get("role") == "system"), ""))
-                return super().invoke(messages)
-
-        return lambda: _Spy()
-
-    for mode in ("multi", "single"):
-        config = HarnessRunConfig(agent_mode=mode)
-        config.llm_factory = spy(mode)
-        run_design_brief(brief, config)
-
-    personas = {mode: {p.partition("\n\n")[0] for p in prompts}
-                for mode, prompts in seen.items()}
-
-    # 13, not 10: the 2026-08-28 dev-plan fan-out gave assessment/activity/
-    # content/rubric their own Developer persona (one call per work set) on
-    # top of each family's Designer persona(s) -- rubric_designer itself
-    # makes no LLM call (its grouping is deterministic), so only its
-    # Developer's persona appears. Plus one more: outcome_designer's
-    # course_goal/LO split (same date) gave course_goal its own persona
-    # (_SYSTEM_GOAL) alongside the objectives persona (_SYSTEM_DESIGN).
-    assert len(personas["multi"]) == 13, "multi should keep one persona per step"
-    # One persona for the WHOLE job, with nothing left over: the implementation
-    # planner is a specialist in the multi arm, so this arm covers it too.
-    assert len(personas["single"]) == 1
-    assert "You are ONE instructional designer" in personas["single"].pop()
-
-    # Fewer, broader questions — the task decomposition is gone too, not just
-    # the personas.
-    assert len(seen["single"]) < len(seen["multi"])
-
-
-def test_both_arms_state_the_same_rules():
-    """Only persona and task granularity may differ between arms. Every other
-    instruction — how many objectives, which formats may claim which Bloom
-    level, what must reference an existing id — has to be word-for-word the
-    same, or `multi - single` measures prompt strength instead.
-
-    It did once: the single arm's outcome task was a hand-written paraphrase
-    that dropped "do not merge unrelated gaps into one objective to hit a
-    count" and the worked Bloom example, and produced 2-3 objectives against
-    the multi-agent arm's 5 on the same scenario. Both arms now compose their
-    prompts from the shared rulebook (core/rulebook.py) — neither derives
-    from the other — and this asserts every rulebook block reaches both arms'
-    rendered prompts verbatim."""
-    from alignmentgraph_isd.core import rulebook
-    from alignmentgraph_isd.core.agents import (
-        activity_designer, activity_developer, assessment_designer, assessment_developer,
-        content_designer, implementation_planner, material_developer,
-        rubric_developer, single_designer,
-    )
-    from alignmentgraph_isd.core.agents import outcome_designer
-
-    triples = (
-        ("ANALYSIS", outcome_designer._SYSTEM_ANALYZE, single_designer._TASK_ANALYSIS),
-        # course_goal (Hop B1) and objectives (Hop B2) are split calls in the
-        # multi arm but still one merged call in the single arm -- both
-        # rulebook blocks must reach that one task.
-        ("COURSE_GOAL", outcome_designer._SYSTEM_GOAL, single_designer._TASK_OUTCOMES),
-        ("OUTCOMES", outcome_designer._SYSTEM_DESIGN, single_designer._TASK_OUTCOMES),
-        # Assessment: dispatch (plan + dev-plan grouping, merged into one
-        # call in the single arm) then a per-set call.
-        ("ASSESSMENT_PLAN", assessment_designer._SYSTEM_PLAN, single_designer._TASK_ASSESSMENT),
-        ("ASSESSMENT_DEV_PLAN", assessment_designer._SYSTEM_DEV_PLAN, single_designer._TASK_ASSESSMENT),
-        ("ASSESSMENT_ITEMS_SET", assessment_developer._SYSTEM, single_designer._TASK_ASSESSMENT_ITEMS),
-        # Activities: same shape as assessment.
-        ("ACTIVITY_PLAN", activity_designer._SYSTEM_PLAN, single_designer._TASK_ACTIVITIES),
-        ("ACTIVITY_DEV_PLAN", activity_designer._SYSTEM_DEV_PLAN, single_designer._TASK_ACTIVITIES),
-        ("ACTIVITIES_SET", activity_developer._SYSTEM, single_designer._TASK_ACTIVITY_SET),
-        # Content: dispatch is deterministic grouping (no dev-plan LLM call),
-        # so only the modules+media call and the per-module call carry rules.
-        ("CONTENT_MODULES", content_designer._SYSTEM_MODULES, single_designer._TASK_CONTENT),
-        ("MATERIALS_UNIT", material_developer._SYSTEM, single_designer._TASK_MATERIALS_UNIT),
-        # Rubrics: no dispatch call at all (deterministic, zero LLM calls) —
-        # only the per-item call carries rules, in both arms.
-        ("RUBRICS_ITEM", rubric_developer._SYSTEM, single_designer._TASK_RUBRICS),
-        ("IMPLEMENTATION", implementation_planner._SYSTEM, single_designer._TASK_IMPLEMENTATION),
-    )
-    for family, specialist_prompt, single_task in triples:
-        block = getattr(rulebook, f"RULES_{family}").strip()
-        assert block and block in specialist_prompt, (
-            f"the multi arm dropped rulebook block RULES_{family}")
-        assert block in single_task, (
-            f"the single arm dropped rulebook block RULES_{family}:\n{block[:200]}")
-    # rubric_designer.py itself makes no LLM call any more (deterministic
-    # dispatch) and so composes no rulebook rules at all — nothing to assert
-    # symmetry against there; RubricDeveloperAgent (above) is where
-    # RULES_RUBRICS_ITEM actually reaches a prompt in the multi arm.
-
-
-def test_both_arms_show_the_same_output_exemplars():
-    """RULES parity was enforced from 2026-08-26 but SCHEMA parity never was,
-    and the arms drifted: the single arm carried hand-written JSON exemplars
-    while the multi arm inlined ``rulebook.SCHEMA_*``. Measured gap (audit
-    2026-08-30): `_TASK_ASSESSMENT_ITEMS` showed ONE `performance_task`
-    exemplar against `SCHEMA_ASSESSMENT_ITEMS`' three, omitting the
-    `multiple_choice` case with `options`/`correct_answer` entirely — so the
-    `item_completeness` check and its LLM-backed repair fired more often in
-    the single arm for a reason that is prompt strength, not decomposition.
-    Both arms now inline the SAME block, and this pins it."""
-    from alignmentgraph_isd.core import rulebook
-    from alignmentgraph_isd.core.agents import (
-        activity_designer, activity_developer, assessment_designer, assessment_developer,
-        content_designer, implementation_planner, material_developer, outcome_designer,
-        rubric_developer, single_designer,
-    )
-
-    triples = (
-        ("ANALYSIS", outcome_designer._SYSTEM_ANALYZE, single_designer._TASK_ANALYSIS),
-        ("ASSESSMENT_PLAN", assessment_designer._SYSTEM_PLAN, single_designer._TASK_ASSESSMENT),
-        ("ASSESSMENT_DEV_PLAN", assessment_designer._SYSTEM_DEV_PLAN, single_designer._TASK_ASSESSMENT),
-        ("ASSESSMENT_ITEMS", assessment_developer._SYSTEM, single_designer._TASK_ASSESSMENT_ITEMS),
-        ("ACTIVITY_PLAN", activity_designer._SYSTEM_PLAN, single_designer._TASK_ACTIVITIES),
-        ("ACTIVITY_DEV_PLAN", activity_designer._SYSTEM_DEV_PLAN, single_designer._TASK_ACTIVITIES),
-        ("ACTIVITIES", activity_developer._SYSTEM, single_designer._TASK_ACTIVITY_SET),
-        ("CONTENT_MODULES", content_designer._SYSTEM_MODULES, single_designer._TASK_CONTENT),
-        ("MATERIALS", material_developer._SYSTEM, single_designer._TASK_MATERIALS_UNIT),
-        ("RUBRICS", rubric_developer._SYSTEM, single_designer._TASK_RUBRICS),
-        ("IMPLEMENTATION", implementation_planner._SYSTEM, single_designer._TASK_IMPLEMENTATION),
-    )
-    for family, specialist_prompt, single_task in triples:
-        block = getattr(rulebook, f"SCHEMA_{family}").strip()
-        assert block and block in specialist_prompt, (
-            f"the multi arm dropped rulebook block SCHEMA_{family}")
-        assert block in single_task, (
-            f"the single arm dropped rulebook block SCHEMA_{family}:\n{block[:200]}")
-
-    # Outcomes is the one family the decomposition axis deliberately merges:
-    # multi splits course_goal (Hop B1) and objectives (Hop B2) into two calls
-    # with two schemas, single asks for both in one. Parity here means the
-    # merged schema must not ask for LESS than the two split ones together.
-    assert rulebook.SCHEMA_COURSE_GOAL.strip() in outcome_designer._SYSTEM_GOAL
-    assert rulebook.SCHEMA_LEARNING_OBJECTIVES.strip() in outcome_designer._SYSTEM_DESIGN
-    assert rulebook.SCHEMA_OUTCOMES.strip() in single_designer._TASK_OUTCOMES
-    for split in (rulebook.SCHEMA_COURSE_GOAL, rulebook.SCHEMA_LEARNING_OBJECTIVES):
-        for line in (ln.strip() for ln in split.splitlines()):
-            if line in ("{", "}", ""):
-                continue
-            assert line in rulebook.SCHEMA_OUTCOMES, (
-                f"the merged SCHEMA_OUTCOMES asks for less than the split schemas: {line!r}")
-
-    # ...and no arm may reintroduce a hand-written exemplar: every JSON opening
-    # brace in a single-arm task must belong to a rulebook block.
-    for name in [n for n in dir(single_designer) if n.startswith("_TASK_")]:
-        task = getattr(single_designer, name)
-        schemas = [getattr(rulebook, s) for s in dir(rulebook) if s.startswith("SCHEMA_")]
-        stripped = task
-        for schema in sorted(schemas, key=len, reverse=True):
-            stripped = stripped.replace(schema.strip(), "")
-        assert "{\n" not in stripped, (
-            f"{name} carries a hand-written JSON exemplar outside the rulebook")
-
+        objectives = (result["addie_output"].get("design") or {}).get("learning_objectives")
+        assert objectives, f"{mode} arm lost the section its first answer fumbled"
+        assert not result["metadata"]["validation_errors"], mode
 
 def test_composed_prompts_match_golden_fixture():
     """The refactor from prompt-string derivation to the shared rulebook must
@@ -585,31 +362,6 @@ def test_composed_prompts_match_golden_fixture():
     assert set(composed) == set(golden)
     for key, text in composed.items():
         assert text == golden[key], f"{key} drifted from the golden fixture"
-
-
-def test_single_mode_instantiates_no_specialist_agent_classes(fake_llm_factory, monkeypatch):
-    """The single arm must not borrow the multi arm's agents: its rules come
-    from the rulebook, its repairs from the shared toolbox, its P10/P11 edges
-    from the shared establisher. Instantiating a Designer class anywhere in a
-    single-mode run means a borrowed persona, identity, or routine leaked
-    back in."""
-    from alignmentgraph_isd.core import workflow as wf
-
-    for name, cls in wf.GENERATION_AGENTS.items():
-        def _boom(self, *a, _name=name, **k):
-            raise AssertionError(f"single-mode run instantiated {_name}")
-        monkeypatch.setattr(cls, "__init__", _boom)
-
-    brief = load_brief("minimal_brief.json")
-    result = run_design_brief(
-        brief, HarnessRunConfig(llm_factory=fake_llm_factory, agent_mode="single"))
-    assert result["addie_output"]
-
-    # ...and every repair/recovery row carries the one identity.
-    trajectory = result["trajectory"]
-    assert events_of(trajectory, "repair"), "expected the shared repairs to run"
-    for event in events_of(trajectory, "repair") + events_of(trajectory, "recovery"):
-        assert event["agent"] == "SingleDesignerAgent", event
 
 
 def test_single_arm_asks_for_every_output_field_the_aggregator_reads():
@@ -659,9 +411,17 @@ def _scaffold_graph():
 
 
 def _state_block(graph, mode):
-    config = HarnessRunConfig(llm_factory=lambda: None, context_mode=mode)
-    agent = AssessmentDesignerAgent(config, graph, TrajectoryLogger())
-    return agent._alignment_state_context(edges=("C2",), gaps=("C2",), plan_pairs=True)
+    """The alignment docket, as the graph arm's prompts carry it.
+
+    Was ``BaseISDAgent._alignment_state_context`` while the scripted
+    specialists existed; ``tools.alignment_docket`` is the same block from the
+    same graph — what it asserts is the CONTENT of the docket, which did not
+    move with the executor."""
+    from alignmentgraph_isd.core.agentic import tools
+
+    if mode != "graph":
+        return ""
+    return tools.alignment_docket(graph, edges=("C2",), gaps=("C2",), plan_pairs=True)
 
 
 def test_alignment_state_is_instantiated_not_quantified():
@@ -686,9 +446,10 @@ def test_prose_repairs_operate_on_the_blackboard(fake_llm_factory):
     """The kept safeguards (within-artifact checks + owned repairs) must fix
     the blackboard documents, not a graph. A bad Bloom verb deposited by the
     model comes out repaired in the final output."""
-    from alignmentgraph_isd.core.workflow import NodeFactory
-    from alignmentgraph_isd.core.agents.outcome_designer import OutcomeDesignerAgent
-    from alignmentgraph_isd.core.brief import DesignBrief
+    from conftest import RepairActor
+
+    from alignmentgraph_isd.core import repairs
+    from alignmentgraph_isd.core.outputs import _collect_violations_prose
 
     store = ProseStore()
     store.put("analysis", {"needs_analysis": {"gaps": [{"id": "GAP-01", "description": "g"}]}})
@@ -697,10 +458,11 @@ def test_prose_repairs_operate_on_the_blackboard(fake_llm_factory):
          "statement": "Understand inheritance."},
     ]})
     config = HarnessRunConfig(llm_factory=fake_llm_factory, context_mode="prose")
-    brief = load_brief("minimal_brief.json")
-    nf = NodeFactory(config, None, TrajectoryLogger(), brief, store)
-    agent = OutcomeDesignerAgent(*nf._args())
-    nf.run_generation_step(agent, "OutcomeDesignerAgent", "outcome_designer")
+    trajectory = TrajectoryLogger()
+    violations = _collect_violations_prose("outcome_designer", store)
+    repairs.repair("outcome_designer", violations,
+                   RepairActor("OutcomeDesignerAgent", config,
+                               store=store, trajectory=trajectory).ctx())
 
     repaired = store.items("objective", "learning_objectives")[0]
     assert repaired["bloom_verb"] != "understand", "prose repair did not touch the blackboard"
@@ -709,40 +471,37 @@ def test_prose_repairs_operate_on_the_blackboard(fake_llm_factory):
 def test_alignment_state_empty_graph_renders_nothing():
     from alignmentgraph_isd.core.alignment_graph import AlignmentGraph
 
-    config = HarnessRunConfig(llm_factory=lambda: None)
-    agent = AssessmentDesignerAgent(config, AlignmentGraph(), TrajectoryLogger())
-    assert agent._alignment_state_context(edges=("C2",), gaps=("C2",), plan_pairs=True) == ""
+    from alignmentgraph_isd.core.agentic import tools
+
+    # Nothing established and nothing uncovered: the block is omitted rather
+    # than shown empty, so an early stage is not handed a header with no facts
+    # under it.
+    assert tools.alignment_docket(AlignmentGraph(), edges=("C2",), gaps=("C2",),
+                                  plan_pairs=True) == ""
 
 
 def test_scaffolding_reaches_generation_prompts_in_both_arms(fake_llm_factory):
-    """End-to-end: the docket and the C2 edges actually reach the model's user
-    turn — in the multi arm AND (machinery parity) in the single arm's later
-    states.
+    """End-to-end: the alignment scaffolding actually reaches the model's turn,
+    in BOTH decomposition arms.
 
-    2026-08-28: the [PLAN-PROMISED PAIRS] docket (`_alignment_state_context
-    (plan_pairs=True)`) is retired along with the monolithic items hop it was
-    built for — a fan-out Developer's assigned set is rendered as an
-    EXPLICIT slice of the plan instead ("=== YOUR ASSIGNED SET ===", one
-    call per set, no other pairs to instantiate a docket over), which is a
-    strictly more targeted version of the same guarantee (a produced item
-    can only be for THIS set's pairs, not merely "the model saw all the
-    promised pairs and might get any of them right"). Both arms carry that
-    marker for the SAME family (assessment) — the single arm's per-set call
-    uses the same header text as AssessmentDeveloperAgent (the multi arm's
-    other three Developers use their own family-appropriate header instead —
-    see e.g. ActivityDeveloperAgent's "=== YOUR ASSIGNED BLOCK ===")."""
+    What reaches it changed with the executor, and the docstring is worth
+    keeping honest about which. The relation-JOINED rendering (each objective
+    carrying the items that assess it) went with the scripted specialists — the
+    agentic arms read nodes and edges through separate tools and ask
+    ``coverage_gaps`` what is still open. What both arms still carry into the
+    prompt is the docket: instantiated gaps, named, not a quantified rule. A
+    fanned-out Developer additionally gets its own slice rendered explicitly,
+    which is the stronger version of the same guarantee — a produced item can
+    only be for THIS set's pairs, rather than "the model saw all the promised
+    pairs and might get any of them right"."""
     brief = load_brief("minimal_brief.json")
     captured: dict[str, list[str]] = {}
 
     def spy(tag):
         class _Spy(FakeChatModel):
-            def bind(self, **_kwargs):
-                return self
-
             def invoke(self, messages):
-                captured.setdefault(tag, []).append(next(
-                    (m.get("content", "") for m in messages
-                     if isinstance(m, dict) and m.get("role") == "user"), ""))
+                captured.setdefault(tag, []).append("\n".join(
+                    str(m.get("content", "")) for m in messages if isinstance(m, dict)))
                 return super().invoke(messages)
 
         return lambda: _Spy()
@@ -752,13 +511,206 @@ def test_scaffolding_reaches_generation_prompts_in_both_arms(fake_llm_factory):
         config.llm_factory = spy(mode)
         run_design_brief(brief, config)
 
-    multi, single = captured["multi"], captured["single"]
-    for tag, prompts in (("multi", multi), ("single", single)):
-        assert any("=== YOUR ASSIGNED SET ===" in u for u in prompts), \
-            f"{tag}: assessment's per-set call lost its assigned-set slice"
-        # C2 reaches the activity/rubric prompts as relation-JOINED context
-        # (each objective carrying the items that assess it), not as a docket
-        # edge list any more.
-        assert any("assessed by:" in u for u in prompts), f"{tag}: no C2 join shown"
+    for tag in ("multi", "single"):
+        prompts = captured[tag]
+        assert any("=== ALIGNMENT STATE ===" in u for u in prompts), f"{tag}: no docket"
         assert any("missing for:" in u for u in prompts), f"{tag}: no instantiated gaps"
-        assert any("P10-delivers missing" in u for u in prompts), f"{tag}: no delivery docket"
+
+    # Only the arm that delegates hands a Developer an assignment slice: the
+    # single agent has no Developer to hand one to, and that is the axis.
+    assert any("=== YOUR ASSIGNED SET ===" in u for u in captured["multi"])
+    assert not any("=== YOUR ASSIGNED SET ===" in u for u in captured["single"])
+
+def test_the_docket_reaches_the_graph_arm_and_never_the_prose_arm(fake_llm_factory):
+    """Machinery parity for `context_mode`: the alignment docket (instantiated
+    coverage gaps) reaches the graph arm's prompts in BOTH decomposition arms,
+    and never the prose arm, which has no docket to compute. Asserted over the
+    whole prompt rather than a per-stage message, because the single arm has no
+    per-stage message any more."""
+    brief = load_brief("minimal_brief.json")
+    captured: dict[str, list[str]] = {}
+
+    def spy(tag):
+        class _Spy(FakeChatModel):
+            def invoke(self, messages):
+                captured.setdefault(tag, []).append("\n".join(
+                    str(m.get("content", "")) for m in messages if isinstance(m, dict)))
+                return super().invoke(messages)
+
+        return lambda: _Spy()
+
+    for mode in ("multi", "single"):
+        for context_mode in ("graph", "prose"):
+            config = HarnessRunConfig(agent_mode=mode, context_mode=context_mode)
+            config.llm_factory = spy(f"{mode}-{context_mode}")
+            run_design_brief(brief, config)
+
+    for mode in ("multi", "single"):
+        assert any("=== ALIGNMENT STATE ===" in p for p in captured[f"{mode}-graph"]), \
+            f"{mode}: the graph arm never saw the docket"
+        assert not any("=== ALIGNMENT STATE ===" in p for p in captured[f"{mode}-prose"]), \
+            f"{mode}: the prose arm was shown a docket it cannot compute"
+
+def test_agentic_arm_keeps_one_persona_per_stage_or_one_for_the_job(fake_llm_factory):
+    """Persona parity. The multi arm carries one
+    persona per stage; the single arm carries exactly one for the whole run.
+    Counted over STAGE prompts only — a repair composes its own persona-free
+    system turn, and counting those would make the two arms look alike for a
+    reason that has nothing to do with the axis."""
+    from alignmentgraph_isd.core.agentic.loop import _WORKFLOW_OVERVIEW
+
+    brief = load_brief("minimal_brief.json")
+    seen: dict[str, list[str]] = {}
+
+    def spy(tag):
+        class _Spy(FakeChatModel):
+            def invoke(self, messages):
+                seen.setdefault(tag, []).append(next(
+                    (m.get("content", "") for m in messages
+                     if isinstance(m, dict) and m.get("role") == "system"), ""))
+                return super().invoke(messages)
+
+        return lambda: _Spy()
+
+    for mode in ("multi", "single"):
+        config = HarnessRunConfig(agent_mode=mode)
+        config.llm_factory = spy(mode)
+        run_design_brief(brief, config)
+
+    personas = {
+        mode: {p.partition("\n\n")[0] for p in prompts if _WORKFLOW_OVERVIEW in p}
+        for mode, prompts in seen.items()
+    }
+    assert len(personas["single"]) == 1, personas["single"]
+    assert len(personas["multi"]) > 1, "the multi arm must keep a persona per stage"
+    # And the instructed stage order reaches BOTH arms, verbatim: the pivot
+    # makes the agents autonomous in HOW a stage is executed, never in what
+    # order the stages run.
+    for mode in ("multi", "single"):
+        assert any(_WORKFLOW_OVERVIEW in p for p in seen[mode])
+
+
+def test_neither_arm_composes_its_own_rules_or_schema():
+    """The two arms are shown the SAME stage text, because they read it from the
+    same place.
+
+    While the scripted pipeline existed this had to be enforced: the six
+    specialists and ``SingleDesignerAgent`` each built their own prompt, so a
+    rule added to one could silently miss the other, and a 13-triple test held
+    them together. The agentic executor removed the possibility instead of
+    policing it — both arms render ``AgenticStep.task_block()``, which composes
+    from ``core/rulebook.py``. This test pins that they still BOTH go through
+    it, because the cheapest way to reintroduce the old bug is for one arm to
+    start writing its own.
+    """
+    from alignmentgraph_isd.core.agentic import react
+    from alignmentgraph_isd.core.agentic.specialists import STEPS
+
+    brief = load_brief("minimal_brief.json")
+    config = HarnessRunConfig(llm_factory=lambda: None)
+    loop = react.ReactLoop(config, AlignmentGraph(), TrajectoryLogger(), brief)
+
+    for step in STEPS:
+        task = step.task_block()
+        assert task in loop.stage_brief(step.name), (
+            f"the single arm rewrote {step.name}'s task instead of reading it")
+        # ...and those rules are the RULEBOOK's own text, not a paraphrase the
+        # step table happens to carry. Asserting `step.rules in task` was a
+        # construction tautology: `task_block()` interpolates `self.rules`.
+        from alignmentgraph_isd.core import rulebook
+
+        rulebook_blocks = {
+            v.strip() for k, v in vars(rulebook).items()
+            if k.startswith("RULES_") and isinstance(v, str)
+        }
+        composed = {rulebook.rules_for(state).strip()
+                    for state in rulebook._STATE_FAMILIES}
+        assert step.rules.strip(), f"{step.name} carries no rules at all"
+        assert step.rules.strip() in rulebook_blocks | composed, (
+            f"{step.name} shows rules that are not the rulebook's own text")
+
+
+#: Reference fields the HARNESS reads back off a committed artifact. Each one is
+#: an id (or an enum) the model has to write for something downstream to work,
+#: so a rule that demands one while the schema example never shows it is a
+#: prompt that contradicts itself.
+_HARNESS_READ_FIELDS = (
+    "for_modules", "supports_activities", "covers_topics", "respects_constraints",
+    "aligned_objectives", "aligned_objective", "prepares_for_assessment",
+    "linked_module", "activity_ids", "material_ids", "prerequisite_activities",
+    "addresses_gap", "learner_cognitive_process", "required_cognitive_process",
+)
+
+
+def test_no_rule_demands_a_field_its_schema_example_never_shows():
+    """A field named in the rules must be visible in the JSON example the same
+    family is given — in its STAGE schema or, for a fanned-out family, in its
+    Developer's, since that is where those artifacts are actually written.
+
+    MEASURED FAILURE (found 2026-09-04). ``RULES_CONTENT_MODULES`` said "Every
+    media selection should also set ``for_modules``" while the content stage's
+    schema — a hand-written copy of the rulebook's, drifted from it — showed a
+    media selection without one. ``dev_plans.material_work_units`` reads exactly
+    that field and attaches a media selection with no ``for_modules`` to EVERY
+    module unit: three modules x three media went out as nine media-slots
+    instead of three, and ``RULES_MATERIALS_UNIT`` makes each slot a material,
+    so every Developer was asked for three times what it should write.
+
+    The fix was to stop copying: the content schema now comes from the rulebook
+    like the assessment and activity ones already did. This test is the guard on
+    the copy never coming back."""
+    from alignmentgraph_isd.core.agentic import fanout
+    from alignmentgraph_isd.core.agentic.specialists import STEPS
+
+    for step in STEPS:
+        spec = fanout.SPECS.get(step.name)
+        outputs = spec.outputs if spec else ()
+        schema = "\n".join([step.schema, *(o.schema for o in outputs)])
+        rules = "\n".join([step.rules, *(o.rules for o in outputs)])
+        for field in _HARNESS_READ_FIELDS:
+            if field in rules:
+                assert field in schema, (
+                    f"{step.name}: the rules demand `{field}` but no JSON example "
+                    "shown to that family contains it — the model is being told to "
+                    "write a field it has never seen"
+                )
+
+
+def test_a_fanned_out_family_shows_its_developer_the_same_rulebook():
+    """A Developer's prompt is composed from the same rulebook blocks as its
+    stage's — the fan-out changes WHO writes an artifact, never what the rules
+    for it are."""
+    from alignmentgraph_isd.core import dev_plans
+    from alignmentgraph_isd.core.agentic import fanout
+    from alignmentgraph_isd.core.agentic.specialists import STEPS
+
+    by_name = {step.name: step for step in STEPS}
+    for family, spec in fanout.SPECS.items():
+        dev = fanout.set_step(spec, dev_plans.WorkSet(set_id="S1"), by_name[family])
+        for output in spec.outputs:
+            assert output.rules.strip().splitlines()[0] in dev.rules, (
+                f"{family}'s Developer was given rules the rulebook does not hold")
+            assert output.schema.strip().splitlines()[0] in dev.schema
+
+
+def test_the_instructed_stage_order_is_generated_from_the_step_table():
+    """It was hand-written, and it drifted: it still named a "rubrics" stage
+    long after that stage was removed, so every agent in every run was told to
+    expect a seventh step that does not exist.
+
+    A list beside the table that defines the thing is a list that will disagree
+    with it."""
+    from alignmentgraph_isd.core.agentic.loop import _WORKFLOW_OVERVIEW
+    from alignmentgraph_isd.core.agentic.specialists import STEPS
+
+    for index, step in enumerate(STEPS, start=1):
+        assert f"{index}. {step.name}" in _WORKFLOW_OVERVIEW, step.name
+    # Nothing that is not a step: the drift this guards against is a name
+    # surviving its stage, not a missing one.
+    assert f"{len(STEPS) + 1}." not in _WORKFLOW_OVERVIEW
+    assert "rubrics" not in _WORKFLOW_OVERVIEW
+
+    # Both arms are told the same order — the axis is who holds the context,
+    # not who decides the sequence.
+    from alignmentgraph_isd.core.agentic import react
+    assert react._WORKFLOW_OVERVIEW is _WORKFLOW_OVERVIEW

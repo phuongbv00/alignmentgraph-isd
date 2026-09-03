@@ -5,7 +5,7 @@ import type { AlignmentGraphPayload, GraphEdge } from '../api/types'
 /**
  * A miniature dump with the same structure as a real one: element and section
  * nodes, all three edge layers, an aligned objective and an unaligned one.
- * Relations follow the current C1–C7 / P1–P11 registry; note that C5/C6 are
+ * Relations follow the current C1–C5 / P1–P11 registry; note that C5 is
  * core relations established by PROVENANCE — the case the old mechanism-based
  * layering silently hid.
  */
@@ -24,18 +24,15 @@ function fixture(): AlignmentGraphPayload {
       { id: 'assessment:AT-01', type: 'assessment' },
       { id: 'activity:ACT-01', type: 'activity' },
       { id: 'content:MOD-01', type: 'content' },
-      { id: 'rubric:RC-01', type: 'rubric' },
       { id: 'material:MAT-01', type: 'material' },
       { id: 'improvement_0', type: 'improvement' },
     ],
     edges: [
-      // alignment layer = the CORE relations C1–C7, whatever established them
+      // alignment layer = the CORE relations C1–C5, whatever established them
       edge('C1', 'C1-decomposes_to', 'course_goal_0', 'objective:LO-01', 'provenance'),
       edge('C2', 'C2-assessed_by', 'objective:LO-01', 'assessment:AT-01', 'id'),
       edge('C3', 'C3-practiced_by', 'objective:LO-01', 'activity:ACT-01', 'id'),
       edge('C5', 'C5-supports', 'content:MOD-01', 'activity:ACT-01', 'provenance'),
-      edge('C6', 'C6-evaluated_by', 'assessment:AT-01', 'rubric:RC-01', 'provenance'),
-      edge('C7', 'C7-measures', 'rubric:RC-01', 'objective:LO-01', 'id'),
       // provenance layer = the secondary relations P1–P11 — including P3,
       // which is TYPE-established but still secondary
       edge('P1', 'P1-informs', 'gap:GAP-01', 'objective:LO-01', 'provenance'),
@@ -45,8 +42,8 @@ function fixture(): AlignmentGraphPayload {
       edge('', 'narrates', 'improvement_0', 'objective:LO-01', ''),
     ],
     objective_alignment: {
-      'objective:LO-01': { measured: true, supported: true, evaluated: true, bloom_ok: true, aligned: true },
-      'objective:LO-02': { measured: false, supported: false, evaluated: false, bloom_ok: false, aligned: false },
+      'objective:LO-01': { measured: true, supported: true, bloom_ok: true, aligned: true },
+      'objective:LO-02': { measured: false, supported: false, bloom_ok: false, aligned: false },
     },
     relation_coverage: {},
     metadata: {},
@@ -75,38 +72,36 @@ describe('edge layers', () => {
     expect(edgeLayer(graph.edges[0])).toBe('alignment') // C1, provenance-established
     expect(edgeLayer(graph.edges[1])).toBe('alignment') // C2, id-established
     expect(edgeLayer(graph.edges[3])).toBe('alignment') // C5, provenance-established
-    expect(edgeLayer(graph.edges[4])).toBe('alignment') // C6, provenance-established
-    expect(edgeLayer(graph.edges[6])).toBe('provenance') // P1
-    expect(edgeLayer(graph.edges[7])).toBe('provenance') // P3, TYPE-established but secondary
-    expect(edgeLayer(graph.edges[9])).toBe('scaffolding') // no relation id
+    expect(edgeLayer(graph.edges[4])).toBe('provenance') // P1
+    expect(edgeLayer(graph.edges[5])).toBe('provenance') // P3, TYPE-established but secondary
+    expect(edgeLayer(graph.edges[7])).toBe('scaffolding') // no relation id
   })
 
   it('counts each layer for the controls', () => {
-    expect(layerCounts(fixture())).toEqual({ alignment: 6, provenance: 3, scaffolding: 1 })
+    expect(layerCounts(fixture())).toEqual({ alignment: 4, provenance: 3, scaffolding: 1 })
   })
 })
 
 describe('toCytoscape', () => {
   it('shows only the alignment layer by default', () => {
     const elements = toCytoscape(fixture(), DEFAULT_FILTERS)
-    expect(edges(elements)).toHaveLength(6)
+    expect(edges(elements)).toHaveLength(4)
     // Secondary-only nodes are not pulled in.
     expect(ids(nodes(elements))).not.toContain('gap:GAP-01')
     expect(ids(nodes(elements))).not.toContain('assessment_plan_0')
     expect(ids(nodes(elements))).not.toContain('material:MAT-01')
   })
 
-  it('keeps content modules and the AT↔rubric leg visible in the alignment view', () => {
-    // C5 (content supports activity) and C6 (assessment evaluated by rubric)
+  it('keeps content modules in the alignment view', () => {
+    // CORE alignment; the old mechanism-based rule hid it from the default
+    // view. (The AT↔rubric leg this also used to cover went with the rubric
+    // node type: a criterion is a field of the item it marks, not a node.)
     // are provenance-ESTABLISHED but core relations; the old mechanism-based
     // layering dropped them, which hid every content module and the whole
-    // rubric leg from the default view.
     const elements = toCytoscape(fixture(), DEFAULT_FILTERS)
     expect(ids(nodes(elements))).toContain('content:MOD-01')
-    expect(ids(nodes(elements))).toContain('rubric:RC-01')
     const relationIds = edges(elements).map((e) => e.data.relationId)
     expect(relationIds).toContain('C5')
-    expect(relationIds).toContain('C6')
   })
 
   it('keeps every objective visible even with no edges at all', () => {
@@ -124,8 +119,8 @@ describe('toCytoscape', () => {
     expect(ids(nodes(withProvenance))).toContain('material:MAT-01')
 
     const everything = toCytoscape(fixture(), { alignment: true, provenance: true, scaffolding: true })
-    expect(nodes(everything)).toHaveLength(11)
-    expect(edges(everything)).toHaveLength(10)
+    expect(nodes(everything)).toHaveLength(10)
+    expect(edges(everything)).toHaveLength(8)
   })
 
   it('never emits an edge whose endpoints are not both visible', () => {
@@ -151,11 +146,11 @@ describe('toCytoscape', () => {
 
     expect(aligned.classes).toContain('aligned')
     expect(aligned.classes).not.toContain('unaligned')
-    expect(aligned.data.badge).toBe('✓✓✓')
+    expect(aligned.data.badge).toBe('✓✓')
 
     expect(unaligned.classes).toContain('unaligned')
     expect(unaligned.classes).toContain('bloom-warning')
-    expect(unaligned.data.badge).toBe('✗✗✗')
+    expect(unaligned.data.badge).toBe('✗✗')
   })
 
   it('marks section nodes so they read as holding a whole ADDIE section', () => {

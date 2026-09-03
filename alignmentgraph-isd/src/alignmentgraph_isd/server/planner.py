@@ -5,7 +5,7 @@ A demo affordance, not part of the harness: the brief it produces is an ordinary
 
 The whole design problem here is that a small self-hosted model asked for JSON
 will regularly not return JSON. The ladder in ``_parse`` mirrors what
-``BaseISDAgent._call_llm`` already does for the specialists: constrained
+the harness's own model IO already does for the specialists: constrained
 decoding, then fences, then repair, then a correction turn, then a plain-text
 fallback. A planning turn must never fail — the person is mid-sentence.
 """
@@ -55,10 +55,6 @@ _FALLBACK_REPLY = (
     "Sorry — I did not manage to structure that. Could you tell me the program "
     "title and its subject domain?"
 )
-
-
-def is_configured() -> bool:
-    return not configuration_error()
 
 
 def configuration_error() -> str:

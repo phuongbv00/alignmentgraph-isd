@@ -88,6 +88,11 @@ input, textarea { font: inherit; }
 .btn.primary:hover:not(:disabled) { background: #1d4ed8; }
 .btn.danger { color: var(--bad); border-color: #fecaca; }
 .btn.small { padding: 5px 7px; font-size: 12px; }
+/* `.btn` on an <a> (the trajectory export is a real link, so the browser
+   downloads it without the page holding the file in memory). Anchors do not
+   inherit the button reset above, so they arrive underlined and blue. */
+a.btn { text-decoration: none; color: var(--text); }
+a.btn:hover { background: #f1f5f9; }
 
 /* Lucide renders an SVG that sits on the text baseline by default, which reads
    as misaligned next to a label. Flex centring fixes it once, everywhere. */
@@ -701,3 +706,132 @@ input, textarea { font: inherit; }
 .coverage-fill { height: 100%; background: var(--good); }
 .coverage-fill.partial { background: var(--warn); }
 .coverage-fill.empty { background: var(--bad); }
+
+/* ── context list ───────────────────────────────────────────────────────── */
+/* One row per agent, because the comparison that matters runs DOWN the column:
+   how much context each carried and where it went. The multi arm fills it with
+   one row per stage plus one per work set, the single arm with exactly one. */
+
+.ctx-toolbar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px 0;
+}
+.ctx-toolbar > a { margin-left: auto; }
+.ctx-list { display: flex; flex-direction: column; padding: 12px; gap: 4px; }
+.ctx-row-actions { display: flex; justify-content: flex-end; padding-top: 8px; }
+
+.ctx-row { border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+.ctx-row.open { border-color: var(--border-strong); }
+
+.ctx-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  background: none;
+  border: 0;
+  text-align: left;
+}
+.ctx-head:hover { background: #f8fafc; }
+.ctx-title { font-weight: 500; white-space: nowrap; }
+.ctx-meta { white-space: nowrap; margin-left: auto; }
+
+/* The bar shares ONE scale across every row: a per-row scale would make the
+   smallest context look as full as the largest, which is the comparison this
+   view exists to make. */
+.ctx-bar {
+  flex: 1 1 auto;
+  min-width: 80px;
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.ctx-bar.wide { height: 12px; margin: 6px 0 10px; }
+.ctx-bar-seg { height: 100%; }
+/* One colour per part, in the order they are listed. */
+.seg-system { background: #f97316; }
+.seg-messages { background: #3b82f6; }
+.seg-tools { background: #22c55e; }
+.seg-schemas { background: #a855f7; }
+
+.ctx-budget { margin: 10px 0 4px; }
+.ctx-budget-head { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; }
+.ctx-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.ctx-legend li { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
+.ctx-note { margin: 8px 0 0; }
+.ctx-legend-name { flex: 1 1 auto; }
+.ctx-legend-pct { width: 46px; text-align: right; }
+.ctx-dot { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
+
+.ctx-body { border-top: 1px solid var(--border); padding: 4px 12px 12px; }
+.ctx-section { margin-top: 12px; }
+.ctx-section h4 {
+  display: flex; align-items: center; gap: 6px;
+  margin: 0 0 6px; font-size: 12px; font-weight: 600;
+}
+
+/* Every payload here is model text or JSON: it wraps, it scrolls, and it is
+   capped so one 24k-character transcript cannot bury the rows under it. */
+.ctx-pre {
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow: auto;
+}
+.ctx-call { background: #f8fafc; }
+
+.ctx-tools { display: flex; flex-direction: column; gap: 4px; }
+.ctx-tool > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ctx-tool > summary:hover { background: #f8fafc; }
+.ctx-tool > summary > .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctx-tool > .ctx-pre { margin-top: 4px; }
+
+.ctx-turns { display: flex; flex-direction: column; gap: 8px; }
+/* Coloured by the PART each block counts toward, with the SAME three colours
+   as the bar above it. Colouring by message role instead made the transcript
+   disagree with the budget it is meant to explain. */
+.ctx-turn { border-left: 3px solid var(--border-strong); padding-left: 8px; }
+.ctx-turn.part-messages { border-left-color: #3b82f6; }
+.ctx-turn.part-tools { border-left-color: #22c55e; }
+.ctx-role { display: flex; align-items: center; gap: 5px; margin-bottom: 3px; color: var(--muted); }
+
+/* A turn compaction has taken OUT of the live context. Dimmed rather than
+   hidden: it is part of what this agent was shown, and not part of what the
+   model still sees or of the meter above it. */
+.ctx-compacted {
+  opacity: 0.55;
+  border-left: 2px solid #cbd5e1;
+  padding-left: 6px;
+  margin-left: -8px;
+}
+
+.ctx-badge {
+  display: inline-block;
+  margin: 2px 0 2px 2px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}

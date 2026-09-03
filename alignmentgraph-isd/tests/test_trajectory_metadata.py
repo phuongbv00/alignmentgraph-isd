@@ -4,7 +4,8 @@ from __future__ import annotations
 from alignmentgraph_isd import run_design_brief
 from alignmentgraph_isd.core.trajectory import TrajectoryLogger
 
-from conftest import events_of, load_brief
+from alignmentgraph_isd.core import repairs
+from conftest import RepairActor, events_of, load_brief
 
 
 def test_trajectory_has_a_unified_typed_event_log(fake_config):
@@ -32,7 +33,6 @@ def test_metadata_exposes_repair_metrics(fake_config):
 
 def test_repair_logs_structured_repair_events():
     from alignmentgraph_isd import HarnessRunConfig
-    from alignmentgraph_isd.core.agents.assessment_designer import AssessmentDesignerAgent
     from alignmentgraph_isd.core.checks import Violation
     from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
 
@@ -42,11 +42,19 @@ def test_repair_logs_structured_repair_events():
     traj = TrajectoryLogger()
     config = HarnessRunConfig()
 
+    # A DANGLING-reference C2: the item exists, its `aligned_objective` names
+    # nothing. That is a structural fix over ids the design already holds, so
+    # it repairs without a model. (The other C2 shape — no item at all — is a
+    # generation, and with no model it now writes nothing and logs
+    # `repair_unfilled` instead, which is a different record.)
+    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {
+        "item_id": "AT-01", "question": "Apply X to a case.",
+        "aligned_objective": "ILO-99", "plan_category": "summative"})
     violation = Violation(
-        node_id="objective:ILO-01", edge_type="assessed_by", violation_type="C2",
-        message="ILO-01 unassessed", metadata={"lo_id": "ILO-01"},
+        node_id="assessment:AT-01", edge_type="assessed_by", violation_type="C2",
+        message="AT-01 names no real objective", metadata={"item_id": "AT-01"},
     )
-    AssessmentDesignerAgent(config, graph, traj).repair([violation])
+    repairs.repair("assessment_designer", [violation], RepairActor("AssessmentDesignerAgent", config, graph=graph, trajectory=traj).ctx())
 
     assert traj.repair_events, "expected a structured repair event"
     assert traj.repair_events[0]["context"]["violation_type"] == "C2"
@@ -77,7 +85,13 @@ def test_every_tool_call_corresponds_to_a_real_model_call():
     Measured regression this guards: 15 of 16 repair/revise paths logged a
     tool_call without calling the model, so one run showed 18 tool_calls for
     10 model calls with `repair_coverage` repeated 4x — the lowest redundancy
-    score of all 9 benchmark agents (18.0/25 vs react-isd's 25.0)."""
+    score of all 9 benchmark agents (18.0/25 vs react-isd's 25.0).
+
+    The invariant is one-directional, and used to be written as an equality
+    only because the fixture happened to make it one: recovery plumbing (regen
+    attempts, correction turns, compaction) spends model calls that are not
+    design steps, so model calls legitimately exceed tool_calls. What must never
+    happen is the reverse."""
     from collections import Counter
 
     from alignmentgraph_isd import HarnessRunConfig, run_design_brief
@@ -90,9 +104,42 @@ def test_every_tool_call_corresponds_to_a_real_model_call():
 
     tools = [c["tool"] for c in trajectory["tool_calls"]]
     llm_calls = result["metadata"]["token_usage"]["llm_calls"]
-    assert len(tools) == llm_calls, (
+    # A repair costs no model call since 2026-09-03, so repair_events cannot
+    # explain a gap between the two counts and is deliberately not read here.
+    # Every model call is either a judge-visible step or a RECORDED recovery.
+    # Repairs no longer appear on either side of this: none of them calls the
+    # model (2026-09-03). What does appear is a call that produced no step —
+    # a rejected submit, an invalid turn, a re-send of what is already
+    # committed — and each of those writes a recovery event, which is the
+    # whole point of them being recovery events.
+    recovery = len(events_of(trajectory, "recovery"))
+    assert len(tools) <= llm_calls, (
         f"{len(tools)} tool_calls for {llm_calls} model calls: "
         "a deterministic repair is leaking into the judge-visible surface"
     )
+    assert llm_calls - len(tools) <= recovery, (
+        f"{llm_calls - len(tools)} model calls beyond the judge-visible surface "
+        f"with only {recovery} recovery events: an unaccounted model call"
+    )
     repeated = {name: n for name, n in Counter(tools).items() if n > 1}
     assert not repeated, f"repeated tool names penalise redundancy avoidance: {repeated}"
+
+
+def test_every_recovery_action_is_in_the_recovery_view():
+    """`recovery_events` is the one view that answers "what went wrong in this
+    run". `agentic_gave_up` replaced `agentic_fallback` on 2026-09-01 and was
+    not added to it, so every give-up was invisible there; this pins the two
+    lists together so the next rename cannot repeat it."""
+    from alignmentgraph_isd.core.trajectory import _RECOVERY_ACTIONS, TrajectoryAction
+
+    recovery = {a.value for a in _RECOVERY_ACTIONS}
+    # Actions that record an outcome rather than a recovery: the structured
+    # half of the log.
+    outcomes = {
+        "phase_started", "phase_finished", "node_read", "node_write", "node_add",
+        "node_update", "edge_read", "edge_write", "edge_walk", "llm_call",
+        "agent_step", "validate", "check", "audit", "retrieval", "retrieval_query",
+        "doc_write", "reconcile", "dev_plan",
+    }
+    assert recovery | outcomes == {a.value for a in TrajectoryAction}
+    assert not recovery & outcomes

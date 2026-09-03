@@ -4,7 +4,6 @@ from __future__ import annotations
 import io
 import json
 
-import pytest
 
 from alignmentgraph_isd.server import llm_settings
 
@@ -101,7 +100,10 @@ def test_import_keeps_scenario_only_context_keys(client, program, scenario_file)
 
 def test_import_drops_null_fields_and_says_so(client, program, scenario_file):
     body = upload(client, program, scenario_file).json()
-    assert body["brief"]["constraints"].get("accessibility") in ("", None)
+    # Exactly "": `DesignBriefConstraints.accessibility` is typed `str = ""`, so
+    # a leaked JSON null would arrive as None — which the old `in ("", None)`
+    # accepted, i.e. the assertion could not detect the failure it names.
+    assert body["brief"]["constraints"].get("accessibility") == ""
     assert any("accessibility" in w for w in body["warnings"])
 
 

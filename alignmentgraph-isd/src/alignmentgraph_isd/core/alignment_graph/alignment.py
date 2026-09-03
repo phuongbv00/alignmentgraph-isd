@@ -29,7 +29,7 @@ cross-reference field. E.g. C2 (``assessed_by``): an Assessment item declares
 Assessment -> LO) because the construct-validity claim reads LO-first ("this
 LO is assessed by ..."). ``match_id_reverse``/``match_list_reverse`` exist
 specifically for this: they resolve the same declared field as
-``match_id``/``match_list`` but store the edge with source and target
+``match_list`` but store the edge with source and target
 swapped. Every other mechanism (`"provenance"`, `"type"`, and the
 standard-direction `"id"`/`"id-list"` relations) stores source/target exactly
 as the field declares them.
@@ -70,7 +70,7 @@ class Relation:
 REGISTRY: dict[str, Relation] = {
     r.relation_id: r
     for r in (
-        # ── Core (C1-C7): construct-validity backbone ───────────────────────
+        # ── Core (C1-C5): construct-validity backbone ───────────────────────
         Relation("C1", "course goal decomposes to learning outcome", "decomposes_to", "provenance",
                   NodeType.COURSE_GOAL, (NodeType.OBJECTIVE,), "target", "core",
                   theory="Outcome-based design / Backward Design (Wiggins & McTighe)"),
@@ -86,12 +86,6 @@ REGISTRY: dict[str, Relation] = {
         Relation("C5", "content module supports activity", "supports", "provenance",
                   NodeType.CONTENT, (NodeType.ACTIVITY,), "target", "core",
                   theory="Backward Design (Wiggins & McTighe)"),
-        Relation("C6", "assessment task evaluated by rubric criterion", "evaluated_by", "provenance",
-                  NodeType.ASSESSMENT, (NodeType.RUBRIC,), "source", "core",
-                  theory="Understanding by Design Stage 2 (rubric ties task to performance goals)"),
-        Relation("C7", "rubric criterion measures learning outcome", "measures", "id",
-                  NodeType.RUBRIC, (NodeType.OBJECTIVE,), "target", "core",
-                  theory="Outcome-based assessment"),
         # ── Secondary (P1-P11): provenance/traceability, not construct-validity ──
         Relation("P1", "gap/topic informs learning outcome", "informs", "provenance",
                   NodeType.GAP, (NodeType.OBJECTIVE,), "target", "secondary"),
@@ -154,50 +148,13 @@ SECONDARY_RELATION_IDS: tuple[str, ...] = tuple(r for r, rel in REGISTRY.items()
 
 # ── id-match, standard direction: source=referencing node, target=resolved ──
 
-def match_id(
-    graph: AlignmentGraph,
-    relation_id: str,
-    *,
-    field: str = "aligned_objective",
-) -> list[dict]:
-    """Resolve ``field`` on every element node of the relation's source type
-    against an existing target-type element id; establish an edge on a match
-    (source=referencing node, target=resolved node — the edge direction
-    matches which artifact declares the field). Returns violation dicts (one
-    per unresolved/missing reference) for the ones that don't resolve.
-
-    Used for relations whose declared field already points the direction the
-    edge should be stored (C7: Rubric declares ``aligned_objective``, edge
-    Rubric->LO is exactly that declaration)."""
-    relation = REGISTRY[relation_id]
-    target_node_type = relation.target_node_types[0]
-    violations: list[dict] = []
-    for node in graph.element_nodes(relation.source_node_type):
-        ref = bare_ref(node["data"].get(field, ""))
-        target_id = f"{target_node_type}{graph.ELEMENT_SEP}{ref}" if ref else ""
-        if ref and graph.get_node(target_id):
-            graph.add_edge(
-                relation.key, node["id"], target_id,
-                evidence=ref, relation_id=relation_id, established_by="id",
-                rationale=f"{node['id']} declares {field}={ref}, resolved to {target_id}.",
-            )
-        else:
-            violations.append({
-                "relation_id": relation_id, "node_id": node["id"],
-                "message": f"{node['id']} has no resolvable {field} ({ref!r}).",
-            })
-    return violations
-
-
-# ── id-match, REVERSED direction: source=resolved, target=referencing node ──
-
 def match_id_reverse(
     graph: AlignmentGraph,
     relation_id: str,
     *,
     field: str,
 ) -> list[dict]:
-    """Like ``match_id``, but the edge is stored source=resolved node,
+    """Resolve a declared id field, but store the edge source=resolved node,
     target=referencing node — for relations where the theoretical direction
     (e.g. "LO assessed_by Assessment") is the reverse of which artifact
     actually declares the cross-reference field (the Assessment item declares
@@ -609,7 +566,7 @@ def relation_coverage(graph: AlignmentGraph, relation_id: str) -> tuple[float, l
 
 
 def all_relations_coverage(graph: AlignmentGraph) -> dict[str, dict]:
-    """Per-relation coverage + uncovered ids for every C1..C7/P1..P9 — the
+    """Per-relation coverage + uncovered ids for every C1..C5/P1..P11 — the
     data behind the aggregator's alignment_matrix and the audit summary."""
     return {
         relation_id: {

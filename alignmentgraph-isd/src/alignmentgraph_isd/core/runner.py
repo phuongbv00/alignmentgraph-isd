@@ -1,6 +1,6 @@
 """Shared run scaffolding: build the graph, invoke it, assemble metadata.
 
-``run_workflow`` creates a fresh ``AlignmentGraph``, calls ``workflow.build_workflow``,
+``run_workflow`` creates a fresh ``AlignmentGraph`` (or ``ProseStore``), runs the
 invokes the compiled StateGraph, and packages the ADDIE output + trajectory +
 metadata + the full alignment-graph dump (``graph`` / ``graph_dot`` — kept
 separate from the trajectory so it can be written to its own file and
@@ -10,13 +10,10 @@ from __future__ import annotations
 
 import os
 import time
-import uuid
 from pathlib import Path
 
 from ..config import HarnessRunConfig
 from .alignment_graph import AlignmentGraph
-from .prose_store import ProseStore
-from .workflow import build_workflow, empty_addie, initial_state
 from .brief import DesignBrief
 from .trajectory import TrajectoryLogger
 
@@ -123,100 +120,17 @@ def run_workflow(
     *,
     on_event=None,
 ) -> dict:
-    # Exactly one context substrate per run (see config.py): the graph arm
-    # gets an AlignmentGraph; the prose arm gets a ProseStore blackboard and
-    # NO graph object at all — no graph observer, no snapshots, no dump, and
-    # no ``graph``/``graph_dot`` result keys. A prose run has nothing to
-    # audit; that absence is the auditability contrast, not an omission.
-    prose = getattr(config, "context_mode", "graph") == "prose"
-    graph = None if prose else AlignmentGraph()
-    store = ProseStore() if prose else None
-    attach_graph = on_event is not None and graph is not None
-    trajectory = TrajectoryLogger(
-        _graph_attaching(on_event, graph, design_brief) if attach_graph else on_event
-    )
-    if graph is not None:
-        # The graph reports every read, relation walk, node write and alignment
-        # edge to the trajectory, which stamps each with whichever agent is
-        # acting. That is what the deep trajectory is made of; the recorded
-        # streams are untouched.
-        graph.set_observer(trajectory.graph_observer())
-    compiled = build_workflow(config, graph, trajectory, design_brief, store)
+    """Run one design brief. Since 2026-09-01 there is one executor.
 
-    invoke_config = {"recursion_limit": 80, "configurable": {"thread_id": str(uuid.uuid4())}}
-    final_state = compiled.invoke(initial_state(), invoke_config)
+    The scripted StateGraph pipeline is gone, and with it the six specialist
+    Designers and four Developers that only it drove. What both executors
+    always shared did not move: the rulebook, the checks, the repair toolbox,
+    the alignment graph and the prose blackboard. Both ablation axes are
+    honoured by the agentic executor exactly as before.
+    """
+    from .agentic import run_agentic_brief
 
-    addie_output = final_state.get("addie_output") or empty_addie()
-    residual_violation_count = len(final_state.get("violations", []))
-    repair_metrics = trajectory.summary_metrics(residual_violation_count)
-    trajectory_payload = trajectory.finalize()
-    metadata = {
-        "llm": _llm_metadata(config),
-        # The package's own accounting, in the benchmark accounter's shape.
-        # Under the benchmark this whole dict is overwritten by the uniform
-        # thread-local accounter, so exactly one copy ever ships.
-        "token_usage": _token_usage_metadata(trajectory),
-        # Resolved harness flags, so every result is self-describing — the
-        # ablation pooling script verifies an arm actually ran the config its
-        # agent id claims.
-        "run_config": {
-            "agent_mode": config.agent_mode,
-            "context_mode": config.context_mode,
-            "use_rag": config.use_rag,
-            "regen_budget": config.regen_budget,
-            "regen_backoff_seconds": config.regen_backoff_seconds,
-            # Serving posture: a results dir has to say how many requests
-            # the run was allowed to keep in flight, because that is the
-            # difference between a 429-throttled arm and a clean one.
-            "llm_max_concurrency": config.llm_max_concurrency,
-            "llm_min_interval_seconds": config.llm_min_interval_seconds,
-        },
-        "design_brief_id": design_brief.id,
-        "errors": final_state.get("errors", []),
-        "validation_errors": final_state.get("validation_errors", []),
-        # Residual violations live in audit.violations (the
-        # auditor is handed the final state's list); their count is
-        # repair_metrics.residual_violation_count. No separate top-level copy.
-        "audit": final_state.get("audit", {}),
-        "task_attempts": final_state.get("task_attempts", {}),
-        "repair_metrics": repair_metrics,
-    }
-    result = {
-        "addie_output": addie_output,
-        "trajectory": trajectory_payload,
-        # A parallel, far more detailed record of the same run: every graph
-        # read, relation walk, node write and alignment edge, attributed to the
-        # agent that did it. Its own key so the shape `trajectory` promises to
-        # the benchmark and the evaluator is left completely alone.
-        "trajectory_deep": trajectory.to_dict_deep(),
-        "metadata": metadata,
-    }
-    if graph is not None:
-        # The run is over; what follows is writing the report. Detached here so
-        # the deep trajectory ends with the last thing an agent did, rather
-        # than trailing the dozens of reads that serializing the graph performs.
-        graph.set_observer(None)
-        _maybe_dump_graph(graph, design_brief, metadata)
-        # The full alignment-graph dump travels as its OWN result keys (not
-        # inside trajectory/metadata) so integrations can write it to a
-        # separate file (<agent_id>_graph.json / .dot) ready for auditing and
-        # visualization. A prose run has no graph and therefore NO such keys —
-        # the benchmark writes the files only when the keys exist.
-        final_graph = graph.to_full_dict(design_brief_id=design_brief.id)
-        # The aggregate node runs after the last phase_finished, so the
-        # snapshot a consumer holds at this point is one step stale. Emit the
-        # settled one.
-        _safe_emit(on_event, "graph_snapshot", final_graph)
-        result["graph"] = final_graph
-        result["graph_dot"] = graph.to_dot(title=design_brief.id or "alignment-graph")
-    if store is not None:
-        # The prose arm's counterpart artifact: the blackboard documents
-        # verbatim (saved as <agent_id>_prose.json by the benchmark). Raw
-        # content for inspection/debugging only — it carries no relations or
-        # coverage, so the "prose runs ship no alignment audit" contrast is
-        # untouched.
-        result["prose"] = store.to_full_dict(design_brief_id=design_brief.id)
-    return result
+    return run_agentic_brief(config, design_brief, on_event=on_event)
 
 
 class MetaAgent:

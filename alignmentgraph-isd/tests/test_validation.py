@@ -108,7 +108,7 @@ def test_placeholder_check_ignores_real_content_with_angle_brackets():
 
 
 def test_placeholder_in_required_field_triggers_empty_section_regen_check():
-    from alignmentgraph_isd.core.workflow import _empty_required_fields
+    from alignmentgraph_isd.core.outputs import _empty_required_fields
 
     payload = {
         "instructor_orientation": {"schedule": "Day 1"},

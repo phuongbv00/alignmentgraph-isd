@@ -58,7 +58,7 @@ def _cap(text: str, max_chars: int) -> str:
 def _dump_capped(value: object, max_chars: int) -> str:
     """JSON-shaped text with the graph arm's per-artifact cap applied at the
     same unit: every LIST ELEMENT (≈ one artifact) is dumped whole and capped
-    at ``max_chars``, exactly as ``_element_context`` caps one node's data;
+    at ``max_chars``, exactly as ``tools.render_nodes`` caps one node's data;
     dict containers are recursed so no trailing artifact is silently dropped
     by a whole-document cut."""
     if isinstance(value, list):

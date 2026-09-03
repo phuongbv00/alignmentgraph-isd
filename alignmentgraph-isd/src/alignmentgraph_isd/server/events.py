@@ -81,6 +81,18 @@ class RunState:
     graph_light_json: str = ""
     graph_full_json: str = ""
     graph_rev: int = 0
+    # One entry per agent context published by the harness: the system turn,
+    # the whole transcript, and the tool schemas that were bound. State, not
+    # events, for the same reason the graph is: a transcript is large and only
+    # its latest form is worth reading, so replaying every version to every
+    # viewer would be paying repeatedly for something nobody reads twice.
+    contexts: list[dict] = field(default_factory=list)
+    #: Where each context sits in `contexts`, by identity, so a mid-run
+    #: snapshot replaces the one before it instead of piling up.
+    context_index: dict[str, int] = field(default_factory=dict)
+    #: Bumped on every context change, so the stream can push only when there
+    #: is something new — the same protocol `graph_rev` uses.
+    contexts_rev: int = 0
 
     stats: dict[str, Any] = field(default_factory=dict)
     cancel_requested: bool = False
@@ -113,6 +125,52 @@ class RunState:
             self._unflushed.append(event)
         self._notify()
         return event
+
+    def add_context(self, payload: dict) -> None:
+        """Record one agent's context, replacing the last snapshot of it.
+
+        A loop publishes after every turn now, so the same conversation arrives
+        many times, each one longer than the last. Appending would make the tab
+        a list of prefixes of itself.
+
+        The payload already holds copies (``loop.serialize_messages``), which
+        matters: the live transcript is appended to, trimmed, and rewritten in
+        place by the single arm's compaction, so holding the harness's own
+        lists would be reading state that changes underneath.
+        """
+        # `id` comes from the harness (core.memory.context_id) so this side
+        # never has to know what a context's identity is made of.
+        key = str(payload.get("id") or "")
+        with self._lock:
+            position = self.context_index.get(key)
+            if position is None:
+                self.context_index[key] = len(self.contexts)
+                self.contexts.append(payload)
+            else:
+                self.contexts[position] = payload
+            self.contexts_rev += 1
+        # Deliberately no `_notify()`. A context is republished after EVERY
+        # turn, and waking the stream that often drains it far ahead of the
+        # events.jsonl flusher — which turned a rare disk-replay race into a
+        # reliable one. The frame rides out with the next event's wakeup or the
+        # heartbeat, and there is always one close behind: `llm_started` and
+        # `llm_finished` bracket every model call, which is what the turns are.
+
+    def contexts_light(self) -> list[dict]:
+        """The contexts without their transcripts.
+
+        What the live stream carries. The rows are what the tab's LIST shows —
+        who is speaking, in which phase, how much of the window they are using
+        — and they are small enough to push on every turn. The transcript is
+        the large half and is fetched when a row is opened, so watching a run
+        costs one small frame per turn instead of every transcript re-sent."""
+        heavy = ("messages", "tools")
+        with self._lock:
+            return [
+                {**{k: v for k, v in context.items() if k not in heavy},
+                 "turns": len(context.get("messages") or [])}
+                for context in self.contexts
+            ]
 
     def set_graph(self, full_payload: dict, light_payload: dict) -> None:
         full = json.dumps(full_payload, ensure_ascii=False)

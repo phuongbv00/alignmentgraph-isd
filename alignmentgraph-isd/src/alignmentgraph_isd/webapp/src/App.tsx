@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { api } from './api/client'
 import { BriefTab } from './components/BriefTab'
+import { ContextGrid } from './components/ContextGrid'
 import { PhaseTimeline } from './components/PhaseTimeline'
 import { GraphView } from './components/GraphView'
 import { ModelSettings } from './components/ModelSettings'
@@ -10,10 +11,10 @@ import { RunHeader } from './components/RunHeader'
 import { InspectorPanel } from './components/inspector/InspectorPanel'
 import { useRunStream } from './state/useRunStream'
 import type {
-  AlignmentGraphPayload, DeepAction, DeepTrajectory, Health, ProgramDetail, ProgramSummary, Selection,
+  AgentContext, AlignmentGraphPayload, DeepAction, DeepTrajectory, Health, ProgramDetail, ProgramSummary, Selection,
 } from './api/types'
 
-type Tab = 'chat' | 'trajectory' | 'graph'
+type Tab = 'chat' | 'trajectory' | 'context' | 'graph'
 
 export default function App() {
   const [health, setHealth] = useState<Health | null>(null)
@@ -33,6 +34,7 @@ export default function App() {
   const [starting, setStarting] = useState(false)
   const [finishedGraph, setFinishedGraph] = useState<AlignmentGraphPayload | null>(null)
   const [finishedDeep, setFinishedDeep] = useState<DeepAction[]>([])
+  const [contexts, setContexts] = useState<AgentContext[]>([])
 
   const stream = useRunStream(runId)
 
@@ -90,6 +92,9 @@ export default function App() {
   }, [stream.status, activeId, refreshPrograms])
 
   const graph = stream.graph ?? finishedGraph
+  // The live rows lead: they appear as each agent starts, while the fetched
+  // transcripts only catch up at a phase boundary or at the end.
+  const liveContextCount = Math.max(stream.contextRows.length, contexts.length)
   const deepActions = stream.actions.length > 0 ? stream.actions : finishedDeep
 
   // A run that finished before this page loaded streamed no actions, so read
@@ -107,6 +112,26 @@ export default function App() {
       .catch(() => { /* older runs have none; the event view covers them */ })
     return () => { cancelled = true }
   }, [runId, stream.status, stream.actions.length])
+
+  // Contexts arrive LIVE as rows (no transcripts) on the stream, the same way
+  // the graph does: the harness republishes each context after every turn, so
+  // the list fills in and its meters move while the agents are still working.
+  //
+  // The transcripts are fetched whole, and only at the points where a fetch is
+  // worth its size: when the run ends, and at each phase boundary. Between
+  // those the rows carry the list, and a row the reader opens shows the
+  // transcript from the last fetch — which is why the row says how many turns
+  // it has now, so a stale body is visible as stale rather than passing for
+  // current.
+  useEffect(() => {
+    setContexts([])
+    if (!runId || stream.status === 'idle') return
+    let cancelled = false
+    api.getContexts(runId)
+      .then((rows) => { if (!cancelled) setContexts(rows) })
+      .catch(() => { /* older runs recorded none */ })
+    return () => { cancelled = true }
+  }, [runId, stream.status, stream.phase?.index])
 
   const createProgram = async () => {
     setBusy(true)
@@ -282,7 +307,10 @@ export default function App() {
                 Brief
               </button>
               <button className={`tab${tab === 'trajectory' ? ' active' : ''}`} onClick={() => setTab('trajectory')}>
-                Activity{deepActions.length > 0 ? ` (${deepActions.length})` : ''}
+                Trajectory{deepActions.length > 0 ? ` (${deepActions.length})` : ''}
+              </button>
+              <button className={`tab${tab === 'context' ? ' active' : ''}`} onClick={() => setTab('context')}>
+                Context{liveContextCount > 0 ? ` (${liveContextCount})` : ''}
               </button>
               <button className={`tab${tab === 'graph' ? ' active' : ''}`} onClick={() => setTab('graph')}>
                 Graph{graph ? ` (${graph.nodes.length})` : ''}
@@ -320,9 +348,15 @@ export default function App() {
               {tab === 'trajectory' && (
                 <PhaseTimeline
                   actions={deepActions}
+                  runId={runId}
+                  runStarted={stream.status !== 'idle'}
+                  runActive={runActive}
                   selection={selection}
                   onSelect={(value) => { setSelection(value); setInspectorCollapsed(false) }}
                 />
+              )}
+              {tab === 'context' && (
+                <ContextGrid contexts={contexts} rows={stream.contextRows} runId={runId} />
               )}
               {tab === 'graph' && (
                 <GraphView

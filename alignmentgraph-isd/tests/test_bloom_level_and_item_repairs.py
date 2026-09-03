@@ -14,7 +14,6 @@
 """
 from __future__ import annotations
 
-import json
 
 from alignmentgraph_isd.core import checks, repairs
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
@@ -30,8 +29,7 @@ def _objective(level: str, verb: str = "design") -> dict:
 
 def _ctx(graph, llm_response: str = "") -> repairs.RepairContext:
     return repairs.RepairContext(
-        graph=graph, store=None, trajectory=TrajectoryLogger(),
-        call_llm=lambda messages, max_retries=0: llm_response, actor="Test")
+        graph=graph, store=None, trajectory=TrajectoryLogger(), actor="Test")
 
 
 # ── 1. level enum ───────────────────────────────────────────────────────────
@@ -66,8 +64,7 @@ def test_the_prose_arm_repairs_the_level_the_same_way():
     have to converge on it."""
     store = ProseStore()
     store.put("objective", {"learning_objectives": [_objective("manage", verb="analyze")]})
-    ctx = repairs.RepairContext(graph=None, store=store, trajectory=TrajectoryLogger(),
-                                call_llm=lambda messages, max_retries=0: "", actor="Test")
+    ctx = repairs.RepairContext(graph=None, store=store, trajectory=TrajectoryLogger(), actor="Test")
     items = [("objective:ILO-01", store.get("objective")["learning_objectives"][0])]
     repairs.repair_bloom_verb(ctx, checks.bloom_verbs_items(items)[0])
 
@@ -85,65 +82,7 @@ def test_a_verb_spanning_levels_resolves_to_the_lowest():
 
 # ── 2. coverage repairs regenerate rather than template ─────────────────────
 
-def _graph_needing_an_item() -> AlignmentGraph:
-    graph = AlignmentGraph()
-    graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", _objective("create", verb="design"))
-    graph.add_node(NodeType.ASSESSMENT_PLAN, graph.section_id(NodeType.ASSESSMENT_PLAN),
-                   {"summative": ["Capstone"], "lo_coverage_targets": {"ILO-01": ["summative"]}})
-    return graph
 
 
-def _plan_coverage_violation():
-    class _V:
-        violation_type = "plan_coverage"
-        message = "The plan promises a summative item for ILO-01."
-        metadata = {"lo_id": "ILO-01", "plan_category": "summative"}
-    return _V()
 
 
-def _written_item(item_id: str, question: str) -> str:
-    return json.dumps({"items": [{"item_id": item_id, "question": question,
-                                  "scoring_criteria": "Scored 0-3 on working code."}]})
-
-
-def test_plan_coverage_repair_uses_the_item_the_model_writes():
-    graph = _graph_needing_an_item()
-    question = "Build a working lesson page and justify each interaction choice."
-    ctx = _ctx(graph, _written_item("AT-S-ILO-01", question))
-    repairs.repair_plan_coverage(ctx, [_plan_coverage_violation()])
-
-    item = graph.get_node(f"{NodeType.ASSESSMENT}{graph.ELEMENT_SEP}AT-S-ILO-01")["data"]
-    assert item["question"] == question
-    assert _STATEMENT not in item["question"]
-    assert item["scoring_criteria"] == "Scored 0-3 on working code."
-    assert item["aligned_objective"] == "ILO-01"
-    assert item["type"] == "performance_task"       # Create objective, so not a written answer
-
-
-def test_plan_coverage_repair_still_converges_when_the_model_returns_nothing():
-    graph = _graph_needing_an_item()
-    repairs.repair_plan_coverage(_ctx(graph, "not json"), [_plan_coverage_violation()])
-
-    item = graph.get_node(f"{NodeType.ASSESSMENT}{graph.ELEMENT_SEP}AT-S-ILO-01")["data"]
-    assert item["question"]                          # the gap is filled either way
-    assert item["repaired"] is True
-
-
-def test_bloom_mismatch_repair_uses_the_item_the_model_writes():
-    graph = AlignmentGraph()
-    graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", _objective("create", verb="design"))
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {
-        "item_id": "AT-01", "type": "true_false", "question": "Web pages can be interactive.",
-        "aligned_objective": "ILO-01", "plan_category": "diagnostic"})
-
-    class _V:
-        violation_type = "bloom_mismatch_assessment"
-        message = "No item can elicit ILO-01's Create level."
-        metadata = {"lo_id": "ILO-01"}
-
-    question = "Produce a working prototype page and defend its structure in a short memo."
-    repairs.repair_assessment_items(_ctx(graph, _written_item("AT-P-ILO-01", question)), [_V()])
-
-    item = graph.get_node(f"{NodeType.ASSESSMENT}{graph.ELEMENT_SEP}AT-P-ILO-01")["data"]
-    assert item["question"] == question
-    assert _STATEMENT not in item["question"]

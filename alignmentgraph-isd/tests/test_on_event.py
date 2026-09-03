@@ -11,7 +11,10 @@ import inspect
 import pytest
 
 from alignmentgraph_isd import HarnessCancelled, run_design_brief
-from alignmentgraph_isd.core.workflow import GENERATION_ORDER
+from alignmentgraph_isd.core.agentic.specialists import STEPS
+
+#: The phases a run emits, from the only executor there is.
+GENERATION_ORDER = tuple(step.name for step in STEPS)
 from alignmentgraph_isd.core.trajectory import TrajectoryLogger
 
 from conftest import load_brief
@@ -93,28 +96,31 @@ def test_every_recorded_stream_is_mirrored(brief, fake_config):
 
 
 def test_phases_are_bracketed_in_order(brief, fake_config):
+    """Every phase that starts must finish, and the instructed ADDIE order must
+    hold. The per-stage contract itself (which stages exist, what each records)
+    is asserted in test_agentic_run.py; this is about the EVENT stream."""
     _, events = collect(brief, fake_config)
     started = [p["phase"] for k, p in events if k == "phase_started"]
     finished = [p["phase"] for k, p in events if k == "phase_finished"]
 
     # Every phase that starts must finish, exactly once -- but NOT necessarily
-    # in the same relative order: content_designer/rubric_designer run on
+    # in the same relative order: content runs on
     # separate LangGraph worker threads (a pre-existing parallel fan-out;
     # every dev-plan fan-out family adds the same kind of sibling-thread
     # execution for its own dispatch/develop/finalize nodes), so which one's
     # phase_finished lands first is a genuine scheduling race, not a bug.
     assert sorted(started) == sorted(finished), "every phase that starts must finish, exactly once"
 
-    # Six specialists in ADDIE order; content_designer/rubric_designer are the
+    # Six stages in ADDIE order; content is the
     # one genuinely-parallel pair and may start in either relative order, but
-    # both must sit strictly between activity_designer and
-    # implementation_planner.
+    # it must sit strictly between activities and implementation.
     order = [p for p in started if p in GENERATION_ORDER]
     assert set(order) == set(GENERATION_ORDER)
     index = {phase: i for i, phase in enumerate(order)}
-    assert index["outcome_designer"] < index["assessment_designer"] < index["activity_designer"]
-    assert index["activity_designer"] < index["content_designer"] < index["implementation_planner"]
-    assert index["activity_designer"] < index["rubric_designer"] < index["implementation_planner"]
+    # Phase names are the agentic step names since the scripted pipeline went;
+    # the ORDER they assert is the same instructed ADDIE order.
+    assert index["outcomes"] < index["assessment"] < index["activities"]
+    assert index["activities"] < index["content"] < index["implementation"]
     assert started[-1] == "aggregate"
 
     totals = {p["total"] for _, p in events if p.get("total")}
@@ -150,9 +156,13 @@ def test_llm_events_describe_the_call_without_carrying_its_content(brief, fake_c
     assert started and finished
 
     assert set(started[0]) == {"agent", "prompt_chars", "message_count", "retries_left"}
-    assert set(finished[0]) == {
+    # ``tool_calls`` is a COUNT, not content — the executor emits it
+    # so a live consumer can tell an act turn from a text turn.
+    assert set(finished[0]) <= {
         "agent", "duration_ms", "response_chars", "prompt_tokens", "completion_tokens",
+        "tool_calls",
     }
+    assert {"agent", "duration_ms", "response_chars"} <= set(finished[0])
 
 
 def test_final_graph_snapshot_matches_the_returned_graph(brief, fake_config):

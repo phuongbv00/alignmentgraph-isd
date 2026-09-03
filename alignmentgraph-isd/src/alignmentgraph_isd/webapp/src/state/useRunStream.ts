@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useRef } from 'react'
 import { api } from '../api/client'
-import type { AlignmentGraphPayload, DeepAction, HelloPayload, RunEvent, RunStats, RunStatus } from '../api/types'
+import type { AgentContextRow, AlignmentGraphPayload, DeepAction, HelloPayload, RunEvent, RunStats, RunStatus } from '../api/types'
 
 /**
  * Following one run over server-sent events.
@@ -22,12 +22,15 @@ export interface RunStreamState {
   error: string
   modelName: string
   stats: RunStats
-  events: RunEvent[]
   /** The deep trajectory, accumulated as it streams. */
   actions: DeepAction[]
   lastSeq: number
   graph: AlignmentGraphPayload | null
   graphRev: number
+  /** Context ROWS without their transcripts — the live list. The
+   *  transcript is fetched per row, so watching a run costs one small
+   *  frame per turn instead of every transcript re-sent. */
+  contextRows: AgentContextRow[]
   phase: { name: string; index: number; total: number } | null
   /** Set while a model call is in flight, so the UI can run an elapsed timer
    *  through the tens of seconds when nothing else happens. */
@@ -42,11 +45,11 @@ const EMPTY: RunStreamState = {
   error: '',
   modelName: '',
   stats: {},
-  events: [],
   actions: [],
   lastSeq: 0,
   graph: null,
   graphRev: 0,
+  contextRows: [],
   phase: null,
   llmStartedAt: null,
   connected: false,
@@ -58,6 +61,7 @@ type Action =
   | { type: 'hello'; payload: HelloPayload }
   | { type: 'event'; event: RunEvent }
   | { type: 'graph'; graph: AlignmentGraphPayload }
+  | { type: 'contexts'; rows: AgentContextRow[] }
   | { type: 'connected'; value: boolean }
 
 function reducer(state: RunStreamState, action: Action): RunStreamState {
@@ -82,6 +86,8 @@ function reducer(state: RunStreamState, action: Action): RunStreamState {
 
     case 'graph':
       return { ...state, graph: action.graph, graphRev: state.graphRev + 1 }
+    case 'contexts':
+      return { ...state, contextRows: action.rows }
 
     case 'event': {
       const { event } = action
@@ -91,7 +97,6 @@ function reducer(state: RunStreamState, action: Action): RunStreamState {
 
       const next: RunStreamState = {
         ...state,
-        events: [...state.events, event],
         lastSeq: event.seq,
       }
 
@@ -173,6 +178,10 @@ export function useRunStream(runId: string | null): RunStreamState {
       // finished run showed a different action count on every reload).
       // `onEvent` below closes once the real terminal event arrives, by
       // which point everything before it is guaranteed already dispatched.
+    })
+
+    source.addEventListener('contexts', (message) => {
+      dispatch({ type: 'contexts', rows: JSON.parse((message as MessageEvent).data) })
     })
 
     source.addEventListener('graph', (message) => {

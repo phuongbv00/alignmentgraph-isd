@@ -1,6 +1,6 @@
 """Dev-plan normalization: turns an LLM-proposed work grouping into a
 deterministic list of :class:`WorkSet` fan-out units, or derives that list
-outright where no LLM decision is needed (rubrics, materials).
+outright where no LLM decision is needed (materials).
 
 Substrate-agnostic on purpose: this module imports nothing from
 ``alignment_graph`` or ``prose_store`` so both context_mode arms call the
@@ -18,15 +18,59 @@ import json
 import re
 from dataclasses import dataclass, field
 
-#: Sets requested beyond this multiple of the true obligation count are
-#: merged into one overflow set rather than accepted verbatim — a runaway
-#: LLM dev-plan (one set per LO, then some) must not blow the fan-out width
-#: up to the same scale the whole-pool call used to.
-MAX_SET_FACTOR = 2
-MAX_SETS_HARD_CAP = 24
-#: Backstops for the deterministic (no-LLM) families; both are generous
-#: relative to a realistic scenario's item/module counts.
-MAX_RUBRIC_UNITS = 32
+#: Backstops, NOT a plan. Since 2026-09-01 the fan-out width is the agent's
+#: decision — it proposes the grouping and these only stop a blow-up. They were
+#: loose enough to be the real driver: measured on one scenario, an arm that
+#: wrote 33 objectives got 66 assessment obligations, and a 2x factor turned
+#: that into 24 Developer calls for assessment plus 24 more for activities.
+#: One set per obligation-unit is the ceiling; a set may cover several.
+MAX_SET_FACTOR = 1
+MAX_SETS_HARD_CAP = 12
+
+#: Estimated output cost of ONE OBLIGATION, in characters. An obligation is
+#: what the split key counts — an (objective, category) pair for assessment, an
+#: objective for activities, a module for materials — and the cost is how much
+#: JSON the Developer actually writes for it. Both halves are measured on run
+#: single_20260901_205901, over all four arms:
+#:
+#:   element size    item ~1,140 (max 2,973) · criterion ~355
+#:                   activity ~635 (max 931) · material ~1,240 (max 1,710)
+#:   yield           2.5 items/objective · 1.5 activities/objective
+#:                   (spread 1.0-4.2 and 0.8-2.5 across the arms)
+#:
+#: So a pair costs about one item plus the criterion that marks it (~1,500),
+#: and an objective costs about 1.5 activities (~950). Rounded UP, because a
+#: budget that holds only for the average fails on exactly the sets that matter.
+#:
+#: Estimates, from a small sample on ONE scenario. Revisit them against ladder
+#: data rather than treating them as constants.
+UNIT_CHARS = {"assessment": 1800, "activity": 1300, "material": 1800}
+
+#: What ONE Developer call may be asked to produce, in characters of JSON.
+#:
+#: The 8192-token completion cap is roughly 28k characters, so this sits about
+#: 2.5x under it. Not tighter, because the split trades directly against the
+#: number of calls: a 33-objective scenario with three categories each is 99
+#: obligations, which is 17 calls at this budget and 33 at half of it. And the
+#: cap is not in fact where these runs were failing — measured mean completion
+#: was 470 tokens over 95 calls, nowhere near 8192 — so buying safety margin
+#: here is paid for in calls that were never at risk.
+SET_OUTPUT_BUDGET = 11000
+
+
+def max_units(family: str) -> int:
+    """How many elements one Developer call may be asked for.
+
+    Quantity ALONE is the wrong split key, which is what the LO-only grouping
+    was: three objectives is a small set for activities and a large one for
+    assessment, because an assessment obligation produces an item AND the
+    criterion that marks it. Estimated output length is what the two have in
+    common.
+    """
+    return max(1, SET_OUTPUT_BUDGET // UNIT_CHARS.get(family, SET_OUTPUT_BUDGET))
+
+
+#: Backstop for the deterministic (no-LLM) material fan-out.
 MAX_MATERIAL_UNITS = 12
 
 _VALID_CATEGORIES = ("diagnostic", "formative", "summative")
@@ -59,6 +103,11 @@ class WorkSet:
     pairs: tuple[tuple[str, str], ...] = ()
     payload: dict = field(default_factory=dict)
     source: str = "llm"
+    #: This set's position in its plan, 1-based. It is the first half of every
+    #: id its Developer's artifacts commit under (``AT-0203`` = set 2, item 3),
+    #: so it is fixed when the plan is numbered — before any Developer runs —
+    #: and no id depends on which of them commits first.
+    ordinal: int = 1
 
     def as_dict(self) -> dict:
         return {
@@ -84,38 +133,109 @@ def _empty_stats(pair_count: int) -> dict:
     return {
         "set_count": 0, "pair_count": pair_count, "dropped_lo_refs": 0,
         "dropped_pairs": 0, "appended_sets": 0, "fallback_used": False,
+        # Sets the HARNESS had to cut because the planner handed over one too
+        # big to answer. The planner is told the budget and asked to scope its
+        # own sets; this counts how often it did not, which is the only way to
+        # tell a plan that is doing its job from one the backstop is carrying.
+        "oversized_splits": 0,
     }
 
 
+#: What a replan round adds to a set's ordinal so its ids cannot land on the
+#: round before it. Well above any plausible set count (``MAX_SETS_HARD_CAP``
+#: is 12, and the size bound can push past it), and correctness does not rest
+#: on the number: ``_composite_id`` scans past anything already taken.
+ROUND_ORDINAL_STRIDE = 50
+
+
 def _cap_and_number(sets: list[WorkSet], obligation_count: int, prefix: str,
-                     merge: "callable") -> list[WorkSet]:
-    """Enforce MAX_SET_FACTOR/MAX_SETS_HARD_CAP by merging overflow into one
-    tail set (never dropping an obligation), then assign stable ``AS-01``
-    style ids in order."""
+                     merge: "callable", *, family: str = "",
+                     split: "callable | None" = None) -> list[WorkSet]:
+    """Bound the fan-out from BOTH ends, then assign stable ``AS-01`` ids.
+
+    Two bounds, and the order matters. The count cap
+    (``MAX_SET_FACTOR``/``MAX_SETS_HARD_CAP``) stops a blow-up in the number of
+    calls by merging the overflow into one tail set. That merge is the danger:
+    on a 33-objective scenario it produced a tail carrying 22 obligations in a
+    SINGLE call — the cap on calls making the calls unanswerable.
+
+    So the size bound is applied AFTER the merge and wins over the count. A set
+    the model cannot finish costs everything it was going to produce, while an
+    extra call costs one call.
+    """
     cap = min(MAX_SET_FACTOR * obligation_count, MAX_SETS_HARD_CAP)
     if len(sets) > cap:
         head, tail = sets[:cap - 1], sets[cap - 1:]
         sets = head + [merge(tail)]
-    return [
+    oversized = 0
+    if split is not None and family:
+        limit = max_units(family)
+        cut: list[WorkSet] = []
+        for ws in sets:
+            pieces = split(ws, limit)
+            oversized += len(pieces) > 1
+            cut.extend(pieces)
+        sets = cut
+    numbered = [
         WorkSet(set_id=f"{prefix}-{i:02d}", objectives=ws.objectives, pairs=ws.pairs,
-                payload=ws.payload, source=ws.source)
+                payload=ws.payload, source=ws.source,
+                # The first half of every id this set's artifacts commit under,
+                # fixed here — before any Developer runs — so no two sets can
+                # name the same artifact and no id depends on who commits first.
+                ordinal=i)
         for i, ws in enumerate(sets, start=1)
     ]
+    if oversized and numbered:
+        # Carried on the first set so the caller can read it back without a
+        # second return value threaded through every family.
+        numbered[0].payload.setdefault("_oversized_splits", oversized)
+    return numbered
+
+
+def _chunks(seq: list, size: int) -> list[list]:
+    return [seq[i:i + size] for i in range(0, len(seq), size)] or [[]]
 
 
 # ── assessment: instrument sets over (objective, plan_category) pairs ──────
 
-def _assessment_ground_truth_pairs(lo_ids, coverage_targets) -> list[tuple[str, str]]:
+def plan_category_pairs(coverage_targets) -> list[tuple[str, str]]:
+    """``lo_coverage_targets`` as (objective, category) pairs, whatever shape
+    the model wrote it in.
+
+    Two shapes are accepted. The schema asks for a list of category names
+    (``{"ILO-01": ["diagnostic", "summative"]}``), and models also write the
+    richer entry that names the instrument alongside the category
+    (``[{"plan_category": "formative", "instrument": "concept mapping"}]``) —
+    the same promise with more detail, so it is normalized rather than
+    refused. Anything whose category is not one of the three is dropped.
+
+    ONE reader for one field, because there were two and they disagreed
+    (run single_20260901_205901). This one guarded on ``_VALID_CATEGORIES``,
+    saw the dict form, dropped every pair, and silently fell back to
+    summative-only work sets. ``checks.plan_coverage`` did not guard: it took
+    ``str(dict).lower()`` as the category, so every promised pair read as
+    unrealised, and the repair then minted item ids from
+    ``category[:1].upper()`` — the literal ``AT-{-ILO-01`` that reached the
+    final artifact, the alignment matrix and four activities' assessment
+    references."""
     pairs: list[tuple[str, str]] = []
-    if isinstance(coverage_targets, dict) and coverage_targets:
-        for lo_ref, cats in coverage_targets.items():
-            lo = _bare(lo_ref)
-            if not lo or not isinstance(cats, list):
-                continue
-            for cat in cats:
-                cat_norm = str(cat or "").strip().lower()
-                if cat_norm in _VALID_CATEGORIES:
-                    pairs.append((lo, cat_norm))
+    if not isinstance(coverage_targets, dict):
+        return pairs
+    for lo_ref, cats in coverage_targets.items():
+        lo = _bare(lo_ref)
+        if not lo or not isinstance(cats, list):
+            continue
+        for cat in cats:
+            if isinstance(cat, dict):
+                cat = cat.get("plan_category") or cat.get("category") or ""
+            cat_norm = str(cat or "").strip().lower()
+            if cat_norm in _VALID_CATEGORIES:
+                pairs.append((lo, cat_norm))
+    return list(dict.fromkeys(pairs))
+
+
+def _assessment_ground_truth_pairs(lo_ids, coverage_targets) -> list[tuple[str, str]]:
+    pairs = plan_category_pairs(coverage_targets)
     if not pairs:
         pairs = [(lo, "summative") for lo in (_bare(x) for x in (lo_ids or [])) if lo]
     return list(dict.fromkeys(pairs))  # de-dup, order-preserving
@@ -158,9 +278,19 @@ def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets) -> tuple[lis
     covered = {p for ws in sets for p in ws.pairs}
     missing = [p for p in pairs if p not in covered]
     src = "appended" if had_llm_sets else "fallback"
+    # Grouped by OBJECTIVE, not by (objective, category). One set per pair is
+    # the harness deciding the fan-out width, and it decided badly: a 4-objective
+    # scenario became 12 Developer calls because each objective carries three
+    # plan categories. One call writes the diagnostic, formative and summative
+    # instruments for one objective — which is also how an assessment designer
+    # would actually work.
+    by_objective: dict[str, list[tuple[str, str]]] = {}
     for lo, cat in missing:
-        sets.append(WorkSet(set_id="", objectives=(lo,), pairs=((lo, cat),), payload={}, source=src))
-    stats["appended_sets"] = len(missing)
+        by_objective.setdefault(lo, []).append((lo, cat))
+    for lo, lo_pairs in by_objective.items():
+        sets.append(WorkSet(set_id="", objectives=(lo,), pairs=tuple(lo_pairs),
+                            payload={}, source=src))
+    stats["appended_sets"] = len(by_objective)
     stats["fallback_used"] = not had_llm_sets
 
     def _merge(tail: list[WorkSet]) -> WorkSet:
@@ -169,12 +299,70 @@ def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets) -> tuple[lis
         return WorkSet(set_id="", objectives=merged_objs, pairs=merged_pairs,
                         payload=tail[-1].payload, source=tail[-1].source)
 
-    numbered = _cap_and_number(sets, len(pairs), "AS", _merge)
+    def _split(ws: WorkSet, limit: int) -> list[WorkSet]:
+        """Keep the objective grouping; subdivide WITHIN it.
+
+        The planned quantity for this family is exact: ``RULES_ASSESSMENT_ITEMS_SET``
+        says "produce exactly one item for every (objective, plan_category) pair
+        it lists", so a set's pair count IS the number of items it will produce.
+
+        Chunking the flattened pair list would cut across objectives — a piece
+        carrying the tail of ILO-01 and the head of ILO-02 — which throws away
+        the grouping the plan chose and the shared stem the set was built
+        around. So a set that does not fit is broken up BY OBJECTIVE first, and
+        an objective that does not fit on its own is then chunked within
+        itself.
+        """
+        if len(ws.pairs) <= limit:
+            return [ws]
+        by_lo: dict[str, list[tuple[str, str]]] = {}
+        for pair in ws.pairs:
+            by_lo.setdefault(pair[0], []).append(pair)
+        pieces: list[list[tuple[str, str]]] = []
+        for lo_pairs in by_lo.values():
+            pieces.extend(_chunks(lo_pairs, limit))
+        return [
+            WorkSet(set_id="", objectives=(chunk[0][0],), pairs=tuple(chunk),
+                    payload=ws.payload, source=ws.source)
+            for chunk in pieces if chunk
+        ]
+
+    numbered = _cap_and_number(sets, len(pairs), "AS", _merge,
+                               family="assessment", split=_split)
     stats["set_count"] = len(numbered)
+    stats["oversized_splits"] = (
+        numbered[0].payload.pop("_oversized_splits", 0) if numbered else 0)
     return numbered, stats
 
 
 # ── activity: blocks over objectives ────────────────────────────────────────
+
+#: Activities one objective needs when the plan does not say. Measured yield
+#: on run single_20260901_205901 was 0.8-2.5 per objective across the arms; the
+#: high end, because under-estimating means a set the Developer cannot finish
+#: and over-estimating only costs an extra call.
+ACTIVITIES_PER_OBJECTIVE = 3
+#: A planned count is the PLANNER's judgement, not a free hand: a 2B model that
+#: writes 40 here would turn one block into a dozen calls.
+MAX_EXPECTED_PER_SET = 12
+
+
+def _expected(raw: object, objective_count: int) -> int:
+    """The plan's own count for a set, clamped, or the deterministic estimate.
+
+    The planner is the only step that knows whether a block is one exercise or
+    a six-step progression, so it is asked. It is not trusted: a missing,
+    unreadable or absurd number falls back to the measured yield.
+    """
+    fallback = max(1, objective_count) * ACTIVITIES_PER_OBJECTIVE
+    try:
+        value = int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return fallback
+    if value < 1:
+        return fallback
+    return min(value, MAX_EXPECTED_PER_SET)
+
 
 def normalize_activity_dev_plan(parsed, lo_ids, items_by_lo: dict | None = None) -> tuple[list[WorkSet], dict]:
     items_by_lo = items_by_lo or {}
@@ -199,7 +387,9 @@ def normalize_activity_dev_plan(parsed, lo_ids, items_by_lo: dict | None = None)
             sets.append(WorkSet(
                 set_id="", objectives=tuple(valid_objs), pairs=(),
                 payload={"assessment_items": items, "block_theme": str(raw.get("block_theme", "")),
-                         "rationale": str(raw.get("rationale", ""))},
+                         "rationale": str(raw.get("rationale", "")),
+                         "expected_activities": _expected(
+                             raw.get("expected_activities"), len(valid_objs))},
                 source="llm",
             ))
 
@@ -210,7 +400,8 @@ def normalize_activity_dev_plan(parsed, lo_ids, items_by_lo: dict | None = None)
     for lo in missing:
         sets.append(WorkSet(
             set_id="", objectives=(lo,), pairs=(),
-            payload={"assessment_items": items_by_lo.get(lo, []), "block_theme": "", "rationale": ""},
+            payload={"assessment_items": items_by_lo.get(lo, []), "block_theme": "",
+                     "rationale": "", "expected_activities": _expected(None, 1)},
             source=src,
         ))
     stats["appended_sets"] = len(missing)
@@ -223,8 +414,65 @@ def normalize_activity_dev_plan(parsed, lo_ids, items_by_lo: dict | None = None)
                         payload={"assessment_items": merged_items, "block_theme": "", "rationale": ""},
                         source=tail[-1].source)
 
-    numbered = _cap_and_number(sets, len(los), "AB", _merge)
+    def _split(ws: WorkSet, limit: int) -> list[WorkSet]:
+        """Split on the PLANNED count, not on the objective count.
+
+        An objective is not a unit of work here: the plan says how many
+        activities a block needs (``expected_activities``), and three
+        objectives that need one activity each is a smaller job than one
+        objective that needs a six-step progression. Counting objectives
+        cannot tell those apart.
+        """
+        planned = int(ws.payload.get("expected_activities") or 0) or (
+            len(ws.objectives) * ACTIVITIES_PER_OBJECTIVE)
+        if planned <= limit:
+            return [ws]
+        if len(ws.objectives) > 1:
+            # Break the block up by objective first, keeping each objective
+            # whole, and let the recursion handle any that is still too big.
+            per_objective = max(1, planned // len(ws.objectives))
+            group = max(1, limit // per_objective)
+            return [
+                piece
+                for chunk in _chunks(list(ws.objectives), group)
+                for piece in _split(WorkSet(
+                    set_id="", objectives=tuple(chunk), pairs=(),
+                    payload={**ws.payload,
+                             "expected_activities": per_objective * len(chunk),
+                             "assessment_items": sorted(
+                                 {i for lo in chunk for i in items_by_lo.get(lo, [])})},
+                    source=ws.source), limit)
+            ]
+        # ONE objective that alone needs more than a call can write: batches of
+        # it, each carrying its own quota so the Developer knows how many of
+        # the whole it is responsible for.
+        batches = -(-planned // limit)
+        # The planned total is DIVIDED across the batches, not repeated: at
+        # limit 8 a plan of 10 is two batches of 5, never two of 8. Repeating
+        # the ceiling would commission 16 activities for a job of 10.
+        base, extra = divmod(planned, batches)
+        return [
+            WorkSet(set_id="", objectives=ws.objectives, pairs=(),
+                    payload={**ws.payload,
+                             "expected_activities": base + (1 if index <= extra else 0),
+                             "batch": [index, batches]},
+                    source=ws.source)
+            for index in range(1, batches + 1)
+        ]
+
+    # The count cap is relative to the PLANNED ACTIVITIES, not to the number
+    # of objectives. Objectives were the wrong base the moment the planner was
+    # asked to emit several scoped blocks for an objective that needs more than
+    # one call: at one block per objective the cap was 1, so two correctly
+    # scoped blocks for ILO-01 were merged back into one and the themes that
+    # kept them apart were discarded — the harness undoing exactly the work it
+    # had asked for. You never need more blocks than activities.
+    planned_total = sum(int(ws.payload.get("expected_activities") or 1) for ws in sets)
+    numbered = _cap_and_number(sets, max(planned_total, len(los)), "AB", _merge,
+                               family="activity", split=_split)
     stats["set_count"] = len(numbered)
+    stats["oversized_splits"] = (
+        numbered[0].payload.pop("_oversized_splits", 0) if numbered else 0)
     return numbered, stats
 
 
@@ -261,26 +509,49 @@ def material_work_units(modules: list[dict], media_selections: list[dict],
         else:
             unassigned.append(media)  # no/unknown for_modules -> attach to every unit
 
+    # The planned quantity for a module is its MEDIA SELECTIONS:
+    # ``RULES_MATERIALS_UNIT`` says a material's type/format must realize one of
+    # the media selections given, so a module with eight of them is eight
+    # materials — and materials are the longest element the harness writes.
+    # One unit per module said nothing about that.
+    limit = max_units("material")
     sets: list[WorkSet] = []
     for module in modules:
         mid = _bare(module["id"])
         media_for_unit = by_module[mid] + unassigned
-        sets.append(WorkSet(
-            set_id=f"MU-{mid}", payload={"modules": [module], "media_selections": media_for_unit,
-                                          "constraints": _constraints_for(media_for_unit)},
-            source="deterministic",
-        ))
+        batches = (_chunks(media_for_unit, limit)
+                   if len(media_for_unit) > limit else [media_for_unit])
+        for index, media_batch in enumerate(batches, start=1):
+            sets.append(WorkSet(
+                set_id=f"MU-{mid}" if len(batches) == 1 else f"MU-{mid}-{index:02d}",
+                payload={"modules": [module], "media_selections": media_batch,
+                         "constraints": _constraints_for(media_batch)},
+                source="deterministic",
+            ))
 
     if len(sets) > MAX_MATERIAL_UNITS:
         head, tail = sets[:MAX_MATERIAL_UNITS - 1], sets[MAX_MATERIAL_UNITS - 1:]
         merged_modules = [m for ws in tail for m in ws.payload["modules"]]
         merged_media = [m for ws in tail for m in ws.payload["media_selections"]]
-        merged = WorkSet(
-            set_id="MU-MERGED", payload={"modules": merged_modules, "media_selections": merged_media,
-                                          "constraints": _constraints_for(merged_media)},
-            source="deterministic",
-        )
-        sets = head + [merged]
+        # The merged tail is split back down to what one call can answer.
+        # Learner materials are the LONGEST element the harness produces
+        # (~1,240 chars mean, 1,710 max, measured), so a tail carrying every
+        # leftover module is the worst single call in the system.
+        chunks = _chunks(merged_modules, limit)
+        merged_sets = []
+        for index, chunk in enumerate(chunks, start=1):
+            chunk_ids = {_bare(m["id"]) for m in chunk if m.get("id")}
+            chunk_media = [m for m in merged_media
+                           if not chunk_ids
+                           or not {_bare(r) for r in (m.get("for_modules") or [])}
+                           or {_bare(r) for r in (m.get("for_modules") or [])} & chunk_ids]
+            merged_sets.append(WorkSet(
+                set_id=f"MU-MERGED-{index:02d}" if len(chunks) > 1 else "MU-MERGED",
+                payload={"modules": chunk, "media_selections": chunk_media,
+                         "constraints": _constraints_for(chunk_media)},
+                source="deterministic",
+            ))
+        sets = head + merged_sets
     return sets
 
 
@@ -294,79 +565,131 @@ def pending_set_ids(work_sets: list[WorkSet], payloads: list[dict]) -> list[str]
     return [ws.set_id for ws in work_sets if ws.set_id not in have]
 
 
+def _composite_id(prefix: str, ordinal: int, number: int, taken: set[str]) -> str:
+    """``AT-0203``: prefix, the SET's ordinal, then the item's within that set.
+
+    Unique by construction — two sets never share an ordinal — and dense: each
+    set numbers its own artifacts from 1, so there are no gaps to explain. A
+    single reserved range per set would leave them (set 1 stops at ``AT-10``
+    and set 2 starts at ``AT-21``), and the gap is the block boundary showing
+    through into the deliverable.
+
+    It also says who wrote it: ``AT-0203`` is the third artifact of the second
+    work set, which is the same fact ``plan_set`` carries and one an auditor
+    reading the graph dump gets for free.
+
+    The scan is the backstop for the two cases the composition does not cover
+    on its own: a Developer that used one id twice inside its own set, and a
+    replan round whose stride somehow lands on ordinals already in play."""
+    while f"{prefix}-{ordinal:02d}{number:02d}" in taken:
+        number += 1
+    return f"{prefix}-{ordinal:02d}{number:02d}"
+
+
 def remap_and_tag(work_sets: list[WorkSet], payloads: list[dict], *, id_field: str,
-                   ref_fields: tuple[str, ...] = ()) -> list[dict]:
+                   self_ref_fields: tuple[str, ...] = (), id_prefix: str = "",
+                   taken: frozenset[str] = frozenset()) -> list[dict]:
     """Merge a family's Developer payloads (one per work set, each carrying
     ``{"set_id", "items": [...]}) into one flat, commit-ready item list.
 
-    Workers run independently and never coordinate ids, so two sets can
-    legitimately propose the same id (e.g. both name their first item
-    "AT-01"). Walking sets in dev-plan order and rewriting any id a LATER
-    set reuses (``f"{raw_id}-{set_id}"``) keeps every item, in the order the
-    plan produced them, with no silent overwrite. ``ref_fields`` names
-    within-item fields that hold lists of same-family ids scoped to this
-    set (e.g. an activity's ``prerequisite_activities``) — those are
-    rewritten through the same set's rename map so an id bump does not
-    dangle a same-set reference; cross-set/cross-family references are
-    untouched (by contract they name ids from an upstream, already-committed
-    family, which never collide with a same-run rename).
+    **The HARNESS names these artifacts; the model does not.** A Developer
+    submits its items without an id, and each is named here by composing the
+    SET's ordinal with the artifact's own — ``AT-0203`` is the third artifact of
+    the second work set. Workers never coordinate, so two of them would
+    otherwise propose the same name; pairing the ordinals makes the result
+    unique BY CONSTRUCTION, decided when the plan was numbered rather than by
+    which Developer committed first. It is dense — each set counts from 1 — and
+    it says who wrote what, the same fact ``plan_set`` carries.
 
-    Every committed item is stamped ``plan_set`` with its owning set's id —
-    invisible to schemas/judges (unknown keys validate), and the only signal
-    ``pending_set_ids``-driven regen needs to tell which sets produced
-    nothing.
+    Asking the model for an id was pure cost (2026-09-03): it was overwritten
+    every time, so it bought nothing, while every malformed one (``AT-{``, a
+    duplicate, an id copied out of the schema example) was a real failure. The
+    field is gone from the schemas, which also shortens the artifact the model
+    has to fit under the completion cap.
+
+    ``self_ref_fields`` are references to OTHER artifacts of this same set,
+    which the model writes as 1-based POSITIONS in the list it submitted ([1] =
+    the first artifact it wrote) and which are resolved here into the assigned
+    ids. Positional because the model has no ids to name — and this was broken
+    before that change, for the same underlying reason: an activity's
+    ``prerequisite_activities`` was never declared a reference field at all, so
+    every one of them reached the graph naming an id the commit had renumbered
+    away. Measured on the test fixture: 0 of 3 resolved, while ``_establish``
+    reads exactly this field to build the ``precedes`` edges.
+
+    CROSS-family references need nothing done to them and get nothing done:
+    they name an upstream family that is already committed, which the Developer
+    read in its final form.
+
+    ``taken`` are the ids the design state already holds, so a set committed on
+    its own lands where it would have in a batch. Every committed item is also stamped
+    ``plan_set`` with its owning set's id — invisible to schemas/judges
+    (unknown keys validate), and what ``pending_set_ids``-driven regen reads to
+    tell which sets produced nothing.
     """
     payload_by_set: dict[str, list[dict]] = {}
     for p in payloads:
         payload_by_set.setdefault(str(p.get("set_id", "")), []).extend(
             i for i in (p.get("items") or []) if isinstance(i, dict))
 
-    seen_ids: set[str] = set()
+    seen_ids: set[str] = set(taken)
     out: list[dict] = []
     for ws in work_sets:
         set_items = payload_by_set.get(ws.set_id, [])
-        rename: dict[str, str] = {}
-        resolved: list[tuple[dict, str]] = []
+        assigned: list[str] = []
+        number = 1
         for item in set_items:
-            raw_id = str(item.get(id_field) or "")
-            if not raw_id:
-                resolved.append((item, ""))
-                continue
-            final_id = raw_id
-            if final_id in seen_ids:
-                final_id = f"{raw_id}-{ws.set_id}"
-            seen_ids.add(final_id)
-            if final_id != raw_id:
-                rename[raw_id] = final_id
-            resolved.append((item, final_id))
-        for item, final_id in resolved:
-            new_item = dict(item)
+            if id_prefix:
+                final_id = _composite_id(id_prefix, ws.ordinal, number, seen_ids)
+                number = int(final_id.rsplit("-", 1)[1][-2:]) + 1
+            else:
+                # No declared convention for this family: the model's own id
+                # stands, with the historical collision bump behind it.
+                raw_id = str(item.get(id_field) or "")
+                final_id = raw_id
+                if final_id and final_id in seen_ids:
+                    final_id = f"{raw_id}-{ws.set_id}"
             if final_id:
-                new_item[id_field] = final_id
-            for ref_field in ref_fields:
+                seen_ids.add(final_id)
+            assigned.append(final_id)
+
+        for index, item in enumerate(set_items):
+            new_item = dict(item)
+            if assigned[index]:
+                new_item[id_field] = assigned[index]
+            for ref_field in self_ref_fields:
                 refs = new_item.get(ref_field)
                 if isinstance(refs, list):
-                    new_item[ref_field] = [rename.get(str(r), r) for r in refs]
+                    new_item[ref_field] = _resolve_positions(refs, assigned)
             new_item["plan_set"] = ws.set_id
             out.append(new_item)
     return out
 
 
+def _resolve_positions(refs: list, assigned: list[str]) -> list[str]:
+    """1-based positions in the submitted list -> the ids assigned to them.
+
+    Tolerant of the two things a model does instead: a position out of range
+    (dropped — it names nothing) and a string that is already one of the
+    assigned ids (kept, because it resolves). Anything else is DROPPED rather
+    than passed through: a reference that does not resolve becomes a dangling
+    edge in the graph the auditability claim rests on, and a silent drop shows
+    up in the coverage numbers while a dangling id does not."""
+    out: list[str] = []
+    for ref in refs:
+        if isinstance(ref, bool):
+            continue
+        if isinstance(ref, int) or (isinstance(ref, str) and ref.strip().isdigit()):
+            position = int(ref)
+            if 1 <= position <= len(assigned) and assigned[position - 1]:
+                out.append(assigned[position - 1])
+            continue
+        if isinstance(ref, str) and ref in assigned:
+            out.append(ref)
+    return list(dict.fromkeys(out))
+
+
 # ── rubric: one unit per committed assessment item (deterministic) ─────────
-
-def rubric_work_units(items: list[dict]) -> list[WorkSet]:
-    items = [i for i in (items or []) if isinstance(i, dict) and i.get("item_id")]
-    sets = [
-        WorkSet(set_id=f"RB-{_bare(item['item_id'])}", payload={"items": [item]}, source="deterministic")
-        for item in items
-    ]
-    if len(sets) > MAX_RUBRIC_UNITS:
-        head, tail = sets[:MAX_RUBRIC_UNITS - 1], sets[MAX_RUBRIC_UNITS - 1:]
-        merged_items = [it for ws in tail for it in ws.payload["items"]]
-        merged = WorkSet(set_id="RB-MERGED", payload={"items": merged_items}, source="deterministic")
-        sets = head + [merged]
-    return sets
-
 
 # ── work-set rendering: the "=== YOUR ASSIGNED ... ===" user-content block a
 # Developer (multi arm) or a per-set state (single arm) shows the model.
@@ -376,7 +699,14 @@ def rubric_work_units(items: list[dict]) -> list[WorkSet]:
 def render_assessment_set(work_set: WorkSet) -> str:
     lines = [f"set_id: {work_set.set_id}"]
     if work_set.pairs:
-        lines.append("pairs (objective x plan_category) YOU must cover, one item each:")
+        # The count is stated as a number, not left to be inferred from the
+        # list length. It is the same quantity the split used, so a Developer
+        # that writes fewer is visibly short rather than plausibly done — and a
+        # set whose pairs were trimmed (a plan promising a category its own
+        # `lo_coverage_targets` did not name) says how many survived.
+        lines.append(f"write exactly {len(work_set.pairs)} item"
+                     f"{'' if len(work_set.pairs) == 1 else 's'} — one for each "
+                     "(objective x plan_category) pair below:")
         for lo, category in work_set.pairs:
             lines.append(f"  - {lo} x {category}")
     hint = work_set.payload.get("instrument_hint")
@@ -404,6 +734,26 @@ def render_activity_set(work_set: WorkSet) -> str:
     rationale = work_set.payload.get("rationale")
     if rationale:
         lines.append(f"rationale: {rationale}")
+    expected = work_set.payload.get("expected_activities")
+    if expected:
+        lines.append(f"how many activities to write: {expected}")
+    batch = work_set.payload.get("batch")
+    if batch:
+        # The BACKSTOP path only. Scoping a set is the planner's job — it is
+        # told the budget and asked to emit several blocks with distinct
+        # `block_theme`s when an objective needs more than one call's worth,
+        # precisely so two developers cannot be handed the same ground. This
+        # fires when it did not, and then the best available scope is the
+        # ordinal: without it the pieces carry identical assignments and write
+        # the same activities twice, which the id remap would keep as both.
+        index, total = batch
+        stage = f" of '{theme}'" if theme else ""
+        lines.append(
+            f"this is part {index} of {total}{stage} for these objectives: write "
+            f"{expected} activities covering only "
+            f"{'the opening stage' if index == 1 else f'stage {index}'} of that "
+            "progression. The other parts cover the other stages — do not repeat "
+            "or restate them.")
     return "\n".join(lines)
 
 
@@ -426,9 +776,3 @@ def render_material_set(work_set: WorkSet) -> str:
             lines.append(f"  [CONSTRAINT:{constraint.get('id', '')}] {json.dumps(constraint, ensure_ascii=False)}")
     return "\n".join(lines)
 
-
-def render_rubric_set(work_set: WorkSet) -> str:
-    lines = [f"set_id: {work_set.set_id}"]
-    for item in work_set.payload.get("items") or []:
-        lines.append(f"[ASSESSMENT:{item.get('item_id', '')}] {json.dumps(item, ensure_ascii=False)}")
-    return "\n".join(lines)

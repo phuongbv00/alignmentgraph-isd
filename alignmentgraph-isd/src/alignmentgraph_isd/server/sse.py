@@ -62,6 +62,7 @@ def hello_payload(state: RunState) -> dict:
         "model_name": state.model_name,
         "stats": state.public_stats(),
         "graph_rev": state.graph_rev,
+        "contexts_rev": state.contexts_rev,
     }
 
 
@@ -76,6 +77,11 @@ async def live_stream(
         sent_graph_rev = state.graph_rev
         yield _graph_frame(state)
 
+    sent_contexts_rev = 0
+    if state.contexts_rev:
+        sent_contexts_rev = state.contexts_rev
+        yield _contexts_frame(state)
+
     cursor = after
     while True:
         if await request.is_disconnected():
@@ -88,6 +94,10 @@ async def live_stream(
         if state.graph_rev > sent_graph_rev:
             sent_graph_rev = state.graph_rev
             yield _graph_frame(state)
+
+        if state.contexts_rev > sent_contexts_rev:
+            sent_contexts_rev = state.contexts_rev
+            yield _contexts_frame(state)
 
         if state.is_terminal and not state.events_after(cursor):
             # The terminal event has already gone out above; closing here is what
@@ -114,6 +124,20 @@ async def replay_stream(events: list[dict], status: dict) -> AsyncIterator[str]:
 
 def stream_response(generator: AsyncIterator[str]) -> StreamingResponse:
     return StreamingResponse(generator, media_type="text/event-stream", headers=SSE_HEADERS)
+
+
+def _contexts_frame(state: RunState) -> str:
+    """The context ROWS, without their transcripts.
+
+    Same protocol as the graph — a revision counter, pushed only when it moves
+    — and the same reason for sending a reduced payload: a loop republishes its
+    context after every turn, so the full transcripts would go over the wire
+    tens of times per run. The rows carry who is speaking, in which phase, and
+    how much of the window they are using, which is the whole of the list view;
+    the transcript is fetched from /contexts when a row is opened.
+    """
+    rows = json.dumps(state.contexts_light(), ensure_ascii=False)
+    return f"event: contexts\ndata: {rows}\n\n"
 
 
 def _graph_frame(state: RunState) -> str:

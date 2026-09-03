@@ -10,10 +10,13 @@ here reads ``graph.element_nodes(...)`` directly, not
 ``graph.section_nodes(...)[0]["data"]["learning_objectives"]`` as the prior
 design did.
 
-A violation only becomes a cross-agent feedback signal (``target_designer``
-set) when its root cause plausibly sits in an earlier Designer than the one
-that found it; most violations are still repaired locally by whichever
-Designer owns the check (self-contained, same as before).
+Most violations are repaired locally, by whichever family owns the check, in
+the self-validation round that follows its own generation stage. A violation a
+LATER stage surfaces but an EARLIER family owns cannot be repaired that way --
+the owning stage has already finished. Those become cross-agent feedback: the
+reconciliation pass that runs once after the last stage stamps
+``target_designer`` from ``repairs.OWNER_BY_VIOLATION`` and hands each
+violation to the family that owns it. See ``core/agentic/run.py::_reconcile``.
 """
 from __future__ import annotations
 
@@ -23,6 +26,7 @@ from dataclasses import dataclass, field
 from .alignment_graph import alignment
 from .alignment_graph import NodeType
 from .brief import DesignBrief
+from . import dev_plans
 
 # Bloom's taxonomy verbs by level — used to verify measurability of objectives
 _BLOOM_VERBS: dict[str, list[str]] = {
@@ -93,13 +97,14 @@ class Violation:
     message: str
     # violation_type: bloom | measurability | activity_engagement | rubric_consistency |
     #   feasibility | actionability | evaluation_quality | orphan_content |
-    #   evidence_alignment | C1..C7 | P1..P9 | bloom_mismatch_assessment | bloom_mismatch_activity
+    #   evidence_alignment | C1..C5 | P1..P11 | bloom_mismatch_assessment | bloom_mismatch_activity
     violation_type: str = "coverage"
     severity: str = "error"                   # error | warning
     repair_hint: str = ""
     metadata: dict = field(default_factory=dict)
-    # Which Designer this should route to if the owning Designer can't repair
-    # it locally (empty = self-contained, repaired by whichever agent found it).
+    # The family that OWNS this violation type, stamped by the reconciliation
+    # pass from ``repairs.OWNER_BY_VIOLATION``. Empty until then, and empty
+    # forever for a type no family owns (``measurability`` is audit-only).
     target_designer: str = ""
 
 
@@ -139,8 +144,8 @@ def _duration_hours(design_brief: DesignBrief) -> float:
 # ``*_items``/``*_data`` core
 # that inspects plain ``(node_id, data)`` pairs — no graph access. Both arms
 # run the SAME core: the graph arm feeds it element/section nodes, the prose
-# arm feeds it the matching blackboard document (see the prose branch of
-# ``workflow._collect_violations``). Cross-artifact checks stay graph-only by
+# arm feeds it the matching blackboard document (see
+# ``outputs._collect_violations_prose``). Cross-artifact checks stay graph-only by
 # design — they are part of the alignment machinery the prose arm ablates.
 
 def bloom_verbs(graph) -> list[Violation]:
@@ -247,18 +252,29 @@ def measurability_items(items: list[tuple[str, dict]]) -> list[Violation]:
 
 
 # ══════════════════════ Assessment Designer's own checks ═══════════════════
-# (rubric_consistency moved further below, under Rubric Designer's checks —
-# Rubric nodes don't exist yet when Assessment Designer runs, since Rubric
-# Designer is much later in the DAG.)
+# `rubric_consistency` is defined below rather than here because it reads the
+# criteria off the items: since 2026-09-02 a rubric criterion is a FIELD of its
+# assessment item, not a node, so there is no separate Rubric stage to own it.
+
+def _criteria_of(graph) -> list[tuple[str, dict]]:
+    """Every rubric criterion in the design, read off the assessment items.
+
+    Since 2026-09-02 a criterion is a FIELD of the item it marks, not a node of
+    its own — it is written by the same call, in the same breath, and the rules
+    require it to name that item's objective. So the graph arm reads them the
+    way the prose arm always has, and both run the identical check.
+    """
+    found: list[tuple[str, dict]] = []
+    for item in graph.element_nodes(NodeType.ASSESSMENT):
+        for rc in item["data"].get("rubric") or []:
+            if isinstance(rc, dict):
+                found.append((f"{item['id']}/{rc.get('id', '?')}", rc))
+    return found
+
 
 def rubric_consistency(graph) -> list[Violation]:
-    """Every Rubric criterion states an observable scoring description (moved
-    from the old per-item ``scoring_criteria`` check to the dedicated Rubric
-    node type, which now owns this concern). Called by Rubric Designer's own
-    self-validation, not Assessment Designer's."""
-    return rubric_consistency_items(
-        [(rc["id"], rc["data"]) for rc in graph.element_nodes(NodeType.RUBRIC)]
-    )
+    """Every rubric criterion states an observable scoring description."""
+    return rubric_consistency_items(_criteria_of(graph))
 
 
 def rubric_consistency_items(items: list[tuple[str, dict]]) -> list[Violation]:
@@ -317,24 +333,22 @@ def plan_coverage(graph) -> list[Violation]:
             realised.add((lo, category))
 
     violations: list[Violation] = []
-    for raw_lo_id, categories in targets.items():
-        # bare_ref: a model that copied the namespaced node id from context
-        # ("objective:ILO-01") must not make every promised pair read as
-        # unrealised (measured on a 2B single-graph run: 14/14 false gaps).
-        lo_id = alignment.bare_ref(raw_lo_id)
-        if not isinstance(categories, list):
-            continue
-        for category in categories:
-            key = (str(lo_id), str(category).lower())
-            if key in realised:
-                continue
+    # ONE reader for this field, shared with the fan-out's work-set planner:
+    # it strips the namespace off an objective id a model copied from context
+    # ("objective:ILO-01"), accepts both the bare-category and the
+    # {plan_category, instrument} shapes, and drops anything that is not one
+    # of the three categories. Reading it here instead meant a dict category
+    # became `str(dict)`, which no item could ever realise.
+    for lo_id, category in dev_plans.plan_category_pairs(targets):
+        key = (lo_id, category)
+        if key not in realised:
             violations.append(Violation(
                 node_id=f"{NodeType.OBJECTIVE}{graph.ELEMENT_SEP}{lo_id}",
                 edge_type="", violation_type="plan_coverage", severity="error",
                 message=(f"The assessment plan promises a {category} item for {lo_id}, "
                          f"but no assessment item realises that pair."),
                 repair_hint=f"Add a {category} assessment item aligned to {lo_id}.",
-                metadata={"lo_id": str(lo_id), "plan_category": str(category).lower()},
+                metadata={"lo_id": lo_id, "plan_category": category},
             ))
     return violations
 
@@ -523,63 +537,36 @@ def orphan_content(graph) -> list[Violation]:
 
 # ══════════════════════ Rubric Designer's own checks ════════════════════════
 
-def orphan_rubric(graph) -> list[Violation]:
-    """A rubric criterion with neither a C6 nor a C7 edge points at nothing —
-    and is invisible to both coverage checks, because C6's coverage side is
-    the assessment (does every item have a criterion) and C7's is the
-    objective (is every objective measured). A criterion that names no item
-    and no objective sits on the unchecked side of both. Measured: a repaired
-    criterion shipped with no ``aligned_assessment`` and no
-    ``aligned_objective`` and sailed through every net into the final graph
-    dump as an isolated element node — the exact class of island the
-    element-reachability invariant forbids.
-
-    Symmetric with ``orphan_content``: same "no artifact untraceable to
-    instructional purpose" rule, applied to the scoring side."""
-    violations: list[Violation] = []
-    for rc in graph.element_nodes(NodeType.RUBRIC):
-        if graph.get_edges(relation_id="C6", target=rc["id"]):
-            continue
-        if graph.get_edges(relation_id="C7", source=rc["id"]):
-            continue
-        rc_id = rc["data"].get("id", _bare_id(graph, rc["id"]))
-        violations.append(Violation(
-            node_id=rc["id"], edge_type="", violation_type="orphan_rubric", severity="error",
-            message=f"Rubric criterion '{rc_id}' evaluates no assessment item and measures no objective.",
-            repair_hint="Attach it to an assessment item (preferring one that has no criterion yet).",
-            metadata={"node_id": rc["id"], "rc_id": rc_id},
-        ))
-    return violations
-
-
 def evidence_alignment(graph) -> list[Violation]:
-    """A Rubric criterion's declared evidence type must be producible by the
-    Assessment item it evaluates (C6 target) — generalizes the old Bloom/
-    format-validity capability lookup (``item_type_capability``) to rubric
-    criteria instead of raw assessment format."""
+    """A rubric criterion's declared evidence type must be producible by the
+    assessment item it marks.
+
+    The item is now the criterion's PARENT rather than the far end of a C6
+    edge, so the lookup is direct: a criterion cannot be evaluated against an
+    item it does not belong to, and the "no linked item" case this used to skip
+    can no longer occur.
+    """
     violations: list[Violation] = []
-    for rc in graph.element_nodes(NodeType.RUBRIC):
-        evidence_type = str(rc["data"].get("evidence_type", "") or "")
-        if not evidence_type:
-            continue
-        required = alignment.item_type_capability(evidence_type)
-        evaluated_edges = graph.get_edges(relation_id="C6", target=rc["id"])
-        if not evaluated_edges:
-            continue  # C6 coverage's concern, not this check's
-        capability = max(
-            (alignment.item_type_capability((graph.get_node(e["source"]) or {"data": {}})["data"].get("type", ""))
-             for e in evaluated_edges),
-            default=0,
-        )
-        if capability >= required:
-            continue
-        rc_id = rc["data"].get("id", _bare_id(graph, rc["id"]))
-        violations.append(Violation(
-            node_id=rc["id"], edge_type="", violation_type="evidence_alignment", severity="warning",
-            message=f"Rubric criterion '{rc_id}' expects '{evidence_type}' evidence but its linked assessment item(s) can't produce it.",
-            repair_hint="Either loosen the criterion's evidence type or change the linked item's format.",
-            metadata={"rc_id": rc_id, "evidence_type": evidence_type},
-        ))
+    for item in graph.element_nodes(NodeType.ASSESSMENT):
+        capability = alignment.item_type_capability(str(item["data"].get("type", "") or ""))
+        for rc in item["data"].get("rubric") or []:
+            if not isinstance(rc, dict):
+                continue
+            evidence_type = str(rc.get("evidence_type", "") or "")
+            if not evidence_type:
+                continue
+            if alignment.item_type_capability(evidence_type) <= capability:
+                continue
+            rc_id = str(rc.get("id", "?"))
+            violations.append(Violation(
+                node_id=item["id"], edge_type="", violation_type="evidence_alignment",
+                severity="warning",
+                message=(f"Rubric criterion '{rc_id}' expects '{evidence_type}' evidence but "
+                         f"'{item['data'].get('item_id', '?')}' can't produce it."),
+                repair_hint="Either loosen the criterion's evidence type or change the item's format.",
+                metadata={"rc_id": rc_id, "evidence_type": evidence_type,
+                          "item_id": str(item["data"].get("item_id", ""))},
+            ))
     return violations
 
 
@@ -636,27 +623,23 @@ def actionability_data(node_id: str, data: dict) -> list[Violation]:
 
 # ══════════════════════ shared: relation coverage + Bloom cross-checks ══════
 
-# Only these relations have a re-runnable establisher (id/id-list/type
-# mechanisms); provenance-mechanism relations (C1, C5, C6, P1, P2, P4, P5,
-# P7, P8, P9) can't be re-established generically — they need the specific
-# source ids the producing Designer traversed, which only that Designer
-# knows at generation time. This mirrors the old verifier's behavior, which
-# likewise only re-ran R3/R4/R5/R6/R9/R12 (never the provenance relations).
-_RERUNNABLE_RELATIONS: tuple[str, ...] = ("C2", "C3", "C4", "C7", "P3", "P6")
-
-
+# Only C2/C3/C4/P3/P6 have a re-runnable establisher (the id / id-list / type
+# mechanisms); the eleven provenance-mechanism relations (C1, C5, P1, P2, P4,
+# P5, P7, P8, P9, P10, P11) can't be re-established generically — they need the
+# specific source ids the producing agent had at generation time. The five are
+# called explicitly below rather than driven off a table: a table nothing else
+# reads is just a second place for the list to go stale.
 def relation_coverage(graph) -> list[Violation]:
     """Re-run the re-runnable establishers (idempotent — safe to call
     repeatedly, and catches a reference that stopped resolving after a
     repair elsewhere) to surface dangling/mismatched references, then check
-    coverage of all 18 relations (core + secondary) for missing links."""
+    coverage of every relation (core + secondary) for missing links."""
     violations: list[Violation] = []
 
     establisher_gaps: list[dict] = []
     establisher_gaps += alignment.match_id_reverse(graph, "C2", field="aligned_objective")
     establisher_gaps += alignment.match_list_reverse(graph, "C3", field="aligned_objectives")
     establisher_gaps += alignment.match_list(graph, "C4", field="prepares_for_assessment")
-    establisher_gaps += alignment.match_id(graph, "C7", field="aligned_objective")
     establisher_gaps += alignment.match_p3_realizes(graph)
     establisher_gaps += alignment.match_p6_realizes(graph)
     for gap in establisher_gaps:

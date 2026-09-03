@@ -1,13 +1,29 @@
 """Server test fixtures.
 
-Every test gets its own data root and database, and a fake model injected via
-``llm_factory_from_env`` so the whole run pipeline executes without a network.
+Every test gets its own data root and database, and a fake model injected at
+``server.llm_settings.build_factory`` / ``.resolve`` (NOT through
+``llm_factory_from_env``, which the server never calls) so the whole run
+pipeline executes without a network.
+
+This package is skipped wholesale when FastAPI is missing, which is why the
+extra is not optional for a dev or CI environment: without it the suite still
+reports a healthy pass count while ~100 tests — every guard on
+``src/alignmentgraph_isd/server/`` — quietly did not run. Set
+``AGISD_REQUIRE_SERVER_TESTS=1`` to turn that skip into a hard failure.
 """
 from __future__ import annotations
 
+import os
+
 import pytest
 
-pytest.importorskip("fastapi", reason="needs the [server] extra")
+try:  # noqa: SIM105
+    import fastapi  # noqa: F401
+except ImportError as exc:  # pragma: no cover - environment-dependent
+    message = ("server tests need the [server] extra: pip install -e '.[server]'")
+    if os.getenv("AGISD_REQUIRE_SERVER_TESTS") == "1":
+        raise RuntimeError(message) from exc
+    pytest.skip(message, allow_module_level=True)
 
 from fastapi.testclient import TestClient  # noqa: E402
 

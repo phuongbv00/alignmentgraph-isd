@@ -26,7 +26,10 @@ export type WorkKind =
   | 'repair'
   | 'validate'
   | 'audit'     // the residual whole-graph audit, at aggregation
+  | 'plan'      // split a stage's work into sets and dispatched them (fan-out)
+  | 'route'     // handed a residual cross-artifact violation to its owner
   | 'retrieval'
+  | 'compact'  // folded old turns away to stay inside the window
   | 'error'
   | 'phase'
   | 'other'
@@ -48,7 +51,10 @@ const KIND_OF: Record<string, WorkKind> = {
   edge_read: 'read',
   edge_walk: 'walk',
   node_write: 'write',
+  doc_write: 'write',
   edge_write: 'link',
+  dev_plan: 'plan',
+  reconcile: 'route',
   llm_call: 'model',
   agent_step: 'step',
   check: 'check',
@@ -65,9 +71,21 @@ const KIND_OF: Record<string, WorkKind> = {
   submit_invalid_final: 'error',
   repeated_tool_call: 'error',
   commit_invalid_section: 'error',
+  agentic_gave_up: 'error',
+  budget_exhausted: 'error',
+  tool_binding_unavailable: 'error',
+  tool_call_markup_recovered: 'error',
+  duplicate_submit: 'error',
+  bare_artifact_wrapped: 'error',
+  dropped_argument: 'error',
+  // Not an error: the loop managing its own window. Its RATE is a measurement
+  // (the `agent_mode` axis's price), so it gets a beat of its own rather than
+  // a red one.
+  context_compacted: 'compact',
+  // Retired 2026-09-01 with the scripted rescue; kept so an archived run still
+  // renders as what it recorded rather than as an unknown action.
   agentic_fallback: 'error',
   retry: 'error',
-  regen: 'warn' as WorkKind,
   regen_empty_section: 'error',
   phase_started: 'phase',
   phase_finished: 'phase',
@@ -86,7 +104,7 @@ export function workKind(action: DeepAction): WorkKind {
 /** Never folded into a run, even when consecutive: each of these is one
  *  distinct beat of the story (its own round, its own fix, its own step). */
 const ONE_PER_ROW = new Set<WorkKind>(
-  ['check', 'repair', 'validate', 'audit', 'step', 'model', 'error'],
+  ['check', 'repair', 'validate', 'audit', 'plan', 'route', 'step', 'model', 'error'],
 )
 
 export function foldChronological(actions: DeepAction[]): DeepRow[] {
@@ -170,6 +188,14 @@ function titleFor(kind: WorkKind, actions: DeepAction[]): string {
       return `Validate ${context.scope ?? 'output'}`
     case 'audit':
       return 'Audit graph'
+    case 'plan': {
+      const sets = Number(context.set_count ?? 0)
+      return `Split ${context.family ?? 'work'} into ${sets} work set${sets === 1 ? '' : 's'}`
+    }
+    case 'route': {
+      const routed = Number(context.routed ?? 0)
+      return `Route ${routed} residual violation${routed === 1 ? '' : 's'} to ${context.family ?? 'owner'}`
+    }
     case 'retrieval':
       if (first.action === 'retrieval_query') {
         return n === 1
@@ -177,6 +203,10 @@ function titleFor(kind: WorkKind, actions: DeepAction[]): string {
           : `Query ${n} sources`
       }
       return `Retrieval: ${context.decision}`
+    case 'compact':
+      return first.context.dropped
+        ? `Compact context (${first.context.dropped} turns folded)`
+        : 'Compact context'
     case 'error':
       return RECOVERY_LABEL[first.action] ?? first.action
     default:
@@ -200,7 +230,9 @@ function detailFor(kind: WorkKind, actions: DeepAction[]): string {
       }`
     }
     case 'write':
-      return countBy(actions, (a) => String(a.context.node_type ?? '?'))
+      // A graph write names its node type; a prose write names the blackboard
+      // document key. Both answer "what did this produce".
+      return countBy(actions, (a) => String(a.context.node_type ?? a.context.key ?? '?'))
     case 'link':
     case 'relink': {
       // The relation and how it was established is the whole point of an edge.
@@ -233,6 +265,21 @@ function detailFor(kind: WorkKind, actions: DeepAction[]): string {
       const errors = Number(context.error_count ?? 0)
       return errors === 0 ? 'Schema valid' : `${errors} problem${errors === 1 ? '' : 's'}`
     }
+    case 'plan': {
+      // `source` is the one thing that says whether the agent chose this split
+      // or a deterministic fallback did — the difference between a dispatch it
+      // reasoned about and one it was handed.
+      const ids = ((context.sets as { set_id?: string }[] | undefined) ?? [])
+        .map((set) => String(set.set_id ?? '')).filter(Boolean)
+      return [
+        `grouping from ${context.source ?? '?'}`,
+        ids.length ? ids.slice(0, 4).join(', ') + (ids.length > 4 ? ` +${ids.length - 4}` : '') : '',
+        Number(context.dropped_refs ?? 0) ? `${context.dropped_refs} dangling refs dropped` : '',
+        Number(context.appended_sets ?? 0) ? `${context.appended_sets} sets appended for coverage` : '',
+      ].filter(Boolean).join(' · ')
+    }
+    case 'route':
+      return (context.violation_types as string[] | undefined)?.join(', ') || 'no violation types recorded'
     case 'audit': {
       const gaps = Number(context.residual_gap_count ?? 0)
       const gapped = (context.gapped_relations as string[] | undefined) ?? []
@@ -272,6 +319,13 @@ const RECOVERY_LABEL: Record<string, string> = {
   submit_invalid_final: 'Reject final submission',
   repeated_tool_call: 'Skip repeated tool call',
   commit_invalid_section: 'Skip invalid section',
+  agentic_gave_up: 'Give up on this step',
+  budget_exhausted: 'Run out of turns',
+  tool_binding_unavailable: 'Backend accepted no tool binding',
+  tool_call_markup_recovered: 'Recover tool call left as text',
+  duplicate_submit: 'Skip duplicate submission',
+  bare_artifact_wrapped: 'Wrap bare artifact',
+  dropped_argument: 'Drop unreadable argument',
   agentic_fallback: 'Use fallback',
 }
 
@@ -291,6 +345,11 @@ function toneFor(kind: WorkKind, action: DeepAction): DeepRow['tone'] {
   if (kind === 'check') return Number(action.context.violation_count ?? 0) === 0 ? 'good' : 'warn'
   if (kind === 'validate') return Number(action.context.error_count ?? 0) === 0 ? 'good' : 'bad'
   if (kind === 'audit') return Number(action.context.residual_gap_count ?? 0) === 0 ? 'good' : 'warn'
+  // A grouping the agent proposed is the intended path; a fallback grouping is
+  // the harness deciding for it, which is worth seeing at a glance.
+  if (kind === 'plan') return action.context.source === 'llm' ? 'good' : 'warn'
+  if (kind === 'route') return 'warn'
+  if (kind === 'compact') return 'warn'
   return undefined
 }
 

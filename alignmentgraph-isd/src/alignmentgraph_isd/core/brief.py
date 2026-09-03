@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from pydantic import BaseModel, model_validator
 
 
@@ -50,9 +52,7 @@ class DesignBrief(_LenientModel):
 
     ``alignmentgraph-isd`` receives a design brief: either a structured brief
     (title/domain/learning_goals/...) or, on the sparse app path, just a
-    ``user_message``. Internal orchestration work is represented separately as
-    ``PlannedTask`` instances produced by the task planner/router. Callers that
-    come from other vocabularies (e.g. the benchmark's "scenario") map their
+    ``user_message``. Callers that come from other vocabularies (e.g. the benchmark's "scenario") map their
     fields onto this envelope at the boundary.
     """
 
@@ -65,7 +65,8 @@ class DesignBrief(_LenientModel):
     user_message: str = ""
 
     # refinement session (app path) — an explicit edit request against the loaded
-    # program graph; see refinement.RefinementRequest for the shape. Ignored on init
+    # program graph. Free-form: nothing in ``core/`` reads it — the app path
+    # (``server/``) and the webapp are its only consumers. Ignored on init
     # sessions and by the benchmark, which never sets it.
     refinement_request: dict = {}
 
@@ -77,3 +78,51 @@ class DesignBrief(_LenientModel):
     learning_goals: list[str] = []
     context: DesignBriefContext = DesignBriefContext()
     constraints: DesignBriefConstraints = DesignBriefConstraints()
+
+
+_DESIGN_GUIDANCE = """\
+Standing design guidance:
+- Every objective must be measured by at least one assessment item; preserve \
+objective<->assessment<->activity alignment with explicit objective IDs.
+- Cover all 33 ADDIE sub-items explicitly.
+- Use measurable Bloom verbs; avoid vague verbs such as know, learn, understand, comprehend.
+- Include pilot execution evidence, data collection, monitoring, and revision loops."""
+
+
+def _format_design_brief(design_brief: DesignBrief) -> str:
+    """Serialize a DesignBrief (+ standing design guidance) as an LLM user message."""
+    lines: list[str] = []
+    if design_brief.title:
+        lines.append(f"Title: {design_brief.title}")
+    context = {k: v for k, v in design_brief.context.model_dump().items() if v not in ("", None, [], {})}
+    if context:
+        lines.append("Context:")
+        for k, v in context.items():
+            lines.append(f"  {k}: {v if not isinstance(v, (dict, list)) else json.dumps(v, ensure_ascii=False)}")
+    if design_brief.learning_goals:
+        lines.append("Learning goals:")
+        for g in design_brief.learning_goals:
+            lines.append(f"  - {g}")
+    constraints = {k: v for k, v in design_brief.constraints.model_dump().items() if v not in ("", None, [], {})}
+    if constraints:
+        lines.append("Constraints:")
+        for k, v in constraints.items():
+            lines.append(f"  {k}: {v if not isinstance(v, (dict, list)) else json.dumps(v, ensure_ascii=False)}")
+    for key in ("difficulty", "domain", "duration", "target_audience"):
+        val = getattr(design_brief, key, "")
+        if val:
+            lines.append(f"{key.replace('_', ' ').title()}: {val}")
+    if design_brief.user_message:
+        lines.append(f"User request (this session): {design_brief.user_message}")
+    if not lines:
+        lines.append(json.dumps(design_brief.model_dump(), ensure_ascii=False))
+    return "\n".join(lines) + "\n\n" + _DESIGN_GUIDANCE
+
+
+
+# ── retired: narrative prose rendering ────────────────────────────────────────
+# An earlier `prose` arm rendered the SAME graph-selected nodes as sentences
+# (per-type templates), which made the arm a costume on the graph: selection,
+# docket, checks, routing and aggregation all still ran on the graph, so the
+# axis measured surface form only. The current `prose` arm replaces the store
+# itself (see core/prose_store.py); the sentence templates were deleted with it.

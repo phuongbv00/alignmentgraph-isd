@@ -1,4 +1,10 @@
-"""On-demand agentic retrieval: RQ1 zero-cost gate, decision flow, sandbox behavior."""
+"""Retrieval inside the tool loop.
+
+The pre-2026-09-01 path — ``BaseISDAgent._maybe_retrieve``, a decision call
+made before generation — went with the scripted specialists that ran it. The
+agentic arm retrieves by CALLING the ``retrieve`` tool, which is what the
+remaining tests here cover.
+On-demand agentic retrieval: RQ1 zero-cost gate, decision flow, sandbox behavior."""
 from __future__ import annotations
 
 import json
@@ -7,7 +13,7 @@ from alignmentgraph_isd import DesignBrief, HarnessRunConfig, run_design_brief
 from alignmentgraph_isd.core.rag.agent import RetrievalAgent, RetrievalTool
 from alignmentgraph_isd.core.rag.sandbox import RetrievalSandbox
 
-from conftest import events_of, FakeChatModel, _payload_for_system, load_brief
+from conftest import events_of, FakeChatModel, load_brief
 
 BRIEF = DesignBrief(
     id="b1", title="Software Testing Fundamentals", domain="Software Engineering",
@@ -61,68 +67,7 @@ def test_use_rag_on_with_empty_registry_is_zero_cost(fake_llm_factory):
 
 # ── On-demand flow: specialist decides, sandbox executes, prompt gets material ─
 
-class _RagFakeModel(FakeChatModel):
-    """Fake model that opts in to retrieval and answers the retrieval-agent loop."""
 
-    def __init__(self) -> None:
-        self.seen_domain_material = 0
-
-    def invoke(self, messages):
-        system = ""
-        user = ""
-        for message in messages:
-            role = message.get("role") if isinstance(message, dict) else ""
-            if role == "system":
-                system = message.get("content", "")
-            if role == "user":
-                user = message.get("content", "")
-
-        class R:
-            usage_metadata = None
-
-        r = R()
-        if "retrieval coordinator" in system:
-            r.content = json.dumps({
-                "retrieve": True,
-                "agents": ["testing_corpus"],
-                "strategy": "single",
-                "queries": {"testing_corpus": "unit test rubric"},
-            })
-            return r
-        if "You retrieve internal software-testing conventions." in system:
-            r.content = json.dumps({"tool": "search_corpus", "args": {"query": "rubric"}}) \
-                if "TOOL RESULT" not in user else json.dumps({
-                    "content": ["Use AAA structure", "Rubric 0-4 anchors"],
-                    "citations": ["corpus:search_corpus"],
-                })
-            return r
-        if "DOMAIN MATERIAL" in user:
-            self.seen_domain_material += 1
-        payload = _payload_for_system(system)
-        r.content = json.dumps(payload, ensure_ascii=False)
-        return r
-
-
-def test_on_demand_retrieval_flow_end_to_end():
-    brief = load_brief("software_testing_brief.json")
-    model = _RagFakeModel()
-    config = HarnessRunConfig(use_rag=True)
-    config.llm_factory = lambda: model
-    config.retrieval_subagents = [_corpus_agent()]
-
-    result = run_design_brief(brief, config)
-
-    events = events_of(result["trajectory"], "retrieval")
-    retrieved = [e for e in events if e["context"]["decision"] == "retrieve"]
-    assert retrieved, "expected at least one specialist to retrieve"
-    assert retrieved[0]["context"]["strategy"] == "single"
-    assert retrieved[0]["context"]["retrieval_agents"] == ["testing_corpus"]
-    assert retrieved[0]["context"]["snippets"] >= 1
-    assert all(e["context"]["executions"][0]["status"] == "ok" for e in retrieved)
-    assert model.seen_domain_material >= 1, "retrieved material should reach specialist prompts"
-
-
-# ── Sandbox behavior ───────────────────────────────────────────────────────────
 
 def test_sandbox_isolates_failures_and_runs_parallel():
     ok, bad = _corpus_agent("ok_agent"), _corpus_agent("bad_agent", fail=True)
@@ -171,3 +116,67 @@ def test_corpus_agent_deterministic_path():
     )
     assert results and results[0]["content"] == ["AAA convention"]
     assert events[0]["status"] == "ok"
+
+
+class _RetrieveThenSubmitModel(FakeChatModel):
+    """Agentic arm: call ``retrieve`` once on the first stage, then submit
+    everything normally. Retrieval here is not a separate
+    coordinator decision — it is a tool the model may choose to call, so what
+    has to be proven is that the tool is BOUND when RAG is on and that calling
+    it reaches ``core/rag``'s own planner/sandbox rather than a second path."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.retrieved = False
+        self.retrieve_offered = False
+
+    def bind_tools(self, specs):
+        bound = super().bind_tools(specs)
+        bound.retrieve_offered = any(
+            spec["function"]["name"] == "retrieve" for spec in specs)
+        return bound
+
+    def invoke(self, messages):
+        if self.retrieve_offered and not _RetrieveThenSubmitModel._done:
+            _RetrieveThenSubmitModel._done = True
+            self.retrieved = True
+
+            class R:
+                usage_metadata = None
+                content = ""
+                tool_calls = [{"name": "retrieve", "args": {"query": "unit test rubric"},
+                               "id": "r1"}]
+
+            return R()
+        return super().invoke(messages)
+
+
+_RetrieveThenSubmitModel._done = False
+
+
+def test_agentic_arm_retrieves_by_calling_the_tool():
+    _RetrieveThenSubmitModel._done = False
+    config = HarnessRunConfig(use_rag=True, llm_factory=_RetrieveThenSubmitModel)
+    config.retrieval_subagents = [_corpus_agent()]
+
+    result = run_design_brief(load_brief("software_testing_brief.json"), config)
+
+    events = events_of(result["trajectory"], "retrieval")
+    assert events, "the retrieve tool call must reach the planner and be recorded"
+    assert any(e["context"].get("decision") == "retrieve" for e in events)
+    # And the run still completes every stage — retrieval costs a turn, not a step.
+    assert result["addie_output"]["analysis"]
+
+
+def test_retrieve_tool_is_not_bound_when_rag_is_off():
+    """The gate has to close at the BINDING, not inside the executor: a tool
+    the model can see costs it a turn to discover it cannot use."""
+    from alignmentgraph_isd.core.agentic import tools as agentic_tools
+    from alignmentgraph_isd.core.agentic.specialists import STEPS
+
+    names = agentic_tools.tool_names(
+        agentic_tools.tool_specs(STEPS[0], retrieval_available=False))
+    assert "retrieve" not in names
+    names_on = agentic_tools.tool_names(
+        agentic_tools.tool_specs(STEPS[0], retrieval_available=True))
+    assert "retrieve" in names_on

@@ -9,22 +9,48 @@ arm's agent classes to borrow its corrective machinery. Repair strength is a
 safeguard held constant across the ablation (see ``config.py``), which is why
 these routines live on the shared substrate next to the checks they answer.
 
-A repair that fixes a malformed field is deterministic. A repair that has to
-supply a MISSING artifact hands the writing back to the model — one persona-free
-call per batch, with a deterministic fallback so every routine still converges
-when the call fails (:func:`_llm_repair_items`, :func:`repair_item_completeness`,
-:func:`repair_formative_methods`, :func:`repair_pilot_data_plan`). Synthesising
-that content from a template instead put the objective's own statement into the
-assessment item, which reads to any text-similarity measure as perfect
-objective-assessment correspondence that no design work produced.
+**Every routine here is STRUCTURAL, and none of them calls the model
+(2026-09-03).** A repair rearranges what the design already holds — substitute
+a Bloom verb from the taxonomy, prune a reference that resolves to nothing,
+re-point a material at a module that exists, reformat a keyless choice item as
+short_answer. Deterministic, exact, and free.
+
+A violation that needs WRITING is not repaired here at all: it goes back to
+the agent that owns it as a repair turn inside that agent's own tool loop
+(:meth:`ToolLoop._own_violations`), where the request, the model's answer and
+the artifact it produces are three consecutive turns of ONE transcript. The
+generative routines that used to live here opened a second conversation under
+a second system prompt with no tools bound, in the name of the same agent —
+so the recorded context showed an agent producing text it had never been
+shown asking for. The context boundary is the whole ``agent_mode`` axis, and a
+repair path that quietly crossed it was measuring something else.
+
+There is no other kind. Templated stand-ins used to close the gap — a
+"Guided practice for ILO-01" activity, a "Support module for TLA-01", one
+fixed rubric sentence, a canned list of formative methods — and each of them
+satisfied its check by existing. That is the objection that has always kept P6
+audit-only, and it applies to every one of them: a check a template can pass
+measures the template. They also polluted the signal a run is tuned on, and one
+of them (the item text built from the objective's own statement) read to a
+text-similarity measure as perfect objective-assessment correspondence that no
+design work produced.
+
+The consequence is deliberate: ``activity_engagement``, ``bloom_mismatch_activity``,
+``rubric_consistency``, ``feasibility``, ``actionability``, and the C3/C5
+"nothing exists yet" cases have NO repair. They stay in :data:`OWNED_BY_FAMILY`
+so reconciliation still routes them to an owner, and they come back unrepaired
+and are counted as residual. A repair that changed nothing also logs nothing —
+a repair event reporting no change is what made ``repair_success_rate``
+unreadable.
+
 All logging goes through ``ctx.actor``, so a repair records whoever actually
 ran it — a specialist in the multi arm, the single designer in the single arm.
 """
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from .alignment_graph import NodeType, alignment
 
@@ -37,21 +63,11 @@ class RepairContext:
     graph: object | None
     store: object | None
     trajectory: object
-    call_llm: Callable[..., str]
     actor: str
 
     @property
     def graph_mode(self) -> bool:
         return self.graph is not None
-
-
-def context_for(agent) -> RepairContext:
-    """Build a :class:`RepairContext` from any agent exposing the BaseISDAgent
-    surface (``graph``/``store``/``trajectory``/``_call_llm``)."""
-    return RepairContext(
-        graph=agent.graph, store=agent.store, trajectory=agent.trajectory,
-        call_llm=agent._call_llm, actor=type(agent).__name__,
-    )
 
 
 def _log_repair(ctx: RepairContext, node_id: str, *, violation_type: str = "",
@@ -70,8 +86,8 @@ def _log_repair(ctx: RepairContext, node_id: str, *, violation_type: str = "",
 
 
 # ── ownership: which violation types each artifact family's repairs answer ──
-# Designer classes point their OWNED_VIOLATION_TYPES here; the single arm's
-# per-state steps read the same map by family key. One definition, both arms.
+# Both decomposition arms read this same map by family key: it is the one
+# definition of who answers for what.
 OWNED_BY_FAMILY: dict[str, frozenset[str]] = {
     "outcome_designer": frozenset({"bloom"}),
     "assessment_designer": frozenset(
@@ -81,16 +97,92 @@ OWNED_BY_FAMILY: dict[str, frozenset[str]] = {
         {"C3", "C4", "P4", "activity_engagement", "bloom_mismatch_activity"}),
     "content_designer": frozenset({"C5", "P5", "P6", "orphan_content"}),
     "rubric_designer": frozenset(
-        {"C6", "C7", "rubric_consistency", "evidence_alignment", "orphan_rubric"}),
+        {"rubric_consistency", "evidence_alignment"}),
     "implementation_planner": frozenset({"feasibility", "actionability"}),
 }
+
+
+#: Owned, but never repaired: routed to a family so the trace names an owner,
+#: and handed straight back. Two reasons, and neither is an oversight.
+#:
+#: * Nothing exists yet to fix. C3 (no activity practices this objective), C5
+#:   (no content supports this activity) and C6 (no criterion evaluates this
+#:   item) are missing ARTIFACTS, and the only deterministic answer was a
+#:   template — "Guided practice for ILO-01", "Support module for TLA-01", one
+#:   fixed rubric sentence. Each satisfied its own check by existing.
+#: * The fix is not mechanical. ``activity_engagement`` /
+#:   ``bloom_mismatch_activity`` need a different activity, ``rubric_consistency``
+#:   a criterion that describes THIS item, ``feasibility`` / ``actionability`` a
+#:   delivery decision. ``P4``/``P6`` are fuzzy type-matches, audit-only from
+#:   the start — this list is that principle applied consistently.
+#:
+#: Everything else has a STRUCTURAL repair below.
+#:
+#: REPORT_ONLY is a statement about the HARNESS, not about the agent: these
+#: types are shown to their owning agent as a repair turn like any other
+#: violation (the agent can write what is missing), and are simply never
+#: touched by the deterministic net. What survives the agent's repair budget
+#: is counted as residual.
+REPORT_ONLY: frozenset[str] = frozenset({
+    "C3", "C5", "P4", "P6",
+    "activity_engagement", "bloom_mismatch_activity",
+    "rubric_consistency", "feasibility", "actionability",
+})
+
+
+#: Violation types with a free, exact, model-free fix: a Bloom verb looked up
+#: in the taxonomy, a dangling reference pruned, a material pointed at a module
+#: that exists, a criterion's evidence type loosened to what its own item can
+#: produce.
+#:
+#: These run BEFORE the agent is shown anything (see
+#: ``ToolLoop._own_violations``) — spending an agent turn on what a lookup does
+#: perfectly is the waste the loop has been trimming everywhere else.
+#:
+#: NOT listed here, and deliberately: ``C2``/``P3`` and ``item_completeness``.
+#: Each has a structural half (re-point a dangling item; reformat a keyless
+#: choice item as short_answer) but that half is LOSSY — it settles for less
+#: than the design asked for. The agent gets its repair turns first, and the
+#: salvage runs only in the reconciliation pass, after every loop has closed.
+STRUCTURAL: frozenset[str] = frozenset({
+    "bloom", "C4", "P5", "orphan_content", "evidence_alignment",
+})
+
+
+#: Reverse index of :data:`OWNED_BY_FAMILY`: violation type -> owning family.
+#: The reconciliation pass uses it to stamp ``Violation.target_designer`` and to
+#: hand each residual violation to the family that can actually repair it. A
+#: type absent here is owned by nobody and is audit-only (``measurability``).
+OWNER_BY_VIOLATION: dict[str, str] = {
+    violation_type: family
+    for family, types in OWNED_BY_FAMILY.items()
+    for violation_type in types
+}
+# A type owned by two families would make routing ambiguous and silently drop
+# half the repairs, so the invariant is asserted at import time rather than
+# discovered in a results dir.
+assert len(OWNER_BY_VIOLATION) == sum(len(t) for t in OWNED_BY_FAMILY.values()), (
+    "OWNED_BY_FAMILY entries overlap; each violation type must have one owner")
 
 
 def repair(family: str, violations: list, ctx: RepairContext) -> list:
     """Dispatch ``violations`` to the ``family``'s repair routines; returns the
     violations no routine answers (mirroring each Designer's old ``repair()``
-    contract)."""
-    return _FAMILY_REPAIRERS[family](ctx, violations)
+    contract).
+
+    :data:`REPORT_ONLY` types never reach a routine and are returned as-is.
+    Filtering here rather than inside each family is the point: three separate
+    dispatchers each had a branch that sent C3/C5/C6 to a routine which, once
+    its template was removed, silently dropped them — the violation left
+    ``remaining`` without anything having been done about it, which is the
+    exact failure mode the template had.
+    """
+    reported = [v for v in violations
+                if getattr(v, "violation_type", "") in REPORT_ONLY]
+    repairable = [v for v in violations
+                  if getattr(v, "violation_type", "") not in REPORT_ONLY]
+    remaining = _FAMILY_REPAIRERS[family](ctx, repairable) if repairable else []
+    return list(remaining) + reported
 
 
 # ── outcome family ──────────────────────────────────────────────────────────
@@ -148,10 +240,13 @@ def _fix_bloom_verb_in(objectives: list, lo_id: str, *, level_only: bool = False
         if alignment.bloom_level_of(str(lo.get("level", ""))) is None:
             lo["level"] = _level_from_verb(replacement)
         statement = str(lo.get("statement", ""))
+        # The verb is SUBSTITUTED where it appears. If it does not appear, the
+        # statement is left exactly as written: appending "This is measured by
+        # asking learners to apply the target skill in context." made the
+        # objective longer and no more measurable, and it was the same sentence
+        # in every design that tripped this check.
         if old_verb and re.search(re.escape(old_verb), statement, flags=re.IGNORECASE):
             lo["statement"] = re.sub(re.escape(old_verb), replacement, statement, count=1, flags=re.IGNORECASE)
-        elif replacement not in statement.lower():
-            lo["statement"] = f"{statement} This is measured by asking learners to {replacement} the target skill in context."
         repaired = True
     return repaired
 
@@ -208,18 +303,6 @@ def _element_lo_map(graph) -> dict[str, dict]:
     }
 
 
-OBSERVABLE_RUBRIC = (
-    "Analytic rubric, 4 levels (0-3) per criterion: task completed with at least 80% "
-    "accuracy; target concepts applied correctly; justification cites observable evidence."
-)
-
-FALLBACK_METHODS = [
-    "Structured observation during activities using a facilitation checklist",
-    "Exit tickets after each module scored against the objective criteria",
-    "Rubric-scored formative checkpoints with instructor feedback",
-]
-
-
 def _repair_assessment_family(ctx: RepairContext, violations: list) -> list:
     remaining = []
     item_violations = []
@@ -241,133 +324,32 @@ def _repair_assessment_family(ctx: RepairContext, violations: list) -> list:
             completeness_violations.append(violation)
         else:
             remaining.append(violation)
-    if item_violations:
-        repair_assessment_items(ctx, item_violations)
+    remaining += item_violations
     if completeness_violations:
         repair_item_completeness(ctx, completeness_violations)
     if coverage_violations:
         repair_assessment_coverage(ctx, coverage_violations)
-    for violation in quality_violations:
-        if (getattr(violation, "metadata", None) or {}).get("section") == "pilot_data_plan":
-            repair_pilot_data_plan(ctx, violation)
-        else:
-            repair_formative_methods(ctx, violation)
-    if plan_violations:
-        repair_plan_coverage(ctx, plan_violations)
+    # evaluation_quality (a thin pilot plan, a plan with no formative method)
+    # and plan_coverage (a planned category with no item) are MISSING WRITING.
+    # They go back to the Designer as a repair turn in its own loop; nothing
+    # here can supply them without inventing text.
+    remaining += quality_violations + plan_violations
     return remaining
 
 
-def _fallback_item_text(spec: dict) -> dict:
-    """Deterministic stand-in when the model writes nothing. It only names the
-    objective, so the item's text is close to the objective's own statement —
-    which is exactly why it is the fallback and not the repair."""
-    return {
-        "question": (f"Demonstrate the performance described by {spec['objective_id']}: "
-                     f"{spec['objective']}"),
-        "scoring_criteria": OBSERVABLE_RUBRIC,
-    }
-
-
-def _llm_repair_items(ctx: RepairContext, specs: list[dict]) -> dict[str, dict]:
-    """Ask the model to WRITE the assessment items a coverage repair needs,
-    one call for the whole batch, keyed by ``item_id``.
-
-    A coverage gap is a missing artifact, not a malformed field, so the fix is
-    a generation the model owns. Synthesising the question deterministically
-    put the objective's own statement in the item text, which then measured as
-    near-perfect objective-assessment correspondence without any design work
-    having happened. Ids the model omits fall back to :func:`_fallback_item_text`,
-    so the repair still converges on a call that fails or returns nothing."""
-    import json
-
-    from .agents.base import parse_json_response
-
-    system = (
-        "Write the missing assessment items for a course design. For each spec write a "
-        "``question`` that makes the learner PERFORM the named cognitive level on that "
-        "objective's subject matter, and ``scoring_criteria`` naming observable evidence "
-        "a scorer can check. The question must be a task in its own words — never restate "
-        "the objective back as the question. Match ``type``: a performance_task sets a "
-        "realistic task to carry out, a short_answer asks for a written response. "
-        'Return ONLY valid JSON: {"items": [{"item_id": "<id>", "question": "<question>", '
-        '"scoring_criteria": "<criteria>"}, ...]}'
-    )
-    user = json.dumps({"items": specs}, ensure_ascii=False)[:4000]
-    response = ctx.call_llm(
-        [{"role": "system", "content": system}, {"role": "user", "content": user}], max_retries=0,
-    )
-    parsed = parse_json_response(response, warn=False) or {}
-    out: dict[str, dict] = {}
-    for entry in parsed.get("items") or []:
-        if not isinstance(entry, dict):
-            continue
-        item_id = str(entry.get("item_id") or "").strip()
-        question = str(entry.get("question") or "").strip()
-        if not item_id or not question:
-            continue
-        out[item_id] = {
-            "question": question,
-            "scoring_criteria": str(entry.get("scoring_criteria") or "").strip() or OBSERVABLE_RUBRIC,
-        }
-    return out
-
-
-def repair_plan_coverage(ctx: RepairContext, violations: list) -> None:
-    """The plan promised a (objective, category) pair no item realises — the
-    model writes the missing item. Format follows the objective's cognitive
-    level, so a repaired summative item for an Apply+ objective is a
-    performance task rather than a recognition item that would then trip
-    the Bloom cross-check."""
-    graph = ctx.graph
-    specs: list[dict] = []
-    for violation in violations:
-        lo_id = str(violation.metadata.get("lo_id", "") or "")
-        category = str(violation.metadata.get("plan_category", "") or "")
-        if not lo_id or not category:
-            continue
-        lo_node = graph.get_node(f"{NodeType.OBJECTIVE}{graph.ELEMENT_SEP}{lo_id}")
-        lo_data = lo_node["data"] if lo_node else {}
-        level_name = str(lo_data.get("level", "apply"))
-        level = alignment.bloom_level_of(level_name) or 1
-        specs.append({
-            "item_id": f"AT-{category[:1].upper()}-{lo_id}",
-            "objective_id": lo_id,
-            "objective": str(lo_data.get("statement", "")),
-            "level": level_name,
-            "type": "performance_task" if level >= 3 else "short_answer",
-            "plan_category": category,
-        })
-    if not specs:
-        return
-
-    written = _llm_repair_items(ctx, specs)
-    repaired: list[str] = []
-    for spec in specs:
-        item_id = spec["item_id"]
-        drafted = written.get(item_id) or _fallback_item_text(spec)
-        graph.add_element_node(NodeType.ASSESSMENT, item_id, {
-            "item_id": item_id,
-            "type": spec["type"],
-            "question": drafted["question"],
-            "aligned_objective": spec["objective_id"],
-            "plan_category": spec["plan_category"],
-            "required_cognitive_process": spec["level"],
-            "scoring_criteria": drafted["scoring_criteria"],
-            "repaired": True,
-        })
-        repaired.append(item_id)
-
-    alignment.match_id_reverse(graph, "C2", field="aligned_objective")
-    alignment.match_p3_realizes(graph)
-    _log_repair(ctx, str(NodeType.ASSESSMENT), violation_type="plan_coverage", repaired_fields=["assessment_tools"],
-                rule="repair_plan_coverage", input_summary="; ".join(v.message for v in violations)[:200],
-                output_summary=f"Added {', '.join(repaired) or 'no'} item(s) the plan promised.")
-
-
 def repair_assessment_coverage(ctx: RepairContext, violations: list) -> None:
-    """C2 (assessed_by) / P3 (realizes-plan) gaps: either a dangling item
-    reference (fix it deterministically) or an uncovered objective (the model
-    writes the item, with a deterministic stub as fallback)."""
+    """C2 (assessed_by) / P3 (realizes-plan): repair the DANGLING REFERENCE only.
+
+    An item pointing at an objective that does not exist, or carrying a
+    plan_category outside the plan, is a bad pointer over ids the design
+    already holds — a lookup fixes it exactly. An objective with no item at
+    all is a MISSING ARTIFACT, and writing one is the agent's job: it comes
+    back as a repair turn inside the Designer's own tool loop, where the
+    request, the model's answer and the resulting artifact all sit in one
+    transcript. Writing it here meant a second conversation under a second
+    system prompt, which made the trace claim an agent said something it
+    never saw (2026-09-03).
+    """
     graph = ctx.graph
     tools = [dict(n["data"]) for n in graph.element_nodes(NodeType.ASSESSMENT)]
     lo_map = _element_lo_map(graph)
@@ -376,66 +358,46 @@ def repair_assessment_coverage(ctx: RepairContext, violations: list) -> None:
         cat for cat in alignment._ASSESSMENT_PLAN_CATEGORIES if plan_node and plan_node["data"].get(cat)
     ] or ["summative"]
 
-    # Objectives with no item at all need one WRITTEN; collect them first so the
-    # whole batch costs one generation call.
-    specs = [
-        {"item_id": f"AT-R-{lo}", "objective_id": lo,
-         "objective": str(lo_map.get(lo, {}).get("statement", "")),
-         "level": str(lo_map.get(lo, {}).get("level", "apply")),
-         "type": "performance_task", "plan_category": plan_categories[0]}
-        for lo in dict.fromkeys(
-            str(v.metadata.get("lo_id") or "") for v in violations if v.metadata.get("lo_id")
-        )
-    ]
-    written = _llm_repair_items(ctx, specs) if specs else {}
-    drafts = {spec["item_id"]: (written.get(spec["item_id"]) or _fallback_item_text(spec))
-              for spec in specs}
-
     repaired_ids: list[str] = []
     for violation in violations:
-        md = violation.metadata
-        lo_id = str(md.get("lo_id") or "")
-        item_id = str(md.get("item_id") or "")
-        if lo_id:
-            new_item_id = f"AT-R-{lo_id}"
-            drafted = drafts.get(new_item_id) or _fallback_item_text(
-                {"objective_id": lo_id, "objective": str(lo_map.get(lo_id, {}).get("statement", ""))})
-            graph.add_element_node(NodeType.ASSESSMENT, new_item_id, {
-                "item_id": new_item_id, "type": "performance_task",
-                "question": drafted["question"],
-                "aligned_objective": lo_id, "plan_category": plan_categories[0],
-                "required_cognitive_process": str(lo_map.get(lo_id, {}).get("level", "apply")),
-                "scoring_criteria": drafted["scoring_criteria"], "repaired": True,
-            })
-            repaired_ids.append(new_item_id)
-        elif item_id:
-            item = next((t for t in tools if isinstance(t, dict) and str(t.get("item_id")) == item_id), None)
-            if not item:
-                continue
-            aligned = str(item.get("aligned_objective") or "")
-            if lo_map and aligned not in lo_map:
-                question = str(item.get("question", "")).lower()
-                item["aligned_objective"] = next((lo for lo in lo_map if lo.lower() in question), next(iter(lo_map), aligned))
-            if str(item.get("plan_category", "")).lower() not in alignment._ASSESSMENT_PLAN_CATEGORIES:
-                item["plan_category"] = plan_categories[0]
-            item["repaired"] = True
-            graph.add_element_node(NodeType.ASSESSMENT, item_id, dict(item))
-            repaired_ids.append(item_id)
+        item_id = str(violation.metadata.get("item_id") or "")
+        if not item_id:
+            continue
+        item = next((t for t in tools if isinstance(t, dict) and str(t.get("item_id")) == item_id), None)
+        if not item:
+            continue
+        aligned = str(item.get("aligned_objective") or "")
+        if lo_map and aligned not in lo_map:
+            question = str(item.get("question", "")).lower()
+            item["aligned_objective"] = next(
+                (lo for lo in lo_map if lo.lower() in question), next(iter(lo_map), aligned))
+        if str(item.get("plan_category", "")).lower() not in alignment._ASSESSMENT_PLAN_CATEGORIES:
+            item["plan_category"] = plan_categories[0]
+        item["repaired"] = True
+        graph.add_element_node(NodeType.ASSESSMENT, item_id, dict(item))
+        repaired_ids.append(item_id)
 
+    if not repaired_ids:
+        return
     alignment.match_id_reverse(graph, "C2", field="aligned_objective")
     alignment.match_p3_realizes(graph)
-    _log_repair(ctx, str(NodeType.ASSESSMENT), violation_type=violations[0].violation_type, repaired_fields=["assessment_tools"],
-                rule="repair_alignment_coverage", input_summary="; ".join(v.message for v in violations)[:200],
-                output_summary=f"Fixed/added items for {', '.join(repaired_ids) or 'existing coverage'}.")
+    _log_repair(ctx, str(NodeType.ASSESSMENT), violation_type=violations[0].violation_type,
+                repaired_fields=["assessment_tools"], rule="repair_alignment_coverage",
+                input_summary="; ".join(v.message for v in violations)[:200],
+                output_summary=f"Re-pointed {', '.join(repaired_ids)}.")
 
 
 def repair_item_completeness(ctx: RepairContext, violations: list) -> None:
     """item_completeness: a selectable-response item shipped without its
-    response set (options/answer key). Same repair on either substrate: one
-    persona-free LLM attempt writes the missing options and answer; an item
-    the LLM cannot complete is reformatted as short_answer (deterministic —
-    the question and scoring_criteria already carry the judgment, while a
-    keyless choice item administers as nothing)."""
+    response set (options/answer key).
+
+    Deterministic and last-resort: the item is reformatted as ``short_answer``.
+    Its question and scoring_criteria already carry the judgment, while a
+    keyless choice item administers as nothing. Writing the options is the
+    agent's job and it has already had its repair turns by the time this runs
+    (:meth:`ToolLoop._own_violations` shows the violation first) — this only
+    stops an unanswerable item reaching the output.
+    """
     wanted = [str(v.metadata.get("item_id", "")) for v in violations if v.metadata.get("item_id")]
     if not wanted:
         return
@@ -450,24 +412,11 @@ def repair_item_completeness(ctx: RepairContext, violations: list) -> None:
     if not flagged:
         return
 
-    attempt = _llm_item_options(ctx, list(flagged.values()))
-    completed: list[str] = []
     reformatted: list[str] = []
     updates_by_id: dict[str, dict] = {}
-    for iid, item in flagged.items():
-        fix = attempt.get(iid) or {}
-        options = fix.get("options")
-        answer = str(fix.get("correct_answer", "") or "").strip()
-        has_options = isinstance(options, list) and len([o for o in options if str(o).strip()]) >= 2
-        if answer and (has_options or str(item.get("type", "")).lower() == "true_false"):
-            updates: dict = {"correct_answer": answer, "repaired": True}
-            if has_options:
-                updates["options"] = [str(o).strip() for o in options if str(o).strip()][:6]
-            completed.append(iid)
-        else:
-            updates = {"type": "short_answer", "repaired": True}
-            reformatted.append(iid)
-        updates_by_id[iid] = updates
+    for iid in flagged:
+        updates_by_id[iid] = {"type": "short_answer", "repaired": True}
+        reformatted.append(iid)
 
     if ctx.graph_mode:
         for iid, updates in updates_by_id.items():
@@ -483,343 +432,40 @@ def repair_item_completeness(ctx: RepairContext, violations: list) -> None:
         ]
         ctx.store.put("assessment", {**doc, "assessment_tools": tools})
 
-    summary_bits = []
-    if completed:
-        summary_bits.append(f"added options/answer key to {len(completed)} item(s)")
-    if reformatted:
-        summary_bits.append(f"reformatted {len(reformatted)} keyless item(s) as short_answer")
     _log_repair(ctx, str(NodeType.ASSESSMENT), violation_type="item_completeness",
                 repaired_fields=["assessment_tools"], rule="repair_item_completeness",
                 input_summary="; ".join(v.message for v in violations)[:200],
-                output_summary="; ".join(summary_bits) or "no matching items found")
-
-
-def _llm_item_options(ctx: RepairContext, items: list[dict]) -> dict[str, dict]:
-    import json
-
-    from .agents.base import parse_json_response
-
-    system = (
-        "Complete selectable-response assessment items that are missing their answer options "
-        "and/or answer key. For each item write 3-5 options — plausible distractors a partially "
-        "informed learner might pick — and set correct_answer to the right option verbatim; for "
-        "a true_false item return only correct_answer. Return ONLY valid JSON: "
-        '{"items": [{"item_id": "<id>", "options": ["<option>", ...], '
-        '"correct_answer": "<the correct option>"}, ...]}'
-    )
-    user = json.dumps(
-        {"items": [{"item_id": t.get("item_id"), "type": t.get("type"),
-                    "question": t.get("question"),
-                    "scoring_criteria": t.get("scoring_criteria")} for t in items]},
-        ensure_ascii=False)[:4000]
-    response = ctx.call_llm(
-        [{"role": "system", "content": system}, {"role": "user", "content": user}], max_retries=0,
-    )
-    parsed = parse_json_response(response, warn=False) or {}
-    out: dict[str, dict] = {}
-    for entry in parsed.get("items") or []:
-        if isinstance(entry, dict) and entry.get("item_id"):
-            out[str(entry["item_id"])] = entry
-    return out
-
-
-def repair_assessment_items(ctx: RepairContext, violations: list) -> None:
-    """bloom_mismatch_assessment: no item measuring an objective can elicit
-    its Bloom level — the model writes a performance_task that can, falling
-    back to a deterministic stub so convergence stays guaranteed."""
-    graph = ctx.graph
-    tools = [dict(n["data"]) for n in graph.element_nodes(NodeType.ASSESSMENT)]
-    lo_map = _element_lo_map(graph)
-
-    specs: list[dict] = []
-    for lo_id in dict.fromkeys(
-        str(v.metadata.get("lo_id") or "") for v in violations if v.metadata.get("lo_id")
-    ):
-        capability = max(
-            (alignment._item_capability(t) for t in tools if isinstance(t, dict) and str(t.get("aligned_objective")) == lo_id),
-            default=0,
-        )
-        level = str(lo_map.get(lo_id, {}).get("level", "apply"))
-        # Ask the SAME predicate the check asks. This used to re-implement
-        # the old binary gate (capability > recognition ceiling), so once
-        # format_valid_for_capability became a real level comparison the
-        # repair skipped exactly the cases the check had just flagged —
-        # a Create objective measured by an Apply item was reported every
-        # round and fixed in none, burning the self-validation budget.
-        if alignment.format_valid_for_capability(capability, alignment.bloom_level_of(level)):
-            continue
-        specs.append({
-            "item_id": f"AT-P-{lo_id}", "objective_id": lo_id,
-            "objective": str(lo_map.get(lo_id, {}).get("statement", "")),
-            "level": level, "type": "performance_task", "plan_category": "summative",
-        })
-
-    written = _llm_repair_items(ctx, specs) if specs else {}
-    for spec in specs:
-        item_id = spec["item_id"]
-        drafted = written.get(item_id) or _fallback_item_text(spec)
-        graph.add_element_node(NodeType.ASSESSMENT, item_id, {
-            "item_id": item_id, "type": "performance_task",
-            "question": drafted["question"],
-            "aligned_objective": spec["objective_id"], "plan_category": "summative",
-            "required_cognitive_process": spec["level"],
-            "scoring_criteria": drafted["scoring_criteria"], "repaired": True,
-        })
-
-    alignment.match_id_reverse(graph, "C2", field="aligned_objective")
-    alignment.match_p3_realizes(graph)
-    _log_repair(ctx, str(NodeType.ASSESSMENT), violation_type="bloom_mismatch_assessment", repaired_fields=["assessment_tools"],
-                rule="repair_assessment_items", input_summary="; ".join(v.message for v in violations)[:200],
-                output_summary=f"Added performance evidence for {len(violations)} objective(s).")
-
-
-def repair_formative_methods(ctx: RepairContext, violation) -> None:
-    """evaluation_quality: assessment_plan declares formative intent but
-    names no concrete data-collection method. Same repair on either
-    substrate; one persona-free LLM attempt, deterministic fallback."""
-    if not ctx.graph_mode:
-        plan = ctx.store.get("assessment_plan")
-        if not plan:
-            return
-        methods = _llm_formative_methods(ctx, plan) or list(FALLBACK_METHODS)
-        ctx.store.put("assessment_plan", {**plan, "formative_methods": methods, "repaired": True})
-        _log_repair(ctx, "assessment_plan", violation_type="evaluation_quality", repaired_fields=["formative_methods"],
-                rule="repair_formative_methods", input_summary=violation.message,
-                output_summary=f"Set {len(methods)} formative data-collection method(s).")
-        return
-    graph = ctx.graph
-    node_id = graph.section_id(NodeType.ASSESSMENT_PLAN)
-    node = graph.get_node(node_id)
-    if not node:
-        return
-    methods = _llm_formative_methods(ctx, node["data"])
-    if not methods:
-        methods = list(FALLBACK_METHODS)
-    graph.update_node(node_id, {"formative_methods": methods, "repaired": True})
-    _log_repair(ctx, node_id, violation_type="evaluation_quality", repaired_fields=["formative_methods"],
-                rule="repair_formative_methods", input_summary=violation.message,
-                output_summary=f"Set {len(methods)} formative data-collection method(s).")
-    ctx.trajectory.log_node_edit("update", node_id, NodeType.ASSESSMENT_PLAN)
-
-
-def _render_method(method: object) -> str:
-    """A formative method as one readable string. A dict entry (a model that
-    emitted {"instrument": ..., "cadence": ...} instead of a string) renders
-    as "instrument — cadence"; the previous str() coercion shipped literal
-    Python-dict text ("{'instrument': ...}") into the judged output."""
-    if isinstance(method, dict):
-        parts = [str(v).strip() for v in method.values() if str(v).strip()]
-        return " — ".join(parts)
-    return str(method).strip()
-
-
-def repair_pilot_data_plan(ctx: RepairContext, violation) -> None:
-    """evaluation_quality (section=pilot_data_plan): the plan's pilot data —
-    collection points plus anticipated difficulties with first revisions — is
-    missing or thin. The aggregator builds the whole formative half of ADDIE
-    Evaluation from these fields, so the hole zeroes two rubric items. Same
-    repair on either substrate; one persona-free LLM attempt, then a
-    deterministic fallback grounded in the design's own objectives."""
-    if not ctx.graph_mode:
-        plan = ctx.store.get("assessment_plan")
-        if not plan:
-            return
-        objectives = [o for o in ctx.store.items("objective", "learning_objectives")
-                      if isinstance(o, dict)]
-        analysis = ctx.store.get("analysis") or {}
-        topics = [t for t in ((analysis.get("task_analysis") or {}).get("topics") or [])
-                  if isinstance(t, dict)]
-        pilot = _repaired_pilot(ctx, plan, objectives, topics)
-        ctx.store.put("assessment_plan", {**plan, "pilot_data_plan": pilot, "repaired": True})
-        _log_repair(ctx, "assessment_plan", violation_type="evaluation_quality",
-                    repaired_fields=["pilot_data_plan"],
-                rule="repair_pilot_data_plan", input_summary=violation.message,
-                output_summary=f"Set pilot data plan with {len(pilot.get('anticipated_difficulties', []))} difficulties.")
-        return
-    graph = ctx.graph
-    node_id = graph.section_id(NodeType.ASSESSMENT_PLAN)
-    node = graph.get_node(node_id)
-    if not node:
-        return
-    objectives = [n["data"] for n in graph.element_nodes(NodeType.OBJECTIVE)]
-    topics = [n["data"] for n in graph.element_nodes(NodeType.TOPIC)]
-    pilot = _repaired_pilot(ctx, node["data"], objectives, topics)
-    graph.update_node(node_id, {"pilot_data_plan": pilot, "repaired": True})
-    _log_repair(ctx, node_id, violation_type="evaluation_quality",
-                repaired_fields=["pilot_data_plan"],
-                rule="repair_pilot_data_plan", input_summary=violation.message,
-                output_summary=f"Set pilot data plan with {len(pilot.get('anticipated_difficulties', []))} difficulties.")
-    ctx.trajectory.log_node_edit("update", node_id, NodeType.ASSESSMENT_PLAN)
-
-
-def _valid_difficulties(pilot: dict) -> list[dict]:
-    return [
-        entry for entry in (pilot.get("anticipated_difficulties") or [])
-        if isinstance(entry, dict)
-        and str(entry.get("area", "")).strip()
-        and str(entry.get("first_revision", "")).strip()
-    ]
-
-
-def _repaired_pilot(ctx: RepairContext, plan_data: dict, objectives: list[dict],
-                    topics: list[dict] | None = None) -> dict:
-    """The repaired pilot_data_plan: existing fields preserved, holes filled —
-    by the LLM when it cooperates, deterministically otherwise."""
-    existing = plan_data.get("pilot_data_plan")
-    existing = dict(existing) if isinstance(existing, dict) else {}
-    attempt = _llm_pilot_data_plan(ctx, plan_data, objectives, topics or [])
-    if attempt:
-        merged = {**existing, **attempt}
-        if len(_valid_difficulties(merged)) >= 2 and merged.get("collection_points"):
-            return merged
-    return _fallback_pilot_data_plan(existing, plan_data, objectives, topics or [])
-
-
-def _llm_pilot_data_plan(ctx: RepairContext, plan_data: dict, objectives: list[dict],
-                         topics: list[dict]) -> dict:
-    import json
-
-    from .agents.base import parse_json_response
-
-    system = (
-        "Fix an assessment plan whose pilot data plan is missing or thin. "
-        "Return ONLY valid JSON: "
-        '{"collection_points": ["<when during the pilot data is captured>", ...], '
-        '"anticipated_difficulties": [{"area": "<the topic/module where learners will '
-        "struggle> \u2014 <objective id>\", "
-        '"rationale": "<why, for these learners>", "detected_by": "<which formative method '
-        'surfaces it>", "first_revision": "<the concrete fix>"}, ...]}\n'
-        "Name at least two SPECIFIC areas, each anchored to BOTH a real topic/module given "
-        "AND the objective id affected (e.g. \"Topic 'Interactive content design' \u2014 "
-        "ILO-02\") \u2014 never a bare objective id, never \"general comprehension\"."
-    )
-    user = json.dumps(
-        {"assessment_plan": plan_data,
-         "objectives": [{"id": o.get("id"), "statement": o.get("statement"),
-                         "level": o.get("level")} for o in objectives],
-         "topics": [{"id": t.get("id"), "topic": t.get("topic")} for t in topics]},
-        ensure_ascii=False)[:4000]
-    response = ctx.call_llm(
-        [{"role": "system", "content": system}, {"role": "user", "content": user}], max_retries=0,
-    )
-    parsed = parse_json_response(response, warn=False) or {}
-    result: dict = {}
-    if isinstance(parsed.get("collection_points"), list):
-        result["collection_points"] = [str(p).strip() for p in parsed["collection_points"]
-                                       if str(p).strip()][:5]
-    if isinstance(parsed.get("anticipated_difficulties"), list):
-        result["anticipated_difficulties"] = [
-            e for e in parsed["anticipated_difficulties"] if isinstance(e, dict)][:5]
-    return result
-
-
-def _fallback_pilot_data_plan(existing: dict, plan_data: dict, objectives: list[dict],
-                              topics: list[dict] | None = None) -> dict:
-    """Deterministic pilot data grounded in the design's own artifacts: the
-    highest-demand objectives are the areas first pilot data must watch, and
-    the plan's own formative methods are the detectors. Generic wording, real
-    ids — the same posture as FALLBACK_METHODS."""
-    methods = [_render_method(m) for m in (plan_data.get("formative_methods") or [])]
-    methods = [m for m in methods if m]
-    detector = methods[0] if methods else "formative checkpoint review"
-    pilot = dict(existing)
-    if not pilot.get("collection_points"):
-        pilot["collection_points"] = ([f"During: {m}" for m in methods[:3]]
-                                      or ["After the first module", "Mid-course checkpoint"])
-    if len(_valid_difficulties(pilot)) < 2:
-        ranked = sorted(
-            (o for o in objectives if isinstance(o, dict) and o.get("id")),
-            key=lambda o: alignment.bloom_level_of(str(o.get("level", ""))) or 0,
-            reverse=True,
-        )[:2]
-        # anchor each area to a topic AND the objective id (the rubric grades
-        # pilot data by the module learners struggled in, not by bare LO ids)
-        titles = [str(t.get("topic") or t.get("title") or "").strip()
-                  for t in (topics or []) if isinstance(t, dict)]
-        titles = [t for t in titles if t]
-
-        def _area(index: int, lo_id: str) -> str:
-            if titles:
-                return f"Topic '{titles[index % len(titles)]}' \u2014 {lo_id}"
-            return f"Module covering {lo_id} \u2014 {lo_id}"
-
-        pilot["anticipated_difficulties"] = [
-            {
-                "area": _area(i, str(obj.get("id"))),
-                "rationale": ("Highest cognitive-demand objective in this design; "
-                              "first pilot data should confirm learners can reach it."),
-                "detected_by": detector,
-                "first_revision": ("Insert a guided worked example and scaffolded practice "
-                                   "before the task assessing this objective."),
-            }
-            for i, obj in enumerate(ranked)
-        ] or [
-            {"area": "first content module",
-             "rationale": "Entry point of the design; pilot data verifies the on-ramp.",
-             "detected_by": detector,
-             "first_revision": "Slow the first module down and add a checkpoint."},
-            {"area": "final assessed task",
-             "rationale": "Highest-stakes moment of the design.",
-             "detected_by": detector,
-             "first_revision": "Add a rehearsal round before the assessed attempt."},
-        ]
-    return pilot
-
-
-def _llm_formative_methods(ctx: RepairContext, plan_data: dict) -> list[str]:
-    import json
-
-    from .agents.base import parse_json_response
-
-    # Task-only instruction, no persona: this is a shared tool, and whichever
-    # agent runs it already carries its own persona in its generation prompts.
-    system = (
-        "Fix an assessment plan that names no formative data-collection method. "
-        'Return ONLY valid JSON: '
-        '{"methods": ["<concrete method 1>", "<concrete method 2>", "<concrete method 3>"]}\n'
-        "Each method must name an instrument and a cadence, consistent with the plan given."
-    )
-    user = json.dumps({"assessment_plan": plan_data}, ensure_ascii=False)[:4000]
-    response = ctx.call_llm(
-        [{"role": "system", "content": system}, {"role": "user", "content": user}], max_retries=0,
-    )
-    parsed = parse_json_response(response, warn=False) or {}
-    methods = parsed.get("methods")
-    if isinstance(methods, list):
-        return [_render_method(m) for m in methods if _render_method(m)][:5]
-    return []
+                output_summary=f"reformatted {len(reformatted)} keyless item(s) as short_answer")
 
 
 # ── activity family ─────────────────────────────────────────────────────────
 
 def _repair_activity_family(ctx: RepairContext, violations: list) -> list:
+    # C3, P4, `activity_engagement` and `bloom_mismatch_activity` never arrive:
+    # `repair` filters REPORT_ONLY types out before dispatch.
     remaining = []
     coverage_violations = []
-    engagement_violations = []
-    bloom_violations = []
     for violation in violations:
-        vtype = getattr(violation, "violation_type", "")
-        if vtype in ("C3", "C4", "P4"):
+        if getattr(violation, "violation_type", "") == "C4":
             coverage_violations.append(violation)
-        elif vtype == "activity_engagement":
-            engagement_violations.append(violation)
-        elif vtype == "bloom_mismatch_activity":
-            bloom_violations.append(violation)
         else:
             remaining.append(violation)
     if coverage_violations:
         repair_activity_coverage(ctx, coverage_violations)
-    if engagement_violations or bloom_violations:
-        repair_active_practice(ctx, engagement_violations + bloom_violations)
     return remaining
 
 
 def repair_activity_coverage(ctx: RepairContext, violations: list) -> None:
-    """C3: an LO has no practicing activity — add one. C4: an assessment item
-    has no preparing activity — point an existing activity at it."""
+    """C4 only: an assessment item with no preparing activity gets pointed at
+    by one the design already has, and an activity whose item references do not
+    resolve has them pruned and replaced with a real one.
+
+    C3 — an objective with no practicing activity at all — is NOT repaired.
+    Filling it meant writing "Guided practice for ILO-01 … on a realistic task
+    with instructor feedback", which is an activity in shape only; it read as
+    coverage to every downstream measure without any design behind it."""
     graph = ctx.graph
     activities = [dict(n["data"]) for n in graph.element_nodes(NodeType.ACTIVITY)]
-    lo_map = _element_lo_map(graph)
     assessment_ids = [str(n["data"].get("item_id"))
                       for n in graph.element_nodes(NodeType.ASSESSMENT) if n["data"].get("item_id")]
     item_lo = {str(n["data"].get("item_id")): alignment.bare_ref(n["data"].get("aligned_objective"))
@@ -829,24 +475,7 @@ def repair_activity_coverage(ctx: RepairContext, violations: list) -> None:
     touched: set[str] = set()
     for violation in violations:
         md = violation.metadata
-        if violation.violation_type == "C3":
-            lo_id = str(md.get("lo_id") or "")
-            if not lo_id:
-                continue
-            new_id = f"TLA-R-{lo_id}"
-            activities.append({
-                "id": new_id, "activity_name": f"Guided practice for {lo_id}",
-                "duration": "45m",
-                "description": f"Learners practice the skill behind {lo_id} on a realistic task with instructor feedback.",
-                "materials_needed": "A practice task sheet and worked example.",
-                "aligned_objectives": [lo_id],
-                "prepares_for_assessment": assessment_ids[:1],
-                "learner_cognitive_process": str(lo_map.get(lo_id, {}).get("level", "apply")),
-                "repaired": True,
-            })
-            repaired_ids.append(new_id)
-            touched.add(new_id)
-        elif violation.violation_type == "C4":
+        if violation.violation_type == "C4":
             # Two distinct C4 findings arrive here and the old branch conflated
             # them: it appended whatever node the violation named — including
             # ACTIVITY ids from establisher gaps — into the first activity's
@@ -888,6 +517,8 @@ def repair_activity_coverage(ctx: RepairContext, violations: list) -> None:
                     repaired_ids.append(ref)
                     touched.add(str(act.get("id")))
 
+    if not touched:
+        return
     for activity in activities:
         if isinstance(activity, dict) and str(activity.get("id")) in touched:
             graph.add_element_node(NodeType.ACTIVITY, str(activity["id"]), dict(activity))
@@ -895,39 +526,8 @@ def repair_activity_coverage(ctx: RepairContext, violations: list) -> None:
     alignment.match_list(graph, "C4", field="prepares_for_assessment")
     _log_repair(ctx, str(NodeType.ACTIVITY), violation_type=violations[0].violation_type, repaired_fields=["learning_activities"],
                 rule="repair_alignment_coverage", input_summary="; ".join(v.message for v in violations)[:200],
-                output_summary=f"Fixed/added activities for {', '.join(repaired_ids) or 'existing coverage'}.")
+                output_summary=f"Repointed activities: {', '.join(repaired_ids)}.")
 
-
-def repair_active_practice(ctx: RepairContext, violations: list) -> None:
-    """A higher-order objective practiced only passively, or with a
-    learner_cognitive_process below what the objective needs, gets a
-    hands-on activity added."""
-    graph = ctx.graph
-    lo_map = _element_lo_map(graph)
-    repaired_ids: list[str] = []
-    for violation in violations:
-        lo_id = str(violation.metadata.get("lo_id") or "")
-        if not lo_id:
-            continue
-        new_id = f"TLA-P-{lo_id}"
-        graph.add_element_node(NodeType.ACTIVITY, new_id, {
-            "id": new_id, "activity_name": f"Hands-on practice for {lo_id}",
-            "duration": "45m",
-            "description": f"Learners actively practice {lo_id} on a realistic task with feedback.",
-            "materials_needed": "A hands-on practice exercise or lab guide.",
-            "aligned_objectives": [lo_id],
-            "learner_cognitive_process": str(lo_map.get(lo_id, {}).get("level", "apply")),
-            "repaired": True,
-        })
-        repaired_ids.append(new_id)
-
-    alignment.match_list_reverse(graph, "C3", field="aligned_objectives")
-    _log_repair(ctx, str(NodeType.ACTIVITY), violation_type="activity_engagement", repaired_fields=["learning_activities"],
-                rule="repair_active_practice", input_summary="; ".join(v.message for v in violations)[:200],
-                output_summary=f"Added active-practice activities for {', '.join(repaired_ids) or 'existing objectives'}.")
-
-
-# ── content family ──────────────────────────────────────────────────────────
 
 def _repair_content_family(ctx: RepairContext, violations: list) -> list:
     remaining = []
@@ -935,16 +535,11 @@ def _repair_content_family(ctx: RepairContext, violations: list) -> list:
     orphan_violations = []
     for violation in violations:
         vtype = getattr(violation, "violation_type", "")
-        if vtype in ("C5", "P5"):
+        # C5 and P6 never arrive: `repair` filters REPORT_ONLY out first.
+        if vtype == "P5":
             coverage_violations.append(violation)
         elif vtype == "orphan_content":
             orphan_violations.append(violation)
-        elif vtype == "P6":
-            # P6 (media<->material type-match on a fuzzy alias table) is
-            # audit-only, same rationale as the old R9: no deterministic
-            # fix wouldn't risk gaming the metric by inventing a fake
-            # media entry just to pass.
-            continue
         else:
             remaining.append(violation)
     if coverage_violations:
@@ -955,29 +550,18 @@ def _repair_content_family(ctx: RepairContext, violations: list) -> list:
 
 
 def repair_content_coverage(ctx: RepairContext, violations: list) -> None:
-    """C5: an activity has no supporting content module — add one. P5: a
-    material has no linked_module — point it at an existing module."""
+    """P5 only: a material with no ``linked_module`` is pointed at a module the
+    design already has.
+
+    C5 — an activity with no supporting content at all — is NOT repaired. The
+    module it used to add was titled "Support module for TLA-01" and described
+    as "Content supporting activity TLA-01": a node that closed the relation
+    and taught nothing."""
     graph = ctx.graph
     module_nodes = graph.element_nodes(NodeType.CONTENT)
     repaired_ids: list[str] = []
     for violation in violations:
-        if violation.violation_type == "C5":
-            activity_id = str(violation.metadata.get("node_id") or violation.node_id or "")
-            if not activity_id:
-                continue
-            activity_ref = activity_id.split(graph.ELEMENT_SEP, 1)[-1]
-            new_module_id = f"MOD-R-{activity_ref}"
-            data = {
-                "id": new_module_id,
-                "title": f"Support module for {activity_ref}",
-                "description": f"Content supporting activity {activity_ref}.",
-                "repaired": True,
-            }
-            full_id = graph.add_element_node(NodeType.CONTENT, new_module_id, data)
-            ctx.trajectory.log_node_edit("add", full_id, NodeType.CONTENT)
-            alignment.record_provenance(graph, "C5", [full_id], activity_id)
-            repaired_ids.append(new_module_id)
-        elif violation.violation_type == "P5" and module_nodes:
+        if violation.violation_type == "P5" and module_nodes:
             material_id = str(violation.metadata.get("node_id") or violation.node_id or "")
             material = graph.get_node(material_id) if material_id else None
             if material is not None:
@@ -985,11 +569,13 @@ def repair_content_coverage(ctx: RepairContext, violations: list) -> None:
                 material["data"]["linked_module"] = module_ref
                 alignment.record_provenance(graph, "P5", [module_nodes[0]["id"]], material_id)
                 repaired_ids.append(material_id)
+    if not repaired_ids:
+        return
     _log_repair(
-        ctx, repaired_ids[0] if repaired_ids else "content_designer",
-        violation_type=violations[0].violation_type, repaired_fields=["content_modules", "learner_materials"],
+        ctx, repaired_ids[0],
+        violation_type=violations[0].violation_type, repaired_fields=["learner_materials"],
                 rule="repair_coverage", input_summary="; ".join(v.message for v in violations)[:200],
-                output_summary=f"Fixed/added coverage for {', '.join(repaired_ids) or 'existing links'}.")
+                output_summary=f"Linked materials to a module: {', '.join(repaired_ids)}.")
 
 
 def repair_content_orphans(ctx: RepairContext, violations: list) -> None:
@@ -1028,260 +614,83 @@ def repair_content_orphans(ctx: RepairContext, violations: list) -> None:
 
 # ── rubric family ───────────────────────────────────────────────────────────
 
-OBSERVABLE_DESCRIPTION = (
-    "Full marks require correct application of the target concept, with justification citing "
-    "at least one concrete piece of evidence, scored 0-3 against this rubric."
-)
-
-
 def _repair_rubric_family(ctx: RepairContext, violations: list) -> list:
+    """Rubric criteria are FIELDS of the item they mark (2026-09-02), so the
+    only repair left is the one that reads a criterion against its own item.
+
+    Gone with the node type: ``C6``/``C7`` (a criterion is written by the same
+    call as its item and the rules require it to name that item's objective, so
+    neither relation could fail — measured 1.0 coverage across 28 runs), and
+    ``orphan_rubric``, which asked whether a criterion pointed at anything and
+    can no longer be false. ``rubric_consistency`` stays REPORT_ONLY.
+    """
     remaining = []
-    coverage_violations = []
-    consistency_violations = []
     evidence_violations = []
-    orphan_violations = []
     for violation in violations:
-        vtype = getattr(violation, "violation_type", "")
-        if vtype in ("C6", "C7"):
-            coverage_violations.append(violation)
-        elif vtype == "rubric_consistency":
-            consistency_violations.append(violation)
-        elif vtype == "evidence_alignment":
+        if getattr(violation, "violation_type", "") == "evidence_alignment":
             evidence_violations.append(violation)
-        elif vtype == "orphan_rubric":
-            orphan_violations.append(violation)
         else:
             remaining.append(violation)
-    if coverage_violations:
-        repair_rubric_coverage(ctx, coverage_violations)
-    if consistency_violations:
-        repair_rubric_consistency(ctx, consistency_violations)
     if evidence_violations:
         repair_evidence_alignment(ctx, evidence_violations)
-    if orphan_violations:
-        repair_orphan_rubrics(ctx, orphan_violations)
     return remaining
 
 
-def repair_orphan_rubrics(ctx: RepairContext, violations: list) -> None:
-    """orphan_rubric: a criterion that names no item and no objective.
-    Attach it to an assessment item — preferring items that have no
-    criterion yet, so the repair closes a real C6 gap instead of piling a
-    second criterion onto a covered item — and inherit that item's own
-    objective, exactly as a first-pass criterion would have declared."""
-    graph = ctx.graph
-    items = graph.element_nodes(NodeType.ASSESSMENT)
-    if not items:
-        return  # nothing to attach to; the island stays reported by the check
-    covered = {e["source"] for e in graph.get_edges(relation_id="C6")}
-    uncovered = [i for i in items if i["id"] not in covered]
-    repaired: list[str] = []
-    for index, violation in enumerate(violations):
-        rc = graph.get_node(violation.node_id)
-        if not rc:
-            continue
-        pool = uncovered or items
-        item = pool[index % len(pool)]
-        item_ref = item["id"].split(graph.ELEMENT_SEP, 1)[-1]
-        data = dict(rc["data"])
-        data["aligned_assessment"] = item_ref
-        data["aligned_objective"] = str(item["data"].get("aligned_objective", "") or "")
-        data["repaired"] = True
-        rc_ref = violation.node_id.split(graph.ELEMENT_SEP, 1)[-1]
-        graph.add_element_node(NodeType.RUBRIC, rc_ref, data)
-        alignment.record_provenance(graph, "C6", [item["id"]], violation.node_id)
-        repaired.append(rc_ref)
-    alignment.match_id(graph, "C7", field="aligned_objective")
-    _log_repair(ctx, repaired[0] if repaired else "rubric_designer",
-                violation_type="orphan_rubric", repaired_fields=["aligned_assessment", "aligned_objective"],
-                rule="repair_orphan_rubric", input_summary="; ".join(v.message for v in violations)[:200],
-                output_summary=f"Attached {', '.join(repaired) or 'no'} criterion(s) to assessment items.")
-
-
-def repair_rubric_coverage(ctx: RepairContext, violations: list) -> None:
-    """C6: an assessment item has no evaluating criterion — add one.
-    C7: a criterion has no resolvable aligned_objective — point it at
-    the criterion's linked assessment item's own objective."""
-    graph = ctx.graph
-    assessment_by_id = {n["id"]: n for n in graph.element_nodes(NodeType.ASSESSMENT)}
-    repaired_ids: list[str] = []
-    for violation in violations:
-        if violation.violation_type == "C6":
-            item_id = str(violation.metadata.get("node_id") or violation.node_id or "")
-            item = assessment_by_id.get(item_id)
-            if not item:
-                continue
-            item_ref = item_id.split(graph.ELEMENT_SEP, 1)[-1]
-            new_id = f"RC-R-{item_ref}"
-            data = {
-                "id": new_id, "aligned_assessment": item_ref,
-                "aligned_objective": str(item["data"].get("aligned_objective", "")),
-                "description": OBSERVABLE_DESCRIPTION,
-                "evidence_type": str(item["data"].get("type", "short_answer")),
-                "repaired": True,
-            }
-            full_id = graph.add_element_node(NodeType.RUBRIC, new_id, data)
-            ctx.trajectory.log_node_edit("add", full_id, NodeType.RUBRIC)
-            alignment.record_provenance(graph, "C6", [item_id], full_id)
-            repaired_ids.append(new_id)
-        elif violation.violation_type == "C7":
-            rc_id = str(violation.metadata.get("node_id") or violation.node_id or "")
-            rc = graph.get_node(rc_id)
-            if not rc:
-                continue
-            assessment_ref = alignment.bare_ref(rc["data"].get("aligned_assessment", ""))
-            assessment_id = f"{NodeType.ASSESSMENT}{graph.ELEMENT_SEP}{assessment_ref}" if assessment_ref else ""
-            linked = assessment_by_id.get(assessment_id)
-            if linked and linked["data"].get("aligned_objective"):
-                rc["data"]["aligned_objective"] = str(linked["data"]["aligned_objective"])
-                graph.add_element_node(NodeType.RUBRIC, rc_id.split(graph.ELEMENT_SEP, 1)[-1], dict(rc["data"]))
-                repaired_ids.append(rc_id)
-    alignment.match_id(graph, "C7", field="aligned_objective")
-    _log_repair(ctx, repaired_ids[0] if repaired_ids else "rubric_designer",
-                violation_type=violations[0].violation_type, repaired_fields=["rubric_criteria"],
-                rule="repair_coverage", input_summary="; ".join(v.message for v in violations)[:200],
-                output_summary=f"Fixed/added coverage for {', '.join(repaired_ids) or 'existing criteria'}.")
-
-
-def repair_rubric_consistency(ctx: RepairContext, violations: list) -> None:
-    """rubric_consistency: a criterion has no/vague scoring description.
-    Same repair on either substrate; only where the criteria live differs."""
-    if not ctx.graph_mode:
-        document = ctx.store.get("rubric") or {}
-        criteria = [dict(rc) if isinstance(rc, dict) else rc
-                    for rc in document.get("rubric_criteria") or []]
-        flagged = {str(v.metadata.get("rc_id") or v.node_id) for v in violations}
-        repaired: list[str] = []
-        for rc in criteria:
-            if isinstance(rc, dict) and str(rc.get("id")) in flagged:
-                rc["description"] = OBSERVABLE_DESCRIPTION
-                rc["repaired"] = True
-                repaired.append(str(rc.get("id")))
-        if repaired:
-            ctx.store.put("rubric", {**document, "rubric_criteria": criteria})
-        _log_repair(ctx, repaired[0] if repaired else "rubric_designer",
-                    violation_type="rubric_consistency", repaired_fields=["description"],
-                rule="repair_consistency", input_summary="; ".join(v.message for v in violations)[:200],
-                output_summary=f"Rewrote description for {', '.join(repaired) or 'flagged criteria'}.")
-        return
-    graph = ctx.graph
-    repaired_ids: list[str] = []
-    for violation in violations:
-        rc = graph.get_node(violation.node_id)
-        if not rc:
-            continue
-        rc["data"]["description"] = OBSERVABLE_DESCRIPTION
-        rc["data"]["repaired"] = True
-        graph.add_element_node(NodeType.RUBRIC, violation.node_id.split(graph.ELEMENT_SEP, 1)[-1], dict(rc["data"]))
-        repaired_ids.append(violation.node_id)
-    _log_repair(ctx, repaired_ids[0] if repaired_ids else "rubric_designer",
-                violation_type="rubric_consistency", repaired_fields=["description"],
-                rule="repair_consistency", input_summary="; ".join(v.message for v in violations)[:200],
-                output_summary=f"Rewrote description for {', '.join(repaired_ids) or 'flagged criteria'}.")
-
-
 def repair_evidence_alignment(ctx: RepairContext, violations: list) -> None:
-    """evidence_alignment: a criterion expects evidence its linked item
-    can't produce — loosen the criterion's own evidence_type down to
-    what the item can actually give (deterministic, converges without
-    needing to change the already-committed assessment item)."""
+    """evidence_alignment: a criterion expects evidence its own item cannot
+    produce — loosen the criterion's ``evidence_type`` to what the item can
+    actually give.
+
+    STRUCTURAL, not generative: it rewrites one enum field to a value the
+    design already holds, and it converges without touching the
+    already-committed item. The criterion now lives ON that item, so the
+    lookup is direct rather than a hop across a C6 edge.
+    """
     graph = ctx.graph
+    flagged = {str(v.metadata.get("rc_id") or "") for v in violations}
     repaired_ids: list[str] = []
-    for violation in violations:
-        rc = graph.get_node(violation.node_id)
-        if not rc:
+    for item in graph.element_nodes(NodeType.ASSESSMENT):
+        item_type = str(item["data"].get("type", "") or "")
+        if not item_type:
             continue
-        evaluated_edges = graph.get_edges(relation_id="C6", target=violation.node_id)
-        item_types = [
-            str((graph.get_node(e["source"]) or {"data": {}})["data"].get("type", ""))
-            for e in evaluated_edges
-        ]
-        if item_types:
-            rc["data"]["evidence_type"] = item_types[0]
-            rc["data"]["repaired"] = True
-            graph.add_element_node(NodeType.RUBRIC, violation.node_id.split(graph.ELEMENT_SEP, 1)[-1], dict(rc["data"]))
-            repaired_ids.append(violation.node_id)
-    _log_repair(ctx, repaired_ids[0] if repaired_ids else "rubric_designer",
-                violation_type="evidence_alignment", repaired_fields=["evidence_type"],
-                rule="repair_evidence_alignment", input_summary="; ".join(v.message for v in violations)[:200],
-                output_summary=f"Loosened evidence_type for {', '.join(repaired_ids) or 'flagged criteria'}.")
+        criteria = [dict(rc) if isinstance(rc, dict) else rc
+                    for rc in (item["data"].get("rubric") or [])]
+        touched = False
+        for rc in criteria:
+            if not isinstance(rc, dict) or str(rc.get("id", "")) not in flagged:
+                continue
+            rc["evidence_type"] = item_type
+            rc["repaired"] = True
+            repaired_ids.append(str(rc.get("id", "")))
+            touched = True
+        if touched:
+            data = {**item["data"], "rubric": criteria}
+            graph.add_element_node(
+                NodeType.ASSESSMENT, str(item["data"].get("item_id", "")), data)
+    if not repaired_ids:
+        return
+    _log_repair(ctx, str(NodeType.ASSESSMENT),
+                violation_type="evidence_alignment", repaired_fields=["rubric"],
+                rule="repair_evidence_alignment",
+                input_summary="; ".join(v.message for v in violations)[:200],
+                output_summary=f"Loosened evidence_type for {', '.join(repaired_ids)}.")
 
 
 # ── implementation family ───────────────────────────────────────────────────
 
 def _repair_implementation_family(ctx: RepairContext, violations: list) -> list:
-    remaining = []
-    owned = []
-    for violation in violations:
-        is_owner = (
-            getattr(violation, "violation_type", "") == "feasibility"
-            or getattr(violation, "edge_type", "") == "constrains"
-        )
-        if is_owner:
-            owned.append(violation)
-        else:
-            remaining.append(violation)
+    """No repair. ``feasibility`` / ``actionability`` are REPORT_ONLY, so
+    nothing this family owns ever reaches here.
 
-    if not owned:
-        return remaining
-
-    if not ctx.graph_mode:
-        # Same deterministic monitoring-note repair, on the blackboard.
-        data = dict(ctx.store.get("implementation_plan") or {})
-        monitoring = data.setdefault("monitoring", {})
-        if isinstance(monitoring, dict):
-            adjustments = monitoring.setdefault("real_time_adjustments", [])
-            if isinstance(adjustments, list):
-                adjustments.append("Re-scope delivery constraints after verifier feasibility warning.")
-        data["repaired"] = True
-        ctx.store.put("implementation_plan", data)
-        _log_repair(
-            ctx, "implementation_plan",
-            violation_type=(owned[0].violation_type if owned else "actionability"),
-            repaired_fields=["monitoring", "delivery_constraints"],
-        )
-        ctx.trajectory.log_step(
-            ctx.actor,
-            "repair_feasibility",
-            "; ".join(v.message for v in owned),
-            "Updated implementation monitoring and contingency adjustment notes.",
-        )
-        return remaining
-
-    graph = ctx.graph
-    node = graph.get_node(graph.section_id(NodeType.IMPLEMENTATION_PLAN))
-    if not node:
-        graph.add_node(NodeType.IMPLEMENTATION_PLAN, graph.section_id(NodeType.IMPLEMENTATION_PLAN), {
-            "instructor_orientation": {},
-            "system_check": {},
-            "prototype_execution": {},
-            "monitoring": {},
-            "instructor_guide": {},
-            "operator_manual": {},
-            "repaired": True,
-        })
-        ctx.trajectory.log_node_edit("add", graph.section_id(NodeType.IMPLEMENTATION_PLAN), NodeType.IMPLEMENTATION_PLAN)
-    constraint = graph.get_node(graph.section_id(NodeType.IMPLEMENTATION_PLAN))
-    data = constraint["data"] if constraint else {}
-    monitoring = data.setdefault("monitoring", {})
-    if isinstance(monitoring, dict):
-        adjustments = monitoring.setdefault("real_time_adjustments", [])
-        if isinstance(adjustments, list):
-            adjustments.append("Re-scope delivery constraints after verifier feasibility warning.")
-    impl_id = graph.section_id(NodeType.IMPLEMENTATION_PLAN)
-    graph.update_node(impl_id, {"monitoring": monitoring, "repaired": True})
-    _log_repair(
-        ctx, impl_id,
-        violation_type=(owned[0].violation_type if owned else "feasibility"),
-        repaired_fields=["monitoring", "delivery_constraints"],
-    )
-    ctx.trajectory.log_step(
-        ctx.actor,
-        "repair_feasibility",
-        "; ".join(v.message for v in owned),
-        "Updated implementation monitoring and contingency adjustment notes.",
-    )
-    return remaining
+    What used to run here appended one fixed sentence — "Re-scope delivery
+    constraints after verifier feasibility warning." — to the plan's
+    real-time adjustments, on either substrate. That is a note about the
+    verifier, not a delivery decision, and a plan is not made feasible by
+    recording that someone noticed it was not. The types stay in
+    ``OWNED_BY_FAMILY`` so the reconciliation pass still names this planner as
+    the owner; they come back unrepaired.
+    """
+    return list(violations)
 
 
 _FAMILY_REPAIRERS: dict[str, Callable[[RepairContext, list], list]] = {

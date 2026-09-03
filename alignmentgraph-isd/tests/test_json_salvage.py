@@ -12,7 +12,7 @@ import warnings
 
 import pytest
 
-from alignmentgraph_isd.core.agents.base import parse_json_response
+from alignmentgraph_isd.core.llm_io import parse_json_response
 
 
 def test_invalid_escape_inside_string():
