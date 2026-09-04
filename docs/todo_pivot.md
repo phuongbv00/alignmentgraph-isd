@@ -804,6 +804,70 @@ guard đỏ đúng thông điệp. ✅
 
 **Verify:** 519 pass, ruff sạch.
 
+## [x] Hai lỗi từ run RunPod `single_20260904_020259` (2026-09-04)
+
+Bối cảnh: run 01:44 trên HF router/featherless **không phải regression** — endpoint đó không làm
+native tool calling, model trả tool call dưới dạng văn xuôi (`read_node(id="course_goal")`,
+`` `coverage_gaps (relation_id: P11)` ``), cả hai parser đều trả None, 156/160 call là
+`invalid_action`, `submits_rejected=0`. RunPod chạy được. Diff hôm nay vào `loop.py`/`tools.py`
+toàn bộ là comment trừ một chuỗi description.
+
+Run RunPod thì chạy nhưng **955s / 347 call / 1,19M token / 373 node**. Hai nguyên nhân độc lập:
+
+### [x] A. 50 objective, 4 câu khác nhau — không có dedup ở nguồn
+
+Truy chuỗi sự kiện: **một** step `design_outcomes_learning_objectives`, 50 id riêng, 50
+`node_add` — model đẻ 50 cái trong MỘT submit, một câu lặp **32 lần**. Không phải harness tích luỹ
+qua retry.
+
+Mọi family phía sau tự định cỡ theo số objective: 50 LO → **63** assessment work set → **126**
+item → **36** activity block → **161** activity. `RULES_OUTCOMES` đã ghi *"Do not pad"*; model 2B
+vẫn pad — đúng lớp model nghiên cứu này nói tới, nên harness không được trông vào việc nó tuân thủ.
+`dev_plans` đã có cap/dedup nhưng tất cả nằm SAU số objective.
+
+Sửa: `_decompose(..., dedup_field=...)` — hai item cùng `statement` là một objective, chỉ commit
+cái đầu. **Không phải cap**: model viết bao nhiêu tuỳ nó, phần bỏ được ĐẾM qua
+`TrajectoryAction.DUPLICATE_ELEMENT_DROPPED` mới, vì *tỉ lệ pad theo size chính là một finding*.
+Khai ở đủ 4 nơi (enum + `_RECOVERY_ACTIONS`, `test_benchmark_contract`, `conftest._EVENT_ACTIONS`,
+webapp `phaseTimeline`/`deepTimeline`) — contract test bắt được ngay khi thiếu.
+
+Nếu áp lên chính run đã đo: objectives 50→4, sets 63→~5, items 126→~10, activities 161→~13.
+
+### [x] B. `course_goal` gửi dưới dạng chuỗi trần → C1 coverage 0/50
+
+```
+submit_rejected x3 | raw=course_goal:str | args=course_goal:dict
+                     "course_goal.statement must be a non-empty string"
+agentic_gave_up    | submit budget spent
+```
+
+Model gửi câu goal trần thay vì `{"statement": …}`. Ba lần từ chối → hết budget → bỏ stage →
+`design.course_goal` **null** và **C1 edges = 0** (một trong 5 quan hệ core construct-validity).
+
+Sửa: `ToolLoop._fill_single_key_object`. Field đích **suy từ chính schema exemplar**, không khai
+tay: artifact nào có object ví dụ đúng MỘT key thì chuỗi trần chỉ có thể là key đó. Suy ra đúng
+`course_goal→statement`, và `dev_plan→instrument_sets`/`activity_blocks`; không suy gì cho các
+artifact nhiều field, nơi đoán sẽ là đoán mò.
+
+**Đánh đổi phải khai:** test `test_a_value_that_is_genuinely_wrong_is_still_rejected` đỏ vì nay
+`course_goal: "not json at all"` được nhận. Em giữ thay đổi và viết lại test cho đúng phạm vi
+(`test_a_string_where_a_structure_was_declared_is_dropped_not_swallowed`): chuỗi vào chỗ khai
+ARRAY vẫn bị `dropped_argument` và nói rõ — guard còn răng ở đó; ngoại lệ chỉ là object một-field.
+Lý do chấp nhận: một goal dở mà judge chấm được vẫn hơn không có goal và mất luôn C1.
+
+### Kiểm chứng
+
+Hai test mới tái hiện đúng hai ca đo được, mỗi cái có **negative control**: tắt dedup → `committed
+33`; tắt salvage → `a bare-string course goal was not read as its only field`. 521 pass,
+`golden_prompts.json` **không đổi** (không sửa prompt nào), ruff sạch, webapp typecheck + 44 test,
+`run_benchmark.py --check` 7/7.
+
+### [?] Còn treo: có cap số objective không
+
+Chưa làm và **không nên tự quyết**: cap cứng chạm vào chính thứ trục RQ1 đang đo (model nhỏ pad
+nhiều hơn là KẾT QUẢ, không phải nhiễu). Dedup an toàn vì nó không giấu hành vi — số thô vẫn nằm
+trong trajectory. Cap thì có thể làm phẳng tín hiệu.
+
 ## [ ] Nợ kỹ thuật có sẵn trong evaluator (KHÔNG do pivot)
 
 - `evaluator/tests/test_trajectory_metrics.py` không collect được: `pydantic.VERSION` —

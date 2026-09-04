@@ -684,6 +684,7 @@ _EVENT_ACTIONS = {
         "commit_invalid_section", "agentic_fallback", "agentic_gave_up", "budget_exhausted",
         "tool_binding_unavailable", "tool_call_markup_recovered", "repair_unfilled",
     "duplicate_submit", "bare_artifact_wrapped", "context_compacted",
+    "duplicate_element_dropped",
         "dropped_argument", "repair",
     },
     #: A generative repair that asked the model for the missing artifact and got

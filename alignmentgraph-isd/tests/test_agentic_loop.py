@@ -413,9 +413,23 @@ def test_whole_argument_object_as_one_json_string_is_coerced():
     assert not any(e["action"] == "submit_rejected" for e in trajectory.recovery_events)
 
 
-def test_a_value_that_is_genuinely_wrong_is_still_rejected():
-    """Coercion must not paper over a real model mistake: a string that is not
-    JSON stays a string, and the deterministic validator still says so."""
+def test_a_string_where_a_structure_was_declared_is_dropped_not_swallowed():
+    """Coercion must not paper over a real model mistake — with ONE deliberate
+    exception, added 2026-09-04.
+
+    A string where an ARRAY was declared is unreadable and stays unreadable:
+    it is dropped, reported as `dropped_argument`, and the artifact it was
+    supposed to be does not exist. That is the guard.
+
+    The exception is an artifact whose schema example is an object with exactly
+    ONE key: there, a bare string has only one thing it can mean, and
+    `_fill_single_key_object` reads it as that field. It is a real loss of
+    strictness — "not json at all" now lands as a course goal — and it is worth
+    it: MEASURED (run single_20260904_020259), a 2B model sent a perfectly good
+    goal sentence as a bare string, was rejected three times, spent the submit
+    budget, gave up the stage, and left `design.course_goal` null with C1 at 0
+    of 50 objectives covered. A bad goal the judge can score beats no goal at
+    all."""
     step = STEP_BY_NAME["outcomes"]
     _model, config, graph, trajectory, brief = _harness([
         call("submit", {"course_goal": "not json at all",
@@ -426,9 +440,77 @@ def test_a_value_that_is_genuinely_wrong_is_still_rejected():
 
     _loop(config, graph, trajectory, brief, step).run()
 
-    rejected = [e for e in trajectory.recovery_events if e["action"] == "submit_rejected"]
-    assert rejected, "a genuinely malformed submit must still be rejected"
+    actions = [e["action"] for e in trajectory.recovery_events]
+    # The array field: unreadable, dropped, and SAID SO.
+    dropped = [e for e in trajectory.recovery_events if e["action"] == "dropped_argument"]
+    assert dropped, "a string where an array was declared must not be swallowed"
+    assert "learning_objectives" in str(dropped[0]["context"]["input_summary"])
+    # The single-key object: read as its one field, and SAID SO.
+    assert "bare_artifact_wrapped" in actions
     assert graph.element_nodes(NodeType.OBJECTIVE), "and the retry must still land"
+
+
+def test_a_course_goal_sent_as_a_bare_string_still_lands():
+    """MEASURED FAILURE (run single_20260904_020259, Qwen3.5-2B on the pod).
+
+    The model sent ``course_goal`` as a bare sentence instead of
+    ``{"statement": ...}``. Its schema declares an object, so validation
+    answered "course_goal.statement must be a non-empty string" on all three
+    submit attempts, the budget ran out, the stage gave up — and the run
+    shipped `design.course_goal` null with C1, one of the five core relations,
+    covering 0 of 50 objectives. One malformed envelope cost a core relation."""
+    step = STEP_BY_NAME["outcomes"]
+    goal = "Learners build a maths-education website end to end."
+    _model, config, graph, trajectory, brief = _harness([
+        call("submit", {"course_goal": goal,
+                        "learning_objectives": _OUTCOMES["learning_objectives"]}),
+    ])
+    specialists.commit_analysis(graph, trajectory, _ANALYSIS)
+
+    _loop(config, graph, trajectory, brief, step).run()
+
+    committed = (graph.get_node(graph.section_id(NodeType.COURSE_GOAL)) or {}).get("data") or {}
+    assert committed.get("statement") == goal, (
+        "a bare-string course goal was not read as its only field")
+    assert not [e for e in trajectory.recovery_events
+                if e["action"] == "submit_rejected"], "and it cost no submit attempt"
+
+
+def test_the_same_objective_written_many_times_is_committed_once():
+    """MEASURED FAILURE (run single_20260904_020259): one submit carried 50
+    learning objectives with 4 distinct statements — one of them 32 times.
+
+    Nothing capped it, and every downstream family sizes itself off the
+    objective count: 63 assessment work sets, 126 items, 36 activity blocks,
+    161 activities, 373 nodes, 347 model calls, 955 seconds, 1.19M tokens for
+    a design that contains four objectives.
+
+    The drop is COUNTED, not absorbed: how much a size pads is a finding about
+    the model class this study is about, so `duplicate_element_dropped` carries
+    it into the trajectory rather than the harness quietly tidying up."""
+    step = STEP_BY_NAME["outcomes"]
+    padded = [
+        {"id": f"ILO-{i:02d}", "level": "apply", "bloom_verb": "apply",
+         "statement": "Learners apply interactive web content structures."}
+        for i in range(1, 33)
+    ] + [{"id": "ILO-33", "level": "understand", "bloom_verb": "explain",
+          "statement": "Learners explain software engineering methodologies."}]
+    _model, config, graph, trajectory, brief = _harness([
+        call("submit", {"course_goal": {"statement": "Build a website."},
+                        "learning_objectives": padded}),
+    ])
+    specialists.commit_analysis(graph, trajectory, _ANALYSIS)
+
+    _loop(config, graph, trajectory, brief, step).run()
+
+    statements = [(n.get("data") or {}).get("statement")
+                  for n in graph.element_nodes(NodeType.OBJECTIVE)]
+    assert len(statements) == 2, f"33 submitted, 2 distinct, committed {len(statements)}"
+    assert len(set(statements)) == 2
+    dropped = [e for e in trajectory.recovery_events
+               if e["action"] == "duplicate_element_dropped"]
+    assert dropped, "the padding must be recorded, not silently absorbed"
+    assert "31 of 33" in str(dropped[0]["context"]["input_summary"])
 
 
 def test_protocol_words_in_the_artifact_are_rejected():

@@ -82,6 +82,10 @@ const KIND_OF: Record<string, WorkKind> = {
   // (the `agent_mode` axis's price), so it gets a beat of its own rather than
   // a red one.
   context_compacted: 'compact',
+  // Not an error either: the model produced the same element twice and the
+  // harness recorded that rather than absorbing it. How much padding a size
+  // does is a finding, so it gets a beat.
+  duplicate_element_dropped: 'compact',
   // Retired 2026-09-01 with the scripted rescue; kept so an archived run still
   // renders as what it recorded rather than as an unknown action.
   agentic_fallback: 'error',

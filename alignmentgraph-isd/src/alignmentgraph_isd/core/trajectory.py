@@ -61,6 +61,14 @@ class TrajectoryAction(StrEnum):
     #: because how OFTEN each arm reaches it is the decomposition mechanism
     #: measuring itself.
     CONTEXT_COMPACTED = "context_compacted"
+    #: An element the model submitted twice in ONE artifact, dropped on commit.
+    #: MEASURED (run single_20260904_020259): a 2B model returned 50 learning
+    #: objectives carrying 4 distinct statements, one of them 32 times, and
+    #: every downstream family sizes itself off that count — 63 assessment work
+    #: sets, 36 activity blocks, 347 model calls, 955s. Recorded rather than
+    #: silently absorbed BECAUSE the padding rate is itself a finding about the
+    #: model class this study is about.
+    DUPLICATE_ELEMENT_DROPPED = "duplicate_element_dropped"
     AGENTIC_FALLBACK = "agentic_fallback"
     #: The backend accepted no tool binding, so the stage has no act->observe
     #: loop and gives up at once rather than spending MAX_TURNS discovering the
@@ -130,6 +138,7 @@ _RECOVERY_ACTIONS = frozenset({
     TrajectoryAction.DUPLICATE_SUBMIT,
     TrajectoryAction.BARE_ARTIFACT_WRAPPED,
     TrajectoryAction.CONTEXT_COMPACTED,
+    TrajectoryAction.DUPLICATE_ELEMENT_DROPPED,
     TrajectoryAction.AGENTIC_FALLBACK,
     # Replaced AGENTIC_FALLBACK on 2026-09-01 and was never added here, so
     # every give-up was missing from `recovery_events` — the one view that is

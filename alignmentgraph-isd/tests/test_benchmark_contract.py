@@ -43,6 +43,7 @@ EVENT_ACTIONS = {
     "commit_invalid_section", "agentic_fallback", "agentic_gave_up", "budget_exhausted",
     "tool_binding_unavailable", "tool_call_markup_recovered", "repair_unfilled",
     "duplicate_submit", "bare_artifact_wrapped", "context_compacted",
+    "duplicate_element_dropped",
     "dropped_argument",
     # structured records
     "repair", "node_add", "node_update", "doc_write", "validate", "check", "audit",

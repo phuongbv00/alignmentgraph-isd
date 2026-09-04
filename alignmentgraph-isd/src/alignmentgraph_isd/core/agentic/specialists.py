@@ -44,25 +44,52 @@ _SCHEMA_ACTIVITIES_DISPATCH = (
 _SCHEMA_CONTENT_DISPATCH = rules.SCHEMA_CONTENT_MODULES
 
 def _decompose(graph, trajectory, node_type: str, items: object, *,
-               id_field: str = "id") -> list[str]:
+               id_field: str = "id", dedup_field: str = "") -> list[str]:
     """Turn a just-generated list into element nodes AND log each one.
 
     The logging is IN here rather than at the call sites for a reason:
     ``node_edit`` events are judge-visible, so a call site that forgets one
     makes whichever arm reaches it look like it did less work — a difference
-    the ablation would then read as an axis effect."""
+    the ablation would then read as an axis effect.
+
+    ``dedup_field`` names the field that IDENTIFIES an element by content. Two
+    items whose value for it is the same are the same element however many ids
+    the model gave them, and only the first is committed. This is not a cap on
+    what the model may produce — it writes as many as it likes and the drop is
+    counted — it is a refusal to record one thing many times, the same rule
+    ``dev_plans`` already applies to duplicate coverage pairs. Everything
+    downstream sizes itself off these element counts, so a duplicate is not
+    merely untidy: it multiplies work sets, calls and time."""
     node_ids: list[str] = []
     if not isinstance(items, list):
         return node_ids
+    seen: set[str] = set()
+    if dedup_field:
+        seen = {
+            str((n.get("data") or {}).get(dedup_field) or "").strip().casefold()
+            for n in graph.element_nodes(node_type)
+        } - {""}
+    dropped = 0
     for item in items:
         if not isinstance(item, dict):
             continue
         raw_id = item.get(id_field)
         if not raw_id:
             continue
+        if dedup_field:
+            key = str(item.get(dedup_field) or "").strip().casefold()
+            if key and key in seen:
+                dropped += 1
+                continue
+            seen.add(key)
         node_id = graph.add_element_node(node_type, str(raw_id), dict(item))
         node_ids.append(node_id)
         trajectory.log_node_edit("add", node_id, node_type)
+    if dropped:
+        trajectory.log_recovery_event(
+            "", "duplicate_element_dropped",
+            f"{node_type}: {dropped} of {dropped + len(node_ids)} duplicated by {dedup_field}",
+            f"kept {len(node_ids)}")
     return node_ids
 
 
@@ -144,7 +171,8 @@ def commit_outcomes(graph, trajectory, parsed: dict) -> None:
         _merge_section(graph, trajectory, NodeType.COURSE_GOAL, parsed["course_goal"])
 
     objectives = parsed.get("learning_objectives") or []
-    objective_ids = _decompose(graph, trajectory, NodeType.OBJECTIVE, objectives)
+    objective_ids = _decompose(graph, trajectory, NodeType.OBJECTIVE, objectives,
+                               dedup_field="statement")
     gap_ids = [n["id"] for n in graph.element_nodes(NodeType.GAP)]
     topic_ids = [n["id"] for n in graph.element_nodes(NodeType.TOPIC)]
     learner_id = graph.section_id(NodeType.LEARNER_PROFILE)

@@ -103,7 +103,7 @@ const RECOVERY_ACTIONS = new Set([
   // often each arm compacts is how the `agent_mode` axis reports its price,
   // and `single` (one context all run) reaches it far sooner than `multi`.
   'duplicate_submit', 'bare_artifact_wrapped', 'dropped_argument',
-  'context_compacted',
+  'context_compacted', 'duplicate_element_dropped',
   'agentic_fallback',
   // Two members of `_RECOVERY_ACTIONS` are deliberately NOT here: `repair`
   // has its own case in absorb(), and `repair_unfilled` can no longer be
