@@ -3,13 +3,13 @@ Defaults preserve the full pipeline (multi + graph); each axis cleanly
 switches exactly its own mechanism, independent of the other."""
 from __future__ import annotations
 
-from alignmentgraph_isd import HarnessRunConfig, run_design_brief
+from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph
 from alignmentgraph_isd.core.prose_store import ProseStore
 from alignmentgraph_isd.core.trajectory import TrajectoryLogger
 
 from alignmentgraph_isd.core.agentic.specialists import STEPS
-from conftest import FakeChatModel, events_of, load_brief
+from conftest import FakeChatModel, events_of, load_brief, run_brief
 
 
 def test_flags_default_on():
@@ -41,7 +41,7 @@ def test_prose_store_context_is_verbatim_json_of_deposited_documents():
 def test_single_prose_run_end_to_end(fake_llm_factory):
     config = HarnessRunConfig(llm_factory=fake_llm_factory, agent_mode="single", context_mode="prose")
     brief = load_brief("minimal_brief.json")
-    result = run_design_brief(brief, config)
+    result = run_brief(brief, config)
 
     # A prose run has no graph and therefore no graph artifact keys at all.
     assert set(result) >= {"addie_output", "trajectory", "metadata"}
@@ -58,7 +58,7 @@ def test_multi_prose_run_is_graph_free_and_unrouted(fake_llm_factory):
     an agent_error recovery event), emits no cross-agent revision actions, and
     logs check rounds whose violations are all within-artifact types."""
     brief = load_brief("minimal_brief.json")
-    result = run_design_brief(brief, HarnessRunConfig(llm_factory=fake_llm_factory, context_mode="prose"))
+    result = run_brief(brief, HarnessRunConfig(llm_factory=fake_llm_factory, context_mode="prose"))
 
     assert "graph" not in result and "graph_dot" not in result
     addie = result["addie_output"]
@@ -80,7 +80,7 @@ def test_multi_prose_run_is_graph_free_and_unrouted(fake_llm_factory):
 
     # Both arms produce the same output skeleton (phases and their fields are
     # judged on one schema — implementation asymmetry would corrupt the axis).
-    graph_result = run_design_brief(brief, HarnessRunConfig(llm_factory=fake_llm_factory))
+    graph_result = run_brief(brief, HarnessRunConfig(llm_factory=fake_llm_factory))
     for phase in ("analysis", "design", "development", "implementation", "evaluation"):
         missing = ({k for k, v in graph_result["addie_output"][phase].items() if v}
                    - set(addie[phase]) - {"alignment_matrix"})
@@ -90,13 +90,13 @@ def test_multi_prose_run_is_graph_free_and_unrouted(fake_llm_factory):
 def test_metadata_records_run_config(fake_config, fake_llm_factory):
     brief = load_brief("minimal_brief.json")
 
-    result = run_design_brief(brief, fake_config)
+    result = run_brief(brief, fake_config)
     rc = result["metadata"]["run_config"]
     assert rc["agent_mode"] == "multi"
     assert rc["context_mode"] == "graph"
 
     single = HarnessRunConfig(llm_factory=fake_llm_factory, agent_mode="single", context_mode="prose")
-    result = run_design_brief(brief, single)
+    result = run_brief(brief, single)
     rc = result["metadata"]["run_config"]
     assert rc["agent_mode"] == "single"
     assert rc["context_mode"] == "prose"
@@ -125,7 +125,7 @@ def test_prose_prompts_carry_no_docket_and_no_graph_records(fake_llm_factory):
     captured.clear()
     config = HarnessRunConfig(context_mode="prose")
     config.llm_factory = lambda: _Spy()
-    run_design_brief(brief, config)
+    run_brief(brief, config)
 
     joined = "\n".join(captured)
     for marker in ("=== ALIGNMENT STATE ===", "missing for:", "PLAN-PROMISED",
@@ -158,7 +158,7 @@ def test_single_mode_reports_one_agent_identity_not_five(fake_llm_factory):
     brief = load_brief("minimal_brief.json")
 
     def run(mode):
-        return run_design_brief(brief, HarnessRunConfig(
+        return run_brief(brief, HarnessRunConfig(
             llm_factory=fake_llm_factory, agent_mode=mode))
 
     def identities(result):
@@ -233,7 +233,7 @@ def test_both_arms_get_the_same_generation_scaffolding(fake_llm_factory):
     # ``test_the_agentic_arms_are_two_shapes_not_two_settings``: neither arm was
     # CUT by its turn budget.
     runs = {
-        mode: run_design_brief(brief, HarnessRunConfig(
+        mode: run_brief(brief, HarnessRunConfig(
             llm_factory=fake_llm_factory, agent_mode=mode,))
         for mode in ("multi", "single")
     }
@@ -297,7 +297,7 @@ def test_the_agentic_arms_are_two_shapes_not_two_settings(fake_llm_factory):
     blamed on the ceiling."""
     brief = load_brief("minimal_brief.json")
     runs = {
-        mode: run_design_brief(brief, HarnessRunConfig(
+        mode: run_brief(brief, HarnessRunConfig(
             llm_factory=fake_llm_factory, agent_mode=mode))
         for mode in ("multi", "single")
     }
@@ -338,7 +338,7 @@ def test_an_empty_first_answer_loses_no_artifact_in_either_arm():
     for mode in ("multi", "single"):
         config = HarnessRunConfig(agent_mode=mode)
         config.llm_factory = _flaky_design_factory()
-        result = run_design_brief(brief, config)
+        result = run_brief(brief, config)
 
         objectives = (result["addie_output"].get("design") or {}).get("learning_objectives")
         assert objectives, f"{mode} arm lost the section its first answer fumbled"
@@ -375,7 +375,7 @@ def test_single_arm_asks_for_every_output_field_the_aggregator_reads():
     for mode in ("multi", "single"):
         config = HarnessRunConfig(agent_mode=mode)
         config.llm_factory = lambda: FakeChatModel()
-        outputs[mode] = run_design_brief(brief, config)["addie_output"]
+        outputs[mode] = run_brief(brief, config)["addie_output"]
 
     def populated(output):
         found = set()
@@ -509,7 +509,7 @@ def test_scaffolding_reaches_generation_prompts_in_both_arms(fake_llm_factory):
     for mode in ("multi", "single"):
         config = HarnessRunConfig(agent_mode=mode)
         config.llm_factory = spy(mode)
-        run_design_brief(brief, config)
+        run_brief(brief, config)
 
     for tag in ("multi", "single"):
         prompts = captured[tag]
@@ -543,7 +543,7 @@ def test_the_docket_reaches_the_graph_arm_and_never_the_prose_arm(fake_llm_facto
         for context_mode in ("graph", "prose"):
             config = HarnessRunConfig(agent_mode=mode, context_mode=context_mode)
             config.llm_factory = spy(f"{mode}-{context_mode}")
-            run_design_brief(brief, config)
+            run_brief(brief, config)
 
     for mode in ("multi", "single"):
         assert any("=== ALIGNMENT STATE ===" in p for p in captured[f"{mode}-graph"]), \
@@ -575,7 +575,7 @@ def test_agentic_arm_keeps_one_persona_per_stage_or_one_for_the_job(fake_llm_fac
     for mode in ("multi", "single"):
         config = HarnessRunConfig(agent_mode=mode)
         config.llm_factory = spy(mode)
-        run_design_brief(brief, config)
+        run_brief(brief, config)
 
     personas = {
         mode: {p.partition("\n\n")[0] for p in prompts if _WORKFLOW_OVERVIEW in p}

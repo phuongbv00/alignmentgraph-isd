@@ -61,6 +61,10 @@ class TrajectoryAction(StrEnum):
     #: because how OFTEN each arm reaches it is the decomposition mechanism
     #: measuring itself.
     CONTEXT_COMPACTED = "context_compacted"
+    #: A repair pass stopped early because it had proved it could not fix what
+    #: was left: the same findings came back with nothing repaired in between.
+    #: Recorded so a converged run does not read like a clean one.
+    CONVERGE = "converge"
     #: An element the model submitted twice in ONE artifact, dropped on commit.
     #: MEASURED (run single_20260904_020259): a 2B model returned 50 learning
     #: objectives carrying 4 distinct statements, one of them 32 times, and
@@ -138,6 +142,7 @@ _RECOVERY_ACTIONS = frozenset({
     TrajectoryAction.DUPLICATE_SUBMIT,
     TrajectoryAction.BARE_ARTIFACT_WRAPPED,
     TrajectoryAction.CONTEXT_COMPACTED,
+    TrajectoryAction.CONVERGE,
     TrajectoryAction.DUPLICATE_ELEMENT_DROPPED,
     TrajectoryAction.AGENTIC_FALLBACK,
     # Replaced AGENTIC_FALLBACK on 2026-09-01 and was never added here, so
@@ -496,7 +501,7 @@ class TrajectoryLogger:
         self.log_action(TrajectoryAction.VALIDATE, agent=agent, scope=scope,
                         error_count=len(errors), errors=list(errors))
 
-    def log_violations_result(self, violations: list[dict], *, agent: str = "") -> None:
+    def log_violations_result(self, violations: list[dict], *, agent: str = "") -> int:
         """Record one pedagogical-verification round.
 
         ``agent`` should be passed explicitly by callers whose self-validation
@@ -506,17 +511,46 @@ class TrajectoryLogger:
         specialist actually being validated.
 
         The event keeps counts + the per-type breakdown; the full violation
-        dicts live in the deep action log (per round) and — for the residual
-        set the paper reports — in run-level ``metadata.audit.violations``."""
+        dicts live in the deep action log (per round), in the run's ledger
+        (``core/memory.py``, which is what ``result["violations"]`` serves) and
+        — for the residual set the paper reports — in
+        ``metadata.audit.violations``.
+
+        Returns the round number it recorded."""
         by_type: dict[str, int] = {}
         for violation in violations:
             vtype = violation.get("type", violation.get("violation_type", "unknown"))
             by_type[vtype] = by_type.get(vtype, 0) + 1
         round_number = len(self.check_events) + 1
+        # The KEYS as well as the counts. Without them a reader can only sum
+        # `by_type` across rounds, which counts one violation once per round it
+        # survived: a measured run reported 28 for a set of 7.
         self._record_event(TrajectoryAction.CHECK, "check_event", agent=agent, round=round_number,
-                           violation_count=len(violations), by_type=by_type)
+                           violation_count=len(violations), by_type=by_type,
+                           keys=sorted({str(v.get("key") or f"{v.get('type', '?')}|{v.get('node_id', '?')}")
+                                        for v in violations}))
         self.log_action(TrajectoryAction.CHECK, agent=agent, round=round_number, violation_count=len(violations),
                         by_type=by_type, violations=list(violations))
+        # The round number is RETURNED rather than recomputed by the caller:
+        # the ledger stamps every finding with it, and two places deriving
+        # "which round is this" is how the two come to disagree.
+        return round_number
+
+    def log_convergence(self, family: str, keys: list[str], types: list[str], *,
+                        round_number: int, agent: str = "") -> None:
+        """The pass stopped: it looked, repaired nothing, and would have found
+        the same thing again.
+
+        Checks are pure functions of state and nothing else writes state
+        between the repair and the next look, so "no repair event fired" is a
+        PROOF that the next collect is identical — which is why the loop can
+        stop before paying for it."""
+        self._record_event(TrajectoryAction.CONVERGE, "converge_event", agent=agent,
+                           family=family, round=round_number,
+                           unfixable=len(keys), violation_types=sorted(types))
+        self.log_action(TrajectoryAction.CONVERGE, agent=agent, family=family,
+                        round=round_number, unfixable=len(keys),
+                        violation_types=sorted(types), keys=sorted(keys))
 
     def log_repair_event(
         self,

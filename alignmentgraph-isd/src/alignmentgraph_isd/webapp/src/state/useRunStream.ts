@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useRef } from 'react'
 import { api } from '../api/client'
-import type { AgentContextRow, AlignmentGraphPayload, DeepAction, HelloPayload, RunEvent, RunStats, RunStatus } from '../api/types'
+import type { AgentContextRow, AlignmentGraphPayload, DeepAction, Finding, HelloPayload, RunEvent, RunStats, RunStatus } from '../api/types'
 
 /**
  * Following one run over server-sent events.
@@ -31,6 +31,9 @@ export interface RunStreamState {
    *  transcript is fetched per row, so watching a run costs one small
    *  frame per turn instead of every transcript re-sent. */
   contextRows: AgentContextRow[]
+  /** The run's ledger. Arrives once, at the end: a finding's outcome is
+   *  not known until the last look has settled it. */
+  findings: Finding[]
   phase: { name: string; index: number; total: number } | null
   /** Set while a model call is in flight, so the UI can run an elapsed timer
    *  through the tens of seconds when nothing else happens. */
@@ -50,6 +53,7 @@ const EMPTY: RunStreamState = {
   graph: null,
   graphRev: 0,
   contextRows: [],
+  findings: [],
   phase: null,
   llmStartedAt: null,
   connected: false,
@@ -62,6 +66,7 @@ type Action =
   | { type: 'event'; event: RunEvent }
   | { type: 'graph'; graph: AlignmentGraphPayload }
   | { type: 'contexts'; rows: AgentContextRow[] }
+  | { type: 'violations'; findings: Finding[] }
   | { type: 'connected'; value: boolean }
 
 function reducer(state: RunStreamState, action: Action): RunStreamState {
@@ -88,6 +93,8 @@ function reducer(state: RunStreamState, action: Action): RunStreamState {
       return { ...state, graph: action.graph, graphRev: state.graphRev + 1 }
     case 'contexts':
       return { ...state, contextRows: action.rows }
+    case 'violations':
+      return { ...state, findings: action.findings }
 
     case 'event': {
       const { event } = action
@@ -178,6 +185,10 @@ export function useRunStream(runId: string | null): RunStreamState {
       // finished run showed a different action count on every reload).
       // `onEvent` below closes once the real terminal event arrives, by
       // which point everything before it is guaranteed already dispatched.
+    })
+
+    source.addEventListener('violations', (message) => {
+      dispatch({ type: 'violations', findings: JSON.parse((message as MessageEvent).data) })
     })
 
     source.addEventListener('contexts', (message) => {

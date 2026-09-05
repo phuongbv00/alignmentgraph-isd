@@ -93,6 +93,11 @@ class RunState:
     #: Bumped on every context change, so the stream can push only when there
     #: is something new — the same protocol `graph_rev` uses.
     contexts_rev: int = 0
+    #: Every distinct finding of the run, latest state, in first-seen order.
+    #: Published whole rather than incrementally: unlike a transcript a finding
+    #: is small, and unlike the graph it is a list the tab renders directly.
+    violations: list[dict] = field(default_factory=list)
+    violations_rev: int = 0
 
     stats: dict[str, Any] = field(default_factory=dict)
     cancel_requested: bool = False
@@ -155,6 +160,14 @@ class RunState:
         # reliable one. The frame rides out with the next event's wakeup or the
         # heartbeat, and there is always one close behind: `llm_started` and
         # `llm_finished` bracket every model call, which is what the turns are.
+
+    def set_violations(self, findings: list[dict]) -> None:
+        """Replace the ledger. Like `add_context`, deliberately WITHOUT a
+        `_notify()`: the frame rides the next event's wakeup, and waking the
+        stream on its own drains it ahead of the events.jsonl flusher."""
+        with self._lock:
+            self.violations = list(findings)
+            self.violations_rev += 1
 
     def contexts_light(self) -> list[dict]:
         """The contexts without their transcripts.

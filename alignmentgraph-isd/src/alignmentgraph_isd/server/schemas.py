@@ -24,34 +24,54 @@ class HealthResponse(BaseModel):
     max_concurrent_runs: int = 0
 
 
-class LLMSettingsOut(BaseModel):
-    """What the browser is told about the model configuration.
+class LLMConnectionOut(BaseModel):
+    """What the browser is told about one connection.
 
     Never the API key itself — only whether one is set. It is stored in clear
     text in the local database and there is no reason to move it further.
     """
 
-    model_name: str = ""
-    api_spec: str = "openai_compatible"
+    id: str
+    name: str = ""
     base_url: str = ""
     has_api_key: bool = False
+    model_name: str = ""
     temperature: float | None = None
     max_tokens: int | None = None
-    # database | environment | none — so the UI can say why a value it did not
-    # set is in effect.
-    source: str = "none"
+    is_active: bool = False
+    updated_at: datetime | None = None
+
+
+class LLMConnectionsOut(BaseModel):
+    """The whole picture, returned by every connection endpoint.
+
+    One shape for read and write so the UI has a single source of state rather
+    than patching a list from per-row responses.
+    """
+
+    connections: list[LLMConnectionOut] = []
+    active_id: str = ""
+    # Why the active connection is unusable, when it is.
     error: str = ""
 
 
-class LLMSettingsIn(BaseModel):
-    model_name: str = Field(min_length=1, max_length=200)
-    api_spec: str = Field(default="openai_compatible", pattern="^(openai|openai_compatible|anthropic)$")
+class LLMConnectionIn(BaseModel):
+    name: str = Field(default="", max_length=100)
     base_url: str = Field(default="", max_length=500)
     # Omitted keeps the stored key; an empty string clears it. The browser is
     # never sent the key, so it cannot echo one back.
     api_key: str | None = None
+    # Allowed to be empty: a connection is saved first, and only then can its
+    # /models list be read to pick one.
+    model_name: str = Field(default="", max_length=200)
     temperature: float | None = Field(default=None, ge=0, le=2)
     max_tokens: int | None = Field(default=None, ge=1, le=200_000)
+
+
+class ModelListOut(BaseModel):
+    models: list[str] = []
+    # Why the list is empty, when it is. Reported, not raised.
+    error: str = ""
 
 
 class ProgramCreate(BaseModel):

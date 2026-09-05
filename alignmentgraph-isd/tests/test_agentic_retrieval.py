@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import json
 
-from alignmentgraph_isd import DesignBrief, HarnessRunConfig, run_design_brief
+from alignmentgraph_isd import DesignBrief, HarnessRunConfig
 from alignmentgraph_isd.core.rag.agent import RetrievalAgent, RetrievalTool
 from alignmentgraph_isd.core.rag.sandbox import RetrievalSandbox
 
-from conftest import events_of, FakeChatModel, load_brief
+from conftest import FakeChatModel, events_of, load_brief, run_brief
 
 BRIEF = DesignBrief(
     id="b1", title="Software Testing Fundamentals", domain="Software Engineering",
@@ -44,13 +44,13 @@ def test_use_rag_off_is_zero_cost_and_prompt_stable(fake_llm_factory):
 
     config_plain = HarnessRunConfig()
     config_plain.llm_factory = fake_llm_factory
-    result_plain = run_design_brief(brief, config_plain)
+    result_plain = run_brief(brief, config_plain)
 
     # Even with subagents registered, use_rag=False must gate everything out.
     config_gated = HarnessRunConfig()
     config_gated.llm_factory = fake_llm_factory
     config_gated.retrieval_subagents = [_corpus_agent()]
-    result_gated = run_design_brief(brief, config_gated)
+    result_gated = run_brief(brief, config_gated)
 
     for result in (result_plain, result_gated):
         assert events_of(result["trajectory"], "retrieval") == []
@@ -61,7 +61,7 @@ def test_use_rag_on_with_empty_registry_is_zero_cost(fake_llm_factory):
     brief = load_brief("java_oop_brief.json")
     config = HarnessRunConfig(use_rag=True)
     config.llm_factory = fake_llm_factory
-    result = run_design_brief(brief, config)
+    result = run_brief(brief, config)
     assert events_of(result["trajectory"], "retrieval") == []
 
 
@@ -159,7 +159,7 @@ def test_agentic_arm_retrieves_by_calling_the_tool():
     config = HarnessRunConfig(use_rag=True, llm_factory=_RetrieveThenSubmitModel)
     config.retrieval_subagents = [_corpus_agent()]
 
-    result = run_design_brief(load_brief("software_testing_brief.json"), config)
+    result = run_brief(load_brief("software_testing_brief.json"), config)
 
     events = events_of(result["trajectory"], "retrieval")
     assert events, "the retrieve tool call must reach the planner and be recorded"

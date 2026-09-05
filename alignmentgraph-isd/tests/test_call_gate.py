@@ -21,10 +21,10 @@ import time
 
 import pytest
 
-from alignmentgraph_isd import HarnessRunConfig, run_design_brief
+from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core.ratelimit import CallGate, gate_for
 
-from conftest import FakeChatModel, load_brief
+from conftest import FakeChatModel, load_brief, run_brief
 
 
 class _Peak:
@@ -107,7 +107,7 @@ class _CountingModel(FakeChatModel):
 def _run_multi(**settings):
     """One full multi-arm run, reporting the peak number of concurrent calls."""
     _CountingModel.peak = _Peak()
-    run_design_brief(
+    run_brief(
         load_brief("minimal_brief.json"),
         HarnessRunConfig(llm_factory=lambda: _CountingModel(), agent_mode="multi", **settings),
     )

@@ -22,9 +22,9 @@ from __future__ import annotations
 
 import pytest
 
-from alignmentgraph_isd import HarnessRunConfig, run_design_brief
+from alignmentgraph_isd import HarnessRunConfig
 
-from conftest import FakeChatModel, load_brief
+from conftest import FakeChatModel, load_brief, run_brief
 
 
 def _contexts(agent_mode: str, context_mode: str) -> list[dict]:
@@ -36,7 +36,7 @@ def _contexts(agent_mode: str, context_mode: str) -> list[dict]:
     entry per agent run, holding its last snapshot."""
     config = HarnessRunConfig(agent_mode=agent_mode, context_mode=context_mode)
     config.llm_factory = lambda: FakeChatModel()
-    return run_design_brief(load_brief("java_oop_brief.json"), config)["contexts"]
+    return run_brief(load_brief("java_oop_brief.json"), config)["contexts"]
 
 
 @pytest.mark.parametrize("agent_mode,context_mode", [

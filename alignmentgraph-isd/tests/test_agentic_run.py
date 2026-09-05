@@ -5,12 +5,12 @@ from __future__ import annotations
 
 import json
 
-from alignmentgraph_isd import HarnessRunConfig, run_design_brief
+from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core.agentic import run_agentic_brief
 from alignmentgraph_isd.core.agentic.specialists import STEPS
 from alignmentgraph_isd.core.alignment_graph import NodeType
 
-from conftest import events_of, FakeChatModel, load_brief
+from conftest import FakeChatModel, events_of, load_brief, run_brief
 
 
 class _Result:
@@ -118,7 +118,7 @@ def test_graph_parity_with_the_single_arm_commits():
     only for the three families the fan-out never touched (analysis/
     outcomes/implementation), where the copy relationship is exact."""
     agentic = _agentic_result()
-    single = run_design_brief(
+    single = run_brief(
         load_brief("minimal_brief.json"),
         HarnessRunConfig(llm_factory=lambda: FakeChatModel(), agent_mode="single",),
     )
@@ -165,7 +165,7 @@ def test_agentic_run_records_phases_and_repair_scaffolding():
 # ── the two ablation axes, end to end ───────────────────────────────────────
 
 def _run(agent_mode="multi", context_mode="graph"):
-    return run_design_brief(
+    return run_brief(
         load_brief("minimal_brief.json"),
         HarnessRunConfig(llm_factory=lambda: FakeChatModel(), agent_mode=agent_mode,
                          context_mode=context_mode))

@@ -407,6 +407,30 @@ def establish_delivery(graph: AlignmentGraph, node_id: str, parsed: dict) -> Non
 # convention for the coverage/mechanism functions above.
 
 _BLOOM_LEVEL_INDEX = {"remember": 1, "understand": 2, "apply": 3, "analyze": 4, "evaluate": 5, "create": 6}
+#: The reverse. A level printed as a bare integer ("elicits more than level 2")
+#: is a number the reader has to look up before it means anything, and these
+#: messages go straight into an agent's repair turn.
+BLOOM_LEVEL_NAME = {index: name for name, index in _BLOOM_LEVEL_INDEX.items()}
+
+
+def bloom_level_name(index: int | None) -> str:
+    return BLOOM_LEVEL_NAME.get(index or 0, "")
+
+
+def a_level(name: str) -> str:
+    """``an apply-level``, ``a create-level``. Four of the six Bloom names begin
+    with a vowel, so a hardcoded "a" is wrong most of the time — and these
+    strings go verbatim into an agent's repair turn."""
+    return f"{'an' if name[:1].lower() in 'aeiou' else 'a'} {name}" if name else ""
+
+
+def formats_reaching(level: int) -> str:
+    """Item formats whose own ceiling can carry ``level``, named.
+
+    Read off ``_ITEM_TYPE_CAPABILITY`` so the advice cannot drift from the
+    table the check actually applies."""
+    ceilinged = {fmt for fmt, cap in _ITEM_TYPE_CAPABILITY.items() if cap < level}
+    return (", ".join(sorted(ceilinged)) if ceilinged else "")
 _ITEM_TYPE_CAPABILITY: dict[str, int] = {
     "true_false": 1,
     "matching": 1,
@@ -490,11 +514,22 @@ def bloom_assessment_violations(graph: AlignmentGraph) -> list[dict]:
         violations.append({
             "relation_id": "C2", "node_id": objective["id"],
             "message": (
-                f"Objective '{lo_id}' states a {objective['data'].get('level', '?')}-level "
-                f"performance, but no item measuring it elicits more than level {capability} "
-                f"({', '.join(item_ids)})."
+                f"Objective '{lo_id}' states {a_level(bloom_level_name(level)) or 'a ?'}-level "
+                f"performance, but the best of the {len(item_ids)} item(s) measuring "
+                f"it ({', '.join(item_ids)}) only reaches "
+                f"{bloom_level_name(capability) or 'no stated level'} — an objective "
+                f"measured below its own level is not measured."
             ),
-            "metadata": {"lo_id": lo_id, "item_ids": item_ids},
+            "repair_hint": (
+                f"On at least one of {', '.join(item_ids)}, set "
+                f"required_cognitive_process to '{bloom_level_name(level)}' AND give it "
+                f"a format that can carry it (short_answer or a performance task; "
+                f"{formats_reaching(level)} cap out below it) — or add a new "
+                f"{bloom_level_name(level)}-level item aligned to {lo_id}."
+            ),
+            "metadata": {"lo_id": lo_id, "item_ids": item_ids,
+                         "objective_level": level, "best_capability": capability,
+                         "field": "required_cognitive_process"},
         })
     return violations
 
@@ -528,10 +563,23 @@ def bloom_activity_violations(graph: AlignmentGraph) -> list[dict]:
         violations.append({
             "relation_id": "C3", "node_id": objective["id"],
             "message": (
-                f"Objective '{lo_id}' targets a higher-order level but no linked activity "
-                f"practices at that level ({', '.join(act_ids)})."
+                f"Objective '{lo_id}' targets {bloom_level_name(level)}, but of the "
+                f"{len(act_ids)} activity/activities practising it "
+                f"({', '.join(act_ids)}), "
+                + (f"the highest learner_cognitive_process is "
+                   f"{bloom_level_name(best)}" if best else
+                   "none declares a learner_cognitive_process at all")
+                + " — learners never rehearse at the level they are assessed on."
             ),
-            "metadata": {"lo_id": lo_id, "activity_ids": act_ids},
+            "repair_hint": (
+                f"Set learner_cognitive_process to '{bloom_level_name(level)}' on at "
+                f"least one of {', '.join(act_ids)} and make the activity actually "
+                f"require it ({a_level(bloom_level_name(level))}-level task, not a "
+                f"walkthrough of one) — or add such an activity aligned to {lo_id}."
+            ),
+            "metadata": {"lo_id": lo_id, "activity_ids": act_ids,
+                         "objective_level": level, "best_level": best,
+                         "field": "learner_cognitive_process"},
         })
     return violations
 

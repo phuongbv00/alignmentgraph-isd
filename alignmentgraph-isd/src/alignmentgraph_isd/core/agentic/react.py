@@ -216,8 +216,13 @@ class ReactLoop:
         """The just-finished stage's own violations, structural fixes already
         applied. Identical to the multi arm's — one implementation, so the two
         arms are shown the same thing about the same artifact."""
-        return ToolLoop.own_violations(
+        found = ToolLoop.own_violations(
             self.state, self.design_brief, step, self.trajectory, self.llm)
+        if found:
+            self.memory.observe_violations(
+                found, round=len(self.trajectory.check_events),
+                phase=step.name, family=step.family, shown_to_agent=True)
+        return found
 
     def _respec(self, step) -> str:
         """The stage's schema, re-attached to a rejection when it has fallen out

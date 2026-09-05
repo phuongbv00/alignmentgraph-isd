@@ -3,10 +3,10 @@ contract + all 18 alignment relations (7 core + 11 secondary) established
 (and repaired to closure)."""
 from __future__ import annotations
 
-from alignmentgraph_isd import HarnessRunConfig, run_design_brief
+from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core.alignment_graph import alignment
 
-from conftest import FakeChatModel, load_brief
+from conftest import FakeChatModel, load_brief, run_brief
 
 # Relations establishable via provenance (recorded when generation is
 # conditioned on graph nodes the specialist read beforehand) vs. those
@@ -28,7 +28,7 @@ def _element_nodes(result: dict) -> list[dict]:
 def test_default_config_produces_contract():
     config = HarnessRunConfig()
     config.llm_factory = lambda: FakeChatModel()
-    result = run_design_brief(load_brief("minimal_brief.json"), config)
+    result = run_brief(load_brief("minimal_brief.json"), config)
 
     assert set(result) >= {"addie_output", "trajectory", "metadata", "graph", "graph_dot"}
     addie = result["addie_output"]
@@ -39,7 +39,7 @@ def test_default_config_produces_contract():
 def test_run_establishes_every_relation_and_repairs_gaps():
     config = HarnessRunConfig()
     config.llm_factory = lambda: FakeChatModel()
-    result = run_design_brief(load_brief("minimal_brief.json"), config)
+    result = run_brief(load_brief("minimal_brief.json"), config)
     audit = result["metadata"]["audit"]
 
     # The run builds the graph: element nodes + edges spanning all 16 relations.
@@ -86,7 +86,7 @@ _REQUIRED_ANALYSIS_FIELDS = {
 def test_analysis_keeps_narrative_fields_alongside_decomposed_elements():
     config = HarnessRunConfig()
     config.llm_factory = lambda: FakeChatModel()
-    analysis = run_design_brief(load_brief("minimal_brief.json"), config)["addie_output"]["analysis"]
+    analysis = run_brief(load_brief("minimal_brief.json"), config)["addie_output"]["analysis"]
 
     for section, fields in _REQUIRED_ANALYSIS_FIELDS.items():
         missing = [f for f in fields if not analysis.get(section, {}).get(f)]
@@ -100,7 +100,7 @@ def test_evaluation_carries_formative_findings_and_feedback_summary():
     assessment plan's pilot_data_plan must reach the output."""
     config = HarnessRunConfig()
     config.llm_factory = lambda: FakeChatModel()
-    evaluation = run_design_brief(load_brief("minimal_brief.json"), config)["addie_output"]["evaluation"]
+    evaluation = run_brief(load_brief("minimal_brief.json"), config)["addie_output"]["evaluation"]
 
     formative = evaluation["formative"]
     assert formative["data_collection"]["methods"]
@@ -125,7 +125,7 @@ def test_implementation_plan_is_linked_into_the_graph():
     element counterpart, so an edgeless one is an island, not a section."""
     config = HarnessRunConfig()
     config.llm_factory = lambda: FakeChatModel()
-    result = run_design_brief(load_brief("minimal_brief.json"), config)
+    result = run_brief(load_brief("minimal_brief.json"), config)
     edges = _graph_edges(result)
 
     delivered = {e["target"] for e in edges if e.get("relation_id") == "P10"}

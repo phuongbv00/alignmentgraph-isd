@@ -63,6 +63,7 @@ def hello_payload(state: RunState) -> dict:
         "stats": state.public_stats(),
         "graph_rev": state.graph_rev,
         "contexts_rev": state.contexts_rev,
+        "violations_rev": state.violations_rev,
     }
 
 
@@ -82,6 +83,11 @@ async def live_stream(
         sent_contexts_rev = state.contexts_rev
         yield _contexts_frame(state)
 
+    sent_violations_rev = 0
+    if state.violations_rev:
+        sent_violations_rev = state.violations_rev
+        yield _violations_frame(state)
+
     cursor = after
     while True:
         if await request.is_disconnected():
@@ -98,6 +104,10 @@ async def live_stream(
         if state.contexts_rev > sent_contexts_rev:
             sent_contexts_rev = state.contexts_rev
             yield _contexts_frame(state)
+
+        if state.violations_rev > sent_violations_rev:
+            sent_violations_rev = state.violations_rev
+            yield _violations_frame(state)
 
         if state.is_terminal and not state.events_after(cursor):
             # The terminal event has already gone out above; closing here is what
@@ -124,6 +134,16 @@ async def replay_stream(events: list[dict], status: dict) -> AsyncIterator[str]:
 
 def stream_response(generator: AsyncIterator[str]) -> StreamingResponse:
     return StreamingResponse(generator, media_type="text/event-stream", headers=SSE_HEADERS)
+
+
+def _violations_frame(state: RunState) -> str:
+    """The run's ledger: every distinct finding and what became of it.
+
+    Sent whole — a finding is a row, not a transcript — and only when the
+    revision moves, which in practice is once, at the end: an outcome is not
+    known until the final look has settled it."""
+    rows = json.dumps(state.violations, ensure_ascii=False)
+    return f"event: violations\ndata: {rows}\n\n"
 
 
 def _contexts_frame(state: RunState) -> str:

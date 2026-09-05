@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from alignmentgraph_isd import DesignBrief, HarnessRunConfig
+from alignmentgraph_isd import DesignBrief, HarnessRunConfig, MetaAgent
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -671,6 +671,19 @@ def fake_config(fake_llm_factory):
     return config
 
 
+def run_brief(brief: DesignBrief, config: HarnessRunConfig, *, on_event=None) -> dict:
+    """Run one brief through the public entry point.
+
+    A terse call site for the ~70 places this suite runs the harness, and
+    nothing more: the package's entry point is ``MetaAgent`` and this calls
+    exactly it. It is deliberately NOT a re-export of the old
+    ``run_design_brief``, which was removed from the package 2026-09-05
+    for being a passthrough — a convenience the tests want is not a reason to keep
+    one in the shipped API.
+    """
+    return MetaAgent(config).run(brief, on_event=on_event)
+
+
 def load_brief(name: str) -> DesignBrief:
     payload = json.loads((FIXTURES / name).read_text(encoding="utf-8"))
     return DesignBrief.model_validate(payload)
@@ -693,6 +706,7 @@ _EVENT_ACTIONS = {
     #: this distinction exists to expose.
     "repair_unfilled": {"repair_unfilled"},
     "reconcile": {"reconcile"},
+    "converge": {"converge"},
     "node_edit": {"node_add", "node_update"},
     "validation": {"validate"},
     "check": {"check"},

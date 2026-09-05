@@ -8,9 +8,9 @@ the properties that make it an agent instead.
 from __future__ import annotations
 
 
-from conftest import FakeChatModel, load_brief
+from conftest import FakeChatModel, load_brief, run_brief
 
-from alignmentgraph_isd import HarnessRunConfig, run_design_brief
+from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core.agentic import react, tools
 from alignmentgraph_isd.core.agentic.specialists import STEPS
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
@@ -61,7 +61,7 @@ class _Scripted(FakeChatModel):
 def test_the_agent_walks_the_stages_itself_and_stops_when_they_are_done():
     """No harness loop over STEPS: the agent chooses each stage, and the run
     ends when the last one lands — not when a for-loop runs out."""
-    result = run_design_brief(load_brief("minimal_brief.json"), HarnessRunConfig(
+    result = run_brief(load_brief("minimal_brief.json"), HarnessRunConfig(
         llm_factory=lambda: FakeChatModel(), agent_mode="single"))
 
     stats = result["metadata"]["autonomy"]["design"]

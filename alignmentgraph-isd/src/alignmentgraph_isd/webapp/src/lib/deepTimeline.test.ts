@@ -30,7 +30,9 @@ describe('foldChronological', () => {
 
     expect(rows.map((row) => row.kind)).toEqual(['check', 'read', 'write', 'repair', 'check'])
     expect(rows[0].title).toBe('Self-check — 5 violations')
-    expect(rows[0].detail).toBe('plan_coverage(5)')
+    // Named, not raw: `plan_coverage(5)` told a reader the check fired and
+    // nothing else, and it was the app's only word for that check.
+    expect(rows[0].detail).toBe('every promised assessment pair is realised ×5')
     expect(rows[3].title).toBe('Repair plan_coverage on assessment')
     expect(rows[3].detail).toContain('Added AT-F-01')
     expect(rows[4].title).toBe('Self-check — clean')
@@ -138,7 +140,8 @@ describe('foldChronological', () => {
     // has to say who it went to, not only that something was repaired.
     expect(row.kind).toBe('route')
     expect(row.title).toBe('Route 3 residual violations to assessment_designer')
-    expect(row.detail).toBe('item_completeness, plan_coverage')
+    expect(row.detail).toBe(
+      'item can be administered as written, every promised assessment pair is realised')
   })
 
   it('reads a prose write as an artifact, keyed by its document', () => {

@@ -10,14 +10,14 @@ import inspect
 
 import pytest
 
-from alignmentgraph_isd import HarnessCancelled, run_design_brief
+from alignmentgraph_isd import HarnessCancelled
 from alignmentgraph_isd.core.agentic.specialists import STEPS
 
 #: The phases a run emits, from the only executor there is.
 GENERATION_ORDER = tuple(step.name for step in STEPS)
 from alignmentgraph_isd.core.trajectory import TrajectoryLogger
 
-from conftest import load_brief
+from conftest import load_brief, run_brief
 
 
 @pytest.fixture
@@ -28,7 +28,7 @@ def brief():
 def collect(brief, config, **kwargs):
     """Run once, returning (result, events) where events are (kind, payload)."""
     events: list[tuple[str, dict]] = []
-    result = run_design_brief(brief, config, on_event=lambda k, p: events.append((k, p)))
+    result = run_brief(brief, config, on_event=lambda k, p: events.append((k, p)))
     return result, events
 
 
@@ -50,7 +50,7 @@ def test_trajectory_logger_still_constructs_bare():
 def test_default_path_result_is_structurally_unchanged(brief, fake_config):
     """Timestamps and latencies vary run to run, so equality is asserted over
     everything that should NOT vary."""
-    without = run_design_brief(brief, fake_config)
+    without = run_brief(brief, fake_config)
     with_hook, _ = collect(brief, fake_config)
 
     assert with_hook["addie_output"] == without["addie_output"]
@@ -80,8 +80,8 @@ def test_a_raising_consumer_cannot_break_a_run(brief, fake_config):
     def boom(kind, payload):
         raise ValueError("consumer is broken")
 
-    result = run_design_brief(brief, fake_config, on_event=boom)
-    baseline = run_design_brief(brief, fake_config)
+    result = run_brief(brief, fake_config, on_event=boom)
+    baseline = run_brief(brief, fake_config)
     assert result["addie_output"] == baseline["addie_output"]
     assert len(result["graph"]["nodes"]) == len(baseline["graph"]["nodes"])
 
@@ -198,4 +198,4 @@ def test_cancellation_propagates_out_of_the_run(brief, fake_config):
             raise HarnessCancelled()
 
     with pytest.raises(HarnessCancelled):
-        run_design_brief(brief, fake_config, on_event=cancel_on_third)
+        run_brief(brief, fake_config, on_event=cancel_on_third)

@@ -1,7 +1,7 @@
 """P1.5: structured trajectory events + headline repair metrics in metadata."""
 from __future__ import annotations
 
-from alignmentgraph_isd import run_design_brief
+from conftest import run_brief
 from alignmentgraph_isd.core.trajectory import TrajectoryLogger
 
 from alignmentgraph_isd.core import repairs
@@ -9,7 +9,7 @@ from conftest import RepairActor, events_of, load_brief
 
 
 def test_trajectory_has_a_unified_typed_event_log(fake_config):
-    result = run_design_brief(load_brief("minimal_brief.json"), fake_config)
+    result = run_brief(load_brief("minimal_brief.json"), fake_config)
     traj = result["trajectory"]
     # One chronological list; every entry says who did what, of which kind.
     for event in traj["events"]:
@@ -21,7 +21,7 @@ def test_trajectory_has_a_unified_typed_event_log(fake_config):
 
 
 def test_metadata_exposes_repair_metrics(fake_config):
-    result = run_design_brief(load_brief("minimal_brief.json"), fake_config)
+    result = run_brief(load_brief("minimal_brief.json"), fake_config)
     metrics = result["metadata"]["repair_metrics"]
     for key in (
         "repair_events", "repair_success_rate",
@@ -94,12 +94,12 @@ def test_every_tool_call_corresponds_to_a_real_model_call():
     happen is the reverse."""
     from collections import Counter
 
-    from alignmentgraph_isd import HarnessRunConfig, run_design_brief
+    from alignmentgraph_isd import HarnessRunConfig
     from conftest import FakeChatModel, load_brief
 
     config = HarnessRunConfig()
     config.llm_factory = lambda: FakeChatModel()
-    result = run_design_brief(load_brief("minimal_brief.json"), config)
+    result = run_brief(load_brief("minimal_brief.json"), config)
     trajectory = result["trajectory"]
 
     tools = [c["tool"] for c in trajectory["tool_calls"]]

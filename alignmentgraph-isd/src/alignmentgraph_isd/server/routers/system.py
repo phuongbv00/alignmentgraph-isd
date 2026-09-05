@@ -1,4 +1,4 @@
-"""Server status and model configuration."""
+"""Server status and model connections."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -6,12 +6,21 @@ from sqlmodel import Session as DBSession
 
 from .. import llm_settings, planner
 from ..db import get_session
+from ..models import LLMConnection
 from ..runner import RunManager
-from ..schemas import HealthResponse, LLMSettingsIn, LLMSettingsOut
+from ..schemas import (
+    HealthResponse,
+    LLMConnectionIn,
+    LLMConnectionOut,
+    LLMConnectionsOut,
+    ModelListOut,
+)
 from ..settings import Settings
 from .deps import get_app_settings, get_manager
 
 router = APIRouter(tags=["system"])
+
+_RUN_IN_PROGRESS = "A run is in progress. Wait for it to finish before changing the model."
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -35,66 +44,134 @@ def health(
     )
 
 
-def _current() -> LLMSettingsOut:
-    config = llm_settings.resolve()
-    return LLMSettingsOut(
-        model_name=config.model_name,
-        api_spec=config.api_spec,
-        base_url=config.base_url,
-        has_api_key=config.has_api_key,
-        temperature=config.temperature,
-        max_tokens=config.max_tokens,
-        source=config.source,
-        error=llm_settings.probe(config),
+def _out(row: LLMConnection) -> LLMConnectionOut:
+    return LLMConnectionOut(
+        id=row.id,
+        name=row.name,
+        base_url=row.base_url,
+        has_api_key=bool(row.api_key),
+        model_name=row.model_name,
+        temperature=row.temperature,
+        max_tokens=row.max_tokens,
+        is_active=row.is_active,
+        updated_at=row.updated_at,
     )
 
 
-@router.get("/settings/llm", response_model=LLMSettingsOut)
-def get_llm_settings() -> LLMSettingsOut:
-    """The model configuration in effect, and what is wrong with it if anything."""
-    return _current()
+def _current(db: DBSession) -> LLMConnectionsOut:
+    """The list, plus what is wrong with the active connection if anything."""
+    rows = llm_settings.list_connections(db)
+    active = next((row for row in rows if row.is_active), None)
+    return LLMConnectionsOut(
+        connections=[_out(row) for row in rows],
+        active_id=active.id if active is not None else "",
+        error=llm_settings.probe(),
+    )
 
 
-@router.put("/settings/llm", response_model=LLMSettingsOut)
-def put_llm_settings(
-    payload: LLMSettingsIn,
+def _guard(manager: RunManager) -> None:
+    if manager.registry.active():
+        raise HTTPException(status.HTTP_409_CONFLICT, _RUN_IN_PROGRESS)
+
+
+def _load(db: DBSession, connection_id: str) -> LLMConnection:
+    row = llm_settings.get_connection(db, connection_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such connection.")
+    return row
+
+
+@router.get("/connections", response_model=LLMConnectionsOut)
+def get_connections(db: DBSession = Depends(get_session)) -> LLMConnectionsOut:
+    """Every configured connection, and which one a run would use."""
+    return _current(db)
+
+
+@router.post("/connections", response_model=LLMConnectionsOut, status_code=status.HTTP_201_CREATED)
+def create_connection(
+    payload: LLMConnectionIn,
     db: DBSession = Depends(get_session),
     manager: RunManager = Depends(get_manager),
-) -> LLMSettingsOut:
-    """Store the model configuration.
+) -> LLMConnectionsOut:
+    """Add a connection. The first one becomes active."""
+    _guard(manager)
+    llm_settings.create(
+        db,
+        name=payload.name.strip(),
+        base_url=payload.base_url.strip(),
+        api_key=payload.api_key,
+        model_name=payload.model_name.strip(),
+        temperature=payload.temperature,
+        max_tokens=payload.max_tokens,
+    )
+    return _current(db)
+
+
+@router.put("/connections/{connection_id}", response_model=LLMConnectionsOut)
+def update_connection(
+    connection_id: str,
+    payload: LLMConnectionIn,
+    db: DBSession = Depends(get_session),
+    manager: RunManager = Depends(get_manager),
+) -> LLMConnectionsOut:
+    """Store an edited connection.
 
     Saving always succeeds; the response carries the probe result so a bad
     endpoint or a missing key is reported here rather than discovered when a
     run collapses in milliseconds.
     """
-    if manager.registry.active():
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "A run is in progress. Wait for it to finish before changing the model.",
-        )
-
-    llm_settings.save(
+    _guard(manager)
+    _load(db, connection_id)
+    llm_settings.update(
         db,
-        model_name=payload.model_name.strip(),
-        api_spec=payload.api_spec,
+        connection_id,
+        name=payload.name.strip(),
         base_url=payload.base_url.strip(),
         api_key=payload.api_key,
+        model_name=payload.model_name.strip(),
         temperature=payload.temperature,
         max_tokens=payload.max_tokens,
     )
-    return _current()
+    return _current(db)
 
 
-@router.delete("/settings/llm", response_model=LLMSettingsOut)
-def delete_llm_settings(
+@router.post("/connections/{connection_id}/activate", response_model=LLMConnectionsOut)
+def activate_connection(
+    connection_id: str,
     db: DBSession = Depends(get_session),
     manager: RunManager = Depends(get_manager),
-) -> LLMSettingsOut:
-    """Forget the stored configuration and fall back to `AGENT_MODEL_*`."""
-    if manager.registry.active():
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "A run is in progress. Wait for it to finish before changing the model.",
-        )
-    llm_settings.clear(db)
-    return _current()
+) -> LLMConnectionsOut:
+    """Make this the connection runs and the planner use."""
+    _guard(manager)
+    _load(db, connection_id)
+    llm_settings.activate(db, connection_id)
+    return _current(db)
+
+
+@router.delete("/connections/{connection_id}", response_model=LLMConnectionsOut)
+def delete_connection(
+    connection_id: str,
+    db: DBSession = Depends(get_session),
+    manager: RunManager = Depends(get_manager),
+) -> LLMConnectionsOut:
+    """Forget a connection. Deleting the active one hands active to what is left."""
+    _guard(manager)
+    _load(db, connection_id)
+    llm_settings.delete(db, connection_id)
+    return _current(db)
+
+
+@router.get("/connections/{connection_id}/models", response_model=ModelListOut)
+def get_connection_models(
+    connection_id: str,
+    db: DBSession = Depends(get_session),
+) -> ModelListOut:
+    """The models this endpoint offers, read with the stored credentials.
+
+    The key stays on the server: it is looked up from the row rather than
+    travelling with the request, which is why this is addressed by connection
+    id and not by a base URL and key posted from the browser.
+    """
+    row = _load(db, connection_id)
+    models, error = llm_settings.list_models(llm_settings.config_of(row))
+    return ModelListOut(models=models, error=error)

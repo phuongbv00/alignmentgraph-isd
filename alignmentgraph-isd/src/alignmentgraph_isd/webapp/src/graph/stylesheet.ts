@@ -120,6 +120,16 @@ export function buildStylesheet(): StylesheetStyle[] {
       selector: 'node.bloom-warning',
       style: { 'border-color': '#dc2626', 'border-width': 2, 'border-style': 'dashed' },
     },
+    // ANY node carrying ANY violation. The two rules above are driven by
+    // `objective_alignment`, which is built by walking the objective nodes —
+    // so an activity linked to no objective, a material whose module does not
+    // exist, an item with no answer key had no signal on this graph at all.
+    // Amber rather than the Bloom red: it is "something is wrong here", not
+    // the specific alignment failure above it, and a node can carry both.
+    {
+      selector: 'node.has-violation',
+      style: { 'border-color': '#d97706', 'border-width': 2, 'border-style': 'dashed' },
+    },
 
     {
       selector: 'edge',

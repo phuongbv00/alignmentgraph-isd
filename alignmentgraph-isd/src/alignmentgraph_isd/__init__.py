@@ -6,31 +6,10 @@ from .core.rag.agent import RetrievalTool, RetrievalAgent, RetrievalAgentRegistr
 from .core.llm import llm_factory_from_env
 from .exceptions import HarnessCancelled
 
-
-def run_design_brief(
-    design_brief: DesignBrief,
-    config: HarnessRunConfig | None = None,
-    *,
-    on_event=None,
-) -> dict:
-    """Run the harness on the canonical DesignBrief contract.
-
-    Benchmark integrations are expected to map their own scenario schema to
-    DesignBrief outside the core harness, then call this public entry point.
-
-    ``on_event`` is an optional ``(kind: str, payload: dict) -> None`` consumer
-    that observes the run as it happens (see ``TrajectoryLogger``). It changes
-    nothing about the returned result; it exists so a UI can show progress
-    during a run that takes minutes.
-    """
-    run_config = config or HarnessRunConfig()
-    if run_config.llm_factory is None:
-        raise RuntimeError(
-            "run_design_brief requires HarnessRunConfig.llm_factory. "
-            "Benchmark integrations should construct DesignBrief externally "
-            "and pass a configured HarnessRunConfig."
-        )
-    return MetaAgent(run_config).run(design_brief, on_event=on_event)
+# `run_design_brief` was removed 2026-09-05. It validated `llm_factory` and
+# called `MetaAgent(config).run(...)`; the guard moved onto `MetaAgent.run`,
+# where the benchmark adapter — which never went through the wrapper — gets it
+# too. `MetaAgent` is the entry point.
 
 __all__ = [
     "MetaAgent",
@@ -43,6 +22,5 @@ __all__ = [
     "RetrievalAgent",
     "RetrievalAgentRegistry",
     "llm_factory_from_env",
-    "run_design_brief",
     "HarnessCancelled",
 ]

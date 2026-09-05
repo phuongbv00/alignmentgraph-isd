@@ -19,12 +19,12 @@ Retry/regen plumbing is judge-invisible (``log_recovery_event`` ->
 the judge-visible step stream as the pre-redesign version of this file did."""
 from __future__ import annotations
 
-from alignmentgraph_isd import HarnessRunConfig, run_design_brief
+from alignmentgraph_isd import HarnessRunConfig
 
 #: The default the regen loop runs on. Was a module constant of the
 #: scripted pipeline; since that went, the config field IS the budget.
 
-from conftest import FakeChatModel, load_brief
+from conftest import FakeChatModel, load_brief, run_brief
 
 
 class _FlakySystemPrompt(FakeChatModel):
@@ -76,7 +76,7 @@ def _run(factory, **config_kwargs) -> dict:
     # bounded, and the retry is recorded.
     config = HarnessRunConfig(**config_kwargs)
     config.llm_factory = factory
-    return run_design_brief(load_brief("minimal_brief.json"), config)
+    return run_brief(load_brief("minimal_brief.json"), config)
 
 
 

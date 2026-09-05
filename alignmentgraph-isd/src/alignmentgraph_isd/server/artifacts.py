@@ -24,6 +24,7 @@ ARTIFACT_FILES: dict[str, str] = {
     "graph": "graph.json",
     "graph_dot": "graph.dot",
     "contexts": "contexts.json",
+    "violations": "violations.json",
 }
 
 EVENTS_FILE = "events.jsonl"
@@ -67,6 +68,7 @@ def write_result(directory: Path, brief: dict, result: dict) -> None:
     write_json(directory / ARTIFACT_FILES["graph"], result.get("graph", {}))
     write_text(directory / ARTIFACT_FILES["graph_dot"], result.get("graph_dot", ""))
     write_json(directory / ARTIFACT_FILES["contexts"], result.get("contexts", []))
+    write_json(directory / ARTIFACT_FILES["violations"], result.get("violations", []))
 
 
 def read_json(path: Path):

@@ -7,10 +7,10 @@ test_dev_plans.py; topology in test_ablation_flags.py; per-set regen budget
 in test_empty_section_regen.py; phase bracketing in test_on_event.py."""
 from __future__ import annotations
 
-from alignmentgraph_isd import HarnessRunConfig, run_design_brief
+from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core.trajectory import WORKFLOW_ORCHESTRATOR
 
-from conftest import FakeChatModel, load_brief
+from conftest import FakeChatModel, load_brief, run_brief
 
 
 def _run(mode: str = "multi", context_mode: str = "graph"):
@@ -20,7 +20,7 @@ def _run(mode: str = "multi", context_mode: str = "graph"):
     # what it was written for.
     config = HarnessRunConfig(llm_factory=lambda: FakeChatModel(), agent_mode=mode,
                               context_mode=context_mode, )
-    return run_design_brief(brief, config)
+    return run_brief(brief, config)
 
 
 def test_dev_plan_events_fire_once_per_fanout_family_multi_arm():

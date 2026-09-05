@@ -13,10 +13,10 @@ written stand-in would satisfy its own check by existing.)
 """
 from __future__ import annotations
 
-from alignmentgraph_isd import HarnessRunConfig, run_design_brief
+from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core.aggregate import _compute_storyboard
 
-from conftest import _ACTIVITY_PLAN, FakeChatModel, load_brief
+from conftest import FakeChatModel, _ACTIVITY_PLAN, load_brief, run_brief
 
 
 # ── unit: deterministic synthesis helper ─────────────────────────────────────
@@ -46,7 +46,7 @@ def test_compute_storyboard_empty_when_no_source():
 def test_storyboard_present_end_to_end_without_a_dedicated_llm_call():
     config = HarnessRunConfig()
     config.llm_factory = lambda: FakeChatModel()
-    result = run_design_brief(load_brief("minimal_brief.json"), config)
+    result = run_brief(load_brief("minimal_brief.json"), config)
 
     design = result["addie_output"]["design"]
     assert design["storyboard"], "storyboard must be computed, not empty"

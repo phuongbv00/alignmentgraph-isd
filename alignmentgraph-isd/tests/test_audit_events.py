@@ -18,9 +18,9 @@ from conftest import FakeChatModel, load_brief
 
 def test_the_residual_audit_is_logged_and_matches_the_metadata_copy():
     config = HarnessRunConfig(llm_factory=lambda: FakeChatModel())
-    from alignmentgraph_isd import run_design_brief
+    from conftest import run_brief
 
-    result = run_design_brief(load_brief("java_oop_brief.json"), config)
+    result = run_brief(load_brief("java_oop_brief.json"), config)
 
     audit_events = [e for e in result["trajectory"]["events"] if e["action"] == "audit"]
     assert len(audit_events) == 1
@@ -47,7 +47,7 @@ def test_the_residual_audit_is_logged_and_matches_the_metadata_copy():
 
 # `test_the_agentic_arm_also_logs_the_residual_audit` was removed 2026-09-04.
 # It called `run_agentic_brief` directly with the same config and brief as the
-# test above, which reaches the same function through `run_design_brief` — one
+# test above, which reaches the same function through `run_brief` — one
 # executor, so "also" named a second one that does not exist — and then made a
 # strict subset of that test's assertions. What is worth distinguishing is the
 # PROSE arm, which is the test below.
@@ -55,7 +55,7 @@ def test_the_residual_audit_is_logged_and_matches_the_metadata_copy():
 
 def test_the_prose_arm_has_no_graph_and_therefore_no_audit_event():
     config = HarnessRunConfig(llm_factory=lambda: FakeChatModel(), context_mode="prose")
-    from alignmentgraph_isd import run_design_brief
+    from conftest import run_brief
 
-    result = run_design_brief(load_brief("java_oop_brief.json"), config)
+    result = run_brief(load_brief("java_oop_brief.json"), config)
     assert not [e for e in result["trajectory"]["events"] if e["action"] == "audit"]

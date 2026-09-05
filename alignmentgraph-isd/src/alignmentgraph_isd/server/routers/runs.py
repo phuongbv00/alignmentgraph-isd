@@ -298,6 +298,31 @@ def export_trajectory(
     )
 
 
+@router.get("/runs/{run_id}/violations")
+def get_violations(
+    run_id: str,
+    db: DBSession = Depends(get_session),
+    manager: RunManager = Depends(get_manager),
+    settings: Settings = Depends(get_app_settings),
+) -> JSONResponse:
+    """Every distinct finding of the run, and what became of it.
+
+    Not the same thing as ``metadata.audit.violations``: that is the graph
+    arm's residual only (the prose arm has no graph to audit), it is a snapshot
+    rather than a history, and it cannot say whether a finding was repaired,
+    proved unfixable, or simply ran out of budget.
+
+    Live state first, then the persisted file — the same fallback
+    ``get_contexts`` uses, for the same reason.
+    """
+    state = manager.registry.get(run_id)
+    if state is not None and state.violations:
+        return JSONResponse(list(state.violations))
+    directory = artifacts.resolve(settings, load_run(db, run_id).artifact_dir)
+    return JSONResponse(
+        artifacts.read_json(directory / artifacts.ARTIFACT_FILES["violations"]) or [])
+
+
 @router.get("/runs/{run_id}/contexts")
 def get_contexts(
     run_id: str,

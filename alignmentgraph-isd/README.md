@@ -79,7 +79,7 @@ repair genuinely can't fix goes unreported: it still surfaces in the final
 ## Public API (recommended integration path)
 
 ```python
-from alignmentgraph_isd import DesignBrief, HarnessRunConfig, run_design_brief
+from alignmentgraph_isd import DesignBrief, HarnessRunConfig, MetaAgent
 
 config = HarnessRunConfig()                            # defaults = the full pipeline
 config.llm_factory = lambda: my_chat_model             # any LangChain chat model factory; required
@@ -91,15 +91,17 @@ brief = DesignBrief(
     learning_goals=["Explain encapsulation", "Apply inheritance", "Design a class hierarchy"],
 )
 
-result = run_design_brief(brief, config)
+result = MetaAgent(config).run(brief)
 # result == {"addie_output": {...}, "trajectory": {...}, "metadata": {...},
 #            "graph": {...}, "graph_dot": "digraph alignment { ... }"}
 # (the graph/graph_dot keys exist on the default graph arm only — a
 #  context_mode="prose" run is graph-free and omits them)
 ```
 
-`run_design_brief` (and the CLI) fail with a clear error if `llm_factory` is not
-configured — they never emit a silent empty output.
+`MetaAgent.run` (and the CLI) fails with a clear error if `llm_factory` is not
+configured — it never emits a silent empty output. The guard is on `run`
+itself, so every caller gets it; the `run_design_brief` wrapper that used to
+hold it was removed 2026-09-05.
 
 ### Ablation axes
 
@@ -205,11 +207,11 @@ Cross-family violations still outstanding after the last stage are reconciled
 once, routed to the family that owns them (`agent_mode="multi"`) or repaired in
 place by the one agent (`"single"`).
 
-There is one executor; `run_design_brief` dispatches straight to it.
+There is one executor; `MetaAgent.run` dispatches straight to it.
 
 ```python
-from alignmentgraph_isd import HarnessRunConfig, run_design_brief
-result = run_design_brief(brief, HarnessRunConfig(llm_factory=...))
+from alignmentgraph_isd import HarnessRunConfig, MetaAgent
+result = MetaAgent(HarnessRunConfig(llm_factory=...)).run(brief)
 # metadata.run_config records agent_mode/context_mode;
 # metadata.autonomy records per-stage context_len, turns, fallbacks.
 ```

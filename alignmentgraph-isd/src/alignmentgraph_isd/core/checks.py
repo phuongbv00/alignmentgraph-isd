@@ -49,6 +49,10 @@ _OBSERVABLE_TERMS = (
 _PLACEHOLDER_MARKERS = ("<", "tbd", "todo", "placeholder", "lorem ipsum", "n/a")
 
 _BLOOM_LEVEL_INDEX = {"remember": 1, "understand": 2, "apply": 3, "analyze": 4, "evaluate": 5, "create": 6}
+#: The reverse, so no message hardcodes an index-to-name table. A level printed
+#: as a bare integer ("elicits more than level 2") is a number the reader has to
+#: look up to act on.
+_BLOOM_LEVEL_NAME = {index: name for name, index in _BLOOM_LEVEL_INDEX.items()}
 _VERB_LEVELS: dict[str, set[int]] = {}
 for _level, _verbs in _BLOOM_VERBS.items():
     for _v in _verbs:
@@ -107,6 +111,51 @@ class Violation:
     # forever for a type no family owns (``measurability`` is audit-only).
     target_designer: str = ""
 
+    @property
+    def key(self) -> str:
+        """What makes two occurrences across check rounds the SAME finding.
+
+        A violation is CONTENT-ADDRESSED, unlike a published context. A context
+        is a continuous object that can carry an id minted where it starts
+        (``memory.new_agent_run_id``); a violation is re-derived from state by
+        a pure function on every round, so there is no object to carry
+        anything. But the lesson from that id transfers in the form that
+        applies here:
+
+            **The key is built from the SUBJECT, never from the EVIDENCE.**
+            Subject = what has to change for this to go away.
+            Evidence = what the check saw while deciding.
+
+        ``bloom_mismatch_assessment.metadata["item_ids"]`` is evidence: it
+        grows as Developers commit more items while the problem stands, so a
+        key including it would report the old finding closed and a new one
+        opened on every commit. Same for ``missing`` on an incomplete item and
+        ``passive_activities`` on an unengaging objective.
+        """
+        parts = [self.violation_type, self.node_id]
+        parts += [str(self.metadata.get(f, ""))
+                  for f in IDENTITY_FIELDS.get(self.violation_type, ())]
+        return "|".join(parts)
+
+
+#: Metadata fields that DISCRIMINATE two violations of the same type on the
+#: same node — the subject of the finding, never the evidence behind it. A type
+#: absent here is identified by ``(violation_type, node_id)`` alone.
+#:
+#: Three of these five are not bookkeeping but latent bugs: ``evaluation_quality``
+#: and ``actionability`` each emit TWO violations on ONE node_id (the plan
+#: section, the implementation plan), told apart only by ``section``; and
+#: ``evidence_alignment``'s node_id is the ITEM while an item can carry several
+#: criteria. Without the discriminator those pairs are one finding to anything
+#: that groups by identity.
+IDENTITY_FIELDS: dict[str, tuple[str, ...]] = {
+    "plan_coverage": ("plan_category",),      # one objective, several unrealised categories
+    "evaluation_quality": ("section",),       # formative_methods vs pilot_data_plan
+    "actionability": ("section",),            # instructor_orientation vs system_check
+    "evidence_alignment": ("rc_id",),         # several criteria on one item
+    "bloom": ("rule",),                       # four sub-rules, one node
+}
+
 
 def _bare_id(graph, node_id: str) -> str:
     return node_id.split(graph.ELEMENT_SEP, 1)[-1] if graph.is_element(node_id) else node_id
@@ -148,6 +197,24 @@ def _duration_hours(design_brief: DesignBrief) -> float:
 # ``outputs._collect_violations_prose``). Cross-artifact checks stay graph-only by
 # design — they are part of the alignment machinery the prose arm ablates.
 
+def _verbs_for(level: str, count: int = 6) -> str:
+    """Example verbs OF A GIVEN LEVEL, in the rulebook's own order.
+
+    Deterministic on purpose: the hint used to slice ``_ALL_BLOOM_VERBS``,
+    which is a SET, so the model was shown eight arbitrary verbs spanning
+    arbitrary levels in an order stable only within one process — a prompt that
+    differed between two runs of the same design."""
+    return ", ".join(_BLOOM_VERBS.get(str(level).strip().capitalize(), [])[:count])
+
+
+def _level_of_verb(verb: str) -> str:
+    """The Bloom level a verb belongs to, by name. Lowest when it spans two."""
+    levels = _VERB_LEVELS.get(verb, set())
+    if not levels:
+        return ""
+    return _BLOOM_LEVEL_NAME[min(levels)]
+
+
 def bloom_verbs(graph) -> list[Violation]:
     """Every LO (an individual element node) declares a valid Bloom verb
     consistent with its declared ``level``, and that ``level`` is one of
@@ -163,12 +230,22 @@ def bloom_verbs_items(items: list[tuple[str, dict]]) -> list[Violation]:
         lo_id = data.get("id", node_id.rsplit(":", 1)[-1])
         verb = str(data.get("bloom_verb", "")).lower().strip(".,;")
         statement = str(data.get("statement", ""))
+        declared_raw = str(data.get("level", "")).strip()
         if not verb:
             violations.append(Violation(
                 node_id=node_id, edge_type="", violation_type="bloom", severity="warning",
-                message=f"LO '{lo_id}' missing bloom_verb field.",
-                repair_hint="Add a measurable Bloom's taxonomy verb.",
-                metadata={"lo_id": lo_id, "statement": statement},
+                message=(
+                    f"LO '{lo_id}' has no bloom_verb — nothing states which cognitive "
+                    f"level it targets, so no assessment item or activity can be "
+                    f"checked against it."
+                ),
+                repair_hint=(
+                    "Set bloom_verb to the Bloom's verb the statement already performs"
+                    + (f" ({_verbs_for(declared_raw)})" if _verbs_for(declared_raw) else "")
+                    + ", and set level to that verb's own Bloom level."
+                ),
+                metadata={"lo_id": lo_id, "statement": statement,
+                          "level": declared_raw, "rule": "missing_verb"},
             ))
             continue
         if verb not in _ALL_BLOOM_VERBS:
@@ -176,12 +253,28 @@ def bloom_verbs_items(items: list[tuple[str, dict]]) -> list[Violation]:
             if not any(bv in stmt_lower for bv in _ALL_BLOOM_VERBS):
                 violations.append(Violation(
                     node_id=node_id, edge_type="", violation_type="bloom", severity="warning",
-                    message=f"LO '{lo_id}' uses non-standard verb '{verb}' not in Bloom's taxonomy.",
-                    repair_hint=f"Use a standard Bloom's verb such as: {', '.join(list(_ALL_BLOOM_VERBS)[:8])}...",
-                    metadata={"lo_id": lo_id, "verb": verb},
+                    message=(
+                        f"LO '{lo_id}' uses bloom_verb '{verb}', which is in none of "
+                        f"Bloom's six levels, and its statement contains no taxonomy "
+                        f"verb either — the objective's cognitive level cannot be read "
+                        f"from either field."
+                    ),
+                    # The suggestions are the verbs of the level this LO ALREADY
+                    # declares, in the rulebook's own order. They used to be
+                    # `list(_ALL_BLOOM_VERBS)[:8]` — eight arbitrary verbs spanning
+                    # arbitrary levels, from a SET, so the order was stable only
+                    # within one process and the prompt differed run to run.
+                    repair_hint=(
+                        f"Replace bloom_verb with "
+                        f"{alignment.a_level(declared_raw) or 'a Bloom'}-level verb "
+                        f"({_verbs_for(declared_raw) or _verbs_for('apply')}) and "
+                        f"restate the objective around it."
+                    ),
+                    metadata={"lo_id": lo_id, "verb": verb, "level": declared_raw,
+                              "rule": "non_taxonomy_verb"},
                 ))
             continue
-        declared = str(data.get("level", "")).strip()
+        declared = declared_raw
         level_idx = _BLOOM_LEVEL_INDEX.get(declared.lower())
         if not level_idx:
             # An out-of-taxonomy level ("design", "manage") used to short-circuit
@@ -191,13 +284,21 @@ def bloom_verbs_items(items: list[tuple[str, dict]]) -> list[Violation]:
             violations.append(Violation(
                 node_id=node_id, edge_type="", violation_type="bloom", severity="warning",
                 message=(
-                    f"LO '{lo_id}' declares level '{declared or '(missing)'}', which is not one of "
-                    f"Bloom's six levels."
+                    f"LO '{lo_id}' declares level '{declared or '(missing)'}', which is "
+                    f"not one of Bloom's six (remember, understand, apply, analyze, "
+                    f"evaluate, create) — every Bloom cross-check reads this field and "
+                    f"skips an objective it cannot place, so this objective is going "
+                    f"unchecked."
                 ),
                 repair_hint=(
-                    "Set level to one of: remember, understand, apply, analyze, evaluate, create."
+                    f"Set level to '{_level_of_verb(verb)}', the level its own "
+                    f"bloom_verb '{verb}' belongs to."
+                    if _level_of_verb(verb) else
+                    "Set level to one of: remember, understand, apply, analyze, "
+                    "evaluate, create."
                 ),
-                metadata={"lo_id": lo_id, "verb": verb, "level": declared},
+                metadata={"lo_id": lo_id, "verb": verb, "level": declared,
+                          "rule": "invalid_level"},
             ))
             continue
         verb_levels = _VERB_LEVELS.get(verb, set())
@@ -205,11 +306,19 @@ def bloom_verbs_items(items: list[tuple[str, dict]]) -> list[Violation]:
             violations.append(Violation(
                 node_id=node_id, edge_type="", violation_type="bloom", severity="warning",
                 message=(
-                    f"LO '{lo_id}' declares level '{data.get('level')}' but "
-                    f"uses verb '{verb}', which belongs to a different Bloom level."
+                    f"LO '{lo_id}' declares level '{declared}' but its bloom_verb "
+                    f"'{verb}' is a {_level_of_verb(verb)}-level verb — the two fields "
+                    f"name different cognitive processes, and every downstream check "
+                    f"reads level."
                 ),
-                repair_hint="Align the verb with the declared level (or fix the level).",
-                metadata={"lo_id": lo_id, "verb": verb, "level": data.get("level")},
+                repair_hint=(
+                    f"Either set level to '{_level_of_verb(verb)}', or replace "
+                    f"bloom_verb with {alignment.a_level(declared)}-level verb "
+                    f"({_verbs_for(declared)})."
+                ),
+                metadata={"lo_id": lo_id, "verb": verb, "level": declared,
+                          "verb_level": _level_of_verb(verb),
+                          "rule": "verb_level_mismatch"},
             ))
     return violations
 
@@ -673,15 +782,22 @@ def bloom_mismatches(graph) -> list[Violation]:
     Designer calls the C3 half on its own activities — both self-contained,
     same as ``bloom_mismatch`` was in the old single-relation (R3-only)
     verifier."""
+    # ``repair_hint`` is carried through, not dropped. ``_repair_request``
+    # (core/agentic/loop.py) renders the "Fix:" line only when a hint exists, so
+    # without this both Bloom mismatches reached the agent as a bare sentence
+    # with no instruction — and neither has a deterministic repair either, so
+    # the hint is the ONLY thing that can close them.
     violations: list[Violation] = []
     for bv in alignment.bloom_assessment_violations(graph):
         violations.append(Violation(
             node_id=bv["node_id"], edge_type="", violation_type="bloom_mismatch_assessment",
-            severity="error", message=bv["message"], metadata=bv.get("metadata", {}),
+            severity="error", message=bv["message"],
+            repair_hint=bv.get("repair_hint", ""), metadata=bv.get("metadata", {}),
         ))
     for bv in alignment.bloom_activity_violations(graph):
         violations.append(Violation(
             node_id=bv["node_id"], edge_type="", violation_type="bloom_mismatch_activity",
-            severity="error", message=bv["message"], metadata=bv.get("metadata", {}),
+            severity="error", message=bv["message"],
+            repair_hint=bv.get("repair_hint", ""), metadata=bv.get("metadata", {}),
         ))
     return violations

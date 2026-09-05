@@ -1,4 +1,5 @@
 import type { DeepAction } from '../api/types'
+import { violationLabel } from './violations'
 
 /**
  * Turning the deep trajectory into something a person can read — in TIME order.
@@ -254,7 +255,11 @@ function detailFor(kind: WorkKind, actions: DeepAction[]): string {
     case 'check': {
       const byType = context.by_type as Record<string, number> | undefined
       if (byType && Object.keys(byType).length > 0) {
-        return Object.entries(byType).map(([type, n]) => `${type}(${n})`).join(', ')
+        // Named, not raw. `bloom_mismatch_activity(2)` told a reader the check
+        // fired and nothing else — and it was the app's only word for it.
+        return Object.entries(byType)
+          .map(([type, n]) => `${violationLabel(type)}${n > 1 ? ` ×${n}` : ''}`)
+          .join(', ')
       }
       return 'No violations'
     }
@@ -283,7 +288,7 @@ function detailFor(kind: WorkKind, actions: DeepAction[]): string {
       ].filter(Boolean).join(' · ')
     }
     case 'route':
-      return (context.violation_types as string[] | undefined)?.join(', ') || 'no violation types recorded'
+      return (context.violation_types as string[] | undefined)?.map(violationLabel).join(', ') || 'no violation types recorded'
     case 'audit': {
       const gaps = Number(context.residual_gap_count ?? 0)
       const gapped = (context.gapped_relations as string[] | undefined) ?? []

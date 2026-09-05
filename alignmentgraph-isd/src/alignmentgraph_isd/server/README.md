@@ -24,19 +24,30 @@ Useful flags: `--no-sync` (fastest start), `--port N`, `--ui-port N`,
 
 ### Choosing a model
 
-**From the UI** — open **Model settings** (bottom of the sidebar) and fill in
-the model name, endpoint and key. There are presets for Ollama, vLLM,
-OpenRouter and Anthropic. Saving constructs the client straight away and reports
-what is wrong if anything is, so a missing key is caught there rather than
-discovered when a run collapses. The settings are stored in the app's database
-and survive restarts.
+**From the UI** — open **Model settings** (bottom of the sidebar). It holds a
+**list of connections**, one of them active: each is an endpoint (base URL and
+key) plus the model picked on it, so switching between a local Ollama and a
+served pod is a click rather than three fields retyped. There are presets for
+Ollama, vLLM, OpenRouter and OpenAI.
+
+Add a connection and save it, then pick the model from the dropdown: the list is
+read from that endpoint's own `/v1/models`, so the id is one it actually serves.
+The key never leaves the server — the browser asks for the list by connection
+id, not by posting the credentials back. Saving also constructs the client and
+reports what is wrong if anything is, so a missing key is caught there rather
+than discovered when a run collapses.
+
+The app speaks **OpenAI-compatible endpoints only**. The core factory still
+speaks Anthropic for the CLI and the benchmark (`AGENT_MODEL_API_SPEC`); the app
+does not.
 
 The API key is held **in clear text** in the local SQLite file. It is never sent
 back to the browser (only whether one is set), but use a throwaway key if that
 matters to you.
 
 **From the environment** — the same `AGENT_MODEL_*` variables the CLI and the
-benchmark read, used when nothing is stored:
+benchmark read. They **seed the first connection** on an empty database, so an
+existing setup starts configured:
 
 ```bash
 AGENT_MODEL_NAME=...        # required
@@ -46,8 +57,9 @@ AGENT_MODEL_API_KEY=...
 
 Put them in `.env` (see `.env.example`) and `run-app.sh` exports them for you;
 the harness reads them from the process environment, so a `.env` alone is not
-enough. Stored settings win over these; "Forget and use the environment" in the
-dialog goes back to them.
+enough. Seeding happens **once**, on a database with no connections in it —
+after that the database is the whole story, so a connection deleted in the
+dialog does not come back on the next restart.
 
 Without a usable model the server still starts; `/api/health` reports
 `llm_configured: false` with the reason, and the UI says so and offers the
@@ -107,7 +119,7 @@ webapp/  ── EventSource ──▶  /api/runs/{id}/events  ──▶  RunStat
                                                             ▲
                                        on_event callback ────┤
                                                             │
-  POST /programs/{id}/runs ──▶ worker thread ──▶ run_workflow(..., on_event=…)
+  POST /programs/{id}/runs ──▶ worker thread ──▶ MetaAgent.run(..., on_event=…)
                                      │
                                      └──▶ programs/<id>/runs/<id>/*.json
 ```
@@ -206,10 +218,10 @@ are kept.
 server/
   settings.py   AGISD_SERVER_* configuration
   db.py         SQLite engine (WAL) and sessions
-  models.py     program / session / message / run
+  models.py     program / session / message / run / llm connection
   events.py     RunState and the in-memory registry
   runner.py     worker pool, the on_event bridge, artifact writing
-  llm_settings.py  where the model configuration comes from (database, then env)
+  llm_settings.py  the connection list, the active one, and model discovery
   planner.py    the conversation that builds a brief
   briefs.py     scenario import, patch merging, truncation
   artifacts.py  where a run's files live

@@ -65,6 +65,7 @@ export function toCytoscape(
   if (!graph) return []
 
   const alignment = graph.objective_alignment ?? {}
+  const violations = graph.node_violations ?? {}
   const visibleEdges = (graph.edges ?? []).filter((edge) => filters[edgeLayer(edge)])
 
   // A node earns its place by being an objective (always — objectives are the
@@ -98,8 +99,13 @@ export function toCytoscape(
         badge: flags ? `${flags.measured ? '✓' : '✗'}${flags.supported ? '✓' : '✗'}` : '',
         aligned: flags ? flags.aligned : null,
         bloomOk: flags ? flags.bloom_ok : null,
+        // Every type standing against this node, for the tooltip and for the
+        // marker below.
+        violations: violations[node.id] ?? [],
       },
-      classes: nodeClasses(node.type, node.id, flags?.aligned, flags?.bloom_ok),
+      classes: nodeClasses(
+        node.type, node.id, flags?.aligned, flags?.bloom_ok,
+        (violations[node.id] ?? []).length > 0),
     })
   }
 
@@ -148,11 +154,17 @@ function nodeClasses(
   id: string,
   aligned?: boolean | null,
   bloomOk?: boolean | null,
+  hasViolation = false,
 ): string {
   const classes = [`type-${type || 'unknown'}`, isElementNode(id) ? 'element' : 'section']
   if (aligned === true) classes.push('aligned')
   if (aligned === false) classes.push('unaligned')
   if (bloomOk === false) classes.push('bloom-warning')
+  // `aligned`/`bloom-warning` come from `objective_alignment`, which is built
+  // by walking the OBJECTIVE nodes — so an activity linked to no objective, a
+  // material whose module does not exist, an item with no answer key had no
+  // signal here at all. This one covers every node type.
+  if (hasViolation) classes.push('has-violation')
   return classes.join(' ')
 }
 

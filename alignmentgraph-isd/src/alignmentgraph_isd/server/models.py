@@ -76,26 +76,34 @@ class Message(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow)
 
 
-class LLMSetting(SQLModel, table=True):
-    """The model the harness runs on, configured from the UI.
+class LLMConnection(SQLModel, table=True):
+    """One endpoint the app can talk to, and the model picked on it.
 
-    A single row (`id == "default"`). Stored so the demo is self-contained
-    rather than depending on what happened to be exported in the shell that
-    started the server; `AGENT_MODEL_*` remains the fallback, so the CLI and
-    benchmark habits still work.
+    A list rather than a single setting: switching between a local Ollama and a
+    served pod is choosing a row, not retyping a base URL and a key. Exactly one
+    row carries ``is_active`` — that is the connection a run and the planner use.
+
+    The model belongs to the connection because it only means anything there:
+    an id from one endpoint's ``/v1/models`` is not offered by another, so a
+    connection remembers its own model, temperature and token cap.
+
+    OpenAI-compatible only. There is no ``api_spec``; the core factory still
+    speaks Anthropic for the CLI and the benchmark, the app does not.
 
     The API key is held in clear text in the local SQLite file. That is a
     deliberate limit of a local demo tool — it is never returned to the browser
     (only whether one is set), and the UI says where it lives.
     """
 
-    id: str = Field(default="default", primary_key=True)
-    model_name: str = ""
-    api_spec: str = "openai_compatible"
-    base_url: str = ""
+    id: str = Field(default_factory=new_id, primary_key=True)
+    name: str = ""
+    base_url: str = ""  # empty falls back to the OpenAI default in the client
     api_key: str = ""
+    model_name: str = ""  # empty until one is picked from the endpoint's list
     temperature: float | None = None
     max_tokens: int | None = None
+    is_active: bool = Field(default=False, index=True)
+    created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
 

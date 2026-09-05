@@ -3,6 +3,7 @@ import { ArrowRight } from 'lucide-react'
 import { api } from './api/client'
 import { BriefTab } from './components/BriefTab'
 import { ContextGrid } from './components/ContextGrid'
+import { ViolationGrid } from './components/ViolationGrid'
 import { PhaseTimeline } from './components/PhaseTimeline'
 import { GraphView } from './components/GraphView'
 import { ModelSettings } from './components/ModelSettings'
@@ -11,10 +12,10 @@ import { RunHeader } from './components/RunHeader'
 import { InspectorPanel } from './components/inspector/InspectorPanel'
 import { useRunStream } from './state/useRunStream'
 import type {
-  AgentContext, AlignmentGraphPayload, DeepAction, DeepTrajectory, Health, ProgramDetail, ProgramSummary, Selection,
+  AgentContext, AlignmentGraphPayload, DeepAction, DeepTrajectory, Finding, Health, ProgramDetail, ProgramSummary, Selection,
 } from './api/types'
 
-type Tab = 'chat' | 'trajectory' | 'context' | 'graph'
+type Tab = 'chat' | 'trajectory' | 'context' | 'violations' | 'graph'
 
 export default function App() {
   const [health, setHealth] = useState<Health | null>(null)
@@ -34,6 +35,7 @@ export default function App() {
   const [starting, setStarting] = useState(false)
   const [finishedGraph, setFinishedGraph] = useState<AlignmentGraphPayload | null>(null)
   const [finishedDeep, setFinishedDeep] = useState<DeepAction[]>([])
+  const [finishedFindings, setFinishedFindings] = useState<Finding[]>([])
   const [contexts, setContexts] = useState<AgentContext[]>([])
 
   const stream = useRunStream(runId)
@@ -95,6 +97,11 @@ export default function App() {
   // The live rows lead: they appear as each agent starts, while the fetched
   // transcripts only catch up at a phase boundary or at the end.
   const liveContextCount = Math.max(stream.contextRows.length, contexts.length)
+  // The COUNT ON THE TAB is what is still open, not what was ever found: a run
+  // that found twelve problems and fixed eleven is a good run, and a tab
+  // reading "12" says the opposite.
+  const findings = stream.findings.length > 0 ? stream.findings : finishedFindings
+  const openFindings = findings.filter((f) => f.outcome === 'open').length
   const deepActions = stream.actions.length > 0 ? stream.actions : finishedDeep
 
   // A run that finished before this page loaded streamed no actions, so read
@@ -123,6 +130,20 @@ export default function App() {
   // transcript from the last fetch — which is why the row says how many turns
   // it has now, so a stale body is visible as stale rather than passing for
   // current.
+  // The ledger is fetched, not streamed progressively: a finding's outcome is
+  // not known until the run's last look has settled it, so there is no partial
+  // state worth showing. The stream still carries it (one frame, at the end)
+  // for a viewer that was already watching.
+  useEffect(() => {
+    setFinishedFindings([])
+    if (!runId || stream.status === 'idle') return
+    let cancelled = false
+    api.getViolations(runId)
+      .then((rows) => { if (!cancelled) setFinishedFindings(rows) })
+      .catch(() => { /* older runs recorded none */ })
+    return () => { cancelled = true }
+  }, [runId, stream.status])
+
   useEffect(() => {
     setContexts([])
     if (!runId || stream.status === 'idle') return
@@ -312,6 +333,9 @@ export default function App() {
               <button className={`tab${tab === 'context' ? ' active' : ''}`} onClick={() => setTab('context')}>
                 Context{liveContextCount > 0 ? ` (${liveContextCount})` : ''}
               </button>
+              <button className={`tab${tab === 'violations' ? ' active' : ''}`} onClick={() => setTab('violations')}>
+                Violations{findings.length > 0 ? ` (${openFindings})` : ''}
+              </button>
               <button className={`tab${tab === 'graph' ? ' active' : ''}`} onClick={() => setTab('graph')}>
                 Graph{graph ? ` (${graph.nodes.length})` : ''}
               </button>
@@ -355,6 +379,7 @@ export default function App() {
                   onSelect={(value) => { setSelection(value); setInspectorCollapsed(false) }}
                 />
               )}
+              {tab === 'violations' && <ViolationGrid findings={findings} />}
               {tab === 'context' && (
                 <ContextGrid contexts={contexts} rows={stream.contextRows} runId={runId} />
               )}

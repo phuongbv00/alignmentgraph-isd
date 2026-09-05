@@ -12,11 +12,11 @@ from __future__ import annotations
 
 import pytest
 
-from alignmentgraph_isd import HarnessRunConfig, run_design_brief
+from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core.aggregate import ADDIEOutputAggregator
 from alignmentgraph_isd.core.trajectory import WORKFLOW_ORCHESTRATOR
 
-from conftest import FakeChatModel, load_brief
+from conftest import FakeChatModel, load_brief, run_brief
 
 
 @pytest.mark.parametrize("agent_mode,context_mode", [
@@ -25,7 +25,7 @@ from conftest import FakeChatModel, load_brief
 def test_no_action_is_ever_attributed_to_nobody(agent_mode, context_mode):
     config = HarnessRunConfig(agent_mode=agent_mode, context_mode=context_mode)
     config.llm_factory = lambda: FakeChatModel()
-    result = run_design_brief(load_brief("java_oop_brief.json"), config)
+    result = run_brief(load_brief("java_oop_brief.json"), config)
 
     actions = result["trajectory_deep"]["actions"]
     assert actions
@@ -35,10 +35,10 @@ def test_no_action_is_ever_attributed_to_nobody(agent_mode, context_mode):
 
 def test_no_action_is_ever_attributed_to_nobody_with_a_live_on_event_consumer():
     """Regression: a real ``on_event`` consumer (the server, the demo app) makes
-    ``run_workflow`` wrap it with ``_graph_attaching``, which serializes a
+    ``run_agentic_brief`` wrap it with ``_graph_attaching``, which serializes a
     ``graph_snapshot`` synchronously inside ``trajectory.emit(...)`` — including
     on the very first ``phase_started``, fired before ``acting_as`` has even
-    been entered. `run_design_brief(..., on_event=None)` (the default, used by
+    been entered. `run_brief(..., on_event=None)` (the default, used by
     every other test in this file) never exercises that path, so the bug this
     guards survived until the app-facing tests were run for real.
 
@@ -52,7 +52,7 @@ def test_no_action_is_ever_attributed_to_nobody_with_a_live_on_event_consumer():
     """
     config = HarnessRunConfig()
     config.llm_factory = lambda: FakeChatModel()
-    result = run_design_brief(load_brief("java_oop_brief.json"), config, on_event=lambda k, p: None)
+    result = run_brief(load_brief("java_oop_brief.json"), config, on_event=lambda k, p: None)
 
     actions = result["trajectory_deep"]["actions"]
     assert actions
@@ -66,7 +66,7 @@ def test_phase_boundaries_are_attributed_to_the_orchestrator_not_a_specialist():
     loop has already exited it — neither is any one specialist's own action."""
     config = HarnessRunConfig()
     config.llm_factory = lambda: FakeChatModel()
-    result = run_design_brief(load_brief("java_oop_brief.json"), config)
+    result = run_brief(load_brief("java_oop_brief.json"), config)
 
     phase_actions = [a for a in result["trajectory_deep"]["actions"]
                      if a["action"] in ("phase_started", "phase_finished")]
@@ -84,7 +84,7 @@ def test_work_done_outside_a_tool_loop_is_the_orchestrator_s():
     and `repairs.OWNER_BY_VIOLATION` maps every type to its owner."""
     config = HarnessRunConfig()
     config.llm_factory = lambda: FakeChatModel()
-    result = run_design_brief(load_brief("java_oop_brief.json"), config)
+    result = run_brief(load_brief("java_oop_brief.json"), config)
 
     outside = [a for a in result["trajectory_deep"]["actions"]
                if a["action"] in ("check", "repair", "reconcile", "audit")]
@@ -104,7 +104,7 @@ def test_final_addie_output_validation_is_attributed_to_the_aggregator():
     through to whichever specialist ran last."""
     config = HarnessRunConfig()
     config.llm_factory = lambda: FakeChatModel()
-    result = run_design_brief(load_brief("java_oop_brief.json"), config)
+    result = run_brief(load_brief("java_oop_brief.json"), config)
 
     final_validations = [
         a for a in result["trajectory_deep"]["actions"]

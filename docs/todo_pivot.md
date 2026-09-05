@@ -2019,6 +2019,59 @@ nó chạm trần. Con số thật phải đến từ ladder ở cửa sổ 1638
 
 538 test xanh. Golden prompts đã regenerate.
 
+## Violation: tự giải thích, được ghi nhớ, đếm đúng (2026-09-04)
+
+Khởi đầu từ một câu hỏi về app: violation "Bloom level consistent" hiện ra mà không có dấu hiệu gì
+về **tại sao**; muốn biết phải mở trajectory đọc từng check event. Kéo ra thì lộ năm vấn đề.
+
+**1. Violation không tự giải thích.** Hai loại `bloom_mismatch_*` dựng ở `checks.py:673-690`
+**không truyền `repair_hint`** — mà `_repair_request` chỉ in dòng `Fix:` khi có hint, và hai loại đó
+cũng không có repairer. Nên agent nhận một câu trần trụi, không chỉ dẫn. Message thì in **số nguyên
+trần** ("elicits more than level 1") — con số suy từ *loại item*, thứ hoàn toàn nói ra được. Sáu
+message Bloom viết lại: gọi tên level, nói loại item nào chặn trần, nêu trường phải sửa.
+
+**Bề mặt prompt lớn nhất chưa được canh**: `_repair_request` in message + hint **nguyên văn** vào
+user turn cho cả hai arm, mà `golden_prompts.json` không ghim message của check. Đã thêm mục
+`checks.messages.*` (23 loại, dựng trên `tests/fixtures/broken_design.py`) — **ghim TRƯỚC khi sửa**.
+Nó bắt lỗi ngay lần chạy đầu: hint liệt kê verb từ một `set`, thứ tự đổi giữa hai process.
+
+**2. Violation không được ghi nhớ ở đâu.** `_serialize` vứt 4/8 trường. Không có
+`result["violations"]`. Thân violation chỉ tới `metadata.audit` — mà arm prose bỏ qua audit nên mất
+sạch. Giờ `core/memory.py` có thứ thứ tư: `Finding`, theo suốt vòng đời.
+
+**3. Đếm lặp.** Trên trajectory user gửi: 10 violation phân biệt, cộng `by_type` qua 20 vòng ra 40 —
+mỗi cái đếm 4 lần, và `_review_findings` cộng đúng kiểu đó (báo 28 cho tập 7). Giờ đếm theo khoá.
+
+**4. Reconcile làm lại y hệt.** Điều kiện dừng là `if not pending` **toàn cục trên 6 family** — một
+family sạch từ vòng 1 vẫn bị check lại vì family khác còn việc. Giờ budget **theo từng family**, cộng
+luật hội tụ: check là hàm thuần của state và không gì khác ghi state giữa hai lần collect, nên *không
+phát repair event nào* là **bằng chứng** lần collect sau giống hệt — dừng trước khi trả tiền cho nó.
+Đo: **12 → 6 vòng**.
+
+Kèm ba khiếm khuyết kế toán: `residual +=` nằm ngoài vòng family (step có `also_repairs` chỉ đếm
+family cuối, và `found` không reset nên rò từ family trước); residual luôn là lần check **trước**
+repair cuối; `or residual` khiến "reconcile không thấy gì" rơi về danh sách cũ. Đã **xoá hẳn**
+accumulator per-stage — `_reconcile` duyệt cả 6 family sau stage cuối nên lần nhìn cuối của nó *chính
+là* residual.
+
+**5. "Còn violation" gộp bốn nguyên nhân.** `loop.py` còn violation mà hết `REPAIR_TURNS` thì ghi
+"COMMITTED" rồi đi, **không một event nào** — trong khi nhánh ngay dưới lại `_give_up`. Giờ
+`Finding.open_reason` phân biệt `converged` / `budget` / `unowned` / `unseen`, với **precedence
+`unowned > budget > converged`**: reconcile hội tụ trên một loại nó không được phép chạm là đúng một
+cách tầm thường, và để nó ghi đè `budget` là biến "ta cắt ngắn" thành "model không làm được". Đo trên
+fixture: **4 budget, 4 converged**.
+
+**Nếu residual cao vì budget chật, đó là tham số harness, không phải phát hiện về năng lực model.**
+Báo cáo gộp trong paper là claim sai.
+
+**Webapp**: tab Violations (nhóm theo kết cục, mỗi dòng có message + hint + ai sở hữu + vòng
+đầu/cuối + lý do còn mở), `node_violations` đánh dấu **mọi loại node** trên graph — trước đó
+`objective_alignment` chỉ duyệt objective nên TLA mồ côi, material mồ côi, item thiếu đáp án không có
+tín hiệu nào — flag Bloom tách làm hai kèm message nguyên văn, và `lib/violations.ts` là **bảng nhãn
+đầu tiên** trong repo (trước đó app hiện snake_case thô).
+
+536 test package + 44 webapp xanh, `run_benchmark.py --check` sạch. Golden prompts đã regenerate.
+
 ## Rủi ro còn treo
 
 - **Chi phí — đây là vấn đề lớn nhất, và nó KHÔNG do lỗi transport.** Run 2 (đường đã sửa phần lớn): multi 36–53 call / 183k–211k token; single 37–65 call / **364k–744k** token. `react-isd` cùng scenario: 5 call / 13,6k token. Tức hệ đề xuất tốn **15–55×** baseline mạnh nhất, và ~9–33× so với arm scripted cũ (22,6k). Ngưỡng 3× của cổng Phase 3 **đã vỡ trên bằng chứng hiện có**.

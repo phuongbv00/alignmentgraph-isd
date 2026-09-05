@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
-import { CircleAlert, CircleCheck, X } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { CircleAlert, CircleCheck, Plus, RefreshCw, Trash2, X } from 'lucide-react'
 import { api } from '../api/client'
-import type { LLMSettings } from '../api/types'
+import type { LLMConnection, LLMConnections } from '../api/types'
 
 interface Props {
   onClose: () => void
@@ -14,96 +14,187 @@ const PRESETS = [
   {
     label: 'Ollama (local)',
     base_url: 'http://localhost:11434/v1',
-    api_spec: 'openai_compatible',
     api_key: 'ollama',
     hint: 'Any non-empty key; Ollama ignores it.',
   },
   {
     label: 'vLLM / self-hosted',
     base_url: 'http://localhost:8000/v1',
-    api_spec: 'openai_compatible',
     api_key: 'not-needed',
     hint: 'The base URL of your served model, ending in /v1.',
   },
   {
     label: 'OpenRouter',
     base_url: 'https://openrouter.ai/api/v1',
-    api_spec: 'openai_compatible',
     api_key: '',
     hint: 'Needs a real API key.',
   },
   {
-    label: 'Anthropic',
-    base_url: '',
-    api_spec: 'anthropic',
+    label: 'OpenAI',
+    base_url: 'https://api.openai.com/v1',
     api_key: '',
     hint: 'Needs a real API key.',
   },
 ]
 
+interface FormState {
+  name: string
+  base_url: string
+  api_key: string
+  model_name: string
+  temperature: string
+  max_tokens: string
+}
+
+const BLANK: FormState = {
+  name: '',
+  base_url: '',
+  api_key: '',
+  model_name: '',
+  temperature: '',
+  max_tokens: '',
+}
+
+const formOf = (connection: LLMConnection): FormState => ({
+  name: connection.name,
+  base_url: connection.base_url,
+  api_key: '',
+  model_name: connection.model_name,
+  temperature: connection.temperature === null ? '' : String(connection.temperature),
+  max_tokens: connection.max_tokens === null ? '' : String(connection.max_tokens),
+})
+
+/** Connections to OpenAI-compatible endpoints, one of them active.
+ *
+ *  A model is picked from the endpoint's own /models list rather than typed, so
+ *  the id is one the endpoint actually serves. That list needs the credentials,
+ *  which never leave the server — hence the connection is saved first and the
+ *  list is fetched by its id.
+ */
 export function ModelSettings({ onClose, onSaved }: Props) {
-  const [form, setForm] = useState({
-    model_name: '',
-    api_spec: 'openai_compatible',
-    base_url: '',
-    api_key: '',
-    temperature: '' as string,
-    max_tokens: '' as string,
-  })
-  const [current, setCurrent] = useState<LLMSettings | null>(null)
+  const [connections, setConnections] = useState<LLMConnection[]>([])
+  const [activeId, setActiveId] = useState('')
+  // null = the unsaved "new connection" draft.
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [form, setForm] = useState<FormState>(BLANK)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [models, setModels] = useState<string[]>([])
+  const [loadingModels, setLoadingModels] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [hint, setHint] = useState('')
 
+  const selected = connections.find((c) => c.id === selectedId) ?? null
+  const isNew = selectedId === null
+
+  /** Adopt a server response: the list is authoritative, including which row is active. */
+  const adopt = useCallback((payload: LLMConnections, focus?: string) => {
+    setConnections(payload.connections)
+    setActiveId(payload.active_id)
+    const next =
+      focus ??
+      (payload.connections.some((c) => c.id === payload.active_id)
+        ? payload.active_id
+        : payload.connections[0]?.id)
+    if (next) {
+      const row = payload.connections.find((c) => c.id === next)
+      if (row) {
+        setSelectedId(row.id)
+        setForm(formOf(row))
+        return row.id
+      }
+    }
+    setSelectedId(null)
+    setForm(BLANK)
+    return null
+  }, [])
+
   useEffect(() => {
-    api.getLLMSettings()
-      .then((value) => {
-        setCurrent(value)
-        setForm({
-          model_name: value.model_name,
-          api_spec: value.api_spec || 'openai_compatible',
-          base_url: value.base_url,
-          api_key: '',
-          temperature: value.temperature === null ? '' : String(value.temperature),
-          max_tokens: value.max_tokens === null ? '' : String(value.max_tokens),
-        })
+    api
+      .listConnections()
+      .then((payload) => {
+        const focused = adopt(payload)
+        if (payload.error) setResult({ ok: false, message: payload.error })
+        return focused
       })
       .catch((exc) => setResult({ ok: false, message: String(exc.message ?? exc) }))
       .finally(() => setLoading(false))
+  }, [adopt])
+
+  /** The endpoint's model list. Only a saved connection has one — the server
+   *  reads the key from the row, so there is nothing to ask before it exists. */
+  const loadModels = useCallback(async (id: string, announce: boolean) => {
+    setLoadingModels(true)
+    try {
+      const payload = await api.listConnectionModels(id)
+      setModels(payload.models)
+      if (payload.error) setResult({ ok: false, message: payload.error })
+      else if (announce)
+        setResult({ ok: true, message: `${payload.models.length} models available.` })
+    } catch (exc) {
+      setModels([])
+      setResult({ ok: false, message: String((exc as Error).message) })
+    } finally {
+      setLoadingModels(false)
+    }
   }, [])
+
+  useEffect(() => {
+    setModels([])
+    if (selectedId) void loadModels(selectedId, false)
+  }, [selectedId, loadModels])
+
+  const select = (id: string | null) => {
+    setResult(null)
+    setHint('')
+    setSelectedId(id)
+    const row = id === null ? null : connections.find((c) => c.id === id)
+    setForm(row ? formOf(row) : BLANK)
+  }
 
   const applyPreset = (preset: (typeof PRESETS)[number]) => {
     setForm((f) => ({
       ...f,
+      name: f.name || preset.label,
       base_url: preset.base_url,
-      api_spec: preset.api_spec,
       api_key: preset.api_key || f.api_key,
     }))
     setHint(preset.hint)
   }
 
-  const save = async () => {
+  const payload = () => ({
+    name: form.name.trim(),
+    base_url: form.base_url.trim(),
+    // Left out entirely when untouched, which the server reads as "keep the
+    // stored key" — it never sent us the key to echo back.
+    ...(form.api_key === '' ? {} : { api_key: form.api_key }),
+    model_name: form.model_name.trim(),
+    temperature: form.temperature === '' ? null : Number(form.temperature),
+    max_tokens: form.max_tokens === '' ? null : Number(form.max_tokens),
+  })
+
+  /** Run a mutation and adopt its response, which is the whole list back.
+   *
+   *  `focus` picks the row to land on from that response, because the row to
+   *  show afterwards is not always the one that was open: a create has no id
+   *  yet and a delete has just removed one.
+   */
+  const mutate = async (
+    call: () => Promise<LLMConnections>,
+    focus: (next: LLMConnections) => string | undefined,
+    message: string,
+  ) => {
+    const before = selectedId
     setSaving(true)
     setResult(null)
     try {
-      const saved = await api.putLLMSettings({
-        model_name: form.model_name.trim(),
-        api_spec: form.api_spec,
-        base_url: form.base_url.trim(),
-        // Left out entirely when untouched, which the server reads as "keep the
-        // stored key" — it never sent us the key to echo back.
-        ...(form.api_key === '' ? {} : { api_key: form.api_key }),
-        temperature: form.temperature === '' ? null : Number(form.temperature),
-        max_tokens: form.max_tokens === '' ? null : Number(form.max_tokens),
-      })
-      setCurrent(saved)
+      const next = await call()
+      const landed = adopt(next, focus(next))
       setForm((f) => ({ ...f, api_key: '' }))
-      setResult(
-        saved.error
-          ? { ok: false, message: saved.error }
-          : { ok: true, message: `${saved.model_name} is ready.` },
-      )
+      setResult(next.error ? { ok: false, message: next.error } : { ok: true, message })
+      // Landing on a different row re-runs the models effect; staying on the
+      // same one does not, and an edited base URL or key means a new list.
+      if (landed && landed === before) void loadModels(landed, false)
       onSaved()
     } catch (exc) {
       setResult({ ok: false, message: String((exc as Error).message) })
@@ -112,32 +203,44 @@ export function ModelSettings({ onClose, onSaved }: Props) {
     }
   }
 
-  const reset = async () => {
-    setSaving(true)
-    setResult(null)
-    try {
-      const cleared = await api.deleteLLMSettings()
-      setCurrent(cleared)
-      setForm({
-        model_name: cleared.model_name,
-        api_spec: cleared.api_spec || 'openai_compatible',
-        base_url: cleared.base_url,
-        api_key: '',
-        temperature: '',
-        max_tokens: '',
-      })
-      setResult({ ok: !cleared.error, message: cleared.error || 'Using the environment settings.' })
-      onSaved()
-    } catch (exc) {
-      setResult({ ok: false, message: String((exc as Error).message) })
-    } finally {
-      setSaving(false)
+  const save = () => {
+    if (!isNew) {
+      return mutate(() => api.updateConnection(selectedId, payload()), () => selectedId, 'Saved.')
     }
+    // The server mints the id, so the new row is the one that was not there before.
+    const known = new Set(connections.map((c) => c.id))
+    return mutate(
+      () => api.createConnection(payload()),
+      (next) => next.connections.find((c) => !known.has(c.id))?.id,
+      'Connection added.',
+    )
   }
+
+  const remove = () => {
+    if (isNew) return
+    const label = selected?.name || 'this connection'
+    if (!window.confirm(`Delete "${label}"? This cannot be undone.`)) return
+    return mutate(() => api.deleteConnection(selectedId), () => undefined, 'Connection removed.')
+  }
+
+  const activate = () => {
+    if (isNew) return
+    return mutate(
+      () => api.activateConnection(selectedId),
+      () => selectedId,
+      'Active connection changed.',
+    )
+  }
+
+  // The stored model stays selectable even when the endpoint will not list its
+  // models, so a working configuration is not lost to a temporary outage.
+  const options = form.model_name && !models.includes(form.model_name)
+    ? [form.model_name, ...models]
+    : models
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(event) => event.stopPropagation()}>
+      <div className="modal wide" onClick={(event) => event.stopPropagation()}>
         <div className="panel-header">
           <span>Model settings</span>
           <button className="btn small btn-icon" onClick={onClose} title="Close" aria-label="Close">
@@ -145,23 +248,41 @@ export function ModelSettings({ onClose, onSaved }: Props) {
           </button>
         </div>
 
-        <div className="scroll modal-body">
-          {loading ? (
-            <div className="muted small">Loading…</div>
-          ) : (
-            <>
-              {current && (
-                <div className="small muted" style={{ marginBottom: 12 }}>
-                  {current.source === 'database' && 'Configured here, in the app.'}
-                  {current.source === 'environment' && (
-                    <>Currently coming from <code>AGENT_MODEL_*</code> in the environment. Saving below overrides it.</>
-                  )}
-                  {current.source === 'none' && 'No model configured yet.'}
-                </div>
-              )}
+        {loading ? (
+          <div className="modal-body muted small">Loading…</div>
+        ) : (
+          <div className="conn-layout">
+            <div className="conn-list scroll">
+              {connections.map((connection) => (
+                <button
+                  key={connection.id}
+                  className={[
+                    'conn-item',
+                    connection.id === selectedId ? 'selected' : '',
+                    connection.id === activeId ? 'active' : '',
+                  ].filter(Boolean).join(' ')}
+                  onClick={() => select(connection.id)}
+                >
+                  <span className="conn-name">{connection.name || 'Unnamed'}</span>
+                  <span className="conn-sub">
+                    {connection.model_name || 'no model picked'}
+                  </span>
+                  {connection.id === activeId && <span className="conn-badge">Active</span>}
+                </button>
+              ))}
+              <button
+                className={`conn-item add${isNew ? ' selected' : ''}`}
+                onClick={() => select(null)}
+              >
+                <Plus size={14} /> Add connection
+              </button>
+            </div>
 
-              <div className="section-title">Quick setup</div>
+            <div className="scroll modal-body conn-form">
+              {/* One label per input and nothing else: four section headings
+                  over six fields read as more structure than there is. */}
               <div className="preset-row">
+                <span className="small muted">Start from</span>
                 {PRESETS.map((preset) => (
                   <button key={preset.label} className="btn small" onClick={() => applyPreset(preset)}>
                     {preset.label}
@@ -170,26 +291,14 @@ export function ModelSettings({ onClose, onSaved }: Props) {
               </div>
               {hint && <div className="small muted" style={{ marginTop: 6 }}>{hint}</div>}
 
-              <div className="section-title">Model</div>
               <label className="field">
-                <span>Model name</span>
+                <span>Name</span>
                 <input
-                  value={form.model_name}
-                  onChange={(e) => setForm({ ...form, model_name: e.target.value })}
-                  placeholder="qwen3.5:2b, Qwen/Qwen3.5-4B, claude-sonnet-4-5…"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="Local Ollama, RunPod 4B…"
                   autoFocus
                 />
-              </label>
-
-              <label className="field">
-                <span>API type</span>
-                <select
-                  value={form.api_spec}
-                  onChange={(e) => setForm({ ...form, api_spec: e.target.value })}
-                >
-                  <option value="openai_compatible">OpenAI-compatible (Ollama, vLLM, OpenRouter…)</option>
-                  <option value="anthropic">Anthropic</option>
-                </select>
               </label>
 
               <label className="field">
@@ -202,20 +311,52 @@ export function ModelSettings({ onClose, onSaved }: Props) {
               </label>
 
               <label className="field">
-                <span>API key</span>
+                <span>API key <em className="muted">stored in clear text, locally</em></span>
                 <input
                   type="password"
                   value={form.api_key}
                   onChange={(e) => setForm({ ...form, api_key: e.target.value })}
-                  placeholder={current?.has_api_key ? '•••••••• (stored — leave blank to keep)' : 'Required by most endpoints'}
+                  placeholder={
+                    selected?.has_api_key
+                      ? '•••••••• (stored — leave blank to keep)'
+                      : 'Required by most endpoints'
+                  }
                 />
               </label>
-              <div className="small muted" style={{ marginTop: -4, marginBottom: 10 }}>
-                Stored in clear text in this app's local database. Use a
-                throwaway key if that matters to you.
-              </div>
 
-              <div className="section-title">Optional</div>
+              <label className="field">
+                <span>
+                  Model
+                  {/* Only says anything when there is something to say: where
+                      the list comes from is the Base URL directly above. */}
+                  {isNew && <em className="muted">save the connection to load the list</em>}
+                  {!isNew && loadingModels && <em className="muted">loading…</em>}
+                </span>
+                <div className="field-row">
+                  <select
+                    value={form.model_name}
+                    disabled={isNew}
+                    onChange={(e) => setForm({ ...form, model_name: e.target.value })}
+                  >
+                    <option value="">
+                      {isNew ? 'Save the connection first' : 'Select a model…'}
+                    </option>
+                    {options.map((model) => (
+                      <option key={model} value={model}>{model}</option>
+                    ))}
+                  </select>
+                  <button
+                    className="btn small btn-icon"
+                    disabled={isNew || loadingModels}
+                    onClick={() => selectedId && void loadModels(selectedId, true)}
+                    title="Reload the model list"
+                    aria-label="Reload the model list"
+                  >
+                    <RefreshCw size={14} />
+                  </button>
+                </div>
+              </label>
+
               <div className="field-row">
                 <label className="field">
                   <span>Temperature</span>
@@ -243,24 +384,32 @@ export function ModelSettings({ onClose, onSaved }: Props) {
                   <span>{result.message}</span>
                 </div>
               )}
-            </>
-          )}
-        </div>
+            </div>
+          </div>
+        )}
 
         <div className="modal-actions">
-          {current?.source === 'database' && (
-            <button className="btn small" onClick={() => void reset()} disabled={saving}>
-              Forget and use the environment
-            </button>
+          {!isNew && (
+            <>
+              <button className="btn small btn-icon" onClick={() => void remove()} disabled={saving}
+                title="Delete this connection" aria-label="Delete this connection">
+                <Trash2 size={14} />
+              </button>
+              {selectedId !== activeId && (
+                <button className="btn small" onClick={() => void activate()} disabled={saving}>
+                  Set as active
+                </button>
+              )}
+            </>
           )}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-            <button className="btn" onClick={onClose}>Cancel</button>
+            <button className="btn" onClick={onClose}>Close</button>
             <button
               className="btn primary"
               onClick={() => void save()}
-              disabled={saving || !form.model_name.trim()}
+              disabled={saving || !form.name.trim()}
             >
-              {saving ? 'Checking…' : 'Save and check'}
+              {saving ? 'Saving…' : isNew ? 'Add and check' : 'Save and check'}
             </button>
           </div>
         </div>

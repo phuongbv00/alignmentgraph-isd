@@ -136,10 +136,10 @@ def test_no_full_list_sections_remain_in_a_graph_run(fake_llm_factory):
     source of truth, sections follow the narrative-only pattern. ~12KB of a
     98KB real dump was byte-identical duplication, and every repair had to
     write both copies or silently diverge."""
-    from alignmentgraph_isd import run_design_brief
+    from conftest import run_brief
     from conftest import load_brief
 
-    result = run_design_brief(load_brief("minimal_brief.json"),
+    result = run_brief(load_brief("minimal_brief.json"),
                               HarnessRunConfig(llm_factory=fake_llm_factory))
     nodes = {n["id"]: n for n in result["graph"]["nodes"]}
 

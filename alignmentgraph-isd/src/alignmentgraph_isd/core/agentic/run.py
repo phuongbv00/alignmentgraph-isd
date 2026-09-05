@@ -24,7 +24,7 @@ stage, never in what order the stages run.
 
 Cross-artifact violations are reconciled ONCE after the last stage, bounded by
 ``SELF_VALIDATION_BUDGET`` rounds — see :func:`_reconcile`. The packaging
-below IS the result contract: ``core/runner.py::run_workflow`` returns it
+below IS the result contract: ``core/runner.py::MetaAgent.run`` returns it
 unchanged, and the benchmark adapter reads it.
 """
 from __future__ import annotations
@@ -41,7 +41,7 @@ from ..brief import DesignBrief
 from ..prose_store import ProseStore
 from ..trajectory import TrajectoryLogger, WORKFLOW_ORCHESTRATOR
 from ..validation import validate_addie
-from ..runner import (
+from ..run_report import (
     _graph_attaching, _llm_metadata, _maybe_dump_graph, _safe_emit,
     _token_usage_metadata,
 )
@@ -115,14 +115,25 @@ def _merge_stats(carried: dict, fresh: dict) -> dict:
 
 
 def _serialize(violations: list, owner: str) -> list[dict]:
+    """The wire form of a violation.
+
+    Carries all eight fields plus its identity. It used to carry four —
+    ``edge_type``, ``repair_hint``, ``metadata`` and ``target_designer`` were
+    dropped, the last one two lines after ``_reconcile`` had just stamped it —
+    so nothing downstream could route, explain or re-find a violation it only
+    had ``msg`` for. ``node_id``/``type``/``msg``/``severity``/``owner`` keep
+    their names: ``audit.py`` and every archived run read them."""
     return [
-        {"node_id": v.node_id, "type": v.violation_type, "msg": v.message,
-         "severity": v.severity, "owner": owner}
+        {"key": v.key, "node_id": v.node_id, "type": v.violation_type,
+         "msg": v.message, "severity": v.severity, "owner": owner,
+         "edge_type": v.edge_type, "repair_hint": v.repair_hint,
+         "metadata": dict(v.metadata), "target_designer": v.target_designer}
         for v in violations
     ]
 
 
-def _reconcile(state, trajectory, design_brief, *, graph_mode: bool) -> list[dict]:
+def _reconcile(state, trajectory, design_brief, *, graph_mode: bool,
+               memory=None) -> list[dict]:
     """Bounded reconciliation pass, once, after the last stage.
 
     The hole it closes: every stage runs the full check set but repairs only
@@ -151,16 +162,32 @@ def _reconcile(state, trajectory, design_brief, *, graph_mode: bool) -> list[dic
     the ``context_mode`` treatment, so the pass must still be entered (equal
     effort), not skipped.
     """
+    memory = memory if memory is not None else Memory.of(state)
+    ctx = repairs.RepairContext(
+        graph=state if graph_mode else None,
+        store=None if graph_mode else state,
+        trajectory=trajectory, actor=WORKFLOW_ORCHESTRATOR)
+
+    def collect(family: str) -> list:
+        violations = (_collect_violations(family, state, design_brief) if graph_mode
+                      else _collect_violations_prose(family, state))
+        owned = [v for v in violations
+                 if v.violation_type in repairs.OWNED_BY_FAMILY[family]]
+        for violation in owned:
+            violation.target_designer = repairs.OWNER_BY_VIOLATION[violation.violation_type]
+        return owned
+
     residual: list[dict] = []
-    for _round in range(SELF_VALIDATION_BUDGET):
-        pending: list[tuple[str, list]] = []
-        for family in repairs.OWNED_BY_FAMILY:
-            violations = (_collect_violations(family, state, design_brief) if graph_mode
-                          else _collect_violations_prose(family, state))
-            owned = [v for v in violations
-                     if v.violation_type in repairs.OWNED_BY_FAMILY[family]]
-            for violation in owned:
-                violation.target_designer = repairs.OWNER_BY_VIOLATION[violation.violation_type]
+    # PER FAMILY, not a global loop over all six. The stop condition used to be
+    # `if not pending` across every family at once, so a family that came back
+    # clean in round 1 was re-collected in round 2 anyway because some OTHER
+    # family still had work — which is why a measured run logged 12 reconcile
+    # rounds for 6 families that each needed one.
+    for family in repairs.OWNED_BY_FAMILY:
+        identity = _IDENTITY_BY_FAMILY[family]
+        found: list = []
+        for _round in range(SELF_VALIDATION_BUDGET):
+            found = collect(family)
             # Recorded even when empty, like every stage's own round: "the
             # pass looked and found nothing" and "the pass never ran" are
             # different facts, and an audit has to tell them apart.
@@ -170,29 +197,49 @@ def _reconcile(state, trajectory, design_brief, *, graph_mode: bool) -> list[dic
             # outside every agent's tool loop — no agent chose it, saw it, or
             # could have done otherwise. WHICH family's work was inspected is
             # not lost: it is the `family` field on the record.
-            owner = _IDENTITY_BY_FAMILY[family]
             with trajectory.acting_as(WORKFLOW_ORCHESTRATOR):
-                trajectory.log_violations_result(
-                    _serialize(owned, owner), agent=WORKFLOW_ORCHESTRATOR)
-            if owned:
-                pending.append((family, owned))
-        if not pending:
-            return residual
-        residual = []
-        for family, owned in pending:
-            identity = _IDENTITY_BY_FAMILY[family]
-            # The ROUTING is the orchestrator's act; the structural repair it
-            # dispatches is recorded under the owning family's identity. No
-            # model call happens here — the pass is deterministic.
+                round_no = trajectory.log_violations_result(
+                    _serialize(found, identity), agent=WORKFLOW_ORCHESTRATOR)
+            keys = memory.observe_violations(
+                found, round=round_no, phase="reconcile", family=family)
+            if not found:
+                break
             with trajectory.acting_as(WORKFLOW_ORCHESTRATOR):
+                # The ROUTING is the orchestrator's act; the structural repair
+                # it dispatches is recorded under the owning family's identity.
+                # No model call happens here — the pass is deterministic.
                 trajectory.log_reconcile_result(
-                    family, owned, agent=WORKFLOW_ORCHESTRATOR)
-                ctx = repairs.RepairContext(
-                    graph=state if graph_mode else None,
-                    store=None if graph_mode else state,
-                    trajectory=trajectory, actor=WORKFLOW_ORCHESTRATOR)
-                repairs.repair(family, owned, ctx)
-                residual += _serialize(owned, identity)
+                    family, found, agent=WORKFLOW_ORCHESTRATOR)
+                before = len(trajectory.repair_events)
+                repairs.repair(family, found, ctx)
+                repaired = len(trajectory.repair_events) - before
+            if not repaired:
+                # PROOF, not a guess: the checks are pure functions of state and
+                # nothing else writes state in between, so a pass that repaired
+                # nothing would find exactly this again. Stop before paying for
+                # the second look.
+                memory.mark_open_reason(keys, reason="converged", round=round_no)
+                with trajectory.acting_as(WORKFLOW_ORCHESTRATOR):
+                    trajectory.log_convergence(
+                        family, sorted(keys), [v.violation_type for v in found],
+                        round_number=round_no, agent=WORKFLOW_ORCHESTRATOR)
+                break
+            memory.credit_repair(
+                keys - {v.key for v in collect(family)},
+                by=identity, round=round_no, harness=True)
+        else:
+            # The budget ran out with a repair on the LAST pass, so state moved
+            # after the last look. Look once more before calling anything
+            # residual — reporting the pre-repair set was how a violation the
+            # final repair had just closed still counted against the run.
+            found = collect(family)
+            with trajectory.acting_as(WORKFLOW_ORCHESTRATOR):
+                round_no = trajectory.log_violations_result(
+                    _serialize(found, identity), agent=WORKFLOW_ORCHESTRATOR)
+            memory.observe_violations(
+                found, round=round_no, phase="reconcile", family=family)
+            memory.mark_open_reason({v.key for v in found}, reason="budget")
+        residual += _serialize(found, identity)
     return residual
 
 
@@ -502,7 +549,6 @@ def _run_multi(config, memory, graph, store, trajectory, design_brief, *,
     Developers (fanout.py). Contrast ``_run_single``, where the agent walks
     them itself."""
     errors: list[str] = []
-    residual: list[dict] = []
     task_attempts: dict[str, int] = {}
     autonomy: dict[str, dict] = {}
     state = memory.state
@@ -564,13 +610,24 @@ def _run_multi(config, memory, graph, store, trajectory, design_brief, *,
                 ctx = repairs.RepairContext(
                     graph=graph, store=store, trajectory=trajectory,
                     actor=WORKFLOW_ORCHESTRATOR)
-                owned: list = []
                 # `also_repairs` families run here too: their artifacts were
                 # produced by THIS step's Developer, so this is where their
                 # checks first have something to look at.
                 # A family that owns no checks (needs_analyst) has nothing to
                 # look for, and a round logged against it would report "looked,
                 # found nothing" about a search that never happened.
+                #
+                # NO residual accumulator here any more. It used to do
+                # `residual += _serialize(owned, identity)` OUTSIDE this loop,
+                # so a step with `also_repairs` counted only its last family —
+                # and `found` was not reset per family, so a family that hit
+                # the `continue` leaked the previous one's. Both were invisible
+                # because nothing tests a residual count. `_reconcile` walks
+                # all six families through the same checks after the last
+                # stage, which is a superset of this, so the run's residual is
+                # its final look and this accumulator was two bugs guarding
+                # nothing. What each stage found is not lost: it is
+                # `Finding.first_phase` + `first_round` in the ledger.
                 for family in (step.family, *step.also_repairs):
                     if family not in repairs.OWNED_BY_FAMILY:
                         continue
@@ -580,17 +637,37 @@ def _run_multi(config, memory, graph, store, trajectory, design_brief, *,
                                       else _collect_violations_prose(family, store))
                         owned_types = repairs.OWNED_BY_FAMILY.get(family, frozenset())
                         found = [v for v in violations if v.violation_type in owned_types]
-                        trajectory.log_violations_result(
+                        round_no = trajectory.log_violations_result(
                             _serialize(found, identity), agent=WORKFLOW_ORCHESTRATOR)
+                        keys = memory.observe_violations(
+                            found, round=round_no, phase=step.name, family=family)
                         if not found:
                             break
+                        before = len(trajectory.repair_events)
                         repairs.repair(family, found, ctx)
-                    owned = found
-                residual += _serialize(owned, identity)
+                        if len(trajectory.repair_events) == before:
+                            # Repaired nothing, so the next look is provably
+                            # identical — see _reconcile.
+                            memory.mark_open_reason(
+                                keys, reason="converged", round=round_no)
+                            trajectory.log_convergence(
+                                family, sorted(keys),
+                                [v.violation_type for v in found],
+                                round_number=round_no, agent=WORKFLOW_ORCHESTRATOR)
+                            break
+                        memory.credit_repair(
+                            keys - {v.key for v in
+                                    (_collect_violations(family, graph, design_brief)
+                                     if graph_mode
+                                     else _collect_violations_prose(family, store))},
+                            by=identity, round=round_no, harness=True)
             autonomy[step.name] = stats
             task_attempts[step.name] = task_attempts.get(step.name, 0) + 1
 
-    return autonomy, errors, residual, task_attempts
+    # No residual from here: `_reconcile` re-derives it over every family
+    # after the last stage, so returning a per-stage guess as well was two
+    # sources for one number.
+    return autonomy, errors, [], task_attempts
 
 
 def run_agentic_brief(config, design_brief: DesignBrief, *, on_event=None) -> dict:
@@ -656,8 +733,17 @@ def run_agentic_brief(config, design_brief: DesignBrief, *, on_event=None) -> di
     # re-checked artifacts it never touched.
     with _phase(trajectory, "reconcile", phase_total - 1, phase_total), \
             trajectory.acting_as(WORKFLOW_ORCHESTRATOR):
+        # Assigned, not `or residual`. That fallback meant "reconcile found
+        # nothing" silently reverted to the pre-reconciliation list — a stale
+        # snapshot contradicted by the very check that ended the pass. The
+        # reconciliation walks all six families and its final look IS the run's
+        # residual, empty included.
         residual = _reconcile(state, trajectory, design_brief,
-                              graph_mode=graph_mode) or residual
+                              graph_mode=graph_mode, memory=memory)
+        # Everything still standing is now explained: whatever nothing marked
+        # is `unexplained`, which is a fact worth saying rather than defaulting
+        # to "the model could not do it".
+        memory.settle({str(v.get("key") or "") for v in residual})
 
     # ── aggregation + residual audit ────────────────────────────────────────
     with _phase(trajectory, "aggregate", phase_total, phase_total):
@@ -723,9 +809,15 @@ def run_agentic_brief(config, design_brief: DesignBrief, *, on_event=None) -> di
         # these reach the app and the CLI and nothing else.
         "contexts": [t.as_dict() for t in memory.transcripts],
         "plans": [p.as_dict() for p in memory.plans],
+        # Every DISTINCT finding of the run, with what became of it. Not a
+        # second copy of `metadata.audit.violations`: that is the graph arm's
+        # residual only (the prose arm has no graph to audit), it is a snapshot
+        # rather than a history, and it cannot say whether a violation was
+        # repaired, converged, or simply ran out of budget.
+        "violations": [f.as_dict() for f in memory.findings],
     }
     # Report writing — detach the observer so the deep trajectory ends with
-    # the last thing an agent did (same as core/runner.py).
+    # the last thing an agent did.
     if graph is not None:
         graph.set_observer(None)
         _maybe_dump_graph(graph, design_brief, metadata)

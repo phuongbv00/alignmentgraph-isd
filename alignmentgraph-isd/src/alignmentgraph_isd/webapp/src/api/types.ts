@@ -9,28 +9,42 @@ export interface Health {
   max_concurrent_runs: number
 }
 
-export interface LLMSettings {
-  model_name: string
-  api_spec: string
+export interface LLMConnection {
+  id: string
+  name: string
   base_url: string
   /** The key itself is never sent to the browser — only whether one is set. */
   has_api_key: boolean
+  model_name: string
   temperature: number | null
   max_tokens: number | null
-  /** Where the value in effect came from. */
-  source: 'database' | 'environment' | 'none'
-  /** Why it is unusable, if it is. */
+  is_active: boolean
+  updated_at: string | null
+}
+
+/** Every connection endpoint answers with this, so the dialog has one source of state. */
+export interface LLMConnections {
+  connections: LLMConnection[]
+  active_id: string
+  /** Why the active connection is unusable, if it is. */
   error: string
 }
 
-export interface LLMSettingsInput {
-  model_name: string
-  api_spec: string
+export interface LLMConnectionInput {
+  name: string
   base_url: string
   /** Omit to keep the stored key; send "" to clear it. */
   api_key?: string
+  /** Empty until one is picked from the endpoint's own list. */
+  model_name: string
   temperature: number | null
   max_tokens: number | null
+}
+
+export interface ModelList {
+  models: string[]
+  /** Why the list is empty, if it is. */
+  error: string
 }
 
 export interface BriefPreview {
@@ -120,6 +134,50 @@ export interface ContextMessage {
   /** Where a submitted artifact actually lives: an assistant turn that submits
    *  carries empty content and the whole artifact in its tool call. */
   tool_calls?: unknown[]
+}
+
+/** One violation, followed from its first sighting to its outcome.
+ *
+ *  Kept by the run itself (`core/memory.py`) rather than reconstructed from
+ *  the trajectory. Before it, a violation existed only as a counter in a check
+ *  event and — for the graph arm's residual alone — as five of its eight
+ *  fields in `metadata.audit`. */
+export interface Finding {
+  /** Built from the SUBJECT of the finding (type + node + the metadata that
+   *  says which one it is), never from the evidence behind it: a bloom
+   *  mismatch's `item_ids` grows as Developers commit while the problem
+   *  stands, and a key that moved with it would report the finding closed and
+   *  a new one opened. */
+  key: string
+  type: string
+  node_id: string
+  severity: string
+  /** One finding can be reported more than one way — a relation's establisher
+   *  and the coverage sweep say the same thing differently — so both wordings
+   *  are kept rather than one being lost to the other. */
+  messages: string[]
+  repair_hint: string
+  metadata: Record<string, unknown>
+  target_designer: string
+  first_phase: string
+  first_round: number
+  last_round: number
+  sightings: number
+  /** Rounds in which it actually reached a model. */
+  shown_to_agent: number
+  outcome: 'open' | 'repaired_by_harness' | 'repaired_by_agent'
+  /** Only meaningful while open, and the whole point of the ledger: WHY it is
+   *  still here. `converged` is a result about the model; `budget` is a
+   *  parameter we chose. Reporting them merged would be a wrong claim. */
+  open_reason: string
+  /** The deterministic net is DESIGNED never to touch this type. Orthogonal to
+   *  `outcome`, not a value of it — "report-only AND repaired by the agent" is
+   *  reachable, and is the evidence that the agent tier does work the net
+   *  cannot. */
+  report_only: boolean
+  repaired_by: string
+  repaired_at_round: number
+  converged_at_round: number
 }
 
 /** One context WITHOUT its transcript: what the live stream carries.
@@ -250,7 +308,16 @@ export interface GraphEdge {
 export interface ObjectiveAlignment {
   measured: boolean
   supported: boolean
+  /** The CONJUNCTION of the two below. Kept because `to_dot`, the benchmark
+   *  contract and every archived run read it — what it never said is which of
+   *  the two failed, which is what sent a reader into the trajectory. */
   bloom_ok: boolean
+  /** Optional so an archived run still renders. */
+  bloom_assessment_ok?: boolean
+  bloom_activity_ok?: boolean
+  /** The checks' own messages, verbatim: the level targeted, the level
+   *  actually reached, and the field to edit. */
+  bloom_notes?: string[]
   aligned: boolean
   /** Gone with C7 (2026-09-02): a rubric criterion is a field of the item that
    *  measures the objective, so this was true whenever `measured` was and
@@ -269,6 +336,10 @@ export interface AlignmentGraphPayload {
   nodes: GraphNode[]
   edges: GraphEdge[]
   objective_alignment: Record<string, ObjectiveAlignment>
+  /** `node_id -> violation types`, for EVERY node type — the one signal
+   *  that covers an activity linked to no objective or a material whose
+   *  module does not exist. Types only: the messages are in the ledger. */
+  node_violations?: Record<string, string[]>
   relation_coverage: Record<string, RelationCoverage>
   metadata: {
     design_brief_id?: string
@@ -344,6 +415,7 @@ export interface HelloPayload {
   stats: RunStats
   graph_rev: number
   contexts_rev?: number
+  violations_rev?: number
   replay?: boolean
 }
 

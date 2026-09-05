@@ -191,9 +191,10 @@ class RunManager:
         started = datetime.now(timezone.utc)
         status, error, stats, result = RunStatus.SUCCEEDED, "", {}, None
         try:
-            from ..core.runner import run_workflow
+            from ..core.runner import MetaAgent
 
-            result = run_workflow(config, design_brief, on_event=self._make_consumer(state))
+            result = MetaAgent(config).run(
+                design_brief, on_event=self._make_consumer(state))
             # Carried on the result so `write_result` persists it with the rest:
             # a context that only existed in memory would be gone the moment the
             # process restarted, and "what did this agent see" is the question
@@ -205,6 +206,10 @@ class RunManager:
             # while the run is still going, and is the fallback for a result
             # produced before ``core.memory`` existed.
             result["contexts"] = result.get("contexts") or list(state.contexts)
+            # The ledger only exists at the end — a finding's outcome is not
+            # known until the last look has settled it — so unlike the contexts
+            # there is nothing to stream progressively.
+            state.set_violations(result.get("violations") or [])
             stats = _stats_from_result(result)
             # The harness is built to survive a failing specialist, so it
             # completes even when every one of them failed — leaving an empty

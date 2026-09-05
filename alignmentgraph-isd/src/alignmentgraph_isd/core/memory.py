@@ -43,7 +43,7 @@ is returned beside it, and only to callers that ask.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 
 def new_agent_run_id() -> str:
@@ -137,6 +137,89 @@ class Plan:
                 "stats": dict(self.stats)}
 
 
+@dataclass(frozen=True)
+class Finding:
+    """One violation, followed across the run.
+
+    Its identity is ``checks.Violation.key`` — built from the SUBJECT of the
+    finding, never the evidence — because a violation is re-derived from state
+    by a pure function every round and has no continuous object to carry an id
+    the way a :class:`Transcript` does.
+
+    ``messages`` is a tuple because one finding can be reported more than one
+    way: a relation's establisher says "this material matched no media
+    selection" and the coverage sweep says "this material has no P6 coverage",
+    which is the same fact stated twice by two producers. Collapsing them is
+    right; losing the more specific wording is not.
+    """
+
+    key: str
+    #: The whole Violation. `_serialize` used to drop four of these eight, so
+    #: nothing downstream could route, explain or re-find what it had.
+    node_id: str
+    edge_type: str
+    violation_type: str
+    severity: str
+    repair_hint: str
+    metadata: dict
+    target_designer: str
+    messages: tuple[str, ...] = ()
+
+    #: Where and when it was first seen, and how long it lasted.
+    first_round: int = 0
+    first_phase: str = ""
+    first_family: str = ""
+    last_round: int = 0
+    sightings: int = 0
+    #: Rounds in which it reached a model through ``loop._repair_request``.
+    shown_to_agent: int = 0
+
+    #: ``open`` | ``repaired_by_harness`` | ``repaired_by_agent``
+    outcome: str = "open"
+    #: Only meaningful while ``outcome == "open"``, and the whole point of the
+    #: ledger: WHY it is still here.
+    #:
+    #: ``converged`` — tried and could not be fixed;
+    #: ``budget``    — a repair/turn/replan budget ran out first;
+    #: ``unowned``   — no family owns the type, so nobody was ever asked;
+    #: ``unseen``    — filtered out of the agent's view (element-node filter,
+    #:                 a work set's own loop).
+    #:
+    #: This is the line between a finding about the MODEL and a fact about the
+    #: HARNESS. Reporting them merged would be a wrong claim in the paper: "the
+    #: model could not fix this" and "we did not give it another turn" are
+    #: different results, and only the second is ours to change.
+    open_reason: str = ""
+    #: True when the deterministic net is DESIGNED never to touch this type.
+    #: Orthogonal to ``outcome``, not a value of it: ``repairs.REPORT_ONLY``
+    #: constrains the harness and not the agent, so "report-only AND repaired
+    #: by the agent" is reachable — and is exactly the evidence that the agent
+    #: tier does work the net cannot.
+    report_only: bool = False
+    repaired_by: str = ""
+    repaired_at_round: int = 0
+    converged_at_round: int = 0
+
+    @property
+    def message(self) -> str:
+        return self.messages[0] if self.messages else ""
+
+    def as_dict(self) -> dict:
+        return {
+            "key": self.key, "node_id": self.node_id, "edge_type": self.edge_type,
+            "type": self.violation_type, "severity": self.severity,
+            "messages": list(self.messages), "repair_hint": self.repair_hint,
+            "metadata": dict(self.metadata), "target_designer": self.target_designer,
+            "first_round": self.first_round, "first_phase": self.first_phase,
+            "first_family": self.first_family, "last_round": self.last_round,
+            "sightings": self.sightings, "shown_to_agent": self.shown_to_agent,
+            "outcome": self.outcome, "open_reason": self.open_reason,
+            "report_only": self.report_only, "repaired_by": self.repaired_by,
+            "repaired_at_round": self.repaired_at_round,
+            "converged_at_round": self.converged_at_round,
+        }
+
+
 class Memory:
     """The run's memory: transcripts per agent, the alignment state, the plans.
 
@@ -155,6 +238,7 @@ class Memory:
         self._transcripts: list[Transcript] = []
         self._transcript_index: dict[str, int] = {}
         self._plans: dict[str, list[Plan]] = {}
+        self._findings: dict[str, Finding] = {}
 
     # ── the substrate ───────────────────────────────────────────────────────
     @classmethod
@@ -232,6 +316,126 @@ class Memory:
     def plans(self) -> tuple[Plan, ...]:
         return tuple(plan for rounds in self._plans.values() for plan in rounds)
 
+    # ── findings ────────────────────────────────────────────────────────────
+    def observe_violations(self, violations, *, round: int, phase: str = "",
+                           family: str = "", shown_to_agent: bool = False):
+        """Record one check round. Returns the key set it saw.
+
+        Returned rather than recomputed by the caller, because the caller needs
+        exactly this set for its convergence test and computing the keys twice
+        is how the two drift.
+        """
+        from . import repairs
+
+        seen: set[str] = set()
+        for violation in violations:
+            key = violation.key
+            seen.add(key)
+            existing = self._findings.get(key)
+            message = violation.message
+            if existing is None:
+                self._findings[key] = Finding(
+                    key=key, node_id=violation.node_id, edge_type=violation.edge_type,
+                    violation_type=violation.violation_type, severity=violation.severity,
+                    repair_hint=violation.repair_hint, metadata=dict(violation.metadata),
+                    target_designer=violation.target_designer,
+                    messages=(message,) if message else (),
+                    first_round=round, first_phase=phase, first_family=family,
+                    last_round=round, sightings=1,
+                    shown_to_agent=1 if shown_to_agent else 0,
+                    report_only=(violation.violation_type in repairs.REPORT_ONLY
+                                 or violation.violation_type not in repairs.OWNER_BY_VIOLATION),
+                    open_reason=("unowned"
+                                 if violation.violation_type not in repairs.OWNER_BY_VIOLATION
+                                 else ""),
+                )
+                continue
+            self._findings[key] = replace(
+                existing,
+                last_round=round,
+                sightings=existing.sightings + 1,
+                shown_to_agent=existing.shown_to_agent + (1 if shown_to_agent else 0),
+                # A later pass stamps the owner; the first sighting has none.
+                target_designer=violation.target_designer or existing.target_designer,
+                messages=(existing.messages if message in existing.messages
+                          else existing.messages + (message,)),
+            )
+        return frozenset(seen)
+
+    def credit_repair(self, closed, *, by: str, round: int, harness: bool) -> None:
+        """The keys a repair pass actually closed — ``before - after`` around
+        one ``repairs.repair`` call.
+
+        A DIFF, never a match on repair events: ``repairs._log_repair`` is
+        called with a class id (``str(NodeType.ASSESSMENT)``) in most routines,
+        so joining on node_id would silently credit nobody.
+        """
+        for key in closed:
+            existing = self._findings.get(key)
+            if existing is None or existing.outcome != "open":
+                continue
+            self._findings[key] = replace(
+                existing, repaired_by=by, repaired_at_round=round, open_reason="",
+                outcome="repaired_by_harness" if harness else "repaired_by_agent")
+
+    #: Which reason survives when a finding collects more than one.
+    #:
+    #: The order is "how much of this is OURS". ``unowned`` means it never
+    #: entered a repair loop at all; ``budget`` means we cut it short;
+    #: ``converged`` means it was genuinely tried and could not be fixed. A
+    #: reconciliation pass that converges after a stage ran out of repair turns
+    #: must NOT overwrite ``budget`` with ``converged`` — the deterministic net
+    #: converging is trivially true for a type it is not allowed to touch,
+    #: while "the agent never got its third turn" is a parameter we chose and
+    #: the one a reader can act on.
+    _REASON_PRECEDENCE = ("unowned", "budget", "converged", "unexplained")
+
+    def mark_open_reason(self, keys, *, reason: str, round: int = 0) -> None:
+        """Why these are still here — set where the run gave up on them, so a
+        budget stop is never read as something the model could not do."""
+        order = self._REASON_PRECEDENCE
+        for key in keys:
+            existing = self._findings.get(key)
+            if existing is None or existing.outcome != "open":
+                continue
+            current = existing.open_reason
+            if current in order and order.index(current) <= order.index(reason):
+                # Already explained by something at least as strong; only the
+                # round of an actual convergence is still worth recording.
+                if reason == "converged" and not existing.converged_at_round:
+                    self._findings[key] = replace(existing, converged_at_round=round)
+                continue
+            self._findings[key] = replace(
+                existing, open_reason=reason,
+                converged_at_round=round if reason == "converged"
+                else existing.converged_at_round)
+
+    def settle(self, open_keys) -> None:
+        """Called once on the run's final re-derived residual.
+
+        Anything the last look did not see is closed; anything it did see and
+        that nothing has explained yet is open for a reason nobody recorded,
+        which is itself worth saying rather than defaulting to "converged"."""
+        remaining = frozenset(open_keys)
+        for key, finding in list(self._findings.items()):
+            if key in remaining:
+                if not finding.open_reason:
+                    self._findings[key] = replace(finding, open_reason="unexplained")
+                continue
+            if finding.outcome == "open":
+                self._findings[key] = replace(
+                    finding, outcome="repaired_by_agent" if finding.shown_to_agent
+                    else "repaired_by_harness", open_reason="")
+
+    @property
+    def findings(self) -> tuple[Finding, ...]:
+        return tuple(self._findings.values())
+
+    def open_findings(self, family: str = "") -> tuple[Finding, ...]:
+        return tuple(f for f in self._findings.values()
+                     if f.outcome == "open"
+                     and (not family or f.target_designer == family))
+
     def as_dict(self) -> dict:
         """The inspectable dump. Not part of ``trajectory`` and never sent to
         the judge — see the module docstring."""
@@ -239,4 +443,5 @@ class Memory:
             "agents": list(self.agents),
             "transcripts": [t.as_dict() for t in self._transcripts],
             "plans": [p.as_dict() for p in self.plans],
+            "findings": [f.as_dict() for f in self.findings],
         }

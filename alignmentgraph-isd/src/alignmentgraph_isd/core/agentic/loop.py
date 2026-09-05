@@ -1457,6 +1457,15 @@ class ToolLoop:
                             self.step.name, fixable, self.stats["repair_turns"],
                             self.repair_turns))
                         continue
+                    if fixable:
+                        # Outstanding violations and no repair turn left. This
+                        # used to return in SILENCE — the stage said COMMITTED
+                        # and left, while the line below records a give-up for
+                        # running out of part-submits. So a run could not tell
+                        # "the model could not fix this" from "we did not give
+                        # it another turn", and the second is a harness
+                        # parameter reported as a finding about the model.
+                        self._budget_stopped(fixable, "repair turns")
                     self._append_committed(turn, self.step.name)
                     return
                 if accepted >= len(parts_of(self.step)) + self.PART_SUBMIT_SLACK:
@@ -1544,6 +1553,15 @@ class ToolLoop:
                               "name": turn.name, "content": observation})
         self._publish(live=True)
 
+    def _budget_stopped(self, outstanding: list, budget: str) -> None:
+        """Say which violations were still open when a budget ran out."""
+        keys = {v.key for v in outstanding}
+        self.memory.mark_open_reason(keys, reason="budget")
+        self.trajectory.log_recovery_event(
+            self.identity, "budget_exhausted",
+            f"{budget} spent with {len(keys)} violation(s) open",
+            ", ".join(sorted({v.violation_type for v in outstanding}))[:200])
+
     def _append_committed(self, turn: ToolTurn, stage: str) -> None:
         """The model's own submit turn, plus the tool result that closes it.
 
@@ -1578,8 +1596,19 @@ class ToolLoop:
         return executor(self.state, self.step, args)
 
     def _own_violations(self) -> list:
-        return self.own_violations(
+        """This stage's outstanding violations, and a note in the ledger that
+        they reached an agent.
+
+        The hook is on the INSTANCE wrapper, not on the staticmethod: callers
+        that only have a graph (tests, one-offs) go through the latter and have
+        no memory to write to."""
+        found = self.own_violations(
             self.state, self.design_brief, self.step, self.trajectory, self.llm)
+        if found:
+            self.memory.observe_violations(
+                found, round=len(self.trajectory.check_events),
+                phase=self.label, family=self.step.family, shown_to_agent=True)
+        return found
 
     @staticmethod
     def own_violations(state, design_brief, step, trajectory, llm) -> list:

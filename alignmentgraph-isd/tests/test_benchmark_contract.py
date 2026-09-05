@@ -13,12 +13,11 @@ import inspect
 
 import pytest
 
-from alignmentgraph_isd import DesignBrief, MetaAgent, run_design_brief
+from alignmentgraph_isd import DesignBrief, MetaAgent
 from alignmentgraph_isd.config import HarnessRunConfig
-from alignmentgraph_isd.core.runner import run_workflow
 from alignmentgraph_isd.core.trajectory import TrajectoryLogger
 
-from conftest import load_brief
+from conftest import load_brief, run_brief
 
 # What the benchmark reads. `trajectory_deep` is additive and deliberately not
 # in this set. The judge surface is exactly `tool_calls`/`reasoning_steps`/
@@ -47,7 +46,7 @@ EVENT_ACTIONS = {
     "dropped_argument",
     # structured records
     "repair", "node_add", "node_update", "doc_write", "validate", "check", "audit",
-    "retrieval", "dev_plan", "reconcile",
+    "retrieval", "dev_plan", "reconcile", "converge",
 }
 
 #: Actions that only ever reach the deep action log, never `events`.
@@ -100,7 +99,12 @@ REPAIR_METRIC_KEYS = {
     "check_rounds", "peak_violation_count", "residual_violation_count",
 }
 ADDIE_PHASES = {"analysis", "design", "development", "implementation", "evaluation"}
-GRAPH_KEYS = {"nodes", "edges", "objective_alignment", "relation_coverage", "metadata"}
+GRAPH_KEYS = {"nodes", "edges", "objective_alignment", "relation_coverage",
+              # `node_id -> violation types` for EVERY node type. Objectives
+              # had `objective_alignment`; an activity linked to no objective,
+              # a material whose module does not exist, an item with no answer
+              # key had no signal on the graph at all.
+              "node_violations", "metadata"}
 NODE_KEYS = {"type", "id", "data"}
 EDGE_KEYS = {"type", "source", "target", "evidence", "rationale", "relation_id", "established_by"}
 
@@ -113,18 +117,22 @@ def result(request):
     from conftest import FakeChatModel
 
     config.llm_factory = lambda: FakeChatModel()
-    return run_design_brief(load_brief("java_oop_brief.json"), config)
+    return run_brief(load_brief("java_oop_brief.json"), config)
 
 
 def test_callers_can_still_omit_on_event():
     """The benchmark adapter calls `MetaAgent(config).run(scenario)` and the
-    tests construct `TrajectoryLogger()`; both must keep working untouched."""
+    tests construct `TrajectoryLogger()`; both must keep working untouched.
+
+    `MetaAgent.run` is the whole public surface since `run_design_brief` was
+    removed 2026-09-05, so this is the one signature to hold — `run_brief` in
+    conftest is the suite's own wrapper and asserting on it would test the
+    fixture."""
     assert inspect.signature(TrajectoryLogger.__init__).parameters["on_event"].default is None
-    for func in (run_workflow, MetaAgent.run):
-        parameter = inspect.signature(func).parameters["on_event"]
-        assert parameter.default is None
-        # Keyword-only, so it can never shift an existing positional argument.
-        assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    parameter = inspect.signature(MetaAgent.run).parameters["on_event"]
+    assert parameter.default is None
+    # Keyword-only, so it can never shift an existing positional argument.
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
 
 
 def test_result_keys(result):
@@ -212,7 +220,12 @@ def test_graph_dump_shape(result):
     assert len(alignment.REGISTRY) == 16   # C6/C7 went with the rubric node type
 
     for flags in graph["objective_alignment"].values():
-        assert set(flags) == {"measured", "supported", "bloom_ok", "aligned"}
+        # `bloom_ok` stays the conjunction — `to_dot` and every archived run
+        # read it — beside the two halves it used to hide and the checks' own
+        # wording, which is what lets a reader see WHICH rule failed.
+        assert set(flags) == {"measured", "supported", "bloom_ok", "aligned",
+                              "bloom_assessment_ok", "bloom_activity_ok",
+                              "bloom_notes"}
 
     assert set(graph["metadata"]) >= {
         "design_brief_id", "generated_at", "node_count", "edge_count",
@@ -234,7 +247,7 @@ def test_prose_arm_omits_graph_keys_but_keeps_the_rest_of_the_contract():
 
     config = HarnessRunConfig(context_mode="prose")
     config.llm_factory = lambda: FakeChatModel()
-    result = run_design_brief(load_brief("java_oop_brief.json"), config)
+    result = run_brief(load_brief("java_oop_brief.json"), config)
 
     assert (RESULT_KEYS - {"graph", "graph_dot"}) <= set(result)
     assert "graph" not in result and "graph_dot" not in result

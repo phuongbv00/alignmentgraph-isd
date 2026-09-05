@@ -63,7 +63,7 @@ def fake_model(monkeypatch, fake_llm_factory):
     monkeypatch.setattr(
         "alignmentgraph_isd.server.llm_settings.resolve",
         lambda: llm_settings.ResolvedConfig(
-            model_name="fake-model", source=llm_settings.SOURCE_ENVIRONMENT
+            model_name="fake-model", source=llm_settings.SOURCE_DATABASE
         ),
     )
     return fake_llm_factory

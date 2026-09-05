@@ -1,7 +1,7 @@
 """P1.1: artifact elements are first-class graph nodes; coverage uses them."""
 from __future__ import annotations
 
-from alignmentgraph_isd import run_design_brief
+from conftest import run_brief
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph
 
 from conftest import events_of, load_brief
@@ -12,7 +12,7 @@ def test_element_nodes_created_during_run(fake_config):
     type element-level (not just objective) — the graph itself is the
     retrieval/traversal structure the 16-relation matrix is established over.
     See alignment.py / the specialists' _decompose_elements calls."""
-    result = run_design_brief(load_brief("minimal_brief.json"), fake_config)
+    result = run_brief(load_brief("minimal_brief.json"), fake_config)
     node_edits = events_of(result["trajectory"], "node_edit")
     element_ids = [edit["context"]["node_id"] for edit in node_edits
                    if ":" in edit["context"]["node_id"]]
@@ -21,7 +21,7 @@ def test_element_nodes_created_during_run(fake_config):
 
 
 def test_coverage_clean_after_full_run(fake_config):
-    result = run_design_brief(load_brief("minimal_brief.json"), fake_config)
+    result = run_brief(load_brief("minimal_brief.json"), fake_config)
     audit = result["metadata"]["audit"]
     assert audit["unmeasured_objectives"] == []
     assert audit["objective_count"] >= 1

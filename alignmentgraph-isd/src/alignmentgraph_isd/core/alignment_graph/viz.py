@@ -50,14 +50,19 @@ def objective_annotations(graph: AlignmentGraph) -> dict[str, dict]:
     does the Bloom cross-check hold? All read from the graph's established
     edges via the single alignment definition. C2 (assessed_by) and C3
     (practiced_by) are both id-reverse — the LO is the edge SOURCE."""
-    bloom_violated = {v["node_id"] for v in alignment.bloom_assessment_violations(graph)}
-    bloom_violated |= {v["node_id"] for v in alignment.bloom_activity_violations(graph)}
+    assessment = {v["node_id"]: v for v in alignment.bloom_assessment_violations(graph)}
+    activity = {v["node_id"]: v for v in alignment.bloom_activity_violations(graph)}
     out: dict[str, dict] = {}
     for node in graph.element_nodes(NodeType.OBJECTIVE):
         node_id = node["id"]
         assessed = bool(graph.get_edges(relation_id="C2", source=node_id))
         practiced = bool(graph.get_edges(relation_id="C3", source=node_id))
-        bloom_ok = node_id not in bloom_violated
+        # SPLIT, because the union answered "something Bloom is wrong" and the
+        # reader then had to open the trajectory to learn which of the two —
+        # the question this whole flag was supposed to answer.
+        bloom_assessment_ok = node_id not in assessment
+        bloom_activity_ok = node_id not in activity
+        bloom_ok = bloom_assessment_ok and bloom_activity_ok
         # No rubric leg since 2026-09-02: a criterion is a field of the item it
         # marks, so "is this objective scored by a rubric" was true for every
         # objective that had an item at all. It never varied, so it never
@@ -66,7 +71,17 @@ def objective_annotations(graph: AlignmentGraph) -> dict[str, dict]:
         out[node_id] = {
             "measured": assessed,
             "supported": practiced,
+            # Kept as the conjunction: `to_dot`, the benchmark contract and
+            # every archived run read it, and its MEANING is unchanged — what
+            # it never said is which of the two failed.
             "bloom_ok": bloom_ok,
+            "bloom_assessment_ok": bloom_assessment_ok,
+            "bloom_activity_ok": bloom_activity_ok,
+            #: The checks' own messages, verbatim. A flag that says what was
+            #: found — the level, the best level reached, the field to edit —
+            #: instead of a boolean whose two causes were unioned away.
+            "bloom_notes": [v["message"] for v in
+                            (assessment.get(node_id), activity.get(node_id)) if v],
             "aligned": assessed and practiced and bloom_ok,
         }
     return out
@@ -88,7 +103,36 @@ def to_node_link(graph: AlignmentGraph, *, include_data: bool = True) -> dict:
         ]
     payload["objective_alignment"] = objective_annotations(graph)
     payload["relation_coverage"] = alignment.all_relations_coverage(graph)
+    payload["node_violations"] = node_violations(graph)
     return payload
+
+
+def node_violations(graph: AlignmentGraph) -> dict[str, list[str]]:
+    """``node_id -> the violation types standing against it``, for EVERY node.
+
+    ``objective_alignment`` only covers objectives, because it is built by
+    walking ``element_nodes(OBJECTIVE)`` — so an activity linked to no
+    objective, a material whose module does not exist, an item with no answer
+    key had no signal anywhere on the graph. The one place a reader looks first
+    said nothing about them.
+
+    Types only, not messages: this rides in the graph payload the browser gets
+    on every update, and the messages are already in the run's ledger, which
+    the Violations tab serves in full."""
+    from .. import checks
+
+    out: dict[str, list[str]] = {}
+    for check in (checks.bloom_verbs, checks.measurability, checks.rubric_consistency,
+                  checks.plan_coverage, checks.item_completeness,
+                  checks.evaluation_quality, checks.activity_engagement,
+                  checks.orphan_content, checks.evidence_alignment,
+                  checks.actionability, checks.relation_coverage,
+                  checks.bloom_mismatches):
+        for violation in check(graph):
+            types = out.setdefault(violation.node_id, [])
+            if violation.violation_type not in types:
+                types.append(violation.violation_type)
+    return {node_id: sorted(types) for node_id, types in out.items()}
 
 
 def _esc(text: str) -> str:

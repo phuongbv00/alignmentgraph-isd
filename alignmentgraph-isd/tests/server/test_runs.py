@@ -569,3 +569,50 @@ def test_one_context_can_be_fetched_whole_while_the_run_is_live(
     assert one[0]["messages"]
 
     assert client.get(f"/api/runs/{run_id}/contexts?context=nope").json() == []
+
+
+def test_the_violation_ledger_is_served_and_survives_the_run(
+    client, ready_program, settings, wait_for_terminal,
+):
+    """What the app needed and never had: a violation's own words.
+
+    Every view in the app was built from counters on the event stream — a
+    reader could see that four `C2` violations were found in round 2, never
+    which node, what the message said, or what the hint told the agent to do.
+    That text existed only inside trajectory_deep.json, which the app fetches
+    and renders through the timeline reducers.
+    """
+    run_id = start(client, ready_program)
+    wait_for_terminal(run_id)
+
+    served = client.get(f"/api/runs/{run_id}/violations").json()
+    directory = settings.data_root / artifacts.relative_run_dir(ready_program, run_id)
+    saved = json.loads((directory / "violations.json").read_text(encoding="utf-8"))
+    assert served == saved
+
+    for finding in served:
+        assert finding["key"] and finding["messages"]
+        assert finding["outcome"] in (
+            "open", "repaired_by_harness", "repaired_by_agent")
+        if finding["outcome"] == "open":
+            # The distinction the ledger exists for: "the model could not fix
+            # this" and "we did not give it another turn" are different
+            # results, and only the second is ours to change.
+            assert finding["open_reason"]
+
+
+def test_the_graph_marks_every_node_that_carries_a_violation(
+    client, ready_program, wait_for_terminal,
+):
+    """`objective_alignment` is built by walking the OBJECTIVE nodes, so an
+    activity linked to no objective, a material whose module does not exist and
+    an item with no answer key had no signal on the graph at all — the first
+    place a reader looks said nothing about them."""
+    run_id = start(client, ready_program)
+    wait_for_terminal(run_id)
+
+    graph = client.get(f"/api/runs/{run_id}/graph?detail=full").json()
+    marks = graph["node_violations"]
+    assert isinstance(marks, dict)
+    for node_id, types in marks.items():
+        assert types and sorted(types) == types, node_id

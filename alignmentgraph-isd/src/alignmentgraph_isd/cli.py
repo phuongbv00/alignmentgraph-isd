@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import DesignBrief, HarnessRunConfig, llm_factory_from_env, run_design_brief
+from . import DesignBrief, HarnessRunConfig, MetaAgent, llm_factory_from_env
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -119,7 +119,7 @@ def _run(args: argparse.Namespace) -> int:
         )
         return 2
 
-    result = run_design_brief(design_brief, config)
+    result = MetaAgent(config).run(design_brief)
     Path(args.output).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     if args.trajectory:
         Path(args.trajectory).write_text(

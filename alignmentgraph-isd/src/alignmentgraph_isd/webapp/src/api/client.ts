@@ -3,11 +3,13 @@ import type {
   AlignmentGraphPayload,
   Brief,
   BriefResponse,
+  Finding,
   GraphNode,
   Health,
-  LLMSettings,
-  LLMSettingsInput,
+  LLMConnectionInput,
+  LLMConnections,
   Message,
+  ModelList,
   PlanTurn,
   ProgramDetail,
   ProgramSummary,
@@ -46,10 +48,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   health: () => request<Health>('/health'),
 
-  getLLMSettings: () => request<LLMSettings>('/settings/llm'),
-  putLLMSettings: (settings: LLMSettingsInput) =>
-    request<LLMSettings>('/settings/llm', { method: 'PUT', body: JSON.stringify(settings) }),
-  deleteLLMSettings: () => request<LLMSettings>('/settings/llm', { method: 'DELETE' }),
+  listConnections: () => request<LLMConnections>('/connections'),
+  createConnection: (connection: LLMConnectionInput) =>
+    request<LLMConnections>('/connections', { method: 'POST', body: JSON.stringify(connection) }),
+  updateConnection: (id: string, connection: LLMConnectionInput) =>
+    request<LLMConnections>(`/connections/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(connection),
+    }),
+  activateConnection: (id: string) =>
+    request<LLMConnections>(`/connections/${id}/activate`, { method: 'POST' }),
+  deleteConnection: (id: string) =>
+    request<LLMConnections>(`/connections/${id}`, { method: 'DELETE' }),
+  // The key stays on the server: this is addressed by connection id, never by
+  // posting a base URL and key from the browser.
+  listConnectionModels: (id: string) => request<ModelList>(`/connections/${id}/models`),
 
   listPrograms: () => request<ProgramSummary[]>('/programs'),
   createProgram: (title = '') =>
@@ -92,6 +105,8 @@ export const api = {
     request<unknown>(`/runs/${runId}/artifacts/${name}`),
 
   eventsUrl: (runId: string, after = 0) => `${BASE}/runs/${runId}/events?after=${after}`,
+
+  getViolations: (runId: string) => request<Finding[]>(`/runs/${runId}/violations`),
 
   getContexts: (runId: string) => request<AgentContext[]>(`/runs/${runId}/contexts`),
 

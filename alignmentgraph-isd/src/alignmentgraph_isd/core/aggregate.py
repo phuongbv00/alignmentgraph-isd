@@ -282,13 +282,30 @@ def _review_findings(rounds: list[dict], repairs: list[dict]) -> tuple[int, dict
     """Itemised, evidence-backed review rows shared by both arms' synthesized
     expert_review: (total issues, issues by criterion, finding rows, phases
     inspected). Every number and example comes from a recorded trajectory
-    event — nothing is invented."""
-    found = sum(e["context"].get("violation_count", 0) for e in rounds)
-    by_type: dict[str, int] = {}
+    event — nothing is invented.
+
+    Counts DISTINCT findings, by key. It used to sum ``by_type`` across rounds,
+    so a violation was counted once per round it survived — and since a check
+    round re-finds everything the previous one could not repair, a measured run
+    reported 28 issues for a set of 7. "How many things are wrong" and "how
+    many times we looked at them" are different questions.
+    """
     phases = {e["context"].get("phase") for e in rounds if e["context"].get("phase")}
+    keys_by_type: dict[str, set[str]] = {}
     for event in rounds:
-        for vtype, count in (event["context"].get("by_type") or {}).items():
-            by_type[vtype] = by_type.get(vtype, 0) + count
+        context = event["context"]
+        keys = context.get("keys")
+        if keys:
+            for key in keys:
+                keys_by_type.setdefault(str(key).split("|", 1)[0], set()).add(str(key))
+            continue
+        # A run recorded before keys existed: fall back to the round sums it
+        # does carry, so an archived trajectory still renders.
+        for vtype, count in (context.get("by_type") or {}).items():
+            for index in range(count):
+                keys_by_type.setdefault(vtype, set()).add(f"{vtype}|legacy-{index}")
+    by_type = {vtype: len(keys) for vtype, keys in keys_by_type.items()}
+    found = sum(by_type.values())
     repairs_by_type: dict[str, int] = {}
     example_by_type: dict[str, str] = {}
     for event in repairs:

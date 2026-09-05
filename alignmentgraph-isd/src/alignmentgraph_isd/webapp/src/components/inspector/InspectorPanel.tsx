@@ -188,7 +188,17 @@ function AlignmentFlags({ flags }: { flags: ObjectiveAlignment }) {
         {flags.evaluated !== undefined && (
           <Flag on={flags.evaluated} label="scored by a rubric criterion (C7, retired)" />
         )}
-        <Flag on={flags.bloom_ok} label="Bloom level consistent" />
+        {/* Two flags, not one. `bloom_ok` was the conjunction of these, so a
+          reader saw "Bloom level consistent ✗" and had to open the trajectory
+          to learn WHICH of the two rules failed — the question that produced
+          the whole violation ledger. `??` keeps an archived run rendering. */}
+      <Flag on={flags.bloom_assessment_ok ?? flags.bloom_ok}
+            label="assessed at its own Bloom level (C2)" />
+      <Flag on={flags.bloom_activity_ok ?? flags.bloom_ok}
+            label="practiced at its own Bloom level (C3)" />
+      {(flags.bloom_notes ?? []).map((note, i) => (
+        <div key={i} className="muted small vg-note">{note}</div>
+      ))}
       </div>
       <div className="small muted" style={{ marginTop: 6 }}>
         {flags.aligned

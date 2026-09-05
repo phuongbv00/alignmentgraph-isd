@@ -14,14 +14,18 @@ tier runs it exactly as it ran the first round.
 from __future__ import annotations
 
 
-from alignmentgraph_isd import HarnessRunConfig, run_design_brief
+from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core.agentic import replan, run as run_module
 from alignmentgraph_isd.core.dev_plans import WorkSet
 
-from conftest import FakeChatModel, load_brief
+from conftest import FakeChatModel, load_brief, run_brief
 
 
 class _Gap:
+    """A stand-in violation. Mirrors `checks.Violation`'s surface INCLUDING
+    `key` — the ledger and `_serialize` address a violation by it, so a double
+    that lacks it stops standing in for one."""
+
     def __init__(self, vtype: str, **metadata):
         self.violation_type = vtype
         self.metadata = metadata
@@ -29,7 +33,12 @@ class _Gap:
         self.node_id = f"objective:{metadata.get('lo_id', '?')}"
         self.edge_type = ""
         self.severity = "error"
+        self.repair_hint = ""
         self.target_designer = ""
+
+    @property
+    def key(self) -> str:
+        return f"{self.violation_type}|{self.node_id}"
 
 
 # ── what a replan is asked for ───────────────────────────────────────────────
@@ -120,7 +129,7 @@ def _run_with_one_round_of_gaps(monkeypatch, gaps: list):
     monkeypatch.setattr(run_module, "_collect_violations", once)
     config = HarnessRunConfig(agent_mode="multi")
     config.llm_factory = lambda: FakeChatModel()
-    return run_design_brief(load_brief("java_oop_brief.json"), config)
+    return run_brief(load_brief("java_oop_brief.json"), config)
 
 
 def test_a_gap_produces_a_second_planning_round_and_new_work(monkeypatch):
@@ -161,7 +170,7 @@ def test_a_family_with_no_replannable_gap_is_never_replanned():
     assignment closes either."""
     config = HarnessRunConfig(agent_mode="multi")
     config.llm_factory = lambda: FakeChatModel()
-    result = run_design_brief(load_brief("java_oop_brief.json"), config)
+    result = run_brief(load_brief("java_oop_brief.json"), config)
 
     content = [p for p in result["plans"] if p["stage"] == "content"]
     assert content and all(p["round"] == 0 for p in content)
@@ -174,7 +183,7 @@ def test_the_replan_actually_produces_the_missing_work():
     under round-tagged ids."""
     config = HarnessRunConfig(agent_mode="multi")
     config.llm_factory = lambda: FakeChatModel()
-    result = run_design_brief(load_brief("java_oop_brief.json"), config)
+    result = run_brief(load_brief("java_oop_brief.json"), config)
 
     rounds = [p for p in result["plans"] if p["stage"] == "assessment"]
     assert [p["round"] for p in rounds] == [0, 1]
@@ -199,7 +208,7 @@ def test_the_round_is_bounded(monkeypatch):
     monkeypatch.setattr(run_module, "_collect_violations", always)
     config = HarnessRunConfig(agent_mode="multi")
     config.llm_factory = lambda: FakeChatModel()
-    result = run_design_brief(load_brief("java_oop_brief.json"), config)
+    result = run_brief(load_brief("java_oop_brief.json"), config)
 
     rounds = [p["round"] for p in result["plans"] if p["stage"] == "assessment"]
     assert max(rounds) <= replan.REPLAN_ROUNDS
@@ -218,7 +227,7 @@ def test_a_replan_is_not_a_retry():
     """
     config = HarnessRunConfig(agent_mode="multi")
     config.llm_factory = lambda: FakeChatModel()
-    result = run_design_brief(load_brief("java_oop_brief.json"), config)
+    result = run_brief(load_brief("java_oop_brief.json"), config)
 
     replanned = {p["stage"] for p in result["plans"] if p["round"] > 0}
     assert replanned, "this fixture must replan, or the test proves nothing"

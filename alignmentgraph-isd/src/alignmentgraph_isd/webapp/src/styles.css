@@ -231,6 +231,80 @@ a.btn:hover { background: #f1f5f9; }
   flex-direction: column;
 }
 .modal-body { padding: 14px 18px; }
+/* Wide enough for the connection list beside the form it edits. */
+.modal.wide { width: min(820px, 100%); }
+.conn-layout {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.conn-list {
+  width: 210px;
+  flex: 0 0 auto;
+  border-right: 1px solid var(--border);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.conn-item {
+  position: relative;
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.conn-item:hover { background: var(--bg); }
+.conn-item.selected { background: var(--accent-soft); border-color: var(--border); }
+.conn-item.add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.conn-name {
+  display: block;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conn-sub {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The badge sits over the row, so the name has to stop short of it. */
+.conn-item.active .conn-name, .conn-item.active .conn-sub { padding-right: 44px; }
+.conn-badge {
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  font-size: 10px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.conn-form { flex: 1 1 auto; min-width: 0; }
+.conn-form .preset-row { align-items: center; margin-bottom: 12px; }
+/* A label carries at most one aside, in the same line rather than under the
+   field: a note per field turns six inputs into twelve rows of text. */
+.conn-form .field > span > em {
+  font-style: normal;
+  font-size: 11px;
+  margin-left: 6px;
+}
+.conn-form .field-row select { flex: 1 1 auto; min-width: 0; }
 .modal-actions {
   display: flex;
   align-items: center;
@@ -835,3 +909,39 @@ a.btn:hover { background: #f1f5f9; }
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
+
+/* ── Violations tab ─────────────────────────────────────────────────────── */
+.vg-group {
+  padding: 6px 2px 2px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.vg-open { color: #b45309; flex: none; }
+.vg-fixed { color: #15803d; flex: none; }
+
+.vg-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.vg-message { margin: 0 0 6px; line-height: 1.5; }
+
+.vg-hint {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: #f1f5f9;
+  color: #334155;
+  line-height: 1.5;
+}
+
+.vg-note { margin: 4px 0 0 18px; line-height: 1.45; }

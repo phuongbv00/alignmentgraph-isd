@@ -6,12 +6,12 @@ import json
 import shutil
 import subprocess
 
-from alignmentgraph_isd import HarnessRunConfig, run_design_brief
+from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core.alignment_graph import viz
 from alignmentgraph_isd.core.llm_io import _extract_token_usage
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
 
-from conftest import FakeChatModel, load_brief
+from conftest import FakeChatModel, load_brief, run_brief
 
 
 # ── token usage extraction across provider shapes ────────────────────────────
@@ -44,7 +44,7 @@ def test_run_records_nonzero_token_usage():
 
     config = HarnessRunConfig()
     config.llm_factory = lambda: TokenModel()
-    result = run_design_brief(load_brief("minimal_brief.json"), config)
+    result = run_brief(load_brief("minimal_brief.json"), config)
     usage = result["metadata"]["token_usage"]
     calls = usage["llm_calls"]
     assert calls > 0
@@ -57,7 +57,7 @@ def test_run_records_nonzero_token_usage():
 def _run_default():
     config = HarnessRunConfig()
     config.llm_factory = lambda: FakeChatModel()
-    return run_design_brief(load_brief("minimal_brief.json"), config)
+    return run_brief(load_brief("minimal_brief.json"), config)
 
 
 def test_result_carries_full_graph_dump_separate_from_trajectory():

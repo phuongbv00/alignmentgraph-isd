@@ -46,7 +46,17 @@ def test_bloom_verbs_fires_for_level_mismatch():
         "level": "apply",
     })
     violations = [v for v in checks.bloom_verbs(graph) if v.violation_type == "bloom"]
-    assert violations and "different Bloom level" in violations[0].message
+    assert violations
+    # Keyed on the STRUCTURED fact, not on the wording. The message is prompt
+    # surface — it goes verbatim into the agent's repair turn — and is pinned
+    # byte-for-byte by `checks.messages.bloom` in golden_prompts.json. A
+    # behavioural test that also asserts on its prose pins the same string
+    # twice and turns a deliberate rewording into two failures in two places.
+    found = violations[0]
+    assert found.metadata["rule"] == "verb_level_mismatch"
+    assert found.metadata["verb_level"] == "remember"
+    # It must still name both levels, or the reader cannot act on it.
+    assert "apply" in found.message and "remember" in found.message
 
 
 def test_bloom_verbs_silent_for_consistent_verb_and_level():

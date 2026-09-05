@@ -13,12 +13,12 @@ from __future__ import annotations
 
 import pytest
 
-from alignmentgraph_isd import HarnessRunConfig, run_design_brief
+from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph
 from alignmentgraph_isd.core.memory import Memory, Plan, Transcript, new_agent_run_id
 from alignmentgraph_isd.core.prose_store import ProseStore
 
-from conftest import FakeChatModel, load_brief
+from conftest import FakeChatModel, load_brief, run_brief
 
 
 def _transcript(agent: str, label: str, run_id: str = "", messages=None) -> Transcript:
@@ -123,7 +123,7 @@ def test_a_run_remembers_every_context_with_nobody_watching(agent_mode):
     benchmark run kept none of it."""
     config = HarnessRunConfig(agent_mode=agent_mode)
     config.llm_factory = lambda: FakeChatModel()
-    result = run_design_brief(load_brief("java_oop_brief.json"), config)
+    result = run_brief(load_brief("java_oop_brief.json"), config)
 
     contexts = result["contexts"]
     assert contexts, "the run kept no transcript"
@@ -141,7 +141,7 @@ def test_a_run_remembers_every_context_with_nobody_watching(agent_mode):
 def test_a_run_remembers_what_each_designer_asked_its_developers_for():
     config = HarnessRunConfig(agent_mode="multi")
     config.llm_factory = lambda: FakeChatModel()
-    result = run_design_brief(load_brief("java_oop_brief.json"), config)
+    result = run_brief(load_brief("java_oop_brief.json"), config)
 
     plans = result["plans"]
     assert plans, "the run kept no plan"
@@ -165,7 +165,7 @@ def test_the_transcripts_are_not_folded_into_the_trajectory():
     change what is measured to serve a viewer."""
     config = HarnessRunConfig()
     config.llm_factory = lambda: FakeChatModel()
-    result = run_design_brief(load_brief("minimal_brief.json"), config)
+    result = run_brief(load_brief("minimal_brief.json"), config)
 
     for key in ("trajectory", "trajectory_deep"):
         assert "contexts" not in result[key]
