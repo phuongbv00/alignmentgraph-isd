@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Download, Wrench } from 'lucide-react'
-import { api } from '../api/client'
-import { agentHue, agentShortName, phaseLabel } from '../lib/phaseTimeline'
-import type { AgentContext, AgentContextRow, ContextMessage } from '../api/types'
+import {useEffect, useMemo, useState} from 'react'
+import {ChevronDown, ChevronRight, Download, Wrench} from 'lucide-react'
+import {api} from '../api/client'
+import {agentHue, agentShortName, phaseLabel} from '../lib/phaseTimeline'
+import type {AgentContext, AgentContextRow, ContextMessage} from '../api/types'
 
 interface Props {
   /** Transcripts, fetched whole. Complete but behind: refetched at a phase
@@ -25,9 +25,9 @@ interface Props {
 function merge(rows: AgentContextRow[], contexts: AgentContext[]) {
   const fetched = new Map(contexts.map((context) => [context.id, context]))
   if (rows.length === 0) {
-    return contexts.map((context) => ({ head: context as AgentContextRow, body: context }))
+    return contexts.map((context) => ({head: context as AgentContextRow, body: context}))
   }
-  return rows.map((row) => ({ head: row, body: fetched.get(row.id) ?? null }))
+  return rows.map((row) => ({head: row, body: fetched.get(row.id) ?? null}))
 }
 
 /**
@@ -45,7 +45,7 @@ function merge(rows: AgentContextRow[], contexts: AgentContext[]) {
  * arm with exactly one row holding every stage. That contrast is the
  * decomposition axis as a shape rather than a number in a table.
  */
-export function ContextGrid({ contexts, rows, runId }: Props) {
+export function ContextGrid({contexts, rows, runId}: Props) {
   const [openId, setOpenId] = useState<string | null>(null)
   const entries = useMemo(() => merge(rows, contexts), [rows, contexts])
 
@@ -72,13 +72,13 @@ export function ContextGrid({ contexts, rows, runId }: Props) {
             download
             title="Download every agent's transcript as Markdown — system turn, every message in order, and the tool schemas"
           >
-            <Download size={12} />
+            <Download size={12}/>
             Export all transcripts
           </a>
         )}
       </div>
       <div className="ctx-list">
-        {entries.map(({ head, body }) => {
+        {entries.map(({head, body}) => {
           const id = head.id
           return (
             <ContextRow
@@ -97,8 +97,8 @@ export function ContextGrid({ contexts, rows, runId }: Props) {
 }
 
 function ContextRow({
-  head, body, runId, open, onToggle,
-}: {
+                      head, body, runId, open, onToggle,
+                    }: {
   head: AgentContextRow
   /** Null until the transcript has been fetched — the row is live before that. */
   body: AgentContext | null
@@ -117,13 +117,18 @@ function ContextRow({
     if (!open || !runId) return
     let cancelled = false
     api.getContext(runId, head.id)
-      .then((full) => { if (!cancelled && full) setFetched(full) })
-      .catch(() => { /* the run may have ended between the frame and the fetch */ })
-    return () => { cancelled = true }
+      .then((full) => {
+        if (!cancelled && full) setFetched(full)
+      })
+      .catch(() => { /* the run may have ended between the frame and the fetch */
+      })
+    return () => {
+      cancelled = true
+    }
   }, [open, runId, head.id, head.turns])
 
   const shown = fetched ?? body
-  const { system, turns } = useMemo(() => split(shown?.messages ?? []), [shown?.messages])
+  const {system, turns} = useMemo(() => split(shown?.messages ?? []), [shown?.messages])
   const liveTurns = head.turns ?? turns.length
   // A Developer's label is `stage:SET-ID`; the set is what distinguishes it
   // from the others its stage dispatched.
@@ -132,8 +137,8 @@ function ContextRow({
   return (
     <div className={`ctx-row${open ? ' open' : ''}`}>
       <button className="ctx-head" onClick={onToggle}>
-        {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-        <span className="pt-pill" style={{ background: hue.bg, color: hue.fg }}>
+        {open ? <ChevronDown size={13}/> : <ChevronRight size={13}/>}
+        <span className="pt-pill" style={{background: hue.bg, color: hue.fg}}>
           {agentShortName(context.agent)}
         </span>
         <span className="ctx-title">
@@ -159,31 +164,27 @@ function ContextRow({
                 download
                 title="Download this agent's transcript as Markdown"
               >
-                <Download size={12} />
+                <Download size={12}/>
                 Export this transcript
               </a>
             </div>
           )}
-          <Budget context={context} />
+          <Budget context={context}/>
 
           <Section
-            part="system"
             title="System prompt"
-            note="instructions and rules for the model"
           >
             <pre className="ctx-pre">{system}</pre>
           </Section>
 
           <Section
-            part="schemas"
-            title="Tool schemas"
-            note="what the tools look like — sent every request, but not part of the transcript"
+            title="Tools"
           >
             <div className="ctx-tools">
               {(shown?.tools ?? []).map((tool, i) => (
                 <details key={i} className="ctx-tool">
                   <summary>
-                    <Wrench size={11} />
+                    <span><Wrench size={11}/></span>
                     <span className="mono">{tool.function?.name ?? '?'}</span>
                     <span className="muted small">{tool.function?.description ?? ''}</span>
                   </summary>
@@ -194,17 +195,10 @@ function ContextRow({
           </Section>
 
           <Section
-            part="messages"
             title="Transcript"
-            note={
-              (head.compacted ?? 0) > 0
-                ? `${turns.length} turns, ${head.compacted} of them compacted out of the live `
-                  + 'context to stay under the window'
-                : `${turns.length} turns, each block coloured by the part it counts toward`
-            }
           >
             <div className="ctx-turns">
-              {turns.map((message, i) => <Turn key={i} message={message} index={i} />)}
+              {turns.map((message, i) => <Turn key={i} message={message} index={i}/>)}
             </div>
           </Section>
         </div>
@@ -213,32 +207,52 @@ function ContextRow({
   )
 }
 
-/** The window, itemised — which part of the context is what. */
-function Budget({ context }: { context: AgentContextRow }) {
-  const budget = budgetOf(context)
+/** The context window, itemised — which part of it is what.
+ *
+ *  The denominator is the whole window the connection names, not the slice the
+ *  transcript may use: that slice is what the harness trims against, but it is
+ *  not what the reader set, and a bar that fills at 8.2k under a 16.4k window
+ *  reads as the setting having been ignored. The reply's reserve is a segment
+ *  of the bar instead, so the headroom on screen is the real headroom.
+ *
+ *  Without a window on the connection there is nothing to be a share OF, and it
+ *  falls back to the harness's own fixed prompt budget, said plainly.
+ */
+function Budget({context}: { context: AgentContextRow }) {
+  const served = context.token_window ?? 0
+  const reserve = context.token_reserve ?? 0
+  const windowed = hasTokens(context) && served > 0
+  const budget = windowed ? served : budgetOf(context)
   const used = usedOf(context)
-  const parts = breakdown(context)
+  const parts = breakdown(context, windowed ? reserve : 0)
   return (
     <section className="ctx-budget">
       <div className="ctx-budget-head">
-        <span>Context window</span>
+        <span>{windowed ? 'Context window' : 'Prompt budget'}</span>
         <span className="muted">
           {fmt(used)} / {fmt(budget)} {unit(context)} ({Math.round((used / budget) * 100)}%)
         </span>
       </div>
+      <p className="muted small ctx-note">
+        {windowed
+          ? `The transcript is trimmed to stay under ${fmt(budgetOf(context))}, `
+          + `so the reply always has ${fmt(reserve)} of the window left.`
+          : 'No context window set on the connection, so this is the harness\'s '
+          + 'own fixed budget. Set one in Model settings to size it to the model.'}
+      </p>
       <span className="ctx-bar wide">
         {parts.map((part) => (
           <span
             key={part.key}
             className={`ctx-bar-seg seg-${part.key}`}
-            style={{ width: `${(part.tokens / budget) * 100}%` }}
+            style={{width: `${(part.tokens / budget) * 100}%`}}
           />
         ))}
       </span>
       <ul className="ctx-legend">
         {parts.map((part) => (
           <li key={part.key}>
-            <span className={`ctx-dot seg-${part.key}`} />
+            <span className={`ctx-dot seg-${part.key}`}/>
             <span className="ctx-legend-name">
               {part.name} <span className="muted small">— {part.note}</span>
             </span>
@@ -261,7 +275,7 @@ function Budget({ context }: { context: AgentContextRow }) {
 
 /** A true PARTITION of the whole REQUEST: the four sum to what is sent, so the
  *  bar cannot lie about what filled the window. */
-function breakdown(context: AgentContextRow) {
+function breakdown(context: AgentContextRow, reserve = 0) {
   // Falls back to the character split for a run recorded before token
   // accounting existed, so an old run still renders — under its own unit.
   const t = context.tokens ?? {
@@ -283,9 +297,15 @@ function breakdown(context: AgentContextRow) {
     {
       // Not in the message list, but sent on EVERY request and charged to the
       // same window — a bar that left it out understated what the call costs.
-      key: 'schemas', name: 'Tool schemas', tokens: context.schema_tokens ?? 0,
+      key: 'schemas', name: 'Tools', tokens: context.schema_tokens ?? 0,
       note: 'the bound function signatures the model chooses from',
     },
+    // Not context at all — the part of the window nothing may be put in. On the
+    // bar because the alternative is headroom that reads as usable and is not.
+    ...(reserve > 0 ? [{
+      key: 'reserve', name: 'Held for the reply', tokens: reserve,
+      note: "the output cap; the transcript is trimmed to leave it free",
+    }] : []),
   ]
 }
 
@@ -312,16 +332,13 @@ function budgetOf(context: AgentContextRow): number {
     : (context.budget ?? usedOf(context))
 }
 
-function Section({ part, title, note, children }: {
-  part?: string; title: string; note: string; children: React.ReactNode
+function Section({title, children}: {
+  title: string; children: React.ReactNode
 }) {
   return (
     <section className="ctx-section">
       <h4>
-        {/* The dot ties a section to its slice of the bar. "Tool schemas" has
-            one too — it is a segment now, not a footnote. */}
-        {part && <span className={`ctx-dot seg-${part}`} />}
-        {title} <span className="muted small">— {note}</span>
+        {title}
       </h4>
       {children}
     </section>
@@ -343,17 +360,13 @@ function Section({ part, title, note, children }: {
  *  transcript reduced to what is still being sent answers that for the last
  *  call only. Marked, not merged in: it is no longer part of what the model
  *  sees, and it is not counted in the window meter beside it. */
-function Turn({ message, index }: { message: ContextMessage; index: number }) {
+function Turn({message, index}: { message: ContextMessage; index: number }) {
   const calls = message.tool_calls ?? []
   const isResult = message.role === 'tool'
-  const gone = message.compacted === true
+  const compacted = message.compacted === true
   return (
-    <div className={gone ? 'ctx-compacted' : undefined}>
-      {gone && (
-        <span className="ctx-badge" title="dropped from the live context to stay under the window — the model no longer sees this, and it is not counted in the meter above">
-          compacted
-        </span>
-      )}
+    <div className={compacted ? 'ctx-compacted' : undefined}
+         title={compacted ? 'COMPACTED - dropped from the live context to stay under the window, the model no longer sees this' : undefined}>
       {(message.content || (!calls.length && !isResult)) && (
         <Block
           part={isResult ? 'tools' : 'messages'}
@@ -376,13 +389,13 @@ function Turn({ message, index }: { message: ContextMessage; index: number }) {
 
 /** Coloured by the PART it counts toward, using the same three colours as the
  *  bar — that correspondence is the whole point of showing both. */
-function Block({ part, index, label, body }: {
+function Block({part, index, label, body}: {
   part: 'messages' | 'tools'; index: number; label: string; body: string
 }) {
   return (
     <div className={`ctx-turn part-${part}`}>
       <span className="ctx-role mono small">
-        <span className={`ctx-dot seg-${part}`} /> {index + 1}. {label}
+        <span className={`seg-${part}`}/> {index + 1}. {label}
       </span>
       {body && <pre className="ctx-pre">{body}</pre>}
     </div>
@@ -397,9 +410,9 @@ function callNames(calls: unknown[]): string {
 
 function split(messages: ContextMessage[]): { system: string; turns: ContextMessage[] } {
   if (messages.length > 0 && messages[0].role === 'system') {
-    return { system: messages[0].content, turns: messages.slice(1) }
+    return {system: messages[0].content, turns: messages.slice(1)}
   }
-  return { system: '(no system turn recorded)', turns: messages }
+  return {system: '(no system turn recorded)', turns: messages}
 }
 
 function fmt(value: number): string {

@@ -4,10 +4,13 @@ Layout mirrors the benchmark's results tree closely enough to be familiar:
 
     <data_root>/programs/<program_id>/runs/<run_id>/
         brief.json  addie_output.json  trajectory.json  trajectory_deep.json
-        metadata.json  graph.json  graph.dot  contexts.json  events.jsonl
+        metadata.json  graph.json  graph.dot  contexts.json  plans.json
+        violations.json  events.jsonl
 """
 from __future__ import annotations
 
+import csv
+import io
 import json
 from pathlib import Path
 
@@ -24,6 +27,7 @@ ARTIFACT_FILES: dict[str, str] = {
     "graph": "graph.json",
     "graph_dot": "graph.dot",
     "contexts": "contexts.json",
+    "plans": "plans.json",
     "violations": "violations.json",
 }
 
@@ -68,6 +72,14 @@ def write_result(directory: Path, brief: dict, result: dict) -> None:
     write_json(directory / ARTIFACT_FILES["graph"], result.get("graph", {}))
     write_text(directory / ARTIFACT_FILES["graph_dot"], result.get("graph_dot", ""))
     write_json(directory / ARTIFACT_FILES["contexts"], result.get("contexts", []))
+    # How each family's work was divided, round by round, with the whole work
+    # set each Developer was handed. The `dev_plan` trajectory event keeps a
+    # SUMMARY of the same decision (set ids and their objectives, the source,
+    # what the harness dropped or split) and that is what the timeline reads;
+    # this is the payload itself — the obligations, the themes, the expected
+    # counts — which nothing else on disk holds, so without it "what exactly
+    # was this Developer asked for" is answerable only while the run is alive.
+    write_json(directory / ARTIFACT_FILES["plans"], result.get("plans", []))
     write_json(directory / ARTIFACT_FILES["violations"], result.get("violations", []))
 
 
@@ -99,7 +111,8 @@ def render_transcript(contexts: list[dict]) -> str:
         tokens = entry.get("tokens") or {}
         if tokens:
             out.append(
-                f"*{entry.get('total_tokens', '?')} of {entry.get('token_budget', '?')} tokens "
+                f"*{entry.get('total_tokens', '?')} of {entry.get('token_budget', '?')} "
+                f"prompt-budget tokens "
                 f"— system {tokens.get('system', 0)}, messages {tokens.get('messages', 0)}, "
                 f"tools {tokens.get('tools', 0)}, schemas {entry.get('schema_tokens', 0)}*")
         out.append("")
@@ -128,6 +141,71 @@ def render_transcript(contexts: list[dict]) -> str:
         out.append("---")
         out.append("")
     return "\n".join(out) or "(this run published no agent context)\n"
+
+
+# One row per finding, in the order the ledger keeps them. The columns are the
+# `Finding` fields themselves, not a friendlier subset: the questions a reader
+# takes to a spreadsheet — how many are still open, by reason, by owner, by
+# check — are each one column, and a column dropped here is a question that
+# cannot be asked of the file.
+VIOLATION_COLUMNS: tuple[str, ...] = (
+    "key",
+    "type",
+    "node_id",
+    "severity",
+    "outcome",
+    "open_reason",
+    "report_only",
+    "target_designer",
+    "first_phase",
+    "first_round",
+    "last_round",
+    "sightings",
+    "shown_to_agent",
+    "repaired_by",
+    "repaired_at_round",
+    "converged_at_round",
+    "messages",
+    "repair_hint",
+    "metadata",
+)
+
+
+def render_violations_csv(findings: list[dict]) -> str:
+    """The violation ledger as CSV, for reading in a spreadsheet.
+
+    CSV and not JSON, deliberately: ``GET /runs/{id}/violations`` already
+    serves the JSON a tool would want, byte for byte what is on disk. What it
+    does not give is the shape the ledger is actually read in — one row per
+    finding, sorted and filtered and counted by outcome, by open reason, by
+    owning agent — and rebuilding that from a nested array by hand is the work
+    this exists to remove.
+
+    The two nested fields travel whole rather than being dropped or split
+    across rows: ``messages`` newline-joined inside its cell (one finding can
+    be reported more than one way and both wordings are kept), ``metadata`` as
+    compact JSON, because it is what says WHICH item or objective the finding
+    is about and a row without it cannot be traced back to the design.
+    """
+    buffer = io.StringIO()
+    # QUOTE_ALL: every text cell here can hold a comma or a newline, and a file
+    # that parses differently depending on what a check happened to say is not
+    # an export.
+    writer = csv.writer(buffer, quoting=csv.QUOTE_ALL, lineterminator="\n")
+    writer.writerow(VIOLATION_COLUMNS)
+    for finding in findings:
+        row = []
+        for column in VIOLATION_COLUMNS:
+            value = finding.get(column)
+            if column == "messages":
+                value = "\n".join(str(message) for message in value or [])
+            elif column == "metadata":
+                value = json.dumps(value or {}, ensure_ascii=False, sort_keys=True)
+            elif isinstance(value, bool):
+                value = "true" if value else "false"
+            row.append("" if value is None else str(value))
+        writer.writerow(row)
+    return buffer.getvalue()
 
 
 def has_trajectory(directory: Path) -> bool:

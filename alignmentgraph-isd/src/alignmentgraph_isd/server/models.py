@@ -90,6 +90,11 @@ class LLMConnection(SQLModel, table=True):
     OpenAI-compatible only. There is no ``api_spec``; the core factory still
     speaks Anthropic for the CLI and the benchmark, the app does not.
 
+    Everything a run needs is here, including the serving window and the token
+    cap. The app reads no ``AGENT_MODEL_*`` at all: a setting that came from the
+    shell would not be visible in the dialog, so what the UI showed and what the
+    run used could differ with nothing on screen to say so.
+
     The API key is held in clear text in the local SQLite file. That is a
     deliberate limit of a local demo tool — it is never returned to the browser
     (only whether one is set), and the UI says where it lives.
@@ -101,7 +106,20 @@ class LLMConnection(SQLModel, table=True):
     api_key: str = ""
     model_name: str = ""  # empty until one is picked from the endpoint's list
     temperature: float | None = None
+    # The completion cap, which is also the transcript budget's reserve: what
+    # the client is allowed to answer with is exactly what has to be left for
+    # the answer, so they are one number and cannot drift apart.
     max_tokens: int | None = None
+    # The window the endpoint SERVES, in tokens. Without it the harness falls
+    # back to a fixed 24,000-character transcript budget — a number unrelated to
+    # whatever this connection points at.
+    context_window: int | None = None
+    # Ask the endpoint for non-thinking mode (`chat_template_kwargs:
+    # {enable_thinking: false}`). A property of what this connection SERVES,
+    # which is why it lives on the connection and not in run config: a small
+    # Qwen3 left in thinking mode answers with reasoning only, which reaches
+    # the loop as an empty turn and costs it a full turn of its stage budget.
+    disable_thinking: bool = Field(default=False)
     is_active: bool = Field(default=False, index=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

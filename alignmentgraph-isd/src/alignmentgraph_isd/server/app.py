@@ -15,7 +15,6 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import select
 
-from . import llm_settings
 from .db import init_db, session_scope
 from .models import Run, RunStatus, utcnow
 from .routers import planning, programs, runs, system
@@ -53,9 +52,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         settings.data_root.mkdir(parents=True, exist_ok=True)
         init_db(settings)
-        # Turns AGENT_MODEL_* into the first connection on an empty database,
-        # so an existing shell setup still starts configured.
-        llm_settings.seed_from_environment()
         sweep_interrupted_runs()
         manager = RunManager(settings)
         await manager.start()

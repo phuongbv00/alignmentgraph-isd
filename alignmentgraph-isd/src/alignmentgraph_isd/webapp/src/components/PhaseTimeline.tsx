@@ -65,9 +65,17 @@ export function PhaseTimeline({
           <button
             className={`btn small pt-audit-toggle${audit ? ' active' : ''}`}
             onClick={() => setAudit((value) => !value)}
-            title="Expand every phase's full graph-operation detail"
+            title={audit
+              ? 'Fold each phase back to its beats'
+              : 'Expand every phase to the full deep action log — every read, write, edge and check, in recorded order'}
           >
-            {audit ? 'Story' : 'Audit'}
+            {/* Not "Audit": in this codebase that word is the residual
+                ALIGNMENT audit of the finished design, which this same card
+                already reports ("graph audit: N gaps"). Two meanings of it on
+                one screen is exactly what the package's own naming rule
+                forbids — and the label was also hiding what the expansion is,
+                which is the deep trajectory this tab is built from. */}
+            {audit ? 'Story' : 'Deep log'}
           </button>
           {runId && runStarted && (
             // Here rather than in the run header: what it exports is THIS view's
@@ -244,7 +252,23 @@ function PhaseCard({
                   different counts and both matter. */}
               {block.modelCalls} model turn{block.modelCalls === 1 ? '' : 's'}
               {block.workSets > 0 && (
-                <> · dispatch <strong>{block.workSets} work set{block.workSets === 1 ? '' : 's'}</strong></>
+                // Clickable, because "dispatch 4 work sets" is where the
+                // question starts and the answer — what each Developer was
+                // handed — is one artifact away. Every dev_plan action of the
+                // block travels, so a stage that re-planned shows both rounds.
+                <> · dispatch{' '}
+                  <button
+                    className="pt-inline"
+                    onClick={() => onSelect({
+                      kind: 'action',
+                      id: `${block.id}-plan`,
+                      actions: block.actions.filter((a) => a.action === 'dev_plan'),
+                    })}
+                    title="What each Developer was asked for"
+                  >
+                    {block.workSets} work set{block.workSets === 1 ? '' : 's'}
+                  </button>
+                </>
               )}
               {Object.keys(block.writes).length > 0 && (
                 <> → submit <strong>{writesSummary(block.writes)}</strong></>

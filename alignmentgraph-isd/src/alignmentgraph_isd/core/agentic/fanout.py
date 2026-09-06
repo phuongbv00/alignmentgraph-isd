@@ -134,7 +134,12 @@ def _lo_ids(state) -> list[str]:
 #: depend on which family produced it.
 def _deterministic_stats(sets: list) -> dict:
     return {"set_count": len(sets), "pair_count": len(sets), "dropped_lo_refs": 0,
-            "dropped_pairs": 0, "appended_sets": 0, "fallback_used": False}
+            "dropped_pairs": 0, "duplicate_pairs": 0, "appended_sets": 0,
+            "fallback_used": False,
+            # No model proposed this grouping. The event used to read
+            # `source: llm` here because it was derived from `fallback_used`
+            # alone — a mislabel on the one family that has no plan step.
+            "source": "deterministic"}
 
 
 def _assessment_sets(state, parsed: dict) -> tuple[list, dict]:
@@ -379,7 +384,6 @@ def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
         commits_to_state=False,
         # Its assignment IS its contract: short loop, one job, no room to
         # lose it to compaction.
-        contract_inline=True,
         # THIS set's items, not the family's pool: siblings are committing into
         # the same pool as they finish, so the default guard would call this
         # set done before its Developer had spoken.

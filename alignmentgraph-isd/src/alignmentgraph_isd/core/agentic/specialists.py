@@ -581,11 +581,49 @@ def validate_implementation(parsed: dict) -> list[str]:
     # already rejects a submit that ships a Development hole — but only once
     # that artifact is the one being submitted. Each of the six arrives in its
     # own call, so the validator judges the arrival, not the whole stage.
-    arrived = {k: v for k, v in (parsed or {}).items() if v is not None}
+    # An artifact sent EMPTY has not arrived: a truncated completion leaves
+    # the key with nothing under it, and rejecting five finished artifacts
+    # over the sixth's empty envelope would cost the model the whole submit.
+    # The five land, completion (`missing_parts`) keeps asking for the sixth.
+    #
+    # ``arrived`` is restricted to the artifacts this stage actually declares.
+    # Built from ANY non-empty key, a payload of unrecognized names validated
+    # CLEAN — `validate_section` only emits error paths rooted at names it
+    # knows, so there was nothing left to filter and the function returned [].
+    # `unwrap_section` then took its `len(section) == 1` branch, stripped the
+    # artifact's own name off a well-formed `{"prototype_execution": {...}}`
+    # whose INNER fields failed `_NESTED_FIELDS`, and committed the inner keys
+    # at the top level of the section. Measured on run 24343e4d: four of the
+    # six artifacts were unwrapped this way, `implementation_plan_0` ended with
+    # 43 top-level keys, `operator_manual` was submitted three times and never
+    # landed once, and the loop answered each lost submit with "COMMITTED.
+    # implementation still needs: <the artifact just sent>". This stage is the
+    # only one that could reach it — it is the only one with `_NESTED_FIELDS`;
+    # the other five validators are held shut by `_nothing_arrived`, which is
+    # exactly what the restriction below restores here.
+    arrived = {k: v for k, v in (parsed or {}).items()
+               if k in _IMPLEMENTATION_ARTIFACTS and v not in (None, "", [], {})}
     if not arrived:
         return _nothing_arrived({}, _IMPLEMENTATION_ARTIFACTS)
+    # Keep the errors about the artifacts that ARRIVED. Every error path is
+    # rooted at the node type — ``implementation_plan.instructor_guide.overview``
+    # — so the artifact is the SECOND dotted token. The first version tested
+    # the first token against ``arrived`` and so kept nothing at all: any
+    # non-empty dict was accepted, whatever its keys (measured on run
+    # e81b8108, where a guide with no ``session_guides`` was COMMITTED and
+    # every activity and material ended unscheduled).
+    prefix = f"{NodeType.IMPLEMENTATION_PLAN}."
     return [e for e in validate_section("implementation_plan", arrived)
-            if e.split(".", 1)[0].split(" ", 1)[0] in arrived]
+            if e.startswith(prefix)
+            and _error_field(e[len(prefix):]) in arrived]
+
+
+def _error_field(path: str) -> str:
+    """The first field of a validator error path: ``instructor_guide`` from
+    ``instructor_guide.session_guides[0].activity_ids: ...``."""
+    for stop in (".", "[", ":"):
+        path = path.split(stop, 1)[0]
+    return path.strip()
 
 
 # ── the step table ──────────────────────────────────────────────────────────
@@ -688,18 +726,6 @@ class AgenticStep:
     #: — while the family was deposited in one batch at the end, the pool was
     #: empty for every set and the default guard happened to be right.)
     done: Callable[[object], bool] | None = None
-    #: Whether this step's artifact contract (schema + rules) travels IN its
-    #: prompt rather than behind the ``stage_brief`` tool.
-    #:
-    #: True for a fan-out work set. Fetching exists because a stage turn can be
-    #: compacted away and the contract has to be recoverable — but a Developer
-    #: runs at most ``DEVELOPER_MAX_TURNS`` turns on one assignment and does
-    #: not reach the window, so it would pay a call per set for a risk it does
-    #: not carry (measured: +10 calls on the test fixture, and nine identical
-    #: `tool_stage_brief` entries under one Developer identity, which the
-    #: trajectory judge scores as redundancy).
-    contract_inline: bool = False
-
     def task_block(self) -> str:
         """Task + schema + rules for the tool-loop prompt. Deliberately does
         NOT end with an "output ONLY the JSON object" line: that instruction
@@ -818,12 +844,17 @@ STEPS: tuple[AgenticStep, ...] = (
         readable_docs=("analysis", "objective"),
         submit_fields=(
             ("assessment_plan", "object", True),
-            # OPTIONAL, and deliberately: `dev_plans.normalize_*` derives the
-            # work sets from `lo_coverage_targets` when no plan arrives, so a
-            # missing dev plan costs the agent's grouping, not the stage. Made
-            # required, it becomes a give-up mode — the smallest models are the
-            # ones most likely to omit it and the least able to recover.
-            ("dev_plan", "object", False),
+            # REQUIRED (2026-09-05). It was optional so that a missing plan
+            # cost the grouping rather than the stage — but optional meant
+            # the loop asked for it at most once, and on run e81b8108 the
+            # activities stage never got to ask at all (one nudge named two
+            # optionals, the model sent the other one, the stage ended) and
+            # the deterministic fallback decided the fan-out. The plan IS the
+            # grouping decision the agent_mode axis is about, so the stage
+            # keeps its turn until it lands, like any other required
+            # artifact; `dev_plans.normalize_*` still derives sets from
+            # `lo_coverage_targets` when a stage gives up without one.
+            ("dev_plan", "object", True),
         ),
         validate=validate_assessment,
         commit=commit_assessment,
@@ -852,7 +883,7 @@ STEPS: tuple[AgenticStep, ...] = (
         submit_fields=(
             ("instructional_strategies", "object", True),
             ("non_instructional_strategies", "object", False),
-            ("dev_plan", "object", False),   # see the assessment step
+            ("dev_plan", "object", True),   # see the assessment step
         ),
         validate=validate_activities,
         commit=commit_activities,

@@ -136,3 +136,42 @@ def test_validate_addie_flags_placeholder_in_development_manuals():
     }
     errors = validate_addie(addie)
     assert any("operator_manual" in e and "placeholder" in e for e in errors)
+
+
+def test_validate_section_checks_the_inner_keys_of_the_implementation_artifacts():
+    """MEASURED (run e81b8108): an instructor_guide written under invented keys
+    passed every gate because only the top level was declared. The prompt says
+    EXACT schema; the validator now holds the six artifacts to their inner keys
+    one level down, and holds session guides to the ``activity_ids`` P10 reads."""
+    from conftest import _IMPLEMENTATION
+
+    assert validate_section("implementation_plan", _IMPLEMENTATION) == []
+
+    wrong = dict(_IMPLEMENTATION)
+    wrong["instructor_guide"] = {"instructor_role": "x", "responsibilities": ["y"]}
+    wrong["operator_manual"] = {"operator_role": "x", "pre_session_checklist": ["y"]}
+    errors = validate_section("implementation_plan", wrong)
+    for path in ("implementation_plan.instructor_guide.overview",
+                 "implementation_plan.instructor_guide.session_guides",
+                 "implementation_plan.operator_manual.system_setup",
+                 "implementation_plan.operator_manual.escalation_process"):
+        assert any(e.startswith(path) for e in errors), (path, errors)
+    # Nothing about the artifacts that are fine.
+    assert not any("monitoring" in e for e in errors)
+
+    # The same shape is held at the ADDIE level, where the aggregator surfaces
+    # the guides under `development`.
+    addie = {
+        "analysis": {"needs_analysis": {"x": 1}, "learner_analysis": {"x": 1},
+                     "context_analysis": {"x": 1}, "task_analysis": {"x": 1}},
+        "design": {"learning_objectives": [{"id": "ILO-01"}], "instructional_strategies": {"x": 1}},
+        "development": {"learner_materials": [{"id": "MAT-01"}], "assessment_tools": [{"item_id": "AT-01"}],
+                        "instructor_guide": wrong["instructor_guide"],
+                        "operator_manual": _IMPLEMENTATION["operator_manual"]},
+        "implementation": {k: _IMPLEMENTATION[k] for k in
+                           ("instructor_orientation", "system_check", "prototype_execution", "monitoring")},
+        "evaluation": {"formative": {"x": 1}, "summative": {"x": 1}, "improvement_plan": {"x": 1}},
+    }
+    errors = validate_addie(addie)
+    assert any(e.startswith("development.instructor_guide.session_guides") for e in errors), errors
+    assert not any(e.startswith("development.operator_manual") for e in errors)

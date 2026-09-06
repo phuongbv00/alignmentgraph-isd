@@ -50,3 +50,33 @@ def test_unsupported_api_spec_raises_when_built():
     factory = llm_factory_from_env(model_name="m", api_spec="bogus")
     with pytest.raises(ValueError, match="Unsupported api_spec"):
         factory()
+
+
+def test_disable_thinking_sets_the_chat_template_flag_on_openai_compatible():
+    """The one knob that answers the measured 'reasoning only' failure.
+
+    Qwen3 left in thinking mode spends its completion budget in
+    ``reasoning_content``, which reaches the loop as empty content with no tool
+    call — an invalid turn that costs a full turn of the stage budget (measured
+    on run 24343e4d: 12 of 78 calls). The flag has to travel as a request field,
+    so assert the request field, not just that a client was built.
+    """
+    pytest.importorskip("langchain_openai")
+    client = llm_factory_from_env(model_name="qwen", api_key="k", disable_thinking=True)()
+    assert client.extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
+
+
+def test_disable_thinking_is_off_by_default():
+    pytest.importorskip("langchain_openai")
+    client = llm_factory_from_env(model_name="qwen", api_key="k")()
+    assert not getattr(client, "extra_body", None)
+
+
+def test_disable_thinking_is_not_sent_to_anthropic():
+    """``chat_template_kwargs`` is a vLLM/OpenAI-body concept; Anthropic would
+    reject it. The branch must ignore the flag rather than pass it through."""
+    pytest.importorskip("langchain_anthropic")
+    client = llm_factory_from_env(
+        model_name="claude-x", api_spec="anthropic", api_key="k",
+        disable_thinking=True)()
+    assert not getattr(client, "extra_body", None)

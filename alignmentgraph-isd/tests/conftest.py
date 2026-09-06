@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from alignmentgraph_isd import DesignBrief, HarnessRunConfig, MetaAgent
+from alignmentgraph_isd.core.agentic.loop import STAGE_BRIEF_HEADER
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -104,14 +105,19 @@ _ASSESSMENT_PLAN = {
 }
 
 
-_ASSESSMENT_DEV_PLAN = {
+#: Under its `dev_plan` key, the way the submit tool and the schema carry it.
+#: It was bare (`instrument_sets` at the top level) while the plan was an
+#: optional artifact and the harness never asked for it; required since
+#: 2026-09-05, a fixture that never sends it stalls every stage that needs one.
+_ASSESSMENT_DEV_PLAN = {"dev_plan": {
     "instrument_sets": [
         {"set_id": f"SET-0{i}", "objectives": [f"ILO-0{i}"], "plan_categories": ["formative", "summative"],
+         "expected_items": 2,
          "instrument_hint": "Combined formative/summative check for this objective.",
          "rationale": "One instrument per objective keeps scope contained."}
         for i in range(1, 6)
     ],
-}
+}}
 
 
 def _assessment_tools() -> list[dict]:
@@ -174,7 +180,7 @@ _ACTIVITY_PLAN = {
     },
 }
 
-_ACTIVITY_DEV_PLAN = {
+_ACTIVITY_DEV_PLAN = {"dev_plan": {
     "activity_blocks": [
         {"set_id": "BLOCK-01", "objectives": ["ILO-01", "ILO-02"], "block_theme": "Encapsulation foundations",
          "rationale": "Both are introduced together in the same module."},
@@ -183,7 +189,7 @@ _ACTIVITY_DEV_PLAN = {
         {"set_id": "BLOCK-03", "objectives": ["ILO-04", "ILO-05"], "block_theme": "Design review",
          "rationale": "Both are exercised via the same critique session."},
     ],
-}
+}}
 
 _ACTIVITIES = {
     "learning_activities": [
@@ -431,6 +437,21 @@ def _parse_assigned_objectives(raw_prompt: str) -> list[str] | None:
     return [line.strip().lstrip("- ").strip() for line in match.group(1).splitlines() if line.strip()]
 
 
+#: Derived from the loop, never retyped: this fixture finds the live stage by
+#: the header its brief actually carries, and a copy here would go stale the
+#: next time that header moves.
+_BRIEF_MARKER = STAGE_BRIEF_HEADER.split("{", 1)[0]
+
+
+def _brief_marker(stage: str) -> str:
+    return STAGE_BRIEF_HEADER.format(stage=stage)
+
+
+def _STEPS():
+    from alignmentgraph_isd.core.agentic.specialists import STEPS
+    return STEPS
+
+
 def _sliced_payload_for_set(raw_prompt: str) -> dict | None:
     """A Developer's own slice of the family's canned items, or ``None`` if
     this prompt isn't a Developer's (falls through to schema-key matching)."""
@@ -513,10 +534,15 @@ def _sliced_payload_for_set(raw_prompt: str) -> dict | None:
 
 
 class _Result:
-    def __init__(self, content: str = "", tool_calls: list | None = None) -> None:
+    def __init__(self, content: str = "", tool_calls: list | None = None,
+                 reasoning: str = "") -> None:
         self.content = content
         self.tool_calls = tool_calls or []
         self.usage_metadata = None
+        # Where a backend with a reasoning parser puts the thinking channel —
+        # vLLM serving Qwen3 does, and LangChain parks it here. Empty unless a
+        # test is about that path.
+        self.additional_kwargs = {"reasoning_content": reasoning} if reasoning else {}
 
 
 class FakeChatModel:
@@ -538,21 +564,20 @@ class FakeChatModel:
         bound._tools_bound = True
         # Which submits the caller is offering. A stage loop binds one
         # `submit_<artifact>` per top-level artifact of that stage; the single
-        # arm's ReAct loop binds a `submit_<stage>` per INCOMPLETE stage. The
-        # names have the same shape either way, so the arms are told apart by
-        # `stage_brief`'s SIGNATURE — see below.
+        # arm's ReAct loop binds a `submit_<stage>` per INCOMPLETE stage.
         names = tuple(str(spec.get("function", {}).get("name", ""))
                       for spec in (specs or []))
         bound._bound = names
         bound._submits = tuple(n for n in names if n.startswith("submit"))
-        # BOTH arms bind `stage_brief` now — the artifact contract is fetched,
-        # not pushed. They are told apart by its parameters: the ReAct loop
-        # works all six stages so its version takes one, while a stage loop is
-        # already in its stage and takes none.
-        bound._react = any(
-            spec.get("function", {}).get("name") == "stage_brief"
-            and (spec.get("function", {}).get("parameters", {}).get("properties"))
-            for spec in (specs or []))
+        # Told apart by WHAT the submits are named after. No artifact shares a
+        # name with a stage, so a bound `submit_<stage-name>` can only be the
+        # ReAct loop's. (Until 2026-09-06 this read `stage_brief`'s signature —
+        # one argument in the single arm, none in the multi. That tool is gone:
+        # the contract is pushed in the stage turn, so the discriminator had to
+        # move to something that still exists, or every single-arm test would
+        # quietly run down the stage-loop branch and still pass.)
+        stage_names = {step.name for step in _STEPS()}
+        bound._react = any(n[len("submit_"):] in stage_names for n in bound._submits)
         return bound
 
     def invoke(self, messages):
@@ -574,7 +599,7 @@ class FakeChatModel:
         # stage's schema out-match the live one and the fake answers the wrong
         # artifact — a fixture artifact that would masquerade as exactly the
         # context degradation the decomposition axis is meant to measure.
-        marker = raw_prompt.rfind("--- STAGE:")
+        marker = max(raw_prompt.rfind("--- STAGE:"), raw_prompt.rfind(_BRIEF_MARKER))
         if marker != -1:
             raw_prompt = raw_prompt[marker:]
         # A Developer's own work-set slice, read from the RAW prompt (the
@@ -596,30 +621,20 @@ class FakeChatModel:
         if stage is not None:
             whole = "\n".join(str(m.get("content", "")) for m in messages
                                if isinstance(m, dict))
-            if f"--- STAGE: {stage} ---" not in whole:
-                # The schema lives behind `stage_brief` now, so ask for it —
-                # which is what the loop's protocol tells a real agent to do.
-                self._calls += 1
-                return _Result(tool_calls=[{"name": "stage_brief",
-                                            "args": {"stage": stage},
-                                            "id": f"c{self._calls}"}])
             # ReAct mode: the whole workflow is in the system turn, so match on
             # the chosen stage's block alone. Matching the lot would let the
             # first stage's schema answer for every one of them.
-            block = re.search(rf"--- STAGE: {stage} ---(.*?)(?=--- STAGE: |=== SCENARIO ===|\Z)",
-                              whole, flags=re.S)
-            payload = _payload_for_system(block.group(1) if block else raw_prompt)
+            block = re.search(
+                rf"{re.escape(_brief_marker(stage))}(.*?)"
+                rf"(?={re.escape(_BRIEF_MARKER)}|--- STAGE: |=== SCENARIO ===|\Z)",
+                whole, flags=re.S)
+            # `whole` beside the block: the ids a plan refers to (the P10/P11
+            # docket, the committed activity/material ids) live in earlier
+            # turns, and `_named_from_prompt` resolves against them.
+            payload = _payload_for_system(block.group(1) if block else raw_prompt, whole)
             return self._respond(payload, f"submit_{stage}")
         prompt = re.sub(r"=== (?!SCENARIO)[^=]+? ===.*?(?==== SCENARIO ===)", "", raw_prompt, flags=re.S)
         payload = _payload_for_system(prompt, raw_all)
-        if not payload and "stage_brief" in getattr(self, "_bound", ()):
-            # The schema is behind a tool now, for both arms: a stage turn
-            # carries the task and the contract is fetched. A real agent is
-            # told to call `stage_brief` before it submits, so the fixture does
-            # the same rather than answering a prompt it has not read yet.
-            self._calls += 1
-            return _Result(tool_calls=[{"name": "stage_brief", "args": {},
-                                        "id": f"c{self._calls}"}])
         name, args = self._stage_submit(payload, messages)
         return self._respond(args, name)
 
@@ -697,6 +712,8 @@ _EVENT_ACTIONS = {
         "commit_invalid_section", "agentic_fallback", "agentic_gave_up", "budget_exhausted",
         "tool_binding_unavailable", "tool_call_markup_recovered", "repair_unfilled",
     "duplicate_submit", "bare_artifact_wrapped", "context_compacted",
+    "calls_not_executed", "repair_window_closed", "commit_did_not_land",
+        "thinking_only_reply",
     "duplicate_element_dropped",
         "dropped_argument", "repair",
     },

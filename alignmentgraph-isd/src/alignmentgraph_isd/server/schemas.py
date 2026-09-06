@@ -38,6 +38,8 @@ class LLMConnectionOut(BaseModel):
     model_name: str = ""
     temperature: float | None = None
     max_tokens: int | None = None
+    context_window: int | None = None
+    disable_thinking: bool = False
     is_active: bool = False
     updated_at: datetime | None = None
 
@@ -65,7 +67,13 @@ class LLMConnectionIn(BaseModel):
     # /models list be read to pick one.
     model_name: str = Field(default="", max_length=200)
     temperature: float | None = Field(default=None, ge=0, le=2)
+    # The completion cap, which doubles as the transcript budget's reserve.
     max_tokens: int | None = Field(default=None, ge=1, le=200_000)
+    # The window the endpoint serves. Every one of these is nullable and a null
+    # that is actually SENT clears the stored value; only `api_key` is kept when
+    # omitted, because the browser is never given it to send back.
+    context_window: int | None = Field(default=None, ge=256, le=10_000_000)
+    disable_thinking: bool = False
 
 
 class ModelListOut(BaseModel):

@@ -44,6 +44,71 @@ _SECTION_FIELDS: dict[str, dict[str, tuple[type | tuple[type, ...], bool]]] = {
     },
 }
 
+#: Inner keys of the section fields that are DOCUMENTS with a fixed shape —
+#: today the six implementation artifacts, taken key for key from
+#: ``rulebook.SCHEMA_IMPLEMENTATION``. Checked exactly like the top level
+#: (presence, type, placeholder), one level down.
+#:
+#: MEASURED (run e81b8108): with only the top level declared, an
+#: ``instructor_guide`` written under invented keys (``instructor_role``,
+#: ``responsibilities``…) was a non-empty dict of the right type and passed
+#: the submit, the stage check, the audit and ``validate_addie`` — and since
+#: ``session_guides`` was not there, no P10/P11 edge was ever established:
+#: every activity and material in the design ended unscheduled. The prompt
+#: says "EXACT schema"; this is what makes that true.
+_NESTED_FIELDS: dict[str, dict[str, dict[str, tuple[type | tuple[type, ...], bool]]]] = {
+    "implementation_plan": {
+        "instructor_orientation": {
+            "orientation_objectives": (list, True), "schedule": (str, True),
+            "materials": (list, True), "competency_checklist": (list, True),
+        },
+        "system_check": {
+            "checklist": (list, True), "technical_validation": (str, True),
+            "contingency_plans": (list, True),
+        },
+        "prototype_execution": {
+            "pilot_scope": (str, True), "participants": (str, True),
+            "execution_log": (list, True), "issues_encountered": (list, True),
+        },
+        "monitoring": {
+            "monitoring_criteria": (list, True), "support_channels": (list, True),
+            "issue_resolution_log": (list, True), "real_time_adjustments": (list, True),
+        },
+        "instructor_guide": {
+            "overview": (str, True), "session_guides": (list, True),
+            "facilitation_tips": (list, True), "troubleshooting": (list, True),
+        },
+        "operator_manual": {
+            "system_setup": (str, True), "operation_procedures": (list, True),
+            "support_procedures": (list, True), "escalation_process": (str, True),
+        },
+    },
+}
+
+#: Shape of the items of a nested LIST field — ``session_guides`` is the one:
+#: its ``activity_ids`` are what P10 reads, so a guide whose sessions carry
+#: prose but no ids schedules nothing. ``material_ids`` may legitimately be
+#: empty (a session that hands nothing out) and is only type-checked.
+_NESTED_LIST_ITEM_FIELDS: dict[str, dict[str, dict[str, tuple[type | tuple[type, ...], bool]]]] = {
+    "implementation_plan": {
+        "instructor_guide.session_guides": {
+            "activity_ids": (list, True), "material_ids": (list, False),
+        },
+    },
+}
+
+#: The ADDIE phase each implementation artifact is surfaced under by the
+#: aggregator, so ``validate_addie`` can hold the assembled output to the same
+#: inner shape the section validator holds the submit to.
+_ADDIE_NESTED_SOURCE = {
+    ("development", "instructor_guide"): ("implementation_plan", "instructor_guide"),
+    ("development", "operator_manual"): ("implementation_plan", "operator_manual"),
+    ("implementation", "instructor_orientation"): ("implementation_plan", "instructor_orientation"),
+    ("implementation", "system_check"): ("implementation_plan", "system_check"),
+    ("implementation", "prototype_execution"): ("implementation_plan", "prototype_execution"),
+    ("implementation", "monitoring"): ("implementation_plan", "monitoring"),
+}
+
 _ID_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_:\-]*$")
 
 # A leaf string that IS a schema placeholder copied verbatim into the output
@@ -102,6 +167,46 @@ def _type_name(expected: type | tuple[type, ...]) -> str:
     return expected.__name__
 
 
+def _check_fields(prefix: str, data: dict, spec: dict, errors: list[str]) -> None:
+    """Presence, type and placeholder checks for one level of ``spec`` over
+    ``data``, every error path rooted at ``prefix``."""
+    for field, (expected_type, required) in spec.items():
+        if field not in data or data[field] in (None, "", [], {}):
+            if required:
+                errors.append(f"{prefix}.{field}: required field is missing or empty")
+            continue
+        if not isinstance(data[field], expected_type):
+            errors.append(
+                f"{prefix}.{field}: expected {_type_name(expected_type)}, "
+                f"got {type(data[field]).__name__}"
+            )
+        elif required:
+            errors.extend(_placeholder_errors(prefix, field, data[field]))
+
+
+def _check_nested(node_type: str, field: str, value: Any, errors: list[str],
+                  prefix: str | None = None) -> None:
+    """One level down: the declared inner keys of ``field``, and the shape of
+    the items of any declared inner list."""
+    inner = (_NESTED_FIELDS.get(node_type) or {}).get(field)
+    if inner is None or not isinstance(value, dict):
+        return
+    root = prefix or f"{node_type}.{field}"
+    _check_fields(root, value, inner, errors)
+    for path, item_spec in (_NESTED_LIST_ITEM_FIELDS.get(node_type) or {}).items():
+        parent, _, list_key = path.partition(".")
+        if parent != field:
+            continue
+        items = value.get(list_key)
+        if not isinstance(items, list):
+            continue
+        for index, item in enumerate(items):
+            if not isinstance(item, dict):
+                errors.append(f"{root}.{list_key}[{index}]: expected object item")
+                continue
+            _check_fields(f"{root}.{list_key}[{index}]", item, item_spec, errors)
+
+
 def validate_section(node_type: str, data: Any) -> list[str]:
     """Return structural error strings for one specialist section payload."""
     errors: list[str] = []
@@ -111,18 +216,9 @@ def validate_section(node_type: str, data: Any) -> list[str]:
     if not isinstance(data, dict):
         return [f"{node_type}: section payload must be a JSON object, got {type(data).__name__}"]
 
-    for field, (expected_type, required) in spec.items():
-        if field not in data or data[field] in (None, "", [], {}):
-            if required:
-                errors.append(f"{node_type}.{field}: required field is missing or empty")
-            continue
-        if not isinstance(data[field], expected_type):
-            errors.append(
-                f"{node_type}.{field}: expected {_type_name(expected_type)}, "
-                f"got {type(data[field]).__name__}"
-            )
-        elif required:
-            errors.extend(_placeholder_errors(node_type, field, data[field]))
+    _check_fields(node_type, data, spec, errors)
+    for field in spec:
+        _check_nested(node_type, field, data.get(field), errors)
 
     list_field_id = _LIST_ITEM_ID_FIELD.get(node_type)
     if list_field_id:
@@ -199,4 +295,8 @@ def validate_addie(addie_output: Any) -> list[str]:
                 )
             elif required:
                 errors.extend(_placeholder_errors(phase, field, section[field]))
+            source = _ADDIE_NESTED_SOURCE.get((phase, field))
+            if source is not None:
+                _check_nested(source[0], source[1], section[field], errors,
+                              prefix=f"{phase}.{field}")
     return errors

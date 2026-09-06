@@ -4,10 +4,12 @@ exhausts them."""
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 from alignmentgraph_isd import HarnessRunConfig
+from alignmentgraph_isd.core.agentic import loop as loop_module
 from alignmentgraph_isd.core.agentic.loop import AgenticLLM, ToolLoop
-from alignmentgraph_isd.core.agentic import specialists
+from alignmentgraph_isd.core.agentic import specialists, tools
 from alignmentgraph_isd.core.agentic.specialists import STEPS
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
 from alignmentgraph_isd.core.trajectory import TrajectoryLogger
@@ -22,6 +24,12 @@ class _Result:
         self.content = content
         self.tool_calls = tool_calls or []
         self.usage_metadata = None
+
+
+def batch(*calls: dict) -> dict:
+    """SEVERAL native tool calls in ONE model reply — what a model that
+    batches its reads sends. Each is a :func:`call` marker."""
+    return {"__batch__": list(calls)}
 
 
 def call(name: str, args: dict) -> dict:
@@ -75,6 +83,12 @@ class ScriptedModel:
     def invoke(self, _messages) -> _Result:
         self.invocations += 1
         response = self._responses.pop(0) if self._responses else "{}"
+        if isinstance(response, dict) and "__batch__" in response:
+            return _Result(tool_calls=[
+                {"name": (self._submit_tool(c["args"]) if c["__tool__"] == "submit"
+                          else c["__tool__"]),
+                 "args": c["args"], "id": f"c{self.invocations}.{i}"}
+                for i, c in enumerate(response["__batch__"], start=1)])
         if isinstance(response, dict) and "__tool__" in response:
             name = response["__tool__"]
             if name == "submit":
@@ -108,6 +122,10 @@ _OUTCOMES = {
          "bloom_verb": "apply"},
     ],
 }
+
+_ASSESSMENT_DEV_PLAN = {"dev_plan": {"instrument_sets": [
+    {"set_id": "SET-01", "objectives": ["ILO-01"], "plan_categories": ["formative"],
+     "expected_items": 1, "instrument_hint": "one check", "rationale": "one objective"}]}}
 
 _ASSESSMENT = {
     "assessment_plan": {
@@ -147,9 +165,9 @@ def _harness(responses: list[str]):
     return model, config, graph, trajectory, brief
 
 
-def _loop(config, graph, trajectory, brief, step) -> ToolLoop:
+def _loop(config, graph, trajectory, brief, step, **kwargs) -> ToolLoop:
     llm = AgenticLLM(config, trajectory, step.identity)
-    return ToolLoop(config, graph, trajectory, brief, step, llm)
+    return ToolLoop(config, graph, trajectory, brief, step, llm, **kwargs)
 
 
 def test_tool_call_then_submit_commits_and_logs_the_trace():
@@ -158,13 +176,15 @@ def test_tool_call_then_submit_commits_and_logs_the_trace():
         call("read_nodes", {"node_type": "objective"}),
         call("coverage_gaps", {"relation_id": "C2"}),
         call("submit", _ASSESSMENT),
+        call("submit_dev_plan", _ASSESSMENT_DEV_PLAN),
     ])
     specialists.commit_outcomes(graph, trajectory, _OUTCOMES)
 
     _loop(config, graph, trajectory, brief, step).run()
 
     # `assessment` is a DISPATCH stage since the Developer tier came back: one
-    # submit lands the PLAN, and the items are produced per work set (fanout.py).
+    # submit lands the PLAN, one the dev plan (required since 2026-09-05), and
+    # the items are produced per work set (fanout.py).
     assert graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))["data"]
     tools_used = [tc["tool"] for tc in trajectory.tool_calls]
     # Tool labels carry their scoping argument so the judge-visible trace
@@ -176,10 +196,8 @@ def test_tool_call_then_submit_commits_and_logs_the_trace():
     # would read to the trajectory judge as repetition rather than as the
     # stage doing what it was asked.
     assert f"{step.identity}.design_assessment_assessment_plan" in tools_used
-    # Four: two reads, the plan submit, and the ONE turn the stage spends
-    # asking for the optional artifact it was not given (`dev_plan`). The
-    # script has nothing left, so that turn ends the stage — the nudge costs a
-    # call and never more than one.
+    # Four: two reads, the plan submit, the dev-plan submit — and nothing
+    # more, because the stage has no optional artifact left to ask for.
     assert model.invocations == 4
 
 
@@ -330,20 +348,31 @@ def test_the_implementation_stage_is_not_finished_without_the_guides():
         commit_implementation, missing_parts, step_done, validate_implementation,
     )
 
+    from conftest import _IMPLEMENTATION
+
     step = STEP_BY_NAME["implementation"]
-    complete = {
-        "instructor_orientation": {"schedule": "90m"},
-        "system_check": {"checklist": ["network"]},
-        "prototype_execution": {"pilot_scope": "one cohort"},
-        "monitoring": {"monitoring_criteria": ["completion"]},
-        "instructor_guide": {"overview": "flow"},
-        "operator_manual": {"system_setup": "provision"},
-    }
+    complete = _IMPLEMENTATION
     # Each artifact is valid on its own — that is what one submit per artifact
     # means, and rejecting the first correct instalment would be the bug.
     for key, value in complete.items():
         assert validate_implementation({key: value}) == [], key
     assert validate_implementation({}), "an empty submit is still an error"
+    # ...and an artifact under invented keys is NOT valid. MEASURED (run
+    # e81b8108): the filter below tested the wrong token and accepted any
+    # non-empty dict, so a guide with no ``session_guides`` was COMMITTED and
+    # nothing was ever scheduled (18 P10/P11 gaps in the audit).
+    wrong = validate_implementation({"instructor_guide": {
+        "instructor_role": "Facilitator", "responsibilities": ["setup"]}})
+    assert any("instructor_guide.overview" in e for e in wrong), wrong
+    assert any("instructor_guide.session_guides" in e for e in wrong), wrong
+    assert not any("operator_manual" in e for e in wrong), (
+        "only the artifact that arrived is judged")
+    assert validate_implementation({"operator_manual": "prose"}), "wrong type must fail"
+    # A session guide with prose but no ids schedules nothing.
+    no_ids = validate_implementation({"instructor_guide": {
+        **complete["instructor_guide"],
+        "session_guides": [{"session": 1, "activities": ["lab"]}]}})
+    assert any("session_guides[0].activity_ids" in e for e in no_ids), no_ids
 
     graph, trajectory = AlignmentGraph(), TrajectoryLogger()
     without_guides = {k: v for k, v in complete.items()
@@ -654,7 +683,8 @@ def test_tool_call_left_as_text_by_the_server_is_recovered():
     step = STEP_BY_NAME["assessment"]
     markup = ("<tool_call>\n<function=read_nodes>\n<parameter=node_type>\n"
               "objective\n</parameter>\n</function>\n</tool_call>")
-    _model, config, graph, trajectory, brief = _harness([markup, call("submit", _ASSESSMENT)])
+    _model, config, graph, trajectory, brief = _harness([
+        markup, call("submit", _ASSESSMENT), call("submit_dev_plan", _ASSESSMENT_DEV_PLAN)])
     specialists.commit_outcomes(graph, trajectory, _OUTCOMES)
 
     _loop(config, graph, trajectory, brief, step).run()
@@ -1110,8 +1140,8 @@ def test_compaction_takes_the_stage_turn_and_that_is_the_design():
     """The stage turn IS droppable, deliberately — protecting it would pin a
     block at the front of the very window it has to make room in.
 
-    What makes that safe is the rest of the design: its task survives as
-    content in the compaction summary, its schema and rules were never in it
+    What makes that safe is the rest of the design: what its task asked for is
+    in the design state or listed as missing, its schema and rules were never in it
     (they are behind `stage_brief`, fetchable again for one turn), and its tool
     menu is redundant with the binding, which goes out with every request."""
     from alignmentgraph_isd.core.agentic.loop import trim_history
@@ -1130,12 +1160,12 @@ def test_compaction_takes_the_stage_turn_and_that_is_the_design():
 
 def test_the_agent_is_told_when_its_context_was_compacted():
     """Silently taking turns away leaves the model with a gap it cannot see and
-    no reason to re-read what it lost. This test covers the deterministic half:
-    the note itself, which costs nothing. The rolling summary beside it IS a
-    model call (``core/agentic/compaction.py``), made by the orchestrator and
-    landing on `single` far more often than on `multi` — that asymmetry is the
-    axis reporting its price, not a confound, which is why one implementation
-    serves both arms and ``autonomy.compactions`` reports it."""
+    no reason to re-read what it lost. The note is deterministic and free: the
+    model-written summary that used to sit beside it was removed 2026-09-05
+    (it went out under JSON mode, came back as JSON, and was thrown away on
+    every compaction of run e81b8108 after a multi-thousand-token completion).
+    One implementation serves both arms and ``autonomy.compactions`` reports
+    how often each reaches it."""
     from alignmentgraph_isd.core.agentic.loop import (
         COMPACTION_NOTE, _with_note, trim_history,
     )
@@ -1161,6 +1191,107 @@ def test_the_agent_is_told_when_its_context_was_compacted():
     assert len([m for m in _with_note(again, 99) if m.get(COMPACTION_NOTE)]) == 1
 
 
+def test_a_compacted_stage_brief_is_named_in_the_note():
+    """MEASURED (run 2b9e911a, implementation): the contract went with the
+    ninth turn's trim and the note said the dropped findings were "in the
+    design state" — true of tool results, false of the contract, which is not
+    in the design state at all. The model then invented `instructor_guidance`
+    and a dict `session_guides`, was rejected eight times across three regens,
+    and `instructor_guide` never committed, so every activity and material in
+    the design was left unscheduled (14 P10/P11 gaps).
+
+    The note is the fallback: a contract that fits is put BACK (the test below).
+    This is what the model is told when it does not."""
+    from alignmentgraph_isd.core.agentic.loop import (
+        COMPACTION_NOTE, _with_note, lost_briefs, stage_brief_block, trim_history,
+    )
+    from alignmentgraph_isd.core.agentic.specialists import STEPS
+
+    step = {s.name: s for s in STEPS}["implementation"]
+    messages = [{"role": "system", "content": "S"},
+                {"role": "user", "content": "TASK"},
+                {"role": "tool", "name": "stage_brief",
+                 "content": stage_brief_block(step)}]
+    messages += [{"role": "tool", "content": f"obs{i}" + "x" * 900} for i in range(20)]
+    messages += [{"role": "assistant", "content": "latest"}]
+
+    kept, dropped = trim_history(messages, budget=3000)
+    lost = lost_briefs(kept, dropped)
+    assert lost == ["implementation"]
+
+    note = [m for m in _with_note(kept, len(dropped), lost) if m.get(COMPACTION_NOTE)][0]
+    assert "implementation" in note["content"]
+    assert "schema" in note["content"], "and what it is that went"
+
+    # A trim that leaves the brief alone says nothing about it: the note is
+    # stage-precise so the single arm, which can lose one stage's brief while
+    # another's is live, is not sent re-fetching what it still has.
+    assert lost_briefs(messages, []) == []
+    assert "schema" not in _with_note(kept, 3)[1]["content"]
+
+
+def test_a_compacted_stage_brief_is_put_back_not_just_announced():
+    """Asking the model to re-fetch costs a turn and depends on it complying;
+    run 2b9e911a is three regens of a small model that did not. Re-attaching
+    costs no turn and is certain. It goes at the TAIL, where it is newest and a
+    trim (oldest first) will not take it again — not protected in place, which
+    would pin a block at the front of the window it has to make room in."""
+    from alignmentgraph_isd.core.agentic.loop import (
+        COMPACTION_NOTE, brief_stages, compact, stage_brief_block, trim_history,
+    )
+    from alignmentgraph_isd.core.agentic.specialists import STEPS
+    from alignmentgraph_isd.core.trajectory import TrajectoryLogger
+
+    step = {s.name: s for s in STEPS}["implementation"]
+    brief = stage_brief_block(step)
+    messages = [{"role": "system", "content": "S"},
+                {"role": "tool", "name": "stage_brief", "content": brief}]
+    messages += [{"role": "tool", "content": f"obs{i}" + "x" * 900} for i in range(20)]
+
+    kept, dropped = trim_history(messages, budget=20000)
+    assert "implementation" not in brief_stages(kept), "the brief must have gone"
+
+    stats: dict = {}
+    restored = compact(kept, dropped, len(dropped), trajectory=TrajectoryLogger(),
+                       stats=stats, restore=lambda _stage: brief, budget=20000)
+    assert "implementation" in brief_stages(restored)
+    assert restored[-1]["content"] == brief, "it goes at the tail, newest"
+    note = [m for m in restored if m.get(COMPACTION_NOTE)][0]
+    assert "schema" not in note["content"], (
+        "the note must not report as lost what is sitting right there")
+
+    # A brief that does not fit is named instead, so the model can still act.
+    named = compact(kept, dropped, len(dropped), trajectory=TrajectoryLogger(),
+                    stats=stats, restore=lambda _stage: brief, budget=len(brief))
+    assert brief_stages(named) == set()
+    assert "schema" in [m for m in named if m.get(COMPACTION_NOTE)][0]["content"]
+
+
+def test_a_rejection_brings_the_contract_back_in_both_arms():
+    """The single arm has had `_respec` since 2026-09-01; the multi arm had
+    nothing, so it argued with a model that could not see the spec — that is
+    what run 2b9e911a's implementation stage is. One function now, which
+    NARROWS the decomposition axis rather than widening it."""
+    import inspect
+
+    from alignmentgraph_isd.core.agentic import loop as agentic_loop
+    from alignmentgraph_isd.core.agentic import react
+    from alignmentgraph_isd.core.agentic.loop import respec, stage_brief_block
+    from alignmentgraph_isd.core.agentic.specialists import STEPS
+
+    step = {s.name: s for s in STEPS}["implementation"]
+    brief = stage_brief_block(step)
+
+    assert brief in respec([{"role": "system", "content": "s"}], step, brief)
+    assert respec([{"role": "tool", "content": brief}], step, brief) == "", (
+        "it is up to 7,400 characters; pasting it onto every rejection would "
+        "push out the transcript it is meant to sit beside")
+
+    for owner in (agentic_loop.ToolLoop._respec, react.ReactLoop._respec):
+        assert "respec(" in inspect.getsource(owner), (
+            "both arms must go through the one implementation")
+
+
 def test_the_context_reports_every_tool_the_conversation_had():
     """A loop that continues another's messages may bind a NARROWER set — the
     replan round binds only `submit_dev_plan`, a plan being the one thing it
@@ -1175,3 +1306,301 @@ def test_the_context_reports_every_tool_the_conversation_had():
     merged = _merge_specs(first, later)
     assert [s["function"]["name"] for s in merged] == [
         "read_nodes", "submit_plan", "submit_dev_plan"], "first seen first, deduped"
+
+
+def test_both_arms_go_through_the_same_compaction_call():
+    """The asymmetry has to be MEASURED, which means it must not be designed:
+    one implementation, one trigger, one budget, called identically."""
+    import inspect
+
+    from alignmentgraph_isd.core.agentic import loop, react
+
+    for module in (loop, react):
+        source = inspect.getsource(module)
+        assert "self.messages = compact(" in source, (
+            f"{module.__name__} never calls the shared compact(), so its loop "
+            "cannot recover from a full window")
+    for module_stats in (loop.ToolLoop, react.ReactLoop):
+        assert "compactions" in inspect.getsource(module_stats.__init__)
+
+
+def test_a_trim_drains_to_the_low_water_mark_so_it_does_not_refire_every_turn():
+    """MEASURED (run e81b8108, implementation stage): a trim that stopped just
+    under the budget fired on three consecutive turns — each new observation
+    put the history back over the line. Draining to the low-water mark leaves
+    room for the conversation to grow before the next trim."""
+    from alignmentgraph_isd.core.agentic.loop import (
+        TRIM_LOW_WATER, message_size, trim_history,
+    )
+
+    messages = [{"role": "system", "content": "S"}]
+    messages += [{"role": "tool", "content": f"obs{i}" + "x" * 900} for i in range(20)]
+    messages += [{"role": "user", "content": "LIVE"}]
+    budget = 8000
+
+    kept, dropped = trim_history(messages, budget=budget)
+    assert dropped
+    assert sum(message_size(m) for m in kept) <= budget * TRIM_LOW_WATER
+
+    # An ordinary next observation does NOT trigger another trim.
+    again, more = trim_history(kept + [{"role": "tool", "content": "y" * 900}], budget=budget)
+    assert more == [], "the next turn refired — the low-water mark is not doing its job"
+
+
+
+def test_every_call_in_a_batched_reply_runs_and_each_costs_a_turn():
+    """MEASURED (run e81b8108): a model that sent `stage_brief` + `read_nodes`
+    + `coverage_gaps` in one reply got the first answered and the rest
+    silently dropped — unanswered ids in the history, a re-issued read, and
+    an empty reply on the turn after, in five of six stages. Every call runs
+    now, in order, and each is a turn."""
+    step = STEP_BY_NAME["assessment"]
+    model, config, graph, trajectory, brief = _harness([
+        batch(call("read_nodes", {"node_type": "objective"}),
+              call("coverage_gaps", {"relation_id": "C2"}),
+              call("read_node", {"id": "ILO-01"})),
+        batch(call("submit", _ASSESSMENT), call("submit_dev_plan", _ASSESSMENT_DEV_PLAN)),
+    ])
+    specialists.commit_outcomes(graph, trajectory, _OUTCOMES)
+
+    loop = _loop(config, graph, trajectory, brief, step)
+    loop.run()
+
+    tools_used = [tc["tool"] for tc in trajectory.tool_calls]
+    for label in ("tool_read_nodes_objective", "tool_coverage_gaps_C2", "tool_read_node",
+                  "design_assessment_assessment_plan", "design_assessment_dev_plan"):
+        assert any(label in t for t in tools_used), (label, tools_used)
+    assert model.invocations == 2, "two model replies carried five calls"
+    assert loop.stats["turns_used"] == 5, "one turn per executed call"
+    assert loop.stats["batched_calls"] == 3
+    assert not any(e["action"] == "invalid_action" for e in trajectory.recovery_events)
+    # Every tool_call id the model produced has exactly one answer, in order.
+    answered = [m["tool_call_id"] for m in loop.messages
+                if isinstance(m, dict) and m.get("role") == "tool"]
+    assert answered == ["c1.1", "c1.2", "c1.3", "c2.1", "c2.2"]
+    # And the shared assistant message went in once per reply, not per call.
+    assistants = [m for m in loop.messages if not isinstance(m, dict)]
+    assert len(assistants) == 2
+    assert graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))["data"]["dev_plan"]
+
+
+def test_calls_the_budget_cannot_cover_are_answered_with_a_stub():
+    """The chat API requires every call answered; a call past the ceiling or
+    after the stage ended gets a stub that says it did not run."""
+    step = STEP_BY_NAME["assessment"]
+    model, config, graph, trajectory, brief = _harness([
+        batch(*[call("read_node", {"id": f"ILO-0{i}"}) for i in range(1, 6)]),
+    ])
+    specialists.commit_outcomes(graph, trajectory, _OUTCOMES)
+
+    loop = _loop(config, graph, trajectory, brief, step, max_turns=3)
+    loop.run()
+
+    tool_msgs = [m for m in loop.messages if isinstance(m, dict) and m.get("role") == "tool"]
+    assert len(tool_msgs) == 5, "every id answered"
+    assert sum("not executed" in m["content"] for m in tool_msgs) == 2
+    assert loop.stats["turns_used"] == 3
+    assert loop.stats["gave_up"]
+    assert any(e["action"] == "calls_not_executed" for e in trajectory.recovery_events)
+
+
+# ── the implementation envelope (run 24343e4d) ──────────────────────────────
+
+def test_an_artifact_whose_inner_fields_are_wrong_keeps_its_name():
+    """MEASURED (run 24343e4d). ``validate_implementation`` built ``arrived``
+    from ANY non-empty key, and ``validate_section`` only emits error paths
+    rooted at names it knows — so a dict of unrecognized keys validated CLEAN.
+    ``unwrap_section``'s single-key branch then stripped the artifact's own
+    name off a well-formed envelope whose INNER fields were wrong and committed
+    the inside at the top level of the section.
+
+    Consequences on that run: ``implementation_plan_0`` ended with 43 top-level
+    keys (the graph dump is the auditability artifact, so it was corrupt),
+    ``operator_manual`` was submitted three times and landed none of them, and
+    the final validate reported it missing.
+    """
+    from alignmentgraph_isd.core.agentic.specialists import validate_implementation
+    from alignmentgraph_isd.core.agentic.tools import unwrap_section
+
+    # The exact payload from that run: a correct envelope, wrong inner fields.
+    payload = {"prototype_execution": {
+        "prototype_activities": ["PE-01: problem definition workshop"],
+        "pilot_execution": {"duration": "4 weeks", "participants": 30}}}
+
+    errors = validate_implementation(payload)
+    assert errors, "the inner fields are wrong and must be reported"
+    assert all("prototype_execution." in e for e in errors), errors
+
+    # The inside ALONE must not validate, or unwrapping is a way past the
+    # validator rather than the envelope tolerance it exists to be.
+    assert validate_implementation(payload["prototype_execution"])
+
+    section, unwrapped_errors = unwrap_section(payload, validate_implementation)
+    assert unwrapped_errors == errors, "the model must be told what is wrong"
+    assert set(section) == {"prototype_execution"}, "the artifact keeps its name"
+
+    # ...and the tolerance it IS for still works: a genuinely stray wrapper.
+    from conftest import _IMPLEMENTATION
+    good = {"system_check": _IMPLEMENTATION["system_check"]}
+    section, errors = unwrap_section({"artifact": good}, validate_implementation)
+    assert errors == [] and section == good
+
+
+def test_one_artifact_that_will_not_pass_does_not_cost_the_five_beside_it():
+    """``SUBMIT_BUDGET`` was one counter for the whole STAGE, so three
+    rejections anywhere ended it — and ending `implementation` means a
+    whole-stage regen, which on run 24343e4d cost 55.6k prompt / 11.7k
+    completion tokens / 122 s. ``tools.submit_specs`` already promises the
+    opposite ("a rejected artifact costs that artifact"); this is that promise.
+    """
+    from conftest import _IMPLEMENTATION
+
+    step = STEP_BY_NAME["implementation"]
+    bad = {"prototype_execution": {"prototype_activities": ["x"]}}
+    good = {k: v for k, v in _IMPLEMENTATION.items() if k != "prototype_execution"}
+    script = [call("submit_prototype_execution", bad)] * (ToolLoop.SUBMIT_BUDGET + 1)
+    script += [call(f"submit_{k}", {k: v}) for k, v in good.items()]
+    _model, config, graph, trajectory, brief = _harness(script)
+
+    loop = _loop(config, graph, trajectory, brief, step)
+    loop.run()
+
+    data = (graph.get_node(graph.section_id(NodeType.IMPLEMENTATION_PLAN)) or {}).get("data") or {}
+    assert set(good) <= set(data), "the artifacts that were valid all landed"
+    # ...and the section holds artifact NAMES only, never their inner fields.
+    from alignmentgraph_isd.core.agentic.specialists import _IMPLEMENTATION_ARTIFACTS
+    assert set(data) <= set(_IMPLEMENTATION_ARTIFACTS), sorted(data)
+
+
+def test_a_commit_that_does_not_land_is_never_reported_as_committed():
+    """The answer that hid the bug for a whole run: "COMMITTED. implementation
+    still needs: <the artifact just sent>", beside a protocol saying never
+    resend what is committed — an instruction no model can satisfy. It cost 11
+    turns and ~10.4k completion tokens on run 24343e4d, and the trace recorded
+    each one as the model's own redundancy (`duplicate_submit`)."""
+    from conftest import _IMPLEMENTATION
+
+    step = STEP_BY_NAME["implementation"]
+    _model, config, graph, trajectory, brief = _harness(
+        [call("submit_system_check", {"system_check": _IMPLEMENTATION["system_check"]})])
+    loop = _loop(config, graph, trajectory, brief, step)
+    # Make the commit a no-op, which is precisely what unwrapping did.
+    loop.step = replace(step, commit=lambda *_a, **_k: None)
+    loop.run()
+
+    answers = [m["content"] for m in loop.messages
+               if isinstance(m, dict) and m.get("role") == "tool"]
+    assert answers and "NOT COMMITTED" in answers[0], answers
+    assert "COMMITTED. " not in answers[0]
+    assert any(e["action"] == "commit_did_not_land"
+               for e in trajectory.to_dict()["events"])
+
+
+# ── reasoning-only replies (run 24343e4d) ───────────────────────────────────
+
+class _ThinksOnly:
+    """A backend whose replies carry reasoning and nothing else.
+
+    What vLLM serving a Qwen3 in thinking mode does when the model spends its
+    completion budget reasoning: `content` empty, no tool call, and
+    `finish_reason` "stop" — so truncation salvage cannot see it either.
+    """
+
+    def __init__(self, thinking: int) -> None:
+        self._left = thinking
+
+    def bind_tools(self, _specs, **_kwargs):
+        return self
+
+    def invoke(self, _messages):
+        from conftest import _Result
+
+        if self._left > 0:
+            self._left -= 1
+            return _Result(reasoning="Let me consider the objectives... " * 8)
+        return _Result(content="I have nothing further.")
+
+
+def test_a_reasoning_only_reply_is_not_charged_as_the_models_mistake():
+    """MEASURED (run 24343e4d): 12 of 78 calls came back with empty content, no
+    tool call and 47-405 BILLED completion tokens. Each was logged
+    `invalid_action` and charged a full turn of a 12-turn stage.
+
+    It is a serving posture, not the model refusing the protocol — the fix is
+    `disable_thinking` on the factory. Until that is set, the turn is refunded
+    (bounded, exactly as a repeated call is) and recorded under its own name,
+    so the rate is attributable to the endpoint rather than to the model.
+    """
+    step = STEP_BY_NAME["outcomes"]
+    thinking = ToolLoop.THINKING_ALLOWANCE
+    model = _ThinksOnly(thinking)
+    config = HarnessRunConfig(llm_factory=lambda: model)
+    graph, trajectory, brief = AlignmentGraph(), TrajectoryLogger(), load_brief("minimal_brief.json")
+
+    loop = _loop(config, graph, trajectory, brief, step)
+    loop.run()
+
+    assert loop.stats["thinking_only"] == thinking
+    assert loop.stats["turns_used"] == ToolLoop.MAX_TURNS + thinking, (
+        "the reasoning-only turns were not given back")
+    events = [e for e in trajectory.to_dict()["events"]
+              if e["action"] in ("thinking_only_reply", "invalid_action")]
+    # The reasoning-only replies came first and every one of them is recorded
+    # as what it was. The plain-text replies after them are still invalid turns
+    # — the model DID answer with text there, which is the other failure.
+    assert [e["action"] for e in events[:thinking]] == ["thinking_only_reply"] * thinking
+    assert {e["action"] for e in events[thinking:]} == {"invalid_action"}
+
+
+def test_both_loops_refund_the_same_failures_with_the_same_words():
+    """A refund is a harness accounting rule, so one that exists on a single
+    side of the decomposition axis is a ceiling difference sitting inside the
+    treatment — the same defect the scripted fallback had. `ReactLoop` had no
+    refund at all, so a repeated call cost the single arm a turn the multi arm
+    got back. The nudges had drifted apart for the same reason."""
+    import inspect
+
+    from alignmentgraph_isd.core.agentic import react
+
+    for source in (inspect.getsource(ToolLoop), inspect.getsource(react.ReactLoop)):
+        assert "REPEAT_ALLOWANCE" in source and "THINKING_ALLOWANCE" in source
+        assert "self._refunded += 1" in source
+        assert "MAX_TURNS + self._refunded" in source
+    # One wording, imported — not two that can drift.
+    assert react.INVALID_TURN_NUDGE is loop_module.INVALID_TURN_NUDGE
+    assert react.THINKING_ONLY_NUDGE is loop_module.THINKING_ONLY_NUDGE
+
+
+def test_a_regen_asks_only_for_what_is_still_missing():
+    """A stage that gave up is re-run from a FRESH context, and its opening
+    turn used to be byte-identical to the first attempt's: `_stage_message`
+    never consulted the state, so it listed all six of `implementation`'s
+    artifacts however many were already committed. The retry then re-fetched
+    `stage_brief`, re-issued every read, and re-sent finished work — measured
+    on run 24343e4d as three attempts costing 55.6k prompt / 11.7k completion
+    tokens / 122 s, more than the stage's first-time work.
+    """
+    from conftest import _IMPLEMENTATION
+
+    step = STEP_BY_NAME["implementation"]
+    graph, trajectory = AlignmentGraph(), TrajectoryLogger()
+    done = {k: v for k, v in _IMPLEMENTATION.items() if k != "operator_manual"}
+    specialists.commit_implementation(graph, trajectory, done)
+
+    config = HarnessRunConfig(llm_factory=lambda: None)
+    loop = _loop(config, graph, trajectory, load_brief("minimal_brief.json"), step)
+    opening = loop._stage_message(retrieval_available=False)
+
+    assert "still needs: operator_manual" in opening
+    assert "Already committed: " in opening
+    for finished in done:
+        assert f"submit_{finished}" not in tools.tool_names(
+            tools.tool_specs(step, only=("operator_manual",))), finished
+
+    # A FIRST attempt is unchanged — nothing has landed, so there is nothing to
+    # say and the binding is the full set the golden fixture pins.
+    fresh = _loop(config, AlignmentGraph(), TrajectoryLogger(),
+                  load_brief("minimal_brief.json"), step)
+    assert "Already committed" not in fresh._stage_message(retrieval_available=False)
+    assert (tools.tool_specs(step, only=None)
+            == tools.tool_specs(step)), "the default binding must not move"

@@ -12,9 +12,25 @@ from conftest import FakeChatModel, load_brief, run_brief
 
 from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core.agentic import react, tools
+from alignmentgraph_isd.core.agentic.loop import STAGE_BRIEF_HEADER
 from alignmentgraph_isd.core.agentic.specialists import STEPS
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
 from alignmentgraph_isd.core.trajectory import TrajectoryLogger
+
+
+def _said(loop) -> str:
+    """Everything the agent was shown, compacted turns included.
+
+    `loop.messages` is only what is still being SENT, so a long run answers
+    "was it told X" with "not any more" once `trim_history` has fired. The
+    package already models the whole conversation — `compacted_transcript` is
+    what the Context tab renders — and that is the thing these assertions are
+    about.
+    """
+    from alignmentgraph_isd.core.agentic.loop import compacted_transcript
+    return " ".join(str(m.get("content", ""))
+                    for m in compacted_transcript(loop.messages, loop.compacted)
+                    if isinstance(m, dict))
 
 
 def _loop(responses=None, *, graph_mode=True):
@@ -148,8 +164,17 @@ def test_the_system_turn_leaves_room_for_the_transcript():
     assert system < HISTORY_CHAR_BUDGET // 3, (
         f"the system turn is {system} of a {HISTORY_CHAR_BUDGET} budget; "
         "the agent has no room left to remember its own work")
-    # ...and the schemas it displaces are still reachable, one at a time.
-    assert "stage_brief" in tools.tool_names(tools.react_specs(STEPS, frozenset()))
+    # ...and the schemas it displaces still arrive, ONE STAGE AT A TIME: pushed
+    # by `_offer_contract` as each stage comes up, not fetched and not all six.
+    assert "stage_brief" not in tools.tool_names(tools.react_specs(STEPS, frozenset()))
+    loop._done_set = frozenset()
+    loop.messages = []
+    loop._offer_contract()
+    assert len(loop.messages) == 1
+    assert loop.messages[0]["content"].startswith(
+        STAGE_BRIEF_HEADER.format(stage=STEPS[0].name))
+    assert all(STAGE_BRIEF_HEADER.format(stage=s.name) not in loop.messages[0]["content"]
+               for s in STEPS[1:]), "one stage's contract, not all six"
     assert '"assessment_plan"' in loop.stage_brief("assessment")
 
 
@@ -225,7 +250,7 @@ def test_one_stage_cannot_consume_the_whole_run():
 
     assert loop.stats["submits_per_stage"]["analysis"] == react.ReactLoop.SUBMIT_CAP
     # ...and the refusal is actionable, not a silent drop.
-    told = " ".join(str(m.get("content", "")) for m in loop.messages if isinstance(m, dict))
+    told = _said(loop)
     assert "another stage" in told
 
 
@@ -248,7 +273,7 @@ def test_a_stage_that_keeps_being_rejected_hits_the_same_cap():
     # What the stage COMMITTED stays its own series: folding failures into it
     # would make a stuck stage read as a productive one.
     assert loop.stats["submits_per_stage"].get("analysis", 0) == 0
-    told = " ".join(str(m.get("content", "")) for m in loop.messages if isinstance(m, dict))
+    told = _said(loop)
     assert "another stage" in told
 
 
@@ -279,7 +304,7 @@ def test_a_rejection_brings_back_the_schema_it_lost():
 
     # Nothing in the transcript: the schema comes back with the correction.
     loop.messages = [{"role": "system", "content": "s"}]
-    assert "--- STAGE: assessment ---" in loop._respec(step)
+    assert STAGE_BRIEF_HEADER.format(stage="assessment") in loop._respec(step)
 
     # Still in the transcript: not repeated. It is up to 7,400 characters, and
     # pasting it onto every rejection would push out the transcript it is meant
@@ -319,7 +344,7 @@ def test_a_committed_artifact_is_kept_as_a_record_not_as_its_payload():
                 "a committed artifact is still carried verbatim in the transcript")
 
     # The RECORD survives: the agent can still see what it produced and how much.
-    joined = " ".join(str(m.get("content", "")) for m in loop.messages if isinstance(m, dict))
+    joined = _said(loop)
     assert "COMMITTED" in joined
     # ...and the state holds the real thing.
     assert graph.element_nodes(NodeType.ASSESSMENT)
@@ -337,6 +362,7 @@ def test_a_spent_stage_schema_is_released():
     ])
     loop.run()
 
-    joined = " ".join(str(m.get("content", "")) for m in loop.messages if isinstance(m, dict))
-    assert "--- STAGE: analysis ---" not in joined, "the spent schema is still held"
+    joined = _said(loop)
+    assert STAGE_BRIEF_HEADER.format(stage="analysis") not in joined, (
+        "the spent schema is still held")
     assert "that stage has been submitted" in joined, "and nothing says why it went"

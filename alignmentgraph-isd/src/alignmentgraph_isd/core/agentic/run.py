@@ -88,11 +88,16 @@ def empty_stage_stats() -> dict:
             "args_salvaged": 0, "truncated_turns": 0, "dropped_args": 0,
             "n_sets": 0, "sets_gave_up": 0, "set_turns": 0,
             "set_submits_rejected": 0,
-            # How often this stage's window filled, and how often the fold kept
-            # something of what went. Reported per stage because the two arms
-            # reach it at completely different rates, which is the mechanism
-            # the decomposition axis is about rather than noise around it.
-            "compactions": 0, "compaction_summaries": 0}
+            # Both were missing, which is exactly what the zeroed template
+            # exists to prevent: a stage that never repaired and one whose
+            # repair count was never written read identically, and the
+            # ceiling flag was absent from the multi arm altogether.
+            "repair_turns": 0, "via_budget_exhaustion": False,
+            # How often this stage's window filled. Reported per stage because
+            # the two arms reach it at completely different rates, which is
+            # the mechanism the decomposition axis is about rather than noise
+            # around it.
+            "compactions": 0}
 
 
 def _merge_stats(carried: dict, fresh: dict) -> dict:
@@ -312,9 +317,12 @@ def _run_fanout(config, memory, trajectory, design_brief, step, spec, *,
             set_count=stats_dev["set_count"], pair_count=stats_dev["pair_count"],
             sets=[{"set_id": ws.set_id, "objectives": list(ws.objectives)}
                   for ws in work_sets],
-            source="fallback" if stats_dev["fallback_used"] else "llm",
+            source=("fallback" if stats_dev["fallback_used"]
+                    else stats_dev.get("source", "llm")),
             fallback_used=stats_dev["fallback_used"],
             dropped_refs=stats_dev["dropped_lo_refs"],
+            dropped_pairs=stats_dev.get("dropped_pairs", 0),
+            duplicate_pairs=stats_dev.get("duplicate_pairs", 0),
             appended_sets=stats_dev["appended_sets"],
             oversized_splits=stats_dev.get("oversized_splits", 0),
             agent=orchestrator)

@@ -34,13 +34,26 @@ def llm_factory_from_env(
     api_key: str = "",
     temperature: float | None = None,
     max_tokens: int | None = None,
+    disable_thinking: bool = False,
     http_client: Any = None,
+    read_env: bool = True,
 ) -> ChatModelFactory | None:
     """Build a chat-model factory from explicit args, falling back to env vars.
 
     Resolution order for each setting is: explicit argument > environment
     variable > default. Environment variable names mirror the benchmark
     (``AGENT_MODEL_*``) so configuration is consistent across the repo.
+
+    Pass ``read_env=False`` to switch the environment out of that order
+    entirely, leaving explicit argument > default. The app configures its model
+    in its own database and needs a value it did not set to stay unset: with
+    the fallback in place, a connection saved with no key silently borrows
+    ``AGENT_MODEL_API_KEY`` from the shell, and what the UI shows stops being
+    what the run uses.
+
+    ``disable_thinking`` is OpenAI-compatible only and has no environment
+    fallback in either direction: it is a property of the endpoint being
+    served, so the caller that knows the endpoint states it.
 
     Returns ``None`` when no model name can be resolved, so callers can keep
     their existing "llm_factory not configured" error path.
@@ -52,19 +65,22 @@ def llm_factory_from_env(
     in flight is for the caller to close the transport underneath it. Nothing
     here closes it — that is the caller's business, and the caller's to clean up.
     """
-    model = model_name or _env("AGENT_MODEL_NAME")
+    def env(*names: str) -> str:
+        return _env(*names) if read_env else ""
+
+    model = model_name or env("AGENT_MODEL_NAME")
     if not model:
         return None
 
-    spec = (api_spec or _env("AGENT_MODEL_API_SPEC") or "openai_compatible").lower()
-    resolved_base_url = base_url or _env("AGENT_MODEL_BASE_URL")
-    resolved_api_key = api_key or _env("AGENT_MODEL_API_KEY")
+    spec = (api_spec or env("AGENT_MODEL_API_SPEC") or "openai_compatible").lower()
+    resolved_base_url = base_url or env("AGENT_MODEL_BASE_URL")
+    resolved_api_key = api_key or env("AGENT_MODEL_API_KEY")
 
     if temperature is None:
-        env_temperature = _env("AGENT_MODEL_TEMPERATURE")
+        env_temperature = env("AGENT_MODEL_TEMPERATURE")
         temperature = float(env_temperature) if env_temperature else 0.0
     if max_tokens is None:
-        env_max_tokens = _env("AGENT_MODEL_MAX_TOKENS")
+        env_max_tokens = env("AGENT_MODEL_MAX_TOKENS")
         max_tokens = int(env_max_tokens) if env_max_tokens else 4096
 
     def factory() -> Any:
@@ -96,6 +112,22 @@ def llm_factory_from_env(
                 ) from exc
             if resolved_base_url:
                 kwargs["base_url"] = resolved_base_url
+            if disable_thinking:
+                # A CLIENT-side request field, not a server default: vLLM
+                # passes `chat_template_kwargs` into the Jinja chat template,
+                # and Qwen3's template branches on `enable_thinking` to prefill
+                # an empty <think></think> so the model never opens a reasoning
+                # block. Same mechanism as the benchmark's
+                # AGENT_MODEL_DISABLE_THINKING (shared/llm/factory.py).
+                #
+                # Without it a small Qwen3 spends its whole completion budget
+                # inside `reasoning_content`, which arrives with empty
+                # `content`, no tool calls and finish_reason "stop" — measured
+                # on run 24343e4d: 12 of 78 calls, 47-405 billed tokens each,
+                # every one charged a full turn as an invalid turn.
+                kwargs["extra_body"] = {
+                    "chat_template_kwargs": {"enable_thinking": False}
+                }
             if http_client is not None:
                 kwargs["http_client"] = http_client
             return ChatOpenAI(**kwargs)

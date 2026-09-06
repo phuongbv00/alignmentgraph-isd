@@ -44,6 +44,8 @@ interface FormState {
   model_name: string
   temperature: string
   max_tokens: string
+  context_window: string
+  disable_thinking: boolean
 }
 
 const BLANK: FormState = {
@@ -53,6 +55,8 @@ const BLANK: FormState = {
   model_name: '',
   temperature: '',
   max_tokens: '',
+  context_window: '',
+  disable_thinking: false,
 }
 
 const formOf = (connection: LLMConnection): FormState => ({
@@ -62,6 +66,8 @@ const formOf = (connection: LLMConnection): FormState => ({
   model_name: connection.model_name,
   temperature: connection.temperature === null ? '' : String(connection.temperature),
   max_tokens: connection.max_tokens === null ? '' : String(connection.max_tokens),
+  context_window: connection.context_window === null ? '' : String(connection.context_window),
+  disable_thinking: connection.disable_thinking,
 })
 
 /** Connections to OpenAI-compatible endpoints, one of them active.
@@ -81,6 +87,11 @@ export function ModelSettings({ onClose, onSaved }: Props) {
   const [saving, setSaving] = useState(false)
   const [models, setModels] = useState<string[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
+  // Typing the id instead of picking it. Not every OpenAI-compatible endpoint
+  // answers /models — some gateways route by name without one, some sit behind
+  // a proxy that blocks it — and there the dropdown is a dead end. Set
+  // automatically when the list comes back unusable, and freely by hand.
+  const [manual, setManual] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [hint, setHint] = useState('')
 
@@ -128,11 +139,16 @@ export function ModelSettings({ onClose, onSaved }: Props) {
     try {
       const payload = await api.listConnectionModels(id)
       setModels(payload.models)
+      if (payload.models.length === 0) setManual(true)
+      // Only an explicit reload switches back: an automatic one must not pull
+      // someone out of a field they deliberately chose to type in.
+      else if (announce) setManual(false)
       if (payload.error) setResult({ ok: false, message: payload.error })
       else if (announce)
         setResult({ ok: true, message: `${payload.models.length} models available.` })
     } catch (exc) {
       setModels([])
+      setManual(true)
       setResult({ ok: false, message: String((exc as Error).message) })
     } finally {
       setLoadingModels(false)
@@ -147,6 +163,9 @@ export function ModelSettings({ onClose, onSaved }: Props) {
   const select = (id: string | null) => {
     setResult(null)
     setHint('')
+    // A draft has nothing to list yet, so it starts typed — that way a model
+    // can be named before the first save rather than only after it.
+    setManual(id === null)
     setSelectedId(id)
     const row = id === null ? null : connections.find((c) => c.id === id)
     setForm(row ? formOf(row) : BLANK)
@@ -169,8 +188,12 @@ export function ModelSettings({ onClose, onSaved }: Props) {
     // stored key" — it never sent us the key to echo back.
     ...(form.api_key === '' ? {} : { api_key: form.api_key }),
     model_name: form.model_name.trim(),
+    // A blank field is sent as null, which clears it: the server writes every
+    // field it is given, and only an absent api_key means "keep".
     temperature: form.temperature === '' ? null : Number(form.temperature),
     max_tokens: form.max_tokens === '' ? null : Number(form.max_tokens),
+    context_window: form.context_window === '' ? null : Number(form.context_window),
+    disable_thinking: form.disable_thinking,
   })
 
   /** Run a mutation and adopt its response, which is the whole list back.
@@ -329,27 +352,40 @@ export function ModelSettings({ onClose, onSaved }: Props) {
                   Model
                   {/* Only says anything when there is something to say: where
                       the list comes from is the Base URL directly above. */}
-                  {isNew && <em className="muted">save the connection to load the list</em>}
-                  {!isNew && loadingModels && <em className="muted">loading…</em>}
+                  {loadingModels && <em className="muted">loading…</em>}
+                  {!loadingModels && !isNew && models.length === 0 && (
+                    <em className="muted">this endpoint listed none</em>
+                  )}
+                  <button type="button" className="field-toggle"
+                          onClick={() => setManual((value) => !value)}
+                          disabled={manual && models.length === 0}>
+                    {manual ? 'Pick from the list' : 'Type it in'}
+                  </button>
                 </span>
                 <div className="field-row">
-                  <select
-                    value={form.model_name}
-                    disabled={isNew}
-                    onChange={(e) => setForm({ ...form, model_name: e.target.value })}
-                  >
-                    <option value="">
-                      {isNew ? 'Save the connection first' : 'Select a model…'}
-                    </option>
-                    {options.map((model) => (
-                      <option key={model} value={model}>{model}</option>
-                    ))}
-                  </select>
+                  {manual ? (
+                    <input
+                      value={form.model_name}
+                      onChange={(e) => setForm({ ...form, model_name: e.target.value })}
+                      placeholder="qwen3.5:2b, Qwen/Qwen3.5-4B…"
+                    />
+                  ) : (
+                    <select
+                      value={form.model_name}
+                      onChange={(e) => setForm({ ...form, model_name: e.target.value })}
+                    >
+                      <option value="">Select a model…</option>
+                      {options.map((model) => (
+                        <option key={model} value={model}>{model}</option>
+                      ))}
+                    </select>
+                  )}
                   <button
                     className="btn small btn-icon"
                     disabled={isNew || loadingModels}
                     onClick={() => selectedId && void loadModels(selectedId, true)}
-                    title="Reload the model list"
+                    title={isNew ? 'Save the connection to read its models'
+                                 : 'Reload the model list'}
                     aria-label="Reload the model list"
                   >
                     <RefreshCw size={14} />
@@ -368,7 +404,9 @@ export function ModelSettings({ onClose, onSaved }: Props) {
                   />
                 </label>
                 <label className="field">
-                  <span>Max tokens</span>
+                  {/* "Max tokens" alone reads as the total budget, which is the
+                      field next to it. Naming the half it caps is the fix. */}
+                  <span>Max output tokens</span>
                   <input
                     type="number" min="1"
                     value={form.max_tokens}
@@ -376,6 +414,36 @@ export function ModelSettings({ onClose, onSaved }: Props) {
                     placeholder="4096"
                   />
                 </label>
+                <label className="field">
+                  <span>Context window</span>
+                  <input
+                    type="number" min="256"
+                    value={form.context_window}
+                    onChange={(e) => setForm({ ...form, context_window: e.target.value })}
+                    placeholder="e.g. 16384"
+                  />
+                </label>
+              </div>
+              <div className="small muted" style={{ marginTop: -4 }}>
+                The window is everything the endpoint serves, prompt and reply
+                together; the output cap is the reply's share of it, and the
+                transcript is trimmed to leave that much room. Leave the window
+                blank and the harness falls back to a fixed budget unrelated to
+                this model.
+              </div>
+              <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={form.disable_thinking}
+                  onChange={(e) => setForm({ ...form, disable_thinking: e.target.checked })}
+                />
+                <span>Disable thinking mode</span>
+              </label>
+              <div className="small muted" style={{ marginTop: -4 }}>
+                Sends <code>chat_template_kwargs: {'{'} enable_thinking: false {'}'}</code>.
+                Turn this on for small Qwen3 models: left thinking, they spend the
+                output cap reasoning and answer with no text and no tool call,
+                which costs the agent a turn and produces nothing.
               </div>
 
               {result && (

@@ -45,21 +45,42 @@ The API key is held **in clear text** in the local SQLite file. It is never sent
 back to the browser (only whether one is set), but use a throwaway key if that
 matters to you.
 
-**From the environment** — the same `AGENT_MODEL_*` variables the CLI and the
-benchmark read. They **seed the first connection** on an empty database, so an
-existing setup starts configured:
+Two more fields decide how much of the conversation the harness may keep:
 
-```bash
-AGENT_MODEL_NAME=...        # required
-AGENT_MODEL_BASE_URL=...    # for an OpenAI-compatible endpoint
-AGENT_MODEL_API_KEY=...
-```
+| Field | What it is | Blank means |
+|---|---|---|
+| **Max output tokens** | the cap on one reply, sent to the client | 4096 |
+| **Context window** | everything the endpoint serves — prompt and reply together | a fixed 24,000-character budget |
 
-Put them in `.env` (see `.env.example`) and `run-app.sh` exports them for you;
-the harness reads them from the process environment, so a `.env` alone is not
-enough. Seeding happens **once**, on a database with no connections in it —
-after that the database is the whole story, so a connection deleted in the
-dialog does not come back on the next restart.
+The window sizes the transcript budget, and the output cap is what has to be
+left in it for the answer — one number for both, so they cannot disagree. Leave the window
+blank and the harness falls back to a constant unrelated to whatever the
+connection points at: measured on run e81b8108, a stage compacted three times
+under that budget against a model whose real window was never close to full.
+
+**Disable thinking mode** is a third field, off by default. It sends
+`chat_template_kwargs: {enable_thinking: false}` in the request body — the same
+mechanism as the benchmark's `AGENT_MODEL_DISABLE_THINKING`, which cannot reach
+this app (see below). Turn it on for small Qwen3 models: left thinking, they
+spend the whole output cap inside `reasoning_content`, which arrives with empty
+content, no tool call and `finish_reason: "stop"` — so truncation salvage cannot
+see it either. The loop reads that as a turn the model wasted. Measured on run
+24343e4d: 12 of 78 calls, 47-405 billed completion tokens each, one stage turn
+gone every time.
+
+> **There are no migrations** — `init_db` is `create_all`, so a column added to
+> a connection is not added to a `demo.db` that already exists, and the first
+> query raises `no such column`. Delete the local database, or add the column by
+> hand, after pulling a change that adds one.
+
+**Nothing else configures the model.** The app reads no `AGENT_MODEL_*` — not as
+a fallback, not as a seed, not to fill in a field left blank. Those variables
+belong to the CLI and the benchmark, which are configured from a shell; this is
+configured in its own dialog, and a value arriving from the environment would be
+visible in neither place. A connection saved with no key therefore fails here
+rather than borrowing `AGENT_MODEL_API_KEY` and working until it is started from
+a different shell. (`AGISD_SERVER_*`, below, is unaffected: those are server
+settings — port, data root — not model configuration.)
 
 Without a usable model the server still starts; `/api/health` reports
 `llm_configured: false` with the reason, and the UI says so and offers the
@@ -101,8 +122,10 @@ Two things worth knowing:
 
 ## Configuration
 
-All server settings are `AGISD_SERVER_*`; they are separate from
-`AGENT_MODEL_*`, which configures the model the harness runs on.
+All server settings are `AGISD_SERVER_*`, and they are the only environment the
+app reads. The model is not here: it lives in Model settings and its database
+(see above). `AGENT_MODEL_*` configures the CLI and the benchmark and has no
+effect on the app.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -152,35 +175,71 @@ into `trajectory`/`trajectory_deep` — the judge reads those and the benchmark
 compares them across arms, so doubling their size to serve a viewer would change
 what is measured.
 
+### Work-set plans
+
+`GET /api/runs/{id}/artifacts/plans` returns how each family was divided into
+work sets, round by round: the stage and family, whether the Designer's own dev
+plan was used or the deterministic split had to carry it, and the whole work set
+each Developer was handed — its obligations, its theme, the count it was asked
+for.
+
+The `dev_plan` trajectory event carries a SUMMARY of the same decision (set ids
+and their objectives, the source, what the harness dropped, duplicated or split)
+and that is what the timeline reads. The plan itself is the payload behind it,
+and nothing else on disk holds it, so without this file "what exactly was this
+Developer asked for" could only be answered while the run was still alive.
+
 ### Downloading a transcript
 
 `GET /api/runs/{id}/transcript/export` returns every agent's transcript as
 Markdown — the system turn, each message in order, and the tool schemas bound
-alongside them. `?index=N` picks one context out of the list.
+alongside them. `?context=<id>` picks one context out of the list.
 
 Markdown rather than JSON because `/contexts` already serves the JSON a tool
-would want, and this is the artifact a PERSON reads end to end. An INDEX rather
-than a label because labels repeat: a stage that was regenerated publishes one
-context per attempt, told apart by position and `attempt`, not by name.
+would want, and this is the artifact a PERSON reads end to end. By ID
+(`core.memory.new_agent_run_id`) rather than by label, because labels repeat: a stage
+that was regenerated publishes one context per attempt and they share a name.
+And rather than by position, which is what this addressed first: a context is
+republished after every turn now, so the list is only stable once the run is
+over, and a link a reader kept would follow the ordinal rather than the
+conversation it was for.
 
-### Exporting a run
+### Exporting the trajectory
 
-`GET /api/runs/{id}/trajectory/export` returns the whole trace as ONE
-downloadable file — `metadata` (per-stage `autonomy`, the residual audit,
-repair metrics, token usage), `trajectory` (the judge-visible trio plus the
-structured event log) and `trajectory_deep` (the full-fidelity action log),
-under the run's identity.
+`GET /api/runs/{id}/trajectory/export` returns the run's TRAJECTORY as one
+downloadable file — `trajectory` (the judge-visible trio plus the structured
+event log) and `trajectory_deep` (the full-fidelity action log), under the
+run's identity.
 
-The pieces are each served by `/artifacts/{name}` already, which is what the UI
-reads. That is not an export: reassembling a run from four fetches is the step
-someone doing it by hand gets wrong, and the four are only interpretable
-together — an action log without `autonomy` cannot say whether a stage ran out
-of turns, and `autonomy` without the log cannot say what it did with them.
+Both halves travel because they are one record split for size, not two
+artifacts. Nothing else does: `metadata`, the graph and the ADDIE output are
+each their own artifact with their own endpoint, and folding them in here would
+make "export trajectory" mean "export the run", so nobody could export the
+trajectory. Two files under one name is how an export format stops being one.
 
 Exporting mid-run returns what has been recorded so far, from the live event
 log, under `live_events` with `complete: false`. A run that looks stuck is the
 one you most want to read; giving that file the same shape as a finished one
 would be a trap, so the wire events keep their own key.
+
+### Exporting the violation ledger
+
+`GET /api/runs/{id}/violations/export` returns every distinct finding of the run
+as CSV, one row per finding: the check that fired, the node, the outcome, why it
+is still open, who owns it, and the metadata that says which item or objective
+it is about.
+
+CSV rather than JSON because `/violations` already serves the JSON a tool would
+want, and the ledger is a TABLE — how many are still open, by reason, by owner,
+by check are each one column, and rebuilding that from a nested array by hand is
+the work this removes. `messages` travels newline-joined inside its cell and
+`metadata` as compact JSON, so a row can still be traced back to the design.
+
+An empty ledger is a RESULT, not an absence: a run whose checks all came back
+clean gets a header row and no rows. Exporting mid-run gives what has been found
+so far under a `violations-partial` filename — an outcome column read off a live
+run is provisional in a way a finished one is not, and the name says which file
+it is, as `complete: false` does for the trajectory.
 
 ### Events, and why the graph is not one
 

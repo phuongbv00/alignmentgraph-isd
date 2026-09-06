@@ -48,6 +48,45 @@ _OBSERVABLE_TERMS = (
 )
 _PLACEHOLDER_MARKERS = ("<", "tbd", "todo", "placeholder", "lorem ipsum", "n/a")
 
+
+def _term_matcher(terms, *, whole_word: bool = False) -> "re.Pattern":
+    """Match a vocabulary at WORD BOUNDARIES instead of anywhere in the text.
+
+    Plain ``in`` made three of these lists lie. MEASURED (run 2b9e911a):
+    ``"clear"`` matched "clearly articulates" and flagged three specific rubric
+    descriptions as non-observable. The same class sits in two more:
+    ``"rate"`` matches "generate" and ``"use"`` matches "because", so a
+    statement carrying no taxonomy verb redeems itself; ``"lab"`` matches
+    "collaborate" and "syllabus", so a lecture-only design escapes
+    ``activity_engagement``.
+
+    The DEFAULT is a LEADING boundary only, not a whole word, because several
+    entries are deliberate STEMS ("demonstrat", "measur", "cod") and several
+    lists want inflections ("generate" must still match "generates"). ``\\bcod``
+    kills "encoded" while keeping "coding"; ``\\bcod\\b`` would kill both.
+    ``whole_word=True`` is for the one list where the inflection IS the false
+    positive: "clear" must not match "clearly".
+
+    A term that does not begin (or end) with an alphanumeric gets no boundary on
+    that side — ``_OBSERVABLE_TERMS`` carries "%", "0-", "1-".
+    """
+    def bounded(term: str) -> str:
+        pattern = re.escape(term)
+        if term[:1].isalnum():
+            pattern = r"\b" + pattern
+        if whole_word and term[-1:].isalnum():
+            pattern += r"\b"
+        return pattern
+
+    # Sorted so a set-derived vocabulary compiles to the same pattern in every
+    # process, the way `_ALL_BLOOM_VERBS` has to be sorted before it is sliced.
+    return re.compile("|".join(bounded(t) for t in sorted(terms)), re.IGNORECASE)
+
+
+#: Accuse only on the word itself; redeem on the word or an inflection of it.
+_VAGUE_RUBRIC_RE = _term_matcher(_VAGUE_RUBRIC_TERMS, whole_word=True)
+_OBSERVABLE_RE = _term_matcher(_OBSERVABLE_TERMS)
+
 _BLOOM_LEVEL_INDEX = {"remember": 1, "understand": 2, "apply": 3, "analyze": 4, "evaluate": 5, "create": 6}
 #: The reverse, so no message hardcodes an index-to-name table. A level printed
 #: as a bare integer ("elicits more than level 2") is a number the reader has to
@@ -92,6 +131,10 @@ _ACTIVE_ACTIVITY_MARKERS = (
     "role-play", "roleplay", "case study", "build", "implement", "solve", "cod",
     "review", "critique", "discussion", "pair", "debate", "apply",
 )
+_ACTIVE_ACTIVITY_RE = _term_matcher(_ACTIVE_ACTIVITY_MARKERS)
+_PASSIVE_ACTIVITY_RE = _term_matcher(_PASSIVE_ACTIVITY_MARKERS)
+_BLOOM_VERB_RE = _term_matcher(_ALL_BLOOM_VERBS)
+_VAGUE_VERB_RE = _term_matcher(_VAGUE_VERBS, whole_word=True)
 
 
 @dataclass
@@ -250,7 +293,7 @@ def bloom_verbs_items(items: list[tuple[str, dict]]) -> list[Violation]:
             continue
         if verb not in _ALL_BLOOM_VERBS:
             stmt_lower = statement.lower()
-            if not any(bv in stmt_lower for bv in _ALL_BLOOM_VERBS):
+            if not _BLOOM_VERB_RE.search(stmt_lower):
                 violations.append(Violation(
                     node_id=node_id, edge_type="", violation_type="bloom", severity="warning",
                     message=(
@@ -341,9 +384,7 @@ def measurability_items(items: list[tuple[str, dict]]) -> list[Violation]:
         lo_id = data.get("id", node_id.rsplit(":", 1)[-1])
         verb = str(data.get("bloom_verb", "")).lower().strip(".,;")
         stmt_lower = statement.lower()
-        is_vague = verb in _VAGUE_VERBS or any(
-            re.search(rf"\b{re.escape(v)}\b", stmt_lower) for v in _VAGUE_VERBS
-        )
+        is_vague = verb in _VAGUE_VERBS or bool(_VAGUE_VERB_RE.search(stmt_lower))
         if not is_vague:
             continue
         if _DEGREE_PATTERN.search(statement) or _CONDITION_PATTERN.search(statement):
@@ -400,8 +441,8 @@ def rubric_consistency_items(items: list[tuple[str, dict]]) -> list[Violation]:
                 metadata={"rc_id": rc_id, "description": criteria},
             ))
         elif len(criteria) < 40 or (
-            any(term in lowered for term in _VAGUE_RUBRIC_TERMS)
-            and not any(term in lowered for term in _OBSERVABLE_TERMS)
+            _VAGUE_RUBRIC_RE.search(lowered)
+            and not _OBSERVABLE_RE.search(lowered)
         ):
             violations.append(Violation(
                 node_id=node_id, edge_type="", violation_type="rubric_consistency", severity="warning",
@@ -594,9 +635,9 @@ def activity_engagement(graph) -> list[Violation]:
             f"{a['data'].get('activity_name', '')} {a['data'].get('description', '')}".lower()
             for a in linked
         ]
-        if any(marker in text for text in texts for marker in _ACTIVE_ACTIVITY_MARKERS):
+        if any(_ACTIVE_ACTIVITY_RE.search(text) for text in texts):
             continue
-        if not any(marker in text for text in texts for marker in _PASSIVE_ACTIVITY_MARKERS):
+        if not any(_PASSIVE_ACTIVITY_RE.search(text) for text in texts):
             continue  # unclassifiable formats: do not guess
         names = [str(a["data"].get("activity_name", "?")) for a in linked]
         violations.append(Violation(
@@ -770,10 +811,23 @@ def relation_coverage(graph) -> list[Violation]:
                 node_id=node_id, edge_type="", violation_type=relation_id,
                 severity="error" if relation.tier == "core" else "warning",
                 message=f"{node_id} has no {relation_id} ({relation.label}) coverage.",
-                repair_hint=f"Establish a {relation.label} link.",
+                repair_hint=_COVERAGE_HINTS.get(
+                    relation_id, f"Establish a {relation.label} link."),
                 metadata=metadata,
             ))
     return violations
+
+
+#: What the OWNING agent can actually do about an uncovered node, for the
+#: relations whose fix is a field edit rather than a new artifact. The generic
+#: "establish a link" is the class of instruction a small model does not act
+#: on; naming the field is what closes the gap.
+_COVERAGE_HINTS = {
+    "P10": ("Add this activity's id to the ``activity_ids`` of the session guide that "
+            "delivers it, and resubmit instructor_guide in full."),
+    "P11": ("Add this material's id to the ``material_ids`` of the session guide that "
+            "hands it out, and resubmit instructor_guide in full."),
+}
 
 
 def bloom_mismatches(graph) -> list[Violation]:

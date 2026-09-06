@@ -1,11 +1,17 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Wrench } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Download, Wrench } from 'lucide-react'
 import { agentHue, agentShortName, phaseLabel } from '../lib/phaseTimeline'
 import { OUTCOME_LABELS, openReasonLabel, violationLabel } from '../lib/violations'
+import { api } from '../api/client'
 import type { Finding } from '../api/types'
 
 interface Props {
   findings: Finding[]
+  runId: string | null
+  /** A run still going exports what has been found so far, and the file says
+   *  so in its name — an outcome column read off a live run is provisional in
+   *  a way a finished one is not. */
+  runActive: boolean
 }
 
 /**
@@ -21,7 +27,7 @@ interface Props {
  * finished run is "what is still wrong", and the second is "did anything fix
  * it". Within a group, ordered as the run met them.
  */
-export function ViolationGrid({ findings }: Props) {
+export function ViolationGrid({ findings, runId, runActive }: Props) {
   const [openKey, setOpenKey] = useState<string | null>(null)
   const groups = useMemo(() => {
     const open = findings.filter((f) => f.outcome === 'open')
@@ -48,6 +54,22 @@ export function ViolationGrid({ findings }: Props) {
           {findings.length} distinct finding{findings.length === 1 ? '' : 's'} ·{' '}
           {findings.filter((f) => f.outcome === 'open').length} still open
         </span>
+        {runId && (
+          // A link, not a fetch-and-blob: the server names the file in
+          // Content-Disposition, and pulling the CSV into memory only to hand
+          // it back to the browser would drop that name.
+          <a
+            className="btn small icon-label"
+            href={api.violationsExportUrl(runId)}
+            download
+            title={runActive
+              ? 'Download the findings so far as CSV (marked partial)'
+              : 'Download every finding as CSV — one row per finding, with its outcome, why it is still open, and who owns it'}
+          >
+            <Download size={12} />
+            {runActive ? 'Export so far' : 'Export'}
+          </a>
+        )}
       </div>
       {groups.map((group) => (
         <div key={group.id} className="ctx-list">

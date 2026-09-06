@@ -3,8 +3,9 @@
 The point of storing them is that the demo is self-contained — no shell state
 to get right before it will run. A *list* of connections rather than one
 setting, because switching between a local Ollama and a served pod should be a
-click and not three fields retyped; `AGENT_MODEL_*` seeds the first one so an
-existing setup still starts configured.
+click and not three fields retyped, and the app reads no `AGENT_MODEL_*` at all:
+a setting that came from a shell would be invisible in the dialog, so what the
+UI shows and what a run uses could differ with nothing on screen to say so.
 """
 from __future__ import annotations
 
@@ -73,45 +74,37 @@ def test_nothing_configured_reports_none(real_settings):
     assert "No model configured" in body["error"]
 
 
-def test_the_environment_seeds_the_first_connection(settings, monkeypatch):
-    """So an existing AGENT_MODEL_* setup keeps working untouched."""
+def test_the_environment_is_never_read(settings, monkeypatch):
+    """Not seeded, not a fallback, not a hole-filler.
+
+    The whole point of configuring in the app is that the dialog shows what a
+    run will use; a value arriving from a shell would be in neither place.
+    """
     for name in _AGENT_ENV:
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("AGENT_MODEL_NAME", "Qwen/Qwen3.5-4B")
-    monkeypatch.setenv("AGENT_MODEL_BASE_URL", "http://localhost:8000/v1")
-    monkeypatch.setenv("AGENT_MODEL_API_KEY", "sk-env")
+    monkeypatch.setenv("AGENT_MODEL_NAME", "from-the-environment")
+    monkeypatch.setenv("AGENT_MODEL_BASE_URL", "http://from-the-environment/v1")
+    monkeypatch.setenv("AGENT_MODEL_API_KEY", "sk-from-the-environment")
 
     with _serving(settings) as client:
         body = client.get("/api/connections").json()
-        connection = _only(body)
-        assert connection["model_name"] == "Qwen/Qwen3.5-4B"
-        assert connection["base_url"] == "http://localhost:8000/v1"
-        assert connection["has_api_key"] is True
-        assert connection["is_active"] is True
-        assert body["active_id"] == connection["id"]
+        assert body["connections"] == []
+        assert "No model configured" in body["error"]
+        assert client.get("/api/health").json()["llm_configured"] is False
 
 
-def test_seeding_only_happens_on_an_empty_database(settings, monkeypatch):
-    """Otherwise a connection someone deleted would come back on restart."""
+def test_a_blank_field_is_not_filled_in_from_the_environment(settings, monkeypatch):
+    """A connection saved with no key must fail here rather than borrow one and
+    work until it is started from a different shell."""
     for name in _AGENT_ENV:
         monkeypatch.delenv(name, raising=False)
-    with _serving(settings) as client:
-        _add(client, name="Mine", base_url="http://localhost:11434/v1", model_name="qwen3.5:2b")
+    monkeypatch.setenv("AGENT_MODEL_API_KEY", "sk-from-the-environment")
 
-    monkeypatch.setenv("AGENT_MODEL_NAME", "from-the-environment")
     with _serving(settings) as client:
-        assert _only(client.get("/api/connections").json())["name"] == "Mine"
-
-
-def test_an_anthropic_environment_is_not_seeded(settings, monkeypatch):
-    """The app is OpenAI-compatible only; seeding this would quietly point an
-    OpenAI client at Anthropic."""
-    for name in _AGENT_ENV:
-        monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("AGENT_MODEL_NAME", "claude-sonnet-4-5")
-    monkeypatch.setenv("AGENT_MODEL_API_SPEC", "anthropic")
-    with _serving(settings) as client:
-        assert client.get("/api/connections").json()["connections"] == []
+        body = _add(client, name="Keyless", base_url="http://localhost:11434/v1",
+                    model_name="qwen3.5:2b")
+        assert _only(body)["has_api_key"] is False
+        assert body["error"], "a model with no credentials should report a problem"
 
 
 def test_the_first_connection_becomes_active(real_settings):
@@ -286,6 +279,57 @@ def test_an_unreachable_endpoint_reports_rather_than_fails(real_settings, monkey
     assert "connection refused" in body["error"]
 
 
+def test_the_window_and_the_cap_are_stored_per_connection(real_settings):
+    body = _add(real_settings, name="RunPod 4B", base_url="http://pod/v1", api_key="k",
+                model_name="Qwen/Qwen3.5-4B", context_window=16384, max_tokens=8192)
+    connection = _only(body)
+    assert connection["context_window"] == 16384
+    assert connection["max_tokens"] == 8192
+
+
+def test_the_window_reaches_the_run_config(real_settings):
+    """The transcript budget is derived from the connection, not from a shell
+    variable — and the reserve is the same cap the client is sending, so the
+    two cannot disagree."""
+    from alignmentgraph_isd.server import llm_settings
+
+    _add(real_settings, name="RunPod 4B", base_url="http://pod/v1", api_key="k",
+         model_name="Qwen/Qwen3.5-4B", context_window=16384, max_tokens=8192)
+
+    assert llm_settings.window_settings() == {
+        "llm_context_window": 16384,
+        "llm_completion_reserve": 8192,
+    }
+
+
+def test_an_unset_window_keeps_the_harness_default(real_settings):
+    from alignmentgraph_isd.server import llm_settings
+
+    _add(real_settings, name="Ollama", base_url="http://localhost:11434/v1",
+         api_key="ollama", model_name="qwen3.5:2b")
+
+    settings = llm_settings.window_settings()
+    assert settings["llm_context_window"] == 0, "0 means the historical constant"
+    assert settings["llm_completion_reserve"] == llm_settings.DEFAULT_MAX_TOKENS
+
+
+def test_an_explicit_null_clears_an_optional_number(real_settings):
+    """Otherwise a token cap could be set but never unset, since the browser
+    sends every field on every save."""
+    connection = _only(_add(real_settings, name="Ollama", max_tokens=8192,
+                            context_window=16384))
+    body = real_settings.put(f"/api/connections/{connection['id']}", json={
+        "name": "Ollama", "max_tokens": None, "context_window": None,
+    }).json()
+    assert _only(body)["max_tokens"] is None
+    assert _only(body)["context_window"] is None
+
+
+def test_a_window_below_the_floor_is_rejected(real_settings):
+    response = real_settings.post("/api/connections", json={"name": "x", "context_window": 12})
+    assert response.status_code == 422
+
+
 def test_an_unknown_connection_is_a_404(real_settings):
     assert real_settings.get("/api/connections/nope/models").status_code == 404
     assert real_settings.put("/api/connections/nope", json={"name": "x"}).status_code == 404
@@ -304,3 +348,36 @@ def test_connections_are_locked_while_a_run_is_going(client, ready_program, bloc
 def test_a_name_that_is_too_long_is_rejected(real_settings):
     response = real_settings.post("/api/connections", json={"name": "x" * 101})
     assert response.status_code == 422
+
+
+def test_disable_thinking_round_trips_and_reaches_the_factory(real_settings):
+    """The app has no other way to turn thinking off.
+
+    ``build_factory`` passes ``read_env=False``, so ``AGENT_MODEL_DISABLE_THINKING``
+    cannot reach a run started here — which is the 2026-09-05 rule and stays. The
+    flag therefore has to be a property of the connection, and it has to survive
+    all the way into the request body: a small Qwen3 left thinking answers with
+    reasoning only, and the loop sees an empty turn.
+    """
+    pytest.importorskip("langchain_openai")
+    from alignmentgraph_isd.server import llm_settings
+
+    connection = _only(_add(real_settings, name="RunPod 2B", base_url="http://pod/v1",
+                            api_key="k", model_name="Qwen/Qwen3.5-2B",
+                            disable_thinking=True))
+    assert connection["disable_thinking"] is True
+    client = llm_settings.build_factory()()
+    assert client.extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
+
+
+def test_disable_thinking_defaults_off_and_can_be_turned_back_off(real_settings):
+    pytest.importorskip("langchain_openai")
+    from alignmentgraph_isd.server import llm_settings
+
+    connection = _only(_add(real_settings, name="OpenAI", api_key="k", model_name="gpt-4o-mini"))
+    assert connection["disable_thinking"] is False
+    real_settings.put(f"/api/connections/{connection['id']}", json={
+        "name": "OpenAI", "model_name": "gpt-4o-mini", "disable_thinking": True})
+    real_settings.put(f"/api/connections/{connection['id']}", json={
+        "name": "OpenAI", "model_name": "gpt-4o-mini", "disable_thinking": False})
+    assert not getattr(llm_settings.build_factory()(), "extra_body", None)

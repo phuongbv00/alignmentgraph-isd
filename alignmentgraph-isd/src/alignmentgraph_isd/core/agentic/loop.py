@@ -39,7 +39,6 @@ from ..llm_io import (
     finish_reason,
     was_truncated,
     _is_truncation_error,
-    _json_error_hint,
     parse_json_response,
 )
 from ..ratelimit import gate_for
@@ -67,11 +66,23 @@ class ToolTurn:
     call_id: str = ""
     text: str = ""
     message: object = None
-    #: Calls beyond the first in one turn. The loop executes ONE call per turn
-    #: so the turn budget stays the honest unit of work; the count is logged so
-    #: a model that batches is visible in the trace rather than silently
-    #: truncated.
+    #: Calls beyond the first in one model turn. Every one of them is
+    #: EXECUTED, in order, and each costs a turn — so the turn budget stays the
+    #: honest unit of work while nothing the model asked for is lost. The
+    #: count is logged so a model that batches is visible in the trace.
+    #:
+    #: Only the first used to run (2026-09-05): the rest were counted and
+    #: silently dropped, their tool_call ids left unanswered in the history.
+    #: Measured on run e81b8108: five of six stages re-issued the dropped
+    #: reads, and the turn after a dropped batch came back EMPTY on every one
+    #: of them — two to three turns per stage spent on a harness decision.
     extra_calls: int = 0
+    #: The calls after this one in the same model turn, each a ToolTurn of its
+    #: own with ``sibling=True``.
+    calls: tuple = ()
+    #: This call shares its assistant message with the call before it, so the
+    #: message is already in the history and must not be appended again.
+    sibling: bool = False
     #: The backend refused ``bind_tools`` — not a model mistake, an endpoint
     #: one. Distinguished from an ordinary empty turn so the loop can stop
     #: immediately instead of spending its budget discovering it again.
@@ -83,9 +94,23 @@ class ToolTurn:
     #: well have been writing when it was cut off, and the model then rewrites
     #: the artifact from scratch and is cut off again.
     truncated: bool = False
+    #: The model's REASONING channel, when the backend reports one separately
+    #: (`additional_kwargs["reasoning_content"]` — vLLM's reasoning parser, and
+    #: what LangChain does with it). Carried only so an empty turn can be told
+    #: apart from a talkative one: a reply that is all reasoning and no answer
+    #: is a serving posture, not the model refusing the protocol, and charging
+    #: the two identically makes a serving artifact read as a finding about the
+    #: model. `finish_reason` is "stop" for these, so `truncated` cannot see
+    #: them either. Never sent back to the model and never in the transcript.
+    reasoning: str = ""
 
     def __bool__(self) -> bool:
         return bool(self.name)
+
+    @property
+    def thinking_only(self) -> bool:
+        """The reply carried reasoning and nothing else — no answer, no call."""
+        return bool(self.reasoning) and not (self.text or "").strip() and not self.name
 
 
 #: Every tool name the arm can ever bind. Protocol vocabulary, and therefore
@@ -269,6 +294,31 @@ def _landed(step, state) -> tuple[str, ...]:
     return tuple(key for key, _type, _required in step.submit_fields if view.get(key))
 
 
+def _still_needed(step, state) -> str:
+    """What this stage already holds and what it still owes, from the STATE.
+
+    ONE renderer, so the sentence cannot drift between the place a stage OPENS
+    and the place a submit is answered. Computed from the state and never from
+    `attempt` or any loop counter — the rule `missing_parts` already carries,
+    because a regen resets a counter and the arms would then disagree.
+
+    The gap it closes: a stage that gave up is re-run from a fresh context, and
+    its opening turn was byte-identical to the first attempt's. It listed all
+    six of `implementation`'s artifacts however many were already committed, so
+    the retry re-fetched `stage_brief`, re-issued every read, and re-sent work
+    that was done — on run 24343e4d, three such attempts at 55.6k prompt /
+    11.7k completion tokens / 122 s. The single arm never had this hole: it
+    never restarts a stage, and `_committed_note` tells it the same thing after
+    every submit.
+    """
+    landed, left = _landed(step, state), missing_parts(step, state)
+    if not landed or not left:
+        return ""
+    return (f"{step.name} still needs: {', '.join(left)}. "
+            f"Already committed: {', '.join(landed)} — submit the next part on "
+            "its own and do not resend those.")
+
+
 def _repair_request(stage: str, violations: list, round_index: int, rounds: int) -> str:
     """The user turn that hands a stage its own violations back.
 
@@ -397,6 +447,13 @@ def emit_context(trajectory, *, agent_run_id: str, agent: str, phase: str,
         "tokens": {name: int(count / ratio) for name, count in parts.items()},
         "total_tokens": int(sum(parts.values()) / ratio),
         "token_budget": token_budget,
+        # What the budget is DERIVED from, carried so a viewer can explain the
+        # number instead of just showing it: a budget of 8.2k under a 16.4k
+        # window looks wrong until the 8.2k reserved for the reply is on screen
+        # beside it. 0 = not configured, and then the budget is the historical
+        # character constant converted at the measured ratio.
+        "token_window": int(getattr(config, "llm_context_window", 0) or 0),
+        "token_reserve": int(getattr(config, "llm_completion_reserve", 0) or 0),
         # The bound schemas: real context, but not in the message list, so
         # reported BESIDE the partition rather than folded into it.
         "schema_tokens": int(
@@ -412,6 +469,7 @@ def emit_context(trajectory, *, agent_run_id: str, agent: str, phase: str,
             messages=payload["messages"], tools=payload["tools"],
             tokens={key: payload[key] for key in
                     ("chars", "budget", "tokens", "total_tokens", "token_budget",
+                     "token_window", "token_reserve",
                      "schema_tokens", "ratio_measured", "compacted")}))
 
 
@@ -427,51 +485,22 @@ def _prompt_chars_any(messages: list) -> int:
 
 
 class AgenticLLM:
-    """Model caller for the agentic arm: JSON mode, correction turns,
-    truncation salvage, trajectory accounting.
+    """Model caller for the agentic arm: native tool calling, truncation
+    salvage, trajectory accounting.
 
-    Copied from the retired scripted arm's ``_call_llm`` / ``_invoke_with_retry``
-    minus the persona framing. Its JSON-mode ``__call__`` has exactly one caller
-    left: ``compaction.summarize``, the orchestrator's own summariser. Repairs
-    do NOT use it — no repair has called the model since 2026-09-03.
+    Tool calls are the ONLY way this class reaches the model. The JSON-mode
+    ``__call__`` it used to carry had one caller left, the compaction
+    summariser, and went with it (2026-09-05): a summary written under
+    ``response_format=json_object`` came back as JSON, was rejected as
+    non-prose, and cost a full completion every time the window filled —
+    measured on run e81b8108: three calls, 11.8k completion tokens, nothing
+    kept. Repairs never call the model either (2026-09-03).
     """
 
     def __init__(self, config, trajectory, identity: str) -> None:
         self.config = config
         self.trajectory = trajectory
         self.identity = identity
-
-    def __call__(self, messages: list[dict], max_retries: int = 2) -> str:
-        """JSON-mode call: no tools bound, a string back. Its one caller is
-        ``compaction.summarize`` — the orchestrator's own summariser, which asks
-        for prose rather than for a tool call. Repairs do NOT use it: since
-        2026-09-03 no repair calls the model at all."""
-        if self.config.llm_factory is None:
-            self.trajectory.log_llm_call(0, 0)
-            self.trajectory.log_recovery_event(
-                self.identity, "llm_error", "", "llm_factory not set — cannot call LLM")
-            return ""
-        raw_llm = self.config.llm_factory()
-        json_llm = raw_llm
-        try:
-            json_llm = raw_llm.bind(response_format={"type": "json_object"})
-        except Exception:
-            pass
-        try:
-            return self._invoke_with_retry(json_llm, messages, max_retries)
-        except Exception as exc:
-            if _is_truncation_error(exc):
-                try:
-                    content = self._invoke_with_retry(raw_llm, messages, 0)
-                    self.trajectory.log_recovery_event(
-                        self.identity, "salvage_truncated", str(exc)[:80], content[:100])
-                    if content:
-                        return content
-                except Exception:
-                    pass
-            self.trajectory.log_llm_call(0, 0)
-            self.trajectory.log_recovery_event(self.identity, "llm_error", "", str(exc))
-            return ""
 
     def call_tools(self, messages: list[dict], tool_specs: list[dict]) -> ToolTurn:
         """One act turn with tools bound. Returns the model's tool call, or an
@@ -555,73 +584,35 @@ class AgenticLLM:
         self.trajectory.log_llm_call(prompt_tokens, completion_tokens)
         cut = was_truncated(result)
         if not calls:
-            return ToolTurn(text=content, message=result, truncated=cut)
-        call = calls[0]
-        name = str(call.get("name") or "").strip()
+            extra = getattr(result, "additional_kwargs", None) or {}
+            reasoning = str(extra.get("reasoning_content") or "") if isinstance(extra, dict) else ""
+            if reasoning and not content.strip():
+                # MEASURED (run 24343e4d): 12 of 78 calls, 47-405 billed
+                # completion tokens each, every one charged a full stage turn
+                # as `invalid_action`. Recorded HERE, at the one call path both
+                # arms share, so the rate is comparable across the axis and is
+                # attributable to the serving posture rather than to the model.
+                # The fix is `disable_thinking` on the factory; this is what
+                # makes its absence visible when it is not set.
+                self.trajectory.log_recovery_event(
+                    self.identity, "thinking_only_reply",
+                    f"{completion_tokens} completion tokens, no content, no tool call",
+                    reasoning[:200])
+            return ToolTurn(text=content, message=result, truncated=cut,
+                            reasoning=reasoning)
         # Raw here; the loop coerces against the SPEC it bound (only it knows
         # which tool this name refers to and what types that tool declares).
-        return ToolTurn(name=name, args=call.get("args"),
-                        call_id=str(call.get("id") or ""), text=content, message=result,
-                        extra_calls=len(calls) - 1, truncated=cut)
-
-    def _invoke_with_retry(self, llm, messages: list, max_retries: int) -> str:
-        # `_prompt_chars_any`, not a bare `m.get`: the transcript is MIXED. The
-        # tool-call round trip puts the model's own message objects in the
-        # history alongside the plain dicts this module appends — so a
-        # plain `.get` raised
-        # `'AIMessage' object has no attribute 'get'` and lost the call
-        # outright (run single_20260901_205901: 4 of 84).
-        self.trajectory.emit("llm_started", {
-            "agent": self.identity,
-            "prompt_chars": _prompt_chars_any(messages),
-            "message_count": len(messages),
-            "retries_left": max_retries,
-        })
-        started = time.time()
-        # One slot from the run's call gate for the duration of the request.
-        # The executor is sequential today, so the gate does not bind; it is
-        # kept because a concurrent fan-out (which the LangGraph pipeline had)
-        # put 429s on one ablation arm and not the other (core/ratelimit.py).
-        with gate_for(self.config).hold():
-            result = llm.invoke(messages)
-        content = result.content if hasattr(result, "content") else str(result)
-        prompt_tokens, completion_tokens = _extract_token_usage(result)
-        ratio_for(self.config).observe(_prompt_chars_any(messages), prompt_tokens)
-        duration_ms = (time.time() - started) * 1000
-        self.trajectory.emit("llm_finished", {
-            "agent": self.identity,
-            "duration_ms": duration_ms,
-            "response_chars": len(content or ""),
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-        })
-        self.trajectory.log_action(
-            "llm_call",
-            agent=self.identity,
-            duration_ms=duration_ms,
-            prompt_chars=_prompt_chars_any(messages),
-            response_chars=len(content or ""),
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            attempt_of_retries_left=max_retries,
-        )
-        self.trajectory.log_llm_call(prompt_tokens, completion_tokens)
-        if max_retries > 0 and not parse_json_response(content, warn=False, salvage=False):
-            hint = _json_error_hint(content)
-            self.trajectory.log_recovery_event(
-                self.identity, "retry", hint or "empty/invalid JSON", content[:100])
-            correction_messages = messages + [
-                {"role": "assistant", "content": content},
-                {"role": "user", "content": (
-                    "Your previous response was not valid JSON"
-                    + (f" ({hint})" if hint else "")
-                    + ". Return the COMPLETE corrected object as a SINGLE valid JSON value: "
-                    "every '{' '[' must be closed, no trailing commas, no text or extra "
-                    "objects before or after it, no markdown fences."
-                )},
-            ]
-            return self._invoke_with_retry(llm, correction_messages, max_retries - 1)
-        return content
+        # One ToolTurn per call, all sharing the model's message: the first
+        # carries the rest as `calls`, and `truncated` rides on every one
+        # because it is the LAST call of a cut batch that is incomplete and
+        # only the caller knows which that is.
+        turns = [ToolTurn(name=str(call.get("name") or "").strip(), args=call.get("args"),
+                          call_id=str(call.get("id") or ""), text=content if i == 0 else "",
+                          message=result, sibling=i > 0, truncated=cut)
+                 for i, call in enumerate(calls)]
+        turns[0].calls = tuple(turns[1:])
+        turns[0].extra_calls = len(calls) - 1
+        return turns[0]
 
 
 # The protocol block deliberately does NOT end the prompt: an SLM weights the
@@ -803,46 +794,123 @@ _WORKFLOW_OVERVIEW = _workflow_overview()
 #: protected from the next trim.
 COMPACTION_NOTE = "compaction_note"
 
+#: The header a stage's turn carries, and the regex that finds it again. ONE
+#: marker, because since 2026-09-06 the task pointer and the contract are one
+#: message: the turn IS the brief.
+#:
+#: Reading the stage name back OUT of the text is what lets one implementation
+#: serve both arms — the multi arm builds this turn per stage loop and the
+#: single arm has it injected into its one conversation as each stage comes up,
+#: and neither difference reaches `brief_stages`/`lost_briefs`/`respec`.
+STAGE_BRIEF_HEADER = "--- STAGE: {stage} ---"
+_BRIEF_HEADER_RE = re.compile(
+    re.escape(STAGE_BRIEF_HEADER).replace(re.escape("{stage}"), r"(\S+)"))
+
+
+def stage_brief_block(step) -> str:
+    """One stage's turn: the header, then its task, schema and rules.
+
+    The stage marker deliberately does NOT use the "=== HEADER ===" form: that
+    form means "injected prior-artifact context" everywhere else in the package
+    (the docket and the scenario use it, and readers — the test fixture
+    included — strip on it). A stage boundary is neither."""
+    return f"{STAGE_BRIEF_HEADER.format(stage=step.name)}\n{step.task_block()}"
+
+
+def brief_stages(messages: list) -> set[str]:
+    """Which stages' briefs are still in this transcript."""
+    found: set[str] = set()
+    for message in messages:
+        content = message.get("content", "") if isinstance(message, dict) else ""
+        found.update(_BRIEF_HEADER_RE.findall(str(content or "")))
+    return found
+
+
+def lost_briefs(kept: list, dropped: list) -> list[str]:
+    """Stages whose brief went with this trim and is not still live elsewhere.
+
+    Subtracting what survived is what makes the note stage-precise instead of a
+    blanket nudge: in the single arm, stage X's brief can be gone while stage
+    Y's is intact, and telling that agent to re-fetch everything spends the
+    shared budget it is already short of."""
+    return sorted(brief_stages(dropped) - brief_stages(kept))
+
+
+def respec(messages: list, step, brief: str) -> str:
+    """The stage's contract, re-attached to a rejection when it has fallen out
+    of the transcript.
+
+    MEASURED FAILURE (run single_20260901_162455): the graph arm was told
+    "assessment_plan.lo_coverage_targets is missing" 15 times and the prose arm
+    "needs_analysis.gaps must be a non-empty list" 48 times, each time
+    submitting the same broken shape again — corrected against a specification
+    it could no longer see. And from the other arm (run 2b9e911a,
+    implementation): once compaction took the brief, the model invented
+    ``instructor_guidance`` and ``session_guides`` as a dict, was rejected
+    eight times across three regens, and the artifact never committed.
+
+    Re-attached only when it is actually gone, because it is up to 7,400
+    characters and pasting it onto every rejection would push out the very
+    transcript it is meant to sit beside. Pasted rather than merely asked for:
+    a paste costs no turn and is certain to arrive, and that run is three
+    regens of evidence that a small model does not act on general advice.
+    """
+    if step.name in brief_stages(messages):
+        return ""
+    return "\n\nThe contract for this stage, again:\n" + brief
+
+
 #: What replaces what was taken away. The count and the way back are always
 #: true — only observations are dropped, and their findings are in the design
-#: state — and ``{summary}`` carries whatever ``compaction.summarize`` could
-#: keep of the content, or nothing when it could keep none.
+#: state. Deterministic and free, on purpose: a model-written summary of the
+#: dropped turns was tried (2026-09-03 → 2026-09-05) and cost one full
+#: completion per compaction for a summary the SLM never delivered — see
+#: ``compact`` below.
 _COMPACTED_NOTE = (
     "[{count} earlier turn(s) of this conversation were removed to stay inside "
     "the context window — the oldest tool results, nothing you were told to do. "
     "Their findings are in the design state: read them again with the tools "
-    "above if you need them. Everything since is intact.]{summary}"
+    "above if you need them. Everything since is intact.]"
 )
 
 
-def compaction_note(count: int, summary: str = "") -> dict:
+#: Appended to the note when the trim took a stage's CONTRACT with it. The
+#: standing note says the dropped findings are in the design state, which is
+#: true of tool results and false of the brief — the schema is not in the
+#: design state at all. MEASURED (run 2b9e911a): the brief went on turn 9 of
+#: the implementation stage, the model was told its findings were recoverable,
+#: and it invented field names for the rest of the stage. `forget_compacted_calls`
+#: already clears the repeat guard for the dropped result, so the re-fetch this
+#: asks for is permitted — the permission existed and the instruction did not.
+_BRIEF_LOST_NOTE = (
+    " The stage turn for {stages} went with them, so you no longer have the "
+    "schema or the field names — submit only what you are certain of, and the "
+    "contract comes back with any rejection."
+)
+
+
+def compaction_note(count: int, lost: tuple | list = ()) -> dict:
     """The note itself, as a turn the model actually sees."""
-    body = f"\n\nWhat those turns established:\n{summary.strip()}" if summary.strip() else ""
-    return {"role": "user", "content": _COMPACTED_NOTE.format(count=count, summary=body),
-            COMPACTION_NOTE: True, "summary": summary}
+    content = _COMPACTED_NOTE.format(count=count)
+    if lost:
+        content = content.rstrip("]") + _BRIEF_LOST_NOTE.format(
+            stages=", ".join(lost)) + "]"
+    return {"role": "user", "content": content, COMPACTION_NOTE: True}
 
 
-def running_summary(messages: list) -> str:
-    """The summary the current note carries, for the next fold to build on."""
-    for message in messages:
-        if isinstance(message, dict) and message.get(COMPACTION_NOTE):
-            return str(message.get("summary") or "")
-    return ""
-
-
-def _with_note(messages: list, count: int, summary: str = "") -> list:
+def _with_note(messages: list, count: int, lost: tuple | list = ()) -> list:
     """The transcript with its compaction note current — one note, rewritten,
     never a second one. It sits where the dropped turns were: after the system
     turn (the only one `trim_history` protects) and before what survived."""
     head = messages[:1]
     body = [m for m in messages[1:]
             if not (isinstance(m, dict) and m.get(COMPACTION_NOTE))]
-    return head + [compaction_note(count, summary)] + body
+    return head + [compaction_note(count, lost)] + body
 
 
-def compact(messages: list, dropped: list, total: int, *, llm, trajectory,
-            stats: dict) -> list:
-    """Fold what just went into the note, summarising it if a model can.
+def compact(messages: list, dropped: list, total: int, *, trajectory,
+            stats: dict, restore=None, budget: int = 0) -> list:
+    """Record what just went, in the conversation and in the trace.
 
     ONE implementation, called identically by both arms — which is what makes
     the difference between them a measurement. ``single`` carries one
@@ -851,42 +919,122 @@ def compact(messages: list, dropped: list, total: int, *, llm, trajectory,
     showing its own mechanism, and ``stats`` counts it so the cost can be
     stated rather than implied.
 
-    The call belongs to the ORCHESTRATOR: the agent did not choose to compact
-    and is never shown this conversation, so it is not published as one of that
-    agent's contexts. ``AgenticLLM`` still counts its tokens.
+    Deterministic: no model call. The rolling model-written summary that used
+    to sit beside the note (``core/agentic/compaction.py``, 2026-09-03) was
+    removed 2026-09-05. It went through ``AgenticLLM``'s JSON-mode call while
+    asking for prose, so a compliant backend answered with a JSON object and
+    the summariser threw it away as non-prose — every compaction on run
+    e81b8108 logged "count only" after a 2.7-4.7k-token completion. A note
+    that costs nothing and is always true beats one that costs a completion
+    and was never kept; the findings it would have carried are in the design
+    state, one read away.
     """
     from ..trajectory import WORKFLOW_ORCHESTRATOR
-    from . import compaction
 
     stats["compactions"] = stats.get("compactions", 0) + 1
-    previous = running_summary(messages)
-    summary = previous
-    if llm is not None:
-        with trajectory.acting_as(WORKFLOW_ORCHESTRATOR):
-            summary = compaction.summarize(llm, previous, dropped)
-            if summary and summary != previous:
-                stats["compaction_summaries"] = stats.get("compaction_summaries", 0) + 1
-            trajectory.log_recovery_event(
-                WORKFLOW_ORCHESTRATOR, "context_compacted",
-                f"{len(dropped)} turn(s), {total} total",
-                "summarised" if summary and summary != previous else "count only")
-    return _with_note(messages, total, summary)
+
+    # A dropped stage BRIEF is not like a dropped observation. The note's
+    # standing promise — the findings are in the design state, read them again —
+    # is true of a tool result and false of the contract, which is not in the
+    # design state at all. So the contract is put BACK, at the tail, where it is
+    # newest and the next trim (oldest first) will not take it.
+    #
+    # Re-attaching beats asking: it costs no turn and is certain to arrive,
+    # where a note asking the model to re-fetch costs a turn and depends on it
+    # complying — and run 2b9e911a is three regens of a model that did not.
+    # It is not PROTECTED in place, which is a different thing and was rejected:
+    # a `role: "tool"` message cannot be hoisted the way the note is (the
+    # assistant turn that made the call has to precede it), and pinning it would
+    # fix a block at the front of the very window it has to make room in.
+    lost = lost_briefs(messages, dropped)
+    restored: list[tuple[str, str]] = []
+    still_lost: list[str] = []
+    for stage in lost:
+        brief = restore(stage) if restore is not None else None
+        # Only if it FITS in what the trim just freed. Draining to the
+        # low-water mark leaves room by construction, but a brief is up to
+        # 7,400 characters and a small budget could put the transcript straight
+        # back over the line and trim again on the next turn.
+        if brief and (not budget or _prompt_chars_any(messages) + len(brief) <= budget):
+            restored.append((stage, brief))
+        else:
+            still_lost.append(stage)
+
+    # The note names only what could not be put back, so a model whose contract
+    # is sitting right there is not sent to fetch it again.
+    kept = _with_note(messages, total, still_lost)
+    for _stage, brief in restored:
+        kept.append({"role": "user", "content": brief})
+
+    trajectory.log_recovery_event(
+        WORKFLOW_ORCHESTRATOR, "context_compacted",
+        f"{len(dropped)} turn(s), {total} total"
+        + (f", stage brief re-attached: {', '.join(s for s, _ in restored)}" if restored else "")
+        + (f", stage brief lost: {', '.join(still_lost)}" if still_lost else ""),
+        f"live context now {_prompt_chars_any(kept)} chars")
+    return kept
 
 
-def trim_history(messages: list, budget: int = HISTORY_CHAR_BUDGET) -> tuple[list, list]:
-    """Drop the OLDEST tool observations until the history fits ``budget``.
-    Returns the kept messages and the DROPPED ones, in the order they were
-    dropped.
+#: What an empty turn is answered with. ONE constant, used by both loops: it
+#: lands in the transcript, the transcript is what the model sees, and a nudge
+#: worded differently on each side of the decomposition axis is a second
+#: variable. (They did differ — `ToolLoop` said one thing and `ReactLoop`
+#: another — which is exactly the drift a shared constant prevents.)
+INVALID_TURN_NUDGE = (
+    "Invalid turn: you must CALL A TOOL, not answer with text. Call one of "
+    "the listed tools, or call submit with the complete artifact.")
+#: What a reasoning-only turn is answered with. Separate from the above because
+#: the model did not answer with text either — telling it "not text" when it
+#: wrote none is an instruction it cannot act on.
+THINKING_ONLY_NUDGE = (
+    "Your last reply carried reasoning but no answer and no tool call, so "
+    "nothing reached this stage. Call a tool now — put the result in the tool "
+    "call itself, not in your reasoning.")
+
+
+#: Once the history overflows ``budget``, how far below it a trim brings it:
+#: the low-water mark, as a fraction of the budget.
+#:
+#: Trimming to JUST under the budget was measured (run e81b8108, implementation
+#: stage) to refire on every following turn — one or two turns went each time,
+#: the next observation put the history back over the line, and one stage
+#: compacted three times where one would have done. Each firing is a note the
+#: model has to read past and, while the summariser existed, a model call.
+#: Draining to half the budget gives the conversation room to grow again
+#: before the next trim, so compaction is an event rather than a steady state.
+TRIM_LOW_WATER = 0.5
+
+
+def forget_compacted_calls(seen_calls: dict, dropped: list) -> None:
+    """Drop from the repeat guard every call whose RESULT compaction just took
+    away. The guard refuses a second answer to a call already answered — but
+    an answer the model can no longer see is not one it has, and the
+    compaction note tells it to read again. Measured on the test fixture
+    once trims began draining to the low-water mark: the single arm re-asked
+    for a stage brief it had lost and was refused 133 times."""
+    gone = {m.get("tool_call_id") for m in dropped
+            if isinstance(m, dict) and m.get("role") == "tool"}
+    gone.discard(None)
+    for key in [k for k, call_id in seen_calls.items() if call_id in gone]:
+        del seen_calls[key]
+
+
+def trim_history(messages: list, budget: int = HISTORY_CHAR_BUDGET,
+                 low_water: float = TRIM_LOW_WATER) -> tuple[list, list]:
+    """Drop the OLDEST tool observations once the history exceeds ``budget``,
+    draining it to ``budget * low_water``. Returns the kept messages and the
+    DROPPED ones, in the order they were dropped.
 
     Kept unconditionally: the system message (persona + workflow + scenario),
     the compaction note, and the tail. Everything else is droppable, including
     the stage turn — deliberately, and it is what makes the rest of the design
     hang together:
 
-    * the TASK survives as content, folded into the compaction note by
-      ``compact``, which is what a summary is for;
-    * the SCHEMA and rules are not in the turn at all. They are behind the
-      ``stage_brief`` tool, fetchable whenever the agent needs them again;
+    * the TASK survives in the design state — every artifact it asked for is
+      committed there or still listed as missing, which the tool results say;
+    * the SCHEMA and rules are in the turn and go back into it: `compact`'s
+      ``restore`` re-attaches a stage turn a trim took, and a rejection
+      re-attaches it too (``respec``);
     * the TOOL MENU is redundant with the binding — the schemas go out with
       every single request under native tool calling — so losing its prose
       costs nothing.
@@ -906,6 +1054,7 @@ def trim_history(messages: list, budget: int = HISTORY_CHAR_BUDGET) -> tuple[lis
 
     if size(messages) <= budget or len(messages) <= 3:
         return messages, []
+    target = int(budget * low_water)
     head, rest = messages[:1], list(messages[1:])
     # The compaction note is standing furniture, like the system turn above it:
     # pulled out here so a later trim cannot drop the very message that says
@@ -915,7 +1064,7 @@ def trim_history(messages: list, budget: int = HISTORY_CHAR_BUDGET) -> tuple[lis
     dropped: list = []
     # Keep at least the last two entries: the live stage instruction and
     # whatever answered it. Below that there is nothing left to trim.
-    while len(body) > 2 and size(head + note + body) > budget:
+    while len(body) > 2 and size(head + note + body) > target:
         dropped.append(body.pop(0))
     # The dropped run is CONTIGUOUS and starts right after the system turn,
     # which is what lets a caller rebuild the whole conversation in order as
@@ -971,6 +1120,15 @@ class ToolLoop:
     PART_SUBMIT_SLACK = 3
     #: How many repeated calls are refunded rather than charged a turn.
     REPEAT_ALLOWANCE = 3
+    #: How many reasoning-only replies are refunded rather than charged a turn.
+    #: Same shape and same argument as REPEAT_ALLOWANCE: the turn produced no
+    #: observation and no artifact, so charging it spends the stage's budget on
+    #: a serving posture. Bounded for the same reason too — a backend that only
+    #: ever returns reasoning must still reach the ceiling rather than loop.
+    #: Mirrored in `ReactLoop`: a refund is a harness accounting rule, so one
+    #: that existed on a single side of the decomposition axis would be a
+    #: ceiling difference sitting inside the treatment.
+    THINKING_ALLOWANCE = 3
     #: Default turns a STAGE loop may spend fixing its own violations. Passed
     #: in by ``run.py``; a Developer loop gets 0.
     #:
@@ -1066,11 +1224,19 @@ class ToolLoop:
         self.stats: dict = {
             "turns_used": 0, "submits_rejected": 0, "repeated_calls": 0,
             "history_dropped": 0, "gave_up": False, "reads": 0,
-            # How often the window filled, and how often a model call
-            # could keep something of what went. `single` reaches this
-            # constantly and `multi` barely at all — the axis showing
-            # its own mechanism, so it is counted, not smoothed away.
-            "compactions": 0, "compaction_summaries": 0,
+            # Whether the TURN CEILING is what ended this stage, as opposed to
+            # the stage finishing or giving up for any other reason. Reported
+            # for BOTH arms (`react.py` has always set it) because the
+            # `agent_mode` claim rests on neither arm having been CUT by its
+            # budget: while this reads false on both sides, a difference in
+            # outcome cannot be blamed on the ceiling. It was missing here,
+            # so the multi half of that assertion was `.get()` on a key that
+            # never existed — permanently False, and never once checked.
+            "via_budget_exhaustion": False,
+            # How often the window filled. `single` reaches this constantly
+            # and `multi` barely at all — the axis showing its own mechanism,
+            # so it is counted, not smoothed away.
+            "compactions": 0,
             "context_len": 0, "batched_calls": 0, "markup_recovered": 0,
             "args_salvaged": 0, "truncated_turns": 0, "dropped_args": 0,
             # Turns spent fixing this stage's OWN violations, in this context.
@@ -1079,6 +1245,11 @@ class ToolLoop:
             # decomposition axis is not read off a turn count that mixes the
             # two.
             "repair_turns": 0,
+            # Replies that carried reasoning and nothing else. Counted per arm
+            # because it is a property of the SERVING posture, not of the
+            # decomposition axis, and reading it as the latter is exactly the
+            # mistake `disable_thinking` exists to prevent.
+            "thinking_only": 0,
         }
         #: ``node_type -> heading`` for artifact pools the assignment already
         #: renders in full. Empty for a stage agent, which reads real state.
@@ -1137,20 +1308,17 @@ class ToolLoop:
         # that form means "injected prior-artifact context" everywhere else in
         # the package (the docket and the scenario use it, and readers — the
         # test fixture included — strip on it). A stage boundary is neither.
-        # The INTRO, not the whole task block: the schema and the rules are
-        # behind `stage_brief` now. Two things follow. The turn no longer grows
-        # with the schema, so compacting it costs the conversation little and
-        # what it did say survives in the compaction summary. And both arms
-        # fetch their contract the same way — `multi` used to be handed it free
-        # while `single` spent a call asking, which is a harness-imposed
-        # difference sitting on the decomposition axis.
-        # A Developer carries its contract inline — its loop is short, its
-        # assignment is its whole job, and it never reaches the window. A stage
-        # fetches it, because its turn CAN be compacted away.
-        contract = (self.step.task_block() if self.step.contract_inline else
-                    self.step.intro + "\n\nCall stage_brief for the exact schema "
-                    "and rules before you submit.")
-        parts = [f"--- STAGE: {self.step.name} ---", protocol, contract]
+        # The WHOLE task block — task, schema and rules — in the stage turn.
+        # It sat behind a `stage_brief` tool from 2026-09-03 to 2026-09-06,
+        # which bought a turn that did not grow with the schema and cost a
+        # contract that could be compacted away with nothing to put it back;
+        # run 2b9e911a is that trade going wrong. Pushing it also merges two
+        # blocks that overlapped: the pointer restated `step.intro`, which is
+        # the first thing `task_block` says.
+        parts = [stage_brief_block(self.step), protocol]
+        resuming = _still_needed(self.step, self.state)
+        if resuming:
+            parts.append(resuming)
         if self.step.docket and self.graph_mode:
             docket = tools.alignment_docket(self.state, **self.step.docket)
             if docket:
@@ -1193,7 +1361,12 @@ class ToolLoop:
         if not self.messages:
             self.messages = [{"role": "system", "content": self._system_prompt()}]
         self.messages.append({"role": "user", "content": stage_message})
-        specs = tools.tool_specs(self.step, graph_mode=self.graph_mode,
+        # Only the artifacts still open. On a first attempt nothing has landed,
+        # so this is the full set the golden fixture pins; on a regen it stops
+        # the model being offered tools for work already done.
+        open_now = tuple(key for key, _t, _r in self.step.submit_fields
+                         if key not in set(_landed(self.step, self.state))) or None
+        specs = tools.tool_specs(self.step, only=open_now, graph_mode=self.graph_mode,
                                  retrieval_available=retrieval_available)
         # ACCUMULATED across the conversation, not replaced. A loop that
         # continues another's messages may bind a narrower set — the replan
@@ -1208,15 +1381,37 @@ class ToolLoop:
         # agent was ASKED is the thing a viewer wants first.
         self._publish(live=True)
 
-        submit_attempts = 0
         # Accepted submits, for a step whose artifact arrives in parts.
-        accepted = 0
-        seen_calls: set[str] = set()
-        refunded = 0
-        _turn = -1
+        self._accepted = 0
+        #: Rejected submits so far, PER ARTIFACT. One counter for the whole
+        #: stage made `SUBMIT_BUDGET` mean "three rejections anywhere ends the
+        #: stage", which contradicts what the per-artifact split promises in
+        #: `tools.submit_specs`: a rejected artifact costs THAT artifact. It
+        #: was nearly unreachable on `implementation` only because
+        #: `validate_implementation` accepted almost anything; closing that
+        #: made three bad guesses at one artifact able to abandon the five
+        #: beside it and trigger a whole-stage regen — the expensive path
+        #: (measured on run 24343e4d: 55.6k prompt / 11.7k completion / 122 s).
+        self._submit_attempts: dict[str, int] = {}
+        #: The best REJECTED submit of each artifact, accumulated as ONE
+        #: section (each rejected payload is already the `{artifact: {...}}`
+        #: envelope, so merging them keeps the shape `_commit` wants).
+        #: Committed only if the stage ends without a valid one. Deliberately
+        #: not committed at rejection time: an invalid artifact under its own
+        #: key is truthy to `_landed`, so it would shrink `missing_parts`,
+        #: satisfy `step_done` and skip the regen — which is how run 24343e4d
+        #: shipped an unusable guide.
+        self._best: dict = {}
+        # call key -> the tool_call id it was answered under, so a result
+        # compaction removes can be forgotten (forget_compacted_calls).
+        self._seen_calls: dict[str, str] = {}
+        self._refunded = 0
+        # Turns spent so far. ONE PER EXECUTED CALL, not per model reply: a
+        # reply carrying three calls costs three, which is what keeps the
+        # budget the honest unit of work now that every call runs.
+        self._turn_no = 0
         while True:
-            _turn += 1
-            if _turn >= self.MAX_TURNS + refunded:
+            if self._turn_no >= self.MAX_TURNS + self._refunded:
                 break
             # Re-derived each turn: the ratio it converts through sharpens as
             # the run reports real prompt sizes, so freezing it at construction
@@ -1224,6 +1419,7 @@ class ToolLoop:
             self.messages, dropped = trim_history(self.messages, self._history_budget)
             self.compacted.extend(dropped)
             self.stats["history_dropped"] += len(dropped)
+            forget_compacted_calls(self._seen_calls, dropped)
             if dropped:
                 # Tell the agent, in the conversation, what went. It was being
                 # taken away silently: the model simply stopped seeing turns it
@@ -1231,11 +1427,11 @@ class ToolLoop:
                 # what it lost.
                 self.messages = compact(
                     self.messages, dropped, len(self.compacted),
-                    llm=self.llm, trajectory=self.trajectory, stats=self.stats)
+                    trajectory=self.trajectory, stats=self.stats,
+                    restore=self._restore_brief, budget=self._history_budget)
 
             self.stats["context_len"] = max(
                 self.stats["context_len"], _prompt_chars_any(self.messages))
-            self.stats["turns_used"] += 1
             turn = self.llm.call_tools(self.messages, specs)
             self.stats["batched_calls"] += turn.extra_calls
             if turn.binding_failed:
@@ -1245,312 +1441,403 @@ class ToolLoop:
                 self._give_up("no valid submit")
                 return
 
-            if not turn:
-                # The server may have left a correctly-formed call as text.
-                # Recover it before treating the turn as prose: otherwise a
-                # serving hiccup costs a turn and reads as a model mistake.
-                recovered = (tools.parse_tool_call_markup(turn.text)
-                             or tools.parse_tool_call_json(turn.text))
-                if recovered is not None:
-                    self.stats["markup_recovered"] += 1
-                    self.trajectory.log_recovery_event(
-                        self.identity, "tool_call_markup_recovered",
-                        recovered[0], (turn.text or "")[:100])
-                    turn = ToolTurn(name=recovered[0], args=recovered[1],
-                                    call_id=turn.call_id, text=turn.text,
-                                    message=turn.message)
-
-            if self._nudged and not (turn and turn.name.startswith("submit_")):
-                # The optional-artifact nudge was answered with anything but a
-                # submit: the agent has nothing more for this stage. End it
-                # here rather than spending the rest of the budget asking
-                # again — a turn on "no" is the whole cost of the nudge, and it
-                # must not become a turn on "no" repeated.
-                self._append_committed(turn, self.step.name)
-                return
-
-            if not turn:
-                # No tool call. A model that answered with the bare artifact and
-                # got it right has done the work — accept it as an implicit
-                # submit rather than burning turns on protocol pedantry (SLM
-                # tolerance). Anything else is an invalid turn.
-                # warn=False: the model was not asked for JSON on this turn, it
-                # was asked to call a tool. A failed parse here is the ordinary
-                # case, not something to shout about in the run log.
-                parsed = parse_json_response(turn.text, warn=False) if turn.text else {}
-                if isinstance(parsed, dict) and parsed:
-                    section, errors = unwrap_section(parsed, self._validate)
-                    if not errors:
-                        self._commit(section, stage_message, turn.text,
-                                     note="implicit_submit")
-                        return
-                self.trajectory.log_recovery_event(
-                    self.identity, "invalid_action", (turn.text or "")[:100], "")
-                self._append_text_turn(turn, (
-                    "Invalid turn: you must CALL A TOOL, not answer with text. Call one of "
-                    "the listed tools, or call submit with the complete artifact."))
-                continue
-
-            # A bare `submit` means the stage's submit, whichever artifact it
-            # carries. No tool by that name is bound any more — each artifact
-            # has its own (`tools.submit_specs`) — but "submit" is what the
-            # model says when it has the artifact and has stopped reading tool
-            # names carefully, and it arrives that way from every recovery path
-            # too (markup, JSON-in-content). Refusing it as an unknown tool
-            # would throw away a finished artifact over its envelope.
-            if turn.name == "submit":
-                turn = ToolTurn(
-                    name=self._submit_alias(specs, turn.args), args=turn.args,
-                    call_id=turn.call_id, text=turn.text, message=turn.message,
-                    truncated=turn.truncated)
-
-            # Coerce against the spec this tool name was bound with, BEFORE
-            # anything reads the arguments: a structured value that arrived as
-            # text is a transport artifact, not a model mistake, and must not
-            # be charged to the model's submit budget (measured: it cost every
-            # stage of every arm its whole budget — see tools.coerce_args).
-            salvaged: list[str] = []
-            # A submit is coerced against the STAGE's whole artifact schema,
-            # not only the one artifact its tool name claims. The tool name
-            # says which artifact the model MEANT to send, and the schema of
-            # that tool asks for exactly that one — but a model that puts a
-            # second artifact in the same call has produced work, and dropping
-            # it because it arrived under the neighbouring tool would be the
-            # harness losing output the agent wrote. The split's job is to stop
-            # the model having to fit six artifacts under one completion cap,
-            # not to police which door they come through.
-            params = (tools.submit_parameters(self.step)
-                      if turn.name.startswith("submit_")
-                      else _spec_parameters(specs, turn.name))
-            args = tools.coerce_args(params, turn.args, salvaged=salvaged)
-            self.stats["args_salvaged"] += len(salvaged)
-            if turn.truncated:
-                self.stats["truncated_turns"] += 1
-
-            if turn.name.startswith("submit_"):
-                args = self._wrap_bare_artifact(turn.name, args)
-                args = self._fill_single_key_object(args)
-                # Drop what cannot be read, THEN judge what is left. An
-                # unreadable argument beside a valid artifact is a dropped
-                # argument, not a reason to refuse the artifact; an unreadable
-                # argument the artifact needed is the reason it failed, and
-                # then — and only then — the model is told about the shape.
-                unreadable = tools.shape_bad_keys(params, args)
-                for key in unreadable:
-                    args.pop(key, None)
-                section, errors = unwrap_section(args, self._validate)
-                if errors and unreadable:
-                    shape = tools.shape_errors(params, args, unreadable)
-                    errors = shape + [e for e in errors if e not in shape]
-                if errors and submit_attempts < self.SUBMIT_BUDGET:
-                    submit_attempts += 1
-                    self.stats["submits_rejected"] += 1
-                    # Record the argument SHAPE alongside the errors. "expected
-                    # dict, got str" has two very different causes — a parser
-                    # that handed the value over as text, or a model that wrote
-                    # prose where an object belongs — and only the shape tells
-                    # them apart. Both the RAW shape and the coerced one,
-                    # because `coerce_args` answers an unparseable argument
-                    # object with `{}`: recording only the coerced shape made
-                    # "the parser gave us nothing" and "the model sent nothing"
-                    # the same empty string in the record (measured: nine
-                    # rejections reading `args=` on run single_20260901_205901,
-                    # with no way to tell which had happened).
-                    self.trajectory.log_recovery_event(
-                        self.identity, "submit_rejected",
-                        f"attempt {submit_attempts} | raw={_arg_shape(turn.args)}"
-                        f" | args={_arg_shape(args)}"
-                        + (" | TRUNCATED" if turn.truncated else ""),
-                        "; ".join(errors)[:200])
-                    self._append_tool_turn(turn, self._reject_message(errors, turn))
-                    continue
-                if errors:
-                    # Submit budget spent on a still-invalid artifact — measured
-                    # failure this answers: a truncated analysis submit kept
-                    # only needs_analysis, the gap pool satisfied the regen
-                    # guard, and the whole Analysis/Evaluation phases scored 0.
-                    self.trajectory.log_recovery_event(
-                        self.identity, "submit_invalid_final",
-                        "; ".join(errors)[:200], "")
-                    self._give_up("submit budget spent", last_resort=section)
+            # Every call the reply carried, in the order the model made them.
+            # A call the budget cannot cover, or one after the call that ended
+            # the stage, is still ANSWERED — with a stub saying it did not run
+            # — so no tool_call id is left open in a history the single arm
+            # sends again.
+            queue = [turn, *turn.calls]
+            for index, call in enumerate(queue):
+                if self._turn_no >= self.MAX_TURNS + self._refunded:
+                    self._answer_unexecuted(queue[index:], "the turn budget ran out first")
+                    break
+                self._turn_no += 1
+                self.stats["turns_used"] += 1
+                if self._handle_call(call, specs, stage_message) == "return":
+                    self._answer_unexecuted(queue[index + 1:], "the stage ended first")
                     return
-                # The submit turn joins the transcript BEFORE the loop exits.
-                # Without this the single arm carried no record of anything it
-                # had produced — measured: its whole "accumulated context" was
-                # one system turn plus N copies of the stage boilerplate, so
-                # the decomposition axis was reading prompt duplication rather
-                # than accumulated work. What a single-context agent carries is
-                # what it actually said, which is this.
-                if unreadable:
-                    self.stats["dropped_args"] += len(unreadable)
-                    self.trajectory.log_recovery_event(
-                        self.identity, "dropped_argument", ", ".join(unreadable),
-                        "arrived as text where a structure was declared; "
-                        "the rest of the submit was valid and was accepted")
-                # Commit FIRST, then answer once. The answer depends on what
-                # the commit left missing, and a step declared in parts is not
-                # necessarily finished by an accepted submit.
-                #
-                # One answer, not two. Appending the generic "move on to the
-                # next stage" and then a second "still needs X" put the model's
-                # own turn in the transcript TWICE with two contradictory tool
-                # results for one call — which reads, in the context view, as
-                # the model having submitted twice.
-                # A submit that answers a repair request is a DIFFERENT act
-                # from the one that first produced the artifact, and the trace
-                # has to say so: the judge reads a flat list of tool names and
-                # scores repeats as redundancy, so four `design_assessment`
-                # entries would report iterative correction as repetition.
-                # The artifact this call carried, in the label. The judge reads
-                # a flat list of tool names and scores repeats as redundancy,
-                # so six `design_implementation` entries would report a stage
-                # written one artifact at a time — which is what it is asked to
-                # do — as pure repetition.
-                note = (f"fix{self.stats['repair_turns']}"
-                        if self.stats["repair_turns"]
-                        else turn.name[len("submit_"):])
-                before = set(_landed(self.step, self.state))
-                self._commit(section, stage_message,
-                             json.dumps(args, ensure_ascii=False), note=note,
-                             duplicate=bool(accepted))
-                landed = set(_landed(self.step, self.state))
+            else:
+                continue
+            break
+
+        self.stats["via_budget_exhaustion"] = True
+        # Whatever was rejected along the way is still the MODEL's work, and
+        # with a per-artifact budget the ceiling — not the submit budget — is
+        # now the usual way a struggling stage ends. Dropping `_best` here
+        # would discard it exactly when it is most likely to be all there is.
+        self._give_up("turn budget exhausted", last_resort=self._best or None)
+
+    def _handle_call(self, turn: ToolTurn, specs: list, stage_message: str) -> str:
+        """One tool call, judged and answered. ``"return"`` ends the stage,
+        ``"continue"`` hands the loop the next call or the next model turn."""
+        if not turn:
+            # The server may have left a correctly-formed call as text.
+            # Recover it before treating the turn as prose: otherwise a
+            # serving hiccup costs a turn and reads as a model mistake.
+            recovered = (tools.parse_tool_call_markup(turn.text)
+                         or tools.parse_tool_call_json(turn.text))
+            if recovered is not None:
+                self.stats["markup_recovered"] += 1
+                self.trajectory.log_recovery_event(
+                    self.identity, "tool_call_markup_recovered",
+                    recovered[0], (turn.text or "")[:100])
+                turn = ToolTurn(name=recovered[0], args=recovered[1],
+                                call_id=turn.call_id, text=turn.text,
+                                message=turn.message)
+
+        if self._nudged and not (turn and turn.name.startswith("submit_")):
+            # The optional-artifact nudge was answered with anything but a
+            # submit: the agent has nothing more for this stage. End it
+            # here rather than spending the rest of the budget asking
+            # again — a turn on "no" is the whole cost of the nudge, and it
+            # must not become a turn on "no" repeated.
+            self._append_committed(turn, self.step.name)
+            return "return"
+
+        if not turn:
+            # No tool call. A model that answered with the bare artifact and
+            # got it right has done the work — accept it as an implicit
+            # submit rather than burning turns on protocol pedantry (SLM
+            # tolerance). Anything else is an invalid turn.
+            # warn=False: the model was not asked for JSON on this turn, it
+            # was asked to call a tool. A failed parse here is the ordinary
+            # case, not something to shout about in the run log.
+            parsed = parse_json_response(turn.text, warn=False) if turn.text else {}
+            if isinstance(parsed, dict) and parsed:
+                section, errors = unwrap_section(parsed, self._validate)
+                if not errors:
+                    self._commit(section, stage_message, turn.text,
+                                 note="implicit_submit")
+                    return "return"
+            if turn.thinking_only:
+                # Not an invalid ACTION: no action was taken, and the reply was
+                # not the model choosing to talk. Refunding it keeps the stage
+                # budget on the stage's work — the same argument REPEAT_ALLOWANCE
+                # already makes, for a turn that likewise produces no
+                # observation and no artifact.
+                self.stats["thinking_only"] += 1
+                if self.stats["thinking_only"] <= self.THINKING_ALLOWANCE:
+                    self._refunded += 1
+                self._append_text_turn(turn, THINKING_ONLY_NUDGE)
+                return "continue"
+            self.trajectory.log_recovery_event(
+                self.identity, "invalid_action", (turn.text or "")[:100], "")
+            self._append_text_turn(turn, INVALID_TURN_NUDGE)
+            return "continue"
+
+        # A bare `submit` means the stage's submit, whichever artifact it
+        # carries. No tool by that name is bound any more — each artifact
+        # has its own (`tools.submit_specs`) — but "submit" is what the
+        # model says when it has the artifact and has stopped reading tool
+        # names carefully, and it arrives that way from every recovery path
+        # too (markup, JSON-in-content). Refusing it as an unknown tool
+        # would throw away a finished artifact over its envelope.
+        if turn.name == "submit":
+            turn = ToolTurn(
+                name=self._submit_alias(specs, turn.args), args=turn.args,
+                call_id=turn.call_id, text=turn.text, message=turn.message,
+                truncated=turn.truncated)
+
+        # Coerce against the spec this tool name was bound with, BEFORE
+        # anything reads the arguments: a structured value that arrived as
+        # text is a transport artifact, not a model mistake, and must not
+        # be charged to the model's submit budget (measured: it cost every
+        # stage of every arm its whole budget — see tools.coerce_args).
+        salvaged: list[str] = []
+        # A submit is coerced against the STAGE's whole artifact schema,
+        # not only the one artifact its tool name claims. The tool name
+        # says which artifact the model MEANT to send, and the schema of
+        # that tool asks for exactly that one — but a model that puts a
+        # second artifact in the same call has produced work, and dropping
+        # it because it arrived under the neighbouring tool would be the
+        # harness losing output the agent wrote. The split's job is to stop
+        # the model having to fit six artifacts under one completion cap,
+        # not to police which door they come through.
+        params = (tools.submit_parameters(self.step)
+                  if turn.name.startswith("submit_")
+                  else _spec_parameters(specs, turn.name))
+        args = tools.coerce_args(params, turn.args, salvaged=salvaged)
+        self.stats["args_salvaged"] += len(salvaged)
+        if turn.truncated and not turn.sibling:
+            self.stats["truncated_turns"] += 1
+
+        if turn.name.startswith("submit_"):
+            args = self._wrap_bare_artifact(turn.name, args)
+            args = self._fill_single_key_object(args)
+            # Drop what cannot be read, THEN judge what is left. An
+            # unreadable argument beside a valid artifact is a dropped
+            # argument, not a reason to refuse the artifact; an unreadable
+            # argument the artifact needed is the reason it failed, and
+            # then — and only then — the model is told about the shape.
+            unreadable = tools.shape_bad_keys(params, args)
+            for key in unreadable:
+                args.pop(key, None)
+            section, errors = unwrap_section(args, self._validate)
+            if errors and unreadable:
+                shape = tools.shape_errors(params, args, unreadable)
+                errors = shape + [e for e in errors if e not in shape]
+            artifact = turn.name[len("submit_"):]
+            spent = self._submit_attempts.get(artifact, 0)
+            if errors and spent < self.SUBMIT_BUDGET:
+                self._submit_attempts[artifact] = spent = spent + 1
+                self.stats["submits_rejected"] += 1
+                # Record the argument SHAPE alongside the errors. "expected
+                # dict, got str" has two very different causes — a parser
+                # that handed the value over as text, or a model that wrote
+                # prose where an object belongs — and only the shape tells
+                # them apart. Both the RAW shape and the coerced one,
+                # because `coerce_args` answers an unparseable argument
+                # object with `{}`: recording only the coerced shape made
+                # "the parser gave us nothing" and "the model sent nothing"
+                # the same empty string in the record (measured: nine
+                # rejections reading `args=` on run single_20260901_205901,
+                # with no way to tell which had happened).
+                self.trajectory.log_recovery_event(
+                    self.identity, "submit_rejected",
+                    f"{artifact} attempt {spent} | raw={_arg_shape(turn.args)}"
+                    f" | args={_arg_shape(args)}"
+                    + (" | TRUNCATED" if turn.truncated else ""),
+                    "; ".join(errors)[:200])
+                self._append_tool_turn(
+                    turn, self._reject_message(errors, turn) + self._respec())
+                return "continue"
+            if errors:
+                # Submit budget spent on a still-invalid artifact — measured
+                # failure this answers: a truncated analysis submit kept
+                # only needs_analysis, the gap pool satisfied the regen
+                # guard, and the whole Analysis/Evaluation phases scored 0.
+                self.trajectory.log_recovery_event(
+                    self.identity, "submit_invalid_final",
+                    "; ".join(errors)[:200], artifact)
+                self._best.update(section)
                 left = missing_parts(self.step, self.state)
-                accepted += 1
-                # OPTIONAL artifacts are not part of `missing_parts` — the
-                # stage is complete without them — but returning the instant
-                # the required ones land means an optional artifact can never
-                # be sent at all, and before the split it simply travelled in
-                # the same payload. So the turn is kept while ANYTHING declared
-                # is still missing, and given up as soon as a submit adds
-                # nothing new: that is the model saying it has no more.
-                open_optional = [key for key, _t, _r in self.step.submit_fields
-                                 if key not in landed]
-                if not left and open_optional and landed > before and not self._nudged:
-                    # ONE nudge per stage, and one only. An OPTIONAL artifact is
-                    # not part of `missing_parts`, so the stage is complete
-                    # without it — but returning the instant the required ones
-                    # land means the agent never gets the turn to send it, and
-                    # before the split it simply travelled in the same payload.
-                    # `media_selections` (P8 and its rubric item),
-                    # `non_instructional_strategies` and `dev_plan` are all
-                    # optional and all scored or read.
-                    #
-                    # Bounded at one because the cost is paid by the models that
-                    # can least afford it: a weak model with nothing more to say
-                    # answers a repeated ask with a repeated nothing, and the
-                    # stage burns to MAX_TURNS. The next turn either lands
-                    # something or ends the stage — see `_nudged` below.
-                    self._nudged = True
+                if left:
+                    # One artifact that will not pass costs THAT artifact, not
+                    # the ones beside it. Exactly the single arm's existing
+                    # rule (`react.SUBMIT_CAP` is non-terminal), applied at the
+                    # granularity the per-artifact split already declares — so
+                    # this narrows a standing asymmetry rather than adding one.
                     self._append_tool_turn(turn, (
-                        f"COMMITTED: {', '.join(sorted(landed - before))}. "
-                        f"Still open for this stage: {', '.join(open_optional)}. "
-                        "Submit what you have for it now — this is the last turn "
-                        "for it, and the stage ends after your next call."))
-                    continue
-                if not left:
-                    # The artifact is complete — now let the agent see what is
-                    # wrong with it, in the context that wrote it.
-                    fixable = self._own_violations()
-                    if fixable and self.stats["repair_turns"] < self.repair_turns:
-                        self.stats["repair_turns"] += 1
-                        self._append_tool_turn(turn, _repair_request(
-                            self.step.name, fixable, self.stats["repair_turns"],
-                            self.repair_turns))
-                        continue
-                    if fixable:
-                        # Outstanding violations and no repair turn left. This
-                        # used to return in SILENCE — the stage said COMMITTED
-                        # and left, while the line below records a give-up for
-                        # running out of part-submits. So a run could not tell
-                        # "the model could not fix this" from "we did not give
-                        # it another turn", and the second is a harness
-                        # parameter reported as a finding about the model.
-                        self._budget_stopped(fixable, "repair turns")
-                    self._append_committed(turn, self.step.name)
-                    return
-                if accepted >= len(parts_of(self.step)) + self.PART_SUBMIT_SLACK:
-                    # It has had a turn per part and more; a stage that keeps
-                    # submitting without completing is a disagreement between
-                    # the validator and the completeness probe, and letting it
-                    # run turns that disagreement into the whole stage.
-                    self._append_committed(turn, self.step.name)
-                    self._give_up(f"parts still missing: {', '.join(left)}")
-                    return
-                self._append_tool_turn(turn, (
-                    f"COMMITTED. {self.step.name} still needs: {', '.join(left)}. "
-                    "Submit the next part on its own — do not resend what you "
-                    "have already committed."))
-                continue
-
-            # Anti-loop guard: an identical repeated call gets no second
-            # answer — measured failure: a 2B model burned its whole turn
-            # budget on six identical read_nodes calls, then needed the
-            # fallback. The repeat still costs a turn (the budget is the hard
-            # stop) but is recovery plumbing, not a judge-visible tool call,
-            # and the observation pushes the model toward submitting.
-            call_key = f"{turn.name}:{json.dumps(args, sort_keys=True, ensure_ascii=False, default=str)}"
-            if call_key in seen_calls:
-                self.stats["repeated_calls"] += 1
-                # A repeat produces no observation and no artifact, so charging
-                # a turn for it spends the budget on the model's confusion and
-                # leaves less for its work — measured: 19 of A0's turns. Refund
-                # it, but only up to REPEAT_ALLOWANCE, or a model that only ever
-                # repeats would never reach the fallback.
-                if self.stats["repeated_calls"] <= self.REPEAT_ALLOWANCE:
-                    refunded += 1
+                        f"{artifact} was rejected {self.SUBMIT_BUDGET} times and is "
+                        f"still not accepted. Leave it and write the next one. "
+                        f"{self.step.name} still needs: {', '.join(left)}."))
+                    return "continue"
+                self._give_up("submit budget spent", last_resort=self._best)
+                return "return"
+            # The submit turn joins the transcript BEFORE the loop exits.
+            # Without this the single arm carried no record of anything it
+            # had produced — measured: its whole "accumulated context" was
+            # one system turn plus N copies of the stage boilerplate, so
+            # the decomposition axis was reading prompt duplication rather
+            # than accumulated work. What a single-context agent carries is
+            # what it actually said, which is this.
+            if unreadable:
+                self.stats["dropped_args"] += len(unreadable)
                 self.trajectory.log_recovery_event(
-                    self.identity, "repeated_tool_call", turn.name, str(args)[:100])
+                    self.identity, "dropped_argument", ", ".join(unreadable),
+                    "arrived as text where a structure was declared; "
+                    "the rest of the submit was valid and was accepted")
+            # Commit FIRST, then answer once. The answer depends on what
+            # the commit left missing, and a step declared in parts is not
+            # necessarily finished by an accepted submit.
+            #
+            # One answer, not two. Appending the generic "move on to the
+            # next stage" and then a second "still needs X" put the model's
+            # own turn in the transcript TWICE with two contradictory tool
+            # results for one call — which reads, in the context view, as
+            # the model having submitted twice.
+            # A submit that answers a repair request is a DIFFERENT act
+            # from the one that first produced the artifact, and the trace
+            # has to say so: the judge reads a flat list of tool names and
+            # scores repeats as redundancy, so four `design_assessment`
+            # entries would report iterative correction as repetition.
+            # The artifact this call carried, in the label. The judge reads
+            # a flat list of tool names and scores repeats as redundancy,
+            # so six `design_implementation` entries would report a stage
+            # written one artifact at a time — which is what it is asked to
+            # do — as pure repetition.
+            note = (f"fix{self.stats['repair_turns']}"
+                    if self.stats["repair_turns"]
+                    else turn.name[len("submit_"):])
+            before = set(_landed(self.step, self.state))
+            self._commit(section, stage_message,
+                         json.dumps(args, ensure_ascii=False), note=note,
+                         duplicate=bool(self._accepted))
+            landed = set(_landed(self.step, self.state))
+            left = missing_parts(self.step, self.state)
+            self._accepted += 1
+            if artifact in left and artifact not in landed:
+                # The validator accepted this payload and the commit ran, yet
+                # the artifact is not in the state. The answer must SAY so.
+                # Saying "COMMITTED. <stage> still needs: <the artifact just
+                # sent>" — while the protocol also says never resend what is
+                # committed — is an instruction the model cannot satisfy, and
+                # it is what hid the `unwrap_section` bug for a whole run
+                # (24343e4d: 11 such turns, ~10.4k completion tokens, 107 s,
+                # and `operator_manual` submitted three times and lost three
+                # times). A commit that does not land is a harness failure;
+                # the transcript must not report it as the model's redundancy.
+                self.trajectory.log_recovery_event(
+                    self.identity, "commit_did_not_land", artifact,
+                    f"accepted by the validator, absent from {self.step.name} after commit")
                 self._append_tool_turn(turn, (
-                    f"You already made this exact {turn.name} call and its result has not "
-                    "changed. Do not repeat calls — use what you have and submit your "
-                    "artifact, or call a different tool."))
-                continue
-            seen_calls.add(call_key)
+                    f"NOT COMMITTED: {artifact} was accepted but is not in the design "
+                    f"state, so it did not land. Send it again as "
+                    f"{{\"{artifact}\": {{...}}}}, using the field names from "
+                    f"the stage's schema exactly. {self.step.name} still needs: "
+                    f"{', '.join(left)}."))
+                return "continue"
+            # OPTIONAL artifacts are not part of `missing_parts` — the
+            # stage is complete without them — but returning the instant
+            # the required ones land means an optional artifact can never
+            # be sent at all, and before the split it simply travelled in
+            # the same payload. So the turn is kept while ANYTHING declared
+            # is still missing, and given up as soon as a submit adds
+            # nothing new: that is the model saying it has no more.
+            open_optional = [key for key, _t, _r in self.step.submit_fields
+                             if key not in landed]
+            if not left and open_optional and landed > before and not self._nudged:
+                # ONE nudge per stage, and one only. An OPTIONAL artifact is
+                # not part of `missing_parts`, so the stage is complete
+                # without it — but returning the instant the required ones
+                # land means the agent never gets the turn to send it, and
+                # before the split it simply travelled in the same payload.
+                # `media_selections` (P8 and its rubric item) and
+                # `non_instructional_strategies` are the optionals left,
+                # one per stage. (`dev_plan` was one too, until a stage
+                # with two optionals showed the nudge can only ever land
+                # one of them — it is required since 2026-09-05.)
+                #
+                # Bounded at one because the cost is paid by the models that
+                # can least afford it: a weak model with nothing more to say
+                # answers a repeated ask with a repeated nothing, and the
+                # stage burns to MAX_TURNS. The next turn either lands
+                # something or ends the stage — see `_nudged` below.
+                self._nudged = True
+                self._append_tool_turn(turn, (
+                    f"COMMITTED: {', '.join(sorted(landed - before))}. "
+                    f"Still open for this stage: {', '.join(open_optional)}. "
+                    "Submit what you have for it now — this is the last turn "
+                    "for it, and the stage ends after your next call."))
+                return "continue"
+            if not left:
+                # The artifact is complete — now let the agent see what is
+                # wrong with it, in the context that wrote it.
+                fixable = self._own_violations()
+                if fixable and self.stats["repair_turns"] < self.repair_turns:
+                    self.stats["repair_turns"] += 1
+                    self._append_tool_turn(turn, _repair_request(
+                        self.step.name, fixable, self.stats["repair_turns"],
+                        self.repair_turns))
+                    return "continue"
+                if fixable:
+                    # Outstanding violations and no repair turn left. This
+                    # used to return in SILENCE — the stage said COMMITTED
+                    # and left, while the line below records a give-up for
+                    # running out of part-submits. So a run could not tell
+                    # "the model could not fix this" from "we did not give
+                    # it another turn", and the second is a harness
+                    # parameter reported as a finding about the model.
+                    self._budget_stopped(fixable, "repair turns")
+                self._append_committed(turn, self.step.name)
+                return "return"
+            if self._accepted >= len(parts_of(self.step)) + self.PART_SUBMIT_SLACK:
+                # It has had a turn per part and more; a stage that keeps
+                # submitting without completing is a disagreement between
+                # the validator and the completeness probe, and letting it
+                # run turns that disagreement into the whole stage.
+                self._append_committed(turn, self.step.name)
+                self._give_up(f"parts still missing: {', '.join(left)}")
+                return "return"
+            self._append_tool_turn(
+                turn, "COMMITTED. " + _still_needed(self.step, self.state))
+            return "continue"
 
-            observation = self._execute(turn.name, args)
-            self.stats["reads"] += 1
-            # MEASURED FAILURE (run single_20260831_160530): 10 of 13 fallbacks
-            # were "turn budget exhausted", and the single+graph arm spent all
-            # eight turns reading on 6 of 7 stages without ever submitting. The
-            # budget is stated once in the system prompt and then never again,
-            # which a small model does not track. Counting it down in the
-            # observation channel costs nothing and uses the one surface the
-            # model is definitely reading.
-            remaining = self.MAX_TURNS + refunded - (_turn + 1)
-            if remaining <= 2:
-                observation += (
-                    f"\n\n[{remaining} turn(s) left. Submit your artifact now — "
-                    "an incomplete submit is better than none.]"
-                    if remaining else
-                    "\n\n[No turns left. This was your last observation.]")
-            # The logged tool name carries its scoping argument so the
-            # judge-visible trace distinguishes read_nodes(objective) from
-            # read_nodes(assessment) — same-name entries with different
-            # targets otherwise read as redundant repeats to the BFCL judge.
-            scope = str(args.get("node_type") or args.get("relation_id")
-                        or args.get("key") or "").strip()
-            if turn.name == "stage_brief":
-                # It takes no argument in a stage loop — the stage IS the
-                # scope, and without it every stage's fetch reads as the same
-                # repeated call to a judge scoring redundancy.
-                scope = self.step.name
-            tool_label = f"tool_{turn.name}" + (f"_{scope}" if scope else "")
-            self.trajectory.log_step(
-                self.identity, tool_label,
-                str(args)[:200], observation[:200])
-            self._append_tool_turn(turn, observation)
+        # Anti-loop guard: an identical repeated call gets no second
+        # answer — measured failure: a 2B model burned its whole turn
+        # budget on six identical read_nodes calls, then needed the
+        # fallback. The repeat still costs a turn (the budget is the hard
+        # stop) but is recovery plumbing, not a judge-visible tool call,
+        # and the observation pushes the model toward submitting.
+        call_key = f"{turn.name}:{json.dumps(args, sort_keys=True, ensure_ascii=False, default=str)}"
+        if call_key in self._seen_calls:
+            self.stats["repeated_calls"] += 1
+            # A repeat produces no observation and no artifact, so charging
+            # a turn for it spends the budget on the model's confusion and
+            # leaves less for its work — measured: 19 of A0's turns. Refund
+            # it, but only up to REPEAT_ALLOWANCE, or a model that only ever
+            # repeats would never reach the fallback.
+            if self.stats["repeated_calls"] <= self.REPEAT_ALLOWANCE:
+                self._refunded += 1
+            self.trajectory.log_recovery_event(
+                self.identity, "repeated_tool_call", turn.name, str(args)[:100])
+            self._append_tool_turn(turn, (
+                f"You already made this exact {turn.name} call and its result has not "
+                "changed. Do not repeat calls — use what you have and submit your "
+                "artifact, or call a different tool."))
+            return "continue"
+        self._seen_calls[call_key] = turn.call_id
 
-        self._give_up("turn budget exhausted")
+        observation = self._execute(turn.name, args)
+        self.stats["reads"] += 1
+        # MEASURED FAILURE (run single_20260831_160530): 10 of 13 fallbacks
+        # were "turn budget exhausted", and the single+graph arm spent all
+        # eight turns reading on 6 of 7 stages without ever submitting. The
+        # budget is stated once in the system prompt and then never again,
+        # which a small model does not track. Counting it down in the
+        # observation channel costs nothing and uses the one surface the
+        # model is definitely reading.
+        remaining = self.MAX_TURNS + self._refunded - self._turn_no
+        if remaining <= 2:
+            observation += (
+                f"\n\n[{remaining} turn(s) left. Submit your artifact now — "
+                "an incomplete submit is better than none.]"
+                if remaining else
+                "\n\n[No turns left. This was your last observation.]")
+        # The logged tool name carries its scoping argument so the
+        # judge-visible trace distinguishes read_nodes(objective) from
+        # read_nodes(assessment) — same-name entries with different
+        # targets otherwise read as redundant repeats to the BFCL judge.
+        scope = str(args.get("node_type") or args.get("relation_id")
+                    or args.get("key") or "").strip()
+        tool_label = f"tool_{turn.name}" + (f"_{scope}" if scope else "")
+        self.trajectory.log_step(
+            self.identity, tool_label,
+            str(args)[:200], observation[:200])
+        self._append_tool_turn(turn, observation)
+
 
     # ── transcript ──────────────────────────────────────────────────────────
     def _append_tool_turn(self, turn: ToolTurn, observation: str) -> None:
         """Assistant turn + its tool result, in the shape the chat API expects.
         The assistant message is the model's own object when we have it, so the
         tool_call ids it generated survive the round trip."""
-        self.messages.append(turn.message if turn.message is not None else {
-            "role": "assistant", "content": turn.text or ""})
+        self._ensure_assistant(turn)
         self.messages.append({"role": "tool", "tool_call_id": turn.call_id,
                               "name": turn.name, "content": observation})
+        self._publish(live=True)
+
+    def _ensure_assistant(self, turn: ToolTurn) -> None:
+        """The model's message, appended once per model turn: a sibling call
+        shares it with the call before it, which already put it there."""
+        if turn.sibling:
+            return
+        self.messages.append(turn.message if turn.message is not None else {
+            "role": "assistant", "content": turn.text or ""})
+
+    def _answer_unexecuted(self, calls: list, why: str) -> None:
+        """Close the tool_call ids of calls that will not run, with a stub that
+        says so. The chat API requires every call to be answered."""
+        calls = [c for c in calls if c and c.call_id]
+        if not calls:
+            return
+        self._ensure_assistant(calls[0])
+        for call in calls:
+            self.messages.append({"role": "tool", "tool_call_id": call.call_id,
+                                  "name": call.name,
+                                  "content": f"[not executed — {why}.]"})
+        self.trajectory.log_recovery_event(
+            self.identity, "calls_not_executed", ", ".join(c.name for c in calls), why)
         self._publish(live=True)
 
     def _budget_stopped(self, outstanding: list, budget: str) -> None:
@@ -1572,18 +1859,12 @@ class ToolLoop:
                                      "the design state. Move on to the next stage.")
 
     def _append_text_turn(self, turn: ToolTurn, nudge: str) -> None:
-        self.messages.append(turn.message if turn.message is not None else {
-            "role": "assistant", "content": turn.text or ""})
+        self._ensure_assistant(turn)
         self.messages.append({"role": "user", "content": nudge})
         self._publish(live=True)
 
     # ── tool dispatch ───────────────────────────────────────────────────────
     def _execute(self, action: str, args: dict) -> str:
-        if action == "stage_brief":
-            # The artifact contract on demand. Cheap to answer and cheap to
-            # re-ask: it is the same text every time, so a stage that lost it
-            # to compaction gets it back for one turn.
-            return f"--- STAGE: {self.step.name} ---\n{self.step.task_block()}"
         if action == "retrieve":
             return self._retrieve(args)
         already = self._already_in_assignment(action, args)
@@ -1888,6 +2169,27 @@ class ToolLoop:
             "never arrived in full. Do not rewrite everything — send a SHORTER "
             "submit: fewer items, shorter prose, and the required fields first.\n"
             + body)
+
+    def _restore_brief(self, stage: str) -> str | None:
+        """The stage turn to put back when a trim took it, or None.
+
+        A stage loop is on ONE stage, so a turn it lost is always the live one.
+        This is what makes pushing the contract safe: the turn is droppable
+        like everything else, and it comes back when it goes."""
+        if stage != self.step.name:
+            return None
+        return stage_brief_block(self.step)
+
+    def _respec(self) -> str:
+        """The contract, re-attached to a rejection when it is no longer in the
+        transcript. Same rule and same function as the single arm's, which had
+        it and this arm did not — an asymmetry that sat on the decomposition
+        axis until 2026-09-06.
+
+        The backstop to `compact`'s `restore`: a turn can be gone for reasons a
+        trim did not report (a regen starting a fresh message list, a stage
+        turn dropped before this loop's own restore could run)."""
+        return respec(self.messages, self.step, stage_brief_block(self.step))
 
     def _give_up(self, reason: str, *, last_resort: dict | None = None) -> None:
         """End a step with whatever the MODEL produced, and record that it did

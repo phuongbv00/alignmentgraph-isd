@@ -1,8 +1,8 @@
 """Server configuration, all via ``AGISD_SERVER_*`` env vars.
 
-Deliberately separate from ``AGENT_MODEL_*``: those configure the model the
-harness runs on and are read by ``llm_factory_from_env`` in the core package,
-shared with the CLI and the benchmark. Nothing here touches them.
+These are the only environment the app reads. The MODEL is configured in the
+app's own dialog and stored in its database (``llm_settings``); ``AGENT_MODEL_*``
+belongs to the CLI and the benchmark and has no effect here.
 """
 from __future__ import annotations
 

@@ -34,8 +34,9 @@ def _agentic_prompts() -> dict[str, str]:
     change to what the ladder measured. So both are pinned: the per-stage block
     (task + schema + rules), the shared workflow overview, and the serialized
     tool specs for each stage in each context mode."""
+    from alignmentgraph_isd.core.agentic import fanout
     from alignmentgraph_isd.core.agentic import tools as agentic_tools
-    from alignmentgraph_isd.core.agentic.loop import _WORKFLOW_OVERVIEW
+    from alignmentgraph_isd.core.agentic.loop import _WORKFLOW_OVERVIEW, compaction_note
     from alignmentgraph_isd.core.agentic.specialists import SINGLE_PERSONA, STEPS
 
     pinned: dict[str, str] = {
@@ -49,6 +50,25 @@ def _agentic_prompts() -> dict[str, str]:
             specs = agentic_tools.tool_specs(step, graph_mode=graph_mode)
             pinned[f"agentic.{step.name}.tools.{context_mode}"] = json.dumps(
                 specs, ensure_ascii=False, indent=2, sort_keys=True)
+
+    # A fanned-out family's artifacts are written by DEVELOPERS, and a stage's
+    # own `task_block` shows only the plan schema — so until 2026-09-06 the
+    # schema and rules that produce every assessment item, activity and
+    # material were pinned nowhere, and a change to one of them (the materials
+    # exemplar, say) landed with no fixture diff to review. That is the same
+    # hole `_check_messages` was added to close.
+    for name, spec in sorted(fanout.SPECS.items()):
+        for output in spec.outputs:
+            key = f"agentic.{name}.developer.{output.schema_key}"
+            pinned[f"{key}.schema"] = output.schema
+            pinned[f"{key}.rules"] = output.rules
+
+    # The compaction note is prompt surface both arms see verbatim, like the
+    # workflow overview beside it — and since 2026-09-06 it also carries what a
+    # trim took, which is an instruction the model acts on.
+    pinned["agentic.compaction_note"] = compaction_note(1)["content"]
+    pinned["agentic.compaction_note.brief_lost"] = compaction_note(
+        1, ("implementation",))["content"]
     return pinned
 
 

@@ -340,13 +340,27 @@ export default function App() {
                 Graph{graph ? ` (${graph.nodes.length})` : ''}
               </button>
               {stream.status !== 'idle' && (
-                <button
-                  className="tab"
-                  style={{ marginLeft: 'auto' }}
-                  onClick={() => { setSelection({ kind: 'artifact', id: 'addie_output' }); setInspectorCollapsed(false) }}
-                >
-                  <span className="icon-label">ADDIE output <ArrowRight size={13} /></span>
-                </button>
+                <>
+                  {/* The run's own facts — which arms it ran under, the turn
+                      and submit counters, token totals, the residual audit.
+                      Every tab beside it is about the DESIGN; nothing else in
+                      the app says what the run itself did, so a question like
+                      "did this stage run out of turns" was answerable only by
+                      reading scattered error rows in the trajectory. */}
+                  <button
+                    className="tab"
+                    style={{ marginLeft: 'auto' }}
+                    onClick={() => { setSelection({ kind: 'artifact', id: 'metadata' }); setInspectorCollapsed(false) }}
+                  >
+                    <span className="icon-label">Run details <ArrowRight size={13} /></span>
+                  </button>
+                  <button
+                    className="tab"
+                    onClick={() => { setSelection({ kind: 'artifact', id: 'addie_output' }); setInspectorCollapsed(false) }}
+                  >
+                    <span className="icon-label">ADDIE output <ArrowRight size={13} /></span>
+                  </button>
+                </>
               )}
             </nav>
 
@@ -379,7 +393,9 @@ export default function App() {
                   onSelect={(value) => { setSelection(value); setInspectorCollapsed(false) }}
                 />
               )}
-              {tab === 'violations' && <ViolationGrid findings={findings} />}
+              {tab === 'violations' && (
+                <ViolationGrid findings={findings} runId={runId} runActive={runActive} />
+              )}
               {tab === 'context' && (
                 <ContextGrid contexts={contexts} rows={stream.contextRows} runId={runId} />
               )}
@@ -400,6 +416,7 @@ export default function App() {
         selection={selection}
         brief={detail?.brief ?? {}}
         graph={graph}
+        findings={findings}
         runId={runId}
         collapsed={inspectorCollapsed}
         onToggle={() => setInspectorCollapsed((value) => !value)}

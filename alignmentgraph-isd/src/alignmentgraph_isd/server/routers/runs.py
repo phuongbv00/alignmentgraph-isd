@@ -315,12 +315,53 @@ def get_violations(
     Live state first, then the persisted file — the same fallback
     ``get_contexts`` uses, for the same reason.
     """
+    return JSONResponse(_violations_of(run_id, db, manager, settings))
+
+
+def _violations_of(run_id: str, db, manager: RunManager, settings: Settings) -> list[dict]:
+    """Live state first, then the persisted file: during a run the registry has
+    the findings recorded so far, and after a restart only the file remains."""
     state = manager.registry.get(run_id)
     if state is not None and state.violations:
-        return JSONResponse(list(state.violations))
+        return list(state.violations)
     directory = artifacts.resolve(settings, load_run(db, run_id).artifact_dir)
-    return JSONResponse(
-        artifacts.read_json(directory / artifacts.ARTIFACT_FILES["violations"]) or [])
+    return artifacts.read_json(directory / artifacts.ARTIFACT_FILES["violations"]) or []
+
+
+@router.get("/runs/{run_id}/violations/export")
+def export_violations(
+    run_id: str,
+    db: DBSession = Depends(get_session),
+    manager: RunManager = Depends(get_manager),
+    settings: Settings = Depends(get_app_settings),
+) -> Response:
+    """The violation ledger as a downloadable CSV — one row per finding.
+
+    CSV rather than JSON because the JSON is already one endpoint up, and the
+    ledger is a TABLE: what is still open, why, who owns it, which check said
+    so. Those are spreadsheet questions, and answering them from a nested
+    array by hand is what this removes.
+
+    A run still in flight exports what has been found SO FAR, under a
+    ``violations-partial`` name. The ledger is at its most wanted mid-run — a
+    run that looks stuck is one you want to read now — and an outcome column
+    read off a live run is provisional in a way a finished one is not, so the
+    filename says which file it is, as ``complete: false`` does for the
+    trajectory.
+
+    An empty ledger is a RESULT, not an absence: a run whose checks all came
+    back clean gets a header row and no rows, never a 404. Only a run that was
+    never recorded is missing, and ``load_run`` already answers that with one.
+    """
+    findings = _violations_of(run_id, db, manager, settings)
+    state = manager.registry.get(run_id)
+    live = state is not None and not state.is_terminal
+    stem = "violations-partial" if live else "violations"
+    return Response(
+        artifacts.render_violations_csv(findings),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{stem}-{run_id}.csv"'},
+    )
 
 
 @router.get("/runs/{run_id}/contexts")
@@ -374,7 +415,7 @@ def export_transcript(
     system turn, every message in order, and the tool schemas that were bound
     alongside them.
 
-    ``context`` picks one out of the list by its id (``core.memory.context_id``)
+    ``context`` picks one out of the list by its id (``core.memory.new_agent_run_id``)
     — not by label, because labels repeat: a regenerated stage publishes one
     context per attempt and they share a name. Nor by position, which was the
     first answer here and is only stable while the list is: a context is

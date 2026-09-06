@@ -109,10 +109,12 @@ build_ui() {
     ( cd "$WEBAPP" && npm run build )
 }
 
-# ── Model configuration ──────────────────────────────────────────────────────
-# AGENT_MODEL_* is read straight from the process environment by the harness
-# (core/llm.py), so a .env has to be exported here — only AGISD_SERVER_* is
-# picked up from the file automatically.
+# ── Environment ──────────────────────────────────────────────────────────────
+# Only AGISD_SERVER_* matters to the app, and pydantic-settings reads it from
+# .env on its own; this export is for anything else in the file that expects to
+# be in the environment. The MODEL is configured in the app's own Model settings
+# dialog and stored in its database — the server reads no AGENT_MODEL_*, so
+# setting one here changes nothing about what a run uses.
 
 load_env() {
     [[ -f .env ]] || return 0
@@ -125,15 +127,11 @@ load_env() {
 }
 
 check_model() {
-    if [[ -z "${AGENT_MODEL_NAME:-}" ]]; then
-        printf '\n\033[1;33mNote:\033[0m AGENT_MODEL_NAME is not set.\n'
-        printf '    The app will start, but runs and the planning conversation are\n'
-        printf '    unavailable and the UI will say so. Set it (plus AGENT_MODEL_BASE_URL\n'
-        printf '    and AGENT_MODEL_API_KEY as your endpoint needs) in .env — see\n'
-        printf '    .env.example — or export it before running this script.\n'
-    else
-        note "Model: $AGENT_MODEL_NAME"
-    fi
+    printf '\n\033[1;33mNote:\033[0m the model is configured in the app.\n'
+    printf '    Open Model settings (bottom of the sidebar), add a connection\n'
+    printf '    (base URL + key), then pick its model from the dropdown. Until\n'
+    printf '    then the app starts but runs and planning are unavailable, and\n'
+    printf '    the UI says so.\n'
 }
 
 # ── Run ──────────────────────────────────────────────────────────────────────

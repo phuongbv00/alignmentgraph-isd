@@ -79,7 +79,8 @@ class ADDIEOutputAggregator:
     def _build_design(self) -> dict:
         objectives = [n["data"] for n in self.graph.element_nodes(NodeType.OBJECTIVE)]
         activities = [n["data"] for n in self.graph.element_nodes(NodeType.ACTIVITY)]
-        content_modules = [n["data"] for n in self.graph.element_nodes(NodeType.CONTENT)]
+        content_modules = [_without_harness_keys(n["data"])
+                           for n in self.graph.element_nodes(NodeType.CONTENT)]
         media = [n["data"] for n in self.graph.element_nodes(NodeType.MEDIA_SELECTION)]
         plan_node = _merge_node_data(self.graph.section_nodes(NodeType.ACTIVITY_PLAN))
 
@@ -364,7 +365,7 @@ def aggregate_prose(store, trajectory) -> dict:
     }
 
     activity_plan = doc("activity_plan")
-    content_modules = items("content", "content_modules")
+    content_modules = [_without_harness_keys(m) for m in items("content", "content_modules")]
     instructional_strategies = activity_plan.get("instructional_strategies") or {}
     design = {
         "learning_objectives": items("objective", "learning_objectives"),
@@ -534,6 +535,19 @@ def _compute_storyboard(instructional_strategies: dict, content_modules: list[di
 #: auditor can see how the family was divided up, and not in the deliverable,
 #: which is what the judge scores.
 _HARNESS_ONLY_SECTION_KEYS = ("dev_plan",)
+
+#: Planning fields on an ELEMENT that only the fan-out reads — a content
+#: module's `expected_materials` sizes its Developer's unit and says nothing
+#: to a learner or a judge. Same rule as the section keys above: kept in the
+#: graph so the dump shows how the family was divided, stripped from the
+#: deliverable.
+_HARNESS_ONLY_ELEMENT_KEYS = ("expected_materials",)
+
+
+def _without_harness_keys(element: dict) -> dict:
+    if not isinstance(element, dict):
+        return element
+    return {k: v for k, v in element.items() if k not in _HARNESS_ONLY_ELEMENT_KEYS}
 
 
 def _merge_node_data(nodes: list[dict]) -> dict:

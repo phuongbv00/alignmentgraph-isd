@@ -143,7 +143,7 @@ class RunState:
         place by the single arm's compaction, so holding the harness's own
         lists would be reading state that changes underneath.
         """
-        # `id` comes from the harness (core.memory.context_id) so this side
+        # `id` comes from the harness (core.memory.new_agent_run_id) so this side
         # never has to know what a context's identity is made of.
         key = str(payload.get("id") or "")
         with self._lock:

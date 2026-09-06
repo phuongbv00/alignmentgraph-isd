@@ -28,11 +28,15 @@ _SCHEMA_VALIDATED_TYPES = (
 # alignment.py::match_p6_realizes's docstring). A finding of these types can
 # legitimately persist forever, so it must not block ready_to_aggregate —
 # only violation types a specialist can actually resolve gate readiness.
-# P10/P11 join P6 as audit-only: the honest fix for an unscheduled activity
-# is for the designer to schedule it, and auto-appending an id to the
-# session guide to satisfy coverage would invent a delivery record that
-# never happened — the exact "pad it to pass" failure the P6 rationale
-# rejects. Reported, never repaired.
+# P10/P11 join P6 as audit-only for the HARNESS: the honest fix for an
+# unscheduled activity is for the planner to schedule it, and auto-appending
+# an id to the session guide to satisfy coverage would invent a delivery
+# record that never happened — the exact "pad it to pass" failure the P6
+# rationale rejects. Since 2026-09-05 they are also OWNED by the
+# implementation planner (``repairs.OWNED_BY_FAMILY``, report-only), so the
+# planner is shown them as a repair turn inside its own loop and can write
+# the session guide that closes them; what it leaves is counted here and
+# never blocks readiness.
 AUDIT_ONLY_VIOLATION_TYPES = frozenset({"measurability", "P6", "P10", "P11"})
 
 #: Element-backed list fields: since the legacy full-list sections were
@@ -51,7 +55,8 @@ REQUIRED_SECTION_KEYS = {
     NodeType.ASSESSMENT: ("assessment_tools",),
     NodeType.ACTIVITY_PLAN: ("instructional_strategies",),
     NodeType.ACTIVITY: ("learning_activities",),
-    NodeType.IMPLEMENTATION_PLAN: ("instructor_orientation", "system_check", "prototype_execution", "monitoring"),
+    NodeType.IMPLEMENTATION_PLAN: ("instructor_orientation", "system_check", "prototype_execution",
+                                   "monitoring", "instructor_guide", "operator_manual"),
 }
 
 

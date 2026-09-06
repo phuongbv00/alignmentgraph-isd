@@ -130,4 +130,9 @@ export const api = {
    *  into memory only to re-serialize it here would drop that and re-encode a
    *  file that is already exactly what should land on disk. */
   trajectoryExportUrl: (runId: string) => `${BASE}/runs/${runId}/trajectory/export`,
+
+  /** The violation ledger as CSV, one row per finding. CSV because
+   *  `getViolations` already serves the JSON a tool would want, and the ledger
+   *  is a table: what is still open, why, who owns it, which check said so. */
+  violationsExportUrl: (runId: string) => `${BASE}/runs/${runId}/violations/export`,
 }

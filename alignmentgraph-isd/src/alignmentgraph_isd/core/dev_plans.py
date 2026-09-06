@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 #: Backstops, NOT a plan. Since 2026-09-01 the fan-out width is the agent's
 #: decision — it proposes the grouping and these only stop a blow-up. They were
@@ -116,6 +116,7 @@ class WorkSet:
             "pairs": [list(p) for p in self.pairs],
             "payload": self.payload,
             "source": self.source,
+            "ordinal": self.ordinal,
         }
 
 
@@ -126,6 +127,7 @@ def work_set_from_dict(data: dict) -> WorkSet:
         pairs=tuple(tuple(p) for p in (data.get("pairs") or ())),
         payload=dict(data.get("payload") or {}),
         source=str(data.get("source", "llm")),
+        ordinal=int(data.get("ordinal") or 1),
     )
 
 
@@ -133,6 +135,12 @@ def _empty_stats(pair_count: int) -> dict:
     return {
         "set_count": 0, "pair_count": pair_count, "dropped_lo_refs": 0,
         "dropped_pairs": 0, "appended_sets": 0, "fallback_used": False,
+        # Obligations the plan named in TWO sets. The second naming is dropped:
+        # two Developers each told to write "the" item for one pair produce
+        # two items for one obligation (measured on run e81b8108: ILO-02 x
+        # formative in both AS-02 and AS-03), and nothing downstream objected
+        # because coverage asks "at least one".
+        "duplicate_pairs": 0,
         # Sets the HARNESS had to cut because the planner handed over one too
         # big to answer. The planner is told the budget and asked to scope its
         # own sets; this counts how often it did not, which is the only way to
@@ -146,6 +154,32 @@ def _empty_stats(pair_count: int) -> dict:
 #: is 12, and the size bound can push past it), and correctness does not rest
 #: on the number: ``_composite_id`` scans past anything already taken.
 ROUND_ORDINAL_STRIDE = 50
+
+
+def number_sets(sets: list[WorkSet], *, prefix: str = "") -> list[WorkSet]:
+    """Give each set its 1-based ORDINAL — the first half of every id its
+    Developer's artifacts commit under (``_composite_id``), fixed before any
+    Developer runs so no two sets can name the same artifact and no id depends
+    on who commits first.
+
+    ``prefix`` ALSO renames the set (``AS-01``), which is what the planned
+    families want. ``material_work_units`` passes none: its set ids are
+    MODULE-derived (``MU-MOD-03``) and that is read — it is stamped on every
+    item as ``plan_set``, it is what ``pending_set_ids`` matches for the regen,
+    and it is the only thing in the graph dump that says which module a
+    material came from.
+
+    Numbering and naming are two jobs, and they were fused inside
+    ``_cap_and_number``. So the one family that could not take the naming
+    silently got no ordinal either: every material set kept the dataclass
+    default of 1, ids came out ``MAT-0101``…``MAT-0108`` across six different
+    modules, and uniqueness rested entirely on the ``taken`` scan in
+    ``_composite_id`` — the exact "whoever commits first" scheme that
+    function's own docstring says is not how this works. Harmless while the
+    fan-out is sequential, and not harmless the moment anything retries a set
+    or runs two concurrently."""
+    return [replace(ws, set_id=f"{prefix}-{i:02d}" if prefix else ws.set_id, ordinal=i)
+            for i, ws in enumerate(sets, start=1)]
 
 
 def _cap_and_number(sets: list[WorkSet], obligation_count: int, prefix: str,
@@ -176,15 +210,7 @@ def _cap_and_number(sets: list[WorkSet], obligation_count: int, prefix: str,
             oversized += len(pieces) > 1
             cut.extend(pieces)
         sets = cut
-    numbered = [
-        WorkSet(set_id=f"{prefix}-{i:02d}", objectives=ws.objectives, pairs=ws.pairs,
-                payload=ws.payload, source=ws.source,
-                # The first half of every id this set's artifacts commit under,
-                # fixed here — before any Developer runs — so no two sets can
-                # name the same artifact and no id depends on who commits first.
-                ordinal=i)
-        for i, ws in enumerate(sets, start=1)
-    ]
+    numbered = number_sets(sets, prefix=prefix)
     if oversized and numbered:
         # Carried on the first set so the caller can read it back without a
         # second return value threaded through every family.
@@ -251,6 +277,7 @@ def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets) -> tuple[lis
 
     raw_sets = (parsed or {}).get("instrument_sets") if isinstance(parsed, dict) else None
     sets: list[WorkSet] = []
+    claimed: set[tuple[str, str]] = set()
     if isinstance(raw_sets, list):
         for raw in raw_sets:
             if not isinstance(raw, dict):
@@ -262,15 +289,23 @@ def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets) -> tuple[lis
             cats = [str(c or "").strip().lower() for c in (raw.get("plan_categories") or [])]
             cats = [c for c in cats if c in _VALID_CATEGORIES]
             candidate = [(lo, cat) for lo in objs for cat in cats]
-            set_pairs = list(dict.fromkeys(p for p in candidate if p in pair_set))
-            stats["dropped_pairs"] += len(candidate) - len(set_pairs)
+            on_target = list(dict.fromkeys(p for p in candidate if p in pair_set))
+            stats["dropped_pairs"] += len(candidate) - len(on_target)
+            # Across sets, not only within one: a pair the plan already put in
+            # an earlier set stays there. "Every pair in exactly one set" is
+            # the rule the planner is given (RULES_ASSESSMENT_DEV_PLAN).
+            set_pairs = [p for p in on_target if p not in claimed]
+            stats["duplicate_pairs"] += len(on_target) - len(set_pairs)
             if not set_pairs:
                 continue
+            claimed.update(set_pairs)
             sets.append(WorkSet(
                 set_id="", objectives=tuple(dict.fromkeys(lo for lo, _ in set_pairs)),
                 pairs=tuple(set_pairs),
                 payload={"instrument_hint": str(raw.get("instrument_hint", "")),
-                         "rationale": str(raw.get("rationale", ""))},
+                         "rationale": str(raw.get("rationale", "")),
+                         "expected_items": _expected_items(
+                             raw.get("expected_items"), len(set_pairs))},
                 source="llm",
             ))
 
@@ -302,9 +337,10 @@ def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets) -> tuple[lis
     def _split(ws: WorkSet, limit: int) -> list[WorkSet]:
         """Keep the objective grouping; subdivide WITHIN it.
 
-        The planned quantity for this family is exact: ``RULES_ASSESSMENT_ITEMS_SET``
-        says "produce exactly one item for every (objective, plan_category) pair
-        it lists", so a set's pair count IS the number of items it will produce.
+        The planned quantity for this family is bounded by its pairs: a set
+        writes ``expected_items`` items (at least one per pair, at most
+        ``max_units``), so a set whose PAIRS fit the limit fits in one call
+        and only the pair list decides whether it has to be cut.
 
         Chunking the flattened pair list would cut across objectives — a piece
         carrying the tail of ILO-01 and the head of ILO-02 — which throws away
@@ -329,10 +365,37 @@ def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets) -> tuple[lis
 
     numbered = _cap_and_number(sets, len(pairs), "AS", _merge,
                                family="assessment", split=_split)
+    # A merged or split set carries a payload copied from one of its parts, so
+    # its planned count no longer describes its pairs; re-derive it from what
+    # the set actually holds. Also fills the count in for appended/fallback
+    # sets, whose payload is empty.
+    for ws in numbered:
+        ws.payload["expected_items"] = _expected_items(
+            ws.payload.get("expected_items"), len(ws.pairs))
     stats["set_count"] = len(numbered)
     stats["oversized_splits"] = (
         numbered[0].payload.pop("_oversized_splits", 0) if numbered else 0)
     return numbered, stats
+
+
+def _expected_items(raw: object, pair_count: int) -> int:
+    """How many items an instrument set writes: the planner's own count,
+    clamped to ``[pairs, max_units]``, or the pair count when it gave none.
+
+    The count used to BE the pair count — "one item per (objective,
+    plan_category) pair, no filler" — which left the planner no way to say
+    an instrument needs three items on one objective. The floor is still one
+    item per pair (``checks.plan_coverage`` holds every pair to that) and the
+    ceiling is the same per-call budget the split uses, so a planned count
+    can never make a set unanswerable.
+    """
+    floor = max(1, pair_count)
+    ceiling = max(floor, max_units("assessment"))
+    try:
+        value = int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return floor
+    return min(max(value, floor), ceiling)
 
 
 # ── activity: blocks over objectives ────────────────────────────────────────
@@ -374,15 +437,25 @@ def normalize_activity_dev_plan(parsed, lo_ids, items_by_lo: dict | None = None)
 
     raw_blocks = (parsed or {}).get("activity_blocks") if isinstance(parsed, dict) else None
     sets: list[WorkSet] = []
+    claimed: set[str] = set()
     if isinstance(raw_blocks, list):
         for raw in raw_blocks:
             if not isinstance(raw, dict):
                 continue
             objs = [_bare(o) for o in (raw.get("objectives") or []) if _bare(o)]
-            valid_objs = list(dict.fromkeys(o for o in objs if o in lo_set))
-            stats["dropped_lo_refs"] += len(objs) - len(valid_objs)
+            known = list(dict.fromkeys(o for o in objs if o in lo_set))
+            stats["dropped_lo_refs"] += len(objs) - len(known)
+            # An objective already in an earlier block stays there — unless
+            # this block carries its own `block_theme`, which is the planner
+            # deliberately splitting one objective across distinct scopes
+            # (RULES_ACTIVITY_DEV_PLAN asks for exactly that when an
+            # objective needs more than one call).
+            themed = bool(str(raw.get("block_theme", "")).strip())
+            valid_objs = [o for o in known if themed or o not in claimed]
+            stats["duplicate_pairs"] += len(known) - len(valid_objs)
             if not valid_objs:
                 continue
+            claimed.update(valid_objs)
             items = sorted({i for lo in valid_objs for i in items_by_lo.get(lo, [])})
             sets.append(WorkSet(
                 set_id="", objectives=tuple(valid_objs), pairs=(),
@@ -478,6 +551,26 @@ def normalize_activity_dev_plan(parsed, lo_ids, items_by_lo: dict | None = None)
 
 # ── content: material units, one per committed module (deterministic) ──────
 
+def _expected_materials(raw: object, media_count: int) -> int:
+    """How many materials a module's unit writes: the planner's own count on
+    the module (``expected_materials``), clamped to ``[media, max_units]``,
+    or the media count when it gave none.
+
+    The count used to BE the media count — one material realizing each media
+    selection — which left no way to say a broad module needs three documents
+    where its media list names one. The floor stays one material per media
+    selection (``RULES_MATERIALS_UNIT`` holds every selection to that) and
+    the ceiling is the same per-call budget the split uses.
+    """
+    floor = max(1, media_count)
+    ceiling = max(floor, max_units("material"))
+    try:
+        value = int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return floor
+    return min(max(value, floor), ceiling)
+
+
 def material_work_units(modules: list[dict], media_selections: list[dict],
                          constraints: list[dict] | None = None) -> list[WorkSet]:
     modules = [m for m in (modules or []) if isinstance(m, dict) and m.get("id")]
@@ -492,11 +585,13 @@ def material_work_units(modules: list[dict], media_selections: list[dict],
 
     if not modules:
         # Degenerates to today's single whole-pool materials call.
-        return [WorkSet(
+        return number_sets([WorkSet(
             set_id="MU-ALL", payload={"modules": [], "media_selections": media_selections,
-                                       "constraints": _constraints_for(media_selections)},
+                                       "constraints": _constraints_for(media_selections),
+                                       "expected_materials": _expected_materials(
+                                           None, len(media_selections))},
             source="deterministic",
-        )]
+        )])
 
     module_ids = [_bare(m["id"]) for m in modules]
     by_module: dict[str, list[dict]] = {mid: [] for mid in module_ids}
@@ -509,11 +604,13 @@ def material_work_units(modules: list[dict], media_selections: list[dict],
         else:
             unassigned.append(media)  # no/unknown for_modules -> attach to every unit
 
-    # The planned quantity for a module is its MEDIA SELECTIONS:
+    # The planned quantity for a module is at least its MEDIA SELECTIONS:
     # ``RULES_MATERIALS_UNIT`` says a material's type/format must realize one of
     # the media selections given, so a module with eight of them is eight
     # materials — and materials are the longest element the harness writes.
-    # One unit per module said nothing about that.
+    # One unit per module said nothing about that. Above that floor the
+    # planner's own ``expected_materials`` on the module decides (a broad
+    # module may need three documents where its media list names one).
     limit = max_units("material")
     sets: list[WorkSet] = []
     for module in modules:
@@ -522,10 +619,15 @@ def material_work_units(modules: list[dict], media_selections: list[dict],
         batches = (_chunks(media_for_unit, limit)
                    if len(media_for_unit) > limit else [media_for_unit])
         for index, media_batch in enumerate(batches, start=1):
+            # A module split over several batches is already at the ceiling
+            # per batch; only an unsplit one has room for a planned count.
+            planned = (_expected_materials(module.get("expected_materials"), len(media_batch))
+                       if len(batches) == 1 else len(media_batch))
             sets.append(WorkSet(
                 set_id=f"MU-{mid}" if len(batches) == 1 else f"MU-{mid}-{index:02d}",
                 payload={"modules": [module], "media_selections": media_batch,
-                         "constraints": _constraints_for(media_batch)},
+                         "constraints": _constraints_for(media_batch),
+                         "expected_materials": planned},
                 source="deterministic",
             ))
 
@@ -548,11 +650,17 @@ def material_work_units(modules: list[dict], media_selections: list[dict],
             merged_sets.append(WorkSet(
                 set_id=f"MU-MERGED-{index:02d}" if len(chunks) > 1 else "MU-MERGED",
                 payload={"modules": chunk, "media_selections": chunk_media,
-                         "constraints": _constraints_for(chunk_media)},
+                         "constraints": _constraints_for(chunk_media),
+                         # A merged unit is the backstop: one material per
+                         # module at least, one per media selection at least.
+                         "expected_materials": min(max(len(chunk), len(chunk_media), 1), limit)},
                 source="deterministic",
             ))
         sets = head + merged_sets
-    return sets
+    # Numbered here rather than in `_cap_and_number`: this family does its own
+    # module-aware cap above (which recomputes each chunk's media and
+    # constraints), and the generic one would rewrite `MU-MOD-03` to `MU-03`.
+    return number_sets(sets)
 
 
 # ── fan-in helpers: shared by every family's finalize step ─────────────────
@@ -700,13 +808,16 @@ def render_assessment_set(work_set: WorkSet) -> str:
     lines = [f"set_id: {work_set.set_id}"]
     if work_set.pairs:
         # The count is stated as a number, not left to be inferred from the
-        # list length. It is the same quantity the split used, so a Developer
-        # that writes fewer is visibly short rather than plausibly done — and a
-        # set whose pairs were trimmed (a plan promising a category its own
-        # `lo_coverage_targets` did not name) says how many survived.
-        lines.append(f"write exactly {len(work_set.pairs)} item"
-                     f"{'' if len(work_set.pairs) == 1 else 's'} — one for each "
-                     "(objective x plan_category) pair below:")
+        # list length: the planner's `expected_items` (floor: one per pair),
+        # so a Developer that writes fewer is visibly short rather than
+        # plausibly done — and a set whose pairs were trimmed (a plan
+        # promising a category its own `lo_coverage_targets` did not name)
+        # says how many survived.
+        count = _expected_items(work_set.payload.get("expected_items"), len(work_set.pairs))
+        lines.append(f"write exactly {count} item{'' if count == 1 else 's'} — "
+                     + ("one for each (objective x plan_category) pair below:"
+                        if count == len(work_set.pairs) else
+                        "covering every (objective x plan_category) pair below at least once:"))
         for lo, category in work_set.pairs:
             lines.append(f"  - {lo} x {category}")
     hint = work_set.payload.get("instrument_hint")
@@ -769,6 +880,29 @@ def render_material_set(work_set: WorkSet) -> str:
         lines.append("media selections for this module:")
         for selection in media:
             lines.append(f"  [MEDIA:{selection.get('id', '')}] {json.dumps(selection, ensure_ascii=False)}")
+        # The types THIS module chose, named as a list. The rules state the
+        # closed vocabulary and the schema's exemplar is a placeholder, but
+        # only the assignment knows which of them apply here — and that is
+        # where the failure was: MEASURED (run 2b9e911a), all eight materials
+        # came out `"type": "video", "format": "mp4"`, copied verbatim from the
+        # schema example, against six media selections that were slides and
+        # simulation. P6 failed 8/8. A small model follows the example it is
+        # shown before the rule it is told.
+        allowed = list(dict.fromkeys(
+            str(s.get("media_type", "")).strip() for s in media
+            if str(s.get("media_type", "")).strip()))
+        if allowed:
+            lines.append('allowed "type" values for this module: ' + ", ".join(allowed))
+    # The count, stated as a number: the planner's `expected_materials` with
+    # one per media selection as the floor. Before 2026-09-05 no count was
+    # given at all, and the harness sized the unit as if one were.
+    count = _expected_materials(work_set.payload.get("expected_materials"), len(media))
+    lines.append(f"write exactly {count} material{'' if count == 1 else 's'}"
+                 + (" — one realizing each media selection above:" if media and count == len(media)
+                    else " — every media selection above realized by at least one:" if media
+                    else " for this module:")
+                 + (" each material's ``type`` is the ``media_type`` of the selection it "
+                    "realizes." if media else ""))
     constraints = work_set.payload.get("constraints") or []
     if constraints:
         lines.append("constraints these media respect:")

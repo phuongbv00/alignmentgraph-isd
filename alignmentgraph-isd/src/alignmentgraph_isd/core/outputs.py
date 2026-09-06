@@ -57,7 +57,13 @@ def _collect_violations(node_name: str, graph, design_brief) -> list:
         # that can no longer be false.
         return checks.rubric_consistency(graph) + checks.evidence_alignment(graph)
     if node_name == "implementation_planner":
-        return checks.feasibility(graph, design_brief) + checks.actionability(graph)
+        # P10/P11: every activity and material the session guides leave out.
+        # The planner is shown them in its own repair turn (report-only for
+        # the harness — see repairs.REPORT_ONLY). Before 2026-09-05 no family
+        # collected them, so a guide that scheduled nothing was discovered
+        # only by the final audit, after every repair opportunity had closed.
+        coverage = [v for v in checks.relation_coverage(graph) if v.violation_type in ("P10", "P11")]
+        return coverage + checks.feasibility(graph, design_brief) + checks.actionability(graph)
     return []
 
 

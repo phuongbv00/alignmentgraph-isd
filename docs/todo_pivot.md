@@ -2070,7 +2070,14 @@ Báo cáo gộp trong paper là claim sai.
 tín hiệu nào — flag Bloom tách làm hai kèm message nguyên văn, và `lib/violations.ts` là **bảng nhãn
 đầu tiên** trong repo (trước đó app hiện snake_case thô).
 
-536 test package + 44 webapp xanh, `run_benchmark.py --check` sạch. Golden prompts đã regenerate.
+**Node detail: mục "Failed checks" cho MỌI loại node.** Viền cảnh báo và mục này đọc cùng một
+`node_violations` nên không thể lệch nhau. Danh sách lấy từ GRAPH (live, chỉ có loại), câu chữ lấy từ
+SỔ khi nó đã chốt — nên trong lúc chạy node hiện tên check hỏng, và cuối run có thêm message + repair
+hint của chính check đó. Với objective thì bỏ bốn loại `AlignmentFlags` đã vẽ, để không nói cùng một
+điều hai lần bằng hai hình dạng; mọi thứ CÒN LẠI hỏng trên nó (`measurability`, `bloom`,
+`activity_engagement`, C1/P1/P2) trước đây **không có chỗ nào hiện ra cả**.
+
+553 test package + 48 webapp xanh, `run_benchmark.py --check` sạch. Golden prompts đã regenerate.
 
 ## Rủi ro còn treo
 

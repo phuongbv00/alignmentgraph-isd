@@ -299,11 +299,23 @@ a.btn:hover { background: #f1f5f9; }
 .conn-form .preset-row { align-items: center; margin-bottom: 12px; }
 /* A label carries at most one aside, in the same line rather than under the
    field: a note per field turns six inputs into twelve rows of text. */
+.conn-form .field > span { display: flex; align-items: baseline; gap: 6px; }
 .conn-form .field > span > em {
   font-style: normal;
   font-size: 11px;
-  margin-left: 6px;
 }
+/* The escape hatch from the dropdown, kept out of the way: it only matters on
+   the endpoints that will not list their models. */
+.field-toggle {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 11px;
+  color: var(--accent);
+  text-decoration: underline;
+}
+.field-toggle:disabled { color: var(--muted); text-decoration: none; cursor: default; }
 .conn-form .field-row select { flex: 1 1 auto; min-width: 0; }
 .modal-actions {
   display: flex;
@@ -620,6 +632,19 @@ a.btn:hover { background: #f1f5f9; }
 }
 .pt-audit-chip:hover { border-color: var(--border-strong); color: var(--text); }
 
+/* A word inside a timeline line that opens its detail — the story stays a
+ * sentence, and the noun that has more behind it is the thing you click. */
+.pt-inline {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .pt-audit-rows {
   margin-top: 6px;
   border-top: 1px solid var(--border);
@@ -831,6 +856,9 @@ a.btn:hover { background: #f1f5f9; }
 .seg-messages { background: #3b82f6; }
 .seg-tools { background: #22c55e; }
 .seg-schemas { background: #a855f7; }
+/* Not a part of the context — the window nothing may be put in. Neutral, so it
+   never reads as something the run spent. */
+.seg-reserve { background: var(--border-strong); }
 
 .ctx-budget { margin: 10px 0 4px; }
 .ctx-budget-head { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; }
@@ -883,7 +911,7 @@ a.btn:hover { background: #f1f5f9; }
 /* Coloured by the PART each block counts toward, with the SAME three colours
    as the bar above it. Colouring by message role instead made the transcript
    disagree with the budget it is meant to explain. */
-.ctx-turn { border-left: 3px solid var(--border-strong); padding-left: 8px; }
+.ctx-turn { border-left: 3px solid var(--border-strong); padding: 4px 0 4px 8px; }
 .ctx-turn.part-messages { border-left-color: #3b82f6; }
 .ctx-turn.part-tools { border-left-color: #22c55e; }
 .ctx-role { display: flex; align-items: center; gap: 5px; margin-bottom: 3px; color: var(--muted); }
@@ -893,9 +921,6 @@ a.btn:hover { background: #f1f5f9; }
    model still sees or of the meter above it. */
 .ctx-compacted {
   opacity: 0.55;
-  border-left: 2px solid #cbd5e1;
-  padding-left: 6px;
-  margin-left: -8px;
 }
 
 .ctx-badge {

@@ -98,7 +98,7 @@ OWNED_BY_FAMILY: dict[str, frozenset[str]] = {
     "content_designer": frozenset({"C5", "P5", "P6", "orphan_content"}),
     "rubric_designer": frozenset(
         {"rubric_consistency", "evidence_alignment"}),
-    "implementation_planner": frozenset({"feasibility", "actionability"}),
+    "implementation_planner": frozenset({"feasibility", "actionability", "P10", "P11"}),
 }
 
 
@@ -124,7 +124,7 @@ OWNED_BY_FAMILY: dict[str, frozenset[str]] = {
 #: touched by the deterministic net. What survives the agent's repair budget
 #: is counted as residual.
 REPORT_ONLY: frozenset[str] = frozenset({
-    "C3", "C5", "P4", "P6",
+    "C3", "C5", "P4", "P6", "P10", "P11",
     "activity_engagement", "bloom_mismatch_activity",
     "rubric_consistency", "feasibility", "actionability",
 })

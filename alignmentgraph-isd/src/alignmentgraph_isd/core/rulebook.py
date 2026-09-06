@@ -156,10 +156,10 @@ SCHEMA_ASSESSMENT_ITEMS = """\
 # (self-validation rounds, repairs, relation coverage) and says so.
 
 RULES_ASSESSMENT_ITEMS = """\
-The assessment plan's lo_coverage_targets already fixes how many items are needed: produce one
-item for every (objective, plan_category) pair it names, and no filler beyond that. Do not aim
-for a round number of items -- a plan covering three objectives in two categories needs six
-items, not ten. required_cognitive_process must be one of:
+Every (objective, plan_category) pair the assessment plan's lo_coverage_targets names needs at
+least one item; the dev plan's expected_items says how many each instrument set writes, and
+there is no filler beyond that. Do not aim for a round number of items -- a plan covering three
+objectives in two categories needs six items, not ten. required_cognitive_process must be one of:
 remember, understand, apply, analyze, evaluate, create — and must be honestly achievable by the
 item's format (a multiple_choice/true_false item cannot honestly claim apply-or-higher; use
 short_answer or performance_task for that). Every Apply-or-higher objective must be measured by
@@ -179,6 +179,7 @@ SCHEMA_ASSESSMENT_DEV_PLAN = """\
 {
   "instrument_sets": [
     {"set_id": "SET-01", "objectives": ["ILO-01", "ILO-02"], "plan_categories": ["formative"],
+     "expected_items": 2,
      "instrument_hint": "<what kind of instrument, e.g. one integrated case scenario>",
      "rationale": "<why these objectives/categories belong in one instrument, or why one alone>"}
   ]
@@ -190,7 +191,11 @@ plan_category) pair it names must appear in exactly one set. Most sets should co
 objective and category — only group several objectives into one set when a single instrument
 genuinely assesses them together (e.g. one integrated scenario testing two related skills at
 once), never merely to produce fewer sets. Never invent an objective or category the plan did
-not name."""
+not name.
+
+``expected_items`` is how many items that instrument actually needs: at least one per (objective,
+plan_category) pair the set lists, at most %(max_items)d, and no filler beyond what the instrument
+genuinely requires."""
 
 #: Per-set rewrite of RULES_ASSESSMENT_ITEMS: a Developer sees only its own
 #: instrument set, not the whole plan, so the count/filler rule is scoped to
@@ -198,9 +203,9 @@ not name."""
 RULES_ASSESSMENT_ITEMS_SET = """\
 Do NOT write an id for the artifacts you produce — ids are assigned when your set is
 committed, so that two Developers working at the same time cannot name the same thing.
-YOUR ASSIGNED SET below already fixes how many items are needed: produce exactly one item for
-every (objective, plan_category) pair it lists, and no filler beyond that. If the set spans more
-than one objective, its items must share a common stem/scenario (the instrument the set
+YOUR ASSIGNED SET below states how many items to write: cover every (objective, plan_category)
+pair it lists with at least one item, and write no filler beyond the stated count. If the set spans
+more than one objective, its items must share a common stem/scenario (the instrument the set
 describes), but each individual item still carries a SINGLE ``aligned_objective`` — never a list.
 required_cognitive_process must be one of:
 remember, understand, apply, analyze, evaluate, create — and must be honestly achievable by the
@@ -302,6 +307,7 @@ progression, never merely to produce fewer blocks."""
 from .dev_plans import max_units as _max_units  # noqa: E402  (cycle-free: dev_plans imports nothing local)
 
 RULES_ACTIVITY_DEV_PLAN = RULES_ACTIVITY_DEV_PLAN % {"max_activities": _max_units("activity")}
+RULES_ASSESSMENT_DEV_PLAN = RULES_ASSESSMENT_DEV_PLAN % {"max_items": _max_units("assessment")}
 
 #: Per-set rewrite of RULES_ACTIVITIES: a Developer sees only its own block.
 RULES_ACTIVITIES_SET = """\
@@ -321,10 +327,19 @@ project, simulation — never only lecture/reading/video). ``prerequisite_activi
 reference activity ids YOU produce in this same response — an activity in another block is not a
 valid prerequisite here."""
 
+#: The media vocabulary, typed ONCE. `RULES_CONTENT_MODULES` used to hand-type
+#: the list and `SCHEMA_MATERIALS` used to hand-type one of its values as its
+#: exemplar; the canonical keys of `alignment._MEDIA_TYPE_ALIASES`, which is
+#: what P6 actually matches on, are a third copy (asserted equal in
+#: `tests/test_ablation_flags.py` — this module must not import the graph
+#: package, since the prose arm composes from it).
+MEDIA_TYPES = ("video", "slides", "simulation", "document", "audio")
+
+
 SCHEMA_CONTENT_MODULES = """\
 {
   "content_modules": [
-    {"id": "MOD-01", "title": "<module title>", "description": "<what this module covers>", "supports_activities": ["TLA-01"], "covers_topics": ["TOP-01"]}
+    {"id": "MOD-01", "title": "<module title>", "description": "<what this module covers>", "supports_activities": ["TLA-01"], "covers_topics": ["TOP-01"], "expected_materials": 2}
   ],
   "media_selections": [
     {"id": "MED-01", "media_type": "video", "purpose": "<purpose>", "rationale": "<rationale>", "respects_constraints": ["CON-01"], "for_modules": ["MOD-01"]}
@@ -336,26 +351,41 @@ Every content module must set ``supports_activities`` to existing activity ids w
 ``materials_needed`` hint it is addressing — do not invent a module nothing needs. Every module
 should set ``covers_topics`` to existing topic ids. Every media selection should set
 ``respects_constraints`` to existing constraint ids it was chosen in light of (e.g. avoid
-bandwidth-heavy video under a low-bandwidth constraint). media_type must be one of: video,
-slides, simulation, document, audio. Every media selection should also set ``for_modules`` to
+bandwidth-heavy video under a low-bandwidth constraint). media_type must be one of:
+%(media_types)s. Every media selection should also set ``for_modules`` to
 the content module id(s) it serves — a later step develops materials one module at a time and
-needs to know which media belong to which module."""
+needs to know which media belong to which module.
+
+``expected_materials`` is how many learner materials that module actually needs — you are the only
+step that knows whether a module is one handout or a broad topic needing several. At least one
+per media selection the module receives, at most %(max_materials)d; a module that needs more than
+that is really two modules."""
+
+RULES_CONTENT_MODULES = RULES_CONTENT_MODULES % {
+    "max_materials": _max_units("material"), "media_types": ", ".join(MEDIA_TYPES)}
 
 SCHEMA_MATERIALS = """\
 {
   "learner_materials": [
-    {"title": "<material title>", "type": "video", "format": "mp4", "content": "<description of the actual content>", "linked_module": "MOD-01"}
+    {"title": "<material title>", "type": "<the media_type of the media selection this material realizes>", "format": "<the file or delivery format for that media type>", "content": "<description of the actual content>", "linked_module": "MOD-01"}
   ]
 }"""
 
+#: The whole-family rules. Not composed by any fan-out spec — a grep for the
+#: name finds only this line — but reached by ``rules_for("content")`` through
+#: ``globals()``, which is how the content STAGE prompt states what the family
+#: it is planning will be held to. Deleting it on the grep's word raises
+#: KeyError at import.
 RULES_MATERIALS = """\
 Every material's ``linked_module`` must name an existing content module id it belongs to, and
-its ``type``/``format`` should realize one of the media selections given (e.g. a media selection
-of type "video" should be realized by a material whose type/format is video-like).
+its ``type`` must be the ``media_type`` of the media selection it realizes — one of
+%(media_types)s — with ``format`` a delivery format for that type.
 ``content`` must BE the learner-facing substance of the material, ready to hand to a learner —
 the actual text, worked example, exercise instructions, or a scene-by-scene script for
 video/slides — several sentences of scenario-specific detail, never a one-line description of
 what the content would contain."""
+
+RULES_MATERIALS = RULES_MATERIALS % {"media_types": ", ".join(MEDIA_TYPES)}
 
 #: Per-module rewrite of RULES_MATERIALS: a Developer sees ONE module + its
 #: own media selections + the constraints those media declared.
@@ -363,13 +393,19 @@ RULES_MATERIALS_UNIT = """\
 Do NOT write an id for the artifacts you produce — ids are assigned when your set is
 committed, so that two Developers working at the same time cannot name the same thing.
 Produce materials ONLY for the ONE content module given — ``linked_module`` must be that
-module's id on every material. Its ``type``/``format`` must realize one of the media selections
-given for this module, respecting the constraints those media declared.
+module's id on every material. YOUR ASSIGNED MODULE below states how many materials to write:
+realize every media selection given for this module with at least one material, and write no
+filler beyond the stated count. Each material's ``type`` must be the ``media_type`` of the
+media selection it realizes — one of %(media_types)s — and its ``format`` a delivery format for
+that type, respecting the constraints those media declared. Do not copy the type from the schema
+example: it is a placeholder, and your module's own media list above is what decides.
 ``content`` must BE the learner-facing substance of the material, ready to hand to a learner —
 the actual text, worked example, exercise instructions, or a scene-by-scene script for
 video/slides — several sentences of scenario-specific detail, never a one-line description of
 what the content would contain. Because you are developing one module at a time, give this
 module's materials the full length and detail a learner would actually need."""
+
+RULES_MATERIALS_UNIT = RULES_MATERIALS_UNIT % {"media_types": ", ".join(MEDIA_TYPES)}
 
 
 #: The rubric rules a Developer gets: it writes the criteria inside the very

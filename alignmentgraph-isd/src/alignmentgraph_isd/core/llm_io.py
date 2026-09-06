@@ -221,6 +221,24 @@ def parse_json_array(raw: str) -> tuple[list, int]:
     ``dropped`` is how many blocks would not parse. It is returned rather than
     swallowed because recovering 2 of 3 items and saying nothing is the same
     class of failure as recovering 1: the caller has to be able to report it.
+
+    Brace balance alone is not enough, and the case it misses is not the stray
+    closer above but its opposite: an element short one CLOSING brace. Depth
+    then never returns to 0, every element after it is swallowed into a block
+    that never terminates, and the whole array is charged as one dropped block.
+    MEASURED (run 2b9e911a, the replan work set that asked for exactly one
+    summative item): a rubric criterion closing ``"full"}]}`` instead of
+    ``"full"}}]}`` recovered 0 of 3 items, the submit was rejected three times
+    as "arrived as text", and the item the round existed to produce was never
+    written. Element one was fully recoverable on its own — the scanner simply
+    never decided where it ended.
+
+    So a ``}`` ALSO ends an element when the bracket depth is 1 (only the outer
+    array is open) and what follows is ``,`` then ``{``. That sequence inside
+    the outer array cannot mean anything else: inside an object a comma is
+    followed by a key, and inside a nested array (``"rubric": [{…},{…}]``) the
+    same text appears at bracket depth 2. Brace depth cannot tell the two
+    apart — both leave it at 1 — which is why the brackets are counted too.
     """
     text = raw.strip()
     start = text.find("[")
@@ -229,6 +247,7 @@ def parse_json_array(raw: str) -> tuple[list, int]:
     items: list = []
     dropped = 0
     depth = 0
+    brackets = 0
     in_string = False
     escaped = False
     block_start = -1
@@ -244,13 +263,20 @@ def parse_json_array(raw: str) -> tuple[list, int]:
             continue
         if char == '"':
             in_string = True
+        elif char == "[":
+            brackets += 1
+        elif char == "]":
+            brackets -= 1
         elif char == "{":
             if depth == 0:
                 block_start = index
             depth += 1
         elif char == "}":
             depth -= 1
-            if depth == 0 and block_start != -1:
+            if block_start != -1 and (
+                    depth == 0
+                    or (depth > 0 and brackets == 1
+                        and _starts_next_element(text, index + 1))):
                 fragment = text[block_start:index + 1]
                 parsed = _loads_object(fragment)
                 if parsed is None:
@@ -258,6 +284,7 @@ def parse_json_array(raw: str) -> tuple[list, int]:
                 else:
                     items.append(parsed)
                 block_start = -1
+                depth = 0
             elif depth < 0:
                 # A stray closer, which is exactly the transposition this
                 # exists for. Resynchronise rather than abandon the rest.
@@ -266,6 +293,15 @@ def parse_json_array(raw: str) -> tuple[list, int]:
     if block_start != -1:
         dropped += 1
     return items, dropped
+
+
+def _starts_next_element(text: str, index: int) -> bool:
+    """Is the text from ``index`` the ``, {`` that opens the next array element?
+
+    Whitespace-tolerant and nothing more. It is asked only at bracket depth 1,
+    where ``}`` ``,`` ``{`` has exactly one meaning."""
+    rest = text[index:].lstrip()
+    return rest.startswith(",") and rest[1:].lstrip().startswith("{")
 
 
 def _loads_object(fragment: str) -> dict | None:

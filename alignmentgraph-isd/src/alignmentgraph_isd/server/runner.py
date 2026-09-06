@@ -18,7 +18,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -107,9 +106,14 @@ class RunManager:
         # and abort a model call already in flight. Without it, a cancel has to
         # wait out the rest of that call.
         http_client = llm_settings.new_http_client()
-        factory = llm_settings.build_factory(http_client=http_client)
+        config = llm_settings.resolve()
+        factory = llm_settings.build_factory(config, http_client=http_client)
         if factory is None:
             raise RuntimeError("No model configured.")
+        # Read with the factory, from the same connection, so a run's transcript
+        # budget matches the client it is actually calling — and so editing the
+        # connection mid-run cannot change either one under it.
+        window = llm_settings.window_settings(config)
 
         state = self.registry.create(run.id, run.program_id)
         state.http_client = http_client
@@ -121,7 +125,8 @@ class RunManager:
         directory.mkdir(parents=True, exist_ok=True)
         artifacts.write_json(directory / artifacts.ARTIFACT_FILES["brief"], brief)
 
-        self._executor.submit(self._execute, run.id, run.program_id, run.artifact_dir, brief, factory)
+        self._executor.submit(
+            self._execute, run.id, run.program_id, run.artifact_dir, brief, factory, window)
         return state
 
     def request_cancel(self, run_id: str) -> bool:
@@ -179,14 +184,16 @@ class RunManager:
 
         return consume
 
-    def _execute(self, run_id: str, program_id: str, artifact_dir: str, brief: dict, factory) -> None:
+    def _execute(
+        self, run_id: str, program_id: str, artifact_dir: str, brief: dict, factory, window: dict
+    ) -> None:
         state = self.registry.get(run_id)
         if state is None:
             return
 
         directory = artifacts.resolve(self.settings, artifact_dir)
         design_brief = DesignBrief.model_validate(brief)
-        config = HarnessRunConfig(llm_factory=factory, **_window_settings())
+        config = HarnessRunConfig(llm_factory=factory, **window)
 
         started = datetime.now(timezone.utc)
         status, error, stats, result = RunStatus.SUCCEEDED, "", {}, None
@@ -302,27 +309,6 @@ class RunManager:
                     handle.write(json.dumps(event.to_dict(), ensure_ascii=False) + "\n")
         except Exception as exc:  # noqa: BLE001 - the run matters, the log does not
             logger.warning("could not append events for run %s: %s", state.run_id, exc)
-
-
-def _window_settings() -> dict:
-    """The serving window, from the same env the CLI and benchmark read.
-
-    Without it the harness falls back to its historical 24,000-character
-    transcript budget, which is a number unrelated to whatever model this app
-    is pointed at — and the Context tab then reports a budget the run was never
-    actually held to. Unset changes nothing.
-    """
-    settings: dict[str, int] = {}
-    for env_name, key in (("AGENT_MODEL_CONTEXT_WINDOW", "llm_context_window"),
-                          ("AGENT_MODEL_MAX_TOKENS_CAP", "llm_completion_reserve")):
-        raw = os.getenv(env_name)
-        if raw is None:
-            continue
-        try:
-            settings[key] = int(raw)
-        except ValueError:
-            logger.warning("ignoring %s=%r: not an integer", env_name, raw)
-    return settings
 
 
 def _light_graph(full: dict) -> dict:

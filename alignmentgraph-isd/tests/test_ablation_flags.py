@@ -278,7 +278,7 @@ def test_both_arms_get_the_same_generation_scaffolding(fake_llm_factory):
     assert all(count > len(STEPS) for count in llm_calls.values()), llm_calls
     for name, result in runs.items():
         autonomy = result["metadata"]["autonomy"]
-        assert not any(stage.get("via_budget_exhaustion") for stage in autonomy.values()), name
+        assert not any(stage["via_budget_exhaustion"] for stage in autonomy.values()), name
 
 
 def test_the_agentic_arms_are_two_shapes_not_two_settings(fake_llm_factory):
@@ -322,7 +322,7 @@ def test_the_agentic_arms_are_two_shapes_not_two_settings(fake_llm_factory):
 
     # Neither arm hit its ceiling.
     assert not autonomy["single"]["design"]["via_budget_exhaustion"]
-    assert not any(s.get("via_budget_exhaustion") for s in autonomy["multi"].values())
+    assert not any(s["via_budget_exhaustion"] for s in autonomy["multi"].values())
 
 def test_an_empty_first_answer_loses_no_artifact_in_either_arm():
     """Recovery from an empty answer is scaffolding, not an ablated mechanism:
@@ -714,3 +714,33 @@ def test_the_instructed_stage_order_is_generated_from_the_step_table():
     # not who decides the sequence.
     from alignmentgraph_isd.core.agentic import react
     assert react._WORKFLOW_OVERVIEW is _WORKFLOW_OVERVIEW
+
+
+def test_the_media_vocabulary_is_typed_once():
+    """`rulebook.MEDIA_TYPES` is what the prompts state and
+    `alignment._MEDIA_TYPE_ALIASES` is what P6 actually matches on. They are two
+    copies because they must be: this module is the prompt layer the PROSE arm
+    composes from, and importing the graph package here would add exactly the
+    coupling `context_mode` exists to ablate. So the copies are asserted equal
+    instead — a matcher and a prompt that disagree about the vocabulary make
+    every material fail a check for saying what it was told to say."""
+    from alignmentgraph_isd.core import rulebook
+    from alignmentgraph_isd.core.alignment_graph import alignment
+
+    assert set(rulebook.MEDIA_TYPES) == set(alignment._MEDIA_TYPE_ALIASES)
+
+
+def test_no_schema_example_hands_a_model_a_value_it_must_derive():
+    """MEASURED (run 2b9e911a): `SCHEMA_MATERIALS` showed `"type": "video",
+    "format": "mp4"` and all eight materials came out video/mp4 — against six
+    media selections that were slides and simulation. P6 failed 8 of 8. For a
+    small model the exemplar VALUE outranks the rule beside it, so a field whose
+    value has to come from the design state must show a placeholder, not one of
+    its legal values."""
+    from alignmentgraph_isd.core import rulebook
+
+    example = rulebook.SCHEMA_MATERIALS
+    for media_type in rulebook.MEDIA_TYPES:
+        assert f'"type": "{media_type}"' not in example, (
+            f"the materials example hands the model {media_type!r} to copy")
+    assert '"type": "<' in example, "and it must show a placeholder instead"

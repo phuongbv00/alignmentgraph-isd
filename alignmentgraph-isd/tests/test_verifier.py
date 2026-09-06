@@ -212,6 +212,44 @@ def test_rubric_consistency_silent_for_observable_description():
                 if v.violation_type == "rubric_consistency"]
 
 
+def test_a_vague_word_is_matched_as_a_word_and_not_as_a_substring():
+    """MEASURED (run 2b9e911a): "clear" matched "clearly", so three rubric
+    descriptions that name exactly what the learner must produce were reported
+    as lacking an observable one. "clearly articulates X" is the check's own
+    ideal, not its target — the adverb intensifies the observation."""
+    graph = AlignmentGraph()
+    for index, description in enumerate((
+            "Student clearly articulates that embedded systems are designed for "
+            "real-time control and industrial applications, not consumer use.",
+            "The learner provides a specific development toolchain and a clearly "
+            "defined IoT prototype addressing a real-world problem."), start=1):
+        graph.add_element_node(NodeType.ASSESSMENT, f"AT-{index:02d}", {
+            "item_id": f"AT-{index:02d}", "type": "short_answer",
+            "rubric": [{"id": f"RC-{index:02d}", "description": description}]})
+
+    assert not [v for v in checks.rubric_consistency(graph)
+                if v.violation_type == "rubric_consistency"]
+
+
+def test_an_activity_marker_is_a_word_too_and_a_stem_stays_a_stem():
+    """The active-format list REDEEMS, so a false match there lets a passive
+    design through: "lab" matched "collaborate" and "syllabus". Narrowing it
+    makes the check fire more, which is the correct direction — but the entries
+    that are deliberate stems ("cod" for code/coding) must keep matching their
+    inflections, so the policy is a leading boundary, not a whole word."""
+    assert not checks._ACTIVE_ACTIVITY_RE.search("learners collaborate on a syllabus")
+    assert checks._ACTIVE_ACTIVITY_RE.search("a coding lab on sensor drift")
+    assert checks._ACTIVE_ACTIVITY_RE.search("two labs and a guided exercise")
+
+
+def test_a_taxonomy_verb_is_matched_as_a_word_too():
+    """The other redemption list: "rate" matched "generate" and "use" matched
+    "because", so a statement carrying no taxonomy verb excused itself."""
+    assert not checks._BLOOM_VERB_RE.search("the delay happened because of the queue")
+    assert checks._BLOOM_VERB_RE.search("generates a report")
+    assert checks._BLOOM_VERB_RE.search("demonstrates the process")
+
+
 def test_evidence_alignment_fires_when_item_cannot_produce_required_evidence():
     """The item is the criterion's PARENT now, not the far end of a C6 edge, so
     the lookup is direct and the "no linked item" case cannot occur."""

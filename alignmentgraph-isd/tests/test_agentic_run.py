@@ -221,7 +221,7 @@ def test_the_two_arms_are_shaped_differently_and_say_so_in_the_record():
     # function of how many work sets it planned), but a result difference
     # cannot be blamed on the ceiling while neither arm hit it.
     assert not single["design"]["via_budget_exhaustion"]
-    assert not any(s.get("via_budget_exhaustion") for s in multi.values())
+    assert not any(s["via_budget_exhaustion"] for s in multi.values())
 
     # And only the multi arm delegates.
     identities = {c["args"]["agent"] for c in _run("multi")["trajectory"]["tool_calls"]}

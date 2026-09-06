@@ -282,8 +282,12 @@ def test_remap_and_tag_order_follows_dev_plan_order_not_payload_order():
 # ── round-trip ───────────────────────────────────────────────────────────
 
 def test_work_set_dict_round_trip():
+    # ordinal=3, not the default: it is the first half of every id this set's
+    # artifacts commit under, and a round trip that drops it silently renumbers
+    # them onto set 1. With the default value the assertion below passes
+    # whether or not the field survives.
     ws = dp.WorkSet(set_id="AS-01", objectives=("ILO-01",), pairs=(("ILO-01", "formative"),),
-                     payload={"a": 1}, source="llm")
+                     payload={"a": 1}, source="llm", ordinal=3)
     back = dp.work_set_from_dict(ws.as_dict())
     assert back == ws
 
@@ -502,3 +506,106 @@ def test_the_harness_records_when_it_had_to_cut_a_planned_set():
     rendered = dp.render_activity_set(sets[1])
     assert "part 2 of 2 of 'pipeline'" in rendered
     assert "do not repeat" in rendered
+
+
+# ── cross-set duplication and the planner's item count (2026-09-05) ────────
+
+def test_assessment_a_pair_named_in_two_sets_is_written_once():
+    """MEASURED (run e81b8108): the plan put ILO-02 x formative in two sets,
+    each Developer was told to write "the" item for it, and two items landed
+    for one obligation. The pair stays in the set that named it first."""
+    targets = {"ILO-01": ["diagnostic", "summative"], "ILO-02": ["formative", "summative"],
+               "ILO-03": ["summative"]}
+    parsed = {"instrument_sets": [
+        {"objectives": ["ILO-01", "ILO-02", "ILO-03"], "plan_categories": ["summative"]},
+        {"objectives": ["ILO-01", "ILO-02"], "plan_categories": ["formative"]},
+        {"objectives": ["ILO-02", "ILO-03"], "plan_categories": ["formative"]},
+    ]}
+    sets, stats = dp.normalize_assessment_dev_plan(parsed, ["ILO-01", "ILO-02", "ILO-03"], targets)
+    pairs = [p for ws in sets for p in ws.pairs]
+    assert len(pairs) == len(set(pairs)), f"a pair is written twice: {pairs}"
+    assert set(pairs) == {("ILO-01", "diagnostic"), ("ILO-01", "summative"),
+                          ("ILO-02", "formative"), ("ILO-02", "summative"),
+                          ("ILO-03", "summative")}
+    assert stats["duplicate_pairs"] == 1
+    assert stats["dropped_pairs"] == 2      # ILO-01 x formative, ILO-03 x formative
+    assert stats["appended_sets"] == 1      # ILO-01 x diagnostic
+    # The third set lost its only surviving pair and runs no Developer.
+    assert len(sets) == 3
+
+
+def test_assessment_expected_items_is_the_planners_count_within_bounds():
+    targets = {"ILO-01": ["formative"], "ILO-02": ["formative"]}
+    limit = dp.max_units("assessment")
+
+    def one(expected):
+        parsed = {"instrument_sets": [{"objectives": ["ILO-01", "ILO-02"],
+                                       "plan_categories": ["formative"],
+                                       "expected_items": expected}]}
+        sets, _ = dp.normalize_assessment_dev_plan(parsed, ["ILO-01", "ILO-02"], targets)
+        return sets[0]
+
+    assert one(4).payload["expected_items"] == 4
+    assert one(1).payload["expected_items"] == 2, "never below one per pair"
+    assert one(None).payload["expected_items"] == 2, "missing -> one per pair"
+    assert one("lots").payload["expected_items"] == 2
+    assert one(limit + 10).payload["expected_items"] == limit, "never above one call's worth"
+
+    text = dp.render_assessment_set(one(4))
+    assert "write exactly 4 items" in text and "at least once" in text
+    text = dp.render_assessment_set(one(None))
+    assert "write exactly 2 items — one for each" in text
+
+
+def test_assessment_fallback_sets_carry_a_count_too():
+    targets = {"ILO-01": ["formative", "summative"]}
+    sets, _ = dp.normalize_assessment_dev_plan({}, ["ILO-01"], targets)
+    assert sets[0].payload["expected_items"] == 2
+    assert "write exactly 2 items" in dp.render_assessment_set(sets[0])
+
+
+def test_activity_an_objective_in_two_untitled_blocks_is_written_once():
+    parsed = {"activity_blocks": [
+        {"objectives": ["ILO-01", "ILO-02"]},
+        {"objectives": ["ILO-02"]},
+    ]}
+    sets, stats = dp.normalize_activity_dev_plan(parsed, ["ILO-01", "ILO-02"])
+    covered = [lo for ws in sets for lo in ws.objectives]
+    assert sorted(covered) == ["ILO-01", "ILO-02"]
+    assert stats["duplicate_pairs"] == 1
+
+
+def test_activity_a_themed_second_block_for_one_objective_is_the_planner_splitting_it():
+    parsed = {"activity_blocks": [
+        {"objectives": ["ILO-01"], "block_theme": "first contact"},
+        {"objectives": ["ILO-01"], "block_theme": "unaided practice"},
+    ]}
+    sets, stats = dp.normalize_activity_dev_plan(parsed, ["ILO-01"])
+    assert len(sets) == 2 and stats["duplicate_pairs"] == 0
+
+
+def test_material_expected_count_is_the_planners_within_bounds():
+    """A broad module may need more materials than it has media selections;
+    the planner says so on the module. Floor: one per media selection."""
+    limit = dp.max_units("material")
+    media = [{"id": "MED-01", "for_modules": ["MOD-01"]}, {"id": "MED-02", "for_modules": ["MOD-01"]}]
+
+    def one(expected):
+        module = {"id": "MOD-01"}
+        if expected is not None:
+            module["expected_materials"] = expected
+        return dp.material_work_units([module], media, [])[0]
+
+    assert one(None).payload["expected_materials"] == 2
+    assert one(4).payload["expected_materials"] == 4
+    assert one(1).payload["expected_materials"] == 2, "never below one per media selection"
+    assert one("many").payload["expected_materials"] == 2
+    assert one(limit + 5).payload["expected_materials"] == limit
+
+    assert "write exactly 4 materials" in dp.render_material_set(one(4))
+    assert "at least one" in dp.render_material_set(one(4))
+    assert "write exactly 2 materials — one realizing each" in dp.render_material_set(one(None))
+    # A module with no media still gets a count, and the planner's still counts.
+    bare = dp.material_work_units([{"id": "MOD-02", "expected_materials": 3}], [], [])[0]
+    assert bare.payload["expected_materials"] == 3
+    assert "write exactly 3 materials for this module" in dp.render_material_set(bare)

@@ -17,7 +17,12 @@ export interface LLMConnection {
   has_api_key: boolean
   model_name: string
   temperature: number | null
+  /** The completion cap, which is also the transcript budget's reserve. */
   max_tokens: number | null
+  /** The window the endpoint serves, in tokens. */
+  context_window: number | null
+  /** Ask the endpoint for non-thinking mode; needed by small Qwen3 models. */
+  disable_thinking: boolean
   is_active: boolean
   updated_at: string | null
 }
@@ -37,8 +42,11 @@ export interface LLMConnectionInput {
   api_key?: string
   /** Empty until one is picked from the endpoint's own list. */
   model_name: string
+  /** Sent on every save: a null that is actually sent clears the stored value. */
   temperature: number | null
   max_tokens: number | null
+  context_window: number | null
+  disable_thinking: boolean
 }
 
 export interface ModelList {
@@ -198,7 +206,7 @@ export type AgentContextRow = Omit<AgentContext, 'messages' | 'tools'> & {
  *  judge reads that and the benchmark compares it across arms. */
 export interface AgentContext {
   /** Stable identity of this conversation, from the harness
-   *  (`core.memory.context_id`). A loop republishes its context after every
+   *  (`core.memory.new_agent_run_id`). A loop republishes its context after every
    *  turn and the republish REPLACES the snapshot before it; this is what
    *  "the same context" means, decided in one place so the server and the
    *  browser cannot drift from each other on it. */
@@ -235,8 +243,14 @@ export interface AgentContext {
   tokens?: { system: number; messages: number; tools: number }
   total_tokens?: number
   /** Tokens the transcript may occupy: the serving window minus what must be
-   *  left for the answer. */
+   *  left for the answer. This is the meter's denominator — NOT the window,
+   *  which is why the two below travel with it. */
   token_budget?: number
+  /** The configured serving window, and the share of it held back for the
+   *  reply. 0 when the connection does not say, in which case the budget is
+   *  the harness's own constant. */
+  token_window?: number
+  token_reserve?: number
   /** How many turns compaction has taken out of the live context so far. */
   compacted?: number
   /** The bound schemas. Real context, but not in the message list, so it sits
@@ -392,6 +406,36 @@ export interface DeepAction {
   agent: string
   action: string
   context: Record<string, any>
+}
+
+/** One fan-out unit: the slice of work ONE Developer call was asked for.
+ *  `payload` is family-shaped — an instrument hint, a content module, a block
+ *  theme, the count it was asked for — which is the half the `dev_plan` event
+ *  summary does not carry. */
+export interface WorkSet {
+  set_id: string
+  objectives: string[]
+  pairs: string[][]
+  payload: Record<string, unknown>
+  source: string
+  /** 1-based position in its plan, and the first half of every id its
+   *  Developer's artifacts commit under (`AT-0203` = set 2, artifact 3). */
+  ordinal: number
+}
+
+/** One family's division into work sets, as its Designer decided it.
+ *  `round` is 0 for the first division and 1+ for a plan made in answer to
+ *  violations its Developers left. */
+export interface PlanRecord {
+  stage: string
+  family: string
+  /** 'llm' when the Designer's own dev plan was used, 'fallback' when it was
+   *  absent or unusable, 'deterministic' for a family with no plan step. */
+  source: string
+  round: number
+  answers: string[]
+  work_sets: WorkSet[]
+  stats: Record<string, number | boolean>
 }
 
 export interface DeepTrajectory {

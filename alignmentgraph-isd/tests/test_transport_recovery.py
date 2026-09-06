@@ -347,6 +347,48 @@ def test_a_partial_array_recovery_says_how_much_it_lost():
     assert salvaged, "a salvaged array must be recorded"
 
 
+#: The other half of the transposition above, and the one brace balance alone
+#: cannot see: an element short one CLOSING brace (the rubric criterion closes
+#: `"full"}]` where `"full"}}]` belongs). MEASURED on run 2b9e911a, the replan
+#: work set that asked for exactly one summative item.
+UNDERCLOSED_ELEMENT = (
+    '[{"type": "performance_task", "question": "Q1", '
+    '"rubric": [{"id": "RC-1", "levels": {"excellent": "full"}]}, '
+    '{"type": "short_answer", "question": "Q2"}]'
+)
+
+
+def test_an_element_short_a_closing_brace_costs_that_element_and_no_more():
+    """Depth never returns to 0, so every element after the broken one used to
+    be swallowed into a block that never terminates and the WHOLE array was
+    charged as one dropped block — `([], 1)`, on a payload whose first element
+    parses cleanly on its own. The submit was rejected three times as "arrived
+    as text" and the item the replan round existed to produce was never
+    written."""
+    from alignmentgraph_isd.core.llm_io import parse_json_array
+
+    with pytest.raises(ValueError):
+        json.loads(UNDERCLOSED_ELEMENT)
+
+    items, dropped = parse_json_array(UNDERCLOSED_ELEMENT)
+    assert [i["question"] for i in items] == ["Q1", "Q2"]
+    assert dropped == 0
+    # The under-closed element is repaired, not truncated: its rubric survives.
+    assert items[0]["rubric"] == [{"id": "RC-1", "levels": {"excellent": "full"}}]
+
+
+def test_a_nested_array_of_objects_is_not_read_as_an_element_boundary():
+    """`}` `,` `{` is an element boundary only at bracket depth 1. Inside
+    `"rubric": [{…},{…}]` the same text sits at depth 2, and reading it as a
+    boundary would cut every element with a rubric in half."""
+    from alignmentgraph_isd.core.llm_io import parse_json_array
+
+    items, dropped = parse_json_array(
+        '[{"a": 1, "rubric": [{"x": 1}, {"y": 2}]}, {"b": 2}]')
+    assert items == [{"a": 1, "rubric": [{"x": 1}, {"y": 2}]}, {"b": 2}]
+    assert dropped == 0
+
+
 def test_text_that_is_not_an_array_at_all_stays_a_model_mistake():
     params = tools.submit_parameters(STEP_BY_NAME["outcomes"])
     coerced = tools.coerce_args(

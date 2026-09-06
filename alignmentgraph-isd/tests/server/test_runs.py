@@ -1,6 +1,8 @@
 """Run execution, artifacts, cancellation and the restart sweep."""
 from __future__ import annotations
 
+import csv
+import io
 import json
 
 
@@ -33,7 +35,9 @@ def test_cannot_run_without_a_model(unconfigured_client):
     )
     response = unconfigured_client.post(f"/api/programs/{program_id}/runs")
     assert response.status_code == 503
-    assert "AGENT_MODEL_NAME" in response.json()["detail"]
+    # Points at the dialog, which is the only place a model can come from:
+    # the app reads no AGENT_MODEL_* at all.
+    assert "Model settings" in response.json()["detail"]
 
 
 def test_a_run_produces_every_artifact(client, ready_program, settings, wait_for_terminal):
@@ -84,6 +88,41 @@ def test_the_deep_trajectory_is_written_and_served(client, ready_program, wait_f
 
     check_actions = [a for a in deep["actions"] if a["action"] == "check"]
     assert check_actions and all(a["agent"] for a in check_actions)
+
+
+def test_the_work_set_plans_are_written_and_served(client, ready_program, wait_for_terminal):
+    """How the work was divided has to survive the run too.
+
+    The `dev_plan` trajectory event keeps a summary of the same decision, which
+    is what the timeline reads; the plan itself carries the work set each
+    Developer was handed — its obligations, its theme, the count it was asked
+    for — and that reached the harness result and then nowhere, so it was gone
+    the moment the run ended.
+    """
+    run_id = start(client, ready_program)
+    wait_for_terminal(run_id)
+
+    plans = client.get(f"/api/runs/{run_id}/artifacts/plans").json()
+    assert plans, "the run divided no family into work sets"
+    # Written from the result, not defaulted to an empty list on the way out.
+    assert any(plan["work_sets"] for plan in plans)
+    for plan in plans:
+        assert plan["family"] and plan["stage"]
+        # The honest field: whether the Designer's own division was used, or
+        # the deterministic split had to carry it.
+        assert plan["source"] in {"llm", "fallback", "deterministic"}
+
+    # The join the trajectory inspector depends on: a `dev_plan` beat resolves
+    # to its plan by SET IDS, because the event does not record its round and a
+    # replan round's ids carry it (`AS-01R1`) — matching on family alone would
+    # file round 0's sets under round 1's beat.
+    deep = client.get(f"/api/runs/{run_id}/artifacts/trajectory_deep").json()
+    events = [a for a in deep["actions"] if a["action"] == "dev_plan"]
+    assert events, "the run dispatched no work sets"
+    for event in events:
+        ids = {entry["set_id"] for entry in event["context"]["sets"]}
+        matched = [p for p in plans if {ws["set_id"] for ws in p["work_sets"]} & ids]
+        assert len(matched) == 1, f"{ids} matched {len(matched)} plans"
 
 
 def test_deep_actions_reach_the_live_stream(client, ready_program):
@@ -599,6 +638,55 @@ def test_the_violation_ledger_is_served_and_survives_the_run(
             # this" and "we did not give it another turn" are different
             # results, and only the second is ours to change.
             assert finding["open_reason"]
+
+
+def test_the_violation_ledger_downloads_as_csv(client, ready_program, wait_for_terminal):
+    """CSV, not JSON: `/violations` already serves the JSON a tool would want,
+    and the ledger is a TABLE — what is still open, why, who owns it, which
+    check said so. Those are spreadsheet questions."""
+    run_id = start(client, ready_program)
+    wait_for_terminal(run_id)
+
+    response = client.get(f"/api/runs/{run_id}/violations/export")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert f"violations-{run_id}.csv" in response.headers["content-disposition"]
+
+    rows = list(csv.DictReader(io.StringIO(response.text)))
+    served = client.get(f"/api/runs/{run_id}/violations").json()
+    assert served, "the fixture run finds violations; without them this proves nothing"
+    assert len(rows) == len(served)
+    assert list(rows[0]) == list(artifacts.VIOLATION_COLUMNS)
+
+    by_key = {finding["key"]: finding for finding in served}
+    for row in rows:
+        finding = by_key[row["key"]]
+        assert row["type"] == finding["type"]
+        assert row["outcome"] == finding["outcome"]
+        # Both halves of the ledger's point survive the flattening: WHY a
+        # finding is still open, and WHICH item it is about.
+        assert row["open_reason"] == finding["open_reason"]
+        assert json.loads(row["metadata"]) == finding["metadata"]
+        assert row["messages"] == "\n".join(finding["messages"])
+
+
+def test_a_clean_run_exports_a_header_and_no_rows(client, ready_program, blocked_run):
+    """An empty ledger is a RESULT, not an absence — a run whose checks all came
+    back clean is exactly what the design is aiming at, and answering it with a
+    404 would make the successful case the one you cannot download."""
+    run_id = start(client, ready_program)
+
+    response = client.get(f"/api/runs/{run_id}/violations/export")
+    assert response.status_code == 200
+    assert list(csv.DictReader(io.StringIO(response.text))) == []
+    assert response.text.splitlines()[0].count(",") == len(artifacts.VIOLATION_COLUMNS) - 1
+    # Still going, so the file says which file it is, as the trajectory export
+    # says `complete: false`.
+    assert f"violations-partial-{run_id}.csv" in response.headers["content-disposition"]
+
+
+def test_exporting_violations_of_a_run_that_does_not_exist_is_a_404(client):
+    assert client.get("/api/runs/does-not-exist/violations/export").status_code == 404
 
 
 def test_the_graph_marks_every_node_that_carries_a_violation(

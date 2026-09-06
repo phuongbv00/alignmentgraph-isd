@@ -34,6 +34,99 @@ EDGE_LINE_CAP = 30
 GAP_ID_CAP = 20
 
 
+#: How much of a listing row's LABEL is shown, and how long a value may be to
+#: count as a short identifying facet rather than prose.
+LISTING_LABEL_CAP = 120
+FACET_CHAR_CAP = 24
+#: The label of a listing row is the first of these the node carries, in this
+#: order. Ordered by SPECIFICITY, not by node type: an activity holds both
+#: ``activity_name`` and ``description`` and the name wins; a material holds
+#: both ``title`` and ``content`` and the title wins. A type that appears later
+#: falls through to ``description``/``content`` rather than rotting, which is
+#: why this is a probe and not a per-type table.
+_LABEL_FIELDS = ("statement", "question", "activity_name", "title",
+                 "description", "purpose", "content")
+
+
+def _node_header(node: dict) -> str:
+    """``TYPE:ID``, with the BARE id. A node's own id is namespaced
+    ("objective:ILO-01"), and a model echoes back whatever it is shown — it was
+    writing "objective:ILO-01" into aligned_objective fields, which then matched
+    nothing. A SECTION node is a singleton, so its id ("assessment_plan_0") says
+    nothing the type does not, and it is one more string the model can echo into
+    a reference field: header it by type alone."""
+    node_id = bare_ref(node.get("id", ""))
+    node_type = str(node.get("type", ""))
+    if node_id == f"{node_type}_0":
+        return node_type.upper()
+    return f"{node_type.upper()}:{node_id}"
+
+
+def render_listing(nodes: list[dict], budget: int = READ_CHAR_BUDGET) -> str:
+    """One LINE per node: id, its short identifying fields, and a label.
+
+    What ``read_nodes`` answers with, where ``read_node`` keeps the full dump.
+    MEASURED (run 2b9e911a, the implementation stage): listing every activity
+    and material as full JSON put 3,590–5,607 tokens of tool results against an
+    8,192-token prompt budget with only 352–934 tokens of conversation beside
+    them, so the stage crossed the trim line on its ninth turn and compaction
+    took the stage brief with it. The planner needed ids to write
+    ``activity_ids``/``material_ids``; it was handed every material's whole
+    learner-facing script, the longest string the harness produces. That run's
+    own eight materials render as 4,968 characters of blocks and 855 of
+    listing — 17%, and the ids it actually needed are all in the 17%.
+
+    A row is composed by two data-driven rules rather than a per-type field
+    table, which would rot as the schemas move:
+
+    * the LABEL is the first of ``_LABEL_FIELDS`` the node carries;
+    * the FACETS are every other key whose value is a SHORT scalar. That one
+      rule keeps ``level``, ``plan_category``, ``type``, ``format`` and
+      ``linked_module`` — which downstream rules genuinely need, so dropping
+      them would trade a compaction bug for a Bloom bug — and drops
+      ``rubric``, ``scoring_criteria`` and ``content`` without naming any of
+      them. A key repeating the id already in the header is dropped too.
+    """
+    lines: list[str] = []
+    used = 0
+    shown = 0
+    for node in nodes:
+        if used >= budget:
+            break
+        data = node.get("data") or {}
+        node_id = bare_ref(node.get("id", ""))
+        label_field, label = "", ""
+        for field_name in _LABEL_FIELDS:
+            value = data.get(field_name)
+            if isinstance(value, str) and value.strip():
+                label_field, label = field_name, " ".join(value.split())
+                break
+        if len(label) > LISTING_LABEL_CAP:
+            label = label[:LISTING_LABEL_CAP] + "…"
+        facets = [
+            f"{key}={value}"
+            for key, value in data.items()
+            if key != label_field
+            and isinstance(value, (str, int, float, bool))
+            and str(value).strip()
+            and len(str(value)) <= FACET_CHAR_CAP
+            and str(value) != node_id
+        ]
+        row = f"[{_node_header(node)}]"
+        if facets:
+            row += " " + " ".join(facets)
+        if label:
+            row += f" | {label}"
+        lines.append(row)
+        used += len(row)
+        shown += 1
+    omitted = len(nodes) - shown
+    if omitted > 0:
+        lines.append(f"... and {omitted} more not shown (read budget reached). "
+                     "Read one by id if you need it.")
+    return "\n".join(lines) if lines else "(no nodes yet)"
+
+
 def render_nodes(nodes: list[dict], max_chars: int = NODE_CHAR_CAP,
                  budget: int = READ_CHAR_BUDGET) -> str:
     """One ``[TYPE:ID]`` block per node, data as truncated JSON, up to a total
@@ -61,20 +154,7 @@ def render_nodes(nodes: list[dict], max_chars: int = NODE_CHAR_CAP,
         data_str = json.dumps(node.get("data", {}), ensure_ascii=False)
         if len(data_str) > max_chars:
             data_str = data_str[:max_chars] + "…"
-        # BARE id in the header. A node's own id is namespaced
-        # ("objective:ILO-01"), and a model echoes back whatever it is shown —
-        # it was writing "objective:ILO-01" into aligned_objective fields, which
-        # then matched nothing. `_bare` is the same strip the scripted arm's
-        # `_node_header` did, kept because the failure it answers is the model's,
-        # not the graph's.
-        node_id = bare_ref(node.get("id", ""))
-        node_type = str(node.get("type", ""))
-        # A SECTION node is a singleton, so its id ("assessment_plan_0") says
-        # nothing the type does not — and it is one more string the model can
-        # echo into a reference field. Header it by type alone, as the scripted
-        # renderer did.
-        header = node_type.upper() if node_id == f"{node_type}_0" else f"{node_type.upper()}:{node_id}"
-        block = f"[{header}]\n{data_str}"
+        block = f"[{_node_header(node)}]\n{data_str}"
         lines.append(block)
         used += len(block)
         shown += 1
@@ -162,9 +242,10 @@ def run_read_nodes(graph: "AlignmentGraph", step: "AgenticStep", args: dict) -> 
     if not nodes:
         # Section-only artifacts (learner_profile, the plan nodes) have no
         # element pool; fall back to their section node so the read still
-        # answers.
-        nodes = graph.section_nodes(node_type)
-    return render_nodes(nodes)
+        # answers — and IN FULL, because a section node is a whole document and
+        # a one-line listing of one is useless.
+        return render_nodes(graph.section_nodes(node_type))
+    return render_listing(nodes)
 
 
 def run_read_node(graph: "AlignmentGraph", step: "AgenticStep", args: dict) -> str:
@@ -181,7 +262,10 @@ def run_read_node(graph: "AlignmentGraph", step: "AgenticStep", args: dict) -> s
                 break
     if node is None:
         return f"ERROR: no node with id {node_id!r}"
-    return render_nodes([node])
+    # "In full" means in full: at NODE_CHAR_CAP this tool truncated a 1,710-char
+    # material to 600 and its description was untrue. One node is bounded by the
+    # read budget on its own.
+    return render_nodes([node], max_chars=READ_CHAR_BUDGET)
 
 
 def run_read_edges(graph: "AlignmentGraph", step: "AgenticStep", args: dict) -> str:
@@ -318,11 +402,11 @@ def _parameters_from(fields: tuple) -> dict:
     for key, json_type, is_required in fields:
         properties[key] = {
             "type": json_type,
-            # NOT "the schema shown in the system prompt": the artifact contract
-            # is FETCHED via `stage_brief` and is not pushed into any turn, so
-            # that phrasing sent a small model looking somewhere empty. Neutral
-            # wording, because a fan-out work set (`contract_inline`) does carry
-            # its contract in the turn while a stage loop does not.
+            # Neutral wording, kept from when the contract was FETCHED and
+            # "the schema shown in the system prompt" sent a small model looking
+            # somewhere empty. The contract is in the stage turn again, but the
+            # stage turn is droppable, so a phrasing that points at a specific
+            # place can still be wrong by the time it is read.
             "description": f"{_SUBMIT_TYPE_HINT.get(json_type, json_type)}, "
                            "matching this stage's artifact schema",
         }
@@ -346,7 +430,7 @@ def submit_parameters(step: "AgenticStep") -> dict:
     return _parameters_from(step.submit_fields)
 
 
-def submit_specs(step: "AgenticStep") -> list[dict]:
+def submit_specs(step: "AgenticStep", only: tuple[str, ...] | None = None) -> list[dict]:
     """ONE submit tool per top-level artifact, named after the artifact.
 
     ``submit_assessment_plan`` and ``submit_assessment_dev_plan``, not one
@@ -376,6 +460,12 @@ def submit_specs(step: "AgenticStep") -> list[dict]:
     one thing the validator cannot buy back afterwards -- the parser refuses a
     wrapped or key-less object up front, which is exactly what
     ``unwrap_section`` exists to clean up after.
+
+    ``only`` binds a SUBSET, for a loop resuming a stage that already holds
+    some of its artifacts: a regen used to rebind all six of
+    ``implementation``'s and offer the model tools for work that was done. It
+    defaults to None — every artifact — which is what a first attempt gets and
+    what ``tests/fixtures/golden_prompts.json`` pins.
     """
     return [
         _fn(f"submit_{key}",
@@ -383,6 +473,7 @@ def submit_specs(step: "AgenticStep") -> list[dict]:
             + ("Required." if is_required else "Optional."),
             _parameters_from(((key, json_type, True),)))
         for key, json_type, is_required in step.submit_fields
+        if only is None or key in only
     ]
 
 
@@ -608,7 +699,8 @@ def _enum_param(field: str, values: tuple[str, ...], description: str) -> dict:
 
 
 def tool_specs(step: "AgenticStep", *, graph_mode: bool = True,
-               retrieval_available: bool = False) -> list[dict]:
+               retrieval_available: bool = False,
+               only: tuple[str, ...] | None = None) -> list[dict]:
     """The tools bound for this step, in OpenAI function-calling shape.
 
     Only tools whose allowlists are non-empty are bound -- an offered tool that
@@ -618,7 +710,8 @@ def tool_specs(step: "AgenticStep", *, graph_mode: bool = True,
         if step.readable_types:
             specs.append(_fn(
                 "read_nodes",
-                "List the existing artifacts of one type in the design graph.",
+                "List the existing artifacts of one type — id, key fields and a "
+                "short label for each. Call read_node for one artifact in full.",
                 _enum_param("node_type", step.readable_types, "Which artifact type to list.")))
             specs.append(_fn(
                 "read_node", "Read one artifact from the design graph in full.",
@@ -653,20 +746,16 @@ def tool_specs(step: "AgenticStep", *, graph_mode: bool = True,
              "properties": {"query": {"type": "string",
                                       "description": "What to fetch, specific."}},
              "required": ["query"]}))
-    # The artifact contract, FETCHED rather than pushed. It used to sit in the
-    # stage turn, which put two things wrong at once: the block grew with the
-    # schema and sat at the front of the very window it had to make room in,
-    # and — since only the single arm had this tool — `multi` was handed its
-    # schema free while `single` spent a call asking for it. That was a
-    # harness-imposed asymmetry on the decomposition axis, which is the one
-    # kind of cost difference that IS a confound.
-    if not getattr(step, "contract_inline", False):
-        specs.insert(0, _fn(
-            "stage_brief",
-            "The task, the exact artifact schema and the rules for this stage. "
-            "Read it before you submit, and again whenever you need the schema.",
-            {"type": "object", "properties": {}}))
-    specs += submit_specs(step)
+    # No `stage_brief` tool: the artifact contract is PUSHED, in the stage's
+    # own turn (2026-09-06). It was fetched from 2026-09-03, which fixed the
+    # asymmetry of `multi` being handed its schema free while `single` spent a
+    # call on it, and bought a droppable stage turn — at the price of a
+    # contract that could be dropped with nothing to put it back. Run 2b9e911a
+    # is that price: the brief went with the implementation stage's ninth turn
+    # and the stage never recovered. Pushing it costs both arms nothing, and
+    # what makes it safe is `compact`'s `restore`, which puts the stage turn
+    # back when a trim takes it.
+    specs += submit_specs(step, only)
     return specs
 
 
@@ -699,17 +788,9 @@ def react_specs(steps: tuple, done: frozenset, *, graph_mode: bool = True,
         read_docs += tuple(d for d in step.readable_docs if d not in read_docs)
 
     union = _ReadScope(read_types, read_relations, read_docs)
-    brief = _fn(
-        "stage_brief",
-        "The task, schema and rules for one stage. Read this before you submit "
-        "a stage for the first time.",
-        _enum_param("stage", tuple(s.name for s in steps), "Which stage."))
-    # This arm's own `stage_brief` takes a STAGE, because it works all six; the
-    # stage loops' takes none, because each is in one. Theirs is dropped here
-    # along with their submits, which the per-stage ones below replace.
-    specs = [brief] + [spec for spec in tool_specs(
+    specs = [spec for spec in tool_specs(
         union, graph_mode=graph_mode, retrieval_available=retrieval_available)
-        if not spec["function"]["name"].startswith(("submit", "stage_brief"))]
+        if not spec["function"]["name"].startswith("submit")]
     from .fanout import SPECS as _FANOUT
 
     for step in steps:

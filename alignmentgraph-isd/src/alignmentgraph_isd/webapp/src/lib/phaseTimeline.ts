@@ -105,6 +105,9 @@ const RECOVERY_ACTIONS = new Set([
   'duplicate_submit', 'bare_artifact_wrapped', 'dropped_argument',
   'context_compacted', 'duplicate_element_dropped',
   'agentic_fallback',
+  // Added 2026-09-05 with the batched-call execution and the single arm's
+  // post-completion allowance.
+  'calls_not_executed', 'repair_window_closed',
   // Two members of `_RECOVERY_ACTIONS` are deliberately NOT here: `repair`
   // has its own case in absorb(), and `repair_unfilled` can no longer be
   // emitted (no repair calls the model since 2026-09-03).

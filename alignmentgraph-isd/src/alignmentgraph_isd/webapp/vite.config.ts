@@ -3,9 +3,12 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  // Relative asset URLs, so the built app works when FastAPI serves it from
-  // its own root as well as from the Vite dev server.
-  base: './',
+  // Absolute asset URLs. FastAPI mounts the build at the server root and falls
+  // back to index.html for any unknown path, so a relative base broke every URL
+  // with a path segment in it: /programs/<id> served the app, and the app then
+  // asked for /programs/<id>/assets/*.js, which the same fallback answered with
+  // index.html — a blank page and a MIME-type error.
+  base: '/',
   server: {
     // Not Vite's default 5173: another project holding that port binds IPv4
     // while this one gets IPv6, and since `localhost` resolves to IPv4 first

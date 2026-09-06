@@ -53,6 +53,8 @@ def _out(row: LLMConnection) -> LLMConnectionOut:
         model_name=row.model_name,
         temperature=row.temperature,
         max_tokens=row.max_tokens,
+        context_window=row.context_window,
+        disable_thinking=row.disable_thinking,
         is_active=row.is_active,
         updated_at=row.updated_at,
     )
@@ -67,6 +69,28 @@ def _current(db: DBSession) -> LLMConnectionsOut:
         active_id=active.id if active is not None else "",
         error=llm_settings.probe(),
     )
+
+
+def _fields(payload: LLMConnectionIn) -> dict:
+    """The row fields a request carries.
+
+    Everything the browser sends is written, including an explicit null, which
+    clears. `api_key` is the exception and is left out entirely when absent: the
+    browser is never given the key, so it cannot echo one back, and an absent
+    key has to mean "leave it alone" rather than "clear it".
+    """
+    fields = {
+        "name": payload.name.strip(),
+        "base_url": payload.base_url.strip(),
+        "model_name": payload.model_name.strip(),
+        "temperature": payload.temperature,
+        "max_tokens": payload.max_tokens,
+        "context_window": payload.context_window,
+        "disable_thinking": payload.disable_thinking,
+    }
+    if payload.api_key is not None:
+        fields["api_key"] = payload.api_key
+    return fields
 
 
 def _guard(manager: RunManager) -> None:
@@ -95,15 +119,7 @@ def create_connection(
 ) -> LLMConnectionsOut:
     """Add a connection. The first one becomes active."""
     _guard(manager)
-    llm_settings.create(
-        db,
-        name=payload.name.strip(),
-        base_url=payload.base_url.strip(),
-        api_key=payload.api_key,
-        model_name=payload.model_name.strip(),
-        temperature=payload.temperature,
-        max_tokens=payload.max_tokens,
-    )
+    llm_settings.create(db, **_fields(payload))
     return _current(db)
 
 
@@ -122,16 +138,7 @@ def update_connection(
     """
     _guard(manager)
     _load(db, connection_id)
-    llm_settings.update(
-        db,
-        connection_id,
-        name=payload.name.strip(),
-        base_url=payload.base_url.strip(),
-        api_key=payload.api_key,
-        model_name=payload.model_name.strip(),
-        temperature=payload.temperature,
-        max_tokens=payload.max_tokens,
-    )
+    llm_settings.update(db, connection_id, **_fields(payload))
     return _current(db)
 
 

@@ -242,7 +242,9 @@ def test_planning_without_a_model_is_503(unconfigured_client):
     program_id = unconfigured_client.post("/api/programs", json={}).json()["program"]["id"]
     response = unconfigured_client.post(f"/api/programs/{program_id}/messages", json={"content": "hi"})
     assert response.status_code == 503
-    assert "AGENT_MODEL_NAME" in response.json()["detail"]
+    # Points at the dialog, which is the only place a model can come from:
+    # the app reads no AGENT_MODEL_* at all.
+    assert "Model settings" in response.json()["detail"]
 
 
 def test_an_empty_message_is_rejected(client, program):

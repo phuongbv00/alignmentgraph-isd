@@ -51,6 +51,25 @@ class TrajectoryAction(StrEnum):
     #: A call was spent, so the trace has to show it; it is not a
     #: second design STEP, which the judge would score as redundancy.
     DUPLICATE_SUBMIT = "duplicate_submit"
+    #: A submit the validator ACCEPTED whose artifact is absent from the design
+    #: state afterwards. Always a harness failure, never the model's: the
+    #: `unwrap_section` defect (run 24343e4d) stripped an artifact's own name
+    #: off its envelope and committed the inside at the top level of the
+    #: section, so the artifact was reported committed and never landed. The
+    #: model was then told "COMMITTED. <stage> still needs: <that artifact>"
+    #: beside a protocol saying never to resend what is committed, and each of
+    #: the 11 resulting turns was recorded as its redundancy.
+    COMMIT_DID_NOT_LAND = "commit_did_not_land"
+    #: The reply carried the model's REASONING channel and nothing else — no
+    #: content, no tool call — while `finish_reason` read "stop", so truncation
+    #: salvage could not see it either. A serving posture (Qwen3 left in
+    #: thinking mode), not the model refusing the protocol, and separated from
+    #: `invalid_action` for exactly that reason: charging the two identically
+    #: makes a serving artifact read as a finding about the model. The fix is
+    #: `disable_thinking` on the factory; this is what makes its absence
+    #: visible. MEASURED (run 24343e4d): 12 of 78 calls, 47-405 billed
+    #: completion tokens each, one stage turn gone every time.
+    THINKING_ONLY_REPLY = "thinking_only_reply"
     #: A submit whose payload was the artifact itself rather than the
     #: {key: artifact} envelope its tool declares — wrapped rather than
     #: rejected. See ToolLoop._wrap_bare_artifact.
@@ -61,6 +80,14 @@ class TrajectoryAction(StrEnum):
     #: because how OFTEN each arm reaches it is the decomposition mechanism
     #: measuring itself.
     CONTEXT_COMPACTED = "context_compacted"
+    #: Tool calls in a batched reply that were answered with a stub instead of
+    #: running: the turn budget ran out first, or the stage ended first. Every
+    #: call the model makes is answered (the chat API requires it); this says
+    #: which ones were answered without being done.
+    CALLS_NOT_EXECUTED = "calls_not_executed"
+    #: The single arm's allowance for answering repair requests after its last
+    #: stage landed ran out — the same number of turns a stage gets.
+    REPAIR_WINDOW_CLOSED = "repair_window_closed"
     #: A repair pass stopped early because it had proved it could not fix what
     #: was left: the same findings came back with nothing repaired in between.
     #: Recorded so a converged run does not read like a clean one.
@@ -141,7 +168,11 @@ _RECOVERY_ACTIONS = frozenset({
     TrajectoryAction.COMMIT_INVALID_SECTION,
     TrajectoryAction.DUPLICATE_SUBMIT,
     TrajectoryAction.BARE_ARTIFACT_WRAPPED,
+    TrajectoryAction.COMMIT_DID_NOT_LAND,
+    TrajectoryAction.THINKING_ONLY_REPLY,
     TrajectoryAction.CONTEXT_COMPACTED,
+    TrajectoryAction.CALLS_NOT_EXECUTED,
+    TrajectoryAction.REPAIR_WINDOW_CLOSED,
     TrajectoryAction.CONVERGE,
     TrajectoryAction.DUPLICATE_ELEMENT_DROPPED,
     TrajectoryAction.AGENTIC_FALLBACK,
@@ -670,6 +701,8 @@ class TrajectoryLogger:
         dropped_refs: int,
         appended_sets: int,
         oversized_splits: int = 0,
+        dropped_pairs: int = 0,
+        duplicate_pairs: int = 0,
         agent: str = "",
     ) -> None:
         """Record one family's dev-plan normalization result: how a fan-out's
@@ -687,17 +720,25 @@ class TrajectoryLogger:
         had to cut because they were too large to answer. The planner is told
         the budget and asked to scope its sets itself; this is the only number
         that separates a plan doing that job from one the backstop is
-        carrying."""
+        carrying.
+
+        ``dropped_pairs`` counts obligations the plan named that its own
+        coverage targets never promised (discarded), ``duplicate_pairs`` the
+        ones it named in two sets (kept once). Both were computed and never
+        logged until 2026-09-05, so a plan silently reshaped by the harness
+        read as ``source: llm`` with nothing dropped."""
         self._record_event(
             TrajectoryAction.DEV_PLAN, "dev_plan_event", agent=agent,
             family=family, set_count=set_count, pair_count=pair_count, sets=sets,
             source=source, fallback_used=fallback_used, dropped_refs=dropped_refs,
+            dropped_pairs=dropped_pairs, duplicate_pairs=duplicate_pairs,
             appended_sets=appended_sets, oversized_splits=oversized_splits,
         )
         self.log_action(
             TrajectoryAction.DEV_PLAN, agent=agent,
             family=family, set_count=set_count, pair_count=pair_count, sets=sets,
             source=source, fallback_used=fallback_used, dropped_refs=dropped_refs,
+            dropped_pairs=dropped_pairs, duplicate_pairs=duplicate_pairs,
             appended_sets=appended_sets, oversized_splits=oversized_splits,
         )
 

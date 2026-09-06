@@ -170,3 +170,34 @@ def test_an_artifact_with_no_id_still_gets_one():
         sets=[WorkSet(set_id="AS-01", ordinal=1)])
 
     assert [i["item_id"] for i in merged] == ["AT-0101", "AT-0102"]
+
+
+def test_material_units_carry_ordinals_the_way_every_other_family_does():
+    """The gap this closes, and why nothing caught it.
+
+    ``material_work_units`` is the only work-set builder that does not go
+    through ``_cap_and_number``, which was the sole place ``ordinal`` was
+    assigned — so every material set kept the dataclass default of 1, ids came
+    out MAT-0101..MAT-0108 across SIX different modules, and uniqueness rested
+    on the ``taken`` scan: the "whoever commits first" scheme this file exists
+    to rule out. Every other test here hand-builds its WorkSets with distinct
+    ordinals, so none of them could see it. This one uses the real builder.
+    """
+    modules = [{"id": f"MOD-{i:02d}"} for i in range(1, 4)]
+    media = [{"id": f"MED-{i:02d}", "media_type": "slides",
+              "for_modules": [f"MOD-{i:02d}"]} for i in range(1, 4)]
+
+    sets = dev_plans.material_work_units(modules, media, [])
+    assert [ws.ordinal for ws in sets] == [1, 2, 3]
+    assert [ws.set_id for ws in sets] == ["MU-MOD-01", "MU-MOD-02", "MU-MOD-03"], (
+        "module-derived set ids are read by plan_set, the regen and the graph "
+        "dump — numbering must not rename them")
+
+    merged = dev_plans.remap_and_tag(
+        sets,
+        [{"set_id": ws.set_id, "items": [{"title": "a"}, {"title": "b"}]} for ws in sets],
+        id_field="id", id_prefix="MAT")
+    ids = [item["id"] for item in merged]
+    assert ids == ["MAT-0101", "MAT-0102", "MAT-0201", "MAT-0202",
+                   "MAT-0301", "MAT-0302"]
+    assert len(set(ids)) == len(ids)
