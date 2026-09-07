@@ -46,9 +46,9 @@ from ..run_report import (
     _token_usage_metadata,
 )
 from ..outputs import (
-    SELF_VALIDATION_BUDGET, _collect_violations, _collect_violations_prose, empty_addie,
+    _collect_violations, _collect_violations_prose, empty_addie,
 )
-from . import fanout, replan
+from . import budget, fanout, replan
 from .loop import HISTORY_CHAR_BUDGET, AgenticLLM, ToolLoop
 from . import react
 from .specialists import SINGLE_IDENTITY, STEPS, step_done
@@ -191,7 +191,7 @@ def _reconcile(state, trajectory, design_brief, *, graph_mode: bool,
     for family in repairs.OWNED_BY_FAMILY:
         identity = _IDENTITY_BY_FAMILY[family]
         found: list = []
-        for _round in range(SELF_VALIDATION_BUDGET):
+        for _round in range(budget.SELF_VALIDATION_BUDGET):
             found = collect(family)
             # Recorded even when empty, like every stage's own round: "the
             # pass looked and found nothing" and "the pass never ran" are
@@ -352,7 +352,7 @@ def _run_fanout(config, memory, trajectory, design_brief, step, spec, *,
                 loop = ToolLoop(
                     config, memory, trajectory, design_brief, set_step, llm,
                     identity=identity, capture=captured,
-                    max_turns=fanout.DEVELOPER_MAX_TURNS, attempt=attempt + 1)
+                    max_turns=budget.DEVELOPER_MAX_TURNS, attempt=attempt + 1)
                 try:
                     loop.run()
                 except Exception as exc:  # noqa: BLE001 - one bad set must not lose the family
@@ -407,7 +407,7 @@ def _replan_rounds(config, memory, trajectory, design_brief, step, spec, loop, *
     if step.name not in replan.REPLANNABLE or loop is None:
         return stats
     state = memory.state
-    for round_index in range(1, replan.REPLAN_ROUNDS + 1):
+    for round_index in range(1, budget.REPLAN_ROUNDS + 1):
         # The CHECK is the orchestrator's: it runs outside every agent's loop.
         with trajectory.acting_as(WORKFLOW_ORCHESTRATOR):
             violations = (_collect_violations(step.family, state, design_brief)
@@ -435,7 +435,14 @@ def _replan_rounds(config, memory, trajectory, design_brief, step, spec, loop, *
                 # on a conversation nothing had retried.
                 agent_run_id=loop.agent_run_id, label=loop.label,
                 compacted=loop.compacted, attempt=loop.attempt,
-                specs=loop._specs)
+                specs=loop._specs,
+                # Its OWN ceiling, not the stage's. The job here is one
+                # artifact against gaps already listed in the request, so a
+                # stage-sized budget is a round that can spend two dozen turns
+                # re-reading a family it has just been handed the gaps for.
+                # Turns are counted per loop, so this starts at zero even
+                # though the message list is the stage's.
+                max_turns=budget.REPLAN_TURNS)
             try:
                 replan_loop.run()
             except Exception as exc:  # noqa: BLE001 - one failed replan must not lose the stage
@@ -535,7 +542,7 @@ def _repair_all(state, graph, store, trajectory, design_brief, *,
     residual: list[dict] = []
     for family in repairs.OWNED_BY_FAMILY:
         found: list = []
-        for _ in range(SELF_VALIDATION_BUDGET):
+        for _ in range(budget.SELF_VALIDATION_BUDGET):
             violations = (_collect_violations(family, graph, design_brief) if graph_mode
                           else _collect_violations_prose(family, store))
             found = [v for v in violations
@@ -639,7 +646,7 @@ def _run_multi(config, memory, graph, store, trajectory, design_brief, *,
                 for family in (step.family, *step.also_repairs):
                     if family not in repairs.OWNED_BY_FAMILY:
                         continue
-                    for _ in range(SELF_VALIDATION_BUDGET):
+                    for _ in range(budget.SELF_VALIDATION_BUDGET):
                         violations = (_collect_violations(family, graph, design_brief)
                                       if graph_mode
                                       else _collect_violations_prose(family, store))

@@ -237,18 +237,6 @@ SPECS: dict[str, FanoutSpec] = {
 }
 
 
-#: Turn budget for ONE Developer call. Smaller than a stage's, because a
-#: Developer's job is smaller: its assignment is in its prompt, so a read or two
-#: and a submit is the whole shape.
-#:
-#: Raised 4 -> 6 (2026-09-02). The number it was set to was BELOW the measured
-#: need: 5.4 turns per material set, of which one was the submit. A cap under
-#: what the work actually takes does not economise, it manufactures give-ups —
-#: and a Developer that gives up is regenerated, so the set costs 4 turns and
-#: then 4 more. Observed shape on run f42dceff was read -> repeated read ->
-#: submit, which leaves a cap of 4 with exactly one spare turn and a set that
-#: needs a second genuine read with none.
-DEVELOPER_MAX_TURNS = 6
 
 #: Said once, in every Developer's own prompt. The read tools stay — a Developer
 #: is an agent and may look at whatever it judges it needs — but the assignment

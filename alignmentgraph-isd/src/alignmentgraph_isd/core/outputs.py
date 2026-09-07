@@ -19,9 +19,6 @@ from .validation import (
 _EMPTY_FIELD_MARKER = "required field is missing or empty"
 
 
-SELF_VALIDATION_BUDGET = 2
-
-
 def _empty_required_fields(section_type: str, data: dict) -> list[str]:
     """Required fields that came back unusable: missing/empty, or filled with
     schema placeholder text copied verbatim (equally absent to a reader, but

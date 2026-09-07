@@ -332,7 +332,7 @@ def test_reconcile_is_bounded_by_the_self_validation_budget():
     order, so it must be bounded explicitly. An unbounded pass on a small model
     is a hang, not a fix."""
     from alignmentgraph_isd.core.agentic import run as agentic_run
-    from alignmentgraph_isd.core.outputs import SELF_VALIDATION_BUDGET
+    from alignmentgraph_isd.core.agentic.budget import SELF_VALIDATION_BUDGET
 
     rounds = {"n": 0}
     real = agentic_run.repairs.repair

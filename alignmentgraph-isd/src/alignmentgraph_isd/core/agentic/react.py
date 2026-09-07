@@ -36,7 +36,7 @@ import json
 from ..brief import _format_design_brief
 from .. import dev_plans
 from ..memory import Memory, new_agent_run_id
-from . import fanout, tools
+from . import budget, fanout, tools
 from .loop import (
     INVALID_TURN_NUDGE,
     brief_stages,
@@ -48,11 +48,9 @@ from .loop import (
     compact,
     ToolLoop,
     _WORKFLOW_OVERVIEW,
-    REPAIR_TURNS,
     _repair_request,
     emit_context,
     history_budget,
-    STAGE_MAX_TURNS,
     AgenticLLM,
     _arg_shape,
     _spec_parameters,
@@ -72,7 +70,7 @@ from .tools import unwrap_section
 #: that the budget did not CUT either arm — `via_budget_exhaustion` is reported
 #: for both, and a difference in outcome cannot be blamed on the ceiling while
 #: it reads zero.
-MAX_TURNS = STAGE_MAX_TURNS * len(STEPS) * 2
+MAX_TURNS = budget.STAGE_MAX_TURNS * len(STEPS) * budget.SINGLE_ARM_TURN_FACTOR
 
 _PROTOCOL = """\
 You do this work by CALLING TOOLS. Every turn is a tool call — never prose.
@@ -101,15 +99,9 @@ class ReactLoop:
     """One agent, one context, the whole brief."""
 
     MAX_TURNS = MAX_TURNS
-    #: How many times one stage may be submitted before the loop stops accepting
-    #: it. Generous — additive submits are the point — but finite. Counts
-    #: ACCEPTED submits and REJECTED ones together: they cost the same turn,
-    #: and a stage that cannot pass its validator is exactly the case the cap
-    #: exists for. Measured (run single_20260901_205901): counting only
-    #: accepted submits left `assessment` at 1 while it was rejected 61 more
-    #: times on one unparseable argument — the arm burned all 96 turns, reached
-    #: 3 of 6 stages, and scored 0.0 on Analysis and Implementation.
-    SUBMIT_CAP = 8
+    #: Held in :mod:`budget` with every other ceiling, ToolLoop's included:
+    #: this one and ``SUBMIT_BUDGET`` are the pair a reader compares.
+    SUBMIT_CAP = budget.SUBMIT_CAP
 
     def __init__(self, config, state, trajectory, design_brief) -> None:
         self.config = config
@@ -397,7 +389,7 @@ class ReactLoop:
 
         # Turns spent after the LAST stage landed. What is left to do then is
         # answer repair requests, and the multi arm's stage loop bounds that
-        # by its own ceiling (STAGE_MAX_TURNS, repairs included). This arm has
+        # by its own ceiling (budget.STAGE_MAX_TURNS, repairs included). This arm has
         # no per-stage ceiling, so without a bound of its own an agent that
         # answers a repair request with reads runs to MAX_TURNS — measured on
         # the test fixture once P10/P11 became owned: 131 turns of the same
@@ -407,10 +399,10 @@ class ReactLoop:
         while self._turn_no < self.MAX_TURNS + self._refunded:
             if len(self._done_set) == len(STEPS):
                 closing += 1
-                if closing > STAGE_MAX_TURNS:
+                if closing > budget.STAGE_MAX_TURNS:
                     self.trajectory.log_recovery_event(
                         self.identity, "repair_window_closed",
-                        f"{STAGE_MAX_TURNS} turn(s) after the last stage landed", "")
+                        f"{budget.STAGE_MAX_TURNS} turn(s) after the last stage landed", "")
                     return
             self.messages, dropped = trim_history(self.messages, self._history_budget)
             self.compacted.extend(dropped)
@@ -568,13 +560,13 @@ class ReactLoop:
             # quality difference would be that rather than the context
             # boundary.
             fixable = (self._own_violations(step)
-                       if step.name in self._done_set and self._repairs.get(step.name, 0) < REPAIR_TURNS
+                       if step.name in self._done_set and self._repairs.get(step.name, 0) < budget.REPAIR_TURNS
                        else [])
             if fixable:
                 self._repairs[step.name] = self._repairs.get(step.name, 0) + 1
                 self.stats["repair_turns"] += 1
                 self._answer(turn, _repair_request(
-                    step.name, fixable, self._repairs[step.name], REPAIR_TURNS))
+                    step.name, fixable, self._repairs[step.name], budget.REPAIR_TURNS))
                 return "continue"
             self._answer(turn, _committed_note(step, self._done_set, self.state) + self._docket())
             if len(self._done_set) == len(STEPS):

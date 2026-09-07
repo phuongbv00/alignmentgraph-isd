@@ -42,15 +42,6 @@ from .. import rulebook as rules
 from .. import dev_plans
 from ..dev_plans import WorkSet
 
-#: Replan rounds per family, per run.
-REPLAN_ROUNDS = 1
-
-#: Turns the Designer gets to answer with a plan. It has the gaps in front of
-#: it and one artifact to submit; more than this is a model that is not going
-#: to.
-REPLAN_TURNS = 4
-
-
 def _wrapped(schema: str) -> str:
     """The schema as the ``submit_dev_plan`` TOOL asks for it.
 

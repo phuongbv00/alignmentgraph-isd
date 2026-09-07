@@ -15,7 +15,7 @@ from __future__ import annotations
 
 
 from alignmentgraph_isd import HarnessRunConfig
-from alignmentgraph_isd.core.agentic import replan, run as run_module
+from alignmentgraph_isd.core.agentic import budget, replan, run as run_module
 from alignmentgraph_isd.core.dev_plans import WorkSet
 
 from conftest import FakeChatModel, load_brief, run_brief
@@ -211,7 +211,41 @@ def test_the_round_is_bounded(monkeypatch):
     result = run_brief(load_brief("java_oop_brief.json"), config)
 
     rounds = [p["round"] for p in result["plans"] if p["stage"] == "assessment"]
-    assert max(rounds) <= replan.REPLAN_ROUNDS
+    assert max(rounds) <= budget.REPLAN_ROUNDS
+
+
+def test_the_replan_round_gets_its_own_turn_ceiling(monkeypatch):
+    """``REPLAN_TURNS`` was declared and passed to NOTHING: the replan loop was
+    built with no ``max_turns``, so it silently took the whole stage ceiling —
+    two dozen turns to submit one plan against gaps already rendered in front
+    of it. A constant nothing asserts is a constant that goes dead, so what is
+    asserted here is the WIRING, not the number."""
+    seen: list[tuple[str, int | None]] = []
+    real = run_module.ToolLoop
+
+    class _Recording(real):
+        def __init__(self, *args, **kwargs):
+            step = kwargs.get("step") or args[4]
+            seen.append((step.name, kwargs.get("max_turns")))
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(run_module, "ToolLoop", _Recording)
+    original = run_module._collect_violations
+
+    def always(family, state, design_brief):
+        found = original(family, state, design_brief)
+        return found + [_Gap("C2", lo_id="ILO-01")] if family == "assessment_designer" else found
+
+    monkeypatch.setattr(run_module, "_collect_violations", always)
+    config = HarnessRunConfig(agent_mode="multi")
+    config.llm_factory = lambda: FakeChatModel()
+    run_brief(load_brief("java_oop_brief.json"), config)
+
+    replans = [turns for name, turns in seen if ":replan" in name]
+    assert replans, "no replan loop was built — the fixture stopped forcing a gap"
+    assert set(replans) == {budget.REPLAN_TURNS}
+    # ...and it is the ROUND's own ceiling: a stage loop takes the default.
+    assert {turns for name, turns in seen if ":replan" not in name} != {budget.REPLAN_TURNS}
 
 
 def test_a_replan_is_not_a_retry():

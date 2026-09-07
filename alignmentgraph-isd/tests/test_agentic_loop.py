@@ -9,7 +9,7 @@ from dataclasses import replace
 from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core.agentic import loop as loop_module
 from alignmentgraph_isd.core.agentic.loop import AgenticLLM, ToolLoop
-from alignmentgraph_isd.core.agentic import specialists, tools
+from alignmentgraph_isd.core.agentic import budget, specialists, tools
 from alignmentgraph_isd.core.agentic.specialists import STEPS
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
 from alignmentgraph_isd.core.trajectory import TrajectoryLogger
@@ -794,7 +794,7 @@ def test_a_developer_reads_less_than_the_stage_that_dispatched_it():
     assert NodeType.CONSTRAINT not in dev.readable_types
     assert not dev.relations, "a Developer was offered relation reads"
     assert not dev.docket, "a Developer was handed coverage gaps for other sets"
-    assert fanout.DEVELOPER_MAX_TURNS < ToolLoop.MAX_TURNS
+    assert budget.DEVELOPER_MAX_TURNS < ToolLoop.MAX_TURNS
 
 
 def test_a_repeated_call_does_not_spend_a_turn_but_is_not_free():

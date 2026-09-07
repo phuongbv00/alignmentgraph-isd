@@ -43,7 +43,7 @@ from ..llm_io import (
 )
 from ..ratelimit import gate_for
 from ..trajectory import WORKFLOW_ORCHESTRATOR
-from . import tools
+from . import budget, tools
 from .tools import unwrap_section
 from ..memory import Memory, new_agent_run_id
 from .specialists import STEPS, AgenticStep, missing_parts, parts_of, step_done
@@ -279,13 +279,6 @@ def context_parts(messages: list) -> dict[str, int]:
     return parts
 
 
-#: How many violations one repair request names. A list longer than this is a
-#: wall of text a small model answers by rewriting everything.
-_REPAIR_REQUEST_CAP = 6
-
-
-#: Turns one stage may spend fixing its own violations, in its own context.
-REPAIR_TURNS = 3
 
 
 def _landed(step, state) -> tuple[str, ...]:
@@ -328,11 +321,11 @@ def _repair_request(stage: str, violations: list, round_index: int, rounds: int)
     the round is counted so the agent knows it is not starting over.
     """
     lines = []
-    for violation in violations[:_REPAIR_REQUEST_CAP]:
+    for violation in violations[:budget.REPAIR_REQUEST_CAP]:
         hint = getattr(violation, "repair_hint", "")
         lines.append(f"- {getattr(violation, 'message', violation)}"
                      + (f"\n  Fix: {hint}" if hint else ""))
-    more = len(violations) - _REPAIR_REQUEST_CAP
+    more = len(violations) - budget.REPAIR_REQUEST_CAP
     if more > 0:
         lines.append(f"- (+{more} more of the same kind)")
     return (
@@ -1074,21 +1067,6 @@ def trim_history(messages: list, budget: int = HISTORY_CHAR_BUDGET,
     return head + note + body, dropped
 
 
-#: Turns one STAGE may spend. The single arm's whole-run ceiling is derived
-#: from this (``react.MAX_TURNS``) so the two cannot drift apart: a per-stage
-#: budget raised here while the other stayed on a hard-coded 8 would quietly
-#: put a different ceiling on each side of the decomposition axis.
-#:
-#: Raised 8 -> 12 (2026-09-02). MEASURED (run f42dceff): all five
-#: ``agentic_gave_up`` events read "turn budget exhausted", and a stage that
-#: gives up is REGENERATED — the implementation stage spent 16 calls as 8 x 2
-#: attempts. Twelve turns once is cheaper than eight twice whenever it converts
-#: a give-up into a completion, so the raise can pay for itself.
-#:
-#: It does not fix what is actually eating the turns: 62% of that run's calls
-#: were reads or repeats of material the prompt already carried. A ceiling
-#: raised over that waste buys more of it.
-STAGE_MAX_TURNS = 12
 
 
 class ToolLoop:
@@ -1105,46 +1083,19 @@ class ToolLoop:
     instructions, same tools, same budgets, one growing context.
     """
 
-    MAX_TURNS = STAGE_MAX_TURNS
-    #: Rejected submits allowed before the step gives up. Raised from 2 when
-    #: ``check_artifact`` was dropped: that tool gave the model unlimited
-    #: validation attempts at the price of re-writing the whole artifact each
-    #: time. A rejected submit returns the identical errors and costs no extra
-    #: writing, so the retry allowance belongs here, where it is explicit and
-    #: equal across arms.
-    SUBMIT_BUDGET = 3
-    #: Accepted submits allowed beyond one per artifact, for an artifact that
-    #: comes back hollow and is sent again. Every stage has several artifacts
-    #: now (one submit tool each), so this is on every stage's path; a work set
-    #: has none and returns on its first accepted submit.
-    PART_SUBMIT_SLACK = 3
-    #: How many repeated calls are refunded rather than charged a turn.
-    REPEAT_ALLOWANCE = 3
-    #: How many reasoning-only replies are refunded rather than charged a turn.
-    #: Same shape and same argument as REPEAT_ALLOWANCE: the turn produced no
-    #: observation and no artifact, so charging it spends the stage's budget on
-    #: a serving posture. Bounded for the same reason too — a backend that only
-    #: ever returns reasoning must still reach the ceiling rather than loop.
-    #: Mirrored in `ReactLoop`: a refund is a harness accounting rule, so one
-    #: that existed on a single side of the decomposition axis would be a
-    #: ceiling difference sitting inside the treatment.
-    THINKING_ALLOWANCE = 3
-    #: Default turns a STAGE loop may spend fixing its own violations. Passed
-    #: in by ``run.py``; a Developer loop gets 0.
-    #:
-    #: Repair used to happen entirely outside the loop: the checks ran after it
-    #: returned, and a generative fix was composed as a separate persona-free
-    #: prompt the agent never saw. That worked, but it meant the agent could
-    #: not learn from a violation, and it forced nine violation types to be
-    #: REPORT_ONLY — because a DETERMINISTIC fix for them would have been the
-    #: harness inventing instructional content, which is the one thing a repair
-    #: must never do. An agent writing that content is not inventing it; it is
-    #: the agent doing its job with feedback.
-    #:
-    #: Bounded tightly. Each round costs a whole stage context (measured: 5-15x
-    #: a targeted repair prompt), and an agent that cannot fix a violation in
-    #: three rounds is not going to.
-    REPAIR_TURNS = REPAIR_TURNS
+    #: Every ceiling this loop spends against. The numbers and the reasoning
+    #: that fixed them live in :mod:`budget`, together with the ones `ReactLoop`
+    #: and the Developer fan-out hold, because several of them are coupled
+    #: across the decomposition axis and a pair that drifts apart is a ceiling
+    #: difference sitting inside the treatment. They stay class attributes so a
+    #: caller can still override one per instance — ``run.py`` passes a
+    #: Developer loop its own ``max_turns`` and ``repair_turns=0``.
+    MAX_TURNS = budget.STAGE_MAX_TURNS
+    SUBMIT_BUDGET = budget.SUBMIT_BUDGET
+    PART_SUBMIT_SLACK = budget.PART_SUBMIT_SLACK
+    REPEAT_ALLOWANCE = budget.REPEAT_ALLOWANCE
+    THINKING_ALLOWANCE = budget.THINKING_ALLOWANCE
+    REPAIR_TURNS = budget.REPAIR_TURNS
 
     def __init__(self, config, state, trajectory, design_brief, step: AgenticStep,
                  llm: AgenticLLM, *, messages: list | None = None,
