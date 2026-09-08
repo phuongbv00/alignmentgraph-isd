@@ -237,8 +237,24 @@ def alignment_docket(graph: "AlignmentGraph", *, edges: tuple[str, ...] = (),
 def run_read_nodes(graph: "AlignmentGraph", step: "AgenticStep", args: dict) -> str:
     node_type = str(args.get("node_type", "")).strip().lower()
     if node_type not in step.readable_types:
+        # ``read_nodes`` LISTS a type; ``read_node`` READS ids. The names differ
+        # by one character and, since ``read_node`` began taking an array
+        # (2026-09-08), so do their arguments — so a model that wants "read
+        # these ids" reaches for the plural name and is refused.
+        #
+        # MEASURED (runs 53042a0d, 2559b22d): 50 of 63 ERROR observations were
+        # "node_type must be one of …", and the majority carried a perfectly
+        # good ``ids`` array. The intent is unambiguous, so it is served rather
+        # than refused — the same rule as ``_submit_alias`` rescuing a bare
+        # ``submit`` and ``_wrap_bare_artifact`` accepting an artifact without
+        # its envelope: a call is not wrong because it came through the
+        # neighbouring door.
+        if args.get("ids") or (args.get("id") and not args.get("node_type")):
+            return run_read_node(graph, step, args)
         return ("ERROR: node_type must be one of: "
-                + ", ".join(step.readable_types))
+                + ", ".join(step.readable_types)
+                + ". To read particular artifacts in full, call read_node with "
+                  "their ids instead.")
     nodes = graph.element_nodes(node_type)
     if not nodes:
         # Section-only artifacts (learner_profile, the plan nodes) have no
@@ -298,11 +314,16 @@ def run_read_node(graph: "AlignmentGraph", step: "AgenticStep", args: dict) -> s
     is FOR; the substrate difference the axis measures is what state each mode
     holds, not how many turns the harness charges to look at it.
     """
+    # The mirror of `run_read_nodes`' rescue: a model that wants the LISTING
+    # and reaches for the singular name has still said what it wants.
+    if not args.get("ids") and not args.get("id") and args.get("node_type"):
+        return run_read_nodes(graph, step, args)
     raw = args.get("ids", args.get("id", ""))
     ids = [str(one).strip() for one in (raw if isinstance(raw, list) else [raw])]
     ids = [one for one in ids if one]
     if not ids:
-        return 'ERROR: args must carry {"ids": ["<node id>", ...]}'
+        return ('ERROR: args must carry {"ids": ["<node id>", ...]}. '
+                "To list a type instead, call read_nodes with its node_type.")
 
     found, missing = [], []
     for node_id in dict.fromkeys(ids):          # de-duplicated, order kept

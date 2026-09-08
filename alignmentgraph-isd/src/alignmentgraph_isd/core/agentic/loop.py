@@ -1243,6 +1243,7 @@ class ToolLoop:
     PART_SUBMIT_SLACK = budget.PART_SUBMIT_SLACK
     REPEAT_ALLOWANCE = budget.REPEAT_ALLOWANCE
     THINKING_ALLOWANCE = budget.THINKING_ALLOWANCE
+    ERROR_ALLOWANCE = budget.ERROR_ALLOWANCE
     REPAIR_TURNS = budget.REPAIR_TURNS
 
     def __init__(self, config, state, trajectory, design_brief, step: AgenticStep,
@@ -1364,6 +1365,11 @@ class ToolLoop:
             # decomposition axis, and reading it as the latter is exactly the
             # mistake `disable_thinking` exists to prevent.
             "thinking_only": 0,
+            # Tool calls that came back ERROR. A turn that buys no observation
+            # is a turn the stage did not get to use, and 13% of every tool
+            # result over runs 53042a0d/2559b22d was one — reported so the
+            # ceiling is read against turns that DID something.
+            "tool_errors": 0,
         }
         #: ``node_type -> heading`` for artifact pools the assignment already
         #: renders in full. Empty for a stage agent, which reads real state.
@@ -1915,6 +1921,14 @@ class ToolLoop:
 
         observation = self._execute(turn.name, args)
         self.stats["reads"] += 1
+        if observation.startswith("ERROR"):
+            # No observation and no artifact — the same case REPEAT_ALLOWANCE
+            # and THINKING_ALLOWANCE already refund, and measured at 13% of
+            # every tool result over runs 53042a0d and 2559b22d. Bounded, so a
+            # model that only ever errors still reaches the ceiling.
+            self.stats["tool_errors"] += 1
+            if self.stats["tool_errors"] <= self.ERROR_ALLOWANCE:
+                self._refunded += 1
         # MEASURED FAILURE (run single_20260831_160530): 10 of 13 fallbacks
         # were "turn budget exhausted", and the single+graph arm spent all
         # eight turns reading on 6 of 7 stages without ever submitting. The

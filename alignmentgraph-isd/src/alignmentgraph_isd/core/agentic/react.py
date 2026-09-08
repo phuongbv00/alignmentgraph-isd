@@ -148,6 +148,7 @@ class ReactLoop:
             "compaction_summaries": 0,
             "markup_recovered": 0, "args_salvaged": 0, "truncated_turns": 0,
             "dropped_args": 0, "repair_turns": 0, "thinking_only": 0,
+            "tool_errors": 0,
             "via_budget_exhaustion": False,
             # The two numbers that separate "worked out of order" from "never
             # split the work" — different failures with identical output.
@@ -623,6 +624,11 @@ class ReactLoop:
 
         observation = self._read(turn.name, args)
         self.stats["reads"] += 1
+        # Refunded exactly as in `ToolLoop`, for the reason given there.
+        if observation.startswith("ERROR"):
+            self.stats["tool_errors"] += 1
+            if self.stats["tool_errors"] <= ToolLoop.ERROR_ALLOWANCE:
+                self._refunded += 1
         remaining = self.MAX_TURNS + self._refunded - self._turn_no
         if remaining <= 3:
             observation += (f"\n\n[{remaining} turn(s) left. Submit what you have for the "

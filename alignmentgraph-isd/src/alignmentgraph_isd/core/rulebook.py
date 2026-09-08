@@ -226,7 +226,10 @@ MEDIA_TYPES = ("video", "slides", "simulation", "document", "audio")
 
 RULES_CONTENT_MODULES = """\
 Every content module must set ``supports_activities`` to existing activity ids whose
-``materials_needed`` hint it is addressing — do not invent a module nothing needs. Every module
+``materials_needed`` hint it is addressing — do not invent a module nothing needs, and between
+them the modules should cover every activity. ``read_nodes`` already lists every activity with
+its name and cognitive process, which is what this decision needs; read one in full only when
+its listing line leaves you unsure. Every module
 should set ``covers_topics`` to existing topic ids. Every media selection should set
 ``respects_constraints`` to existing constraint ids it was chosen in light of (e.g. avoid
 bandwidth-heavy video under a low-bandwidth constraint). media_type must be one of:

@@ -131,6 +131,27 @@ REPEAT_ALLOWANCE = 3
 #: inside the treatment.
 THINKING_ALLOWANCE = 3
 
+#: How many tool calls that came back ERROR are refunded rather than charged a
+#: turn. Third of the same family as REPEAT_ALLOWANCE and THINKING_ALLOWANCE,
+#: and for the identical reason: an ERROR observation carries no artifact and
+#: no fact about the design, so charging a turn for it spends the stage's
+#: budget on the model's confusion.
+#:
+#: MEASURED (runs 53042a0d, 2559b22d): 63 of 476 tool results were ERROR and 84
+#: more were repeat refusals — 31% of every turn taken produced no observation
+#: at all. The stages that hit the ceiling had already submitted their
+#: artifacts and were looping on refused calls, which is why the answer to
+#: "3 of 6 stages are cut" was not a bigger ceiling: post-fix, a stage that
+#: COMPLETES does so in a median of 7 turns and never more than 13, against a
+#: ceiling of 24.
+#:
+#: Bounded, like the other two, so a model that only ever errors still reaches
+#: the ceiling rather than looping forever — and mirrored in ``ReactLoop``,
+#: because a refund is a harness accounting rule and one that existed on a
+#: single side of the decomposition axis would be a ceiling difference sitting
+#: inside the treatment.
+ERROR_ALLOWANCE = 3
+
 #: Default turns a STAGE loop may spend fixing its own violations. Passed in by
 #: ``run.py``; a Developer loop gets 0.
 #:

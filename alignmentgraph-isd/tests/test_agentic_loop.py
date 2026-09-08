@@ -1490,6 +1490,12 @@ def test_calls_the_budget_cannot_cover_are_answered_with_a_stub():
         batch(*[call("read_node", {"id": f"ILO-0{i}"}) for i in range(1, 6)]),
     ])
     specialists.commit_outcomes(graph, trajectory, _OUTCOMES)
+    # Every id must RESOLVE: a call that comes back ERROR is refunded
+    # (ERROR_ALLOWANCE), so a budget test built on missing ids would measure
+    # the refund instead of the ceiling.
+    for i in range(2, 6):
+        graph.add_element_node(NodeType.OBJECTIVE, f"ILO-0{i}",
+                               {"id": f"ILO-0{i}", "statement": "S", "level": "apply"})
 
     loop = _loop(config, graph, trajectory, brief, step, max_turns=3)
     loop.run()
@@ -1784,4 +1790,68 @@ def test_an_unreadable_id_costs_that_id_and_says_what_may_be_read():
     assert "MS-001" in out and "Readable types here" in out
     for readable in step.readable_types:
         assert readable in out
+
+
+def test_a_read_that_came_through_the_neighbouring_door_is_still_served():
+    """MEASURED (runs 53042a0d, 2559b22d): 50 of 63 ERROR observations were
+    "node_type must be one of …", and most carried a perfectly good `ids`
+    array — the model wanting "read these ids" and reaching for the PLURAL
+    name. `read_nodes` lists a type, `read_node` reads ids; the names differ by
+    one character, and since `read_node` began taking an array they no longer
+    differ much in arguments either.
+
+    Both directions are unambiguous, so both are served. Same rule as
+    `_submit_alias` rescuing a bare `submit`: a call is not wrong because it
+    came through the neighbouring door."""
+    step = STEP_BY_NAME["assessment"]
+    _model, config, graph, trajectory, brief = _harness([])
+    specialists.commit_outcomes(graph, trajectory, _OUTCOMES)
+    loop = _loop(config, graph, trajectory, brief, step)
+
+    by_ids = loop._execute("read_nodes", {"ids": ["ILO-01"]})
+    assert not by_ids.startswith("ERROR") and "ILO-01" in by_ids
+
+    by_type = loop._execute("read_node", {"node_type": "objective"})
+    assert not by_type.startswith("ERROR") and "ILO-01" in by_type
+    assert by_type == loop._execute("read_nodes", {"node_type": "objective"})
+
+    # A call that says neither is still an error, and now names the way out.
+    empty = loop._execute("read_nodes", {})
+    assert empty.startswith("ERROR") and "read_node" in empty
+
+
+def test_a_turn_that_bought_no_observation_is_refunded():
+    """The third of the same family as REPEAT_ALLOWANCE and THINKING_ALLOWANCE.
+    An ERROR carries no artifact and no fact about the design, so charging a
+    turn for it spends the stage's budget on the model's confusion — measured
+    at 13% of every tool result over runs 53042a0d/2559b22d, beside 84 repeat
+    refusals, so 31% of turns taken bought nothing.
+
+    Bounded, so a model that only ever errors still reaches the ceiling."""
+    step = STEP_BY_NAME["assessment"]
+    _model, config, graph, trajectory, brief = _harness([
+        batch(*[call("read_node", {"ids": [f"NOPE-{i}"]}) for i in range(1, 9)]),
+    ])
+    specialists.commit_outcomes(graph, trajectory, _OUTCOMES)
+
+    loop = _loop(config, graph, trajectory, brief, step, max_turns=4)
+    loop.run()
+
+    assert loop.stats["tool_errors"] > 0
+    # Four turns of budget plus ERROR_ALLOWANCE refunds, and no more: the
+    # allowance stretches the stage, it does not remove the ceiling.
+    assert loop.stats["turns_used"] == 4 + budget.ERROR_ALLOWANCE
+
+
+def test_both_arms_refund_a_failed_call_on_the_same_rule():
+    """A refund is a harness accounting rule. One that existed on a single side
+    of the decomposition axis would be a ceiling difference sitting inside the
+    treatment — the defect the scripted fallback had before it was removed."""
+    import inspect
+
+    from alignmentgraph_isd.core.agentic import react
+
+    for owner in (loop_module.ToolLoop._handle_call, react.ReactLoop._handle_call):
+        source = inspect.getsource(owner)
+        assert 'startswith("ERROR")' in source and "ERROR_ALLOWANCE" in source, owner
 
