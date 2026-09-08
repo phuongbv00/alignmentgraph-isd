@@ -1702,3 +1702,86 @@ def test_a_regen_asks_only_for_what_is_still_missing():
     assert "Already committed" not in fresh._stage_message(retrieval_available=False)
     assert (tools.tool_specs(step, only=None)
             == tools.tool_specs(step)), "the default binding must not move"
+
+
+# ── reading several artifacts in one turn ───────────────────────────────────
+
+def test_read_node_takes_several_ids_in_one_turn():
+    """MEASURED (run single_20260908_111232, content): the Content Designer
+    spent 27 turns on 24 distinct `read_node` calls and the Material Developer
+    27 on 16, each walking a list of activity ids one node per turn. At
+    STAGE_MAX_TURNS 24 that exhausts the stage on reading alone, and the stage
+    gave up with 5 content modules against 23 activities — C5 coverage 0.13.
+
+    The other half of the 2026-09-06 read-cost change: `read_nodes` became a
+    LISTING so a planner could see the ids it had to write, and the only way to
+    then read them in full was one call per id. Scope is unchanged; turns are
+    not."""
+    step = STEP_BY_NAME["assessment"]
+    _model, config, graph, trajectory, brief = _harness([])
+    specialists.commit_outcomes(graph, trajectory, _OUTCOMES)
+    loop = _loop(config, graph, trajectory, brief, step)
+
+    ids = ["ILO-01", "ILO-02", "ILO-03"]
+    for one in ids[1:]:
+        graph.add_node(NodeType.OBJECTIVE, one,
+                       {"statement": f"Objective {one}.", "level": "apply"})
+    out = loop._execute("read_node", {"ids": ids})
+    for one in ids:
+        assert one in out
+    assert not out.startswith("ERROR")
+
+    assert loop._execute("read_node", {"ids": ids}).count("[OBJECTIVE:") == 3
+
+    # The old single-id shape still works: a model that sends it has produced
+    # a usable call, and refusing it would cost a turn over an envelope.
+    assert ids[0] in loop._execute("read_node", {"id": ids[0]})
+
+
+def test_reading_several_shares_one_budget_and_one_still_gets_all_of_it():
+    """The budget is SHARED, never multiplied — a batch must not be a way to
+    put N x READ_CHAR_BUDGET into one observation, which is the failure
+    `render_nodes` is bounded by size to prevent. One id keeps the whole
+    budget, so "in full means in full" holds exactly as it did for the call
+    this replaces."""
+    from alignmentgraph_isd.core.agentic import tools as tools_module
+
+    step = STEP_BY_NAME["assessment"]
+    _model, config, graph, trajectory, brief = _harness([])
+    specialists.commit_outcomes(graph, trajectory, _OUTCOMES)
+    loop = _loop(config, graph, trajectory, brief, step)
+
+    ids = [f"ILO-{i:02d}" for i in range(1, 12)]
+    for one in ids[1:]:
+        graph.add_node(NodeType.OBJECTIVE, one,
+                       {"statement": "y" * tools_module.READ_CHAR_BUDGET, "level": "apply"})
+    many = loop._execute("read_node", {"ids": ids})
+    assert len(many) <= tools_module.READ_CHAR_BUDGET + 200, "one shared budget"
+
+    long_text = "x" * (tools_module.NODE_CHAR_CAP * 4)
+    graph.add_node(NodeType.OBJECTIVE, "ILO-BIG", {"statement": long_text, "level": "apply"})
+    alone = loop._execute("read_node", {"ids": ["ILO-BIG"]})
+    assert long_text in alone, "a single read is still the whole artifact"
+
+
+def test_an_unreadable_id_costs_that_id_and_says_what_may_be_read():
+    """MEASURED on the same run: the Material Developer asked for 'MS-001' — a
+    real media_selection node, outside its read scope — was told only "no node
+    with id 'MS-001'", and asked again.
+
+    Two rules here. One bad id must not take the batch with it, or the per-id
+    turn cost this change removes comes straight back on the first typo; and
+    the refusal names the readable types, because the scope IS the treatment
+    and a model that cannot see it can only guess."""
+    step = STEP_BY_NAME["assessment"]
+    _model, config, graph, trajectory, brief = _harness([])
+    specialists.commit_outcomes(graph, trajectory, _OUTCOMES)
+    loop = _loop(config, graph, trajectory, brief, step)
+
+    good = "ILO-01"
+    out = loop._execute("read_node", {"ids": [good, "MS-001"]})
+    assert good in out, "the readable id was still served"
+    assert "MS-001" in out and "Readable types here" in out
+    for readable in step.readable_types:
+        assert readable in out
+

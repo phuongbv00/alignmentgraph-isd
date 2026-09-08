@@ -124,7 +124,7 @@ def render_listing(nodes: list[dict], budget: int = READ_CHAR_BUDGET) -> str:
     omitted = len(nodes) - shown
     if omitted > 0:
         lines.append(f"... and {omitted} more not shown (read budget reached). "
-                     "Read one by id if you need it.")
+                     "Read them by id if you need them.")
     return "\n".join(lines) if lines else "(no nodes yet)"
 
 
@@ -162,7 +162,7 @@ def render_nodes(nodes: list[dict], max_chars: int = NODE_CHAR_CAP,
     omitted = len(nodes) - shown
     if omitted > 0:
         lines.append(f"... and {omitted} more not shown (read budget reached). "
-                     "Read one by id if you need it.")
+                     "Read them by id if you need them.")
     return "\n\n".join(lines) if lines else "(no nodes yet)"
 
 
@@ -249,24 +249,84 @@ def run_read_nodes(graph: "AlignmentGraph", step: "AgenticStep", args: dict) -> 
     return render_listing(nodes)
 
 
-def run_read_node(graph: "AlignmentGraph", step: "AgenticStep", args: dict) -> str:
-    node_id = str(args.get("id", "")).strip()
-    if not node_id:
-        return 'ERROR: args must carry {"id": "<node id>"}'
+def _resolve_node(graph: "AlignmentGraph", step: "AgenticStep", node_id: str):
+    """One id to its node, trying the readable types' namespaces for a bare id
+    ("ILO-01" rather than "objective:ILO-01")."""
     node = graph.get_node(node_id)
     if node is None and graph.ELEMENT_SEP not in node_id:
-        # Convenience: a bare element id ("ILO-01") resolves against the
-        # readable types' namespaces.
         for node_type in step.readable_types:
             node = graph.get_node(f"{node_type}{graph.ELEMENT_SEP}{node_id}")
             if node is not None:
                 break
-    if node is None:
-        return f"ERROR: no node with id {node_id!r}"
+    return node
+
+
+def run_read_node(graph: "AlignmentGraph", step: "AgenticStep", args: dict) -> str:
+    """Read artifacts from the design graph in full — SEVERAL per call.
+
+    MEASURED (run single_20260908_111232, content): the Content Designer spent
+    27 turns on 24 distinct ``read_node`` calls and the Material Developer 27 on
+    16, both walking a list of activity ids one node per turn. At
+    ``STAGE_MAX_TURNS`` 24 that exhausts the stage on reading alone, and the
+    content stage duly gave up — 41 turns, 35 reads, and a design left with 5
+    content modules against 23 activities (C5 coverage 0.13).
+
+    This is the other half of the 2026-09-06 read-cost change. That one made
+    ``read_nodes`` a one-line-per-node LISTING so a planner could see the ids it
+    had to write; what it left behind was that the only way to then read those
+    artifacts in full was one call per id, so the listing handed the model a
+    bill it had to pay a turn at a time. The information available is unchanged
+    — this is turns, not scope.
+
+    The read budget is SHARED across the ids asked for, never multiplied by
+    them: one id still gets the whole budget (so "in full means in full" holds
+    exactly as it did), and a batch divides it, with ``NODE_CHAR_CAP`` as the
+    floor so no node is cut below what a dump has always given. What does not
+    fit is named out loud by ``render_nodes``, not dropped.
+
+    An id that does not resolve costs THAT id and not the call: the ids come
+    from a listing the model was shown, and one typo taking the whole batch
+    with it would put back the per-id turn cost this exists to remove.
+
+    ON THE ``context_mode`` AXIS, because this tool is bound in graph mode
+    only. It NARROWS an asymmetry that already ran against the graph arm
+    rather than opening a new one. A prose document IS a whole family — the
+    ``content`` step's ``read_document('activity')`` returns every activity in
+    one call — while the graph arm names elements one at a time, so on the
+    same design the prose arm reached the same information in 1 turn where the
+    graph arm needed 23. Reading several ids per call is what an element index
+    is FOR; the substrate difference the axis measures is what state each mode
+    holds, not how many turns the harness charges to look at it.
+    """
+    raw = args.get("ids", args.get("id", ""))
+    ids = [str(one).strip() for one in (raw if isinstance(raw, list) else [raw])]
+    ids = [one for one in ids if one]
+    if not ids:
+        return 'ERROR: args must carry {"ids": ["<node id>", ...]}'
+
+    found, missing = [], []
+    for node_id in dict.fromkeys(ids):          # de-duplicated, order kept
+        node = _resolve_node(graph, step, node_id)
+        (found.append(node) if node is not None else missing.append(node_id))
+
+    # Naming what MAY be read, rather than only that this id may not. Measured
+    # on the same run: the Material Developer asked for 'MS-001' — a real
+    # media_selection node, outside its read scope — was told only "no node
+    # with id 'MS-001'", and asked again. The scope is the treatment and is not
+    # widened here; what changes is that the refusal says what it is.
+    note = ""
+    if missing:
+        note = ("ERROR: no readable artifact with id "
+                + ", ".join(repr(one) for one in missing)
+                + ". Readable types here: " + (", ".join(step.readable_types) or "none")
+                + ". Use read_nodes to list their ids.")
+    if not found:
+        return note
     # "In full" means in full: at NODE_CHAR_CAP this tool truncated a 1,710-char
-    # material to 600 and its description was untrue. One node is bounded by the
-    # read budget on its own.
-    return render_nodes([node], max_chars=READ_CHAR_BUDGET)
+    # material to 600 and its description was untrue.
+    per_node = max(NODE_CHAR_CAP, READ_CHAR_BUDGET // len(found))
+    rendered = render_nodes(found, max_chars=per_node)
+    return f"{rendered}\n\n{note}" if note else rendered
 
 
 def run_read_edges(graph: "AlignmentGraph", step: "AgenticStep", args: dict) -> str:
@@ -729,14 +789,18 @@ def tool_specs(step: "AgenticStep", *, graph_mode: bool = True,
             specs.append(_fn(
                 "read_nodes",
                 "List the existing artifacts of one type — id, key fields and a "
-                "short label for each. Call read_node for one artifact in full.",
+                "short label for each. Call read_node for the ones you need in full.",
                 _enum_param("node_type", step.readable_types, "Which artifact type to list.")))
             specs.append(_fn(
-                "read_node", "Read one artifact from the design graph in full.",
+                "read_node",
+                "Read artifacts from the design graph in full. Ask for every id "
+                "you need in ONE call — each call costs a turn.",
                 {"type": "object",
-                 "properties": {"id": {"type": "string",
-                                       "description": "The node id, e.g. 'ILO-01'."}},
-                 "required": ["id"]}))
+                 "properties": {"ids": {
+                     "type": "array",
+                     "items": {"type": "string"},
+                     "description": "The node ids, e.g. ['ILO-01', 'ILO-02']."}},
+                 "required": ["ids"]}))
         if step.relations:
             specs.append(_fn(
                 "read_edges",

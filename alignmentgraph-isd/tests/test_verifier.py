@@ -365,8 +365,21 @@ def test_a_vague_rubric_criterion_is_reported_and_left_alone():
     assert not trajectory.repair_events, "nothing changed, so nothing is logged as a repair"
 
 
-def test_orphan_content_repairs_by_linking_to_an_existing_activity_without_llm():
+def test_an_orphan_content_module_is_reported_and_no_alignment_is_invented():
+    """The repair that used to close this linked every orphaned module to
+    ``element_nodes(ACTIVITY)[0]`` — the first activity in the graph.
 
+    MEASURED (run 2559b22d): twelve modules, each naming its own activity
+    correctly, lost their C5 edges to a namespacing bug; this then "repaired"
+    all twelve by pointing them at TLA-0101. The check closed, twelve C5 edges
+    appeared, eleven of the twelve activities stayed uncovered, and the graph
+    asserted twelve relations the modules' own data contradicts.
+
+    Same objection as `activity_engagement` below — a repair satisfying its own
+    check by existing — and worse, because what it fabricates is an ALIGNMENT
+    EDGE. Rearranging what the design holds is the net's job; deciding which
+    activity a module supports is authoring the claim this package exists to
+    make auditable."""
     graph = AlignmentGraph()
     graph.add_element_node(NodeType.CONTENT, "MOD-01", {"id": "MOD-01"})
     graph.add_element_node(NodeType.ACTIVITY, "TLA-01", {"id": "TLA-01"})
@@ -376,9 +389,35 @@ def test_orphan_content_repairs_by_linking_to_an_existing_activity_without_llm()
     before = [v for v in checks.orphan_content(graph) if v.violation_type == "orphan_content"]
     assert before
 
-    repairs.repair("content_designer", before, RepairActor("ContentDesignerAgent", config, graph=graph, trajectory=trajectory).ctx())
+    remaining = repairs.repair(
+        "content_designer", before,
+        RepairActor("ContentDesignerAgent", config, graph=graph, trajectory=trajectory).ctx())
 
-    assert checks.orphan_content(graph) == []
+    assert remaining == before, "it stays a finding"
+    assert graph.get_edges(relation_id="C5") == [], "no alignment edge was invented"
+    assert not trajectory.repair_events, "a repair that changed nothing logs nothing"
+
+
+def test_a_module_that_names_its_activity_needs_no_repair_at_all():
+    """The root cause the removed branch was papering over. A reference the
+    model wrote NAMESPACED — "activity:TLA-01", which is the node's own id and
+    unambiguous — must establish C5 exactly as a bare one does; composing a
+    node id straight from it gives "activity:activity:TLA-01" and the edge is
+    lost in silence."""
+    from alignmentgraph_isd.core.agentic import specialists
+
+    for ref in ("TLA-01", "activity:TLA-01"):
+        graph = AlignmentGraph()
+        graph.add_element_node(NodeType.ACTIVITY, "TLA-01", {"id": "TLA-01"})
+        trajectory = TrajectoryLogger()
+        specialists.commit_content(graph, trajectory, {"content_modules": [
+            {"id": "MOD-01", "title": "M", "supports_activities": [ref]},
+        ]})
+
+        edges = graph.get_edges(relation_id="C5")
+        assert [(e["source"], e["target"]) for e in edges] == [
+            ("content:MOD-01", "activity:TLA-01")], ref
+        assert checks.orphan_content(graph) == [], ref
 
 
 def test_a_passively_practiced_objective_is_reported_and_no_activity_is_invented():

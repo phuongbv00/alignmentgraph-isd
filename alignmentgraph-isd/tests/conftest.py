@@ -429,7 +429,16 @@ def _payload_for_system(system_prompt: str, whole: str = "", specs_json: str = "
 
 #: `*_ids` fields whose values a real model can only get by READING the
 #: artifacts it is referring to, and the prefix those artifacts carry.
-_ID_REFERENCE_FIELDS = {"activity_ids": "TLA", "material_ids": "MAT"}
+_ID_REFERENCE_FIELDS = {"activity_ids": "TLA", "material_ids": "MAT",
+                        # C5. The Content Designer READS activity, so a real
+                        # one names ids it was shown — the same argument as the
+                        # two above, and it was missing: the canned
+                        # ``supports_activities: ["TLA-01"]`` named an id that
+                        # composite numbering had renamed away, so C5 never
+                        # established in the pipeline test and only appeared
+                        # because `repair_content_orphans` invented it (run
+                        # 2559b22d, where the same masking happened for real).
+                        "supports_activities": "TLA"}
 
 
 def _named_from_prompt(payload: dict, prompt: str) -> dict:

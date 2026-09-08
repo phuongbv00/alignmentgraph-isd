@@ -216,21 +216,41 @@ def commit_activities(graph, trajectory, parsed: dict) -> None:
 
 
 def commit_content(graph, trajectory, parsed: dict) -> None:
+    """Commit the content modules and media selections, and record C5/P7/P8.
+
+    Every reference here is MODEL-WRITTEN and is normalized through
+    ``alignment.bare_ref`` before a node id is composed from it. That is the
+    rule everywhere else a model's reference is read — ``alignment.py``'s three
+    id-matched establishers, ``fanout``'s P5, ``dev_plans.plan_category_pairs``
+    — and this was the one provenance path that skipped it.
+
+    MEASURED (run 2559b22d): the model wrote ``supports_activities:
+    ["activity:TLA-0101"]``, which is the node's own id and unambiguous. Bare
+    composition made that ``activity:activity:TLA-0101``,
+    ``record_provenance`` no-ops on a target that does not exist, and all
+    twelve modules — each naming its own activity correctly — established no
+    C5 edge at all. The design then read as twelve orphaned modules, and C5,
+    a core construct-validity relation, scored 0.08 on a design that was
+    right.
+    """
     module_ids = _decompose(graph, trajectory, NodeType.CONTENT, parsed.get("content_modules"))
     media_ids = _decompose(graph, trajectory, NodeType.MEDIA_SELECTION, parsed.get("media_selections"))
     for node_id in module_ids:
         data = graph.get_node(node_id)["data"]
         for ref in data.get("supports_activities") or []:
-            alignment.record_provenance(
-                graph, "C5", [node_id],
-                f"{NodeType.ACTIVITY}{graph.ELEMENT_SEP}{ref}")
-        topics = [f"{NodeType.TOPIC}{graph.ELEMENT_SEP}{r}"
-                  for r in data.get("covers_topics") or []]
+            bare = alignment.bare_ref(ref)
+            if bare:
+                alignment.record_provenance(
+                    graph, "C5", [node_id],
+                    f"{NodeType.ACTIVITY}{graph.ELEMENT_SEP}{bare}")
+        topics = [f"{NodeType.TOPIC}{graph.ELEMENT_SEP}{bare}"
+                  for bare in map(alignment.bare_ref, data.get("covers_topics") or []) if bare]
         alignment.record_provenance(graph, "P7", topics, node_id)
     for node_id in media_ids:
         data = graph.get_node(node_id)["data"]
-        constraints = [f"{NodeType.CONSTRAINT}{graph.ELEMENT_SEP}{r}"
-                       for r in data.get("respects_constraints") or []]
+        constraints = [f"{NodeType.CONSTRAINT}{graph.ELEMENT_SEP}{bare}"
+                       for bare in map(alignment.bare_ref,
+                                       data.get("respects_constraints") or []) if bare]
         alignment.record_provenance(graph, "P8", constraints, node_id)
 
 

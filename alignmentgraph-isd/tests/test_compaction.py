@@ -399,3 +399,68 @@ def test_compaction_still_works_without_a_model():
     assert stats["compactions"] == 1
     assert "3 earlier turn(s)" in kept[1]["content"]
     assert running_summary(kept) == ""
+
+
+def test_a_summary_never_carries_an_instruction():
+    """MEASURED (run 3ee5b8df, implementation): the fold came back "The agent
+    has already submitted and analyzed plan sets AB-01 through AB-04 … No
+    further calls are needed." — and the stage then needed eleven more turns.
+
+    The second sentence is wrong in a way the first is not. The summariser is a
+    hook of the harness: it is not in the agent's conversation, cannot see the
+    turns it still has, and has no standing to direct it — and its output lands
+    in the one message `trim_history` never drops. So a directive from it is
+    out of scope by construction, and the prompt asking for a record is not
+    enough on a model that ignores the prompt.
+
+    Sentence-level, never answer-level: that fold also carried a real account
+    of the stage, and discarding a completion already paid for over its last
+    sentence is the v1 mistake this module was rewritten to stop making."""
+    from alignmentgraph_isd.core.agentic.compaction import _clean
+
+    kept = _clean("The agent had already submitted plan sets AB-01 through "
+                  "AB-04. No further calls are needed.")
+    assert kept == "The agent had already submitted plan sets AB-01 through AB-04."
+
+    for directive in ("No further calls are needed.",
+                      "Nothing more is required.",
+                      "You should now call submit_dev_plan.",
+                      "You must submit the operator_manual next.",
+                      "Do not read the activities again.",
+                      "Proceed to the implementation stage."):
+        assert _clean(f"The stage ran. {directive}") == "The stage ran.", directive
+
+    # A summary that is ONLY a directive leaves nothing, and `summarize` then
+    # falls back to the previous summary like any other unusable answer.
+    assert _clean("No further calls are needed.") == ""
+
+
+def test_the_directive_filter_keeps_a_reported_obligation():
+    """The filter has to be narrow or it eats the summary's job. A constraint
+    the agent was GIVEN is exactly what the Keep list asks for, and it is
+    phrased with the same words a directive uses — "must", "required",
+    "should". What separates them is who is being addressed, so only the
+    second person and a bare imperative are matched."""
+    from alignmentgraph_isd.core.agentic.compaction import _clean
+
+    for record in (
+        "The brief required the design to use slides (PDF) and video (mp4).",
+        "The agent was told the operator_manual must reference the actual materials.",
+        "It was rejected because assessment_plan.lo_coverage_targets was missing.",
+        "The constraint said learners should work in pairs.",
+        "No objectives were left unassessed after the replan round.",
+    ):
+        assert _clean(record) == record, record
+
+
+def test_a_directive_is_dropped_even_when_it_arrives_wrapped_in_json():
+    """The salvage path and the filter are ordered, not alternatives: a
+    directive does not become acceptable for having arrived inside
+    `{"summary": ...}`."""
+    import json
+
+    from alignmentgraph_isd.core.agentic.compaction import _clean
+
+    wrapped = json.dumps({"summary": "The stage ran. No further calls are needed."})
+    assert _clean(wrapped) == "The stage ran."
+

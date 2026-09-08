@@ -79,6 +79,8 @@ comes back computed from the state whether or not the summariser cooperated.
 """
 from __future__ import annotations
 
+import re
+
 #: Characters of dropped material one summarisation may read. Past this the
 #: oldest of the dropped turns are themselves elided — a summary of a summary
 #: is where this kind of thing stops meaning anything, and the note already
@@ -93,7 +95,9 @@ MAX_SUMMARY_CHARS = 1200
 _SYSTEM = (
     "You compress the older part of another agent's working transcript so it "
     "can keep going inside a context window. You are not doing its work and "
-    "you are not judging it."
+    "you are not judging it. You write a RECORD of what happened, never "
+    "instructions: you are not in that agent's conversation, you cannot see "
+    "the turns it still has, and it cannot answer you."
 )
 
 _TASK = """\
@@ -109,6 +113,11 @@ tool-call mechanics, repetition, and the CONTENT of artifacts already \
 committed — the agent reads those back from the design state with its tools, \
 and re-telling it what its own design says spends this summary on the one \
 thing it does not need.
+
+Write it in the past tense, as a record. Never address the agent, never tell \
+it what to do next, and never say that its work is finished or that nothing \
+more is needed — you are summarising turns that are already over and you \
+cannot see what it still has to do.
 
 Write plain prose under {limit} characters. No preamble, no headings, no \
 markdown. If there is nothing worth keeping, answer with nothing at all.
@@ -218,13 +227,77 @@ def _clean(answer) -> str:
     answer away is throwing away a completion we already paid for. Exactly one
     string value is taken; two or more and there is no way to tell which is the
     summary, so it is rejected as before.
+
+    A DIRECTIVE is then dropped sentence by sentence (``_drop_directives``).
+    The prompt asks for a record and not for instructions; this is what holds
+    when the model ignores that, which run 3ee5b8df is a measurement of. If it
+    leaves nothing behind, the caller falls back to the previous summary like
+    any other unusable answer.
     """
     text = str(answer or "").strip()
     if not text or text in ("{}", "[]", "null", "None"):
         return ""
     if text.startswith("{") or text.startswith("["):
-        return _unwrap(text)
-    return text
+        text = _unwrap(text)
+    # Last, so it applies to a salvaged answer too — a directive does not
+    # become acceptable for having arrived wrapped in JSON.
+    return _drop_directives(text)
+
+
+#: Sentences a summary is not allowed to contain, dropped one sentence at a
+#: time rather than by rejecting the whole answer.
+#:
+#: MEASURED (run 3ee5b8df, implementation): the fold came back "The agent has
+#: already submitted and analyzed plan sets AB-01 through AB-04 … No further
+#: calls are needed." Both halves are wrong — AB-* is the ACTIVITIES stage's
+#: work, and the stage went on to need eleven more turns — but the second half
+#: is wrong in a way the first is not: it is an INSTRUCTION, sitting in the one
+#: message ``trim_history`` never drops, telling the agent to stop. The
+#: summariser is a hook of the harness with no view of the agent's remaining
+#: turns and no standing to direct it (see the module docstring), so a
+#: directive from it is out of scope by construction, not merely inaccurate.
+#:
+#: The prompt asks for a record in the past tense; this is what makes it hold
+#: when the model does not comply, and run 3ee5b8df is one that did not. Kept
+#: DELIBERATELY NARROW — a general imperative detector would eat "the brief
+#: required the design to use slides", which is exactly the binding constraint
+#: the summary exists to carry. Only two shapes are matched: a claim that
+#: nothing further is needed, and a sentence that addresses the agent in the
+#: second person about what to do.
+_DIRECTIVE_PATTERNS = (
+    # "No further calls are needed", "nothing more is required", "no additional
+    # work is needed" — a completeness verdict the summariser cannot reach.
+    re.compile(r"\b(?:no|nothing)\b[^.!?]{0,60}?"
+               r"\b(?:further|more|additional|else)\b[^.!?]{0,60}?"
+               r"\b(?:needed|required|necessary|remains?|left)\b", re.I),
+    # "you should now", "you must submit", "you need to call" — second person
+    # plus a directive verb. "You" alone is not enough: "you were told the
+    # deadline is fixed" is a record.
+    re.compile(r"\byou\b\s+(?:should|must|need to|can now|may now|will now|"
+               r"are now|have to)\b", re.I),
+    # Bare imperatives the model opens a sentence with. A short, closed list of
+    # verbs that only ever direct — never "use", "make" or "ensure", which
+    # start plenty of honest reported clauses.
+    re.compile(r"^(?:do not|don't|proceed|continue|stop|move on|next,|"
+               r"submit |call |skip )", re.I),
+)
+
+#: Sentence boundaries, kept simple on purpose: a summary is plain prose under
+#: 1,200 characters, and an over-clever splitter is a second thing to be wrong.
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
+
+
+def _drop_directives(text: str) -> str:
+    """The summary with any sentence that directs the agent removed.
+
+    Sentence-level, never answer-level: run 3ee5b8df's fold carried a real
+    account of the stage AND a "no further calls are needed", and throwing away
+    a completion already paid for because of its last sentence would repeat the
+    v1 mistake this module was rewritten to stop making.
+    """
+    kept = [part for part in _SENTENCE_SPLIT.split(text.strip())
+            if part.strip() and not any(p.search(part) for p in _DIRECTIVE_PATTERNS)]
+    return " ".join(kept).strip()
 
 
 def _unwrap(text: str) -> str:

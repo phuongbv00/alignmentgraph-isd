@@ -545,7 +545,12 @@ def _repair_content_family(ctx: RepairContext, violations: list) -> list:
     if coverage_violations:
         repair_content_coverage(ctx, coverage_violations)
     if orphan_violations:
-        repair_content_orphans(ctx, orphan_violations)
+        # RETURNED, not dropped: an orphaned MODULE is no longer repairable
+        # (see `repair_content_orphans`), and a routine that silently swallows
+        # what it cannot fix is the exact failure `repair`'s own docstring
+        # names — the violation leaves `remaining` with nothing done about it,
+        # which is what the removed template did.
+        remaining += repair_content_orphans(ctx, orphan_violations)
     return remaining
 
 
@@ -578,38 +583,53 @@ def repair_content_coverage(ctx: RepairContext, violations: list) -> None:
                 output_summary=f"Linked materials to a module: {', '.join(repaired_ids)}.")
 
 
-def repair_content_orphans(ctx: RepairContext, violations: list) -> None:
-    """orphan_content flags either a Content module with no outgoing C5
-    (link it to an existing Activity) or a Material with no linked
-    module (P5, same shape as :func:`repair_content_coverage`'s P5 branch —
-    reused directly since ``violation.node_id`` there is already a material
-    id). A module orphan needs its own branch: unlike the C5 case (which
-    starts from an under-supported Activity and invents a new module), here
-    the violation already names the orphan MODULE itself, so the fix is to
-    link it to an existing Activity rather than manufacture a redundant
-    one."""
-    graph = ctx.graph
-    module_violations = []
-    rest = []
-    activity_nodes = graph.element_nodes(NodeType.ACTIVITY)
-    for violation in violations:
-        node_id = str(violation.metadata.get("node_id") or violation.node_id or "")
-        if node_id.startswith(f"{NodeType.CONTENT}{graph.ELEMENT_SEP}"):
-            module_violations.append((violation, node_id))
-        else:
-            rest.append(violation)
-    repaired_ids: list[str] = []
-    if module_violations and activity_nodes:
+def repair_content_orphans(ctx: RepairContext, violations: list) -> list:
+    """orphan_content on a MATERIAL is repaired; on a MODULE it is reported.
+
+    The material case is structural — a material with no linked module is
+    re-pointed at one the design already holds, the same shape as
+    :func:`repair_content_coverage`'s P5 branch, which is reused directly
+    because ``violation.node_id`` there is already a material id.
+
+    THE MODULE CASE IS NOT REPAIRABLE, and the branch that used to do it was
+    removed 2026-09-08. It read::
+
         target_activity = activity_nodes[0]["id"]
         for _violation, module_id in module_violations:
             alignment.record_provenance(graph, "C5", [module_id], target_activity)
-            repaired_ids.append(module_id)
-        _log_repair(
-            ctx, repaired_ids[0], violation_type="orphan_content", repaired_fields=["content_modules"],
-                rule="repair_orphan_content", input_summary="; ".join(v.message for v, _ in module_violations)[:200],
-                output_summary=f"Linked {', '.join(repaired_ids)} to {target_activity}.")
+
+    — every orphaned module linked to the FIRST activity in the graph.
+    Measured on run 2559b22d: twelve modules, each naming its own activity
+    correctly in ``supports_activities``, lost their C5 edges to the
+    namespacing bug now fixed in ``specialists.commit_content``; this then
+    "repaired" all twelve by pointing them at ``TLA-0101``. The orphan check
+    closed, twelve C5 edges appeared, eleven of the twelve activities stayed
+    uncovered, and the graph asserted twelve "module supports activity"
+    relations that the modules' own data contradicts.
+
+    That is a repair satisfying its own check by existing — the objection that
+    has always kept P6 audit-only — and it is the worse version of it, because
+    what it fabricates is an ALIGNMENT EDGE. The deterministic net may
+    rearrange what the design already holds; deciding which activity a module
+    supports is not rearranging, it is authoring the alignment claim this
+    package exists to make auditable. It survived the 2026-09-03 pass that
+    removed the generative repairs only because it writes no prose.
+
+    So an orphaned module is now a finding: it stays in the residual count and
+    goes back to the Content Designer as a repair turn like any other
+    violation it owns. Residual counts rise, and that is the number becoming
+    honest.
+    """
+    graph = ctx.graph
+    modules, rest = [], []
+    for violation in violations:
+        node_id = str(violation.metadata.get("node_id") or violation.node_id or "")
+        target = modules if node_id.startswith(
+            f"{NodeType.CONTENT}{graph.ELEMENT_SEP}") else rest
+        target.append(violation)
     if rest:
         repair_content_coverage(ctx, rest)
+    return modules
 
 
 # ── rubric family ───────────────────────────────────────────────────────────
