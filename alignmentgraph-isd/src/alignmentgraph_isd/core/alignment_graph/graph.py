@@ -22,9 +22,22 @@ class NodeType(StrEnum):
     ``GAP``, ``TOPIC``, ``LEARNER_PROFILE``, ``CONSTRAINT``, ``IMPROVEMENT``,
     ``MEDIA_SELECTION``, ``MATERIAL``, ``ASSESSMENT_PLAN``, ``ACTIVITY_PLAN``.
 
-    ``IMPLEMENTATION_PLAN`` is a non-relational bolt-on artifact
-    (``ImplementationPlannerAgent``), which records delivery provenance via
-    P10/P11.
+    ``IMPLEMENTATION_PLAN`` is the Implementation Planner's section document
+    (orientation, system check, pilot, monitoring, and the instructor guide's
+    and operator manual's narrative fields). ``SESSION_GUIDE`` is the element
+    list that used to live inside it as ``instructor_guide.session_guides``:
+    one node per delivery session, and the SOURCE of the P10/P11 delivery
+    provenance edges. It was promoted to an element type on 2026-09-07 for two
+    reasons. It is an ITEM LIST, and the rule since 2026-08-27 is that element
+    nodes are the single source of truth for every item list — a section node
+    holding one was the last exception. And it is the only part of the
+    implementation artifact whose length scales with the design: a planner
+    asked to name every activity id in one submit cannot see them all
+    (``tools.render_listing`` truncates at ``READ_CHAR_BUDGET``) and cannot
+    write them all under the completion cap, which is what the Developer tier
+    exists for. ``aggregate`` joins the nodes back under
+    ``instructor_guide.session_guides``, so the ADDIE output contract is
+    unchanged.
 
     There is no ``NEEDS_CONTEXT``/``EVALUATION`` node type: those were bundle
     containers in the prior design that duplicated data already held by real
@@ -51,6 +64,7 @@ class NodeType(StrEnum):
     ACTIVITY_PLAN = "activity_plan"
 
     IMPLEMENTATION_PLAN = "implementation_plan"
+    SESSION_GUIDE = "session_guide"
 
 
 class AlignmentGraph:
@@ -318,7 +332,8 @@ class AlignmentGraph:
         )
         return edges
 
-    def link_section_narrative(self, node_type: NodeType | str) -> None:
+    def link_section_narrative(self, node_type: NodeType | str,
+                               element_type: NodeType | str | None = None) -> None:
         """Structural ``narrates`` edges (non-registry — the ``precedes``
         class) from a narrative section node to every element of its type.
 
@@ -328,11 +343,18 @@ class AlignmentGraph:
         about. These edges are navigation, not construct-validity claims:
         they carry no ``relation_id``, so the docket, every check and all
         coverage machinery skip them — they exist only in
-        the dump and the visualizations. Idempotent (edge identity dedups)."""
+        the dump and the visualizations. Idempotent (edge identity dedups).
+
+        ``element_type`` names a DIFFERENT element pool when the narrative and
+        its elements are two types: ``implementation_plan_0`` carries the
+        instructor guide's framing (overview, facilitation tips,
+        troubleshooting) while the guides themselves are ``session_guide``
+        elements. Same relationship, two type names, and without it the plan
+        section is the island this method exists to prevent."""
         section_id = self.section_id(node_type)
         if self.get_node(section_id) is None:
             return
-        for node in self.element_nodes(node_type):
+        for node in self.element_nodes(element_type or node_type):
             self.add_edge(
                 "narrates", section_id, node["id"], established_by="provenance",
                 rationale=f"{section_id} carries the section-level narrative for {node['id']}.",

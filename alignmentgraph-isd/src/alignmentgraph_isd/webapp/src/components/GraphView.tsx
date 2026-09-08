@@ -11,6 +11,8 @@ cytoscape.use(dagre)
 interface Props {
   graph: AlignmentGraphPayload | null
   graphRev: number
+  /** Which run the graph belongs to; the viewport is fitted once per run. */
+  runId: string | null
   selection: Selection
   onSelect: (selection: Selection) => void
 }
@@ -29,7 +31,7 @@ const LAYOUT = {
 /** Smallest zoom at which node labels are still readable. */
 const MIN_READABLE_ZOOM = 0.65
 
-export function GraphView({ graph, graphRev, selection, onSelect }: Props) {
+export function GraphView({ graph, graphRev, runId, selection, onSelect }: Props) {
   const container = useRef<HTMLDivElement>(null)
   const cy = useRef<cytoscape.Core | null>(null)
   const hasFitted = useRef(false)
@@ -45,6 +47,14 @@ export function GraphView({ graph, graphRev, selection, onSelect }: Props) {
   // time, and the layout would run against an instance already destroyed.
   const selectRef = useRef(onSelect)
   selectRef.current = onSelect
+
+  // Fit once per RUN, not once per mount. Selecting another run in the sidebar
+  // swaps the elements under a canvas that keeps the old pan and zoom, and the
+  // new graph is laid out somewhere else entirely — so without this the reader
+  // switches run and gets a blank canvas over a node count that says otherwise.
+  // The filters deliberately survive the switch: comparing two runs means
+  // looking at both through the same one.
+  useEffect(() => { hasFitted.current = false }, [runId])
 
   useEffect(() => {
     if (!container.current) return

@@ -45,9 +45,12 @@ _SECTION_FIELDS: dict[str, dict[str, tuple[type | tuple[type, ...], bool]]] = {
 }
 
 #: Inner keys of the section fields that are DOCUMENTS with a fixed shape —
-#: today the six implementation artifacts, taken key for key from
-#: ``rulebook.SCHEMA_IMPLEMENTATION``. Checked exactly like the top level
-#: (presence, type, placeholder), one level down.
+#: today the six implementation artifacts. Checked exactly like the top level
+#: (presence, type, placeholder), one level down. This is the upstream
+#: source for those six artifacts' deep tool-call schema too
+#: (``core/agentic/artifact_schemas.py``, since 2026-09-08) — read from here
+#: to build the ``submit_*`` tool's ``parameters``, never retyped by hand, so
+#: the two cannot disagree about a field's presence or type.
 #:
 #: MEASURED (run e81b8108): with only the top level declared, an
 #: ``instructor_guide`` written under invented keys (``instructor_role``,

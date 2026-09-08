@@ -42,9 +42,19 @@ MAX_SETS_HARD_CAP = 12
 #: and an objective costs about 1.5 activities (~950). Rounded UP, because a
 #: budget that holds only for the average fails on exactly the sets that matter.
 #:
+#: ``session_guide`` counts a different obligation from the other three: one
+#: SCHEDULED ARTIFACT (an activity to deliver or a material to hand out), not
+#: one artifact produced. A session guide is a summary — it names several
+#: activities in one entry — so the cost of scheduling one activity is that
+#: entry's share of the guide's JSON (~800 chars over ~5 activities plus the
+#: guide's own fixed fields), rounded up the same way. The obligation has to
+#: be the scheduled artifact rather than the guide, because that is what the
+#: plan divides and what P10/P11 coverage is checked over.
+#:
 #: Estimates, from a small sample on ONE scenario. Revisit them against ladder
 #: data rather than treating them as constants.
-UNIT_CHARS = {"assessment": 1800, "activity": 1300, "material": 1800}
+UNIT_CHARS = {"assessment": 1800, "activity": 1300, "material": 1800,
+              "session_guide": 400}
 
 #: What ONE Developer call may be asked to produce, in characters of JSON.
 #:
@@ -663,6 +673,166 @@ def material_work_units(modules: list[dict], media_selections: list[dict],
     return number_sets(sets)
 
 
+# ── implementation: session blocks over scheduled activities/materials ─────
+
+#: Activities one delivery session carries when the plan does not say. A
+#: backstop only: the planner is the one step that knows whether a session is a
+#: single long workshop or a short class, and it is asked
+#: (``expected_sessions``).
+ACTIVITIES_PER_SESSION = 4
+
+
+def _expected_sessions(raw: object, scheduled_count: int) -> int:
+    """How many session guides one block writes: the planner's own count,
+    clamped, or the deterministic estimate from what the block schedules."""
+    fallback = max(1, -(-max(1, scheduled_count) // ACTIVITIES_PER_SESSION))
+    try:
+        value = int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return fallback
+    if value < 1:
+        return fallback
+    return min(value, MAX_EXPECTED_PER_SET)
+
+
+def _scheduled(work_set: WorkSet) -> tuple[list[str], list[str]]:
+    return (list(work_set.payload.get("activity_ids") or []),
+            list(work_set.payload.get("material_ids") or []))
+
+
+def _session_block(activities: list[str], materials: list[str], *, source: str,
+                   theme: str = "", rationale: str = "", expected: object = None) -> WorkSet:
+    return WorkSet(
+        set_id="", objectives=(), pairs=(),
+        payload={"activity_ids": activities, "material_ids": materials,
+                 "block_theme": theme, "rationale": rationale,
+                 "expected_sessions": _expected_sessions(
+                     expected, len(activities) + len(materials))},
+        source=source)
+
+
+def _chunk_scheduled(activities: list[str], materials: list[str], limit: int,
+                     *, source: str, theme: str = "") -> list[WorkSet]:
+    """Break a stretch of delivery into blocks of at most ``limit`` scheduled
+    artifacts, activities first. One combined list rather than two, so a block
+    is bounded by what its Developer must actually name."""
+    combined = [("a", i) for i in activities] + [("m", i) for i in materials]
+    return [
+        _session_block([i for kind, i in chunk if kind == "a"],
+                       [i for kind, i in chunk if kind == "m"],
+                       source=source, theme=theme)
+        for chunk in _chunks(combined, max(1, limit))
+    ] or []
+
+
+def normalize_implementation_dev_plan(parsed, activity_ids, material_ids,
+                                       first_session: int = 1
+                                       ) -> tuple[list[WorkSet], dict]:
+    """Divide the delivery into session blocks, one per Developer call.
+
+    The GROUND TRUTH is every activity and every material the design holds, and
+    the invariant this module upholds everywhere applies here too: each of them
+    lands in exactly one returned block whatever the planner proposed. That is
+    what makes P10/P11 coverage a function of a deterministic division rather
+    than of whether a small model remembered to name 161 ids — which it cannot
+    do in one submit and cannot even SEE in one read (``tools.render_listing``
+    stops at ``READ_CHAR_BUDGET``).
+
+    Assigning the work is not the same as fabricating the record: a block says
+    which artifacts a Developer is responsible for scheduling, and the P10/P11
+    edge still comes from the ``activity_ids`` that Developer wrote. Appending
+    an id to a finished session guide to close a coverage gap is the thing
+    ``audit.AUDIT_ONLY_VIOLATION_TYPES`` rules out, and nothing here does it.
+
+    Blocks are also given their SESSION NUMBERS here (``first_session``), for
+    the reason artifact ids are assigned by the harness: Developers never
+    coordinate, so two of them left to number their own sessions both start at
+    one. ``first_session`` is where this round's numbering begins — a replan
+    round passes one past what the committed guides already use, for the same
+    reason ``replan.tag_round`` strides the ordinal.
+    """
+    acts = [a for a in (_bare(x) for x in (activity_ids or [])) if a]
+    mats = [m for m in (_bare(x) for x in (material_ids or [])) if m]
+    stats = _empty_stats(len(acts) + len(mats))
+    if not acts and not mats:
+        return [], stats
+    known_acts, known_mats = set(acts), set(mats)
+
+    raw_blocks = (parsed or {}).get("session_blocks") if isinstance(parsed, dict) else None
+    sets: list[WorkSet] = []
+    claimed: set[str] = set()
+    if isinstance(raw_blocks, list):
+        for raw in raw_blocks:
+            if not isinstance(raw, dict):
+                continue
+            valid: dict[str, list[str]] = {}
+            for field_name, known in (("activity_ids", known_acts),
+                                       ("material_ids", known_mats)):
+                named = list(dict.fromkeys(
+                    _bare(r) for r in (raw.get(field_name) or []) if _bare(r)))
+                in_design = [r for r in named if r in known]
+                stats["dropped_lo_refs"] += len(named) - len(in_design)
+                # An id already claimed by an earlier block stays there. Two
+                # blocks naming one activity is two Developers each writing
+                # "the" session that delivers it, which nothing downstream
+                # objects to because coverage asks "at least one".
+                fresh = [r for r in in_design if r not in claimed]
+                stats["duplicate_pairs"] += len(in_design) - len(fresh)
+                valid[field_name] = fresh
+            if not (valid["activity_ids"] or valid["material_ids"]):
+                continue
+            claimed.update(valid["activity_ids"] + valid["material_ids"])
+            sets.append(_session_block(
+                valid["activity_ids"], valid["material_ids"], source="llm",
+                theme=str(raw.get("block_theme", "")),
+                rationale=str(raw.get("rationale", "")),
+                expected=raw.get("expected_sessions")))
+
+    had_llm_sets = bool(sets)
+    limit = max_units("session_guide")
+    leftover_acts = [a for a in acts if a not in claimed]
+    leftover_mats = [m for m in mats if m not in claimed]
+    appended = _chunk_scheduled(leftover_acts, leftover_mats, limit,
+                                source="appended" if had_llm_sets else "fallback")
+    sets += appended
+    stats["appended_sets"] = len(appended)
+    stats["fallback_used"] = not had_llm_sets
+
+    def _merge(tail: list[WorkSet]) -> WorkSet:
+        merged_acts = list(dict.fromkeys(a for ws in tail for a in _scheduled(ws)[0]))
+        merged_mats = list(dict.fromkeys(m for ws in tail for m in _scheduled(ws)[1]))
+        return _session_block(merged_acts, merged_mats, source=tail[-1].source)
+
+    def _split(ws: WorkSet, size_limit: int) -> list[WorkSet]:
+        activities, materials = _scheduled(ws)
+        if len(activities) + len(materials) <= size_limit:
+            return [ws]
+        return _chunk_scheduled(activities, materials, size_limit,
+                                source=ws.source,
+                                theme=str(ws.payload.get("block_theme", "")))
+
+    numbered = _cap_and_number(sets, max(len(acts) + len(mats), 1), "SB", _merge,
+                               family="session_guide", split=_split)
+    stats["set_count"] = len(numbered)
+    stats["oversized_splits"] = (
+        numbered[0].payload.pop("_oversized_splits", 0) if numbered else 0)
+    return _number_sessions(numbered, first_session), stats
+
+
+def _number_sessions(sets: list[WorkSet], first_session: int = 1) -> list[WorkSet]:
+    """Give each block the session numbers it writes, running in plan order."""
+    out: list[WorkSet] = []
+    next_session = max(1, first_session)
+    for ws in sets:
+        activities, materials = _scheduled(ws)
+        count = _expected_sessions(ws.payload.get("expected_sessions"),
+                                   len(activities) + len(materials))
+        out.append(replace(ws, payload={**ws.payload, "expected_sessions": count,
+                                         "first_session": next_session}))
+        next_session += count
+    return out
+
+
 # ── fan-in helpers: shared by every family's finalize step ─────────────────
 
 def pending_set_ids(work_sets: list[WorkSet], payloads: list[dict]) -> list[str]:
@@ -910,3 +1080,29 @@ def render_material_set(work_set: WorkSet) -> str:
             lines.append(f"  [CONSTRAINT:{constraint.get('id', '')}] {json.dumps(constraint, ensure_ascii=False)}")
     return "\n".join(lines)
 
+
+def render_session_set(work_set: WorkSet) -> str:
+    first = int(work_set.payload.get("first_session") or 1)
+    count = int(work_set.payload.get("expected_sessions") or 1)
+    last = first + count - 1
+    sessions = ", ".join(str(n) for n in range(first, last + 1))
+    lines = [f"set_id: {work_set.set_id}",
+             f"write exactly {count} session guide{'' if count == 1 else 's'}, "
+             f"numbered {sessions} — those session numbers are yours, and another "
+             "developer holds the rest."]
+    activities, materials = _scheduled(work_set)
+    if activities:
+        lines.append("activities YOUR sessions deliver (every one must appear in the "
+                     "``activity_ids`` of one of your guides):")
+        lines.append("  " + ", ".join(activities))
+    if materials:
+        lines.append("materials YOUR sessions hand out (every one must appear in the "
+                     "``material_ids`` of one of your guides):")
+        lines.append("  " + ", ".join(materials))
+    theme = work_set.payload.get("block_theme")
+    if theme:
+        lines.append(f"block_theme: {theme}")
+    rationale = work_set.payload.get("rationale")
+    if rationale:
+        lines.append(f"rationale: {rationale}")
+    return "\n".join(lines)

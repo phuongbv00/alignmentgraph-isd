@@ -56,7 +56,6 @@ class SetOutput:
 
     schema_key: str
     id_field: str
-    schema: str
     rules: str
     #: Fields holding references to OTHER artifacts of this same family, which
     #: the model writes as 1-based POSITIONS in the list it is submitting
@@ -71,12 +70,60 @@ class SetOutput:
     #: `_establish` reads exactly this field to build the `precedes` edges.
     self_ref_fields: tuple[str, ...] = ()
     element_type: str = ""
+    #: Per-ITEM errors for this output, or None for "a non-empty list is
+    #: enough". Read by BOTH arms (``set_step``'s validator and the single
+    #: arm's ``ReactLoop._validate``, through :func:`output_errors`): a rule
+    #: enforced on the Developer tier alone would be a rejection one side of
+    #: the decomposition axis gets and the other does not.
+    validate_items: Callable[[list], list[str]] | None = None
     #: Id prefix this family's artifacts are numbered under ("AT-01",
     #: "TLA-01"). The same convention the rulebook schemas show, declared here
     #: because the commit renumbers each set's items into the id block the plan
     #: reserved for it — see dev_plans.remap_and_tag.
     id_prefix: str = ""
     doc_key: tuple[str, str] = ("", "")
+
+
+def output_errors(spec: "FanoutSpec", section: dict) -> list[str]:
+    """Errors for whatever fan-out output a submit carries, in either arm.
+
+    One implementation because the two arms submit the same artifacts by
+    different routes: a Developer's own submit in ``multi``, a batch inside the
+    stage submit in ``single``. Two copies would drift, and a drifted item rule
+    is a rejection on one side of the axis only.
+    """
+    errors: list[str] = []
+    for output in spec.outputs:
+        items = (section or {}).get(output.schema_key)
+        if items is None:
+            continue
+        if not isinstance(items, list):
+            errors.append(f"{output.schema_key}: expected a list of items")
+            continue
+        if output.validate_items is not None:
+            errors += output.validate_items(items)
+    return errors
+
+
+def session_guide_errors(guides: list) -> list[str]:
+    """A session guide with prose but no ids schedules nothing.
+
+    ``activity_ids`` is the field P10 is established from, and the rule the
+    guides exist to satisfy is that between them they account for every
+    activity in the design. The equivalent guarantee used to sit in
+    ``validate_implementation`` — it moved here with the artifact (2026-09-07),
+    because the stage no longer writes the guides.
+    """
+    errors: list[str] = []
+    for index, guide in enumerate(guides):
+        if not isinstance(guide, dict):
+            errors.append(f"session_guides[{index}]: expected an object")
+            continue
+        if not [r for r in (guide.get("activity_ids") or []) if str(r).strip()]:
+            errors.append(
+                f"session_guides[{index}].activity_ids: a session guide that names no "
+                "activity ids schedules nothing — list the exact ids this session delivers")
+    return errors
 
 
 @dataclass(frozen=True)
@@ -165,10 +212,50 @@ def _has_section(state, node_type: str, doc_key: str) -> bool:
     return bool(state.get(doc_key))
 
 
-def _has_modules(state) -> bool:
+def _element_ids(state, node_type: str, doc: tuple[str, str], id_field: str = "id") -> list[str]:
     if hasattr(state, "element_nodes"):
-        return bool(state.element_nodes(NodeType.CONTENT))
-    return bool((state.get("content") or {}).get("content_modules"))
+        return [n["data"].get(id_field) for n in state.element_nodes(node_type)
+                if n["data"].get(id_field)]
+    return [i.get(id_field) for i in state.items(*doc)
+            if isinstance(i, dict) and i.get(id_field)]
+
+
+def _session_sets(state, parsed: dict) -> tuple[list, dict]:
+    return dev_plans.normalize_implementation_dev_plan(
+        parsed.get("dev_plan"),
+        _element_ids(state, NodeType.ACTIVITY, ("activity", "learning_activities")),
+        _element_ids(state, NodeType.MATERIAL, ("material", "learner_materials")))
+
+
+def _every_part_dispatch_done(stage: str, state) -> bool:
+    """Every artifact the stage DECLARES, not just its dispatch input.
+
+    ``assessment`` and ``activities`` can afford a weaker gate ("the plan
+    section exists") because their dispatch is one artifact plus its grouping.
+    These two have more, so a gate that passes on one artifact lets a stage
+    that lost another straight through.
+
+    implementation: MEASURED on the partial-deposit fixture — ``monitoring``
+    arrived as an empty dict five times, the dev plan landed on the sixth
+    call, the regen loop broke on the plan alone, and the artifact shipped
+    empty.
+
+    content: MEASURED (run single_20260908_002508) — the gate was
+    ``_has_modules``, which counted CONTENT nodes only, so a stage that gave
+    up on "turn budget exhausted" with MOD-01..08 and ZERO media selections
+    passed it. ``dev_plans.material_work_units`` then built one unit per
+    module with ``media_selections: []``, ``render_material_set`` dropped both
+    of its media clauses, and ``alignment.match_p6_realizes`` had an empty
+    source set: 15 materials, P6 30, every one of them unconditional. Making
+    ``media_selections`` required fixes when the LOOP returns; only this fixes
+    what SHIPS. The regen it triggers is narrow, not a second content stage —
+    ``loop._run`` returns with zero LLM calls when the step is already done,
+    the rebind offers only the missing artifact's submit, and
+    ``_still_needed`` names what is already committed as not-to-resend."""
+    from .specialists import STEPS, missing_parts
+
+    step = next(s for s in STEPS if s.name == stage)
+    return not missing_parts(step, state)
 
 
 SPECS: dict[str, FanoutSpec] = {
@@ -187,7 +274,6 @@ SPECS: dict[str, FanoutSpec] = {
         outputs=(
             SetOutput(
                 schema_key="assessment_tools", id_field="item_id",
-                schema=rules.SCHEMA_ASSESSMENT_ITEMS,
                 rules=rules.RULES_ASSESSMENT_ITEMS_SET + "\n" + rules.RULES_RUBRICS_ITEM,
                 element_type=NodeType.ASSESSMENT, id_prefix="AT",
                 doc_key=("assessment", "assessment_tools")),
@@ -207,7 +293,7 @@ SPECS: dict[str, FanoutSpec] = {
         outputs=(
             SetOutput(
                 schema_key="learning_activities", id_field="id",
-                schema=rules.SCHEMA_ACTIVITIES, rules=rules.RULES_ACTIVITIES_SET,
+                rules=rules.RULES_ACTIVITIES_SET,
                 self_ref_fields=("prerequisite_activities",),
                 element_type=NodeType.ACTIVITY, id_prefix="TLA",
                 doc_key=("activity", "learning_activities")),
@@ -227,15 +313,37 @@ SPECS: dict[str, FanoutSpec] = {
         outputs=(
             SetOutput(
                 schema_key="learner_materials", id_field="id",
-                schema=rules.SCHEMA_MATERIALS, rules=rules.RULES_MATERIALS_UNIT,
+                rules=rules.RULES_MATERIALS_UNIT,
                 element_type=NodeType.MATERIAL, id_prefix="MAT",
                 doc_key=("material", "learner_materials")),
         ),
         developer_reads=(NodeType.CONTENT, NodeType.ACTIVITY),
         render=dev_plans.render_material_set, plan_sets=_material_sets,
-        dispatch_done=_has_modules),
+        dispatch_done=lambda st: _every_part_dispatch_done("content", st)),
+    "implementation": FanoutSpec(
+        stage="implementation",
+        developer_identity="SessionGuideDeveloper",
+        developer_persona=(
+            "You are an expert instructional designer writing the instructor's session guides "
+            "for ONE block of the delivery (ADDIE Implementation phase) — the sessions your "
+            "assigned block names, scheduling exactly the activities and materials it lists. "
+            "You are NOT responsible for any other session; another Developer is handling "
+            "those."),
+        set_intro=("Write the session guides for YOUR ASSIGNED BLOCK below: what happens in each "
+                   "session, and the exact ids it delivers and hands out."),
+        set_header="=== YOUR ASSIGNED BLOCK ===",
+        outputs=(
+            SetOutput(
+                schema_key="session_guides", id_field="id",
+                rules=rules.RULES_SESSION_GUIDES_SET,
+                validate_items=session_guide_errors,
+                element_type=NodeType.SESSION_GUIDE, id_prefix="SG",
+                doc_key=("implementation_plan", "session_guides")),
+        ),
+        developer_reads=(NodeType.ACTIVITY, NodeType.MATERIAL),
+        render=dev_plans.render_session_set, plan_sets=_session_sets,
+        dispatch_done=lambda st: _every_part_dispatch_done("implementation", st)),
 }
-
 
 
 #: Said once, in every Developer's own prompt. The read tools stay — a Developer
@@ -246,9 +354,11 @@ SPECS: dict[str, FanoutSpec] = {
 #: the arm scored 18/25 on the judge's redundancy dimension against react-isd's
 #: 25 with everything visible to it.
 _ASSIGNMENT_IS_COMPLETE = (
-    "Everything your assignment names is written out below in full — the objectives, "
-    "the items, the modules. You do not need to look them up. Use the read tools only "
-    "for something your assignment does NOT name.")
+    "Everything your assignment names is written out below — in full where you have to work "
+    "from the artifact itself (the objectives, the items, the modules), and as one line per "
+    "item where your job is to name ids (the activities and materials a session block "
+    "schedules). You do not need to look them up. Use the read tools only for something your "
+    "assignment does NOT name, or when one line is not enough.")
 
 #: Cap on the rendered assignment a Developer is handed. The renderers dump
 #: their assigned items as full JSON and are uncapped, so a family that
@@ -278,8 +388,8 @@ def _resolved_references(spec: FanoutSpec, work_set: dev_plans.WorkSet, state) -
     if state is None:
         return ""
     blocks = [
-        _resolve(state, label, node_type, doc, ids, id_field)
-        for node_type, label, doc, ids, id_field in _reference_blocks(work_set)
+        _resolve(state, label, node_type, doc, ids, id_field, compact=compact)
+        for node_type, label, doc, ids, id_field, compact in _reference_blocks(work_set)
     ]
     return "".join(b for b in blocks if b)
 
@@ -294,37 +404,66 @@ def _reference_blocks(work_set: dev_plans.WorkSet) -> tuple[tuple, ...]:
     """
     return (
         (NodeType.OBJECTIVE, "The objectives your set names",
-         ("objective", "learning_objectives"), work_set.objectives, "id"),
+         ("objective", "learning_objectives"), work_set.objectives, "id", False),
         # An activity set names the assessment items its activities prepare for,
         # BY ID. A Developer told to prepare learners for AT-03 and not told what
         # AT-03 asks has no choice but to go and read it.
         (NodeType.ASSESSMENT, "The assessment items your set prepares learners for",
          ("assessment", "assessment_tools"),
-         tuple(work_set.payload.get("assessment_items") or ()), "item_id"),
+         tuple(work_set.payload.get("assessment_items") or ()), "item_id", False),
+        # A session block schedules activities and materials by id, and it
+        # schedules MANY of them — that is the whole reason this family fans
+        # out. So these two are rendered COMPACT: one line each, the same row
+        # ``read_nodes`` answers with. Rendered whole they are also the two
+        # longest artifacts the harness writes (a material's ``content`` is a
+        # learner-facing script), and a block of 27 of them would blow through
+        # ``ASSIGNMENT_CHAR_CAP`` and be truncated — which loses ids, and a
+        # scheduled artifact whose id never reaches its Developer is a P10/P11
+        # gap by construction. What a guide needs is which activity is which;
+        # ``read_node`` is still bound for one that needs more.
+        (NodeType.ACTIVITY, "The activities your block delivers",
+         ("activity", "learning_activities"),
+         tuple(work_set.payload.get("activity_ids") or ()), "id", True),
+        (NodeType.MATERIAL, "The materials your block hands out",
+         ("material", "learner_materials"),
+         tuple(work_set.payload.get("material_ids") or ()), "id", True),
     )
 
 
 def resolved_labels(work_set: dev_plans.WorkSet) -> dict[str, str]:
     """``node_type -> heading`` for the pools this assignment renders in full."""
     return {str(node_type): label
-            for node_type, label, _doc, ids, _f in _reference_blocks(work_set) if ids}
+            for node_type, label, _doc, ids, _f, _c in _reference_blocks(work_set) if ids}
 
 
 def _resolve(state, label: str, node_type: str, doc: tuple[str, str],
-             ids: tuple, id_field: str) -> str:
-    """Render the artifacts named by ``ids``, in whichever state this arm holds."""
+             ids: tuple, id_field: str, *, compact: bool = False) -> str:
+    """Render the artifacts named by ``ids``, in whichever state this arm holds.
+
+    ``compact`` renders one LINE per artifact instead of its whole JSON, for a
+    pool a work set names by the dozen. Both substrates go through
+    ``tools.render_listing``: the prose items are the same dicts the graph
+    holds as ``data``, so wrapping them as nodes gives the two arms
+    byte-identical assignment text rather than a listing on one side and a
+    JSON dump on the other — a difference that would sit on the
+    ``context_mode`` axis instead of on the substrate.
+    """
     if not ids:
         return ""
     wanted = {dev_plans._bare(i) for i in ids}
     if hasattr(state, "element_nodes"):
         nodes = [n for n in state.element_nodes(node_type)
                  if dev_plans._bare(n["data"].get(id_field, "")) in wanted]
-        rendered = tools.render_nodes(nodes) if nodes else ""
     else:
-        items = [i for i in state.items(*doc)
+        nodes = [{"type": str(node_type), "id": f"{node_type}:{i.get(id_field)}", "data": i}
+                 for i in state.items(*doc)
                  if isinstance(i, dict) and dev_plans._bare(i.get(id_field, "")) in wanted]
-        rendered = "\n".join(json.dumps(i, ensure_ascii=False)[:tools.NODE_CHAR_CAP]
-                             for i in items)
+    if not nodes:
+        return ""
+    rendered = (tools.render_listing(nodes) if compact
+                else tools.render_nodes(nodes) if hasattr(state, "element_nodes")
+                else "\n".join(json.dumps(n["data"], ensure_ascii=False)[:tools.NODE_CHAR_CAP]
+                                for n in nodes))
     return f"\n\n{label}:\n{rendered}" if rendered.strip() else ""
 
 
@@ -347,7 +486,7 @@ def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
         items = (parsed or {}).get(primary)
         if not isinstance(items, list) or not items:
             return [f"{primary} must be a non-empty list"]
-        return []
+        return output_errors(spec, parsed)
 
     return replace(
         base,
@@ -356,7 +495,6 @@ def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
         persona=spec.developer_persona,
         intro=(f"{spec.set_intro}\n\n{_ASSIGNMENT_IS_COMPLETE}\n\n{spec.set_header}\n"
                f"{_capped(spec.render(work_set) + _resolved_references(spec, work_set, state))}"),
-        schema="\n\n".join(o.schema for o in spec.outputs),
         rules="\n".join(o.rules for o in spec.outputs),
         submit_fields=tuple((o.schema_key, "array", i == 0)
                             for i, o in enumerate(spec.outputs)),
@@ -497,6 +635,14 @@ def _establish(spec: FanoutSpec, state, committed: dict[str, list[str]]) -> None
                 if state.get_node(source):
                     state.add_edge("precedes", source, node_id, relation_id="",
                                    established_by="id", evidence=str(prereq))
+    elif spec.stage == "implementation":
+        alignment.establish_delivery(state, committed.get("session_guides", []))
+        # The plan section holds the guide's FRAMING and the guides are its
+        # elements, which is exactly what `narrates` is for. Without it
+        # `implementation_plan_0` is an edgeless island — the thing P10/P11
+        # were added to stop, back when they hung off the section itself.
+        state.link_section_narrative(NodeType.IMPLEMENTATION_PLAN,
+                                     NodeType.SESSION_GUIDE)
     elif spec.stage == "content":
         for node_id in committed.get("learner_materials", []):
             data = state.get_node(node_id)["data"]

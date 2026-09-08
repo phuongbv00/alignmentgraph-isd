@@ -481,13 +481,22 @@ class AgenticLLM:
     """Model caller for the agentic arm: native tool calling, truncation
     salvage, trajectory accounting.
 
-    Tool calls are the ONLY way this class reaches the model. The JSON-mode
-    ``__call__`` it used to carry had one caller left, the compaction
-    summariser, and went with it (2026-09-05): a summary written under
+    Tool calls are the ONLY way an AGENT reaches the model. That invariant is
+    unchanged and load-bearing; what changed 2026-09-08 is that it is now
+    stated about the agent rather than about this class, because the class also
+    carries ``call_prose`` — the HARNESS's own call, made by the compaction
+    hook under ``WORKFLOW_ORCHESTRATOR``, binding no tools and publishing no
+    context. An agent never chooses to compact, so compaction is not an action
+    in its protocol and must not be dressed as one; and the accounting both
+    paths share (``_begin``/``_account``) is what keeps the hook's price on the
+    books. Repairs never call the model at all (2026-09-03).
+
+    The JSON-mode ``__call__`` this class used to carry stays gone and must not
+    come back in any form: a summary written under
     ``response_format=json_object`` came back as JSON, was rejected as
     non-prose, and cost a full completion every time the window filled —
     measured on run e81b8108: three calls, 11.8k completion tokens, nothing
-    kept. Repairs never call the model either (2026-09-03).
+    kept. ``call_prose`` is that call with the one field that broke it removed.
     """
 
     def __init__(self, config, trajectory, identity: str) -> None:
@@ -539,16 +548,66 @@ class AgenticLLM:
             self.trajectory.log_recovery_event(self.identity, "llm_error", "", str(exc))
             return ToolTurn()
 
-    def _invoke_tools(self, llm, messages: list[dict]) -> ToolTurn:
+    def call_prose(self, messages: list[dict]) -> str:
+        """One model call with NO tools bound and NO ``response_format``.
+
+        Not an agent's turn, and the reason this method can exist at all: the
+        ONLY caller is the compaction hook (``core/agentic/compaction.py``),
+        which runs under ``WORKFLOW_ORCHESTRATOR`` and whose two-message
+        conversation is never published as any agent's context. Both halves of
+        that are held shut by ``tests/test_compaction.py``, the one-caller rule
+        included — a prose path that drifts back into an agent's NAME is
+        precisely what was removed 2026-09-03, and the guard is what keeps the
+        difference checkable rather than merely intended.
+
+        NO ``response_format``, ever. v1 sent ``{"type": "json_object"}`` and
+        then asked for prose; a compliant backend answered with a JSON object
+        and the summariser threw it away as non-prose — run e81b8108, three
+        calls, 11.8k completion tokens, nothing kept. That is the failure this
+        signature exists to make unrepeatable.
+        """
+        if self.config.llm_factory is None:
+            self.trajectory.log_llm_call(0, 0)
+            self.trajectory.log_recovery_event(
+                self.identity, "llm_error", "", "llm_factory not set — cannot call LLM")
+            return ""
+        try:
+            raw_llm = self.config.llm_factory()
+            started = self._begin(messages)
+            with gate_for(self.config).hold():
+                result = raw_llm.invoke(messages)
+        except Exception as exc:  # noqa: BLE001 - a summary is never load-bearing
+            self.trajectory.log_llm_call(0, 0)
+            self.trajectory.log_recovery_event(self.identity, "llm_error", "", str(exc))
+            return ""
+        content, _calls, _cut, _reasoning = self._account(result, messages, started)
+        return content
+
+    def _begin(self, messages: list[dict]) -> float:
+        """Announce the call and start its clock.
+
+        ``llm_started``/``llm_finished`` bracket every model call the package
+        makes and are the only signal during the ~50 s one takes, so a new call
+        path has to open with this or a watcher goes quiet for its duration."""
         self.trajectory.emit("llm_started", {
             "agent": self.identity,
             "prompt_chars": _prompt_chars_any(messages),
             "message_count": len(messages),
             "retries_left": 0,
         })
-        started = time.time()
-        with gate_for(self.config).hold():
-            result = llm.invoke(messages)
+        return time.time()
+
+    def _account(self, result, messages: list[dict],
+                 started: float) -> tuple[str, list, bool, str]:
+        """Everything a model call must leave behind: its flattened content, its
+        tool calls, whether it was cut and its reasoning channel — plus
+        ``llm_finished``, the chars-per-token measurement, the ``llm_call``
+        action, the token totals and the thinking-only reply.
+
+        ONE copy, so that a second way into the model cannot quietly leave the
+        cost table. Not hypothetical: the compaction hook (2026-09-08) IS a
+        second way in, and being able to state its price is the whole reason it
+        was allowed back."""
         content = getattr(result, "content", "") or ""
         if not isinstance(content, str):
             # Some backends return content as a list of blocks; the loop only
@@ -575,22 +634,29 @@ class AgenticLLM:
             prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
             tool_calls=len(calls), finish_reason=stopped, attempt_of_retries_left=0)
         self.trajectory.log_llm_call(prompt_tokens, completion_tokens)
-        cut = was_truncated(result)
+        extra = getattr(result, "additional_kwargs", None) or {}
+        reasoning = str(extra.get("reasoning_content") or "") if isinstance(extra, dict) else ""
+        if reasoning and not content.strip():
+            # MEASURED (run 24343e4d): 12 of 78 calls, 47-405 billed completion
+            # tokens each, every one charged a full stage turn as
+            # `invalid_action`. Recorded HERE, at the one path EVERY model call
+            # goes through — both arms and, since 2026-09-08, the compaction
+            # hook — so the rate is comparable across the axis and is
+            # attributable to the serving posture rather than to the model. The
+            # fix is `disable_thinking` on the factory; this is what makes its
+            # absence visible when it is not set.
+            self.trajectory.log_recovery_event(
+                self.identity, "thinking_only_reply",
+                f"{completion_tokens} completion tokens, no content, no tool call",
+                reasoning[:200])
+        return content, calls, was_truncated(result), reasoning
+
+    def _invoke_tools(self, llm, messages: list[dict]) -> ToolTurn:
+        started = self._begin(messages)
+        with gate_for(self.config).hold():
+            result = llm.invoke(messages)
+        content, calls, cut, reasoning = self._account(result, messages, started)
         if not calls:
-            extra = getattr(result, "additional_kwargs", None) or {}
-            reasoning = str(extra.get("reasoning_content") or "") if isinstance(extra, dict) else ""
-            if reasoning and not content.strip():
-                # MEASURED (run 24343e4d): 12 of 78 calls, 47-405 billed
-                # completion tokens each, every one charged a full stage turn
-                # as `invalid_action`. Recorded HERE, at the one call path both
-                # arms share, so the rate is comparable across the axis and is
-                # attributable to the serving posture rather than to the model.
-                # The fix is `disable_thinking` on the factory; this is what
-                # makes its absence visible when it is not set.
-                self.trajectory.log_recovery_event(
-                    self.identity, "thinking_only_reply",
-                    f"{completion_tokens} completion tokens, no content, no tool call",
-                    reasoning[:200])
             return ToolTurn(text=content, message=result, truncated=cut,
                             reasoning=reasoning)
         # Raw here; the loop coerces against the SPEC it bound (only it knows
@@ -853,12 +919,15 @@ def respec(messages: list, step, brief: str) -> str:
     return "\n\nThe contract for this stage, again:\n" + brief
 
 
-#: What replaces what was taken away. The count and the way back are always
-#: true — only observations are dropped, and their findings are in the design
-#: state. Deterministic and free, on purpose: a model-written summary of the
-#: dropped turns was tried (2026-09-03 → 2026-09-05) and cost one full
-#: completion per compaction for a summary the SLM never delivered — see
-#: ``compact`` below.
+#: What replaces what was taken away. The bracketed part is always true and
+#: costs nothing — only observations are dropped, and their findings are in the
+#: design state — so it stands whatever the summariser does. A model-written
+#: summary of the dropped turns is folded in AFTER it by ``compaction_note``
+#: when the compaction hook delivered one (``core/agentic/compaction.py``); a
+#: run where it never does reads exactly as this note has always read. Keeping
+#: the two separable is the point: the count is a fact about the trim, the
+#: summary is a claim by a model, and a reader of the transcript can tell them
+#: apart.
 _COMPACTED_NOTE = (
     "[{count} earlier turn(s) of this conversation were removed to stay inside "
     "the context window — the oldest tool results, nothing you were told to do. "
@@ -882,27 +951,51 @@ _BRIEF_LOST_NOTE = (
 )
 
 
-def compaction_note(count: int, lost: tuple | list = ()) -> dict:
-    """The note itself, as a turn the model actually sees."""
+def compaction_note(count: int, lost: tuple | list = (), *,
+                    summary: str = "") -> dict:
+    """The note itself, as a turn the model actually sees.
+
+    The bracket closes before the summary begins: the count and the brief-lost
+    sentence are harness facts, the summary is a model's account of turns the
+    model can no longer see, and running them together would let the second
+    borrow the authority of the first.
+
+    The summary rides as a key on the dict as well as in the text, so the next
+    fold reads it back with ``running_summary`` instead of parsing its own
+    prose out of the note. ``serialize_messages`` drops unknown keys before
+    anything is sent, exactly as it already does for ``COMPACTION_NOTE``.
+    """
     content = _COMPACTED_NOTE.format(count=count)
     if lost:
         content = content.rstrip("]") + _BRIEF_LOST_NOTE.format(
             stages=", ".join(lost)) + "]"
-    return {"role": "user", "content": content, COMPACTION_NOTE: True}
+    if summary.strip():
+        content += f"\n\nWhat those turns established:\n{summary.strip()}"
+    return {"role": "user", "content": content,
+            COMPACTION_NOTE: True, "summary": summary}
 
 
-def _with_note(messages: list, count: int, lost: tuple | list = ()) -> list:
+def running_summary(messages: list) -> str:
+    """The summary the current note carries, for the next fold to build on."""
+    for message in messages:
+        if isinstance(message, dict) and message.get(COMPACTION_NOTE):
+            return str(message.get("summary") or "")
+    return ""
+
+
+def _with_note(messages: list, count: int, lost: tuple | list = (), *,
+               summary: str = "") -> list:
     """The transcript with its compaction note current — one note, rewritten,
     never a second one. It sits where the dropped turns were: after the system
     turn (the only one `trim_history` protects) and before what survived."""
     head = messages[:1]
     body = [m for m in messages[1:]
             if not (isinstance(m, dict) and m.get(COMPACTION_NOTE))]
-    return head + [compaction_note(count, lost)] + body
+    return head + [compaction_note(count, lost, summary=summary)] + body
 
 
 def compact(messages: list, dropped: list, total: int, *, trajectory,
-            stats: dict, restore=None, budget: int = 0) -> list:
+            stats: dict, restore=None, budget: int = 0, llm=None) -> list:
     """Record what just went, in the conversation and in the trace.
 
     ONE implementation, called identically by both arms — which is what makes
@@ -912,16 +1005,21 @@ def compact(messages: list, dropped: list, total: int, *, trajectory,
     showing its own mechanism, and ``stats`` counts it so the cost can be
     stated rather than implied.
 
-    Deterministic: no model call. The rolling model-written summary that used
-    to sit beside the note (``core/agentic/compaction.py``, 2026-09-03) was
-    removed 2026-09-05. It went through ``AgenticLLM``'s JSON-mode call while
-    asking for prose, so a compliant backend answered with a JSON object and
-    the summariser threw it away as non-prose — every compaction on run
-    e81b8108 logged "count only" after a 2.7-4.7k-token completion. A note
-    that costs nothing and is always true beats one that costs a completion
-    and was never kept; the findings it would have carried are in the design
-    state, one read away.
+    ``llm`` is the compaction HOOK's model caller — an ``AgenticLLM`` built
+    with the ``WORKFLOW_ORCHESTRATOR`` identity, never the agent's own. Given
+    one, the turns being dropped are folded into a rolling summary that rides
+    in the note (``core/agentic/compaction.py``); given ``None``, the note is
+    the count alone and nothing else changes. That fallback is not only for
+    tests: every failure mode of the hook lands on it, so a compaction always
+    succeeds whatever the model does.
+
+    The hook is the harness's call, not the agent's — the agent did not choose
+    to compact and is never shown that conversation, so nothing is bound for it
+    and no context is published in the agent's name. ``stats`` carries both
+    ``compactions`` and ``compaction_summaries``, and the difference is the
+    hook's failure rate on this model.
     """
+    from . import compaction
     from ..trajectory import WORKFLOW_ORCHESTRATOR
 
     stats["compactions"] = stats.get("compactions", 0) + 1
@@ -953,9 +1051,17 @@ def compact(messages: list, dropped: list, total: int, *, trajectory,
         else:
             still_lost.append(stage)
 
+    previous = running_summary(messages)
+    summary, outcome = previous, "count only"
+    if llm is not None:
+        with trajectory.acting_as(WORKFLOW_ORCHESTRATOR):
+            summary, outcome = compaction.summarize(llm, previous, dropped)
+        if outcome == "summarised":
+            stats["compaction_summaries"] = stats.get("compaction_summaries", 0) + 1
+
     # The note names only what could not be put back, so a model whose contract
     # is sitting right there is not sent to fetch it again.
-    kept = _with_note(messages, total, still_lost)
+    kept = _with_note(messages, total, still_lost, summary=summary)
     for _stage, brief in restored:
         kept.append({"role": "user", "content": brief})
 
@@ -964,7 +1070,12 @@ def compact(messages: list, dropped: list, total: int, *, trajectory,
         f"{len(dropped)} turn(s), {total} total"
         + (f", stage brief re-attached: {', '.join(s for s, _ in restored)}" if restored else "")
         + (f", stage brief lost: {', '.join(still_lost)}" if still_lost else ""),
-        f"live context now {_prompt_chars_any(kept)} chars")
+        # Both facts. The pre-2026-09-05 event said which of summarised/count
+        # only happened and not how big the context ended up; the one that
+        # replaced it said the size and not whether the completion bought
+        # anything. A run log has to answer both, because the paper reports the
+        # hook's failure rate against what it was spent on.
+        f"{outcome}; live context now {_prompt_chars_any(kept)} chars")
     return kept
 
 
@@ -992,7 +1103,10 @@ THINKING_ONLY_NUDGE = (
 #: stage) to refire on every following turn — one or two turns went each time,
 #: the next observation put the history back over the line, and one stage
 #: compacted three times where one would have done. Each firing is a note the
-#: model has to read past and, while the summariser existed, a model call.
+#: model has to read past AND a model call — the compaction hook folds the
+#: dropped turns into a summary — so the argument for the low-water mark is
+#: stronger now than when it was first written: a refiring trim spends a
+#: completion each time to say a little more about a little less.
 #: Draining to half the budget gives the conversation room to grow again
 #: before the next trim, so compaction is an event rather than a steady state.
 TRIM_LOW_WATER = 0.5
@@ -1025,6 +1139,9 @@ def trim_history(messages: list, budget: int = HISTORY_CHAR_BUDGET,
 
     * the TASK survives in the design state — every artifact it asked for is
       committed there or still listed as missing, which the tool results say;
+    * what the dropped turns ESTABLISHED survives in the note, folded there by
+      the compaction hook (``core/agentic/compaction.py``) — an improvement on
+      the count, never something the rest of this list depends on;
     * the SCHEMA and rules are in the turn and go back into it: `compact`'s
       ``restore`` re-attaches a stage turn a trim took, and a rejection
       re-attaches it too (``respec``);
@@ -1117,6 +1234,16 @@ class ToolLoop:
         self.design_brief = design_brief
         self.step = step
         self.llm = llm
+        #: The compaction HOOK's model caller, never this agent's. Compaction
+        #: is something the harness does over the agent's head — it did not
+        #: choose it and is not shown that conversation — so the call is
+        #: attributed to the orchestrator and publishes no context. Reusing
+        #: `self.llm` would book the orchestrator's completion in the agent's
+        #: column and leave an `llm_call` under an agent name with no context
+        #: to account for it, which is the shape
+        #: `test_every_published_context_belongs_to_a_tool_loop` exists to
+        #: forbid.
+        self._summariser = AgenticLLM(config, trajectory, WORKFLOW_ORCHESTRATOR)
         self.persona = persona or step.persona
         #: Which regen attempt this is. A stage that comes back empty is run
         #: again from a FRESH context, so each attempt is a different context
@@ -1188,6 +1315,11 @@ class ToolLoop:
             # and `multi` barely at all — the axis showing its own mechanism,
             # so it is counted, not smoothed away.
             "compactions": 0,
+            # ...and how many of those folds the model actually delivered.
+            # `compactions - compaction_summaries` is the hook's failure rate
+            # on this model, which is the number that says whether the
+            # completion it spends buys anything.
+            "compaction_summaries": 0,
             "context_len": 0, "batched_calls": 0, "markup_recovered": 0,
             "args_salvaged": 0, "truncated_turns": 0, "dropped_args": 0,
             # Turns spent fixing this stage's OWN violations, in this context.
@@ -1379,7 +1511,8 @@ class ToolLoop:
                 self.messages = compact(
                     self.messages, dropped, len(self.compacted),
                     trajectory=self.trajectory, stats=self.stats,
-                    restore=self._restore_brief, budget=self._history_budget)
+                    restore=self._restore_brief, budget=self._history_budget,
+                    llm=self._summariser)
 
             self.stats["context_len"] = max(
                 self.stats["context_len"], _prompt_chars_any(self.messages))
@@ -1653,11 +1786,15 @@ class ToolLoop:
                 # without it — but returning the instant the required ones
                 # land means the agent never gets the turn to send it, and
                 # before the split it simply travelled in the same payload.
-                # `media_selections` (P8 and its rubric item) and
-                # `non_instructional_strategies` are the optionals left,
-                # one per stage. (`dev_plan` was one too, until a stage
-                # with two optionals showed the nudge can only ever land
-                # one of them — it is required since 2026-09-05.)
+                # `non_instructional_strategies` (the activities stage) is
+                # the only optional left. (`dev_plan` was one too, until a
+                # stage with two optionals showed the nudge can only ever
+                # land one of them — required since 2026-09-05.
+                # `media_selections` was the other, until a stage that ran
+                # out of turns never REACHED the nudge at all and the
+                # fan-out shipped 15 materials against 0 media selections,
+                # every one of them a P6 violation — required since
+                # 2026-09-08, run single_20260908_002508.)
                 #
                 # Bounded at one because the cost is paid by the models that
                 # can least afford it: a weak model with nothing more to say
@@ -1833,12 +1970,33 @@ class ToolLoop:
 
         The hook is on the INSTANCE wrapper, not on the staticmethod: callers
         that only have a graph (tests, one-offs) go through the latter and have
-        no memory to write to."""
+        no memory to write to.
+
+        Every other call site pairs a check round with BOTH
+        ``trajectory.log_violations_result`` (the ``check`` event
+        ``aggregate._review_findings`` reads to synthesize
+        ``expert_review.findings``) and ``memory.observe_violations`` (the
+        ledger ``result["violations"]`` serves) — see ``run.py``. This one used
+        to call only the latter, so a violation whose ONLY sighting was here
+        (report-only types like P10/P11, which skip the deterministic net and
+        go straight to a repair turn) landed in the ledger but never in the
+        review: the two disagreed on exactly the runs where an agent repair
+        turn was the sole discovery.
+
+        Attributed to ``WORKFLOW_ORCHESTRATOR``, like every other check round
+        (``test_work_done_outside_a_tool_loop_is_the_orchestrator_s``): the
+        collection pass is the same deterministic function called everywhere
+        else, run by the harness rather than chosen by the agent — the agent's
+        own act is answering the repair-request turn that follows, not the
+        check that produced it."""
+        from .run import _serialize
         found = self.own_violations(
             self.state, self.design_brief, self.step, self.trajectory, self.llm)
         if found:
+            round_no = self.trajectory.log_violations_result(
+                _serialize(found, self.identity), agent=WORKFLOW_ORCHESTRATOR)
             self.memory.observe_violations(
-                found, round=len(self.trajectory.check_events),
+                found, round=round_no,
                 phase=self.label, family=self.step.family, shown_to_agent=True)
         return found
 
@@ -1932,10 +2090,11 @@ class ToolLoop:
         gave up — leaving ``design.course_goal`` null and C1, one of the five
         core construct-validity relations, at 0 of 50 objectives covered.
 
-        The target field is DERIVED from the step's own schema exemplar, not
-        declared in a table here: an artifact whose example object has exactly
-        ONE key has only one thing a bare string could be. That derivation
-        finds `course_goal -> statement` and, for the fan-out stages,
+        The target field is DERIVED from the step's own deep tool schema
+        (``artifact_schemas.ARTIFACT_SCHEMAS``), not declared in a table
+        here: an artifact whose schema has exactly ONE property has only one
+        thing a bare string could be. That derivation finds
+        `course_goal -> statement` and, for the fan-out stages,
         `dev_plan -> instrument_sets` / `activity_blocks`; it finds nothing for
         the multi-field artifacts, where a string would be a guess."""
         if not isinstance(args, dict):
@@ -1950,15 +2109,18 @@ class ToolLoop:
         return args
 
     def _single_key_fields(self) -> dict:
-        """``{artifact key: its only field}`` read off this step's schema."""
+        """``{artifact key: its only field}`` read off this step's own deep
+        tool schema."""
         cached = getattr(self.step, "_single_key_cache", None)
         if cached is None:
-            try:
-                example = json.loads(self.step.schema)
-            except (ValueError, TypeError):
-                example = {}
-            cached = {k: next(iter(v)) for k, v in example.items()
-                      if isinstance(v, dict) and len(v) == 1}
+            cached = {}
+            for key, json_type, _required in self.step.submit_fields:
+                if json_type != "object":
+                    continue
+                lookup = self.step.schema_keys.get(key, key)
+                properties = (tools.ARTIFACT_SCHEMAS.get(lookup) or {}).get("properties") or {}
+                if len(properties) == 1:
+                    cached[key] = next(iter(properties))
             object.__setattr__(self.step, "_single_key_cache", cached)
         return cached
 
@@ -2026,9 +2188,9 @@ class ToolLoop:
         label = self._resolved_labels.get(wanted)
         if not label:
             return ""
-        return (f"You already have every {wanted} your assignment names — they are "
-                f"written out in full under \"{label}\" in your assignment above. "
-                "Nothing further to read; use them and submit.")
+        return (f"You already have every {wanted} your assignment names — under "
+                f"\"{label}\" in your assignment above. Use them and submit; read one "
+                "by id only if you need more than the assignment shows.")
 
     def _retrieve(self, args: dict) -> str:
         """External-corpus retrieval as a tool: the agent chose to call it and

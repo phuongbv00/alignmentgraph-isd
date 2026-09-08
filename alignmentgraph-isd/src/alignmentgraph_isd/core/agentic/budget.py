@@ -14,7 +14,8 @@ together when they are next to each other.
 What deliberately does NOT live here: the **how big** caps — ``HISTORY_CHAR_BUDGET``
 and ``TRIM_LOW_WATER`` in ``loop``, ``NODE_CHAR_CAP`` / ``READ_CHAR_BUDGET`` in
 ``tools``, ``ASSIGNMENT_CHAR_CAP`` in ``fanout``, ``SET_OUTPUT_BUDGET`` in
-``dev_plans``. Those are properties of the renderer or the trimmer that enforces
+``dev_plans``, ``MAX_INPUT_CHARS`` / ``MAX_SUMMARY_CHARS`` in
+``compaction``. Those are properties of the renderer or the trimmer that enforces
 them, they are read at the point of enforcement and nowhere else, and reading
 one apart from the code that spends it tells you nothing.
 

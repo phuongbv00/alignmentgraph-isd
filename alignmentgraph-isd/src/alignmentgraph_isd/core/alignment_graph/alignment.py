@@ -115,10 +115,10 @@ REGISTRY: dict[str, Relation] = {
         # (ADDIE's Implementation phase executes the design), not a
         # constructive-alignment claim, and the P tier is exactly where
         # traceability without a construct claim belongs.
-        Relation("P10", "implementation plan delivers activity", "delivers", "provenance",
-                  NodeType.IMPLEMENTATION_PLAN, (NodeType.ACTIVITY,), "target", "secondary"),
-        Relation("P11", "implementation plan provisions material", "provisions", "provenance",
-                  NodeType.IMPLEMENTATION_PLAN, (NodeType.MATERIAL,), "target", "secondary"),
+        Relation("P10", "session guide delivers activity", "delivers", "provenance",
+                  NodeType.SESSION_GUIDE, (NodeType.ACTIVITY,), "target", "secondary"),
+        Relation("P11", "session guide provisions material", "provisions", "provenance",
+                  NodeType.SESSION_GUIDE, (NodeType.MATERIAL,), "target", "secondary"),
     )
 }
 
@@ -364,11 +364,10 @@ def record_provenance(
         )
 
 
-def establish_delivery(graph: AlignmentGraph, node_id: str, parsed: dict) -> None:
-    """P10/P11: record which activities an implementation plan schedules and
-    which materials it hands out — a shared establisher, called by whichever
-    agent just committed the plan (the Implementation Planner in the multi
-    arm, the single designer's implementation state in the single arm).
+def establish_delivery(graph: AlignmentGraph, session_node_ids: list[str]) -> None:
+    """P10/P11: record which activities each SESSION GUIDE schedules and which
+    materials it hands out — a shared establisher, called by the fan-out commit
+    on either decomposition arm (``fanout._establish``).
 
     Without this the implementation plan was the one artifact in the graph
     with no edge at all, while its text referenced graph ids in every scenario
@@ -376,25 +375,29 @@ def establish_delivery(graph: AlignmentGraph, node_id: str, parsed: dict) -> Non
     graph therefore could not answer "was this activity ever scheduled" — a
     question the auditability claim implies it can.
 
+    The SOURCE is the session guide, not the plan section (2026-09-07). The
+    edge then says WHICH session delivers an activity rather than only that
+    some part of the plan does, and it is established from the node the
+    Developer actually wrote — the plan section no longer carries the guides.
+    Coverage is unchanged: both relations are checked on the target side, so
+    an activity nobody scheduled is still exactly an activity with no incoming
+    P10.
+
     Ids come from the dedicated ``activity_ids``/``material_ids`` fields
     rather than from the prose beside them: the model writes ids inline in
     ``activities`` ("... on mobile LMS (MAT-01)"), and recovering edges by
     regex over prose would make the audit trail depend on phrasing.
     """
-    guide = parsed.get("instructor_guide")
-    if not isinstance(guide, dict):
-        return
     sep = graph.ELEMENT_SEP
-    for field, node_type, relation_id in (
-        ("activity_ids", NodeType.ACTIVITY, "P10"),
-        ("material_ids", NodeType.MATERIAL, "P11"),
-    ):
-        referenced: list[str] = []
-        for session in guide.get("session_guides") or []:
-            if isinstance(session, dict):
-                referenced += [bare_ref(r) for r in (session.get(field) or []) if r]
-        for ref in dict.fromkeys(referenced):
-            record_provenance(graph, relation_id, [node_id], f"{node_type}{sep}{ref}")
+    for node_id in session_node_ids:
+        data = (graph.get_node(node_id) or {}).get("data") or {}
+        for field, node_type, relation_id in (
+            ("activity_ids", NodeType.ACTIVITY, "P10"),
+            ("material_ids", NodeType.MATERIAL, "P11"),
+        ):
+            referenced = [bare_ref(r) for r in (data.get(field) or []) if r]
+            for ref in dict.fromkeys(referenced):
+                record_provenance(graph, relation_id, [node_id], f"{node_type}{sep}{ref}")
 
 
 # ── Bloom/cognitive-process cross-checks — attribute-based, not an edge ─────

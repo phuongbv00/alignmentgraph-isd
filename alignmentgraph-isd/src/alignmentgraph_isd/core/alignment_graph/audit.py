@@ -49,6 +49,17 @@ _ELEMENT_LIST_KEYS = {
     NodeType.ACTIVITY: "learning_activities",
 }
 
+#: Element-backed list fields held one level DOWN, inside a section field.
+#: ``instructor_guide.session_guides`` is the one: the guides are element nodes
+#: (``NodeType.SESSION_GUIDE``, 2026-09-07) and the section holds only the
+#: guide's framing, but the ADDIE output contract still declares them there
+#: (``validation._NESTED_FIELDS``), so the audit validates the SAME document
+#: the aggregator ships — reconstructed from the element pool, the single
+#: source of truth, exactly as ``_ELEMENT_LIST_KEYS`` does one level up.
+_ELEMENT_NESTED_LIST_KEYS = {
+    NodeType.IMPLEMENTATION_PLAN: (NodeType.SESSION_GUIDE, "instructor_guide", "session_guides"),
+}
+
 REQUIRED_SECTION_KEYS = {
     NodeType.OBJECTIVE: ("learning_objectives",),
     NodeType.ASSESSMENT_PLAN: ("lo_coverage_targets",),
@@ -239,6 +250,15 @@ class GraphAuditor:
         if list_key is not None:
             # virtual section: the list lives solely on element nodes
             merged[list_key] = [n.get("data", {}) for n in self.graph.element_nodes(node_type)]
+        nested = _ELEMENT_NESTED_LIST_KEYS.get(node_type)
+        if nested is not None:
+            element_type, field, inner_key = nested
+            elements = [n.get("data", {}) for n in self.graph.element_nodes(element_type)]
+            if elements:
+                parent = merged.get(field)
+                parent = dict(parent) if isinstance(parent, dict) else {}
+                parent[inner_key] = elements
+                merged[field] = parent
         return merged
 
     def _objective_ids(self, objective_node: dict | None) -> list[str]:

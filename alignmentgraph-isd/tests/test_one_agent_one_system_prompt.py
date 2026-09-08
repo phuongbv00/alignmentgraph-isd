@@ -17,6 +17,20 @@ Repairs that need writing now go back to the owning agent as a user turn in
 the loop it is already running (``ToolLoop._own_violations`` ->
 ``_repair_request``), so the request, the answer and the artifact are three
 consecutive turns of one transcript. These tests hold that shut.
+
+ONE prose call survives, and it is not what this file forbids: the compaction
+hook (``core/agentic/compaction.py``, 2026-09-08), which folds the turns a trim
+dropped into the note. What makes it a different thing is exactly what was
+wrong with the repairs — it runs under ``WORKFLOW_ORCHESTRATOR`` rather than
+under the agent whose window filled, and it publishes no context at all, so no
+agent is given a second boundary and none of the tests below has anything to
+see. That claim needs enforcing rather than asserting, and none of the three
+guards here would catch a regression: a two-message conversation slips past
+``test_one_conversation_is_one_context``'s four-message filter, its single
+system constant would satisfy the first test, and the toolless check only looks
+at contexts that were published. So the boundary is held in
+``tests/test_compaction.py`` instead, by a guard that ``call_prose`` has
+exactly one caller in ``src/`` and that it is the hook.
 """
 from __future__ import annotations
 

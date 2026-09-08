@@ -4,7 +4,7 @@ contract + all 18 alignment relations (7 core + 11 secondary) established
 from __future__ import annotations
 
 from alignmentgraph_isd import HarnessRunConfig
-from alignmentgraph_isd.core.alignment_graph import alignment
+from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType, alignment
 
 from conftest import FakeChatModel, load_brief, run_brief
 
@@ -121,8 +121,11 @@ def test_implementation_plan_is_linked_into_the_graph():
     material ever handed out" — questions the auditability claim implies it can.
 
     Only SECTION nodes may sit edgeless: they hold the raw blob while their
-    element counterparts carry the relations. implementation_plan_0 has no
-    element counterpart, so an edgeless one is an island, not a section."""
+    element counterparts carry the relations. Since 2026-09-07 the plan HAS an
+    element counterpart — the session guides — so P10/P11 hang off those (the
+    edge then says which session delivers an activity, not merely that some
+    part of the plan does), and the section reaches them through the
+    structural ``narrates`` link every narrative section gets."""
     config = HarnessRunConfig()
     config.llm_factory = lambda: FakeChatModel()
     result = run_brief(load_brief("minimal_brief.json"), config)
@@ -132,8 +135,14 @@ def test_implementation_plan_is_linked_into_the_graph():
     provisioned = {e["target"] for e in edges if e.get("relation_id") == "P11"}
     assert delivered, "no activity is recorded as scheduled by the implementation plan"
     assert provisioned, "no material is recorded as handed out by the implementation plan"
-    assert all(e["source"] == "implementation_plan_0" for e in edges
+    sep = AlignmentGraph.ELEMENT_SEP
+    assert all(e["source"].startswith(f"{NodeType.SESSION_GUIDE}{sep}") for e in edges
                if e.get("relation_id") in ("P10", "P11"))
+    # ...and every guide is reachable from the plan section that frames it.
+    narrated = {e["target"] for e in edges
+                if e["type"] == "narrates" and e["source"] == "implementation_plan_0"}
+    assert narrated == {e["source"] for e in edges
+                        if e.get("relation_id") in ("P10", "P11")} | narrated
 
     isolated = {
         n["id"] for n in result["graph"]["nodes"]

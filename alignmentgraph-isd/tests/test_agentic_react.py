@@ -132,18 +132,21 @@ def test_a_submit_adds_to_a_stage_rather_than_replacing_it():
 
 
 def test_every_key_the_submit_offers_appears_in_that_stages_brief():
-    """A fan-out family's brief must cover BOTH halves: in the multi arm its
-    items come from Developers who are shown their schema separately, but this
-    agent writes plan and items alike. Offering `assessment_tools` on the submit
-    tool while the brief shows only the plan asks for something the agent has
-    never been shown the shape of."""
-    loop, _g, _t, _m = _loop([])
-    brief = loop.stage_brief("assessment")
+    """A fan-out family's submit tool must cover BOTH halves: in the multi arm
+    its items come from Developers who are shown their schema separately, but
+    this agent writes plan and items alike — so the ONE ``submit_assessment``
+    tool it is offered must carry parameters for both, not just the plan.
 
+    The artifact's SHAPE moved out of the brief's text and into the tool's own
+    ``parameters`` (2026-09-08, see ``artifact_schemas.py``): a key the submit
+    tool offers no longer needs to appear in the brief as text for the model to
+    see its shape — the binding itself carries it, every call. What still
+    matters is that the OFFER is complete."""
     spec = [s for s in tools.react_specs(STEPS, frozenset())
             if s["function"]["name"] == "submit_assessment"][0]
-    for key in spec["function"]["parameters"]["properties"]:
-        assert f'"{key}"' in brief, f"the submit offers {key} but the brief never shows it"
+    offered = set(spec["function"]["parameters"]["properties"])
+    assert {"assessment_plan", "dev_plan", "assessment_tools"} <= offered, (
+        f"the assessment submit tool is missing a half of what it should offer: {offered}")
 
 
 def test_the_system_turn_leaves_room_for_the_transcript():
@@ -175,7 +178,12 @@ def test_the_system_turn_leaves_room_for_the_transcript():
         STAGE_BRIEF_HEADER.format(stage=STEPS[0].name))
     assert all(STAGE_BRIEF_HEADER.format(stage=s.name) not in loop.messages[0]["content"]
                for s in STEPS[1:]), "one stage's contract, not all six"
-    assert '"assessment_plan"' in loop.stage_brief("assessment")
+    # The schema itself is not text any more (2026-09-08) — it is the bound
+    # `submit_assessment` tool's own `parameters`, offered every turn
+    # regardless of what the pushed brief text says or loses to compaction.
+    spec = [s for s in tools.react_specs(STEPS, frozenset())
+            if s["function"]["name"] == "submit_assessment"][0]
+    assert "assessment_plan" in spec["function"]["parameters"]["properties"]
 
 
 def test_the_graph_arm_is_pushed_the_docket_and_the_prose_arm_is_not():

@@ -31,10 +31,12 @@ def test_dev_plan_events_fire_once_per_fanout_family_multi_arm():
     result = _run("multi")
     dev_plan_events = [e for e in result["trajectory"]["events"] if e["action"] == "dev_plan"]
     families = {e["context"]["family"] for e in dev_plan_events}
-    assert families == {"assessment_designer", "activity_designer", "content_designer"}
+    assert families == {"assessment_designer", "activity_designer", "content_designer",
+                        "implementation_planner"}
 
-    rounds = [p for p in result["plans"] if p["stage"] == "assessment"]
-    assert len(dev_plan_events) == 3 + (len(rounds) - 1), (
+    replans = sum(len([p for p in result["plans"] if p["stage"] == stage]) - 1
+                  for stage in {p["stage"] for p in result["plans"]})
+    assert len(dev_plan_events) == len(families) + replans, (
         "one dev_plan event per family per planning round")
 
     by_family = {e["context"]["family"]: e for e in dev_plan_events}
@@ -43,6 +45,9 @@ def test_dev_plan_events_fire_once_per_fanout_family_multi_arm():
     assert by_family["assessment_designer"]["context"]["source"] in ("llm", "fallback")
     assert by_family["activity_designer"]["context"]["source"] in ("llm", "fallback")
     assert by_family["content_designer"]["context"]["source"] in ("deterministic", "llm")
+    # implementation asks for a grouping too: the session blocks are what
+    # divide the delivery, and the guides are written one block at a time.
+    assert by_family["implementation_planner"]["context"]["source"] in ("llm", "fallback")
 
     for event in dev_plan_events:
         ctx = event["context"]
@@ -60,7 +65,8 @@ def test_dev_plan_events_fire_in_prose_arm_too():
     result = _run("multi", context_mode="prose")
     dev_plan_events = [e for e in result["trajectory"]["events"] if e["action"] == "dev_plan"]
     families = {e["context"]["family"] for e in dev_plan_events}
-    assert families == {"assessment_designer", "activity_designer", "content_designer"}
+    assert families == {"assessment_designer", "activity_designer", "content_designer",
+                        "implementation_planner"}
 
 
 def test_the_single_arm_plans_no_work_sets_at_all():
@@ -126,3 +132,86 @@ def test_id_collision_across_sets_is_remapped_not_overwritten_end_to_end():
     for item in items:
         rc_ids = [rc.get("id") for rc in (item.get("rubric") or [])]
         assert len(rc_ids) == len(set(rc_ids)), f"{item.get('item_id')}: {rc_ids}"
+
+
+def test_every_scheduled_artifact_lands_in_exactly_one_session_block():
+    """The invariant the implementation fan-out exists for.
+
+    P10/P11 coverage used to depend on a planner naming every activity id in a
+    single submit — which it could neither see (``tools.render_listing`` stops
+    at ``READ_CHAR_BUDGET``: a 161-activity design truncates) nor write under
+    the completion cap. It is now a property of a deterministic division:
+    every activity and every material lands in exactly one block, whatever the
+    planner proposed, and each block's Developer writes the guides for its own
+    sessions.
+
+    Assigning the work is not fabricating the record — the P10/P11 edge still
+    comes from the ``activity_ids`` a Developer wrote (the rule
+    ``audit.AUDIT_ONLY_VIOLATION_TYPES`` states), and this test asserts only
+    the division.
+    """
+    from alignmentgraph_isd.core import dev_plans
+    from alignmentgraph_isd.core.agentic import fanout
+    from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
+
+    graph = AlignmentGraph()
+    for i in range(1, 162):
+        graph.add_element_node(NodeType.ACTIVITY, f"TLA-{i:04d}", {"id": f"TLA-{i:04d}"})
+    for i in range(1, 7):
+        graph.add_element_node(NodeType.MATERIAL, f"MAT-{i:04d}", {"id": f"MAT-{i:04d}"})
+
+    spec = fanout.SPECS["implementation"]
+    # No plan at all: the deterministic fallback still has to cover everything,
+    # which is what a stage that gave up without a dev_plan leaves behind.
+    for plan in (None, {"session_blocks": [
+        {"set_id": "B1", "activity_ids": ["TLA-0001", "TLA-0002", "TLA-9999"],
+         "material_ids": ["MAT-0001"], "expected_sessions": 2},
+        # The same activity claimed twice: the second naming is dropped, or two
+        # Developers each write "the" session that delivers it.
+        {"set_id": "B2", "activity_ids": ["TLA-0002"], "material_ids": []},
+    ]}):
+        sets, stats = spec.plan_sets(graph, {"dev_plan": plan})
+        assert sets
+        scheduled = [i for ws in sets
+                     for i in ws.payload["activity_ids"] + ws.payload["material_ids"]]
+        assert len(scheduled) == len(set(scheduled)), "an artifact was scheduled twice"
+        assert set(scheduled) == ({f"TLA-{i:04d}" for i in range(1, 162)}
+                                  | {f"MAT-{i:04d}" for i in range(1, 7)})
+        # Every block fits in one Developer call, and its sessions are numbered
+        # before any of them runs — Developers never coordinate.
+        limit = dev_plans.max_units("session_guide")
+        starts = []
+        for ws in sets:
+            size = len(ws.payload["activity_ids"]) + len(ws.payload["material_ids"])
+            assert size <= limit, f"{ws.set_id} carries {size} scheduled artifacts"
+            starts.append(ws.payload["first_session"])
+        assert starts == sorted(starts) and len(set(starts)) == len(starts)
+    # The plan's own references are policed: an id the design does not hold is
+    # dropped rather than dispatched.
+    assert stats["dropped_lo_refs"] == 1 and stats["duplicate_pairs"] == 1
+
+
+
+def test_session_guides_are_element_nodes_that_carry_the_delivery_edges():
+    """The guides are the artifact the Developer tier writes, P10/P11 hang off
+    THOSE nodes, and the aggregator joins them back where the ADDIE output
+    contract keeps them — so the deliverable's shape is unchanged."""
+    result = _run("multi")
+    graph = result["graph"]
+
+    guides = [n for n in graph["nodes"] if n["type"] == "session_guide"]
+    assert guides, "the session guides were not produced as element nodes"
+    assert all(n["data"].get("plan_set") for n in guides), (
+        "a guide came from no work set")
+
+    sources = {e["source"] for e in graph["edges"]
+               if e.get("relation_id") in ("P10", "P11")}
+    assert sources and sources <= {n["id"] for n in guides}
+
+    joined = result["addie_output"]["development"]["instructor_guide"]["session_guides"]
+    assert len(joined) == len(guides)
+    # ...and the plan section keeps only the guide's framing.
+    section = [n for n in graph["nodes"] if n["id"] == "implementation_plan_0"][0]
+    assert "session_guides" not in section["data"].get("instructor_guide", {})
+    # The harness-only plan never reaches the deliverable.
+    assert "dev_plan" not in result["addie_output"]["implementation"]

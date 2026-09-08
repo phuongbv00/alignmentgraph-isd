@@ -24,7 +24,7 @@ from alignmentgraph_isd import HarnessRunConfig
 #: The default the regen loop runs on. Was a module constant of the
 #: scripted pipeline; since that went, the config field IS the budget.
 
-from conftest import FakeChatModel, load_brief, run_brief
+from conftest import FakeChatModel, _brief_marker, load_brief, run_brief
 
 
 class _FlakySystemPrompt(FakeChatModel):
@@ -206,7 +206,13 @@ class _PartialImplementationOnce(FakeChatModel):
             m.get("content", "") for m in messages
             if isinstance(m, dict) and isinstance(m.get("content"), str)
         )
-        if '"instructor_orientation"' in prompt:
+        # Which stage this call is FOR is read off the STAGE MARKER, not an
+        # artifact's schema text (gone from the prompt since 2026-09-08, see
+        # artifact_schemas.py) — the marker is still pushed on the stage's
+        # own turn and persists in the transcript every turn after, so this
+        # fires on every implementation-stage turn exactly like the old
+        # (per-turn-static) schema text used to.
+        if _brief_marker("implementation") in prompt:
             self._state["impl_calls"] = self._state.get("impl_calls", 0) + 1
             if self._state["impl_calls"] <= self.WITHHOLD_CALLS:
                 from conftest import _IMPLEMENTATION
@@ -249,7 +255,9 @@ class _ManualsMissingOnce(FakeChatModel):
             m.get("content", "") for m in messages
             if isinstance(m, dict) and isinstance(m.get("content"), str)
         )
-        if '"instructor_orientation"' in prompt:
+        # See _PartialImplementationOnce: matched on the STAGE MARKER, not on
+        # schema text that no longer travels in the prompt.
+        if _brief_marker("implementation") in prompt:
             self._state["impl_calls"] = self._state.get("impl_calls", 0) + 1
             # Withheld for long enough that every OTHER implementation artifact
             # has landed. That is what makes this test able to fail: if the

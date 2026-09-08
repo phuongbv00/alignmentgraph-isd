@@ -42,17 +42,6 @@ from .. import rulebook as rules
 from .. import dev_plans
 from ..dev_plans import WorkSet
 
-def _wrapped(schema: str) -> str:
-    """The schema as the ``submit_dev_plan`` TOOL asks for it.
-
-    The rulebook states a dev plan bare (``{"instrument_sets": […]}``) because
-    a stage submit nests it under ``dev_plan``. The replan's only tool takes
-    that key as its parameter, so a bare schema tells the model to send the
-    inside of the envelope and the submit is rejected for a missing key it was
-    never shown. Built the same way the stage schemas are (specialists.py)."""
-    return '{\n  "dev_plan": ' + schema.replace("\n", "\n  ") + "\n}"
-
-
 #: Which families can be replanned, and what a plan for them is made of. A
 #: family is here only when its gaps map exactly onto work the Developer tier
 #: can be asked for: an uncovered objective is an item or an activity somebody
@@ -61,16 +50,26 @@ def _wrapped(schema: str) -> str:
 #: report-only (``C5``), so there is no gap a new module assignment closes.
 REPLANNABLE: dict[str, dict] = {
     "assessment": {
-        "schema": _wrapped(rules.SCHEMA_ASSESSMENT_DEV_PLAN),
         "rules": rules.RULES_ASSESSMENT_DEV_PLAN,
         "gap_types": ("C2", "P3", "plan_coverage"),
         "noun": "assessment item",
     },
     "activities": {
-        "schema": _wrapped(rules.SCHEMA_ACTIVITY_DEV_PLAN),
         "rules": rules.RULES_ACTIVITY_DEV_PLAN,
         "gap_types": ("C3", "C4"),
         "noun": "learning activity",
+    },
+    # P10/P11 are the gaps the Developer tier can close by construction: an
+    # unscheduled activity is one no block was given, and a block is exactly
+    # what this round hands out. They are REPORT_ONLY for the deterministic net
+    # (appending an id to a finished guide would invent a delivery record that
+    # never happened — ``audit.AUDIT_ONLY_VIOLATION_TYPES``), and that rule is
+    # about the HARNESS writing: asking the planner to schedule what nobody
+    # scheduled is the honest fix the rule holds out for.
+    "implementation": {
+        "rules": rules.RULES_IMPLEMENTATION_DEV_PLAN,
+        "gap_types": ("P10", "P11"),
+        "noun": "session guide",
     },
 }
 
@@ -131,6 +130,49 @@ def objectives_of(gaps: list) -> tuple[str, ...]:
     return tuple(seen)
 
 
+def unscheduled_of(gaps: list) -> tuple[list[str], list[str]]:
+    """The activity and material ids a P10/P11 round is about, bare.
+
+    A coverage violation names the node that is uncovered
+    (``activity:TLA-0203``), which is the whole ground truth here: the round's
+    plan is normalized against exactly these ids, so it can only ask for work
+    that is missing."""
+    activities: list[str] = []
+    materials: list[str] = []
+    for gap in gaps:
+        node_id = str((getattr(gap, "metadata", None) or {}).get("node_id") or "")
+        node_type, _, bare = node_id.partition(":")
+        if not bare:
+            continue
+        bucket = (activities if node_type == "activity"
+                  else materials if node_type == "material" else None)
+        if bucket is not None and bare not in bucket:
+            bucket.append(bare)
+    return activities, materials
+
+
+def next_session(state) -> int:
+    """Where a replan round's session numbering starts: one past the highest a
+    committed guide already carries.
+
+    Round 0's numbers are handed out before any Developer runs
+    (``dev_plans._number_sessions``), so a second round numbering from one
+    again would put two "session 1" in the same deliverable — the same reason
+    ``tag_round`` strides the artifact ordinal."""
+    if hasattr(state, "element_nodes"):
+        guides = [n.get("data") or {} for n in state.element_nodes("session_guide")]
+    else:
+        guides = [g for g in state.items("implementation_plan", "session_guides")
+                  if isinstance(g, dict)]
+    highest = 0
+    for guide in guides:
+        try:
+            highest = max(highest, int(guide.get("session")))
+        except (TypeError, ValueError):
+            continue
+    return highest + 1
+
+
 def tag_round(work_sets: list, round_index: int) -> list:
     """``AS-01`` -> ``AS-01R1``, and its artifacts' ids out of round 0's way.
 
@@ -183,13 +225,16 @@ def step_for(step, stage: str, gaps: list, round_index: int):
     task, the one artifact it may submit, and the produced-guard: its dev_plan
     field is filled from round 0, so the default guard would report the step
     finished before it had been asked anything.
+
+    ``schema_keys`` is NOT touched here — ``step`` is the stage's own base
+    ``AgenticStep`` and already maps ``dev_plan`` to this stage's dev-plan
+    schema (``specialists.STEPS``), so ``replace`` carries it forward as is.
     """
     spec = REPLANNABLE[stage]
     return replace(
         step,
         name=f"{step.name}:replan{round_index}",
         intro=request(stage, gaps, round_index),
-        schema=spec["schema"],
         rules=spec["rules"],
         submit_fields=(("dev_plan", "object", True),),
         submit_parts=(),
@@ -207,5 +252,6 @@ def _validate_plan(parsed: dict) -> list[str]:
                 "close the gaps listed above"]
     if not any(isinstance(value, list) and value for value in plan.values()):
         return ["dev_plan names no work sets; list them under instrument_sets "
-                "(assessment) or activity_blocks (activities)"]
+                "(assessment), activity_blocks (activities) or session_blocks "
+                "(implementation)"]
     return []

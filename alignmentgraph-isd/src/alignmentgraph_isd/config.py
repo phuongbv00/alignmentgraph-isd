@@ -83,7 +83,7 @@ class HarnessRunConfig(BaseModel):
     # rather than fixed. ``llm_context_window`` is the SERVING window in tokens
     # (the ladder's vLLM pods run 16384); 0 keeps the historical constant.
     # ``llm_completion_reserve`` is what must be left for the answer — the
-    # ladder caps completions at 8192 (AGENT_MODEL_MAX_TOKENS_CAP) and a prompt
+    # ladder caps completions at 8192 (AGENT_MODEL_MAX_OUTPUT_TOKENS) and a prompt
     # that eats into it makes the generation fail rather than the trim.
     #
     # Why derive it: ``HISTORY_CHAR_BUDGET`` was 24,000 characters, a number

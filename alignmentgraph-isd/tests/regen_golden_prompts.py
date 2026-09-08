@@ -31,11 +31,16 @@ def _agentic_prompts() -> dict[str, str]:
 
     Under native tool calling the prompt is only half of what the model sees —
     the bound TOOL SCHEMAS are the other half, and a change to either is a
-    change to what the ladder measured. So both are pinned: the per-stage block
-    (task + schema + rules), the shared workflow overview, and the serialized
-    tool specs for each stage in each context mode."""
+    change to what the ladder measured. So both are pinned: the per-stage
+    block (task + rules — no schema text since 2026-09-08, see
+    ``AgenticStep.task_block``), the shared workflow overview, and the
+    serialized tool specs for each stage in each context mode — which is
+    where an artifact's field-level SHAPE now lives
+    (``artifact_schemas.ARTIFACT_SCHEMAS``, reached through
+    ``tool_specs``'s ``parameters``), so pinning the specs already pins it."""
     from alignmentgraph_isd.core.agentic import fanout
     from alignmentgraph_isd.core.agentic import tools as agentic_tools
+    from alignmentgraph_isd.core.agentic import compaction
     from alignmentgraph_isd.core.agentic.loop import _WORKFLOW_OVERVIEW, compaction_note
     from alignmentgraph_isd.core.agentic.specialists import SINGLE_PERSONA, STEPS
 
@@ -52,16 +57,21 @@ def _agentic_prompts() -> dict[str, str]:
                 specs, ensure_ascii=False, indent=2, sort_keys=True)
 
     # A fanned-out family's artifacts are written by DEVELOPERS, and a stage's
-    # own `task_block` shows only the plan schema — so until 2026-09-06 the
-    # schema and rules that produce every assessment item, activity and
-    # material were pinned nowhere, and a change to one of them (the materials
-    # exemplar, say) landed with no fixture diff to review. That is the same
-    # hole `_check_messages` was added to close.
+    # own `task_block` shows only the plan's rules — so until 2026-09-06 the
+    # rules (and, until 2026-09-08, the schema) that produce every assessment
+    # item, activity and material were pinned nowhere, and a change to one of
+    # them landed with no fixture diff to review. That is the same hole
+    # `_check_messages` was added to close. The SHAPE is pinned once, at its
+    # single source (``ARTIFACT_SCHEMAS``), rather than per family here —
+    # every family reading the same key would otherwise pin the same JSON
+    # under several names.
     for name, spec in sorted(fanout.SPECS.items()):
         for output in spec.outputs:
             key = f"agentic.{name}.developer.{output.schema_key}"
-            pinned[f"{key}.schema"] = output.schema
             pinned[f"{key}.rules"] = output.rules
+    for artifact_key, schema in sorted(agentic_tools.ARTIFACT_SCHEMAS.items()):
+        pinned[f"agentic.artifact_schema.{artifact_key}"] = json.dumps(
+            schema, ensure_ascii=False, indent=2, sort_keys=True)
 
     # The compaction note is prompt surface both arms see verbatim, like the
     # workflow overview beside it — and since 2026-09-06 it also carries what a
@@ -69,6 +79,17 @@ def _agentic_prompts() -> dict[str, str]:
     pinned["agentic.compaction_note"] = compaction_note(1)["content"]
     pinned["agentic.compaction_note.brief_lost"] = compaction_note(
         1, ("implementation",))["content"]
+    pinned["agentic.compaction_note.summary"] = compaction_note(
+        1, summary="Objectives ILO-01..03 established.")["content"]
+
+    # The compaction HOOK's own prompt. Not an agent's — the agent never sees
+    # it — but it decides the content of a PROTECTED, never-trimmed message
+    # that every subsequent agent turn reads, in both arms, after every
+    # compaction. A reworded task there changes what the ladder measured with
+    # no test turning red, which is the same hole `_check_messages` below was
+    # added to close.
+    pinned["agentic.compaction.system"] = compaction._SYSTEM
+    pinned["agentic.compaction.task"] = compaction._TASK
     return pinned
 
 

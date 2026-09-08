@@ -103,7 +103,9 @@ class ADDIEOutputAggregator:
         # so there is nothing left to join here.
         assessment_tools = _shape_rubrics(
             [n["data"] for n in self.graph.element_nodes(NodeType.ASSESSMENT)])
-        impl_data = _merge_node_data(self.graph.section_nodes(NodeType.IMPLEMENTATION_PLAN))
+        impl_data = _with_session_guides(
+            _merge_node_data(self.graph.section_nodes(NodeType.IMPLEMENTATION_PLAN)),
+            [n["data"] for n in self.graph.element_nodes(NodeType.SESSION_GUIDE)])
         # development.expert_review is ALWAYS the audit record (2026-08-27):
         # the model-authored review was removed from every generation schema —
         # a review written by the same model, in the same call, before the
@@ -168,6 +170,8 @@ class ADDIEOutputAggregator:
 
     # ── implementation phase (ImplementationPlannerAgent's own section) ──
     def _build_implementation(self) -> dict:
+        # No session-guide join here: this phase carries the four operational
+        # artifacts, and the guides belong to `development.instructor_guide`.
         con_data = _merge_node_data(self.graph.section_nodes(NodeType.IMPLEMENTATION_PLAN))
         return {
             "instructor_orientation": con_data.get("instructor_orientation", {}),
@@ -247,6 +251,30 @@ class ADDIEOutputAggregator:
         }
         improvement_plan.setdefault("feedback_summary", "")
         return {"formative": formative, "summative": summative, "improvement_plan": improvement_plan}
+
+
+def _with_session_guides(implementation: dict, guides: list) -> dict:
+    """Put the session guides back where the ADDIE output contract keeps them.
+
+    They are element nodes since 2026-09-07 (``NodeType.SESSION_GUIDE``) — one
+    per delivery session, written a block at a time by the Developer tier and
+    the source of every P10/P11 edge — but the deliverable still declares them
+    at ``development.instructor_guide.session_guides``
+    (``validation._NESTED_FIELDS``), so the join happens here. Exactly the
+    shape ``_shape_rubrics`` already has: the graph holds the artifact where
+    the checks can reach it, the aggregator hands the judge the document it
+    expects.
+
+    Order is the graph's own insertion order, which is plan order, which is
+    delivery order — the blocks were numbered before any Developer ran
+    (``dev_plans._number_sessions``).
+    """
+    if not guides:
+        return implementation
+    guide = implementation.get("instructor_guide")
+    guide = dict(guide) if isinstance(guide, dict) else {}
+    guide["session_guides"] = list(guides)
+    return {**implementation, "instructor_guide": guide}
 
 
 def _shape_rubrics(items: list) -> list:
@@ -379,7 +407,13 @@ def aggregate_prose(store, trajectory) -> dict:
     design["storyboard"] = _compute_storyboard(instructional_strategies, content_modules)
 
     assessment_tools = _shape_rubrics(items("assessment", "assessment_tools"))
-    impl_doc = doc("implementation_plan")
+    # The blackboard holds the guides as a top-level list of the implementation
+    # document (that is where the fan-out's ``doc_key`` deposits them); the
+    # deliverable declares them one level down, the same as in the graph arm.
+    impl_doc = _with_session_guides(
+        {k: v for k, v in doc("implementation_plan").items()
+         if k not in ("session_guides",) + _HARNESS_ONLY_SECTION_KEYS},
+        items("implementation_plan", "session_guides"))
     # ALWAYS synthesized (see the graph aggregator's matching note): the
     # prose arm's honest record covers only the within-artifact validation
     # that ran — no relation coverage exists to report.

@@ -344,6 +344,7 @@ def test_the_implementation_stage_is_not_finished_without_the_guides():
     now, so the validator judges what arrived and COMPLETION is what holds the
     guides: the stage is not finished until every required artifact is in the
     state, and the loop keeps the turn and names what is still missing."""
+    from alignmentgraph_isd.core.agentic import fanout
     from alignmentgraph_isd.core.agentic.specialists import (
         commit_implementation, missing_parts, step_done, validate_implementation,
     )
@@ -364,25 +365,38 @@ def test_the_implementation_stage_is_not_finished_without_the_guides():
     wrong = validate_implementation({"instructor_guide": {
         "instructor_role": "Facilitator", "responsibilities": ["setup"]}})
     assert any("instructor_guide.overview" in e for e in wrong), wrong
-    assert any("instructor_guide.session_guides" in e for e in wrong), wrong
     assert not any("operator_manual" in e for e in wrong), (
         "only the artifact that arrived is judged")
     assert validate_implementation({"operator_manual": "prose"}), "wrong type must fail"
-    # A session guide with prose but no ids schedules nothing.
-    no_ids = validate_implementation({"instructor_guide": {
+    # The session guides are NOT part of this artifact since 2026-09-07: they
+    # are element nodes written per session block by the Developer tier, and a
+    # nested copy here would be a second source for the list P10 is established
+    # from. Rejected with the field named, never dropped silently.
+    nested = validate_implementation({"instructor_guide": {
         **complete["instructor_guide"],
-        "session_guides": [{"session": 1, "activities": ["lab"]}]}})
+        "session_guides": [{"session": 1, "activity_ids": ["TLA-01"]}]}})
+    assert any("instructor_guide.session_guides" in e for e in nested), nested
+    # A session guide with prose but no ids schedules nothing. The guarantee
+    # moved with the artifact: it is now the Developer tier's item rule, which
+    # BOTH arms are held to (fanout.output_errors).
+    no_ids = fanout.session_guide_errors([{"session": 1, "activities": ["lab"]}])
     assert any("session_guides[0].activity_ids" in e for e in no_ids), no_ids
 
     graph, trajectory = AlignmentGraph(), TrajectoryLogger()
     without_guides = {k: v for k, v in complete.items()
                       if k not in ("instructor_guide", "operator_manual")}
     commit_implementation(graph, trajectory, without_guides)
-    assert set(missing_parts(step, graph)) == {"instructor_guide", "operator_manual"}
+    assert set(missing_parts(step, graph)) == {"instructor_guide", "operator_manual",
+                                               "dev_plan"}
     assert not step_done(step, graph)
 
     commit_implementation(graph, trajectory, {
         k: complete[k] for k in ("instructor_guide", "operator_manual")})
+    assert set(missing_parts(step, graph)) == {"dev_plan"}
+    assert not step_done(step, graph)
+    # The plan is a required artifact of this stage: it is what divides the
+    # delivery into the blocks the guides are written from.
+    commit_implementation(graph, trajectory, {"dev_plan": {"session_blocks": []}})
     assert missing_parts(step, graph) == ()
     assert step_done(step, graph)
     # The second commit did not overwrite the first.
@@ -1160,12 +1174,16 @@ def test_compaction_takes_the_stage_turn_and_that_is_the_design():
 
 def test_the_agent_is_told_when_its_context_was_compacted():
     """Silently taking turns away leaves the model with a gap it cannot see and
-    no reason to re-read what it lost. The note is deterministic and free: the
-    model-written summary that used to sit beside it was removed 2026-09-05
-    (it went out under JSON mode, came back as JSON, and was thrown away on
-    every compaction of run e81b8108 after a multi-thousand-token completion).
-    One implementation serves both arms and ``autonomy.compactions`` reports
-    how often each reaches it."""
+    no reason to re-read what it lost.
+
+    This is the note ALONE — the bracketed count and the way back, which cost
+    nothing and are always true. A model-written summary is folded in after it
+    when the compaction hook delivers one (``tests/test_compaction.py``), and
+    the two are kept separable precisely so this still holds when it does not:
+    v1 of that hook went out under JSON mode, came back as JSON, and was thrown
+    away on every compaction of run e81b8108 after a multi-thousand-token
+    completion. One implementation serves both arms and
+    ``autonomy.compactions`` reports how often each reaches it."""
     from alignmentgraph_isd.core.agentic.loop import (
         COMPACTION_NOTE, _with_note, trim_history,
     )
@@ -1320,8 +1338,16 @@ def test_both_arms_go_through_the_same_compaction_call():
         assert "self.messages = compact(" in source, (
             f"{module.__name__} never calls the shared compact(), so its loop "
             "cannot recover from a full window")
+        # ...with the same hook. An arm that compacts without one gets the
+        # count note while the other gets a summary, which would put a
+        # difference in what the model is SHOWN onto the decomposition axis.
+        assert "llm=self._summariser" in source, (
+            f"{module.__name__} compacts without the summariser hook")
     for module_stats in (loop.ToolLoop, react.ReactLoop):
-        assert "compactions" in inspect.getsource(module_stats.__init__)
+        stats_source = inspect.getsource(module_stats.__init__)
+        assert "compactions" in stats_source
+        assert "compaction_summaries" in stats_source, (
+            f"{module_stats.__name__} counts compactions but not what they bought")
 
 
 def test_a_trim_drains_to_the_low_water_mark_so_it_does_not_refire_every_turn():

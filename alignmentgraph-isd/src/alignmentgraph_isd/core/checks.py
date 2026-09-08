@@ -823,10 +823,10 @@ def relation_coverage(graph) -> list[Violation]:
 #: "establish a link" is the class of instruction a small model does not act
 #: on; naming the field is what closes the gap.
 _COVERAGE_HINTS = {
-    "P10": ("Add this activity's id to the ``activity_ids`` of the session guide that "
-            "delivers it, and resubmit instructor_guide in full."),
-    "P11": ("Add this material's id to the ``material_ids`` of the session guide that "
-            "hands it out, and resubmit instructor_guide in full."),
+    "P10": ("Nobody scheduled this activity. Put it in a session block of the "
+            "implementation dev_plan, so a session guide delivers it."),
+    "P11": ("Nobody hands this material out. Put it in a session block of the "
+            "implementation dev_plan, so a session guide provisions it."),
 }
 
 

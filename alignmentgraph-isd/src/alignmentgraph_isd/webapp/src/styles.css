@@ -361,7 +361,7 @@ a.btn:hover { background: #f1f5f9; }
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 16px;
+  padding: 10px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
   flex: 0 0 auto;
@@ -382,6 +382,65 @@ a.btn:hover { background: #f1f5f9; }
 .pill.succeeded { background: #f0fdf4; color: var(--good); }
 .pill.failed, .pill.interrupted { background: #fef2f2; color: var(--bad); }
 .pill.cancelled, .pill.cancelling { background: #fffbeb; color: var(--warn); }
+
+.run-id {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.run-id:hover { background: #f1f5f9; color: var(--text); }
+
+/* ── runs under a program, in the sidebar ───────────────────────────────── */
+
+.run-list {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border);
+  padding: 2px 0 6px;
+}
+
+.run-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  /* Indented past the program title, so the nesting reads without a connector
+     line. */
+  padding: 4px 12px 4px 22px;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  color: var(--muted);
+}
+.run-row:hover { background: #f8fafc; color: var(--text); }
+.run-row.active {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+  color: var(--text);
+}
+.run-row-id { font-size: 12px; }
+.run-row-time { margin-left: auto; white-space: nowrap; }
+
+/* The status, at the size a row this dense can carry: a pill per run would
+   crowd out the id and the time, which are what the row is for. */
+.run-dot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+.run-dot.succeeded { background: var(--good); }
+.run-dot.failed, .run-dot.interrupted { background: var(--bad); }
+.run-dot.cancelled { background: var(--warn); }
+.run-dot.running { background: var(--accent); animation: pulse 2s infinite; }
 
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
@@ -853,9 +912,9 @@ a.btn:hover { background: #f1f5f9; }
 .ctx-bar-seg { height: 100%; }
 /* One colour per part, in the order they are listed. */
 .seg-system { background: #f97316; }
+.seg-tools { background: #a855f7; }
 .seg-messages { background: #3b82f6; }
-.seg-tools { background: #22c55e; }
-.seg-schemas { background: #a855f7; }
+.seg-tool_calls { background: #22c55e; }
 /* Not a part of the context — the window nothing may be put in. Neutral, so it
    never reads as something the run spent. */
 .seg-reserve { background: var(--border-strong); }

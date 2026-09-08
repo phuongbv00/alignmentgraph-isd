@@ -247,6 +247,10 @@ export default function App() {
       setRunId(run_id)
       setTab('trajectory')
       void refreshPrograms()
+      // Put the new run in the picker now. The status-settle effect below only
+      // refetches once a run ENDS, so without this the list would omit the run
+      // being watched for its whole duration.
+      api.getProgram(activeId).then(setDetail).catch(() => {})
     } catch (exc) {
       setError(String((exc as Error).message))
     } finally {
@@ -264,13 +268,21 @@ export default function App() {
   }
 
   const runActive = stream.status === 'running' || stream.status === 'cancelling'
+  // Not the same question as `runActive`: the reader can select a finished run
+  // while a newer one is still going, and the Run button asks whether the
+  // PROGRAM is busy, not whether the run on screen is.
+  const programBusy = runActive || detail?.runs.some(
+    (run) => run.status === 'running' || run.status === 'cancelling',
+  ) === true
   const modelMissing = health !== null && !health.llm_configured
-  const canRun = Boolean(detail?.brief_preview.is_runnable) && !runActive && !modelMissing
+  const canRun = Boolean(detail?.brief_preview.is_runnable) && !programBusy && !modelMissing
   const runDisabledReason = modelMissing
     ? 'No model is configured on the server.'
     : !detail?.brief_preview.is_runnable
       ? 'Describe the program or import a scenario file first.'
-      : ''
+      : programBusy && !runActive
+        ? 'Another run of this program is still in progress.'
+        : ''
 
   const messages = useMemo(() => detail?.messages ?? [], [detail])
 
@@ -280,6 +292,9 @@ export default function App() {
         programs={programs}
         activeId={activeId}
         onSelect={setActiveId}
+        runs={detail?.runs ?? []}
+        activeRunId={runId}
+        onSelectRun={setRunId}
         onCreate={() => void createProgram()}
         onDelete={(program) => void deleteProgram(program)}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -403,6 +418,7 @@ export default function App() {
                 <GraphView
                   graph={graph}
                   graphRev={stream.graphRev}
+                  runId={runId}
                   selection={selection}
                   onSelect={(value) => { setSelection(value); setInspectorCollapsed(false) }}
                 />

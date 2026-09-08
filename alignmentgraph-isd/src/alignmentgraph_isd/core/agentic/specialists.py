@@ -23,26 +23,6 @@ from .. import rulebook as rules
 from ..alignment_graph import NodeType, alignment
 from ..validation import validate_section
 
-# ── merged schemas (copied from the retired scripted arm) ─────────────
-
-_SCHEMA_ASSESSMENT_DISPATCH = (
-    rules.SCHEMA_ASSESSMENT_PLAN.rstrip().rstrip("}").rstrip().rstrip(",")
-    + ',\n  "dev_plan": ' + rules.SCHEMA_ASSESSMENT_DEV_PLAN.replace("\n", "\n  ") + "\n}")
-
-_SCHEMA_ACTIVITIES_DISPATCH = (
-    rules.SCHEMA_ACTIVITY_PLAN.rstrip().rstrip("}").rstrip().rstrip(",")
-    + ',\n  "dev_plan": ' + rules.SCHEMA_ACTIVITY_DEV_PLAN.replace("\n", "\n  ") + "\n}")
-
-# From the rulebook, like the two above — not a hand-written copy. The copy had
-# DRIFTED: it omitted ``for_modules`` from the media example while
-# ``RULES_CONTENT_MODULES`` (shown in the same prompt) requires it, so the model
-# was told to set a field the example never showed. That field is read by
-# ``dev_plans.material_work_units``: a media selection without it attaches to
-# EVERY module unit, so three modules x three media went out as nine
-# media-slots instead of three, and each Developer was asked for three times the
-# materials it should write.
-_SCHEMA_CONTENT_DISPATCH = rules.SCHEMA_CONTENT_MODULES
-
 def _decompose(graph, trajectory, node_type: str, items: object, *,
                id_field: str = "id", dedup_field: str = "") -> list[str]:
     """Turn a just-generated list into element nodes AND log each one.
@@ -256,11 +236,39 @@ def commit_content(graph, trajectory, parsed: dict) -> None:
 
 
 
+def _guide_framing(parsed: dict) -> dict:
+    """The dispatch payload with ``instructor_guide.session_guides`` removed.
+
+    The guides are element nodes now (``NodeType.SESSION_GUIDE``), written one
+    block at a time by the Developer tier and joined back under this key by the
+    aggregator. A nested copy here would be a second source for the one list
+    P10/P11 are established from, and the section node would then hold guides
+    no establisher ever saw. The submit that carries one is rejected with the
+    field named (:func:`validate_implementation`); this is the belt to that
+    validator's braces, for a payload that reaches the commit another way (a
+    salvaged truncation, a ``last_resort`` give-up).
+    """
+    out = dict(parsed or {})
+    guide = out.get("instructor_guide")
+    if isinstance(guide, dict) and "session_guides" in guide:
+        out["instructor_guide"] = {k: v for k, v in guide.items() if k != "session_guides"}
+    return out
+
+
 def commit_implementation(graph, trajectory, parsed: dict) -> None:
-    node_id = _merge_section(graph, trajectory, NodeType.IMPLEMENTATION_PLAN,
-                             {k: v for k, v in (parsed or {}).items() if v})
-    alignment.establish_delivery(
-        graph, node_id, (graph.get_node(node_id) or {}).get("data") or {})
+    """Dispatch commit: the six framing artifacts and the DEV PLAN. The session
+    guides are produced one block at a time by the Developer tier (fanout.py),
+    and P10/P11 are established from those nodes (``alignment.establish_delivery``).
+
+    The dev plan is kept on the section for the same reason the assessment one
+    is (``commit_assessment``): ``_dispatch_payload`` reads the fan-out's input
+    back out of the state, so a stripped plan means the deterministic fallback
+    decides every division. It is stripped again at AGGREGATION
+    (``aggregate._HARNESS_ONLY_SECTION_KEYS``), so the graph dump shows how the
+    delivery was divided while the judged output does not.
+    """
+    _merge_section(graph, trajectory, NodeType.IMPLEMENTATION_PLAN,
+                   {k: v for k, v in _guide_framing(parsed).items() if v})
 
 
 def _put(store, trajectory, key: str, document: dict) -> None:
@@ -332,7 +340,7 @@ def commit_content_prose(store, trajectory, parsed: dict) -> None:
 
 def commit_implementation_prose(store, trajectory, parsed: dict) -> None:
     _merge_document(store, trajectory, "implementation_plan",
-                    {k: v for k, v in (parsed or {}).items() if v})
+                    {k: v for k, v in _guide_framing(parsed).items() if v})
 
 
 # ── what has landed, per step ───────────────────────────────────────────────
@@ -561,9 +569,22 @@ def validate_content(parsed: dict) -> list[str]:
     empty = _nothing_arrived(parsed, ("content_modules", "media_selections"))
     if empty:
         return empty
-    if parsed.get("content_modules") is None:
-        return []
     errors: list[str] = []
+    # An EMPTY list is not an arrival. `_nothing_arrived` tests `is not None`,
+    # so `{"media_selections": []}` validated clean — harmless while the field
+    # was optional (`missing_parts` never named it, so the loop finished the
+    # stage), but once it is required that submit is ACCEPTED and then found
+    # absent, which is the `commit_did_not_land` branch: the loop would log a
+    # HARNESS failure and answer "send it again" for what is the model sending
+    # nothing. A rejection is the honest answer and gets the model its
+    # SUBMIT_BUDGET retries with the real reason. `validate_activities` has
+    # the same hole for its now-required `dev_plan` ({"dev_plan": {}} passes);
+    # left alone here on purpose, it is a separate artifact and a separate
+    # measurement.
+    if parsed.get("media_selections") is not None:
+        _require_list(parsed, ("media_selections",), errors)
+    if parsed.get("content_modules") is None:
+        return errors
     _require_list(parsed, ("content_modules",), errors)
     return errors
 
@@ -604,7 +625,13 @@ def validate_implementation(parsed: dict) -> list[str]:
     arrived = {k: v for k, v in (parsed or {}).items()
                if k in _IMPLEMENTATION_ARTIFACTS and v not in (None, "", [], {})}
     if not arrived:
-        return _nothing_arrived({}, _IMPLEMENTATION_ARTIFACTS)
+        # A dev_plan-only submit is a valid instalment of this stage, and the
+        # only one the section schema knows nothing about: `dev_plans`
+        # normalizes it and reports what it had to drop. Judged the same way
+        # `validate_assessment` judges its own plan-only submit.
+        if (parsed or {}).get("dev_plan"):
+            return []
+        return _nothing_arrived({}, _IMPLEMENTATION_ARTIFACTS + ("dev_plan",))
     # Keep the errors about the artifacts that ARRIVED. Every error path is
     # rooted at the node type — ``implementation_plan.instructor_guide.overview``
     # — so the artifact is the SECOND dotted token. The first version tested
@@ -613,9 +640,29 @@ def validate_implementation(parsed: dict) -> list[str]:
     # e81b8108, where a guide with no ``session_guides`` was COMMITTED and
     # every activity and material ended unscheduled).
     prefix = f"{NodeType.IMPLEMENTATION_PLAN}."
-    return [e for e in validate_section("implementation_plan", arrived)
-            if e.startswith(prefix)
-            and _error_field(e[len(prefix):]) in arrived]
+    errors = [e for e in validate_section("implementation_plan", arrived)
+              if e.startswith(prefix)
+              and _error_field(e[len(prefix):]) in arrived
+              and not e.startswith(_SESSION_GUIDES_PATH)]
+    # The one thing this stage's guide may NOT carry. `session_guides` is a
+    # separate artifact with its own tool and its own Developer (fanout.py):
+    # accepted here it would be a second source for the list P10/P11 are
+    # established from, and it is the field a planner cannot in fact write —
+    # naming every activity in the design is what the fan-out exists for. Named
+    # explicitly rather than dropped silently, so the model is told where the
+    # work goes instead of watching it disappear.
+    guide = arrived.get("instructor_guide")
+    if isinstance(guide, dict) and guide.get("session_guides"):
+        errors.append(
+            f"{_SESSION_GUIDES_PATH}: the session guides are not part of this artifact. "
+            "Submit instructor_guide with its overview, facilitation_tips and "
+            "troubleshooting only; the guides themselves are written per session block "
+            "from the dev_plan.")
+    return errors
+
+
+#: Error-path prefix of the one nested field this stage does not own.
+_SESSION_GUIDES_PATH = f"{NodeType.IMPLEMENTATION_PLAN}.instructor_guide.session_guides"
 
 
 def _error_field(path: str) -> str:
@@ -642,7 +689,6 @@ class AgenticStep:
     family: str
     persona: str                  #: specialist persona sentence(s)
     intro: str                    #: one-line task framing
-    schema: str                   #: the exact JSON schema asked for
     rules: str                    #: rulebook rules text
     primary_type: str | None      #: element type whose pool proves the step produced
     #: Extra families whose checks and repairs run after this step, because
@@ -685,13 +731,21 @@ class AgenticStep:
     docket: dict = field(default_factory=dict)  #: alignment_docket kwargs: which
                                                 #: relations this step is shown
     #: TOP-LEVEL keys of the submit artifact, as ``(key, json_type, required)``.
-    #: This is what the ``submit`` tool's parameter schema is built from, so the
-    #: serving-side tool-call parser rejects a wrapped or key-less artifact
-    #: before it ever reaches :attr:`validate`. It is deliberately a STRICTLY
-    #: WEAKER front line than the validator, never a second source of truth:
-    #: ``test_submit_schema_matches_the_validator`` pins every required key
-    #: here to an actual :attr:`validate` error and to the :attr:`schema` text.
+    #: This is what the ``submit`` tool's parameter schema is built from
+    #: (:func:`tools._parameters_from`, looking each key up in
+    #: :mod:`artifact_schemas`), so the serving-side tool-call parser rejects a
+    #: wrapped, key-less or wrongly-shaped artifact before it ever reaches
+    #: :attr:`validate`. :attr:`validate` stays the authority on acceptance —
+    #: this only rejects earlier what it would reject anyway.
     submit_fields: tuple[tuple[str, str, bool], ...] = ()
+    #: Resolves a :attr:`submit_fields` key to its :mod:`artifact_schemas`
+    #: lookup key, ONLY where they differ. Needed because the field name
+    #: ``dev_plan`` is reused across the assessment/activities/implementation
+    #: stages for three different shapes — this step's own dev plan schema is
+    #: not the field name's, so ``artifact_schemas.ARTIFACT_SCHEMAS`` keys it
+    #: as ``"{family}_dev_plan"`` instead. Empty (every other step) means the
+    #: field name IS the lookup key.
+    schema_keys: dict[str, str] = field(default_factory=dict)
     #: Prose-arm counterpart of :attr:`readable_types`: the blackboard document
     #: keys ``read_document`` may serve this step. Deliberately NOT derived from
     #: ``readable_types`` — prose has no id index and no node-type vocabulary,
@@ -727,15 +781,25 @@ class AgenticStep:
     #: empty for every set and the default guard happened to be right.)
     done: Callable[[object], bool] | None = None
     def task_block(self) -> str:
-        """Task + schema + rules for the tool-loop prompt. Deliberately does
-        NOT end with an "output ONLY the JSON object" line: that instruction
-        tells the model to emit the artifact directly, which contradicts the
-        action protocol and (measured on a 2B model) suppresses every tool
-        call. The loop's protocol block already pins the output contract. The
-        rulebook carried such a line (``JSON_ONLY``) for the single-shot
-        composition; both went with the scripted rescue on 2026-09-01."""
-        return (f"{self.intro}\n\nThe artifact you will submit must follow this EXACT schema:\n"
-                f"{self.schema}\n\n{self.rules}{self.parts_block()}")
+        """Task + rules for the tool-loop prompt. No schema block: the
+        artifact's field-level SHAPE (types, nesting, enums) lives in the
+        bound ``submit_*`` tool's own ``parameters`` now
+        (``artifact_schemas.ARTIFACT_SCHEMAS``, resolved through
+        ``tools._parameters_from``), not restated here as text — see that
+        module's docstring. This block still carries the RULES_* prose:
+        cross-field, referential and judgment-call constraints (an
+        objective's Bloom level driving what counts as achievable, an id
+        that must exist in a sibling list, how many items an instrument
+        genuinely needs) that no static JSON Schema can express.
+
+        Deliberately does NOT end with an "output ONLY the JSON object"
+        line: that instruction tells the model to emit the artifact
+        directly, which contradicts the action protocol and (measured on a
+        2B model) suppresses every tool call. The loop's protocol block
+        already pins the output contract. The rulebook carried such a line
+        (``JSON_ONLY``) for the single-shot composition; both went with the
+        scripted rescue on 2026-09-01."""
+        return f"{self.intro}\n\n{self.rules}{self.parts_block()}"
 
     def parts_block(self) -> str:
         """The instalment instruction, for a step whose artifact is declared in
@@ -780,7 +844,6 @@ STEPS: tuple[AgenticStep, ...] = (
                  "have to answer to."),
         intro=("Analyse the situation: the performance gaps, who the learners are, what constrains "
                "delivery, what has to be taught, and what you would improve."),
-        schema=rules.SCHEMA_ANALYSIS,
         rules=rules.RULES_ANALYSIS,
         primary_type=NodeType.GAP,
         submit_fields=(
@@ -806,7 +869,6 @@ STEPS: tuple[AgenticStep, ...] = (
                  "responsible for the course goal and learning objectives."),
         intro=("State what this course is for and what learners will be able to do, grounded in "
                "the analysis already in the design graph."),
-        schema=rules.SCHEMA_OUTCOMES,
         rules=rules.RULES_OUTCOMES,
         primary_type=NodeType.OBJECTIVE,
         readable_types=(NodeType.GAP, NodeType.TOPIC, NodeType.LEARNER_PROFILE, NodeType.CONSTRAINT),
@@ -835,8 +897,8 @@ STEPS: tuple[AgenticStep, ...] = (
                "themselves are written one set at a time, after this. The grouping is YOUR "
                "call and it decides how many Developer calls follow — group work that one "
                "instrument genuinely covers together, and do not split for the sake of it."),
-        schema=_SCHEMA_ASSESSMENT_DISPATCH,
         rules=rules.rules_for("assessment"),
+        schema_keys={"dev_plan": "assessment_dev_plan"},
         primary_type=NodeType.ASSESSMENT,
         readable_types=(NodeType.OBJECTIVE,),
         relations=("C2",),
@@ -873,8 +935,8 @@ STEPS: tuple[AgenticStep, ...] = (
                "activities themselves are written one block at a time, after this. The grouping "
                "is YOUR call and it decides how many Developer calls follow — group objectives "
                "a shared progression genuinely serves, and do not split for the sake of it."),
-        schema=_SCHEMA_ACTIVITIES_DISPATCH,
         rules=rules.rules_for("activities"),
+        schema_keys={"dev_plan": "activity_dev_plan"},
         primary_type=NodeType.ACTIVITY,
         readable_types=(NodeType.OBJECTIVE, NodeType.ASSESSMENT),
         relations=("C2", "C3", "C4"),
@@ -900,7 +962,6 @@ STEPS: tuple[AgenticStep, ...] = (
         intro=("Decide how the content is organised and what form it takes: the modules and the "
                "media that realise them. The materials themselves are produced one module at a "
                "time, after this."),
-        schema=_SCHEMA_CONTENT_DISPATCH,
         rules=rules.rules_for("content"),
         primary_type=NodeType.MATERIAL,
         readable_types=(NodeType.ACTIVITY, NodeType.TOPIC, NodeType.CONSTRAINT),
@@ -908,7 +969,26 @@ STEPS: tuple[AgenticStep, ...] = (
         docket={"gaps": ("C5",)},
         readable_docs=("analysis", "activity"),
         submit_fields=(
-            ("content_modules", "array", True), ("media_selections", "array", False),
+            ("content_modules", "array", True),
+            # REQUIRED (2026-09-08), for the reason the two dev plans are (see
+            # the assessment step) plus one of its own: an OPTIONAL artifact
+            # gets at most ONE nudge, and a nudge is a turn the stage has to
+            # REACH. MEASURED (run single_20260908_002508): the content stage
+            # spent 9 of its 24 turns on repeated reads, committed MOD-01..08
+            # and gave up on "turn budget exhausted" with `media_selections`
+            # never asked for. The media list is not decoration —
+            # `dev_plans.render_material_set` derives BOTH the allowed "type"
+            # values line AND the "each material's type is the media_type of
+            # the selection it realizes" clause from it, and
+            # `alignment.match_p6_realizes` builds its whole source set from
+            # it. Empty, the Developer picks a type freely and EVERY material
+            # violates P6 unconditionally: 0 media nodes, 15 materials, P6 30,
+            # none of them repairable (P6 is `repairs.REPORT_ONLY`). Same on
+            # runs single_20260901_151738/_154303/_162455/_205901 and
+            # single_20260903_224852. The flag is half the fix — it changes
+            # when the LOOP returns; `fanout._every_part_dispatch_done`
+            # changes what SHIPS.
+            ("media_selections", "array", True),
         ),
         validate=validate_content,
         commit=commit_content,
@@ -923,15 +1003,26 @@ STEPS: tuple[AgenticStep, ...] = (
         persona=("You are an expert implementation planner, responsible for how this design is "
                  "actually delivered by instructors and operators."),
         intro=("Plan how this design is actually delivered: what instructors and operators need, "
-               "and which activities and materials each session carries."),
-        schema=rules.SCHEMA_IMPLEMENTATION,
-        rules=rules.RULES_IMPLEMENTATION,
-        primary_type=None,  # section-only artifact — done-check on required fields
+               "and how the delivery divides into session blocks. You write the FRAMING here; "
+               "the session-by-session guides are written one block at a time, after this. The "
+               "division is YOUR call and it decides how many Developer calls follow — put "
+               "activities and materials that are delivered together in one block, and do not "
+               "split for the sake of it."),
+        rules=rules.rules_for("implementation"),
+        schema_keys={"dev_plan": "implementation_dev_plan"},
+        primary_type=NodeType.SESSION_GUIDE,
         readable_types=(NodeType.ACTIVITY, NodeType.MATERIAL),
         relations=("P10", "P11"),
         docket={"gaps": ("P10", "P11")},
         readable_docs=("activity", "material"),
-        submit_fields=tuple((key, "object", True) for key in _IMPLEMENTATION_ARTIFACTS),
+        submit_fields=tuple((key, "object", True) for key in _IMPLEMENTATION_ARTIFACTS)
+        # REQUIRED, for the reason the assessment one is (see that step): the
+        # division IS the decision this stage exists to make, and an optional
+        # artifact gets at most one nudge. Without a plan the deterministic
+        # fallback decides the fan-out, and here that costs more than a
+        # grouping — a block nobody scoped is a stretch of delivery no
+        # Developer was told the theme of.
+        + (("dev_plan", "object", True),),
         validate=validate_implementation,
         commit=commit_implementation,
         commit_prose=commit_implementation_prose,

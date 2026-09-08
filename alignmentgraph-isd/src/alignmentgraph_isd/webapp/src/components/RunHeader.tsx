@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Circle, CircleCheck, CircleSlash, CircleX, Loader2, Play, RotateCw, Square } from 'lucide-react'
+import { Check, Circle, CircleCheck, CircleSlash, CircleX, Copy, Loader2, Play, RotateCw, Square } from 'lucide-react'
 import type { RunStreamState } from '../state/useRunStream'
 import { phaseLabel } from '../lib/phaseTimeline'
 
@@ -30,6 +30,8 @@ export function RunHeader({ stream, canRun, runDisabledReason, onRun, onCancel, 
 
   return (
     <div className="run-header">
+      {stream.runId && <RunIdChip runId={stream.runId} />}
+
       <span className={`pill ${stream.status}`}>
         <StatusIcon status={stream.status} />
         {statusLabel(stream)}
@@ -84,6 +86,45 @@ export function RunHeader({ stream, canRun, runDisabledReason, onRun, onCancel, 
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * The id of the run on screen, short, with a click to copy it in full.
+ *
+ * A run is addressed by this id everywhere OUTSIDE the browser — the artifact
+ * directory on disk (``programs/<program>/runs/<run>/``), every
+ * ``/api/runs/{id}`` route, the SSE stream. Without it here there is no way to
+ * tell which run is being shown, so reading the graph in the app and the
+ * trajectory on disk means guessing by timestamp. Choosing BETWEEN runs is the
+ * sidebar's job; this only names the one selected.
+ */
+function RunIdChip({ runId }: { runId: string }) {
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!copied) return
+    const timer = setTimeout(() => setCopied(false), 1200)
+    return () => clearTimeout(timer)
+  }, [copied])
+
+  // Reset when the header moves to a different run, or a stale "Copied" from
+  // the previous one sits under the new id.
+  useEffect(() => setCopied(false), [runId])
+
+  const copy = () => {
+    // Unavailable over plain http on a non-localhost host; the id is still
+    // readable on screen and in the tooltip, so a failure is silent.
+    void navigator.clipboard?.writeText(runId).then(() => setCopied(true), () => undefined)
+  }
+
+  // Copies the FULL id: the short form is for recognising a run, not for
+  // pasting into a path.
+  return (
+    <button className="run-id mono" onClick={copy} title={`Run ${runId} — click to copy`}>
+      {runId.slice(0, 8)}
+      {copied ? <Check size={11} /> : <Copy size={11} />}
+    </button>
   )
 }
 

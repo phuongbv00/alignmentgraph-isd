@@ -275,7 +275,19 @@ def test_both_arms_get_the_same_generation_scaffolding(fake_llm_factory):
     # axis — the 2026-08-30 audit measured the single arm spending ~44% MORE
     # calls than multi at 9B for exactly that reason. What must hold is that
     # both arms did real work and neither was cut off by its ceiling.
-    assert all(count > len(STEPS) for count in llm_calls.values()), llm_calls
+    #
+    # AT LEAST one call per stage, not more. `> len(STEPS)` held on this fixture
+    # only through thrash: the single arm's canned implementation plan named
+    # ids the id remap had renumbered away, so P10/P11 failed, a repair request
+    # went out, and the fake answered it with 23 repeated submits. Once the
+    # session guides became a fan-out family (2026-09-07) the fixture schedules
+    # exactly what its block assigns, the run comes out clean, and this arm
+    # lands all six stages in six submits — the floor, since a single-arm
+    # submit carries the plan AND the items the multi arm's Developers write
+    # separately. Pinning the old number would pin the thrash, which is the
+    # fixture artifact the comment above warns against. "Not cut off" is
+    # asserted on its own, below.
+    assert all(count >= len(STEPS) for count in llm_calls.values()), llm_calls
     for name, result in runs.items():
         autonomy = result["metadata"]["autonomy"]
         assert not any(stage["via_budget_exhaustion"] for stage in autonomy.values()), name
@@ -642,36 +654,65 @@ _HARNESS_READ_FIELDS = (
 )
 
 
+def _schema_field_names(schema: dict) -> set[str]:
+    """Every property name declared anywhere in a JSON Schema, at any depth —
+    what ``test_no_rule_demands_a_field_its_schema_example_never_shows`` reads
+    instead of grepping a JSON-example string, now that the schema is a real
+    structure (``artifact_schemas.ARTIFACT_SCHEMAS``) rather than text."""
+    found: set[str] = set()
+    properties = (schema or {}).get("properties") or {}
+    for name, value in properties.items():
+        found.add(name)
+        found |= _schema_field_names(value)
+    items = (schema or {}).get("items")
+    if isinstance(items, dict):
+        found |= _schema_field_names(items)
+    return found
+
+
 def test_no_rule_demands_a_field_its_schema_example_never_shows():
-    """A field named in the rules must be visible in the JSON example the same
-    family is given — in its STAGE schema or, for a fanned-out family, in its
-    Developer's, since that is where those artifacts are actually written.
+    """A field named in the rules must be declared in the deep tool schema the
+    same family is given — in its STAGE schema or, for a fanned-out family, in
+    its Developer's, since that is where those artifacts are actually written.
 
-    MEASURED FAILURE (found 2026-09-04). ``RULES_CONTENT_MODULES`` said "Every
-    media selection should also set ``for_modules``" while the content stage's
-    schema — a hand-written copy of the rulebook's, drifted from it — showed a
-    media selection without one. ``dev_plans.material_work_units`` reads exactly
-    that field and attaches a media selection with no ``for_modules`` to EVERY
-    module unit: three modules x three media went out as nine media-slots
-    instead of three, and ``RULES_MATERIALS_UNIT`` makes each slot a material,
-    so every Developer was asked for three times what it should write.
+    MEASURED FAILURE (found 2026-09-04, when this was JSON-example TEXT).
+    ``RULES_CONTENT_MODULES`` said "Every media selection should also set
+    ``for_modules``" while the content stage's schema — a hand-written copy of
+    the rulebook's, drifted from it — showed a media selection without one.
+    ``dev_plans.material_work_units`` reads exactly that field and attaches a
+    media selection with no ``for_modules`` to EVERY module unit: three
+    modules x three media went out as nine media-slots instead of three, and
+    ``RULES_MATERIALS_UNIT`` makes each slot a material, so every Developer
+    was asked for three times what it should write.
 
-    The fix was to stop copying: the content schema now comes from the rulebook
-    like the assessment and activity ones already did. This test is the guard on
-    the copy never coming back."""
-    from alignmentgraph_isd.core.agentic import fanout
+    The fix was to stop copying: the content schema comes from one place
+    (``artifact_schemas.ARTIFACT_SCHEMAS``, since 2026-09-08 the SOLE
+    declaration of an artifact's shape) like the assessment and activity ones
+    already did. This test is the guard on a hand-typed copy ever coming
+    back, structural rather than textual now that there is no text to grep."""
+    from alignmentgraph_isd.core.agentic import artifact_schemas, fanout
     from alignmentgraph_isd.core.agentic.specialists import STEPS
 
     for step in STEPS:
         spec = fanout.SPECS.get(step.name)
         outputs = spec.outputs if spec else ()
-        schema = "\n".join([step.schema, *(o.schema for o in outputs)])
+        field_names: set[str] = set()
+        for key, _json_type, _required in step.submit_fields:
+            lookup = step.schema_keys.get(key, key)
+            field_names |= _schema_field_names(artifact_schemas.ARTIFACT_SCHEMAS.get(lookup) or {})
+        for output in outputs:
+            field_names |= _schema_field_names(
+                artifact_schemas.ARTIFACT_SCHEMAS.get(output.schema_key) or {})
         rules = "\n".join([step.rules, *(o.rules for o in outputs)])
         for field in _HARNESS_READ_FIELDS:
             if field in rules:
-                assert field in schema, (
-                    f"{step.name}: the rules demand `{field}` but no JSON example "
-                    "shown to that family contains it — the model is being told to "
+                # Substring, not exact membership — matching the old text
+                # check's semantics: "aligned_objective" must find its home
+                # in "aligned_objectives" too, the same way it did as a
+                # substring of the old JSON-example text.
+                assert any(field in name for name in field_names), (
+                    f"{step.name}: the rules demand `{field}` but no deep schema "
+                    "shown to that family declares it — the model is being told to "
                     "write a field it has never seen"
                 )
 
@@ -679,18 +720,25 @@ def test_no_rule_demands_a_field_its_schema_example_never_shows():
 def test_a_fanned_out_family_shows_its_developer_the_same_rulebook():
     """A Developer's prompt is composed from the same rulebook blocks as its
     stage's — the fan-out changes WHO writes an artifact, never what the rules
-    for it are."""
+    for it are. The SHAPE is checked the same way: both the stage's own
+    machinery and the Developer's read ``artifact_schemas.ARTIFACT_SCHEMAS``
+    under the same ``schema_key``, so there is only one schema to compare
+    against — what this asserts is that the Developer is actually bound to
+    submit under that key, not a renamed or dropped one."""
     from alignmentgraph_isd.core import dev_plans
-    from alignmentgraph_isd.core.agentic import fanout
+    from alignmentgraph_isd.core.agentic import artifact_schemas, fanout
     from alignmentgraph_isd.core.agentic.specialists import STEPS
 
     by_name = {step.name: step for step in STEPS}
     for family, spec in fanout.SPECS.items():
         dev = fanout.set_step(spec, dev_plans.WorkSet(set_id="S1"), by_name[family])
+        dev_keys = {key for key, _t, _r in dev.submit_fields}
         for output in spec.outputs:
             assert output.rules.strip().splitlines()[0] in dev.rules, (
                 f"{family}'s Developer was given rules the rulebook does not hold")
-            assert output.schema.strip().splitlines()[0] in dev.schema
+            assert output.schema_key in dev_keys, (
+                f"{family}'s Developer is not bound to submit {output.schema_key!r}")
+            assert output.schema_key in artifact_schemas.ARTIFACT_SCHEMAS
 
 
 def test_the_instructed_stage_order_is_generated_from_the_step_table():
@@ -731,16 +779,25 @@ def test_the_media_vocabulary_is_typed_once():
 
 
 def test_no_schema_example_hands_a_model_a_value_it_must_derive():
-    """MEASURED (run 2b9e911a): `SCHEMA_MATERIALS` showed `"type": "video",
-    "format": "mp4"` and all eight materials came out video/mp4 — against six
-    media selections that were slides and simulation. P6 failed 8 of 8. For a
-    small model the exemplar VALUE outranks the rule beside it, so a field whose
-    value has to come from the design state must show a placeholder, not one of
-    its legal values."""
-    from alignmentgraph_isd.core import rulebook
+    """MEASURED (run 2b9e911a, when the schema was JSON-example TEXT):
+    `SCHEMA_MATERIALS` showed `"type": "video", "format": "mp4"` and all eight
+    materials came out video/mp4 — against six media selections that were
+    slides and simulation. P6 failed 8 of 8. For a small model the exemplar
+    VALUE outranks the rule beside it, so a field whose value has to come from
+    the design state must never show one of its legal values as if it were
+    the answer.
 
-    example = rulebook.SCHEMA_MATERIALS
-    for media_type in rulebook.MEDIA_TYPES:
-        assert f'"type": "{media_type}"' not in example, (
-            f"the materials example hands the model {media_type!r} to copy")
-    assert '"type": "<' in example, "and it must show a placeholder instead"
+    A JSON SCHEMA (``artifact_schemas.ARTIFACT_SCHEMAS``, since 2026-09-08)
+    cannot leak an instance the way a worked example could — it has no
+    ``"type": "video"`` line to copy, only a TYPE and an ``enum`` naming every
+    legal value with none singled out. This test is the structural guard: the
+    field stays a constraint (the module's own media list decides which value
+    applies), never a ``default``/``const`` that would single one out."""
+    from alignmentgraph_isd.core import rulebook
+    from alignmentgraph_isd.core.agentic import artifact_schemas
+
+    field = artifact_schemas.ARTIFACT_SCHEMAS["learner_materials"]["properties"]["type"]
+    assert "default" not in field and "const" not in field, (
+        "the materials schema singles out one media type as if it were the answer")
+    assert set(field.get("enum") or ()) == set(rulebook.MEDIA_TYPES), (
+        "the materials schema's `type` enum has drifted from rulebook.MEDIA_TYPES")

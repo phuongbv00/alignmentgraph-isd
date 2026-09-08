@@ -31,6 +31,7 @@ const SHAPES: Record<string, string> = {
   assessment_plan: 'rectangle',
   activity_plan: 'rectangle',
   implementation_plan: 'hexagon', // viz: component
+  session_guide: 'round-rectangle', // viz: note
 }
 
 const FILLS: Record<string, string> = {
@@ -40,6 +41,7 @@ const FILLS: Record<string, string> = {
   content: '#f3f4f6',
   material: '#f3f4f6',
   implementation_plan: '#f3f4f6',
+  session_guide: '#f3f4f6',
   gap: '#fef2f2',
   topic: '#f0fdfa',
   learner_profile: '#fff7ed',

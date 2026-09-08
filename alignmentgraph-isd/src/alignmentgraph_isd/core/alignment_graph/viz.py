@@ -38,6 +38,7 @@ _NODE_STYLE = {
     NodeType.CONTENT: {"shape": "folder", "style": "filled", "fillcolor": "#f3f4f6"},
     NodeType.MATERIAL: {"shape": "folder", "style": "filled", "fillcolor": "#f3f4f6"},
     NodeType.IMPLEMENTATION_PLAN: {"shape": "component", "style": "filled", "fillcolor": "#f3f4f6"},
+    NodeType.SESSION_GUIDE: {"shape": "note", "style": "filled", "fillcolor": "#f3f4f6"},
 }
 _ALIGNED_FILL = "#bbf7d0"      # green
 _UNALIGNED_FILL = "#fde68a"    # amber

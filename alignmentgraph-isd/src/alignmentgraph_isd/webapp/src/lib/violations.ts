@@ -29,8 +29,8 @@ const LABELS: Record<string, string> = {
   P7: 'module covers a task topic',
   P8: 'media selection respects a constraint',
   P9: 'improvement addresses a gap',
-  P10: 'activity scheduled by the implementation plan',
-  P11: 'material provisioned by the implementation plan',
+  P10: 'activity scheduled by a session guide',
+  P11: 'material provisioned by a session guide',
   // Within-artifact quality checks
   bloom: "objective's Bloom verb and level agree",
   bloom_mismatch_assessment: 'objective assessed at its own Bloom level',

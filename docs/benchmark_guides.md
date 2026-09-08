@@ -145,7 +145,7 @@ vLLM `v0.25.1`, bf16, context **16384** cho cả 4 model, mỗi model một pod,
 ### 3.3 Ba flag bảo hộ — bắt buộc, đảm bảo tính công bằng của so sánh
 
 ```bash
-AGENT_MODEL_MAX_TOKENS_CAP=8192
+AGENT_MODEL_MAX_OUTPUT_TOKENS=8192
 AGENT_MODEL_STREAMING=1
 AGENT_MODEL_DISABLE_THINKING=1
 ```
@@ -370,7 +370,7 @@ activities / evaluation) có rỗng không. Quan trọng: output parse được 
 | Dấu hiệu                         | Ý nghĩa                       | Hành động                                  |
 |----------------------------------|-------------------------------|--------------------------------------------|
 | `Error code: 524`                | Proxy cắt call >120s          | Dừng, kiểm `AGENT_MODEL_STREAMING`         |
-| `Error code: 400` max context    | Cap không ăn / prompt quá dài | Kiểm `AGENT_MODEL_MAX_TOKENS_CAP`          |
+| `Error code: 400` max context    | Cap không ăn / prompt quá dài | Kiểm `AGENT_MODEL_MAX_OUTPUT_TOKENS`          |
 | `기본 출력 반환` / stub marker         | Baseline ghi default output   | Loại scenario/run, tìm nguyên nhân rỗng    |
 | `응답 길이: 0`                       | Model trả rỗng                | Kiểm non-thinking flag + pod log           |
 | `token_usage = 0` hàng loạt      | Accounting hỏng               | Sửa trước khi chạy tiếp — số token sai hết |

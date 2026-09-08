@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from alignmentgraph_isd import DesignBrief, HarnessRunConfig, MetaAgent
+from alignmentgraph_isd.core.agentic import compaction as _compaction
 from alignmentgraph_isd.core.agentic.loop import STAGE_BRIEF_HEADER
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -259,15 +260,11 @@ _IMPLEMENTATION = {
         "issue_resolution_log": ["IDE failures resolved via cloud lab"],
         "real_time_adjustments": ["Extended design review"],
     },
+    # The session guides are the Developer tier's artifact now
+    # (NodeType.SESSION_GUIDE): the stage writes the guide's FRAMING and the
+    # dev plan that divides the delivery.
     "instructor_guide": {
         "overview": "Three-session flow from concepts to applied design.",
-        "session_guides": [
-            {"session": 1, "objectives": ["ILO-01"],
-             "activities": ["Guided encapsulation lab with pair feedback"],
-             "activity_ids": ["TLA-01", "TLA-02", "TLA-03"],
-             "material_ids": ["MAT-01", "MAT-02", "MAT-03"],
-             "notes": "Pair learners by level."},
-        ],
         "facilitation_tips": ["Circulate during labs"],
         "troubleshooting": ["IDE setup failures: use the cloud lab"],
     },
@@ -277,6 +274,30 @@ _IMPLEMENTATION = {
         "support_procedures": ["Escalate IDE failures"],
         "escalation_process": "Notify lab support within 5 minutes of a blocking issue.",
     },
+}
+
+
+_IMPLEMENTATION_DEV_PLAN = {"dev_plan": {
+    "session_blocks": [
+        {"set_id": "BLOCK-01", "expected_sessions": 2,
+         "activity_ids": ["TLA-01", "TLA-02", "TLA-03"],
+         "material_ids": ["MAT-01", "MAT-02", "MAT-03"],
+         "block_theme": "Foundations, then applied design.",
+         "rationale": "These run back to back in the same week."},
+    ],
+}}
+
+#: The whole-family answer, for the single arm (which has no Developers) and
+#: as the fallback when a prompt asks for guides outside a work set. A real
+#: block's guides are sliced per assignment — see ``_session_guides_for_block``.
+_SESSION_GUIDES = {
+    "session_guides": [
+        {"session": 1, "objectives": ["ILO-01"],
+         "activities": ["Guided encapsulation lab with pair feedback"],
+         "activity_ids": ["TLA-01", "TLA-02", "TLA-03"],
+         "material_ids": ["MAT-01", "MAT-02", "MAT-03"],
+         "notes": "Pair learners by level."},
+    ],
 }
 
 
@@ -305,7 +326,11 @@ _PAYLOAD_BY_SCHEMA_KEY = (
      {**_ACTIVITY_PLAN, **_ACTIVITY_DEV_PLAN, **_ACTIVITIES}),
     (('"media_selections"', '"learner_materials"', '"content_modules"'),
      {**_MODULES, **_MATERIALS}),
+    (('"instructor_orientation"', '"session_blocks"', '"session_guides"'),
+     {**_IMPLEMENTATION, **_IMPLEMENTATION_DEV_PLAN, **_SESSION_GUIDES}),
     (('"pilot_data_plan"', '"instrument_sets"'), {**_ASSESSMENT_PLAN, **_ASSESSMENT_DEV_PLAN}),
+    (('"instructor_orientation"', '"session_blocks"'),
+     {**_IMPLEMENTATION, **_IMPLEMENTATION_DEV_PLAN}),
     (('"non_instructional_strategies"', '"activity_blocks"'), {**_ACTIVITY_PLAN, **_ACTIVITY_DEV_PLAN}),
     # core/agentic/specialists.py's merged schemas are manual copies of the
     # single arm's PRE-fan-out tasks (plan+items/activities/materials all in
@@ -316,7 +341,18 @@ _PAYLOAD_BY_SCHEMA_KEY = (
     (('"pilot_data_plan"', '"assessment_tools"'), {**_ASSESSMENT_PLAN, **_ASSESSMENT_ITEMS}),
     (('"non_instructional_strategies"', '"learning_activities"'), {**_ACTIVITY_PLAN, **_ACTIVITIES}),
     (('"media_selections"', '"learner_materials"'), {**_MODULES, **_MATERIALS}),
+    # One entry per analysis PART, not just `needs_analysis` (2026-09-08, same
+    # reason as the implementation entries below): each of the five is
+    # submitted independently (`AgenticStep.submit_parts`) and its own tool
+    # drops out of the binding once it lands, so a LATE part's turn — say
+    # `improvement_plan` after the other four have landed — no longer carries
+    # `"needs_analysis"` anywhere in its bound tool's parameters for the old
+    # single anchor to find.
     (('"needs_analysis"',), _ANALYZE),
+    (('"learner_analysis"',), _ANALYZE),
+    (('"context_analysis"',), _ANALYZE),
+    (('"task_analysis"',), _ANALYZE),
+    (('"improvement_plan"',), _ANALYZE),
     # course_goal alone (single arm's merged outcomes call, and the multi
     # arm's own Hop B1) vs. learning_objectives alone (the multi arm's Hop
     # B2, 2026-08-28 split) — both draw from the SAME canned _DESIGN, which
@@ -326,24 +362,63 @@ _PAYLOAD_BY_SCHEMA_KEY = (
     (('"pilot_data_plan"',), _ASSESSMENT_PLAN),
     (('"instrument_sets"',), _ASSESSMENT_DEV_PLAN),
     (('"assessment_tools"',), _ASSESSMENT_ITEMS),
+    # `instructional_strategies` is REQUIRED and `non_instructional_strategies`
+    # optional — once the optional one has landed (or used its one nudge) and
+    # only `instructional_strategies` remains outstanding, the OLD single
+    # `non_instructional_strategies` anchor no longer appears anywhere in that
+    # turn's bound tool. Same class of gap as the analysis/implementation ones.
+    (('"instructional_strategies"',), _ACTIVITY_PLAN),
     (('"non_instructional_strategies"',), _ACTIVITY_PLAN),
     (('"activity_blocks"',), _ACTIVITY_DEV_PLAN),
     (('"learning_activities"',), _ACTIVITIES),
+    # `content_modules` is REQUIRED and `media_selections` optional — same gap:
+    # once media_selections has landed/been dropped, a turn asking only for
+    # content_modules carried no anchor the old table recognised.
+    (('"content_modules"',), _MODULES),
     (('"media_selections"',), _MODULES),
     (('"learner_materials"',), _MATERIALS),
+    (('"session_blocks"',), _IMPLEMENTATION_DEV_PLAN),
+    (('"session_guides"',), _SESSION_GUIDES),
+    # One entry per implementation sub-artifact, not just `instructor_orientation`
+    # (2026-09-08). Before the schema moved into the tool `parameters`, the
+    # WHOLE dispatch schema (all six keys, `instructor_orientation` always
+    # first) was shown as static TEXT on every turn of the stage regardless of
+    # which sub-artifacts had already landed, so one anchor sufficed for all
+    # six. Now a landed artifact's `submit_<key>` tool drops out of the
+    # binding (see `only=` in `tools.submit_specs`), so a LATE turn — once
+    # only e.g. `monitoring` remains outstanding — carries only that key in
+    # its bound tool's `parameters`, and the old single anchor stops matching:
+    # `_payload_for_system` returned {} and `monitoring` was submitted empty
+    # forever. Each of the five other keys needs its own anchor for exactly
+    # the same reason `course_goal`/`learning_objectives` already have theirs.
     (('"instructor_orientation"',), _IMPLEMENTATION),
+    (('"system_check"',), _IMPLEMENTATION),
+    (('"prototype_execution"',), _IMPLEMENTATION),
+    (('"monitoring"',), _IMPLEMENTATION),
+    (('"instructor_guide"',), _IMPLEMENTATION),
+    (('"operator_manual"',), _IMPLEMENTATION),
 )
 
 
-def _payload_for_system(system_prompt: str, whole: str = "") -> dict:
+def _payload_for_system(system_prompt: str, whole: str = "", specs_json: str = "") -> dict:
     """The canned payload a prompt is asking for.
 
-    Keyed on the prompt's SCHEMA, never on its persona sentence: the single
+    Keyed on the artifact's SCHEMA, never on its persona sentence: the single
     arm replaces that sentence, so a persona-keyed fixture silently stops
     recognising every step there, returns {} and turns the whole single-mode
-    suite into a test of the regen loop."""
+    suite into a test of the regen loop.
+
+    Since 2026-09-08 the schema lives in the bound tool's own ``parameters``
+    (``core/agentic/artifact_schemas.py``), not as JSON-example text in the
+    prompt any more — so the match key (a literal ``"field_name"`` the old
+    schema example showed) is looked for in the SERIALIZED BOUND SPECS
+    (``specs_json``, set by ``bind_tools``) as well as the prompt text. Every
+    key here is a property name in some artifact's deep schema, so it appears
+    there as a quoted JSON key exactly as it used to in the prompt's example
+    block — same matching logic, different place to read it from."""
+    haystack = f"{system_prompt}\n{specs_json}"
     for keys, payload in _PAYLOAD_BY_SCHEMA_KEY:
-        if all(key in system_prompt for key in keys):
+        if all(key in haystack for key in keys):
             # Ids are scraped from the WHOLE conversation, not from the slice
             # the schema was matched in: the schema arrives as a `stage_brief`
             # tool result now, and the ids a plan refers to are back in the
@@ -452,6 +527,45 @@ def _STEPS():
     return STEPS
 
 
+_ASSIGNED_SESSION_COUNT_RE = re.compile(r"write exactly (\d+) session guides?, numbered ([\d, ]+)")
+
+
+def _session_guides_for_block(raw_prompt: str) -> list[dict] | None:
+    """The guides ONE session block's Developer writes.
+
+    Every activity and material the block names lands in exactly one guide, in
+    the session numbers the assignment reserved for it — which is what a real
+    Developer is asked for and what P10/P11 coverage is then measured on. A
+    fixture answering with the canned whole-family list would schedule ids
+    belonging to other blocks and make coverage look complete however the
+    fan-out divided the work."""
+    match = _ASSIGNED_SESSION_COUNT_RE.search(raw_prompt)
+    if not match:
+        return None
+    numbers = [int(n) for n in match.group(2).replace(" ", "").split(",") if n]
+    activities = list(dict.fromkeys(re.findall(r"\bTLA-\d+\b", raw_prompt)))
+    materials = list(dict.fromkeys(re.findall(r"\bMAT-\d+\b", raw_prompt)))
+    if not activities:
+        return None
+    # Never more guides than there are activities to put in them: a guide with
+    # no activity ids schedules nothing and is rejected
+    # (``fanout.session_guide_errors``), which is what a real Developer asked
+    # for three sessions' worth of one activity would also avoid by merging.
+    count = max(1, min(int(match.group(1)), len(activities)))
+    guides = []
+    for index in range(count):
+        guides.append({
+            "session": numbers[index] if index < len(numbers) else index + 1,
+            "objectives": ["ILO-01"],
+            "activities": ["Facilitated block: run the assigned activities in order, "
+                            "with a checkpoint at the end."],
+            "activity_ids": activities[index::count],
+            "material_ids": materials[index::count],
+            "notes": "Pair learners by level.",
+        })
+    return guides
+
+
 def _sliced_payload_for_set(raw_prompt: str) -> dict | None:
     """A Developer's own slice of the family's canned items, or ``None`` if
     this prompt isn't a Developer's (falls through to schema-key matching)."""
@@ -525,12 +639,28 @@ def _sliced_payload_for_set(raw_prompt: str) -> dict | None:
                         "learner_cognitive_process": "apply", "prerequisite_activities": [],
                     })
             return {"learning_activities": items}
+    if "=== YOUR ASSIGNED BLOCK ===" in raw_prompt and '"session_guides"' in raw_prompt:
+        guides = _session_guides_for_block(raw_prompt)
+        if guides is not None:
+            return {"session_guides": guides}
     if "=== YOUR ASSIGNED MODULE ===" in raw_prompt and '"learner_materials"' in raw_prompt:
         modules = set(_ASSIGNED_MODULES_RE.findall(raw_prompt))
         if modules:
             items = [m for m in _MATERIALS["learner_materials"] if m.get("linked_module") in modules]
             return {"learner_materials": items}
     return None
+
+
+#: The hook's system turn, imported rather than retyped so a reworded prompt
+#: cannot leave this fixture matching nothing and quietly answering with JSON.
+_COMPACTION_SYSTEM = _compaction._SYSTEM
+
+#: What the fake folds a compaction into. Prose, deliberately — a fixture that
+#: answered with `{"summary": ...}` would exercise `_clean`'s salvage on every
+#: run and never the ordinary path.
+_CANNED_SUMMARY = (
+    "Earlier turns established the course goal and objectives ILO-01..ILO-03; "
+    "the assessment plan was read but not yet written.")
 
 
 class _Result:
@@ -550,7 +680,14 @@ class FakeChatModel:
 
     Speaks BOTH transports: bound with tools (every stage loop) it answers
     with one ``submit`` call carrying the canned payload; unbound (a caller
-    that binds nothing) it answers with the same payload as JSON text."""
+    that binds nothing) it answers with the same payload as JSON text.
+
+    ...and one third thing, because there is exactly one unbound caller in the
+    package: the compaction hook, which asks for PROSE. Without the branch in
+    ``invoke`` it would get the JSON-text transport above — which is not a
+    crash but is worse than one, since that is the precise shape v1 died of
+    and every fixture compaction would silently record ``unusable`` while the
+    suite stayed green."""
 
     def __init__(self) -> None:
         self._tools_bound = False
@@ -578,6 +715,15 @@ class FakeChatModel:
         # quietly run down the stage-loop branch and still pass.)
         stage_names = {step.name for step in _STEPS()}
         bound._react = any(n[len("submit_"):] in stage_names for n in bound._submits)
+        # The bound tools' PARAMETERS — this is where an artifact's
+        # field-level schema lives now (see `_payload_for_system`), since it
+        # is no longer JSON-example text in the prompt. Kept as the raw spec
+        # list, not pre-serialized: the ReAct loop binds one `submit_<stage>`
+        # per INCOMPLETE stage all at once, so serializing everything here
+        # would let an earlier stage's schema out-match the live one exactly
+        # the way whole-conversation text once did — the react branch below
+        # narrows to the one tool for the stage actually being answered.
+        bound._specs = list(specs or [])
         return bound
 
     def invoke(self, messages):
@@ -593,6 +739,12 @@ class FakeChatModel:
         #: stage marker, but the ids a plan refers to live in the stage turn's
         #: docket, which is behind it.
         raw_all = raw_prompt
+        # The compaction hook: the one caller that binds nothing and wants
+        # prose, not an artifact. Matched on its own system turn rather than on
+        # the absence of bound tools, so an unbound caller that DOES want the
+        # canned JSON still gets it.
+        if _COMPACTION_SYSTEM in raw_prompt:
+            return _Result(content=_CANNED_SUMMARY)
         # ...but only from the CURRENT stage onward when the transcript carries
         # several. The agentic single arm accumulates every stage in one
         # conversation, so matching over the whole thing makes the earliest
@@ -631,10 +783,22 @@ class FakeChatModel:
             # `whole` beside the block: the ids a plan refers to (the P10/P11
             # docket, the committed activity/material ids) live in earlier
             # turns, and `_named_from_prompt` resolves against them.
-            payload = _payload_for_system(block.group(1) if block else raw_prompt, whole)
+            #
+            # The SCHEMA half is narrowed to this one stage's OWN tool: the
+            # ReAct loop binds one `submit_<stage>` per still-incomplete
+            # stage all at once, so serializing every bound tool would let an
+            # earlier stage's schema out-match the live one exactly the way
+            # whole-conversation TEXT once did before the schema moved into
+            # the tool parameters.
+            stage_specs = [s for s in getattr(self, "_specs", ())
+                           if s.get("function", {}).get("name") == f"submit_{stage}"]
+            payload = _payload_for_system(
+                block.group(1) if block else raw_prompt, whole,
+                json.dumps(stage_specs, ensure_ascii=False))
             return self._respond(payload, f"submit_{stage}")
         prompt = re.sub(r"=== (?!SCENARIO)[^=]+? ===.*?(?==== SCENARIO ===)", "", raw_prompt, flags=re.S)
-        payload = _payload_for_system(prompt, raw_all)
+        payload = _payload_for_system(
+            prompt, raw_all, json.dumps(getattr(self, "_specs", ()), ensure_ascii=False))
         name, args = self._stage_submit(payload, messages)
         return self._respond(args, name)
 

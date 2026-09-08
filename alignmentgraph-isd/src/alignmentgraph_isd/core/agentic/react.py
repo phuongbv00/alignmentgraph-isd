@@ -36,6 +36,7 @@ import json
 from ..brief import _format_design_brief
 from .. import dev_plans
 from ..memory import Memory, new_agent_run_id
+from ..trajectory import WORKFLOW_ORCHESTRATOR
 from . import budget, fanout, tools
 from .loop import (
     INVALID_TURN_NUDGE,
@@ -122,6 +123,16 @@ class ReactLoop:
         #: whole brief, so it is the arm that actually hits the ceiling.
         self.compacted: list = []
         self.llm = AgenticLLM(config, trajectory, SINGLE_IDENTITY)
+        #: The compaction HOOK's model caller, never this agent's. Compaction
+        #: is something the harness does over the agent's head — it did not
+        #: choose it and is not shown that conversation — so the call is
+        #: attributed to the orchestrator and publishes no context. Reusing
+        #: `self.llm` would book the orchestrator's completion in the agent's
+        #: column and leave an `llm_call` under an agent name with no context
+        #: to account for it, which is the shape
+        #: `test_every_published_context_belongs_to_a_tool_loop` exists to
+        #: forbid.
+        self._summariser = AgenticLLM(config, trajectory, WORKFLOW_ORCHESTRATOR)
         self.messages: list = []
         self.stats: dict = {
             "turns_used": 0, "submits_rejected": 0, "repeated_calls": 0,
@@ -129,6 +140,11 @@ class ReactLoop:
             # See ToolLoop: how often the window filled. This is the arm
             # that fills it.
             "compactions": 0,
+            # ...and how many of those folds the model actually delivered.
+            # `compactions - compaction_summaries` is the hook's failure rate
+            # on this model, which is the number that says whether the
+            # completion it spends buys anything.
+            "compaction_summaries": 0,
             "markup_recovered": 0, "args_salvaged": 0, "truncated_turns": 0,
             "dropped_args": 0, "repair_turns": 0, "thinking_only": 0,
             "via_budget_exhaustion": False,
@@ -208,25 +224,37 @@ class ReactLoop:
             return (f"ERROR: no stage named {name!r}. The stages are: "
                     + ", ".join(s.name for s in STEPS))
         block = stage_brief_block(step)
-        # A fan-out family's stage block shows only the PLAN schema, because in
-        # the multi arm its items come from Developers who are shown theirs
-        # separately. This agent writes both, so it has to see both.
+        # A fan-out family's stage block shows only the PLAN's rules, because
+        # in the multi arm its items come from Developers who are shown
+        # theirs separately. This agent writes both, so it has to see both
+        # artifacts' rules — their SHAPE is already in the bound
+        # ``submit_<stage>`` tool's own parameters (see ``react_specs``), not
+        # restated here as text.
         spec = fanout.SPECS.get(step.name)
         if spec is not None:
             for output in spec.outputs:
                 block += (f"\n\nAlso for this stage — {output.schema_key}:\n"
-                          f"{output.schema}\n{output.rules}")
+                          f"{output.rules}")
         return block
 
     def _own_violations(self, step) -> list:
         """The just-finished stage's own violations, structural fixes already
         applied. Identical to the multi arm's — one implementation, so the two
-        arms are shown the same thing about the same artifact."""
+        arms are shown the same thing about the same artifact.
+
+        Pairs the ledger write with a ``check`` trajectory event, attributed to
+        the orchestrator like every other check round (see
+        ``ToolLoop._own_violations`` in ``loop.py`` for why: without it, a
+        violation whose only sighting was here never reaches
+        ``expert_review.findings``, only the ledger)."""
+        from .run import _serialize
         found = ToolLoop.own_violations(
             self.state, self.design_brief, step, self.trajectory, self.llm)
         if found:
+            round_no = self.trajectory.log_violations_result(
+                _serialize(found, self.identity), agent=WORKFLOW_ORCHESTRATOR)
             self.memory.observe_violations(
-                found, round=len(self.trajectory.check_events),
+                found, round=round_no,
                 phase=step.name, family=step.family, shown_to_agent=True)
         return found
 
@@ -319,7 +347,6 @@ class ReactLoop:
         one call happens to contain everything."""
         errors = protocol_leak_errors(section)
         spec = fanout.SPECS.get(step.name)
-        output_keys = [o.schema_key for o in spec.outputs] if spec else []
         present = {k: v for k, v in (section or {}).items() if v not in (None, [], {})}
         if not present:
             return errors + ["the submit is empty; send the plan, or a batch of items"]
@@ -328,9 +355,11 @@ class ReactLoop:
         dispatch_keys = [k for k, _t, _r in step.submit_fields]
         if any(k in present for k in dispatch_keys):
             errors += list(step.validate(section))
-        for key in output_keys:
-            if key in present and not isinstance(present[key], list):
-                errors.append(f"{key}: expected a list of items")
+        if spec is not None:
+            # The SAME item rules a Developer's submit is held to
+            # (`fanout.output_errors`), because this agent is writing exactly
+            # what a Developer would.
+            errors += fanout.output_errors(spec, present)
         return errors
 
     def run(self) -> None:
@@ -416,7 +445,8 @@ class ReactLoop:
                 self.messages = compact(
                     self.messages, dropped, len(self.compacted),
                     trajectory=self.trajectory, stats=self.stats,
-                    restore=self._restore_brief, budget=self._history_budget)
+                    restore=self._restore_brief, budget=self._history_budget,
+                    llm=self._summariser)
             self._publish(live=True)
             self.stats["context_len"] = max(
                 self.stats["context_len"], sum(message_size(m) for m in self.messages))

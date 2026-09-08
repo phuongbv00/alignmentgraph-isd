@@ -1,10 +1,15 @@
 import { Loader2, Plus, Settings2, Trash2 } from 'lucide-react'
-import type { ProgramSummary } from '../api/types'
+import type { ProgramSummary, RunSummary } from '../api/types'
+import { runStamp } from '../lib/time'
 
 interface Props {
   programs: ProgramSummary[]
   activeId: string | null
   onSelect: (id: string) => void
+  /** Runs of the ACTIVE program only, newest first — the API orders them. */
+  runs: RunSummary[]
+  activeRunId: string | null
+  onSelectRun: (runId: string) => void
   onCreate: () => void
   onDelete: (program: ProgramSummary) => void
   onOpenSettings: () => void
@@ -15,7 +20,8 @@ interface Props {
 }
 
 export function ProgramSidebar({
-  programs, activeId, onSelect, onCreate, onDelete, onOpenSettings, busy, deletingId, modelName,
+  programs, activeId, onSelect, runs, activeRunId, onSelectRun,
+  onCreate, onDelete, onOpenSettings, busy, deletingId, modelName,
 }: Props) {
   return (
     <aside className="sidebar">
@@ -39,11 +45,13 @@ export function ProgramSidebar({
               || program.latest_run?.status === 'cancelling'
             const deleting = deletingId === program.id
 
+            const expanded = program.id === activeId && runs.length > 0
+
             return (
-              // A row rather than a button, so the delete control can live
-              // inside it without nesting one button in another.
+              <div key={program.id} className="program-group">
+              {/* A row rather than a button, so the delete control can live
+                  inside it without nesting one button in another. */}
               <div
-                key={program.id}
                 className={`program${program.id === activeId ? ' active' : ''}`}
                 onClick={() => onSelect(program.id)}
                 role="button"
@@ -72,7 +80,7 @@ export function ProgramSidebar({
                   {program.brief_preview.learning_goals_total > 0 && (
                     <span>{program.brief_preview.learning_goals_total} goals</span>
                   )}
-                  {program.latest_run && (
+                  {program.latest_run && !expanded && (
                     <span
                       className={`pill ${program.latest_run.status}`}
                       style={{ fontSize: 10, padding: '3px 6px' }}
@@ -81,6 +89,20 @@ export function ProgramSidebar({
                     </span>
                   )}
                 </div>
+              </div>
+
+              {expanded && (
+                <div className="run-list">
+                  {runs.map((run) => (
+                    <RunRow
+                      key={run.id}
+                      run={run}
+                      active={run.id === activeRunId}
+                      onSelect={() => onSelectRun(run.id)}
+                    />
+                  ))}
+                </div>
+              )}
               </div>
             )
           })
@@ -96,5 +118,35 @@ export function ProgramSidebar({
         </span>
       </button>
     </aside>
+  )
+}
+
+/**
+ * One run of a program, as its own row under that program.
+ *
+ * The id is what a run is called everywhere outside the browser — its artifact
+ * directory, its ``/api/runs/{id}`` routes — so it leads, and the timestamp is
+ * only there to tell two runs of the same design apart at a glance. Switching
+ * to an older run is safe at any time, including while another is running: the
+ * event stream is per-run and replays from the start, so going back to the
+ * live one loses nothing.
+ */
+function RunRow({ run, active, onSelect }: {
+  run: RunSummary
+  active: boolean
+  onSelect: () => void
+}) {
+  const running = run.status === 'running' || run.status === 'cancelling'
+
+  return (
+    <button
+      className={`run-row${active ? ' active' : ''}`}
+      onClick={onSelect}
+      title={`Run ${run.id}`}
+    >
+      <span className={`run-dot ${run.status}`} />
+      <span className="mono run-row-id">{run.id.slice(0, 8)}</span>
+      <span className="small muted run-row-time">{runStamp(run.started_at ?? run.created_at)}</span>
+    </button>
   )
 }

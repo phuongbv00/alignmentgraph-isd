@@ -287,18 +287,18 @@ function breakdown(context: AgentContextRow, reserve = 0) {
       note: 'persona, stage order and the design brief',
     },
     {
+      // Not in the message list, but sent on EVERY request and charged to the
+      // same window — a bar that left it out understated what the call costs.
+      key: 'tools', name: 'Tools', tokens: context.schema_tokens ?? 0,
+      note: 'the bound function signatures the model chooses from',
+    },
+    {
       key: 'messages', name: 'Messages', tokens: t.messages ?? 0,
       note: 'the conversation itself — user and assistant text',
     },
     {
-      key: 'tools', name: 'Tool calls & results', tokens: t.tools ?? 0,
+      key: 'tool_calls', name: 'Tool calls & results', tokens: t.tools ?? 0,
       note: 'names, arguments the model asked for, and the data returned',
-    },
-    {
-      // Not in the message list, but sent on EVERY request and charged to the
-      // same window — a bar that left it out understated what the call costs.
-      key: 'schemas', name: 'Tools', tokens: context.schema_tokens ?? 0,
-      note: 'the bound function signatures the model chooses from',
     },
     // Not context at all — the part of the window nothing may be put in. On the
     // bar because the alternative is headroom that reads as usable and is not.

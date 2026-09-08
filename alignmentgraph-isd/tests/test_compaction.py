@@ -1,0 +1,401 @@
+"""Summarising what compaction takes out of an agent's context.
+
+When the window fills, `trim_history` removes the oldest turns. What replaces
+them decides how much of the run survives: a count says how much was lost and
+nothing about what, a summary keeps the part a later turn would have needed.
+
+On the ARM ASYMMETRY, because it is the reason this exists in the form it does.
+`single` carries one conversation for the whole brief and reaches compaction
+far sooner than `multi`, which starts each stage fresh — so this costs the two
+arms differently. That is the mechanism the decomposition axis is about, not
+noise around it: the trigger, the prompt, the budget and the fallback are one
+implementation shared by both, and what differs is only how often the window
+actually fills. A cost that differs because of the harness would be the
+confound; this one differs because of the thing being measured, and
+`metadata.autonomy` counts it per stage so the price can be stated.
+
+On the TRANSPORT, which is what killed the first version. It reached the model
+through `AgenticLLM`'s JSON-mode call while asking for prose, a compliant
+backend answered with JSON, and the summariser threw it away — run e81b8108,
+three calls, 11.8k completion tokens, nothing kept. It is back as a HOOK OF
+THE HARNESS: no tool is bound (the agent did not choose to compact, so
+compaction is not an action in its protocol), no `response_format` is sent, and
+the call is attributed to the orchestrator and publishes no context.
+"""
+from __future__ import annotations
+
+import ast
+import inspect
+from pathlib import Path
+
+import pytest
+
+from alignmentgraph_isd import HarnessRunConfig
+from alignmentgraph_isd.core.agentic import compaction
+from alignmentgraph_isd.core.agentic.loop import (
+    COMPACTION_NOTE, AgenticLLM, _with_note, compact, compaction_note,
+    running_summary, stage_brief_block, trim_history,
+)
+from alignmentgraph_isd.core.agentic.specialists import STEPS
+from alignmentgraph_isd.core.trajectory import WORKFLOW_ORCHESTRATOR
+
+from conftest import FakeChatModel, load_brief, run_brief
+
+
+class _Model:
+    """The hook's caller: an object with `call_prose`, which is all
+    `summarize` is allowed to know about it."""
+
+    def __init__(self, answer="A summary.") -> None:
+        self.answer = answer
+        self.seen: list = []
+
+    def call_prose(self, messages):
+        self.seen.append(messages)
+        if isinstance(self.answer, Exception):
+            raise self.answer
+        return self.answer
+
+
+def _without_docstrings(source: str) -> str:
+    """The code alone. A source-text guard that reads the docstrings too fires
+    on the very paragraph that explains why the thing is forbidden."""
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Module, ast.ClassDef,
+                                 ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        body = node.body
+        if (body and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)):
+            node.body = body[1:] or [ast.Pass()]
+    return ast.unparse(tree)
+
+
+def _dropped(n: int = 3) -> list:
+    return [{"role": "tool", "name": "read_nodes",
+             "content": f"ILO-0{i}: apply inheritance to a domain model"} for i in range(n)]
+
+
+class _Trajectory:
+    """Enough of TrajectoryLogger for `compact`: an `acting_as` block and a
+    recovery event."""
+
+    def __init__(self) -> None:
+        self.events: list = []
+
+    def acting_as(self, actor, phase=None, *, force_identity=False):
+        from contextlib import nullcontext
+        return nullcontext()
+
+    def log_recovery_event(self, agent, kind, detail, summary):
+        self.events.append((agent, kind, detail, summary))
+
+
+# ---------------------------------------------------------------- the fold
+
+def test_the_summary_folds_the_previous_one_in():
+    """Rolling, not accumulating: each compaction folds what went before with
+    what just went, so the note stays one fixed-size block however long the run
+    gets and each call's input stays bounded."""
+    model = _Model("Objectives ILO-01..03 established; assessment plan pending.")
+
+    out, outcome = compaction.summarize(model, "Earlier: scenario read.", _dropped())
+
+    assert outcome == "summarised"
+    assert out.startswith("Objectives ILO-01")
+    prompt = model.seen[0][-1]["content"]
+    assert "Earlier: scenario read." in prompt, "the fold gets what came before"
+    assert "ILO-01" in prompt, "and what just went"
+
+
+def test_no_response_format_is_ever_sent():
+    """The regression test for the bug that killed v1: a summary asked for as
+    prose under `response_format={"type": "json_object"}` came back as JSON and
+    was discarded on every compaction of run e81b8108. Nothing on this path may
+    reintroduce it — and nothing may bind a tool either, because compaction is
+    the harness acting over the agent's head, not a move in its protocol."""
+    code = _without_docstrings(inspect.getsource(AgenticLLM.call_prose).lstrip())
+    code += _without_docstrings(inspect.getsource(compaction))
+    for forbidden in ("response_format", "json_object", "bind_tools", "bind("):
+        assert forbidden not in code, f"{forbidden} is back on the prose path"
+
+    class _Naked:
+        def __init__(self):
+            self.bound = False
+
+        def bind_tools(self, *a, **k):
+            self.bound = True
+            return self
+
+        def bind(self, **k):
+            self.bound = True
+            return self
+
+        def invoke(self, messages):
+            from conftest import _Result
+            return _Result(content="prose")
+
+    naked = _Naked()
+    config = HarnessRunConfig()
+    config.llm_factory = lambda: naked
+    from alignmentgraph_isd.core.trajectory import TrajectoryLogger
+
+    caller = AgenticLLM(config, TrajectoryLogger(), WORKFLOW_ORCHESTRATOR)
+    assert caller.call_prose([{"role": "user", "content": "x"}]) == "prose"
+    assert not naked.bound, "the hook bound something to the model"
+
+
+def test_a_json_wrapped_summary_is_salvaged():
+    """The exact failure mode that killed v1, turned into a recovery.
+
+    Nothing asks for JSON any more, so an object here is the model's own
+    choice — and a small model told to write prose wraps it often enough that
+    discarding the answer discards a completion already paid for. One string
+    value is taken; with two there is no way to tell which is the summary."""
+    one = _Model('{"summary": "Objectives ILO-01..03 established."}')
+    assert compaction.summarize(one, "kept", _dropped()) == (
+        "Objectives ILO-01..03 established.", "summarised")
+
+    two = _Model('{"summary": "a", "notes": "b"}')
+    assert compaction.summarize(two, "kept", _dropped()) == ("kept", "unusable")
+
+
+@pytest.mark.parametrize("answer", ["", "   ", "{}", "[]", "null", "None", None])
+def test_an_unusable_answer_keeps_the_previous_summary(answer):
+    """A failed fold must not also erase what earlier ones managed to keep. A
+    model asked for prose under a system turn it has never seen answers with an
+    apology, an empty object or nothing often enough to be worth naming."""
+    assert compaction.summarize(_Model(answer), "Objectives established.",
+                                _dropped()) == ("Objectives established.", "unusable")
+
+
+def test_a_failing_model_never_breaks_compaction():
+    """A summary is an improvement on the note, never a precondition for
+    compaction working — the turns are gone either way and the run continues."""
+    assert compaction.summarize(
+        _Model(RuntimeError("endpoint down")), "kept", _dropped()) == ("kept", "error")
+
+
+def test_nothing_dropped_means_nothing_asked():
+    model = _Model()
+    assert compaction.summarize(model, "kept", []) == ("kept", "nothing_dropped")
+    assert not model.seen, "a compaction that removed nothing must not spend a call"
+
+
+def test_the_outcome_tells_a_failed_model_from_an_empty_fold():
+    """Why `summarize` returns the outcome instead of letting the caller infer
+    it. v1 returned the summary alone and success was `summary != previous`,
+    which reads identically for a model that errored and a trim that had
+    nothing worth keeping — the first is a finding about the model, the second
+    a property of the trim, and only one of them belongs in a failure rate."""
+    outcomes = {compaction.summarize(_Model(a), "kept", d)[1]
+                for a, d in ((RuntimeError("x"), _dropped()), ("", _dropped()),
+                             ("fine", []), ("fine", _dropped()))}
+    assert outcomes == {"error", "unusable", "nothing_dropped", "summarised"}
+
+
+def test_the_input_and_the_output_are_both_bounded():
+    """The summary is standing furniture — never trimmed — so it must never
+    become the reason the window is full; and folding a summary of a summary
+    of a summary is where this stops meaning anything."""
+    huge = [{"role": "tool", "content": "x" * 5000} for _ in range(20)]
+    model = _Model("y" * 5000)
+
+    out, _outcome = compaction.summarize(model, "", huge)
+
+    assert len(out) <= compaction.MAX_SUMMARY_CHARS
+    assert len(model.seen[0][-1]["content"]) < 20 * 5000, "the oldest dropped turns are elided"
+
+
+# ------------------------------------------------------- what is NOT fed in
+
+def test_a_dropped_stage_brief_is_never_summarised():
+    """The contract is excluded from the fold, for four reasons in ascending
+    order of force.
+
+    BUDGET first: `respec` measures a brief at up to 7,400 characters against
+    `MAX_INPUT_CHARS` 12,000, so one dropped `implementation` brief takes 62%
+    of the whole input allowance and pushes the tool results — the only thing
+    a summary can usefully carry — out through the elision.
+
+    Then: `compact` already re-attaches a lost brief VERBATIM at the tail, and
+    `respec` re-attaches it verbatim on any rejection, so a paraphrase is work
+    done twice for a worse copy. And a prose paraphrase of a JSON schema,
+    sitting in a protected never-trimmed message, is a second and worse source
+    of truth for field names than the contract it paraphrases — which is how
+    run 2b9e911a's model came to invent `instructor_guidance` and a dict
+    `session_guides`.
+    """
+    step = {s.name: s for s in STEPS}["implementation"]
+    brief = stage_brief_block(step)
+    model = _Model()
+
+    compaction.summarize(model, "", [{"role": "user", "content": brief}] + _dropped())
+
+    prompt = model.seen[0][-1]["content"]
+    assert "--- STAGE:" not in prompt, "the contract went into the fold"
+    for field in ("session_guides", "operator_manual", "instructor_guide"):
+        assert field not in prompt, f"{field} reached the summariser from the schema"
+    assert "ILO-01" in prompt, "the observations must still be there"
+
+
+def test_a_committed_artifact_is_not_fed_back_in():
+    """A tool call renders as its NAME, never its arguments. The arguments of a
+    `submit` are the agent's own committed artifact — the longest thing in a
+    multi-arm transcript — and it is in the design state, one read away."""
+    model = _Model()
+    dropped = [{"role": "assistant", "content": "",
+                "tool_calls": [{"name": "submit_assessment_plan",
+                                "args": {"assessment_plan": {"x": "y" * 4000}}}]}]
+
+    compaction.summarize(model, "", dropped)
+
+    prompt = model.seen[0][-1]["content"]
+    assert "[called submit_assessment_plan]" in prompt
+    assert "yyyy" not in prompt, "the artifact was fed back into its own summary"
+
+
+# ------------------------------------------------------------------ the note
+
+def test_the_note_carries_the_summary_and_stays_one_note():
+    messages = [{"role": "system", "content": "S"}, {"role": "user", "content": "live"}]
+    once = _with_note(messages, 4, summary="objectives ILO-01..03 exist")
+
+    assert running_summary(once) == "objectives ILO-01..03 exist"
+    assert "objectives ILO-01..03 exist" in once[1]["content"], "the model actually sees it"
+    assert "4 earlier turn(s)" in once[1]["content"], "and how much went"
+
+    twice = _with_note(once, 9, summary="…and the assessment plan")
+    assert len([m for m in twice if m.get(COMPACTION_NOTE)]) == 1, "one note, rewritten"
+    assert running_summary(twice) == "…and the assessment plan"
+
+
+def test_the_bracket_closes_before_the_summary_begins():
+    """The count and the brief-lost sentence are harness facts; the summary is
+    a model's account of turns nobody can see any more. Run together, the
+    second borrows the authority of the first."""
+    note = compaction_note(3, ("implementation",), summary="A model wrote this.")["content"]
+
+    bracket, _, tail = note.partition("]")
+    assert "implementation" in bracket, "the brief-lost sentence is inside the bracket"
+    assert "A model wrote this." not in bracket
+    assert "A model wrote this." in tail
+
+
+def test_a_note_carrying_a_summary_survives_the_next_trim():
+    """The summary is standing furniture. If a trim could take it, every fold
+    would restart from nothing and the rolling summary would never roll."""
+    messages = ([{"role": "system", "content": "S"}]
+                + [compaction_note(4, summary="ILO-01..03 exist")]
+                + [{"role": "tool", "content": "x" * 3000} for _ in range(10)])
+
+    kept, dropped = trim_history(messages, budget=4000)
+
+    assert dropped
+    assert running_summary(kept) == "ILO-01..03 exist"
+
+
+# ---------------------------------------------------------------- the boundary
+
+def test_call_prose_has_exactly_one_caller_and_it_is_the_hook():
+    """The line that replaces the one `test_one_agent_one_system_prompt.py`
+    closed.
+
+    Generative repairs used to compose a second conversation under a second
+    system prompt and publish it under the OWNING AGENT'S name; they were
+    removed 2026-09-03 because the context boundary IS the `agent_mode` axis.
+    `call_prose` reopens a prose path, and the only thing separating it from
+    what was removed is who it is attributed to and that it publishes nothing —
+    a distinction that has to be enforced, not merely intended. One caller, and
+    it is the harness's own hook.
+    """
+    src = Path(compaction.__file__).parent.parent.parent
+    callers: list[str] = []
+    for path in src.rglob("*.py"):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "call_prose"):
+                callers.append(f"{path.relative_to(src)}:{node.lineno}")
+
+    assert len(callers) == 1, f"call_prose has drifted beyond the hook: {callers}"
+    assert callers[0].startswith("core/agentic/compaction.py"), callers
+
+
+def test_the_hook_never_publishes_a_context():
+    """The agent did not choose to compact and is never shown this
+    conversation, so it is not one of that agent's contexts — while
+    `AgenticLLM` still books the tokens, so the hook cannot hide from the cost
+    table.
+
+    This needs its own test: none of the three guards in
+    `test_one_agent_one_system_prompt.py` catches it. The hook's conversation is
+    two messages, so it slips past `test_one_conversation_is_one_context`'s
+    `len(messages) >= 4` filter; its system turn is a single constant, so
+    `test_an_agent_is_never_given_a_second_system_prompt` would pass; and the
+    toolless check only looks at contexts that were published at all.
+    """
+    config = HarnessRunConfig(agent_mode="single", context_mode="graph")
+    config.llm_factory = lambda: FakeChatModel()
+    # Small enough that the one conversation the single arm carries overflows.
+    config.llm_context_window = 12000
+    config.llm_completion_reserve = 8192
+    result = run_brief(load_brief("java_oop_brief.json"), config)
+
+    assert [c for c in result["contexts"]], "no contexts published at all"
+    orchestrator = [c for c in result["contexts"] if c["agent"] == WORKFLOW_ORCHESTRATOR]
+    assert not orchestrator, f"the hook published a context: {orchestrator}"
+
+    events = [e for e in result["trajectory"]["events"]
+              if e.get("action") == "context_compacted"]
+    assert events, "the window never filled, so this proved nothing"
+    assert all(e["agent"] == WORKFLOW_ORCHESTRATOR for e in events), (
+        "a compaction was attributed to an agent rather than to the harness")
+    assert any("summarised" in e["context"]["output_summary"] for e in events), (
+        "the hook was never actually exercised")
+
+
+def test_the_price_is_counted_per_stage():
+    """`compactions - compaction_summaries` is the hook's failure rate on this
+    model, and it is only readable if both numbers are reported per stage and
+    over the same population."""
+    config = HarnessRunConfig(agent_mode="multi", context_mode="graph")
+    config.llm_factory = lambda: FakeChatModel()
+    config.llm_context_window = 12000
+    config.llm_completion_reserve = 8192
+    autonomy = run_brief(load_brief("java_oop_brief.json"), config)["metadata"]["autonomy"]
+
+    assert autonomy
+    for stage, stats in autonomy.items():
+        assert "compactions" in stats, stage
+        assert "compaction_summaries" in stats, stage
+        assert stats["compaction_summaries"] <= stats["compactions"], stage
+
+
+def test_a_failed_fold_is_still_counted_as_a_compaction():
+    """The two counters exist to be subtracted. A compaction whose model call
+    failed has to raise the denominator and not the numerator, or a run where
+    the hook never delivered reads as a run that never compacted."""
+    stats: dict = {}
+    messages = [{"role": "system", "content": "S"}, {"role": "user", "content": "live"}]
+
+    compact(messages, _dropped(), 3, trajectory=_Trajectory(), stats=stats,
+            llm=_Model(RuntimeError("endpoint down")))
+
+    assert stats["compactions"] == 1
+    assert stats.get("compaction_summaries", 0) == 0
+
+
+def test_compaction_still_works_without_a_model():
+    """`llm=None` is not only a test convenience: it is the shape every failure
+    of the hook degrades to, so the note has to stand on its own."""
+    stats: dict = {}
+    messages = [{"role": "system", "content": "S"}, {"role": "user", "content": "live"}]
+
+    kept = compact(messages, _dropped(), 3, trajectory=_Trajectory(), stats=stats)
+
+    assert stats["compactions"] == 1
+    assert "3 earlier turn(s)" in kept[1]["content"]
+    assert running_summary(kept) == ""

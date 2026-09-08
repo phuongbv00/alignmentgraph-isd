@@ -37,6 +37,10 @@ PRIMARY_STORE_FIELDS: dict[str, tuple[str, tuple[str, ...]]] = {
     "activity": ("activity", ("learning_activities",)),
     "material": ("material", ("learner_materials",)),
     "rubric": ("rubric", ("rubric_criteria",)),
+    # The fan-out deposits the guides as a top-level list of the implementation
+    # document; the aggregator nests them under ``instructor_guide`` where the
+    # deliverable declares them.
+    "session_guide": ("implementation_plan", ("session_guides",)),
 }
 
 

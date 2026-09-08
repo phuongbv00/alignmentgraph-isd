@@ -19,6 +19,7 @@ from ..llm_io import parse_json_response
 from ..alignment_graph.alignment import bare_ref
 from .. import checks
 from ..alignment_graph import alignment
+from .artifact_schemas import ARTIFACT_SCHEMAS
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from ..alignment_graph import AlignmentGraph
@@ -395,25 +396,34 @@ _SUBMIT_TYPE_HINT = {
 }
 
 
-def _parameters_from(fields: tuple) -> dict:
-    """The submit schema for a set of ``(key, json_type, required)`` fields."""
+def _parameters_from(fields: tuple, schema_keys: dict[str, str] | None = None) -> dict:
+    """The submit schema for a set of ``(key, json_type, required)`` fields.
+
+    Each key's shape comes from :data:`artifact_schemas.ARTIFACT_SCHEMAS`,
+    looked up under ``schema_keys.get(key, key)`` — the indirection only
+    matters for the handful of keys (``dev_plan``) reused across stages for
+    different shapes; every other key IS its own lookup key. A key with no
+    entry (should not happen once that dict is complete — see
+    ``test_every_submit_field_has_an_artifact_schema``) falls back to the old
+    generic shallow shape rather than binding a schema-less tool."""
     properties: dict = {}
     required: list[str] = []
     for key, json_type, is_required in fields:
-        properties[key] = {
-            "type": json_type,
-            # Neutral wording, kept from when the contract was FETCHED and
-            # "the schema shown in the system prompt" sent a small model looking
-            # somewhere empty. The contract is in the stage turn again, but the
-            # stage turn is droppable, so a phrasing that points at a specific
-            # place can still be wrong by the time it is read.
-            "description": f"{_SUBMIT_TYPE_HINT.get(json_type, json_type)}, "
-                           "matching this stage's artifact schema",
-        }
-        if json_type == "array":
-            properties[key]["items"] = {"type": "object", "additionalProperties": True}
-        elif json_type == "object":
-            properties[key]["additionalProperties"] = True
+        lookup = (schema_keys or {}).get(key, key)
+        detailed = ARTIFACT_SCHEMAS.get(lookup)
+        if detailed is not None:
+            properties[key] = ({"type": "array", "items": detailed}
+                                if json_type == "array" else dict(detailed))
+        else:
+            properties[key] = {
+                "type": json_type,
+                "description": f"{_SUBMIT_TYPE_HINT.get(json_type, json_type)}, "
+                               "matching this stage's artifact schema",
+            }
+            if json_type == "array":
+                properties[key]["items"] = {"type": "object", "additionalProperties": True}
+            elif json_type == "object":
+                properties[key]["additionalProperties"] = True
         if is_required:
             required.append(key)
     return {"type": "object", "properties": properties, "required": required}
@@ -427,7 +437,7 @@ def submit_parameters(step: "AgenticStep") -> dict:
     SINGLE arm's per-stage submit, where one agent works the whole brief and
     picks a stage to advance, and it is also the union the transport coercion
     is defined against."""
-    return _parameters_from(step.submit_fields)
+    return _parameters_from(step.submit_fields, step.schema_keys)
 
 
 def submit_specs(step: "AgenticStep", only: tuple[str, ...] | None = None) -> list[dict]:
@@ -453,13 +463,21 @@ def submit_specs(step: "AgenticStep", only: tuple[str, ...] | None = None) -> li
     writes it back more reliably under that name than under an anonymous
     payload.
 
-    Only the top level is described. Going deeper would fork the field-level
-    contract away from ``core/validation.py``, which is its single source of
-    truth; the deterministic :attr:`AgenticStep.validate` stays the authority
-    and a rejected submit still returns its exact errors. What this buys is the
-    one thing the validator cannot buy back afterwards -- the parser refuses a
-    wrapped or key-less object up front, which is exactly what
-    ``unwrap_section`` exists to clean up after.
+    The parameters go all the way down (2026-09-08): every field's shape
+    (types, nesting, enums) comes from :data:`artifact_schemas.ARTIFACT_SCHEMAS`,
+    which is now the sole declaration of an artifact's SHAPE — the stage
+    prompt no longer restates it as a JSON-example text block (see
+    ``AgenticStep.task_block``). Two things keep this from forking into a
+    second source of truth: where ``core/validation.py`` already type-checks a
+    field, ``artifact_schemas`` DERIVES from it rather than retyping it by
+    hand, so the two cannot disagree; and every enum value list is typed once,
+    in ``rulebook.py``, read by both the schema here and the ``RULES_*``
+    prose. The deterministic :attr:`AgenticStep.validate` stays the authority
+    on ACCEPTANCE — a rejected submit still returns its exact errors — this
+    only rejects earlier, at the transport boundary, what the parser can see
+    is malformed before it ever reaches the validator: a wrapped or key-less
+    object (what ``unwrap_section`` used to clean up after alone), a wrong
+    top-level type, or now a field of the wrong shape.
 
     ``only`` binds a SUBSET, for a loop resuming a stage that already holds
     some of its artifacts: a regen used to rebind all six of
@@ -471,7 +489,7 @@ def submit_specs(step: "AgenticStep", only: tuple[str, ...] | None = None) -> li
         _fn(f"submit_{key}",
             f"Submit the {key.replace('_', ' ')} artifact. "
             + ("Required." if is_required else "Optional."),
-            _parameters_from(((key, json_type, True),)))
+            _parameters_from(((key, json_type, True),), step.schema_keys))
         for key, json_type, is_required in step.submit_fields
         if only is None or key in only
     ]
@@ -804,7 +822,8 @@ def react_specs(steps: tuple, done: frozenset, *, graph_mode: bool = True,
         spec = _FANOUT.get(step.name)
         params = (submit_parameters(step) if spec is None else _parameters_from(
             tuple(step.submit_fields)
-            + tuple((o.schema_key, "array", False) for o in spec.outputs)))
+            + tuple((o.schema_key, "array", False) for o in spec.outputs),
+            step.schema_keys))
         specs.append(_fn(
             f"submit_{step.name}",
             f"Submit {step.name} artifacts. You may call this again to add more.",

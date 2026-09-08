@@ -97,7 +97,12 @@ def empty_stage_stats() -> dict:
             # the two arms reach it at completely different rates, which is
             # the mechanism the decomposition axis is about rather than noise
             # around it.
-            "compactions": 0}
+            "compactions": 0,
+            # ...and how many of those folds the compaction hook's model call
+            # actually delivered. The difference is the hook's failure rate on
+            # this model: a completion spent per compaction that buys nothing
+            # is a cost the paper has to be able to state.
+            "compaction_summaries": 0}
 
 
 def _merge_stats(carried: dict, fresh: dict) -> dict:
@@ -365,7 +370,21 @@ def _run_fanout(config, memory, trajectory, design_brief, step, spec, *,
                                        ("sets_gave_up",
                                         int(loop.stats["gave_up"])),
                                        ("history_dropped",
-                                        loop.stats["history_dropped"])):
+                                        loop.stats["history_dropped"]),
+                                       # A Developer's compactions were never
+                                       # rolled up, so `autonomy[stage]` counted
+                                       # the Designer's alone. Harmless while
+                                       # compaction was free; not once it spends
+                                       # a completion, because
+                                       # `compaction_summaries` would then be
+                                       # booked against a population that does
+                                       # not contain it and the ratio would mean
+                                       # nothing. This CHANGES what the existing
+                                       # `compactions` series counts.
+                                       ("compactions",
+                                        loop.stats["compactions"]),
+                                       ("compaction_summaries",
+                                        loop.stats["compaction_summaries"])):
                         stats[key] = stats.get(key, 0) + value
                     stats["context_len"] = max(stats.get("context_len", 0),
                                                loop.stats["context_len"])
@@ -487,6 +506,12 @@ def _replan_sets(state, spec, step, gaps: list, round_index: int) -> list:
             return []
         work_sets, _stats = dev_plans.normalize_assessment_dev_plan(
             plan, list(targets), targets)
+    elif step.name == "implementation":
+        activities, materials = replan.unscheduled_of(gaps)
+        if not (activities or materials):
+            return []
+        work_sets, _stats = dev_plans.normalize_implementation_dev_plan(
+            plan, activities, materials, first_session=replan.next_session(state))
     else:
         objectives = replan.objectives_of(gaps)
         if not objectives:
@@ -510,6 +535,8 @@ def _dispatch_payload(state, spec) -> dict:
         content = _section_data(state, "content")
         return {"content_modules": content.get("content_modules") or [],
                 "media_selections": content.get("media_selections") or []}
+    if spec.stage == "implementation":
+        return {"dev_plan": _section_data(state, "implementation_plan").get("dev_plan")}
     return {}
 
 
@@ -518,10 +545,11 @@ def _section_data(state, key: str) -> dict:
 
     if not hasattr(state, "element_nodes"):
         return state.get(key) or {}
-    if key in ("assessment_plan", "activity_plan"):
-        section = (NodeType.ASSESSMENT_PLAN if key == "assessment_plan"
-                   else NodeType.ACTIVITY_PLAN)
-        node = state.get_node(state.section_id(section))
+    sections = {"assessment_plan": NodeType.ASSESSMENT_PLAN,
+                "activity_plan": NodeType.ACTIVITY_PLAN,
+                "implementation_plan": NodeType.IMPLEMENTATION_PLAN}
+    if key in sections:
+        node = state.get_node(state.section_id(sections[key]))
         return (node or {}).get("data") or {}
     modules = [n["data"] for n in state.element_nodes(NodeType.CONTENT)]
     media = [n["data"] for n in state.element_nodes(NodeType.MEDIA_SELECTION)]

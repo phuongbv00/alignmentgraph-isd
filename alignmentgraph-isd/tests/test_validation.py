@@ -143,11 +143,22 @@ def test_validate_section_checks_the_inner_keys_of_the_implementation_artifacts(
     passed every gate because only the top level was declared. The prompt says
     EXACT schema; the validator now holds the six artifacts to their inner keys
     one level down, and holds session guides to the ``activity_ids`` P10 reads."""
-    from conftest import _IMPLEMENTATION
+    from conftest import _IMPLEMENTATION, _SESSION_GUIDES
 
-    assert validate_section("implementation_plan", _IMPLEMENTATION) == []
+    # The DELIVERABLE shape: the guides are element nodes since 2026-09-07 and
+    # the aggregator joins them back under `instructor_guide` (see
+    # `aggregate._with_session_guides`), which is the document this validator
+    # is the contract for.
+    document = {**_IMPLEMENTATION,
+                "instructor_guide": {**_IMPLEMENTATION["instructor_guide"],
+                                     **_SESSION_GUIDES}}
+    assert validate_section("implementation_plan", document) == []
+    # ...and a joined document with no guides at all is still a hole: nothing
+    # was scheduled.
+    assert any("instructor_guide.session_guides" in e
+               for e in validate_section("implementation_plan", _IMPLEMENTATION))
 
-    wrong = dict(_IMPLEMENTATION)
+    wrong = dict(document)
     wrong["instructor_guide"] = {"instructor_role": "x", "responsibilities": ["y"]}
     wrong["operator_manual"] = {"operator_role": "x", "pre_session_checklist": ["y"]}
     errors = validate_section("implementation_plan", wrong)
@@ -167,8 +178,8 @@ def test_validate_section_checks_the_inner_keys_of_the_implementation_artifacts(
         "design": {"learning_objectives": [{"id": "ILO-01"}], "instructional_strategies": {"x": 1}},
         "development": {"learner_materials": [{"id": "MAT-01"}], "assessment_tools": [{"item_id": "AT-01"}],
                         "instructor_guide": wrong["instructor_guide"],
-                        "operator_manual": _IMPLEMENTATION["operator_manual"]},
-        "implementation": {k: _IMPLEMENTATION[k] for k in
+                        "operator_manual": document["operator_manual"]},
+        "implementation": {k: document[k] for k in
                            ("instructor_orientation", "system_check", "prototype_execution", "monitoring")},
         "evaluation": {"formative": {"x": 1}, "summative": {"x": 1}, "improvement_plan": {"x": 1}},
     }

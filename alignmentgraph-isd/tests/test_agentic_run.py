@@ -31,10 +31,13 @@ class SubmitWrappingModel(FakeChatModel):
     def bind_tools(self, specs) -> "SubmitWrappingModel":
         # Deliberately NOT the parent's bound copy: this fixture exists to send
         # a bare `submit` carrying the whole artifact, which is what a model
-        # that ignores the per-artifact tools does. It still has to know the
-        # names on offer, because the schema is fetched now rather than pushed.
+        # that ignores the per-artifact tools does. It still needs `_specs`:
+        # since 2026-09-08 an artifact's SHAPE lives in the bound tools'
+        # `parameters`, not in prompt text, and `FakeChatModel.invoke` (called
+        # via `super()`) reads `self._specs` to answer the right payload.
         self._bound = tuple(str(spec.get("function", {}).get("name", ""))
                             for spec in (specs or []))
+        self._specs = list(specs or [])
         return self
 
     def invoke(self, messages) -> _Result:
@@ -410,7 +413,12 @@ def test_the_trajectory_records_everything_a_run_audit_needs():
             #    SEPARATE from the stage's — folded together, "via_fallback"
             #    would mean "the dispatch OR any one of ten sets gave up".
             autonomy = metadata["autonomy"]
-            common = {"context_len", "turns_used", "history_dropped"}
+            common = {"context_len", "turns_used", "history_dropped",
+                      # Both, always, in both arms: the pair is only readable
+                      # as a difference, so an arm that declared one and not
+                      # the other would report a failure rate over a
+                      # denominator it does not have.
+                      "compactions", "compaction_summaries"}
             if agent_mode == "multi":
                 assert set(autonomy) == {s.name for s in STEPS}, label
                 for stage, stats in autonomy.items():

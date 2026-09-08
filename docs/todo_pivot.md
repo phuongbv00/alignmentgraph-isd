@@ -1537,7 +1537,7 @@ theo số đo. Kiểm end-to-end với model có báo usage: cold 3,00 → đo �
 **MỘT số cho CẢ HAI arm** — có test chốt. Trục `agent_mode` là ranh giới context; budget khác nhau
 theo arm sẽ khiến hai bên tiêu effort khác nhau và trộn lẫn "thấy ít hơn" với "làm ít hơn".
 
-Adapter đọc `AGENT_MODEL_CONTEXT_WINDOW` (window pod được khởi chạy) và `AGENT_MODEL_MAX_TOKENS_CAP`
+Adapter đọc `AGENT_MODEL_CONTEXT_WINDOW` (window pod được khởi chạy) và `AGENT_MODEL_MAX_OUTPUT_TOKENS`
 (reserve — chính biến benchmark áp đồng đều cho mọi agent). Không set thì không đổi gì.
 
 479 test xanh.
