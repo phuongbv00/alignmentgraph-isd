@@ -312,6 +312,37 @@ def _still_needed(step, state) -> str:
             "its own and do not resend those.")
 
 
+def with_progress(brief: str, step, state) -> str:
+    """A stage's contract, RE-attached, plus what the state says it still owes.
+
+    The first issue of a brief needs nothing appended: the stage has committed
+    nothing yet, `_still_needed` returns "", and this is the identity function
+    — which is what keeps the opening turn byte-identical for the golden
+    fixture, and what makes it correct to route every re-attachment through
+    here without a flag.
+
+    MEASURED FAILURE (run 46bd42a5, implementation): compaction dropped 20
+    turns of a stage that had committed six of its seven artifacts, and
+    `compact`'s `restore` put the contract back VERBATIM — ending, as every
+    brief for a stage declared in parts does, "This stage has 7 of them:
+    instructor_orientation, system_check, ...". Nothing in the re-attached turn
+    said six of those were already committed, and the tool results that had
+    said so were exactly what the trim took. The model read it as the stage
+    starting and re-submitted the committed six, one per turn, until the ceiling
+    ended the stage — nine turns, and `dev_plan`, the one artifact still
+    genuinely missing and the whole point of the stage, was never written. The
+    fan-out then divided the delivery deterministically, so what the
+    `agent_mode` axis is supposed to measure — the agent's own grouping — came
+    from the backstop instead.
+
+    The sentence itself is `_still_needed`'s, not a second wording: the place a
+    stage OPENS, the place a submit is answered and the place a contract comes
+    BACK now say the same thing, computed from the same state.
+    """
+    resuming = _still_needed(step, state)
+    return f"{brief}\n\n{resuming}" if resuming else brief
+
+
 def _repair_request(stage: str, violations: list, round_index: int, rounds: int) -> str:
     """The user turn that hands a stage its own violations back.
 
@@ -1834,7 +1865,23 @@ class ToolLoop:
                 # submitting without completing is a disagreement between
                 # the validator and the completeness probe, and letting it
                 # run turns that disagreement into the whole stage.
-                self._append_committed(turn, self.step.name)
+                #
+                # NOT `_append_committed`: this branch ends the stage while
+                # `left` is non-empty, and that message says the stage's
+                # artifact "is now part of the design state. Move on to the
+                # next stage." Measured on run 46bd42a5's implementation
+                # stage, which ended here owing `dev_plan`: the transcript
+                # closed by telling the model the stage was finished, and the
+                # give-up on the very next line recorded that it was not. The
+                # tool call still has to be answered — that is all
+                # `_append_committed` was ever for here — so it is answered
+                # truthfully instead. It matters beyond the record in the
+                # single arm, where this transcript is carried into every
+                # later stage and can be handed back on a repair turn.
+                self._append_tool_turn(turn, (
+                    f"COMMITTED. This stage ENDS here without "
+                    f"{', '.join(left)}: it has had a submit turn for every "
+                    f"artifact and more. Do not submit for {self.step.name} again."))
                 self._give_up(f"parts still missing: {', '.join(left)}")
                 return "return"
             self._append_tool_turn(
@@ -2291,7 +2338,7 @@ class ToolLoop:
         like everything else, and it comes back when it goes."""
         if stage != self.step.name:
             return None
-        return stage_brief_block(self.step)
+        return with_progress(stage_brief_block(self.step), self.step, self.state)
 
     def _respec(self) -> str:
         """The contract, re-attached to a rejection when it is no longer in the
@@ -2302,7 +2349,8 @@ class ToolLoop:
         The backstop to `compact`'s `restore`: a turn can be gone for reasons a
         trim did not report (a regen starting a fresh message list, a stage
         turn dropped before this loop's own restore could run)."""
-        return respec(self.messages, self.step, stage_brief_block(self.step))
+        return respec(self.messages, self.step,
+                      with_progress(stage_brief_block(self.step), self.step, self.state))
 
     def _give_up(self, reason: str, *, last_resort: dict | None = None) -> None:
         """End a step with whatever the MODEL produced, and record that it did

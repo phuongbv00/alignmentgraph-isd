@@ -44,6 +44,7 @@ from .loop import (
     respec,
     STAGE_BRIEF_HEADER,
     stage_brief_block,
+    with_progress,
     THINKING_ONLY_NUDGE,
     _merge_specs,
     compact,
@@ -294,7 +295,7 @@ class ReactLoop:
         step = {s.name: s for s in STEPS}.get(stage)
         if step is None or not missing_parts(step, self.state):
             return None
-        return self.stage_brief(stage)
+        return with_progress(self.stage_brief(stage), step, self.state)
 
     def _respec(self, step) -> str:
         """The stage's schema, re-attached to a rejection when it has fallen out
@@ -319,7 +320,8 @@ class ReactLoop:
         brief differs (this one appends the fan-out output schemas, because
         this agent writes both halves); the rule for when to re-attach it does
         not."""
-        return respec(self.messages, step, self.stage_brief(step.name))
+        return respec(self.messages, step,
+                      with_progress(self.stage_brief(step.name), step, self.state))
 
     def _docket(self) -> str:
         """The alignment docket — which relations the design still leaves

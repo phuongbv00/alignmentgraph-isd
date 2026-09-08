@@ -58,6 +58,24 @@ Failure is always safe: an empty or unusable answer falls back to the previous
 summary — never to empty, or a bad fold would also erase what earlier ones
 managed to keep. A summary is an improvement on the note, never a precondition
 for compaction working.
+
+**What the summary is asked to keep, and why that changed.** Run 46bd42a5's
+implementation stage compacted with six of seven artifacts committed, and the
+fold came back describing the DESIGN — "SPI protocol simulations, plan sets
+AB-01 through AB-12, must use slides (PDF, PPT), video (mp4)". Every word of
+that is committed design state the agent can read back with its own tools, and
+the prompt's own Drop clause already said so; what went missing was the only
+thing in those turns that is NOT re-readable — that it had submitted six
+artifacts and owed one. So the Keep list is now ordered and leads with the
+agent's progress through the stage, and the Drop clause names design CONTENT
+rather than "anything committed", which a model can read as covering the fact
+of having committed it.
+
+This is a prompt, so it is a request and not a guarantee — a small model that
+ignored the old Drop clause can ignore the new one. The guarantee for the same
+failure is deterministic and lives elsewhere: ``loop.with_progress`` appends
+``_still_needed`` to every RE-attached contract, so what the stage still owes
+comes back computed from the state whether or not the summariser cooperated.
 """
 from __future__ import annotations
 
@@ -83,10 +101,14 @@ The turns below were removed from an instructional designer's context to make \
 room. Fold them, together with the running summary of everything removed \
 earlier, into ONE replacement summary.
 
-Keep: decisions made, artifact ids and names produced or referenced, \
-constraints discovered, and anything a later turn would have to know and could \
-not re-derive. Drop: tool-call mechanics, repetition, and anything already \
-committed to the design state, which the agent can read again.
+Keep, in this order of priority: (1) where the agent had got to — which \
+artifacts it has already submitted, and what it was last told is still \
+missing; (2) instructions and constraints it was given that still bind; (3) \
+artifact ids and names it must refer to and could not re-derive. Drop: \
+tool-call mechanics, repetition, and the CONTENT of artifacts already \
+committed — the agent reads those back from the design state with its tools, \
+and re-telling it what its own design says spends this summary on the one \
+thing it does not need.
 
 Write plain prose under {limit} characters. No preamble, no headings, no \
 markdown. If there is nothing worth keeping, answer with nothing at all.

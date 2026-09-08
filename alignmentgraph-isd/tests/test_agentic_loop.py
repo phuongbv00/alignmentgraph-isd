@@ -1065,6 +1065,78 @@ def test_a_stage_that_keeps_submitting_without_completing_is_stopped():
     assert loop.stats["turns_used"] <= len(step.submit_parts) + loop.PART_SUBMIT_SLACK
 
 
+def test_a_stage_that_ends_owing_an_artifact_is_not_told_it_is_finished():
+    """The branch above answers the model's last tool call, because the chat
+    API requires every call to be answered — and it used to answer with
+    `_append_committed`: "the <stage> artifact is now part of the design state.
+    Move on to the next stage."
+
+    MEASURED (run 46bd42a5, implementation): the stage ended here owing
+    `dev_plan`, so the transcript closed by telling the model the stage was
+    finished while `_give_up` on the very next line recorded that it was not.
+    That transcript is what the judge reads, and in the single arm it is
+    carried into every later stage and can come back on a repair turn."""
+    step = STEP_BY_NAME["analysis"]
+    one_part = {"needs_analysis": _ANALYSIS["needs_analysis"]}
+    _model, config, graph, trajectory, brief = _harness([call("submit", one_part)] * 20)
+
+    loop = _loop(config, graph, trajectory, brief, step)
+    loop.run()
+
+    closing = loop.messages[-1]["content"]
+    assert "Move on to the next stage" not in closing
+    assert "ENDS here without" in closing
+    for part in loop_module.missing_parts(step, graph):
+        assert part in closing, "it names what the stage is ending without"
+
+
+def test_a_restored_contract_says_what_the_stage_already_committed():
+    """MEASURED (run 46bd42a5, implementation): compaction dropped 20 turns of
+    a stage that had committed six of its seven artifacts, and `restore` put
+    the contract back VERBATIM — ending "This stage has 7 of them:
+    instructor_orientation, system_check, ...", with nothing to say six were
+    already in. The model read it as the stage starting and re-submitted the
+    six, one per turn, until the ceiling ended the stage; `dev_plan`, the one
+    artifact actually missing, was never written.
+
+    The contract itself is untouched — `with_progress` is the identity function
+    until something has landed, which is what keeps a stage's OPENING turn
+    byte-identical for the golden fixture."""
+    from alignmentgraph_isd.core.agentic.loop import stage_brief_block, with_progress
+
+    step = STEP_BY_NAME["analysis"]
+    one_part = {"needs_analysis": _ANALYSIS["needs_analysis"]}
+    _model, config, graph, trajectory, brief = _harness([call("submit", one_part)] * 20)
+
+    contract = stage_brief_block(step)
+    assert with_progress(contract, step, AlignmentGraph()) == contract, (
+        "nothing committed yet: the opening turn must not change")
+
+    loop = _loop(config, graph, trajectory, brief, step)
+    loop.run()
+
+    restored = loop._restore_brief("analysis")
+    assert restored is not None and restored.startswith(contract)
+    assert "Already committed: needs_analysis" in restored
+    assert "still needs" in restored
+    assert "do not resend those" in restored
+
+
+def test_a_re_attached_contract_carries_the_progress_in_both_arms():
+    """One sentence, `_still_needed`, in all three places a stage is told what
+    it owes: where it OPENS, where a submit is answered, and where the contract
+    comes BACK. An arm that re-attached a bare contract would be arguing from a
+    different set of facts than the other."""
+    import inspect
+
+    from alignmentgraph_isd.core.agentic import react
+
+    for owner in (loop_module.ToolLoop._restore_brief, loop_module.ToolLoop._respec,
+                  react.ReactLoop._restore_brief, react.ReactLoop._respec):
+        assert "with_progress(" in inspect.getsource(owner), (
+            "every re-attachment goes through the one implementation")
+
+
 # ── a read of what the assignment already carries ───────────────────────────
 
 def test_a_developer_reading_its_own_assignment_gets_a_pointer_not_a_second_copy():
