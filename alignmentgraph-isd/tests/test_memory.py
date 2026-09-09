@@ -59,8 +59,8 @@ def test_exactly_one_substrate_is_live():
     """Which substrate a run has IS the ``context_mode`` axis. A memory
     holding both would make a prose run able to read the graph, and one
     holding neither would make the axis unreadable."""
-    assert Memory(graph=AlignmentGraph()).graph_mode is True
-    assert Memory(store=ProseStore()).graph_mode is False
+    assert Memory(graph=AlignmentGraph()).graph is not None
+    assert Memory(store=ProseStore()).graph is None
     with pytest.raises(ValueError):
         Memory(graph=AlignmentGraph(), store=ProseStore())
     with pytest.raises(ValueError):
@@ -86,22 +86,9 @@ def test_a_family_is_planned_in_rounds_and_all_of_them_are_kept():
     second = Plan(stage="assessment", family="assessment_designer", source="llm",
                   round=1, answers=("C2", "plan_coverage"))
     memory.remember_plan(first)
-    assert memory.next_round("assessment") == 1
     memory.remember_plan(second)
 
-    assert memory.plan_for("assessment") is second, "the LATEST is what ran last"
-    assert memory.rounds_for("assessment") == (first, second)
-    assert memory.next_round("assessment") == 2
-    assert memory.plan_for("activities") is None
-
-
-def test_a_plan_says_whether_the_agent_made_it():
-    """`fallback` means the deterministic split ran because no usable dev plan
-    arrived. A run where every family reads `fallback` never exercised the
-    planning half of the design — which is exactly what was happening,
-    unnoticed, until the dev plan was given somewhere to live."""
-    assert Plan(stage="s", family="f", source="llm").from_the_agent
-    assert not Plan(stage="s", family="f", source="fallback").from_the_agent
+    assert memory.plans == (first, second), "round by round, first to last"
 
 
 def test_transcripts_are_kept_per_agent_in_order():
@@ -110,7 +97,7 @@ def test_transcripts_are_kept_per_agent_in_order():
         memory.remember_context(_transcript(agent, label))
 
     assert memory.agents == ("A", "B"), "first appearance first"
-    assert [t.label for t in memory.transcripts_of("A")] == ["outcomes", "content"]
+    assert [t.label for t in memory.transcripts if t.agent == "A"] == ["outcomes", "content"]
     assert len(memory.transcripts) == 3
 
 

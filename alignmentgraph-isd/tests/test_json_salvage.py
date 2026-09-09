@@ -4,7 +4,7 @@ escapes, stray quotes after brackets, several top-level values, and mid-string
 truncation at the completion cap — must parse to a usable dict instead of
 returning ``{}`` (which would cost a full regeneration, or an empty section
 once the regen budget is exhausted). ``salvage=False`` must keep the strict
-pre-salvage behavior, which the correction-turn check in ``_invoke_with_retry``
+pre-salvage behavior, which ``tools.coerce_args`` at the transport boundary
 relies on."""
 from __future__ import annotations
 

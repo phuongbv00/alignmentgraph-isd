@@ -1415,11 +1415,12 @@ def test_both_arms_go_through_the_same_compaction_call():
         # difference in what the model is SHOWN onto the decomposition axis.
         assert "llm=self._summariser" in source, (
             f"{module.__name__} compacts without the summariser hook")
+    # ...and both count it from the ONE stats template, which carries the
+    # fold count and what the folds bought.
     for module_stats in (loop.ToolLoop, react.ReactLoop):
-        stats_source = inspect.getsource(module_stats.__init__)
-        assert "compactions" in stats_source
-        assert "compaction_summaries" in stats_source, (
-            f"{module_stats.__name__} counts compactions but not what they bought")
+        assert "empty_stage_stats()" in inspect.getsource(module_stats.__init__)
+    assert {"compactions", "compaction_summaries"} <= set(loop.empty_stage_stats()), (
+        "the stats template counts compactions but not what they bought")
 
 
 def test_a_trim_drains_to_the_low_water_mark_so_it_does_not_refire_every_turn():

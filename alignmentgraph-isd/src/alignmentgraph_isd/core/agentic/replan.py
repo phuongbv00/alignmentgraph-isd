@@ -2,10 +2,9 @@
 
 The loop this closes. A Designer divides its family into work sets; its
 Developers write them; the checks then find that some objective still has no
-assessment item, or some objective no activity. Until now that gap reached
-nobody who could act on it: the Developers' loops had closed, the Designer's
-had closed, and the deterministic net cannot write instructional content
-(``core/repairs.py``). It was recorded as residual and shipped.
+assessment item, or some objective no activity. The deterministic net cannot
+write instructional content (``core/repairs.py``), so without this the gap
+reaches nobody who can act on it and ships as residual.
 
 Sending it to the Designer keeps the two roles the design already has. A
 Designer plans and does not write; a Developer writes what it is assigned. So
@@ -38,9 +37,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from .. import rulebook as rules
 from .. import dev_plans
-from ..dev_plans import WorkSet
+from .. import rulebook as rules
 
 #: Which families can be replanned, and what a plan for them is made of. A
 #: family is here only when its gaps map exactly onto work the Developer tier
@@ -185,8 +183,7 @@ def tag_round(work_sets: list, round_index: int) -> list:
     (``dev_plans._composite_id``), so a replan set reusing ordinal 1 would try
     to name its work ``AT-0101`` again. Striding it puts round 1 at
     ``AT-5101``, which also reads as "written in the second round"."""
-    return [WorkSet(set_id=f"{ws.set_id}R{round_index}", objectives=ws.objectives,
-                    pairs=ws.pairs, payload=ws.payload, source=ws.source,
+    return [replace(ws, set_id=f"{ws.set_id}R{round_index}",
                     ordinal=ws.ordinal + round_index * dev_plans.ROUND_ORDINAL_STRIDE)
             for ws in work_sets]
 

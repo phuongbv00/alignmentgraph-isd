@@ -1,7 +1,7 @@
 """ProseStore — the prose arm's blackboard (core/prose_store.py)."""
 from __future__ import annotations
 
-from alignmentgraph_isd.core.prose_store import PRIMARY_STORE_FIELDS, ProseStore, primary_items
+from alignmentgraph_isd.core.prose_store import ProseStore
 
 
 def test_put_get_has_and_overwrite():
@@ -48,15 +48,6 @@ def test_context_caps_each_list_element_not_the_document():
     assert "AT-02" in ctx, "an item after a truncated one was lost"
     first_item = ctx.split(", ", 1)[0]
     assert len(first_item) < 700
-
-
-def test_primary_items_walks_the_declared_path():
-    store = ProseStore()
-    assert primary_items(store, "gap") == []
-    store.put("analysis", {"needs_analysis": {"gaps": [{"id": "GAP-01"}]}})
-    assert primary_items(store, "gap") == [{"id": "GAP-01"}]
-    for primary_type in PRIMARY_STORE_FIELDS:
-        assert primary_items(ProseStore(), primary_type) == []
 
 
 def test_to_full_dict_dumps_documents_verbatim_with_metadata():

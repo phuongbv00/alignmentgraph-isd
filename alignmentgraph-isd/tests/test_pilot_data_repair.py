@@ -1,5 +1,6 @@
-"""The pilot-data half of the evaluation_quality check + its repair
-(core/checks.py::evaluation_quality_data, core/repairs.py::repair_pilot_data_plan).
+"""The pilot-data half of the evaluation_quality check
+(core/checks.py::evaluation_quality_data). It is REPORT_ONLY for the harness:
+a thin plan goes back to the Assessment Designer as a repair turn.
 
 The aggregator builds the whole formative half of ADDIE Evaluation from
 assessment_plan.pilot_data_plan; before this check nothing enforced it, and a

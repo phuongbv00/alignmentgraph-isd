@@ -1,14 +1,8 @@
-"""Self-validation checks — extracted from the retired ``PedagogicalVerifierAgent``.
-
-Each function here is a free function a Designer calls inline, in its own
-self-validation step, instead of a separate agent/QC-node reading the whole
-graph after the fact. This is a mechanical extraction (same regexes, same
-thresholds, same violation shape) adapted to the new node layout: LO/
-Activity/Assessment/Rubric are now individual element nodes (one per
-artifact), not entries in one section node's embedded list — so every check
-here reads ``graph.element_nodes(...)`` directly, not
-``graph.section_nodes(...)[0]["data"]["learning_objectives"]`` as the prior
-design did.
+"""Self-validation checks: free functions the harness runs over the design
+state after a family has produced, instead of a separate QC agent reading the
+whole graph after the fact. Objectives, activities and assessment items are
+individual element nodes (one per artifact), so every check reads
+``graph.element_nodes(...)``; rubric criteria are a field of their item.
 
 Most violations are repaired locally, by whichever family owns the check, in
 the self-validation round that follows its own generation stage. A violation a
@@ -23,10 +17,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .alignment_graph import alignment
-from .alignment_graph import NodeType
-from .brief import DesignBrief
 from . import dev_plans
+from .alignment_graph import NodeType, alignment
+from .brief import DesignBrief
 
 # Bloom's taxonomy verbs by level — used to verify measurability of objectives
 _BLOOM_VERBS: dict[str, list[str]] = {
@@ -87,11 +80,9 @@ def _term_matcher(terms, *, whole_word: bool = False) -> "re.Pattern":
 _VAGUE_RUBRIC_RE = _term_matcher(_VAGUE_RUBRIC_TERMS, whole_word=True)
 _OBSERVABLE_RE = _term_matcher(_OBSERVABLE_TERMS)
 
-_BLOOM_LEVEL_INDEX = {"remember": 1, "understand": 2, "apply": 3, "analyze": 4, "evaluate": 5, "create": 6}
-#: The reverse, so no message hardcodes an index-to-name table. A level printed
-#: as a bare integer ("elicits more than level 2") is a number the reader has to
-#: look up to act on.
-_BLOOM_LEVEL_NAME = {index: name for name, index in _BLOOM_LEVEL_INDEX.items()}
+#: One Bloom index, defined with the relations that compare on it.
+_BLOOM_LEVEL_INDEX = alignment._BLOOM_LEVEL_INDEX
+_BLOOM_LEVEL_NAME = alignment.BLOOM_LEVEL_NAME
 _VERB_LEVELS: dict[str, set[int]] = {}
 for _level, _verbs in _BLOOM_VERBS.items():
     for _v in _verbs:
@@ -142,10 +133,9 @@ class Violation:
     node_id: str
     edge_type: str
     message: str
-    # violation_type: bloom | measurability | activity_engagement | rubric_consistency |
-    #   feasibility | actionability | evaluation_quality | orphan_content |
-    #   evidence_alignment | C1..C5 | P1..P11 | bloom_mismatch_assessment | bloom_mismatch_activity
-    violation_type: str = "coverage"
+    #: The check that raised it — a relation id or a check name; the owning
+    #: family is ``repairs.OWNED_BY_FAMILY``.
+    violation_type: str
     severity: str = "error"                   # error | warning
     repair_hint: str = ""
     metadata: dict = field(default_factory=dict)
@@ -179,6 +169,20 @@ class Violation:
         parts += [str(self.metadata.get(f, ""))
                   for f in IDENTITY_FIELDS.get(self.violation_type, ())]
         return "|".join(parts)
+
+
+def serialize_violations(violations: list, owner: str) -> list[dict]:
+    """The wire form of a violation: every field plus its identity.
+
+    ``node_id``/``type``/``msg``/``severity``/``owner`` keep their names —
+    ``audit.py`` and every archived run read them."""
+    return [
+        {"key": v.key, "node_id": v.node_id, "type": v.violation_type,
+         "msg": v.message, "severity": v.severity, "owner": owner,
+         "edge_type": v.edge_type, "repair_hint": v.repair_hint,
+         "metadata": dict(v.metadata), "target_designer": v.target_designer}
+        for v in violations
+    ]
 
 
 #: Metadata fields that DISCRIMINATE two violations of the same type on the
@@ -303,10 +307,7 @@ def bloom_verbs_items(items: list[tuple[str, dict]]) -> list[Violation]:
                         f"from either field."
                     ),
                     # The suggestions are the verbs of the level this LO ALREADY
-                    # declares, in the rulebook's own order. They used to be
-                    # `list(_ALL_BLOOM_VERBS)[:8]` — eight arbitrary verbs spanning
-                    # arbitrary levels, from a SET, so the order was stable only
-                    # within one process and the prompt differed run to run.
+                    # declares, in the rulebook's own order (see `_verbs_for`).
                     repair_hint=(
                         f"Replace bloom_verb with "
                         f"{alignment.a_level(declared_raw) or 'a Bloom'}-level verb "
@@ -547,7 +548,7 @@ def item_completeness_items(items: list[tuple[str, dict]]) -> list[Violation]:
 
 
 def evaluation_quality(graph) -> list[Violation]:
-    """Kept in *meaning* from the old R12 relation ("formative evaluation
+    """Kept in *meaning* from the formative-intent rule ("formative evaluation
     realizes the formative plan"), but now a plain internal check rather than
     a graph edge — there is no ``evaluation`` node to point a relation at
     (see the aggregation-matrix note in the architecture plan). Checks

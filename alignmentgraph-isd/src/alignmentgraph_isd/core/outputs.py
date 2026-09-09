@@ -1,32 +1,11 @@
 """What every run needs, on either side of both ablation axes: the shared
-budget, the check runners, and the empty ADDIE skeleton.
-
-Split out of ``workflow.py`` on 2026-09-01, when the scripted StateGraph
-pipeline was removed. These were the only things the executor took
-from that module, and none of them was ever about graph topology — they are
-about the ARTIFACTS: which checks a family owns, whether a section came back
-empty, and what an unfilled output looks like.
+budget, the check runners, and the empty ADDIE skeleton — everything about
+the ARTIFACTS rather than the executor: which checks a family owns, whether a
+section came back empty, and what an unfilled output looks like.
 """
 from __future__ import annotations
 
 from . import checks
-from .validation import (
-    PLACEHOLDER_FIELD_MARKER, validate_section,
-)
-
-#: The two ways a required field can be "there but not really there". Both are
-#: what the regen loop reacts to, on either side of both axes.
-_EMPTY_FIELD_MARKER = "required field is missing or empty"
-
-
-def _empty_required_fields(section_type: str, data: dict) -> list[str]:
-    """Required fields that came back unusable: missing/empty, or filled with
-    schema placeholder text copied verbatim (equally absent to a reader, but
-    invisible to a plain emptiness check)."""
-    return [
-        e for e in validate_section(section_type, data)
-        if e.endswith(_EMPTY_FIELD_MARKER) or e.endswith(PLACEHOLDER_FIELD_MARKER)
-    ]
 
 
 def _collect_violations(node_name: str, graph, design_brief) -> list:
@@ -49,16 +28,13 @@ def _collect_violations(node_name: str, graph, design_brief) -> list:
         coverage = [v for v in checks.relation_coverage(graph) if v.violation_type in ("C5", "P5", "P6")]
         return coverage + checks.orphan_content(graph)
     if node_name == "rubric_designer":
-        # No relation coverage left: a criterion is a FIELD of the item it
-        # marks (2026-09-02), so C6/C7 and orphan_rubric described conditions
-        # that can no longer be false.
+        # No relation coverage: a criterion is a FIELD of the item it marks.
         return checks.rubric_consistency(graph) + checks.evidence_alignment(graph)
     if node_name == "implementation_planner":
         # P10/P11: every activity and material the session guides leave out.
         # The planner is shown them in its own repair turn (report-only for
-        # the harness — see repairs.REPORT_ONLY). Before 2026-09-05 no family
-        # collected them, so a guide that scheduled nothing was discovered
-        # only by the final audit, after every repair opportunity had closed.
+        # the harness — see repairs.REPORT_ONLY); collected here so a guide
+        # that scheduled nothing is found while a repair is still possible.
         coverage = [v for v in checks.relation_coverage(graph) if v.violation_type in ("P10", "P11")]
         return coverage + checks.feasibility(graph, design_brief) + checks.actionability(graph)
     return []

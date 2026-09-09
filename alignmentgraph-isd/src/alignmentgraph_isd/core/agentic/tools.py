@@ -4,21 +4,18 @@ Each tool wraps a read API (graph queries, relation coverage, blackboard
 documents) and renders its observation with fixed
 caps, so what the model sees is a pure function of graph state — the agency
 is in WHICH tools the model calls, never in what a call returns.
-
-The renderers began as copies of the retired scripted arm's context builders;
-they are the only implementation now.
 """
 from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from ..llm_io import parse_json_response
-from ..alignment_graph.alignment import bare_ref
 from .. import checks
 from ..alignment_graph import alignment
+from ..alignment_graph.alignment import bare_ref
+from ..llm_io import parse_json_array, parse_json_response
 from .artifact_schemas import ARTIFACT_SCHEMAS
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -171,11 +168,9 @@ def alignment_docket(graph: "AlignmentGraph", *, edges: tuple[str, ...] = (),
     """The alignment-state block: established edges, instantiated coverage
     gaps, and unrealised plan pairs for the named relations.
 
-    Began as the retired scripted arm's ``_alignment_state`` +
-    ``_render_state_structured`` — keep in sync manually. Kept in the agentic
-    arm because it is the deterministic scaffolding SLMs measurably need (an
-    enumerated checklist over a universally-quantified rule); the agency this
-    arm adds sits on top of it, not instead of it.
+    Kept in the agentic arm because it is the deterministic scaffolding SLMs
+    measurably need (an enumerated checklist over a universally-quantified
+    rule); the agency this arm adds sits on top of it, not instead of it.
     """
     facts: dict = {"edges": [], "gaps": [], "plan_pairs": []}
     for rid in edges:
@@ -437,12 +432,8 @@ def run_read_document(store, step: "AgenticStep", args: dict) -> str:
     return rendered
 
 
-# No ``check_artifact``: it ran the SAME validator a rejected ``submit`` runs and
-# returned the same errors, but cost a full re-emission of the artifact as its
-# arguments — measured on run single_20260831_160530, the single arms called it
-# 17 and 18 times, and their completion tokens were ~1.7x the multi arms'. A
-# rejected submit carries the identical information at no extra writing, so the
-# budget for retries lives in ``SUBMIT_BUDGET`` where it is explicit.
+# No separate "check my artifact" tool: a rejected submit returns the same
+# errors at no re-emission cost, and the retry allowance is ``SUBMIT_BUDGET``.
 EXECUTORS = {
     "read_nodes": run_read_nodes,
     "read_node": run_read_node,
@@ -470,41 +461,21 @@ def executors_for(*, graph_mode: bool) -> dict:
 # native transport removes one failure mode, it does not remove the need for
 # the anti-loop guard or the submit budget.
 
-_SUBMIT_TYPE_HINT = {
-    "object": "a JSON object",
-    "array": "a JSON array",
-    "string": "a string",
-}
-
-
 def _parameters_from(fields: tuple, schema_keys: dict[str, str] | None = None) -> dict:
     """The submit schema for a set of ``(key, json_type, required)`` fields.
 
     Each key's shape comes from :data:`artifact_schemas.ARTIFACT_SCHEMAS`,
     looked up under ``schema_keys.get(key, key)`` — the indirection only
     matters for the handful of keys (``dev_plan``) reused across stages for
-    different shapes; every other key IS its own lookup key. A key with no
-    entry (should not happen once that dict is complete — see
-    ``test_every_submit_field_has_an_artifact_schema``) falls back to the old
-    generic shallow shape rather than binding a schema-less tool."""
+    different shapes; every other key IS its own lookup key. Every submit
+    field has an entry (``test_every_submit_field_has_an_artifact_schema``),
+    so a missing one fails loudly rather than binding a schema-less tool."""
     properties: dict = {}
     required: list[str] = []
     for key, json_type, is_required in fields:
-        lookup = (schema_keys or {}).get(key, key)
-        detailed = ARTIFACT_SCHEMAS.get(lookup)
-        if detailed is not None:
-            properties[key] = ({"type": "array", "items": detailed}
-                                if json_type == "array" else dict(detailed))
-        else:
-            properties[key] = {
-                "type": json_type,
-                "description": f"{_SUBMIT_TYPE_HINT.get(json_type, json_type)}, "
-                               "matching this stage's artifact schema",
-            }
-            if json_type == "array":
-                properties[key]["items"] = {"type": "object", "additionalProperties": True}
-            elif json_type == "object":
-                properties[key]["additionalProperties"] = True
+        detailed = ARTIFACT_SCHEMAS[(schema_keys or {}).get(key, key)]
+        properties[key] = ({"type": "array", "items": detailed}
+                           if json_type == "array" else dict(detailed))
         if is_required:
             required.append(key)
     return {"type": "object", "properties": properties, "required": required}
@@ -544,11 +515,11 @@ def submit_specs(step: "AgenticStep", only: tuple[str, ...] | None = None) -> li
     writes it back more reliably under that name than under an anonymous
     payload.
 
-    The parameters go all the way down (2026-09-08): every field's shape
-    (types, nesting, enums) comes from :data:`artifact_schemas.ARTIFACT_SCHEMAS`,
-    which is now the sole declaration of an artifact's SHAPE — the stage
-    prompt no longer restates it as a JSON-example text block (see
-    ``AgenticStep.task_block``). Two things keep this from forking into a
+    The parameters go all the way down: every field's shape (types, nesting,
+    enums) comes from :data:`artifact_schemas.ARTIFACT_SCHEMAS`, the sole
+    declaration of an artifact's SHAPE — the stage prompt does not restate
+    it as text (see ``AgenticStep.task_block``). Two things keep this from
+    forking into a
     second source of truth: where ``core/validation.py`` already type-checks a
     field, ``artifact_schemas`` DERIVES from it rather than retyping it by
     hand, so the two cannot disagree; and every enum value list is typed once,
@@ -561,9 +532,8 @@ def submit_specs(step: "AgenticStep", only: tuple[str, ...] | None = None) -> li
     top-level type, or now a field of the wrong shape.
 
     ``only`` binds a SUBSET, for a loop resuming a stage that already holds
-    some of its artifacts: a regen used to rebind all six of
-    ``implementation``'s and offer the model tools for work that was done. It
-    defaults to None — every artifact — which is what a first attempt gets and
+    some of its artifacts, so a regen does not offer tools for work that is
+    done. It defaults to None — every artifact — which is what a first attempt gets and
     what ``tests/fixtures/golden_prompts.json`` pins.
     """
     return [
@@ -607,7 +577,7 @@ def parse_tool_call_markup(text: str) -> tuple[str, dict] | None:
     name = match.group(1).strip()
     args = {key.strip(): value.strip()
             for key, value in _MARKUP_PARAM_RE.findall(match.group(2))}
-    return (name, args) if name else None
+    return name, args
 
 
 def shape_bad_keys(parameters: dict, args: object) -> list[str]:
@@ -689,7 +659,7 @@ def coerce_args(parameters: dict, args: object, *, salvaged: list | None = None)
     correctly on every stage of every arm, but each structured argument arrived
     as a STRING holding its JSON — ``{"needs_analysis": "{\"problem_definition\"
     ...}"}`` — so the deterministic validator answered "expected list, got str"
-    and every one of the 28 stages fell through to the scripted fallback. The
+    and every one of the 28 stages was rejected. The
     tool-call parser reconstructs the call, not the value types the schema
     declares; a template-driven parser has no obligation to.
 
@@ -764,7 +734,6 @@ def _loads(text: str, salvaged: list | None = None, name: str = "",
         return json.loads(text)
     except (TypeError, ValueError):
         pass
-    from ..llm_io import parse_json_array, parse_json_response
     if want_array:
         items, dropped = parse_json_array(text)
         if not items:
@@ -849,15 +818,6 @@ def tool_specs(step: "AgenticStep", *, graph_mode: bool = True,
              "properties": {"query": {"type": "string",
                                       "description": "What to fetch, specific."}},
              "required": ["query"]}))
-    # No `stage_brief` tool: the artifact contract is PUSHED, in the stage's
-    # own turn (2026-09-06). It was fetched from 2026-09-03, which fixed the
-    # asymmetry of `multi` being handed its schema free while `single` spent a
-    # call on it, and bought a droppable stage turn — at the price of a
-    # contract that could be dropped with nothing to put it back. Run 2b9e911a
-    # is that price: the brief went with the implementation stage's ninth turn
-    # and the stage never recovered. Pushing it costs both arms nothing, and
-    # what makes it safe is `compact`'s `restore`, which puts the stage turn
-    # back when a trim takes it.
     specs += submit_specs(step, only)
     return specs
 
@@ -867,7 +827,7 @@ def react_specs(steps: tuple, done: frozenset, *, graph_mode: bool = True,
     """Tools for the ONE agent that runs the whole brief itself.
 
     Two differences from :func:`tool_specs`, both of which are what makes the
-    single arm a ReAct loop rather than seven loops in a trench coat:
+    single arm a ReAct loop rather than six loops in a trench coat:
 
     * the read allowlists are the UNION over every step, because this agent is
       not scoped to a stage — it decides what to look at;
@@ -891,9 +851,7 @@ def react_specs(steps: tuple, done: frozenset, *, graph_mode: bool = True,
         read_docs += tuple(d for d in step.readable_docs if d not in read_docs)
 
     union = _ReadScope(read_types, read_relations, read_docs)
-    specs = [spec for spec in tool_specs(
-        union, graph_mode=graph_mode, retrieval_available=retrieval_available)
-        if not spec["function"]["name"].startswith("submit")]
+    specs = tool_specs(union, graph_mode=graph_mode, retrieval_available=retrieval_available)
     from .fanout import SPECS as _FANOUT
 
     for step in steps:
@@ -918,14 +876,14 @@ def react_specs(steps: tuple, done: frozenset, *, graph_mode: bool = True,
 
 @dataclass(frozen=True)
 class _ReadScope:
-    """The union allowlist, in the shape ``tool_specs`` reads."""
+    """The union allowlist, in the shape ``tool_specs`` reads. No submit
+    fields: ``react_specs`` appends a per-stage submit instead."""
 
     readable_types: tuple[str, ...]
     relations: tuple[str, ...]
     readable_docs: tuple[str, ...]
-    #: `tool_specs` builds a `submit` from this; `react_specs` drops that one and
-    #: appends a per-stage submit instead.
     submit_fields: tuple = ()
+    schema_keys: dict = field(default_factory=dict)
 
 
 def tool_names(specs: list[dict]) -> tuple[str, ...]:
@@ -941,12 +899,9 @@ def tool_menu(step: "AgenticStep", *, retrieval_available: bool = False,
     allowlist values are legal. It is rendered from those same specs, so the
     two cannot disagree about which tools exist.
 
-    They did disagree, and it mattered (2026-09-03). This menu was written by
-    hand and still announced a single ``submit`` months after the stage submit
-    was split into one tool per artifact — so every stage of every arm told its
-    agent to call a tool that was not bound, and ``ToolLoop._submit_alias`` was
-    quietly rescuing the result. A menu that is PROSE ABOUT the binding drifts
-    from it; one computed from it cannot.
+    A menu written by hand drifted (it announced a single ``submit`` after
+    the per-artifact split, and ``ToolLoop._submit_alias`` was quietly
+    rescuing the result); one computed from the binding cannot.
     """
     return "\n".join(
         _menu_line(spec) for spec in tool_specs(

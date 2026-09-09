@@ -1,6 +1,7 @@
 from __future__ import annotations
+
 from collections.abc import Callable
-from typing import Any, Literal, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, PrivateAttr
 
@@ -67,10 +68,8 @@ class HarnessRunConfig(BaseModel):
     # ``regen_backoff_seconds`` is the base delay applied (growing per attempt)
     # before each re-run so a rate-limit window can drain instead of being hammered.
     # The benchmark adapter sources these from env (BENCHMARK_DELAY / HARNESS_REGEN_*).
-    # A dev-plan fan-out family (assessment/activity/content — see
-    # core/dev_plans.py; rubric criteria became a field of their assessment item
-    # on 2026-09-02 and are no longer a family of their own) spends this budget
-    # TWICE: once at dispatch (did the
+    # A dev-plan fan-out family (assessment/activity/content/implementation —
+    # see core/dev_plans.py) spends this budget TWICE: once at dispatch (did the
     # plan/grouping call itself produce anything) and, independently, once
     # PER WORK SET at finalize (did that one set's Developer call produce
     # anything) — so a persistently failing model can burn up to

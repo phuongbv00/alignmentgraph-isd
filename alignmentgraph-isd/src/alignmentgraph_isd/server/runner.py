@@ -167,9 +167,10 @@ class RunManager:
                 raise HarnessCancelled()
 
             if kind == "context_snapshot":
-                # State, not a forwarded event: a transcript is large and only
-                # its finished form is worth reading. Handled here on the
-                # worker thread for the same reason the graph is.
+                # State, not a forwarded event: republished after every turn and
+                # replacing the previous snapshot by id (see `add_context`).
+                # Handled here on the worker thread for the same reason the
+                # graph is.
                 state.add_context(payload)
                 return
 
@@ -202,17 +203,10 @@ class RunManager:
 
             result = MetaAgent(config).run(
                 design_brief, on_event=self._make_consumer(state))
-            # Carried on the result so `write_result` persists it with the rest:
-            # a context that only existed in memory would be gone the moment the
-            # process restarted, and "what did this agent see" is the question
-            # you come back to a finished run with.
-            #
-            # The HARNESS's own list wins when it has one (core.memory keeps
-            # every transcript now, whether or not anyone was watching); the
-            # live one collected off the event stream is what the page shows
-            # while the run is still going, and is the fallback for a result
-            # produced before ``core.memory`` existed.
-            result["contexts"] = result.get("contexts") or list(state.contexts)
+            # Carried on the result so `write_result` persists it with the
+            # rest; the harness's own list (core.memory) is the record, the
+            # live one off the event stream is what the page shows meanwhile.
+            result.setdefault("contexts", list(state.contexts))
             # The ledger only exists at the end — a finding's outcome is not
             # known until the last look has settled it — so unlike the contexts
             # there is nothing to stream progressively.
@@ -242,11 +236,10 @@ class RunManager:
                 artifacts.write_result(directory, brief, result)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("could not write artifacts for run %s: %s", run_id, exc)
+            state.model_name = (result.get("metadata", {}).get("llm") or {}).get("model_name", "")
 
         finished = datetime.now(timezone.utc)
         stats["duration_seconds"] = (finished - started).total_seconds()
-        if result is not None:
-            state.model_name = (result.get("metadata", {}).get("llm") or {}).get("model_name", "")
 
         # Flush what the run produced BEFORE marking it terminal. `finish`
         # closes the live stream, so a reader that was following the run
@@ -295,8 +288,7 @@ class RunManager:
 
     def _flush_once(self) -> None:
         for state in self.registry.all():
-            directory = self.settings.programs_dir / state.program_id / "runs" / state.run_id
-            self._flush_state(state, directory)
+            self._flush_state(state, artifacts.run_dir(self.settings, state.program_id, state.run_id))
 
     def _flush_state(self, state: RunState, directory) -> None:
         pending = state.drain_unflushed()
@@ -366,7 +358,6 @@ def _stats_from_result(result: dict) -> dict:
         "repair_events": sum(1 for e in trajectory.get("events") or []
                              if e.get("action") == "repair"),
         "validation_errors": len(metadata.get("validation_errors") or []),
-        "model_name": (metadata.get("llm") or {}).get("model_name", ""),
     }
 
 

@@ -50,7 +50,7 @@ def _graph_before_the_developer_tier() -> AlignmentGraph:
 
 def _shown(step, graph) -> list[str]:
     return sorted({v.violation_type for v in ToolLoop.own_violations(
-        graph, load_brief("minimal_brief.json"), step, TrajectoryLogger(), None)})
+        graph, load_brief("minimal_brief.json"), step, TrajectoryLogger())})
 
 
 def test_the_designer_is_asked_only_about_what_it_wrote_itself():

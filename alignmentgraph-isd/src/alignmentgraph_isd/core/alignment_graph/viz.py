@@ -187,7 +187,7 @@ def _legend() -> list[str]:
 def to_dot(graph: AlignmentGraph, *, title: str = "") -> str:
     annotations = objective_annotations(graph)
     # Visualise the 16-relation matrix only: edges that carry a relation_id.
-    # Internal scaffolding edges (``precedes``, relation_id="") stay in the JSON
+    # Internal scaffolding edges (``precedes``/``narrates``, relation_id="") stay in the JSON
     # dump but are dropped here — they add no matrix information and dominate the
     # picture. A node renders iff it is an objective or takes part in a matrix edge.
     matrix_edges = [e for e in graph.get_edges() if e.get("relation_id")]

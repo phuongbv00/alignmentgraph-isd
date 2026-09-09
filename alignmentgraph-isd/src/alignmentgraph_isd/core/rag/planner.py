@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from ...config import HarnessRunConfig
 from ..brief import DesignBrief
 from .agent import RetrievalAgentRegistry

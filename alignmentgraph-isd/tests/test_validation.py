@@ -107,20 +107,6 @@ def test_placeholder_check_ignores_real_content_with_angle_brackets():
     assert not any("placeholder" in e for e in errors)
 
 
-def test_placeholder_in_required_field_triggers_empty_section_regen_check():
-    from alignmentgraph_isd.core.outputs import _empty_required_fields
-
-    payload = {
-        "instructor_orientation": {"schedule": "Day 1"},
-        "system_check": {"checklist": ["net"]},
-        "prototype_execution": {"pilot_scope": "one cohort"},
-        "monitoring": {"monitoring_criteria": ["completion"]},
-        "instructor_guide": {"overview": "Real overview"},
-        "operator_manual": {"system_setup": "<detailed system setup guide>"},
-    }
-    assert _empty_required_fields("implementation_plan", payload)
-
-
 def test_validate_addie_flags_placeholder_in_development_manuals():
     addie = {
         "analysis": {"needs_analysis": {"x": 1}, "learner_analysis": {"x": 1},

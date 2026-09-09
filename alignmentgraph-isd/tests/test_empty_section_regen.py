@@ -281,7 +281,7 @@ class _ManualsMissingOnce(FakeChatModel):
 def test_a_deposit_missing_required_fields_counts_as_not_produced():
     """``instructor_guide``/``operator_manual`` are required, so a deposit
     without them is "not produced" and the stage keeps working — in the graph
-    arm and the prose arm alike (shared ``_empty_required_fields``).
+    arm and the prose arm alike (shared ``validate_section``).
 
     The mechanism moved with the executor: what used to be a whole-node re-run
     is now the loop rejecting the submit and getting another turn. What has not

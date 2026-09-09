@@ -81,6 +81,8 @@ from __future__ import annotations
 
 import re
 
+from ..llm_io import parse_json_response
+
 #: Characters of dropped material one summarisation may read. Past this the
 #: oldest of the dropped turns are themselves elided — a summary of a summary
 #: is where this kind of thing stops meaning anything, and the note already
@@ -302,8 +304,6 @@ def _drop_directives(text: str) -> str:
 
 def _unwrap(text: str) -> str:
     """The single string value of a JSON-wrapped answer, or nothing."""
-    from ..llm_io import parse_json_response
-
     try:
         parsed = parse_json_response(text, warn=False)
     except Exception:  # noqa: BLE001 - the salvage is best-effort by definition

@@ -10,11 +10,8 @@ Three things, and they answer three different questions about the same run:
   Exactly one substrate is live per run; which one is the ``context_mode``
   axis, so :class:`Memory` holds the live one and never both.
 * **plans** — how each Designer divided its family into work sets before
-  handing them to Developers, ROUND BY ROUND. This one was previously not
-  remembered at all: a plan was computed inside ``_run_fanout``, used to build
-  prompts, summarised into a trajectory event, and dropped. Nothing could
-  afterwards answer "which Developer was asked for what", which is the
-  question a fan-out failure always turns into.
+  handing them to Developers, ROUND BY ROUND — what answers "which Developer
+  was asked for what", the question a fan-out failure always turns into.
 
   Rounds, because a family is planned more than once: the Designer plans, the
   Developers write, the checks find gaps, and the gaps go back to the DESIGNER
@@ -50,15 +47,12 @@ def new_agent_run_id() -> str:
     """A fresh id for one AGENT RUN: one conversation, from its first message
     to its last.
 
-    Minted where the conversation BEGINS, not derived from what it is about.
-    That distinction is the whole point, and it was learned the hard way: the
-    first version hashed ``(agent, phase, label, attempt)``, and the replan
-    round — which continues the Designer's own message list under a new step
-    name — hashed to a different id. The tab then showed the same conversation
-    twice, the second row containing the first, which is precisely the
-    split-block problem the in-loop repair was built to remove. No content-
-    derived key can know that two labels are one conversation; an id the
-    conversation carries does.
+    Minted where the conversation BEGINS, not derived from what it is about:
+    a key hashed from ``(agent, phase, label, attempt)`` gave the replan round
+    — which continues the Designer's own message list under a new step name
+    — a different id, and the tab showed one conversation as two rows. No
+    content-derived key can know that two labels are one conversation; an id
+    the conversation carries does (``test_one_conversation_is_one_context``).
 
     A regenerated stage, a fan-out work set and each arm's design loop all
     start with a fresh message list, so each gets its own automatically —
@@ -74,7 +68,7 @@ class Transcript:
 
     A stage that is regenerated publishes one of these per attempt, and they
     share a label — ``attempt`` is what tells them apart, which is why the
-    export addresses a transcript by index rather than by name.
+    export addresses a transcript by ``id`` rather than by name.
     """
 
     #: The agent run this context belongs to (:func:`new_agent_run_id`) — one
@@ -106,9 +100,7 @@ class Plan:
     ``source`` is the honest part: ``"llm"`` when the Designer's own dev plan
     was used, ``"fallback"`` when it was absent or unusable and the sets were
     derived deterministically. A run where every family reads ``fallback`` is
-    a run where the planning half of the design was never exercised — which is
-    exactly what was happening, unnoticed, until the dev plan was given
-    somewhere to live (see ``specialists.commit_assessment``).
+    a run where the planning half of the design was never exercised.
     """
 
     stage: str
@@ -121,14 +113,6 @@ class Plan:
     round: int = 0
     #: The violation types this round was asked to close. Empty on round 0.
     answers: tuple[str, ...] = ()
-
-    @property
-    def from_the_agent(self) -> bool:
-        return self.source == "llm"
-
-    def for_set(self, set_id: str):
-        """The work set with this id — what a Developer was actually asked for."""
-        return next((ws for ws in self.work_sets if ws.set_id == set_id), None)
 
     def as_dict(self) -> dict:
         return {"stage": self.stage, "family": self.family, "source": self.source,
@@ -154,8 +138,7 @@ class Finding:
     """
 
     key: str
-    #: The whole Violation. `_serialize` used to drop four of these eight, so
-    #: nothing downstream could route, explain or re-find what it had.
+    #: The whole Violation, so a finding can be routed, explained and re-found.
     node_id: str
     edge_type: str
     violation_type: str
@@ -257,10 +240,6 @@ class Memory:
     def state(self):
         return self.graph if self.graph is not None else self.store
 
-    @property
-    def graph_mode(self) -> bool:
-        return self.graph is not None
-
     # ── transcripts ─────────────────────────────────────────────────────────
     def remember_context(self, transcript: Transcript) -> None:
         """Keep the LATEST snapshot of each context, in first-seen order.
@@ -282,9 +261,6 @@ class Memory:
         """Every context published this run, in the order it was published."""
         return tuple(self._transcripts)
 
-    def transcripts_of(self, agent: str) -> tuple[Transcript, ...]:
-        return tuple(t for t in self._transcripts if t.agent == agent)
-
     @property
     def agents(self) -> tuple[str, ...]:
         """Who spoke this run, first appearance first. In ``single`` this is
@@ -298,19 +274,6 @@ class Memory:
     # ── plans ───────────────────────────────────────────────────────────────
     def remember_plan(self, plan: Plan) -> None:
         self._plans.setdefault(plan.stage, []).append(plan)
-
-    def plan_for(self, stage: str) -> Plan | None:
-        """The stage's LATEST plan — what its Developers were last asked for."""
-        rounds = self._plans.get(stage)
-        return rounds[-1] if rounds else None
-
-    def rounds_for(self, stage: str) -> tuple[Plan, ...]:
-        """Every plan this stage made, first to last. More than one means the
-        checks sent work back and the Designer re-planned it."""
-        return tuple(self._plans.get(stage) or ())
-
-    def next_round(self, stage: str) -> int:
-        return len(self._plans.get(stage) or ())
 
     @property
     def plans(self) -> tuple[Plan, ...]:
@@ -430,11 +393,6 @@ class Memory:
     @property
     def findings(self) -> tuple[Finding, ...]:
         return tuple(self._findings.values())
-
-    def open_findings(self, family: str = "") -> tuple[Finding, ...]:
-        return tuple(f for f in self._findings.values()
-                     if f.outcome == "open"
-                     and (not family or f.target_designer == family))
 
     def as_dict(self) -> dict:
         """The inspectable dump. Not part of ``trajectory`` and never sent to

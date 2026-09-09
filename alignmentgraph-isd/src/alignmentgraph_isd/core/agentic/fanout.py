@@ -11,25 +11,21 @@ without this tier:
 
 Every arm, every family, down 50-93%: not a design choice, a token ceiling.
 
-WHERE THE AXIS SITS. Both decomposition arms plan the SAME work sets and make
-the same number of calls; what differs is who runs each set:
+WHERE THE AXIS SITS. Both decomposition arms may split a family over several
+calls; what differs is who divides the work and who writes each part:
 
-  ``multi``  — each set is a fresh context under that family's Developer
-               identity and persona. This arm genuinely spawns sub-agents.
-  ``single`` — no sub-agent is spawned at all: the one agent writes each set
-               itself, in the conversation it is already carrying, and pays
-               the context for it.
+  ``multi``  — the Designer's plan is normalized into work sets
+               (``core/dev_plans.py``) and each set is a fresh context under
+               that family's Developer identity. This arm spawns sub-agents.
+  ``single`` — the one agent chooses its own batches and writes each itself,
+               in the conversation it is already carrying; every batch goes
+               through the same ``commit_sets`` and the same item rules
+               (``output_errors``).
 
-Giving the fan-out to ``multi`` alone would have let it win by fitting under
-the completion cap while ``single`` could not — a token-ceiling artifact read
-as decomposition, and exactly the confound the 2026-08-30 audit had to close.
-The advantage ``multi`` is allowed to have is WHO does the work, never WHETHER
-the work is divisible.
-
-The normalization itself is ``core/dev_plans.py``, shared verbatim by both
-arms — it guarantees every ground-truth obligation lands in exactly
-one set whatever the model proposed, so the fan-out shape never depends on
-unvalidated SLM output.
+Equal call counts are NOT the parity requirement (an agent that plans its own
+batches cannot spend the calls a harness-walked plan does); what is shared is
+the normalization, the renumbering, the establishers and the per-item rules,
+so the fan-out shape never depends on unvalidated SLM output.
 """
 from __future__ import annotations
 
@@ -46,42 +42,32 @@ from .specialists import AgenticStep
 
 @dataclass(frozen=True)
 class SetOutput:
-    """One artifact list a Developer call produces.
-
-    A family can produce more than one: an assessment set carries both the items
-    and the scoring criteria for those items, because a question and how it is
-    marked are written together — splitting them cost one LLM call per item
-    (measured: 32 calls per scenario, every arm) and asked a Developer to write
-    criteria for an item it had not seen."""
+    """The one artifact list a Developer call produces. An assessment item
+    carries its own scoring criteria as a field: splitting them cost one LLM
+    call per item (measured: 32 calls per scenario, every arm) and asked a
+    Developer to write criteria for an item it had not seen."""
 
     schema_key: str
     id_field: str
     rules: str
+    element_type: str
+    #: Id prefix this family's artifacts are numbered under ("AT", "TLA"),
+    #: composed with the set ordinal by ``dev_plans._composite_id``.
+    id_prefix: str
+    #: (document key, list field) the prose arm writes this list under.
+    doc_key: tuple[str, str]
     #: Fields holding references to OTHER artifacts of this same family, which
     #: the model writes as 1-based POSITIONS in the list it is submitting
     #: ([1] = the first artifact it wrote). The commit turns them into the ids
-    #: it assigned.
-    #:
-    #: It has to be positional because the model no longer writes ids at all
-    #: (2026-09-03) — and it was broken before that for the same underlying
-    #: reason: `prerequisite_activities` was never listed as a reference field,
-    #: so every one of them survived into the graph naming an id the commit had
-    #: renumbered away. Measured on the test fixture: 0 of 3 resolved, and
-    #: `_establish` reads exactly this field to build the `precedes` edges.
+    #: it assigned — positional because the model does not write ids at all;
+    #: see ``dev_plans.remap_and_tag`` for the measurement.
     self_ref_fields: tuple[str, ...] = ()
-    element_type: str = ""
     #: Per-ITEM errors for this output, or None for "a non-empty list is
     #: enough". Read by BOTH arms (``set_step``'s validator and the single
     #: arm's ``ReactLoop._validate``, through :func:`output_errors`): a rule
     #: enforced on the Developer tier alone would be a rejection one side of
     #: the decomposition axis gets and the other does not.
     validate_items: Callable[[list], list[str]] | None = None
-    #: Id prefix this family's artifacts are numbered under ("AT-01",
-    #: "TLA-01"). The same convention the rulebook schemas show, declared here
-    #: because the commit renumbers each set's items into the id block the plan
-    #: reserved for it — see dev_plans.remap_and_tag.
-    id_prefix: str = ""
-    doc_key: tuple[str, str] = ("", "")
 
 
 def output_errors(spec: "FanoutSpec", section: dict) -> list[str]:
@@ -110,9 +96,7 @@ def session_guide_errors(guides: list) -> list[str]:
 
     ``activity_ids`` is the field P10 is established from, and the rule the
     guides exist to satisfy is that between them they account for every
-    activity in the design. The equivalent guarantee used to sit in
-    ``validate_implementation`` — it moved here with the artifact (2026-09-07),
-    because the stage no longer writes the guides.
+    activity in the design.
     """
     errors: list[str] = []
     for index, guide in enumerate(guides):
@@ -137,9 +121,9 @@ class FanoutSpec:
     developer_persona: str = ""
     set_intro: str = ""
     #: Header the assignment slice is announced under. Verbatim the same four
-    #: across families — a reader that keys on this header (the aggregator's
-    #: context stripping, the test fixture's per-set slicing) must see the same
-    #: thing on either side of both ablation axes.
+    #: across families — a reader that keys on this header (the test
+    #: fixture's per-set slicing) must see the same thing on either side of
+    #: both ablation axes.
     set_header: str = "=== YOUR ASSIGNED SET ==="
     #: What one Developer call submits. More than one entry = one call
     #: produces several artifact lists at once.
@@ -183,9 +167,7 @@ def _deterministic_stats(sets: list) -> dict:
     return {"set_count": len(sets), "pair_count": len(sets), "dropped_lo_refs": 0,
             "dropped_pairs": 0, "duplicate_pairs": 0, "appended_sets": 0,
             "fallback_used": False,
-            # No model proposed this grouping. The event used to read
-            # `source: llm` here because it was derived from `fallback_used`
-            # alone — a mislabel on the one family that has no plan step.
+            # No model proposed this grouping.
             "source": "deterministic"}
 
 
@@ -240,10 +222,9 @@ def _every_part_dispatch_done(stage: str, state) -> bool:
     call, the regen loop broke on the plan alone, and the artifact shipped
     empty.
 
-    content: MEASURED (run single_20260908_002508) — the gate was
-    ``_has_modules``, which counted CONTENT nodes only, so a stage that gave
-    up on "turn budget exhausted" with MOD-01..08 and ZERO media selections
-    passed it. ``dev_plans.material_work_units`` then built one unit per
+    content: MEASURED (run single_20260908_002508) — a gate that counted
+    CONTENT nodes only let a stage that gave up on "turn budget exhausted"
+    with MOD-01..08 and ZERO media selections through. ``dev_plans.material_work_units`` then built one unit per
     module with ``media_selections: []``, ``render_material_set`` dropped both
     of its media clauses, and ``alignment.match_p6_realizes`` had an empty
     source set: 15 materials, P6 30, every one of them unconditional. Making
@@ -270,7 +251,6 @@ SPECS: dict[str, FanoutSpec] = {
             "handling those."),
         set_intro=("Write the actual items for YOUR ASSIGNED instrument set below, each with "
                    "the scoring criteria that mark it, inside the item's own ``rubric`` list."),
-        set_header="=== YOUR ASSIGNED SET ===",
         outputs=(
             SetOutput(
                 schema_key="assessment_tools", id_field="item_id",
@@ -360,17 +340,14 @@ _ASSIGNMENT_IS_COMPLETE = (
     "schedules). You do not need to look them up. Use the read tools only for something your "
     "assignment does NOT name, or when one line is not enough.")
 
-#: Cap on the rendered assignment a Developer is handed. The renderers dump
-#: their assigned items as full JSON and are uncapped, so a family that
-#: committed many items produces an assignment slice that can exceed the
-#: serving context on its own (measured on the fixture: a 39k-character rubric
-#: stage message against a 16k-token window). The stage prompt has a protocol,
-#: a schema and a rules block on top of this, so the assignment cannot have the
-#: whole budget.
+#: Cap on the rendered assignment a Developer is handed: an uncapped slice
+#: over a family that committed many items can exceed the serving context on
+#: its own (measured on the fixture: a 39k-character stage message against a
+#: 16k-token window), and the protocol and rules blocks sit on top of it.
 ASSIGNMENT_CHAR_CAP = 6000
 
 
-def _resolved_references(spec: FanoutSpec, work_set: dev_plans.WorkSet, state) -> str:
+def _resolved_references(work_set: dev_plans.WorkSet, state) -> str:
     """The artifacts a work set NAMES, rendered into its assignment.
 
     MEASURED (run single_20260901_162455): the assignment gave objective IDs
@@ -475,11 +452,6 @@ def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
     is what this Developer was asked to do, not background it may consult. Read
     tools stay whatever the family's stage allows — a Developer still needs to
     see the objectives it is writing for."""
-    # Only the PRIMARY output is required. A secondary one (rubrics beside the
-    # items that carry them) is asked for in the schema and rules, but making it
-    # a hard gate would throw away a whole set of good items because their
-    # criteria were missing — and those criteria have a repair of their own
-    # (repairs.OWNED_BY_FAMILY["rubric_designer"]) that runs right after.
     primary = spec.outputs[0].schema_key
 
     def validate(parsed: dict) -> list[str]:
@@ -494,7 +466,7 @@ def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
         identity=spec.developer_identity,
         persona=spec.developer_persona,
         intro=(f"{spec.set_intro}\n\n{_ASSIGNMENT_IS_COMPLETE}\n\n{spec.set_header}\n"
-               f"{_capped(spec.render(work_set) + _resolved_references(spec, work_set, state))}"),
+               f"{_capped(spec.render(work_set) + _resolved_references(work_set, state))}"),
         rules="\n".join(o.rules for o in spec.outputs),
         submit_fields=tuple((o.schema_key, "array", i == 0)
                             for i, o in enumerate(spec.outputs)),
@@ -508,8 +480,6 @@ def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
         commit=lambda *_a, **_k: None,       # committing is the driver's job,
         commit_prose=lambda *_a, **_k: None,  # right after this loop returns
         commits_to_state=False,
-        # Its assignment IS its contract: short loop, one job, no room to
-        # lose it to compaction.
         # THIS set's items, not the family's pool: siblings are committing into
         # the same pool as they finish, so the default guard would call this
         # set done before its Developer had spoken.

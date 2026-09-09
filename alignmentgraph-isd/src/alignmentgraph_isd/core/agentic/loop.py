@@ -32,21 +32,22 @@ import threading
 import time
 from dataclasses import dataclass
 
-from ..brief import _format_design_brief
 from .. import repairs
+from ..brief import _format_design_brief
+from ..checks import serialize_violations
 from ..llm_io import (
     _extract_token_usage,
-    finish_reason,
-    was_truncated,
     _is_truncation_error,
+    finish_reason,
     parse_json_response,
+    was_truncated,
 )
+from ..memory import Memory, new_agent_run_id
 from ..ratelimit import gate_for
 from ..trajectory import WORKFLOW_ORCHESTRATOR
-from . import budget, tools
-from .tools import unwrap_section
-from ..memory import Memory, new_agent_run_id
+from . import budget, compaction, tools
 from .specialists import STEPS, AgenticStep, missing_parts, parts_of, step_done
+from .tools import unwrap_section
 
 
 @dataclass
@@ -66,17 +67,6 @@ class ToolTurn:
     call_id: str = ""
     text: str = ""
     message: object = None
-    #: Calls beyond the first in one model turn. Every one of them is
-    #: EXECUTED, in order, and each costs a turn — so the turn budget stays the
-    #: honest unit of work while nothing the model asked for is lost. The
-    #: count is logged so a model that batches is visible in the trace.
-    #:
-    #: Only the first used to run (2026-09-05): the rest were counted and
-    #: silently dropped, their tool_call ids left unanswered in the history.
-    #: Measured on run e81b8108: five of six stages re-issued the dropped
-    #: reads, and the turn after a dropped batch came back EMPTY on every one
-    #: of them — two to three turns per stage spent on a harness decision.
-    extra_calls: int = 0
     #: The calls after this one in the same model turn, each a ToolTurn of its
     #: own with ``sibling=True``.
     calls: tuple = ()
@@ -298,7 +288,7 @@ def _still_needed(step, state) -> str:
     The gap it closes: a stage that gave up is re-run from a fresh context, and
     its opening turn was byte-identical to the first attempt's. It listed all
     six of `implementation`'s artifacts however many were already committed, so
-    the retry re-fetched `stage_brief`, re-issued every read, and re-sent work
+    the retry re-issued every read and re-sent work
     that was done — on run 24343e4d, three such attempts at 55.6k prompt /
     11.7k completion tokens / 122 s. The single arm never had this hole: it
     never restarts a stage, and `_committed_note` tells it the same thing after
@@ -501,10 +491,8 @@ def _prompt_chars_any(messages: list) -> int:
     """Prompt size over a mixed transcript: plain dicts AND the model's own
     message objects, which the tool-call round trip puts in the history.
 
-    The ONLY prompt-size function. There used to be a second one that read
-    ``content`` off dicts and skipped everything else, which on the tool-call
-    path meant skipping every assistant turn that carried an artifact — the
-    one thing worth counting."""
+    The ONLY prompt-size function: it counts ``tool_calls`` too, which is
+    where a submit's artifact lives."""
     return sum(message_size(m) for m in messages)
 
 
@@ -582,20 +570,12 @@ class AgenticLLM:
     def call_prose(self, messages: list[dict]) -> str:
         """One model call with NO tools bound and NO ``response_format``.
 
-        Not an agent's turn, and the reason this method can exist at all: the
-        ONLY caller is the compaction hook (``core/agentic/compaction.py``),
-        which runs under ``WORKFLOW_ORCHESTRATOR`` and whose two-message
-        conversation is never published as any agent's context. Both halves of
-        that are held shut by ``tests/test_compaction.py``, the one-caller rule
-        included — a prose path that drifts back into an agent's NAME is
-        precisely what was removed 2026-09-03, and the guard is what keeps the
-        difference checkable rather than merely intended.
-
-        NO ``response_format``, ever. v1 sent ``{"type": "json_object"}`` and
-        then asked for prose; a compliant backend answered with a JSON object
-        and the summariser threw it away as non-prose — run e81b8108, three
-        calls, 11.8k completion tokens, nothing kept. That is the failure this
-        signature exists to make unrepeatable.
+        Not an agent's turn: the ONLY caller is the compaction hook
+        (``core/agentic/compaction.py``), which runs under
+        ``WORKFLOW_ORCHESTRATOR`` and whose conversation is never published as
+        any agent's context — ``tests/test_compaction.py`` enforces the
+        one-caller rule. See the class docstring for why ``response_format``
+        must never return on this path.
         """
         if self.config.llm_factory is None:
             self.trajectory.log_llm_call(0, 0)
@@ -635,10 +615,8 @@ class AgenticLLM:
         ``llm_finished``, the chars-per-token measurement, the ``llm_call``
         action, the token totals and the thinking-only reply.
 
-        ONE copy, so that a second way into the model cannot quietly leave the
-        cost table. Not hypothetical: the compaction hook (2026-09-08) IS a
-        second way in, and being able to state its price is the whole reason it
-        was allowed back."""
+        ONE copy, so that a second way into the model (the compaction hook)
+        cannot quietly leave the cost table."""
         content = getattr(result, "content", "") or ""
         if not isinstance(content, str):
             # Some backends return content as a list of blocks; the loop only
@@ -671,8 +649,7 @@ class AgenticLLM:
             # MEASURED (run 24343e4d): 12 of 78 calls, 47-405 billed completion
             # tokens each, every one charged a full stage turn as
             # `invalid_action`. Recorded HERE, at the one path EVERY model call
-            # goes through — both arms and, since 2026-09-08, the compaction
-            # hook — so the rate is comparable across the axis and is
+            # goes through — both arms and the compaction hook — so the rate is comparable across the axis and is
             # attributable to the serving posture rather than to the model. The
             # fix is `disable_thinking` on the factory; this is what makes its
             # absence visible when it is not set.
@@ -701,7 +678,6 @@ class AgenticLLM:
                           message=result, sibling=i > 0, truncated=cut)
                  for i, call in enumerate(calls)]
         turns[0].calls = tuple(turns[1:])
-        turns[0].extra_calls = len(calls) - 1
         return turns[0]
 
 
@@ -885,8 +861,7 @@ _WORKFLOW_OVERVIEW = _workflow_overview()
 COMPACTION_NOTE = "compaction_note"
 
 #: The header a stage's turn carries, and the regex that finds it again. ONE
-#: marker, because since 2026-09-06 the task pointer and the contract are one
-#: message: the turn IS the brief.
+#: marker: the turn IS the brief.
 #:
 #: Reading the stage name back OUT of the text is what lets one implementation
 #: serve both arms — the multi arm builds this turn per stage loop and the
@@ -1050,9 +1025,6 @@ def compact(messages: list, dropped: list, total: int, *, trajectory,
     ``compactions`` and ``compaction_summaries``, and the difference is the
     hook's failure rate on this model.
     """
-    from . import compaction
-    from ..trajectory import WORKFLOW_ORCHESTRATOR
-
     stats["compactions"] = stats.get("compactions", 0) + 1
 
     # A dropped stage BRIEF is not like a dropped observation. The note's
@@ -1101,20 +1073,51 @@ def compact(messages: list, dropped: list, total: int, *, trajectory,
         f"{len(dropped)} turn(s), {total} total"
         + (f", stage brief re-attached: {', '.join(s for s, _ in restored)}" if restored else "")
         + (f", stage brief lost: {', '.join(still_lost)}" if still_lost else ""),
-        # Both facts. The pre-2026-09-05 event said which of summarised/count
-        # only happened and not how big the context ended up; the one that
-        # replaced it said the size and not whether the completion bought
-        # anything. A run log has to answer both, because the paper reports the
-        # hook's failure rate against what it was spent on.
+        # Both facts — the outcome and the resulting size — because the paper
+        # reports the hook's failure rate against what it was spent on.
         f"{outcome}; live context now {_prompt_chars_any(kept)} chars")
     return kept
+
+
+def empty_stage_stats() -> dict:
+    """The per-stage instrumentation record, SAME keys whatever path a stage
+    took: both loops start from it and ``run.py`` zero-fills from it, so a
+    reader can tell "this stage made no dispatch call" from "this field was
+    never written". Without these the context hypothesis cannot be tested and
+    the low end of the ladder cannot be read at all.
+
+    ``via_budget_exhaustion``: whether the TURN CEILING is what ended the
+    stage. Reported for BOTH arms because the ``agent_mode`` claim rests on
+    neither arm having been CUT by its budget.
+    ``compactions`` / ``compaction_summaries``: how often the window filled
+    (``single`` reaches this constantly, ``multi`` barely — the axis showing
+    its own mechanism) and how many of those folds the model delivered; the
+    difference is the compaction hook's failure rate on this model.
+    ``repair_turns``: turns spent fixing the stage's OWN violations, kept
+    apart so the decomposition axis is not read off a mixed turn count.
+    ``thinking_only``: replies carrying reasoning and nothing else — a
+    property of the SERVING posture, not of the axis.
+    ``tool_errors``: tool calls that came back ERROR (13% of every tool
+    result over runs 53042a0d/2559b22d), so the ceiling is read against
+    turns that DID something.
+    ``n_sets``..``set_submits_rejected``: the Developer tier's own counters,
+    kept separate so "the dispatch OR any one of ten sets gave up" is not one
+    number."""
+    return {"turns_used": 0, "submits_rejected": 0, "repeated_calls": 0,
+            "history_dropped": 0, "gave_up": False, "reads": 0,
+            "via_budget_exhaustion": False,
+            "compactions": 0, "compaction_summaries": 0,
+            "context_len": 0, "batched_calls": 0, "markup_recovered": 0,
+            "args_salvaged": 0, "truncated_turns": 0, "dropped_args": 0,
+            "repair_turns": 0, "thinking_only": 0, "tool_errors": 0,
+            "n_sets": 0, "sets_gave_up": 0, "set_turns": 0,
+            "set_submits_rejected": 0}
 
 
 #: What an empty turn is answered with. ONE constant, used by both loops: it
 #: lands in the transcript, the transcript is what the model sees, and a nudge
 #: worded differently on each side of the decomposition axis is a second
-#: variable. (They did differ — `ToolLoop` said one thing and `ReactLoop`
-#: another — which is exactly the drift a shared constant prevents.)
+#: variable.
 INVALID_TURN_NUDGE = (
     "Invalid turn: you must CALL A TOOL, not answer with text. Call one of "
     "the listed tools, or call submit with the complete artifact.")
@@ -1135,9 +1138,8 @@ THINKING_ONLY_NUDGE = (
 #: the next observation put the history back over the line, and one stage
 #: compacted three times where one would have done. Each firing is a note the
 #: model has to read past AND a model call — the compaction hook folds the
-#: dropped turns into a summary — so the argument for the low-water mark is
-#: stronger now than when it was first written: a refiring trim spends a
-#: completion each time to say a little more about a little less.
+#: dropped turns into a summary — so a refiring trim spends a completion
+#: each time to say a little more about a little less.
 #: Draining to half the budget gives the conversation room to grow again
 #: before the next trim, so compaction is an event rather than a steady state.
 TRIM_LOW_WATER = 0.5
@@ -1329,48 +1331,8 @@ class ToolLoop:
         #: stage, the multi arm throws it away.
         self.messages: list = list(messages) if messages else []
         #: Per-stage instrumentation, read by ``run_agentic_brief`` into
-        #: ``metadata.autonomy``. Without these the context hypothesis cannot
-        #: be tested and the low end of the ladder cannot be read at all.
-        self.stats: dict = {
-            "turns_used": 0, "submits_rejected": 0, "repeated_calls": 0,
-            "history_dropped": 0, "gave_up": False, "reads": 0,
-            # Whether the TURN CEILING is what ended this stage, as opposed to
-            # the stage finishing or giving up for any other reason. Reported
-            # for BOTH arms (`react.py` has always set it) because the
-            # `agent_mode` claim rests on neither arm having been CUT by its
-            # budget: while this reads false on both sides, a difference in
-            # outcome cannot be blamed on the ceiling. It was missing here,
-            # so the multi half of that assertion was `.get()` on a key that
-            # never existed — permanently False, and never once checked.
-            "via_budget_exhaustion": False,
-            # How often the window filled. `single` reaches this constantly
-            # and `multi` barely at all — the axis showing its own mechanism,
-            # so it is counted, not smoothed away.
-            "compactions": 0,
-            # ...and how many of those folds the model actually delivered.
-            # `compactions - compaction_summaries` is the hook's failure rate
-            # on this model, which is the number that says whether the
-            # completion it spends buys anything.
-            "compaction_summaries": 0,
-            "context_len": 0, "batched_calls": 0, "markup_recovered": 0,
-            "args_salvaged": 0, "truncated_turns": 0, "dropped_args": 0,
-            # Turns spent fixing this stage's OWN violations, in this context.
-            # Counted separately so a stage that produced badly and repaired
-            # is distinguishable from one that produced well — and so the
-            # decomposition axis is not read off a turn count that mixes the
-            # two.
-            "repair_turns": 0,
-            # Replies that carried reasoning and nothing else. Counted per arm
-            # because it is a property of the SERVING posture, not of the
-            # decomposition axis, and reading it as the latter is exactly the
-            # mistake `disable_thinking` exists to prevent.
-            "thinking_only": 0,
-            # Tool calls that came back ERROR. A turn that buys no observation
-            # is a turn the stage did not get to use, and 13% of every tool
-            # result over runs 53042a0d/2559b22d was one — reported so the
-            # ceiling is read against turns that DID something.
-            "tool_errors": 0,
-        }
+        #: ``metadata.autonomy`` — see ``empty_stage_stats`` for the keys.
+        self.stats: dict = empty_stage_stats()
         #: ``node_type -> heading`` for artifact pools the assignment already
         #: renders in full. Empty for a stage agent, which reads real state.
         self._resolved_labels: dict[str, str] = dict(
@@ -1428,13 +1390,10 @@ class ToolLoop:
         # that form means "injected prior-artifact context" everywhere else in
         # the package (the docket and the scenario use it, and readers — the
         # test fixture included — strip on it). A stage boundary is neither.
-        # The WHOLE task block — task, schema and rules — in the stage turn.
-        # It sat behind a `stage_brief` tool from 2026-09-03 to 2026-09-06,
-        # which bought a turn that did not grow with the schema and cost a
-        # contract that could be compacted away with nothing to put it back;
-        # run 2b9e911a is that trade going wrong. Pushing it also merges two
-        # blocks that overlapped: the pointer restated `step.intro`, which is
-        # the first thing `task_block` says.
+        # The WHOLE task block in the stage turn, PUSHED rather than fetched
+        # by a tool: fetched, the contract could be compacted away with
+        # nothing to put it back (run 2b9e911a); pushed, `compact`'s
+        # `restore` re-attaches it.
         parts = [stage_brief_block(self.step), protocol]
         resuming = _still_needed(self.step, self.state)
         if resuming:
@@ -1503,15 +1462,11 @@ class ToolLoop:
 
         # Accepted submits, for a step whose artifact arrives in parts.
         self._accepted = 0
-        #: Rejected submits so far, PER ARTIFACT. One counter for the whole
-        #: stage made `SUBMIT_BUDGET` mean "three rejections anywhere ends the
-        #: stage", which contradicts what the per-artifact split promises in
-        #: `tools.submit_specs`: a rejected artifact costs THAT artifact. It
-        #: was nearly unreachable on `implementation` only because
-        #: `validate_implementation` accepted almost anything; closing that
-        #: made three bad guesses at one artifact able to abandon the five
-        #: beside it and trigger a whole-stage regen — the expensive path
-        #: (measured on run 24343e4d: 55.6k prompt / 11.7k completion / 122 s).
+        #: Rejected submits so far, PER ARTIFACT: a rejected artifact costs
+        #: THAT artifact (`tools.submit_specs`), never the stage — one counter
+        #: for the stage let three bad guesses at one `implementation`
+        #: artifact abandon the five beside it and trigger a whole-stage regen
+        #: (run 24343e4d: 55.6k prompt / 11.7k completion / 122 s).
         self._submit_attempts: dict[str, int] = {}
         #: The best REJECTED submit of each artifact, accumulated as ONE
         #: section (each rejected payload is already the `{artifact: {...}}`
@@ -1530,9 +1485,7 @@ class ToolLoop:
         # reply carrying three calls costs three, which is what keeps the
         # budget the honest unit of work now that every call runs.
         self._turn_no = 0
-        while True:
-            if self._turn_no >= self.MAX_TURNS + self._refunded:
-                break
+        while self._turn_no < self.MAX_TURNS + self._refunded:
             # Re-derived each turn: the ratio it converts through sharpens as
             # the run reports real prompt sizes, so freezing it at construction
             # would pin the whole run to the cold-start guess.
@@ -1554,7 +1507,7 @@ class ToolLoop:
             self.stats["context_len"] = max(
                 self.stats["context_len"], _prompt_chars_any(self.messages))
             turn = self.llm.call_tools(self.messages, specs)
-            self.stats["batched_calls"] += turn.extra_calls
+            self.stats["batched_calls"] += len(turn.calls)
             if turn.binding_failed:
                 # No tool loop is possible against this endpoint. Going round
                 # the budget would spend MAX_TURNS x 6 stages of requests to
@@ -1577,9 +1530,6 @@ class ToolLoop:
                 if self._handle_call(call, specs, stage_message) == "return":
                     self._answer_unexecuted(queue[index + 1:], "the stage ended first")
                     return
-            else:
-                continue
-            break
 
         self.stats["via_budget_exhaustion"] = True
         # Whatever was rejected along the way is still the MODEL's work, and
@@ -1606,7 +1556,8 @@ class ToolLoop:
                                 call_id=turn.call_id, text=turn.text,
                                 message=turn.message)
 
-        if self._nudged and not (turn and turn.name.startswith("submit_")):
+        if self._nudged and not (turn and (turn.name == "submit"
+                                           or turn.name.startswith("submit_"))):
             # The optional-artifact nudge was answered with anything but a
             # submit: the agent has nothing more for this stage. End it
             # here rather than spending the rest of the budget asking
@@ -1745,13 +1696,6 @@ class ToolLoop:
                     return "continue"
                 self._give_up("submit budget spent", last_resort=self._best)
                 return "return"
-            # The submit turn joins the transcript BEFORE the loop exits.
-            # Without this the single arm carried no record of anything it
-            # had produced — measured: its whole "accumulated context" was
-            # one system turn plus N copies of the stage boilerplate, so
-            # the decomposition axis was reading prompt duplication rather
-            # than accumulated work. What a single-context agent carries is
-            # what it actually said, which is this.
             if unreadable:
                 self.stats["dropped_args"] += len(unreadable)
                 self.trajectory.log_recovery_event(
@@ -1767,16 +1711,12 @@ class ToolLoop:
             # own turn in the transcript TWICE with two contradictory tool
             # results for one call — which reads, in the context view, as
             # the model having submitted twice.
-            # A submit that answers a repair request is a DIFFERENT act
-            # from the one that first produced the artifact, and the trace
-            # has to say so: the judge reads a flat list of tool names and
-            # scores repeats as redundancy, so four `design_assessment`
-            # entries would report iterative correction as repetition.
-            # The artifact this call carried, in the label. The judge reads
-            # a flat list of tool names and scores repeats as redundancy,
-            # so six `design_implementation` entries would report a stage
-            # written one artifact at a time — which is what it is asked to
-            # do — as pure repetition.
+            # The label names the artifact, or the repair round: the judge
+            # reads a flat list of tool names and scores repeats as
+            # redundancy, so six `design_implementation` entries would report
+            # a stage written one artifact at a time as pure repetition, and
+            # four `design_assessment` entries would report iterative
+            # correction the same way.
             note = (f"fix{self.stats['repair_turns']}"
                     if self.stats["repair_turns"]
                     else turn.name[len("submit_"):])
@@ -1808,30 +1748,18 @@ class ToolLoop:
                     f"the stage's schema exactly. {self.step.name} still needs: "
                     f"{', '.join(left)}."))
                 return "continue"
-            # OPTIONAL artifacts are not part of `missing_parts` — the
-            # stage is complete without them — but returning the instant
-            # the required ones land means an optional artifact can never
-            # be sent at all, and before the split it simply travelled in
-            # the same payload. So the turn is kept while ANYTHING declared
-            # is still missing, and given up as soon as a submit adds
-            # nothing new: that is the model saying it has no more.
             open_optional = [key for key, _t, _r in self.step.submit_fields
                              if key not in landed]
             if not left and open_optional and landed > before and not self._nudged:
                 # ONE nudge per stage, and one only. An OPTIONAL artifact is
                 # not part of `missing_parts`, so the stage is complete
                 # without it — but returning the instant the required ones
-                # land means the agent never gets the turn to send it, and
-                # before the split it simply travelled in the same payload.
+                # land means the agent never gets the turn to send it.
                 # `non_instructional_strategies` (the activities stage) is
-                # the only optional left. (`dev_plan` was one too, until a
-                # stage with two optionals showed the nudge can only ever
-                # land one of them — required since 2026-09-05.
-                # `media_selections` was the other, until a stage that ran
-                # out of turns never REACHED the nudge at all and the
-                # fan-out shipped 15 materials against 0 media selections,
-                # every one of them a P6 violation — required since
-                # 2026-09-08, run single_20260908_002508.)
+                # the only optional left, and a stage must never carry TWO:
+                # one nudge names both, the model answers with one, the
+                # stage ends (measured twice, on `dev_plan` and on
+                # `media_selections`, both required since).
                 #
                 # Bounded at one because the cost is paid by the models that
                 # can least afford it: a weak model with nothing more to say
@@ -1856,13 +1784,10 @@ class ToolLoop:
                         self.repair_turns))
                     return "continue"
                 if fixable:
-                    # Outstanding violations and no repair turn left. This
-                    # used to return in SILENCE — the stage said COMMITTED
-                    # and left, while the line below records a give-up for
-                    # running out of part-submits. So a run could not tell
-                    # "the model could not fix this" from "we did not give
-                    # it another turn", and the second is a harness
-                    # parameter reported as a finding about the model.
+                    # Outstanding violations and no repair turn left: say
+                    # so, or "the model could not fix this" and "we did not
+                    # give it another turn" are indistinguishable — and the
+                    # second is a harness parameter, not a finding.
                     self._budget_stopped(fixable, "repair turns")
                 self._append_committed(turn, self.step.name)
                 return "return"
@@ -1954,16 +1879,24 @@ class ToolLoop:
             self.identity, tool_label,
             str(args)[:200], observation[:200])
         self._append_tool_turn(turn, observation)
+        return "continue"
 
 
     # ── transcript ──────────────────────────────────────────────────────────
     def _append_tool_turn(self, turn: ToolTurn, observation: str) -> None:
         """Assistant turn + its tool result, in the shape the chat API expects.
         The assistant message is the model's own object when we have it, so the
-        tool_call ids it generated survive the round trip."""
+        tool_call ids it generated survive the round trip. A turn with no call
+        id is a TEXT reply (a recovered markup call, a prose answer to the
+        nudge) and is answered as a user turn — a ``tool`` message with an
+        empty id after an assistant message with no ``tool_calls`` is
+        malformed, and the single arm sends the history again."""
         self._ensure_assistant(turn)
-        self.messages.append({"role": "tool", "tool_call_id": turn.call_id,
-                              "name": turn.name, "content": observation})
+        if not turn.call_id:
+            self.messages.append({"role": "user", "content": observation})
+        else:
+            self.messages.append({"role": "tool", "tool_call_id": turn.call_id,
+                                  "name": turn.name, "content": observation})
         self._publish(live=True)
 
     def _ensure_assistant(self, turn: ToolTurn) -> None:
@@ -2037,12 +1970,9 @@ class ToolLoop:
         ``trajectory.log_violations_result`` (the ``check`` event
         ``aggregate._review_findings`` reads to synthesize
         ``expert_review.findings``) and ``memory.observe_violations`` (the
-        ledger ``result["violations"]`` serves) — see ``run.py``. This one used
-        to call only the latter, so a violation whose ONLY sighting was here
-        (report-only types like P10/P11, which skip the deterministic net and
-        go straight to a repair turn) landed in the ledger but never in the
-        review: the two disagreed on exactly the runs where an agent repair
-        turn was the sole discovery.
+        ledger ``result["violations"]`` serves) — see ``run.py``; a violation
+        whose ONLY sighting is here (report-only types like P10/P11, which
+        skip the deterministic net) must reach both.
 
         Attributed to ``WORKFLOW_ORCHESTRATOR``, like every other check round
         (``test_work_done_outside_a_tool_loop_is_the_orchestrator_s``): the
@@ -2050,19 +1980,18 @@ class ToolLoop:
         else, run by the harness rather than chosen by the agent — the agent's
         own act is answering the repair-request turn that follows, not the
         check that produced it."""
-        from .run import _serialize
         found = self.own_violations(
-            self.state, self.design_brief, self.step, self.trajectory, self.llm)
+            self.state, self.design_brief, self.step, self.trajectory)
         if found:
             round_no = self.trajectory.log_violations_result(
-                _serialize(found, self.identity), agent=WORKFLOW_ORCHESTRATOR)
+                serialize_violations(found, self.identity), agent=WORKFLOW_ORCHESTRATOR)
             self.memory.observe_violations(
                 found, round=round_no,
                 phase=self.label, family=self.step.family, shown_to_agent=True)
         return found
 
     @staticmethod
-    def own_violations(state, design_brief, step, trajectory, llm) -> list:
+    def own_violations(state, design_brief, step, trajectory) -> list:
         """This stage's own violations — only the ones this agent, right now,
         can actually clear with a submit.
 
@@ -2356,9 +2285,7 @@ class ToolLoop:
 
     def _respec(self) -> str:
         """The contract, re-attached to a rejection when it is no longer in the
-        transcript. Same rule and same function as the single arm's, which had
-        it and this arm did not — an asymmetry that sat on the decomposition
-        axis until 2026-09-06.
+        transcript. Same rule and same function as the single arm's.
 
         The backstop to `compact`'s `restore`: a turn can be gone for reasons a
         trim did not report (a regen starting a fresh message list, a stage
@@ -2368,26 +2295,13 @@ class ToolLoop:
 
     def _give_up(self, reason: str, *, last_resort: dict | None = None) -> None:
         """End a step with whatever the MODEL produced, and record that it did
-        not finish. There is no scripted rescue any more.
-
-        WHY IT WENT (2026-09-01). A scripted single-shot used to write the
-        artifact whenever the loop failed, and it was writing a lot of them:
-        measured across three runs, 26-35% of the full pipeline's artifacts and
-        up to 76% of the prose arm's came from it rather than from any agent.
-        Calling that an agentic arm is a construct claim the trace does not
-        support.
-
-        Worse, it was not symmetric. ``ToolLoop`` had this rescue and
-        ``ReactLoop`` — the single arm — never did, so one side of the
-        decomposition axis was being caught and the other dropped. Part of the
-        measured gap was that, not decomposition.
-
-        What still catches a failure catches it for BOTH arms: the outer regen
-        loop in ``run.py`` re-runs a step whose section came back empty, and the
-        structural repair net in ``core/repairs.py`` rearranges what the design
-        does hold. Neither writes instructional content. A step that produces
-        nothing now says so, and the number that used to be hidden inside
-        ``via_fallback`` is itself the finding.
+        not finish. No scripted rescue, deliberately: a single-shot fallback
+        once wrote up to 76% of the prose arm's artifacts, and existed on this
+        loop but never on ``ReactLoop`` — one side of the decomposition axis
+        caught, the other dropped. What still catches a failure catches it
+        for BOTH arms (the regen loop in ``run.py``, the structural net in
+        ``core/repairs.py``) and neither writes instructional content. A step
+        that produces nothing says so; the count is the finding.
         """
         self.stats["gave_up"] = True
         self.trajectory.log_recovery_event(

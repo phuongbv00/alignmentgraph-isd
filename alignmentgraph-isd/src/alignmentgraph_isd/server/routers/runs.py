@@ -21,7 +21,6 @@ from .deps import (
     load_brief,
     load_program,
     load_run,
-    parse_json,
     primary_session,
     run_summary,
 )
@@ -88,17 +87,11 @@ def get_run(
 ) -> RunDetail:
     run = load_run(db, run_id)
     program = load_program(db, run.program_id)
-    state = manager.registry.get(run_id)
-    graph_available = bool(
-        (state is not None and state.graph_rev)
-        or (artifacts.resolve(settings, run.artifact_dir) / artifacts.ARTIFACT_FILES["graph"]).exists()
-    )
     summary = run_summary(run, manager)
     return RunDetail(
         run=summary,
         stats=summary.stats,
         brief_preview=briefs.preview(load_brief(program)),
-        graph_available=graph_available,
     )
 
 
@@ -144,7 +137,6 @@ async def stream_events(
         "error": summary.error,
         "model_name": summary.model_name,
         "stats": summary.stats,
-        "graph_rev": 0,
         "replay": True,
     }
     return sse.stream_response(sse.replay_stream(events, status_payload))
@@ -181,7 +173,7 @@ def get_graph_node(
 ) -> GraphNode:
     """One node's full payload, fetched on click.
 
-    A section node such as `objective_0` carries an entire ADDIE section here,
+    A section node such as `learner_profile` carries an entire ADDIE section here,
     which is exactly why it is not shipped with every graph frame.
     """
     run = load_run(db, run_id)
@@ -319,13 +311,19 @@ def get_violations(
 
 
 def _violations_of(run_id: str, db, manager: RunManager, settings: Settings) -> list[dict]:
+    return _live_or_persisted(run_id, db, manager, settings, attr="violations", artifact="violations")
+
+
+def _live_or_persisted(run_id: str, db, manager: RunManager, settings: Settings, *,
+                       attr: str, artifact: str) -> list[dict]:
     """Live state first, then the persisted file: during a run the registry has
-    the findings recorded so far, and after a restart only the file remains."""
+    what was recorded so far, and after a restart only the file remains."""
     state = manager.registry.get(run_id)
-    if state is not None and state.violations:
-        return list(state.violations)
+    live = getattr(state, attr, None) if state is not None else None
+    if live:
+        return list(live)
     directory = artifacts.resolve(settings, load_run(db, run_id).artifact_dir)
-    return artifacts.read_json(directory / artifacts.ARTIFACT_FILES["violations"]) or []
+    return artifacts.read_json(directory / artifacts.ARTIFACT_FILES[artifact]) or []
 
 
 @router.get("/runs/{run_id}/violations/export")
@@ -390,14 +388,7 @@ def get_contexts(
 
 
 def _contexts_of(run_id: str, db, manager: RunManager, settings: Settings) -> list[dict]:
-    """Live state first, then the persisted file: during a run the registry has
-    the snapshots published so far, and after a restart only the file remains."""
-    run = load_run(db, run_id)
-    state = manager.registry.get(run_id)
-    if state is not None and state.contexts:
-        return list(state.contexts)
-    directory = artifacts.resolve(settings, run.artifact_dir)
-    return artifacts.read_json(directory / artifacts.ARTIFACT_FILES["contexts"]) or []
+    return _live_or_persisted(run_id, db, manager, settings, attr="contexts", artifact="contexts")
 
 
 @router.get("/runs/{run_id}/transcript/export")
@@ -450,13 +441,3 @@ def export_transcript(
         headers={"Content-Disposition": f'attachment; filename="{stem}-{run_id}.md"'},
     )
 
-
-@router.get("/runs/{run_id}/stats")
-def get_stats(
-    run_id: str,
-    db: DBSession = Depends(get_session),
-    manager: RunManager = Depends(get_manager),
-) -> JSONResponse:
-    run = load_run(db, run_id)
-    state = manager.registry.get(run_id)
-    return JSONResponse(state.public_stats() if state is not None else parse_json(run.stats_json))

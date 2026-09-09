@@ -18,7 +18,6 @@ from typing import Callable
 
 from ..brief import DesignBrief
 
-
 # ── Tool ───────────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -94,9 +93,9 @@ class RetrievalAgent:
             return True
         return bool(self._keywords) and any(keyword in haystack for keyword in self._keywords)
 
-    def retrieve(self, design_brief: DesignBrief, task_name: str, graph_context: str = "") -> dict:
+    def retrieve(self, design_brief: DesignBrief, task_name: str, query: str = "") -> dict:
         """Deterministic fallback: run each tool once with the query text."""
-        query = graph_context or task_name
+        query = query or task_name
         content: list[str] = []
         citations: list[str] = []
         for tool in self.tools:
@@ -124,7 +123,7 @@ class RetrievalAgent:
 
     def run_agentic(self, llm, query: str, task_name: str, *, log_llm_call=None) -> dict:
         """Run the bounded JSON tool loop and return a standard result dict."""
-        from ..llm_io import parse_json_response
+        from ..llm_io import _extract_token_usage, parse_json_response
 
         tool_index = {tool.name: tool for tool in self.tools}
         tool_descriptions = "\n".join(f"- {t.name}: {t.description}" for t in self.tools)
@@ -138,11 +137,7 @@ class RetrievalAgent:
             result = llm.invoke(messages)
             content = result.content if hasattr(result, "content") else str(result)
             if log_llm_call is not None:
-                usage = getattr(result, "usage_metadata", None)
-                log_llm_call(
-                    getattr(usage, "input_tokens", 0) if usage else 0,
-                    getattr(usage, "output_tokens", 0) if usage else 0,
-                )
+                log_llm_call(*_extract_token_usage(result))
             parsed = parse_json_response(content, warn=False)
             if not isinstance(parsed, dict) or not parsed:
                 break
@@ -197,14 +192,8 @@ class RetrievalAgentRegistry:
     def __init__(self, agents: list[RetrievalAgent] | None = None) -> None:
         self._agents: list[RetrievalAgent] = list(agents or [])
 
-    def register(self, agent: RetrievalAgent) -> None:
-        self._agents.append(agent)
-
     def __len__(self) -> int:
         return len(self._agents)
-
-    def agents(self) -> list[RetrievalAgent]:
-        return list(self._agents)
 
     def get(self, name: str) -> RetrievalAgent | None:
         for agent in self._agents:
@@ -222,20 +211,14 @@ class RetrievalAgentRegistry:
                 continue
         return selected
 
-    def retrieve(self, design_brief: DesignBrief, task_name: str, graph_context: str = "") -> list[dict]:
+    def retrieve(self, design_brief: DesignBrief, task_name: str, query: str = "") -> list[dict]:
         results: list[dict] = []
         for agent in self.select(design_brief, task_name):
             try:
-                result = agent.retrieve(design_brief, task_name, graph_context)
+                result = agent.retrieve(design_brief, task_name, query)
             except Exception:
                 continue
             if result and result.get("content"):
                 results.append(result)
         return results
 
-
-__all__ = [
-    "RetrievalTool",
-    "RetrievalAgent",
-    "RetrievalAgentRegistry",
-]

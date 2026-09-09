@@ -2,14 +2,14 @@
 
 Alignment is a *structural* property of the graph: an edge exists iff a
 deterministic establisher confirms it (id-match, type-match, or provenance
-recorded by a specialist that traversed source -> target while generating).
+recorded by a specialist that read source while generating target).
 There is no continuous score, no threshold, and no LLM call anywhere in this
 module. Everything here is called by Designers (to establish edges) and by
 ``checks.py`` (to turn coverage gaps into feedback signals).
 
 Two tiers
 ---------
-**Core** (``C1``-``C7``): the construct-validity backbone. Each relation traces
+**Core** (``C1``-``C5``): the construct-validity backbone. Each relation traces
 to a named construct in Constructive Alignment (Biggs), Backward Design /
 Understanding by Design (Wiggins & McTighe), or outcome-based assessment
 theory — see each ``Relation.theory`` string. These are the only relations
@@ -31,13 +31,13 @@ LO is assessed by ..."). ``match_id_reverse``/``match_list_reverse`` exist
 specifically for this: they resolve the same declared field as
 ``match_list`` but store the edge with source and target
 swapped. Every other mechanism (`"provenance"`, `"type"`, and the
-standard-direction `"id"`/`"id-list"` relations) stores source/target exactly
-as the field declares them.
+standard-direction `"id-list"` relations) stores source/target exactly as the
+field declares them.
 
 Every edge's ``type`` is the relation *key* ``"Cx-name"``/``"Px-name"`` (e.g.
 ``"C2-assessed_by"``, ``"P3-realizes"``) — a generic, human-readable label
 built from the relation id and its verb. The prefix keeps keys unique where a
-verb repeats (``realizes`` across C6/P3/P4/P6; ``covers`` across P5/P7). The
+verb repeats (``realizes`` across P3/P4/P6; ``covers`` across P5/P7). The
 bare ``relation_id`` (``"C2"``) stays on the edge for coverage indexing (see
 ``graph.py::add_edge``).
 """
@@ -54,7 +54,7 @@ class Relation:
     relation_id: str
     label: str
     edge_type: str  # the bare verb ("assessed_by", "realizes", ...)
-    mechanism: str  # "id" | "id-reverse" | "id-list" | "id-list-reverse" | "type" | "provenance"
+    mechanism: str  # "id-reverse" | "id-list" | "id-list-reverse" | "type" | "provenance"
     source_node_type: str
     target_node_types: tuple[str, ...]  # coverage is checked over these target element types
     coverage_side: Literal["source", "target"]
@@ -142,11 +142,7 @@ def bare_ref(ref: object) -> str:
     return text
 
 
-CORE_RELATION_IDS: tuple[str, ...] = tuple(r for r, rel in REGISTRY.items() if rel.tier == "core")
-SECONDARY_RELATION_IDS: tuple[str, ...] = tuple(r for r, rel in REGISTRY.items() if rel.tier == "secondary")
-
-
-# ── id-match, standard direction: source=referencing node, target=resolved ──
+# ── id-match, REVERSED direction: source=resolved node, target=referencing ──
 
 def match_id_reverse(
     graph: AlignmentGraph,
@@ -346,11 +342,11 @@ def record_provenance(
     *,
     rationale: str = "",
 ) -> None:
-    """Called by a Designer right after it traversed ``source_ids`` to build
-    ``target_id`` — the edge exists *because* that traversal happened, not
-    because of any post-hoc matching. No-op for ids that don't exist yet (a
-    Designer may traverse a source that turned out empty, or call this before
-    both ends of the edge are written)."""
+    """Called by a Designer right after it read ``source_ids`` to build
+    ``target_id`` — the edge exists *because* that read happened, not because
+    of any post-hoc matching. No-op for ids that don't exist yet (a Designer
+    may read a source that turned out empty, or call this before both ends of
+    the edge are written)."""
     relation = REGISTRY[relation_id]
     if not graph.get_node(target_id):
         return
@@ -592,7 +588,7 @@ def bloom_activity_violations(graph: AlignmentGraph) -> list[dict]:
 def relation_coverage(graph: AlignmentGraph, relation_id: str) -> tuple[float, list[str]]:
     """Fraction of the relation's required elements (on ``coverage_side``)
     that have >=1 edge of this relation_id on that side, plus the list of
-    uncovered node ids. Core relations (C2/C3/C6) check the *source* side
+    uncovered node ids. Core relations (C2/C3) check the *source* side
     (the id-reverse direction moves the construct-validity subject there);
     every other relation checks the *target* side."""
     relation = REGISTRY[relation_id]

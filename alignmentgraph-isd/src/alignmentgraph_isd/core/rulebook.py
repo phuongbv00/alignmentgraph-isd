@@ -2,38 +2,37 @@
 enum vocabularies both the rules' prose and the deep tool schema share.
 
 Single source of the ISD generation RULES contract, shared by BOTH
-decomposition arms. Each stage prompt (``core/agentic/specialists.py``)
-composes persona + intro + ``RULES_<FAMILY>``; the single arm's state machine
-asks ``rules_for(state)`` for the same rule text (merged across the artifact
-families a collapsed state covers). Neither arm derives anything from the
-other's prompts: the dependency points here from both sides, so the rules are
-identical by construction and a wording change lands in both arms at once.
+decomposition arms: the step table (``core/agentic/specialists.py``) composes
+persona + intro + ``RULES_<FAMILY>`` (via ``rules_for`` for a stage that
+covers several families), and both arms read that table. Neither arm derives
+anything from the other's prompts, so the rules are identical by construction
+and a wording change lands in both arms at once.
 ``tests/fixtures/golden_prompts.json`` pins the composed prompts byte-for-byte.
 
-An artifact's SHAPE (types, nesting, enums) is no longer declared here as
-``SCHEMA_<FAMILY>`` JSON-example text (removed 2026-09-08) — it lives in
+An artifact's SHAPE (types, nesting, enums) lives in
 ``core/agentic/artifact_schemas.py``, as the deep ``parameters`` of the
-artifact's ``submit_*`` tool, which the model sees on every turn regardless of
-what the prompt itself still holds. This module keeps only what a JSON Schema
-cannot express (cross-field, referential and judgment-call constraints) plus
-the enum constants (``BLOOM_LEVELS``, ``MEDIA_TYPES``, etc.) both that schema
-module and this one's own ``%``-interpolated prose read from, so a value list
-is typed exactly once.
+artifact's ``submit_*`` tool. This module keeps only what a JSON Schema cannot
+express (cross-field, referential and judgment-call constraints) plus the enum
+constants (``BLOOM_LEVELS``, ``MEDIA_TYPES``, etc.) both that schema module and
+this one's own ``%``-interpolated prose read from, so a value list is typed
+exactly once.
 """
 from __future__ import annotations
 
+# The budget the activity planner is held to is the SAME number the
+# deterministic split uses, imported rather than written twice: a planner told
+# "at most 8" while the harness splits at 6 would have its own grouping taken
+# apart behind it. Cycle-free: dev_plans imports nothing local.
+from .dev_plans import max_units as _max_units
+
 #: Enum vocabularies shared between the deep tool-call schema
 #: (``core/agentic/artifact_schemas.py``) and this module's own ``RULES_*``
-#: prose, so a value list is typed exactly once. Same pattern as
-#: ``MEDIA_TYPES`` below, just declared earlier because ``RULES_OUTCOMES``
-#: (which needs ``BLOOM_LEVELS``) is defined before that constant used to be.
+#: prose, so a value list is typed exactly once.
 BLOOM_LEVELS = ("remember", "understand", "apply", "analyze", "evaluate", "create")
 BLOOM_VERBS = ("recall", "explain", "apply", "analyze", "evaluate", "design")
 EVIDENCE_TYPES = ("true_false", "matching", "multiple_choice", "quiz",
                   "short_answer", "performance_task")
-#: Not extracted from a RULES_* sentence (there wasn't a hand-typed one to
-#: dedupe) — declared here anyway so the deep tool schema has one place to
-#: pull the assessment-plan/item `plan_category` vocabulary from.
+#: The assessment-plan/item `plan_category` vocabulary.
 PLAN_CATEGORIES = ("diagnostic", "formative", "summative")
 
 RULES_ANALYSIS = """\
@@ -61,17 +60,6 @@ Use only these bloom_verb values: %(bloom_verbs)s."""
 RULES_OUTCOMES = RULES_OUTCOMES % {
     "bloom_levels": ", ".join(BLOOM_LEVELS), "bloom_verbs": ", ".join(BLOOM_VERBS)}
 
-# ``RULES_COURSE_GOAL`` is reachable only through ``rules_for("outcomes")``,
-# which nothing currently calls — kept because that lookup is generic over
-# ``_STATE_FAMILIES``. The matching SCHEMA_COURSE_GOAL / SCHEMA_LEARNING_OBJECTIVES
-# split constants were removed 2026-09-04: SCHEMA_OUTCOMES carries both verbatim
-# and is what every live step uses.
-RULES_COURSE_GOAL = """\
-course_goal.statement must be ONE overarching outcome for the whole course/program — broad enough
-that every learning objective can be read as decomposing it, concrete enough to name the actual
-capability learners end up with (not a restatement of the topic, and not a generic "learners will
-understand X"). Always return a non-empty statement; this call produces nothing else."""
-
 RULES_ASSESSMENT_PLAN = """\
 lo_coverage_targets and expected_evidence must have one entry per learning objective given.
 formative_methods must each name an instrument and a cadence (e.g. "exit tickets after each
@@ -81,12 +69,6 @@ BOTH the content module or session where learners would struggle AND the objecti
 (e.g. "Module 3 (interactive content design) — ILO-02", never "general comprehension"), each
 with a rationale grounded in the learner profile and a first_revision that is concrete enough
 to act on without further analysis."""
-
-# expert_review is deliberately NOT in any generation schema: a review written
-# by the same model, in the same call, before the artifacts it purports to
-# review exist, is fiction. The aggregator always synthesizes
-# development.expert_review from the verification that actually ran
-# (self-validation rounds, repairs, relation coverage) and says so.
 
 RULES_ASSESSMENT_ITEMS = """\
 Every (objective, plan_category) pair the assessment plan's lo_coverage_targets names needs at
@@ -186,12 +168,6 @@ from being written twice.
 Only group several objectives into one block when their activities genuinely form one theme or
 progression, never merely to produce fewer blocks."""
 
-# The budget the planner is held to is the SAME number the deterministic split
-# uses, imported rather than written twice: a planner told "at most 8" while the
-# harness splits at 6 would have its own grouping taken apart behind it, and the
-# scopes it wrote would stop matching the sets that were actually dispatched.
-from .dev_plans import max_units as _max_units  # noqa: E402  (cycle-free: dev_plans imports nothing local)
-
 RULES_ACTIVITY_DEV_PLAN = RULES_ACTIVITY_DEV_PLAN % {"max_activities": _max_units("activity")}
 RULES_ASSESSMENT_DEV_PLAN = RULES_ASSESSMENT_DEV_PLAN % {"max_items": _max_units("assessment")}
 
@@ -215,12 +191,10 @@ valid prerequisite here."""
 
 RULES_ACTIVITIES_SET = RULES_ACTIVITIES_SET % {"bloom_levels": ", ".join(BLOOM_LEVELS)}
 
-#: The media vocabulary, typed ONCE. `RULES_CONTENT_MODULES` used to hand-type
-#: the list and `SCHEMA_MATERIALS` used to hand-type one of its values as its
-#: exemplar; the canonical keys of `alignment._MEDIA_TYPE_ALIASES`, which is
-#: what P6 actually matches on, are a third copy (asserted equal in
-#: `tests/test_ablation_flags.py` — this module must not import the graph
-#: package, since the prose arm composes from it).
+#: The media vocabulary, typed ONCE here; the canonical keys of
+#: `alignment._MEDIA_TYPE_ALIASES`, which is what P6 actually matches on, are
+#: asserted equal in `tests/test_ablation_flags.py` — this module must not
+#: import the graph package, since the prose arm composes from it.
 MEDIA_TYPES = ("video", "slides", "simulation", "document", "audio")
 
 
@@ -271,8 +245,8 @@ module's id on every material. YOUR ASSIGNED MODULE below states how many materi
 realize every media selection given for this module with at least one material, and write no
 filler beyond the stated count. Each material's ``type`` must be the ``media_type`` of the
 media selection it realizes — one of %(media_types)s — and its ``format`` a delivery format for
-that type, respecting the constraints those media declared. Do not copy the type from the schema
-example: it is a placeholder, and your module's own media list above is what decides.
+that type, respecting the constraints those media declared: your module's own media list above
+is what decides the type.
 ``content`` must BE the learner-facing substance of the material, ready to hand to a learner —
 the actual text, worked example, exercise instructions, or a scene-by-scene script for
 video/slides — several sentences of scenario-specific detail, never a one-line description of
@@ -283,8 +257,7 @@ RULES_MATERIALS_UNIT = RULES_MATERIALS_UNIT % {"media_types": ", ".join(MEDIA_TY
 
 
 #: The rubric rules a Developer gets: it writes the criteria inside the very
-#: items it is writing, so there is no id to point back at. There is no
-#: whole-family variant any more — the `rubrics` state went with the stage.
+#: items it is writing, so there is no id to point back at.
 RULES_RUBRICS_ITEM = """\
 Give every item you write at least one entry in its own ``rubric`` list — the criterion goes
 INSIDE the item, never in a separate list. ``description`` must be observable and scorable
@@ -343,26 +316,22 @@ list of ids."""
 
 
 
-#: Artifact families each single-arm state covers, in its state-machine order.
+#: Artifact families each multi-family STAGE covers, in order. (``analysis``
+#: and ``outcomes`` cover one family each and read their ``RULES_*`` directly.)
 _STATE_FAMILIES: dict[str, tuple[str, ...]] = {
-    "analysis": ("ANALYSIS",),
-    "outcomes": ("COURSE_GOAL", "OUTCOMES"),
     "assessment": ("ASSESSMENT_PLAN", "ASSESSMENT_ITEMS"),
     "activities": ("ACTIVITY_PLAN", "ACTIVITIES"),
     "content": ("CONTENT_MODULES", "MATERIALS"),
     # The dev plan is part of the implementation DISPATCH artifact (the session
     # guides it divides are written by the Developer tier), so its rules belong
-    # in the stage text the same way the plan schema does.
+    # in the stage text.
     "implementation": ("IMPLEMENTATION", "IMPLEMENTATION_DEV_PLAN"),
 }
 
 
 def rules_for(state: str) -> str:
-    """The generation rules for one single-arm state: the ``RULES_*`` blocks of
-    every artifact family that state covers, merged in order and deduplicated.
-    This is the rulebook lookup the single agent's state machine performs per
-    step — the same rule text the specialist prompts state, fetched from the
-    same constants."""
+    """The generation rules for one stage: the ``RULES_*`` blocks of every
+    artifact family that stage covers, merged in order and deduplicated."""
     seen: list[str] = []
     for family in _STATE_FAMILIES[state]:
         text = globals()[f"RULES_{family}"].strip()

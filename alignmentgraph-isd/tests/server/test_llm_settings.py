@@ -39,7 +39,7 @@ def _serving(settings):
     Built here rather than through the shared `client` fixture, which stubs
     `resolve` and `build_factory` so every other test can run without a model.
     Here those are exactly what is under test — and the app has to be created
-    *after* the environment is set, because seeding happens at startup.
+    *after* the environment is set.
     """
     server_db.reset_engine()
     with TestClient(create_app(settings)) as client:

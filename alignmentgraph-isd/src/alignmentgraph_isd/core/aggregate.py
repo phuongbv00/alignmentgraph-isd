@@ -1,14 +1,8 @@
 """Assemble the ADDIE output contract from the design state.
 
-Moved out of the retired ``core/agents/`` on 2026-09-01: this was never an agent. It has no
-design role, no persona, no self-validation and no model call — it reads the
-graph (or the blackboard) after the run and serializes it into the shape
-``core/validation.py`` defines. It belongs beside that contract, not beside the
-things that produce artifacts.
-
-It used to subclass ``BaseISDAgent`` for two attributes, which is also why it
-dragged 886 lines of model-calling machinery behind it. It takes them directly
-now.
+Not an agent: no design role, no persona, no self-validation and no model
+call — it reads the graph (or the blackboard) after the run and serializes it
+into the shape ``core/validation.py`` defines.
 """
 from __future__ import annotations
 
@@ -19,18 +13,12 @@ from .alignment_graph import NodeType, alignment
 
 class ADDIEOutputAggregator:
     """Reads the finished design state and computes ``addie_output`` from real
-    nodes and edges.
+    nodes and edges: every ``analysis``/``evaluation`` field and
+    ``design.content_structure``/``design.storyboard`` is derived here from
+    Gap/Topic/LearnerProfile/Constraint/Improvement elements, the Assessment
+    pool, and Content/Media."""
 
-    There is no NeedsContext/Evaluation/ContentStructure/StoryboardPlan
-    "container" node to read a phase off of — every ``analysis``/``evaluation``
-    field and ``design.content_structure``/``design.storyboard`` is derived
-    here from Gap/Topic/LearnerProfile/Constraint/Improvement elements, the
-    Assessment pool, and Content/Media."""
-
-    def __init__(self, config=None, graph=None, trajectory=None) -> None:
-        # `config` is accepted and unused: every caller passes it positionally,
-        # and an aggregator that reads state and writes no prompt has nothing
-        # to configure.
+    def __init__(self, graph, trajectory=None) -> None:
         self.graph = graph
         self.trajectory = trajectory
 
@@ -106,14 +94,10 @@ class ADDIEOutputAggregator:
         impl_data = _with_session_guides(
             _merge_node_data(self.graph.section_nodes(NodeType.IMPLEMENTATION_PLAN)),
             [n["data"] for n in self.graph.element_nodes(NodeType.SESSION_GUIDE)])
-        # development.expert_review is ALWAYS the audit record (2026-08-27):
-        # the model-authored review was removed from every generation schema —
-        # a review written by the same model, in the same call, before the
-        # artifacts it purports to review exist, is fiction, and it collided
-        # with the thesis's separate REAL expert-validation package. This
-        # record REPORTS the verification that genuinely ran — self-validation
-        # rounds and repairs from the trajectory plus the graph's relation
-        # coverage — and says so; it never fabricates a human SME panel.
+        # development.expert_review is ALWAYS the audit record — a review
+        # written by the same model before the artifacts exist is fiction, and
+        # would collide with the thesis's separate REAL expert validation. It
+        # REPORTS the verification that genuinely ran and says so.
         expert_review = self._expert_review_from_audit()
         return {
             "learner_materials": materials,
@@ -194,10 +178,8 @@ class ADDIEOutputAggregator:
 
         # The formative half of ADDIE Evaluation is scored on more than a list
         # of instruments: the rubric asks which areas learners struggled with,
-        # why, and what first-round revision follows. Nothing generates that
-        # narrative since EvaluationRevisionAgent was retired, so Assessment
-        # Designer's plan hop now produces it (pilot_data_plan) and it is
-        # surfaced here rather than left implicit in the plan section.
+        # why, and what first-round revision follows — the assessment plan's
+        # pilot_data_plan, surfaced here.
         pilot = plan_data.get("pilot_data_plan", {})
         pilot = pilot if isinstance(pilot, dict) else {}
         formative = {
@@ -218,12 +200,9 @@ class ADDIEOutputAggregator:
             "assessment_tools": formative_items,
         }
         objective_ids = {t.get("aligned_objective") for t in summative_items if t.get("aligned_objective")}
-        # Effectiveness/adoption synthesis: the prior design asked a dedicated
-        # LLM call for these (EvaluationRevisionAgent's summative call);
-        # summative is now just the "summative"-tagged slice of the unified
-        # Assessment pool (see AssessmentDesignerAgent), so nothing generates
-        # this narrative anymore. Deterministic synthesis keeps these ADDIE
-        # sub-items non-empty rather than silently thin.
+        # Effectiveness/adoption synthesis: summative is the "summative"-tagged
+        # slice of the unified Assessment pool, and nothing generates this
+        # narrative, so it is synthesized deterministically from the counts.
         summative = {
             "assessment_tools": summative_items,
             "effectiveness_analysis": {
@@ -240,11 +219,9 @@ class ADDIEOutputAggregator:
                 ),
             },
         }
-        # feedback_summary/next_iteration_goals are Outcome Designer's (they
-        # come from the same call as the improvements, grounded in the gaps).
-        # Reading them off the ASSESSMENT plan — as the first version did —
-        # silently yielded "" on every run, because that node never carried
-        # them.
+        # feedback_summary/next_iteration_goals come from the improvement plan
+        # (the same call as the improvements, grounded in the gaps) — never
+        # from the assessment plan, which does not carry them.
         improvement_plan = {
             **_merge_node_data(self.graph.section_nodes(NodeType.IMPROVEMENT)),
             "improvements": improvements,
@@ -374,8 +351,9 @@ def aggregate_prose(store, trajectory) -> dict:
       rounds only, with no relation-coverage sentence.
 
     Kept: the storyboard computation, ``objective_assessment_map`` and
-    ``_strengthen_implementation`` — deterministic serialization/polish of
-    fields the documents already declare, no cross-artifact repair.
+    ``_strengthen_implementation`` (which does write fixed operational text
+    into non-empty implementation sections — see its docstring), none of
+    which is a cross-artifact repair.
     """
     def doc(key: str) -> dict:
         value = store.get(key)
@@ -527,12 +505,9 @@ def aggregate_prose(store, trajectory) -> dict:
 
 
 def _compute_storyboard(instructional_strategies: dict, content_modules: list[dict]) -> list[dict]:
-    """Deterministic, kept in spirit from the old ``_fallback_storyboard``:
-    one frame per Gagné event in the committed sequence; falls back to one
-    frame per content module when the sequence is unusable. No longer
-    written by Content Designer as a stored node — computed here, since it
-    never needed to be anything but a deterministic view of already-designed
-    content (see the "no floating containers" principle)."""
+    """Deterministic: one frame per Gagné event in the committed sequence,
+    falling back to one frame per content module when the sequence is
+    unusable. A view of already-designed content, never a stored node."""
     sequence = instructional_strategies.get("sequence") if isinstance(instructional_strategies, dict) else None
     frames: list[dict] = []
     if isinstance(sequence, list):
@@ -585,59 +560,23 @@ def _without_harness_keys(element: dict) -> dict:
 
 
 def _merge_node_data(nodes: list[dict]) -> dict:
+    """A section's data, minus the harness-only keys. A type never has more
+    than one section node (every section write goes through
+    ``graph.section_id``), so this is a copy, not a merge."""
     merged: dict = {}
     for node in nodes:
         data = node.get("data", {})
         if isinstance(data, dict):
-            _deep_merge(merged, data)
+            merged.update(deepcopy(data))
     for key in _HARNESS_ONLY_SECTION_KEYS:
         merged.pop(key, None)
     return merged
 
 
-def _deep_merge(base: dict, incoming: dict) -> dict:
-    for key, value in incoming.items():
-        if isinstance(value, dict) and isinstance(base.get(key), dict):
-            _deep_merge(base[key], value)
-        elif isinstance(value, list) and isinstance(base.get(key), list):
-            base[key] = _merge_lists(base[key], value)
-        elif key not in base or _is_empty(base[key]):
-            base[key] = deepcopy(value)
-        elif value and base[key] != value:
-            if not isinstance(base[key], list):
-                base[key] = [base[key]]
-            base[key] = _merge_lists(base[key], [value])
-    return base
-
-
-def _merge_lists(left: list, right: list) -> list:
-    result = deepcopy(left)
-    seen = {_stable_key(item) for item in result}
-    for item in right:
-        key = _stable_key(item)
-        if key not in seen:
-            result.append(deepcopy(item))
-            seen.add(key)
-    return result
-
-
-def _stable_key(item) -> str:
-    if isinstance(item, dict):
-        for key in ("id", "item_id", "title", "activity_name", "media_type", "event", "frame_number", "session"):
-            if item.get(key) is not None:
-                return f"{key}:{item[key]}"
-        return repr(sorted(item.items()))
-    return repr(item)
-
-
-def _is_empty(value) -> bool:
-    return value in ({}, [], "", None)
-
-
 def _strengthen_alignment(output: dict, graph) -> dict:
-    design = output.setdefault("design", {})
-    development = output.setdefault("development", {})
-    implementation = output.setdefault("implementation", {})
+    design = output["design"]
+    development = output["development"]
+    implementation = output["implementation"]
 
     objectives = design.get("learning_objectives", []) or []
     assessment_tools = development.get("assessment_tools", []) or []
@@ -726,10 +665,13 @@ def _build_alignment_matrix(objective_ids: list[str], graph) -> list[dict]:
 
 
 def _strengthen_implementation(implementation: dict) -> None:
-    """Polish NON-EMPTY implementation sections (setdefault-style). An entirely
-    empty section is left empty: painting hardcoded content onto nothing turns
-    a dead generation into a partially-scored output and masks the failure from
-    both the completeness tier and the judge."""
+    """Fill gaps in NON-EMPTY implementation sections with fixed operational
+    text: ``setdefault`` for the absent fields, plus a rewrite of
+    learner-facing ``orientation_objectives`` and three appended system
+    checks. An entirely empty section is left empty: painting content onto
+    nothing turns a dead generation into a partially-scored output and masks
+    the failure from both the completeness tier and the judge. This text is
+    harness-written and reaches the judge on every alignmentgraph arm."""
     orientation = implementation.setdefault("instructor_orientation", {})
     if isinstance(orientation, dict) and orientation:
         objectives = orientation.get("orientation_objectives", [])

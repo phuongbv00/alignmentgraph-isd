@@ -1,12 +1,13 @@
 """Outbound-call gate: bounds how many LLM requests one run keeps in flight.
 
-Why this exists. The multi arm's LangGraph topology runs ``content_designer``
-and ``rubric_designer`` in the SAME superstep, and since the 2026-08-28 dev-plan
-fan-out each of those issues one ``Send`` — one Developer call — per work set.
-Two families x N sets is N+M requests leaving the process at once, from a SINGLE
-agent. The benchmark's rate posture (``-r``: agents x scenarios in flight, plus
-``BENCHMARK_DELAY``) counts that whole agent as one unit, so the in-agent
-fan-out was never bounded by anything.
+Why this exists. The harness is now fully sequential, so the gate does not
+currently bind; it answers a MEASURED failure of the retired LangGraph
+pipeline, which ran two Designers in the same superstep and issued one
+Developer call per work set from each — N+M requests leaving the process at
+once, from a SINGLE agent. The benchmark's rate posture (``-r``: agents x
+scenarios in flight, plus ``BENCHMARK_DELAY``) counts that whole agent as one
+unit, so the in-agent fan-out was never bounded by anything. Re-introducing
+any concurrent fan-out brings that back.
 
 Measured against a shared endpoint that caps concurrent requests per user
 ("Per-user concurrency limit exceeded. This user has 10 active units"), the two
@@ -26,7 +27,7 @@ interference an ablation must not have. Total in-flight requests are therefore
 The endpoint's complaint is about CONCURRENCY, not request rate, so the cap
 alone is the fix. ``min_interval_seconds`` is available for an endpoint that
 also meters rate, and is off by default — wiring it to ``BENCHMARK_DELAY``
-would put a 2 s sleep in front of every one of ~50 calls per run.
+would put a 2 s sleep in front of every call of a run.
 """
 from __future__ import annotations
 

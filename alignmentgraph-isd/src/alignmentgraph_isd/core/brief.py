@@ -26,7 +26,7 @@ class _LenientModel(BaseModel):
 
 
 class DesignBriefContext(_LenientModel):
-    """Learner/environment context. Fields match what RetrievalPlanner reads."""
+    """Learner/environment context, rendered into every prompt by ``_format_design_brief``."""
 
     duration: str = ""
     learning_environment: str = ""
@@ -60,14 +60,13 @@ class DesignBrief(_LenientModel):
     id: str = ""
     title: str = ""
 
-    # app intent (sparse path) — only this turn's input. Prior turns are loaded
-    # internally from working memory on a resumed session, never re-sent here.
+    # app intent (sparse path) — only this turn's input; the app keeps the
+    # conversation history itself (``server/planner.py``).
     user_message: str = ""
 
     # refinement session (app path) — an explicit edit request against the loaded
-    # program graph. Free-form: nothing in ``core/`` reads it — the app path
-    # (``server/``) and the webapp are its only consumers. Ignored on init
-    # sessions and by the benchmark, which never sets it.
+    # program graph. Declared for the app; nothing reads its contents yet, and
+    # the benchmark never sets it.
     refinement_request: dict = {}
 
     # structured design inputs (all optional)
@@ -118,11 +117,3 @@ def _format_design_brief(design_brief: DesignBrief) -> str:
         lines.append(json.dumps(design_brief.model_dump(), ensure_ascii=False))
     return "\n".join(lines) + "\n\n" + _DESIGN_GUIDANCE
 
-
-
-# ── retired: narrative prose rendering ────────────────────────────────────────
-# An earlier `prose` arm rendered the SAME graph-selected nodes as sentences
-# (per-type templates), which made the arm a costume on the graph: selection,
-# docket, checks, routing and aggregation all still ran on the graph, so the
-# axis measured surface form only. The current `prose` arm replaces the store
-# itself (see core/prose_store.py); the sentence templates were deleted with it.

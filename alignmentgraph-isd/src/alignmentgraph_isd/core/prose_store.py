@@ -4,7 +4,7 @@ One flat, append/overwrite key→document store. Each specialist step deposits
 its WHOLE parsed JSON output under one key (the same lowercase artifact-family
 names the output schema already uses: ``analysis``, ``objective``,
 ``assessment_plan``, ``assessment``, ``activity_plan``, ``activity``,
-``content``, ``material``, ``rubric``, ``implementation_plan``), and later
+``content``, ``material``, ``implementation_plan``), and later
 steps read those documents back verbatim, by a static per-step read-list.
 This is the named-slice context-passing pattern the benchmark's non-graph
 agents use (addie-agent, react-isd's chained tools): raw ``json.dumps`` of a
@@ -25,35 +25,6 @@ from the same output schema, not because one is derived from the other.
 from __future__ import annotations
 
 import json
-
-#: Per-artifact-family primary list: (store key, path of the list inside the
-#: document). Used by the workflow's regen-emptiness check and the single
-#: arm's idempotence guard — the prose counterpart of "does this step's
-#: primary element pool have entries".
-PRIMARY_STORE_FIELDS: dict[str, tuple[str, tuple[str, ...]]] = {
-    "gap": ("analysis", ("needs_analysis", "gaps")),
-    "objective": ("objective", ("learning_objectives",)),
-    "assessment": ("assessment", ("assessment_tools",)),
-    "activity": ("activity", ("learning_activities",)),
-    "material": ("material", ("learner_materials",)),
-    "rubric": ("rubric", ("rubric_criteria",)),
-    # The fan-out deposits the guides as a top-level list of the implementation
-    # document; the aggregator nests them under ``instructor_guide`` where the
-    # deliverable declares them.
-    "session_guide": ("implementation_plan", ("session_guides",)),
-}
-
-
-def primary_items(store: "ProseStore", primary_type: str) -> list:
-    """The primary artifact list for an artifact family, or ``[]``."""
-    key, path = PRIMARY_STORE_FIELDS[primary_type]
-    value: object = store.get(key)
-    for part in path:
-        if not isinstance(value, dict):
-            return []
-        value = value.get(part)
-    return value if isinstance(value, list) else []
-
 
 def _cap(text: str, max_chars: int) -> str:
     return text[:max_chars] + "…" if len(text) > max_chars else text

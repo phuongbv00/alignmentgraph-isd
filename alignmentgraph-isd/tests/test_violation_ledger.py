@@ -15,7 +15,7 @@ import pytest
 
 from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core import checks
-from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
+from alignmentgraph_isd.core.alignment_graph import AlignmentGraph
 from alignmentgraph_isd.core.memory import Memory
 
 from conftest import FakeChatModel, load_brief, run_brief

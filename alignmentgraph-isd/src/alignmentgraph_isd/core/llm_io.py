@@ -1,20 +1,20 @@
 """Talking to a chat model and getting usable JSON back.
 
-Split out of the retired ``core/agents/base.py`` on 2026-09-01. These are pure functions —
-no agent, no graph, no config — and they were always the half of that module
-that had nothing to do with agents: a small model returns broken JSON often enough
-that parsing it is a first-class concern, not a detail of whoever called.
+Pure functions — no agent, no graph, no config: a small model returns broken
+JSON often enough that parsing it is a first-class concern, not a detail of
+whoever called.
 
 What each one answers is a MEASURED failure, not a hypothetical:
 ``_fix_json_control_chars`` and ``_close_unbalanced_json`` a truncated
-completion, ``_json_error_hint`` the correction turn that follows, and
-``_is_truncation_error`` the retry that must go out UNBOUND or it truncates
-again at the same place.
+completion, and ``_is_truncation_error`` the retry that must go out UNBOUND or
+it truncates again at the same place.
 """
 from __future__ import annotations
 
 import json
 import re
+import warnings
+
 
 def _is_truncation_error(exc: Exception) -> bool:
     """A JSON-mode response cut off at the model's max output length raises
@@ -62,9 +62,8 @@ def _extract_token_usage(result) -> tuple[int, int]:
     across the two shapes providers actually use:
 
     - ``usage_metadata`` — a **dict** ``{"input_tokens", "output_tokens", ...}``
-      (LangChain's normalized form; the previous code read it with ``getattr``,
-      which silently returned 0 for every real backend since a dict has no such
-      attribute — that is why token_usage stayed 0 despite real LLM calls).
+      (LangChain's normalized form — read it as a dict, never with ``getattr``,
+      which silently returns 0).
     - ``response_metadata["token_usage"]`` — the raw provider block, OpenAI-style
       ``{"prompt_tokens", "completion_tokens"}`` (dict or object).
     """
@@ -181,24 +180,6 @@ def _salvage_json(text: str) -> dict:
         if merged:
             return merged
     return {}
-
-
-def _json_error_hint(raw: str) -> str:
-    """A short human hint about why ``raw`` is not parseable JSON, for a retry
-    prompt. Empty string if it actually parses or is empty."""
-    if not raw:
-        return "the response was empty"
-    cleaned = re.sub(r"```(?:json)?[ \t]*\n?", "", raw)
-    cleaned = re.sub(r"\n?```[ \t]*$", "", cleaned, flags=re.MULTILINE).strip()
-    start = cleaned.find("{")
-    if start == -1:
-        return "no JSON object was found"
-    try:
-        json.loads(cleaned[start:])
-        return ""
-    except json.JSONDecodeError as e:
-        near = cleaned[start:][max(0, e.pos - 25): e.pos + 15].replace("\n", " ")
-        return f"{e.msg} near ...{near}..."
 
 
 def parse_json_array(raw: str) -> tuple[list, int]:
@@ -323,9 +304,9 @@ def parse_json_response(raw: str, *, warn: bool = True, salvage: bool = True) ->
     ``salvage=True`` adds a final deterministic repair pass (json-repair) that
     recovers output no targeted fix above could: invalid escapes, stray quotes,
     multiple top-level values, and cap-truncated responses (keeps the complete
-    prefix). ``salvage=False`` keeps the strict behavior — used by the
-    correction-turn check in ``_invoke_with_retry`` so the model still gets its
-    retry chances before we accept a repaired (possibly lossy) parse.
+    prefix). ``salvage=False`` keeps the strict behavior — used by
+    ``tools.coerce_args`` at the transport boundary, where a lossy parse of a
+    submit argument would commit a truncated artifact as whole.
     """
     if not raw:
         return {}
@@ -356,17 +337,12 @@ def parse_json_response(raw: str, *, warn: bool = True, salvage: bool = True) ->
         except json.JSONDecodeError as e:
             last_err = e
 
-    # Try 2: extract outermost {} block
+    # Try 2: the outermost {} block, with targeted fixes. (Plain json.loads
+    # of it cannot succeed where Try 1b's raw_decode from the same brace
+    # failed, so that attempt is not repeated.)
     match = re.search(r"\{.*\}", cleaned, re.DOTALL)
     if match:
         candidate = match.group(0)
-
-        try:
-            result = json.loads(candidate)
-            if isinstance(result, dict):
-                return result
-        except json.JSONDecodeError as e:
-            last_err = e
 
         # Try 3: fix literal control chars inside string values (stateful)
         try:
@@ -417,7 +393,6 @@ def parse_json_response(raw: str, *, warn: bool = True, salvage: bool = True) ->
     if not warn:
         return {}
 
-    import warnings
     err_ctx = ""
     if last_err is not None:
         pos = last_err.pos
@@ -428,9 +403,3 @@ def parse_json_response(raw: str, *, warn: bool = True, salvage: bool = True) ->
         f"{err_ctx}"
     )
     return {}
-
-
-# Standing ISD quality guidance appended to every specialist's brief. This is the
-# only non-brief content the old ContextPlanner/context_pack carried; it is static,
-# so it lives here as a constant rather than being rebuilt per run and JSON-dumped
-# (where it sat at the end of a brief-duplicating blob and got truncation-clipped).

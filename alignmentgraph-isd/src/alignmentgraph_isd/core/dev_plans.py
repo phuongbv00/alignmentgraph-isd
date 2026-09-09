@@ -7,7 +7,7 @@ Substrate-agnostic on purpose: this module imports nothing from
 exact same normalization code over plain data. The one invariant every
 function here upholds is that **the fan-out shape never depends on
 unvalidated SLM output** — every ground-truth obligation (an
-(objective, category) pair, an objective, a committed item) that survives
+(objective, category) pair, an objective, a scheduled activity or material) that survives
 normalization is guaranteed to appear in exactly one returned WorkSet, LLM
 proposal or not. A parse-failed or empty dev-plan call degrades to the pure
 fallback (one singleton set per obligation), never to zero sets.
@@ -18,13 +18,9 @@ import json
 import re
 from dataclasses import dataclass, field, replace
 
-#: Backstops, NOT a plan. Since 2026-09-01 the fan-out width is the agent's
-#: decision — it proposes the grouping and these only stop a blow-up. They were
-#: loose enough to be the real driver: measured on one scenario, an arm that
-#: wrote 33 objectives got 66 assessment obligations, and a 2x factor turned
-#: that into 24 Developer calls for assessment plus 24 more for activities.
-#: One set per obligation-unit is the ceiling; a set may cover several.
-MAX_SET_FACTOR = 1
+#: A backstop, NOT a plan: the fan-out width is the agent's decision — it
+#: proposes the grouping and this only stops a blow-up. One set per
+#: obligation-unit is the other ceiling; a set may cover several.
 MAX_SETS_HARD_CAP = 12
 
 #: Estimated output cost of ONE OBLIGATION, in characters. An obligation is
@@ -130,17 +126,6 @@ class WorkSet:
         }
 
 
-def work_set_from_dict(data: dict) -> WorkSet:
-    return WorkSet(
-        set_id=str(data.get("set_id", "")),
-        objectives=tuple(data.get("objectives") or ()),
-        pairs=tuple(tuple(p) for p in (data.get("pairs") or ())),
-        payload=dict(data.get("payload") or {}),
-        source=str(data.get("source", "llm")),
-        ordinal=int(data.get("ordinal") or 1),
-    )
-
-
 def _empty_stats(pair_count: int) -> dict:
     return {
         "set_count": 0, "pair_count": pair_count, "dropped_lo_refs": 0,
@@ -175,30 +160,22 @@ def number_sets(sets: list[WorkSet], *, prefix: str = "") -> list[WorkSet]:
     ``prefix`` ALSO renames the set (``AS-01``), which is what the planned
     families want. ``material_work_units`` passes none: its set ids are
     MODULE-derived (``MU-MOD-03``) and that is read — it is stamped on every
-    item as ``plan_set``, it is what ``pending_set_ids`` matches for the regen,
+    item as ``plan_set``, it is what ``fanout.committed_set_ids`` matches,
     and it is the only thing in the graph dump that says which module a
-    material came from.
-
-    Numbering and naming are two jobs, and they were fused inside
-    ``_cap_and_number``. So the one family that could not take the naming
-    silently got no ordinal either: every material set kept the dataclass
-    default of 1, ids came out ``MAT-0101``…``MAT-0108`` across six different
-    modules, and uniqueness rested entirely on the ``taken`` scan in
-    ``_composite_id`` — the exact "whoever commits first" scheme that
-    function's own docstring says is not how this works. Harmless while the
-    fan-out is sequential, and not harmless the moment anything retries a set
-    or runs two concurrently."""
+    material came from. Numbering and naming are two jobs: a family that
+    cannot take the naming must still get its ordinal, or every one of its
+    sets numbers from 1 and uniqueness rests on the ``taken`` scan alone."""
     return [replace(ws, set_id=f"{prefix}-{i:02d}" if prefix else ws.set_id, ordinal=i)
             for i, ws in enumerate(sets, start=1)]
 
 
 def _cap_and_number(sets: list[WorkSet], obligation_count: int, prefix: str,
-                     merge: "callable", *, family: str = "",
-                     split: "callable | None" = None) -> list[WorkSet]:
+                     merge: "callable", *, family: str,
+                     split: "callable") -> list[WorkSet]:
     """Bound the fan-out from BOTH ends, then assign stable ``AS-01`` ids.
 
     Two bounds, and the order matters. The count cap
-    (``MAX_SET_FACTOR``/``MAX_SETS_HARD_CAP``) stops a blow-up in the number of
+    (``MAX_SETS_HARD_CAP``) stops a blow-up in the number of
     calls by merging the overflow into one tail set. That merge is the danger:
     on a 33-objective scenario it produced a tail carrying 22 obligations in a
     SINGLE call — the cap on calls making the calls unanswerable.
@@ -207,19 +184,18 @@ def _cap_and_number(sets: list[WorkSet], obligation_count: int, prefix: str,
     the model cannot finish costs everything it was going to produce, while an
     extra call costs one call.
     """
-    cap = min(MAX_SET_FACTOR * obligation_count, MAX_SETS_HARD_CAP)
+    cap = min(obligation_count, MAX_SETS_HARD_CAP)
     if len(sets) > cap:
         head, tail = sets[:cap - 1], sets[cap - 1:]
         sets = head + [merge(tail)]
     oversized = 0
-    if split is not None and family:
-        limit = max_units(family)
-        cut: list[WorkSet] = []
-        for ws in sets:
-            pieces = split(ws, limit)
-            oversized += len(pieces) > 1
-            cut.extend(pieces)
-        sets = cut
+    limit = max_units(family)
+    cut: list[WorkSet] = []
+    for ws in sets:
+        pieces = split(ws, limit)
+        oversized += len(pieces) > 1
+        cut.extend(pieces)
+    sets = cut
     numbered = number_sets(sets, prefix=prefix)
     if oversized and numbered:
         # Carried on the first set so the caller can read it back without a
@@ -229,7 +205,7 @@ def _cap_and_number(sets: list[WorkSet], obligation_count: int, prefix: str,
 
 
 def _chunks(seq: list, size: int) -> list[list]:
-    return [seq[i:i + size] for i in range(0, len(seq), size)] or [[]]
+    return [seq[i:i + size] for i in range(0, len(seq), size)]
 
 
 # ── assessment: instrument sets over (objective, plan_category) pairs ──────
@@ -392,10 +368,8 @@ def _expected_items(raw: object, pair_count: int) -> int:
     """How many items an instrument set writes: the planner's own count,
     clamped to ``[pairs, max_units]``, or the pair count when it gave none.
 
-    The count used to BE the pair count — "one item per (objective,
-    plan_category) pair, no filler" — which left the planner no way to say
-    an instrument needs three items on one objective. The floor is still one
-    item per pair (``checks.plan_coverage`` holds every pair to that) and the
+    The pair count alone left the planner no way to say an instrument needs
+    three items on one objective. The floor is one item per pair (``checks.plan_coverage`` holds every pair to that) and the
     ceiling is the same per-call budget the split uses, so a planned count
     can never make a set unanswerable.
     """
@@ -566,9 +540,8 @@ def _expected_materials(raw: object, media_count: int) -> int:
     the module (``expected_materials``), clamped to ``[media, max_units]``,
     or the media count when it gave none.
 
-    The count used to BE the media count — one material realizing each media
-    selection — which left no way to say a broad module needs three documents
-    where its media list names one. The floor stays one material per media
+    The media count alone left no way to say a broad module needs three
+    documents where its media list names one. The floor is one material per media
     selection (``RULES_MATERIALS_UNIT`` holds every selection to that) and
     the ceiling is the same per-call budget the split uses.
     """
@@ -722,7 +695,7 @@ def _chunk_scheduled(activities: list[str], materials: list[str], limit: int,
                        [i for kind, i in chunk if kind == "m"],
                        source=source, theme=theme)
         for chunk in _chunks(combined, max(1, limit))
-    ] or []
+    ]
 
 
 def normalize_implementation_dev_plan(parsed, activity_ids, material_ids,
@@ -835,14 +808,6 @@ def _number_sessions(sets: list[WorkSet], first_session: int = 1) -> list[WorkSe
 
 # ── fan-in helpers: shared by every family's finalize step ─────────────────
 
-def pending_set_ids(work_sets: list[WorkSet], payloads: list[dict]) -> list[str]:
-    """Work-set ids with no committed items in any payload — the per-set
-    regen signal at finalize: deterministic (reads payload shape only, no
-    matcher/graph dependence), so it works identically on both substrates."""
-    have = {str(p.get("set_id", "")) for p in payloads if p.get("items")}
-    return [ws.set_id for ws in work_sets if ws.set_id not in have]
-
-
 def _composite_id(prefix: str, ordinal: int, number: int, taken: set[str]) -> str:
     """``AT-0203``: prefix, the SET's ordinal, then the item's within that set.
 
@@ -865,7 +830,7 @@ def _composite_id(prefix: str, ordinal: int, number: int, taken: set[str]) -> st
 
 
 def remap_and_tag(work_sets: list[WorkSet], payloads: list[dict], *, id_field: str,
-                   self_ref_fields: tuple[str, ...] = (), id_prefix: str = "",
+                   self_ref_fields: tuple[str, ...] = (), id_prefix: str,
                    taken: frozenset[str] = frozenset()) -> list[dict]:
     """Merge a family's Developer payloads (one per work set, each carrying
     ``{"set_id", "items": [...]}) into one flat, commit-ready item list.
@@ -879,21 +844,19 @@ def remap_and_tag(work_sets: list[WorkSet], payloads: list[dict], *, id_field: s
     which Developer committed first. It is dense — each set counts from 1 — and
     it says who wrote what, the same fact ``plan_set`` carries.
 
-    Asking the model for an id was pure cost (2026-09-03): it was overwritten
-    every time, so it bought nothing, while every malformed one (``AT-{``, a
-    duplicate, an id copied out of the schema example) was a real failure. The
-    field is gone from the schemas, which also shortens the artifact the model
-    has to fit under the completion cap.
+    Asking the model for an id was pure cost: it was overwritten every time,
+    while every malformed one (``AT-{``, a duplicate, an id copied out of an
+    example) was a real failure — and the field's absence shortens the
+    artifact the model has to fit under the completion cap.
 
     ``self_ref_fields`` are references to OTHER artifacts of this same set,
     which the model writes as 1-based POSITIONS in the list it submitted ([1] =
     the first artifact it wrote) and which are resolved here into the assigned
-    ids. Positional because the model has no ids to name — and this was broken
-    before that change, for the same underlying reason: an activity's
-    ``prerequisite_activities`` was never declared a reference field at all, so
-    every one of them reached the graph naming an id the commit had renumbered
-    away. Measured on the test fixture: 0 of 3 resolved, while ``_establish``
-    reads exactly this field to build the ``precedes`` edges.
+    ids; one that does not resolve is DROPPED (a dangling id in the graph is
+    invisible, a dropped reference shows in the coverage numbers). Measured on
+    the test fixture before positions: 0 of 3 ``prerequisite_activities``
+    resolved, while ``_establish`` reads exactly that field to build the
+    ``precedes`` edges.
 
     CROSS-family references need nothing done to them and get nothing done:
     they name an upstream family that is already committed, which the Developer
@@ -902,8 +865,7 @@ def remap_and_tag(work_sets: list[WorkSet], payloads: list[dict], *, id_field: s
     ``taken`` are the ids the design state already holds, so a set committed on
     its own lands where it would have in a batch. Every committed item is also stamped
     ``plan_set`` with its owning set's id — invisible to schemas/judges
-    (unknown keys validate), and what ``pending_set_ids``-driven regen reads to
-    tell which sets produced nothing.
+    (unknown keys validate), and what ``fanout.committed_set_ids`` reads.
     """
     payload_by_set: dict[str, list[dict]] = {}
     for p in payloads:
@@ -916,19 +878,10 @@ def remap_and_tag(work_sets: list[WorkSet], payloads: list[dict], *, id_field: s
         set_items = payload_by_set.get(ws.set_id, [])
         assigned: list[str] = []
         number = 1
-        for item in set_items:
-            if id_prefix:
-                final_id = _composite_id(id_prefix, ws.ordinal, number, seen_ids)
-                number = int(final_id.rsplit("-", 1)[1][-2:]) + 1
-            else:
-                # No declared convention for this family: the model's own id
-                # stands, with the historical collision bump behind it.
-                raw_id = str(item.get(id_field) or "")
-                final_id = raw_id
-                if final_id and final_id in seen_ids:
-                    final_id = f"{raw_id}-{ws.set_id}"
-            if final_id:
-                seen_ids.add(final_id)
+        for _item in set_items:
+            final_id = _composite_id(id_prefix, ws.ordinal, number, seen_ids)
+            number = int(final_id.rsplit("-", 1)[1][-2:]) + 1
+            seen_ids.add(final_id)
             assigned.append(final_id)
 
         for index, item in enumerate(set_items):
@@ -966,8 +919,6 @@ def _resolve_positions(refs: list, assigned: list[str]) -> list[str]:
             out.append(ref)
     return list(dict.fromkeys(out))
 
-
-# ── rubric: one unit per committed assessment item (deterministic) ─────────
 
 # ── work-set rendering: the "=== YOUR ASSIGNED ... ===" user-content block a
 # Developer (multi arm) or a per-set state (single arm) shows the model.
@@ -1064,8 +1015,7 @@ def render_material_set(work_set: WorkSet) -> str:
         if allowed:
             lines.append('allowed "type" values for this module: ' + ", ".join(allowed))
     # The count, stated as a number: the planner's `expected_materials` with
-    # one per media selection as the floor. Before 2026-09-05 no count was
-    # given at all, and the harness sized the unit as if one were.
+    # one per media selection as the floor.
     count = _expected_materials(work_set.payload.get("expected_materials"), len(media))
     lines.append(f"write exactly {count} material{'' if count == 1 else 's'}"
                  + (" — one realizing each media selection above:" if media and count == len(media)

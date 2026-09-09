@@ -191,18 +191,6 @@ def test_material_units_overflow_is_merged_then_split_back_to_answerable_size():
 
 # ── fan-in helpers ───────────────────────────────────────────────────────
 
-def test_pending_set_ids_flags_sets_with_no_items():
-    sets = [dp.WorkSet(set_id="AS-01"), dp.WorkSet(set_id="AS-02")]
-    payloads = [{"set_id": "AS-01", "items": [{"item_id": "AT-01"}]},
-                {"set_id": "AS-02", "items": []}]
-    assert dp.pending_set_ids(sets, payloads) == ["AS-02"]
-
-
-def test_pending_set_ids_missing_payload_counts_as_pending():
-    sets = [dp.WorkSet(set_id="AS-01")]
-    assert dp.pending_set_ids(sets, []) == ["AS-01"]
-
-
 def test_two_workers_that_propose_the_same_id_still_get_distinct_ones():
     """Every production caller passes an ``id_prefix`` (`fanout.SPECS`: AT / TLA
     / MAT), so ids are COMPOSED from the set ordinal and the model's own id is
@@ -270,26 +258,23 @@ def test_an_artifact_with_no_id_is_named_by_the_harness():
 
 
 def test_remap_and_tag_order_follows_dev_plan_order_not_payload_order():
-    sets = [dp.WorkSet(set_id="AS-01"), dp.WorkSet(set_id="AS-02")]
+    sets = [dp.WorkSet(set_id="AS-01", ordinal=1), dp.WorkSet(set_id="AS-02", ordinal=2)]
     payloads = [
-        {"set_id": "AS-02", "items": [{"item_id": "AT-02"}]},
-        {"set_id": "AS-01", "items": [{"item_id": "AT-01"}]},
+        {"set_id": "AS-02", "items": [{"question": "second"}]},
+        {"set_id": "AS-01", "items": [{"question": "first"}]},
     ]
-    merged = dp.remap_and_tag(sets, payloads, id_field="item_id")
-    assert [i["item_id"] for i in merged] == ["AT-01", "AT-02"]
+    merged = dp.remap_and_tag(sets, payloads, id_field="item_id", id_prefix="AT")
+    assert [i["item_id"] for i in merged] == ["AT-0101", "AT-0201"]
 
 
 # ── round-trip ───────────────────────────────────────────────────────────
 
-def test_work_set_dict_round_trip():
+def test_work_set_dict_carries_the_ordinal():
     # ordinal=3, not the default: it is the first half of every id this set's
-    # artifacts commit under, and a round trip that drops it silently renumbers
-    # them onto set 1. With the default value the assertion below passes
-    # whether or not the field survives.
+    # artifacts commit under, and a dump that drops it reads as set 1.
     ws = dp.WorkSet(set_id="AS-01", objectives=("ILO-01",), pairs=(("ILO-01", "formative"),),
                      payload={"a": 1}, source="llm", ordinal=3)
-    back = dp.work_set_from_dict(ws.as_dict())
-    assert back == ws
+    assert ws.as_dict()["ordinal"] == 3
 
 
 # ── set SIZE, not just set count ────────────────────────────────────────────
@@ -332,8 +317,7 @@ def test_an_oversized_assessment_set_is_split_by_pair_not_by_objective():
 
 
 def test_the_count_cap_can_no_longer_produce_an_unanswerable_tail():
-    """The failure the comment on MAX_SET_FACTOR already described: a
-    33-objective scenario. The cap on the number of CALLS used to merge the
+    """A 33-objective scenario. The cap on the number of CALLS used to merge the
     overflow into one tail set, so the cap on calls made the calls
     unanswerable. Size is applied after the merge and wins."""
     lo_ids = [f"ILO-{i:02d}" for i in range(1, 34)]

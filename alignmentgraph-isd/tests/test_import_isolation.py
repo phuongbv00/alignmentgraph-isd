@@ -11,7 +11,6 @@ from __future__ import annotations
 import subprocess
 import sys
 
-from conftest import run_brief
 
 # Kept in sync with pyproject's [server] extra. If a dependency is added there,
 # add it here too — that is the whole point of this test.

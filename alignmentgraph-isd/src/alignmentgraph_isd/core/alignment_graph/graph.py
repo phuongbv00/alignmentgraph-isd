@@ -39,12 +39,9 @@ class NodeType(StrEnum):
     ``instructor_guide.session_guides``, so the ADDIE output contract is
     unchanged.
 
-    There is no ``NEEDS_CONTEXT``/``EVALUATION`` node type: those were bundle
-    containers in the prior design that duplicated data already held by real
-    nodes (Gap/Topic/LearnerProfile/Constraint/Improvement/the Assessment
-    pool). The ADDIE output's ``analysis``/``evaluation`` phases are now
-    computed by ``ADDIEOutputAggregator`` directly from those real nodes —
-    see the aggregation matrix in the architecture plan.
+    The ADDIE output's ``analysis``/``evaluation`` phases have no node type of
+    their own: ``ADDIEOutputAggregator`` computes them from the real nodes
+    (Gap/Topic/LearnerProfile/Constraint/Improvement/the Assessment pool).
     """
 
     COURSE_GOAL = "course_goal"
@@ -78,7 +75,6 @@ class AlignmentGraph:
     it — there is no ``verified``/``stale`` state, no cascade invalidation.
     """
 
-    NODE_TYPES = frozenset(NodeType)
     SECTION_SUFFIX = "_0"
     # Element node ids are namespaced as "<type>:<element_id>" (e.g.
     # "objective:LO-01"). Section nodes keep the legacy "<type>_0" form.
@@ -98,15 +94,9 @@ class AlignmentGraph:
         self._observer = observer
         self._nodes: dict[str, dict] = {}
         self._edges: list[dict] = []
-        # The multi-agent workflow genuinely runs specialists concurrently on
-        # separate LangGraph worker threads (content_designer/rubric_designer
-        # share a superstep; the dev-plan fan-out adds a Developer per work
-        # set on top). Every self-validation pass re-runs the RERUNNABLE
-        # relation establishers across ALL relations (checks.relation_
-        # coverage), not just the calling family's own — so two concurrent
-        # Designers can both be writing/reading ``_nodes``/``_edges`` at once.
-        # Re-entrant because ``add_edge``/``link_section_narrative`` call
-        # other locked methods on the same thread.
+        # Re-entrant: ``add_edge``/``link_section_narrative`` call other
+        # locked methods on the same thread. See ``transaction`` for why the
+        # lock stays although the executor is sequential.
         self._lock = threading.RLock()
 
     def set_observer(self, observer) -> None:
@@ -284,9 +274,8 @@ class AlignmentGraph:
                 established_by=established_by, evidence=evidence,
             )
             return
-        # The alignment relations are the contribution, and until now the only
-        # trace of them was the finished dump — nothing said which step drew
-        # which link, or on what evidence.
+        # Observed so the trace records which step drew which link, and on
+        # what evidence.
         self._observe(
             "edge_write", op="add", edge_type=edge_type, source=source_id,
             target=target_id, relation_id=relation_id,
@@ -382,6 +371,7 @@ class AlignmentGraph:
         state directly.
         """
         from datetime import datetime, timezone
+
         from . import viz  # lazy: viz imports this module
 
         # Detach the observer for this read-only reflection pass: a snapshot
@@ -426,6 +416,8 @@ class AlignmentGraph:
 
     @classmethod
     def from_dict(cls, payload: dict) -> "AlignmentGraph":
+        """The load side of ``to_full_dict``: a saved ``graph.json`` reloads
+        into a graph that can be audited after the fact."""
         graph = cls()
         for node in payload.get("nodes", []):
             if not isinstance(node, dict):

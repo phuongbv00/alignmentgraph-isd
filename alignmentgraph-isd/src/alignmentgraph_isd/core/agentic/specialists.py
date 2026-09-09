@@ -8,11 +8,11 @@ and when the artifact is ready are the agent's own decisions inside the loop,
 not separate pre-scripted calls. Personas stay specialist (one per family):
 what the ``agent_mode`` axis varies is the CONTEXT BOUNDARY, not the roles.
 
-Schemas and rules come from the shared rulebook (``core/rulebook.py``); the
-per-step commit bodies were copied from the retired scripted single-designer
-arm. Commits call only the shared establishers
+Rules come from the shared rulebook (``core/rulebook.py``) and the artifact
+shape from ``artifact_schemas.py``; both decomposition arms compose from the
+same step table. Commits call only the shared establishers
 (``alignment.record_provenance``/``match_*``/``establish_delivery``), so the
-graph an agentic run ships is shaped exactly like the classic arms'.
+graph is shaped the same whichever arm wrote it.
 """
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from typing import Callable
 from .. import rulebook as rules
 from ..alignment_graph import NodeType, alignment
 from ..validation import validate_section
+
 
 def _decompose(graph, trajectory, node_type: str, items: object, *,
                id_field: str = "id", dedup_field: str = "") -> list[str]:
@@ -93,13 +94,10 @@ def _store_narrative(graph, trajectory, node_type: str, section: dict,
 def _merge_section(graph, trajectory, node_type, updates: dict) -> str:
     """Write section fields WITHOUT dropping the ones already there.
 
-    Each artifact of a stage now arrives in its own submit call
-    (``tools.submit_specs``), so a stage's section node is built up over
-    several commits. ``AlignmentGraph.add_node`` REPLACES a node's data, which
-    was right when one submit carried the whole section and silently loses
-    work now: ``submit_dev_plan`` after ``submit_assessment_plan`` would leave
-    the section holding only the dev plan. Same class of bug as the one
-    ``commit_analysis_prose`` already carries a note about.
+    Each artifact of a stage arrives in its own submit call
+    (``tools.submit_specs``), so a section node is built up over several
+    commits; ``AlignmentGraph.add_node`` REPLACES a node's data, so a plain
+    write of the dev plan would drop the assessment plan beside it.
     """
     node_id = graph.section_id(node_type)
     existing = (graph.get_node(node_id) or {}).get("data") or {}
@@ -129,7 +127,7 @@ def commit_analysis(graph, trajectory, parsed: dict) -> None:
 
     learner = parsed.get("learner_analysis") or {}
     if learner:
-        graph.add_node(NodeType.LEARNER_PROFILE, graph.section_id(NodeType.LEARNER_PROFILE), learner)
+        _merge_section(graph, trajectory, NodeType.LEARNER_PROFILE, learner)
 
     improvement = parsed.get("improvement_plan") or {}
     _decompose(graph, trajectory, NodeType.IMPROVEMENT, improvement.get("improvements"))
@@ -138,7 +136,7 @@ def commit_analysis(graph, trajectory, parsed: dict) -> None:
     for item in improvement.get("improvements") or []:
         if not isinstance(item, dict):
             continue
-        source = gap_by_id.get(item.get("addresses_gap"))
+        source = gap_by_id.get(alignment.bare_ref(item.get("addresses_gap")))
         if source:
             alignment.record_provenance(
                 graph, "P9", [source],
@@ -184,17 +182,20 @@ def commit_assessment(graph, trajectory, parsed: dict) -> None:
     submit cannot carry a whole family's item list under the 8192 completion
     cap.
 
-    The dev plan is STORED (2026-09-03). It used to be stripped here and never
-    written anywhere, while ``_dispatch_payload`` reads the fan-out's input
-    back out of the graph — so ``normalize_assessment_dev_plan`` was handed
-    ``None`` on every run and the deterministic fallback always ran. Measured
-    on the test fixture: assessment and activities both reported
-    ``source=fallback`` every time, meaning the planning the agent was asked
-    for, and the ``expected_activities`` field added to its rules, reached
-    nothing. It is kept on the plan section and stripped at AGGREGATION
-    instead (``aggregate._merge_node_data``), so the graph and its dump hold
-    the plan the agent actually made while the ADDIE output does not.
+    The dev plan is STORED on the plan section — ``_dispatch_payload`` reads
+    the fan-out's input back out of the state, so a stripped plan means the
+    deterministic fallback decides every division — and stripped at
+    AGGREGATION (``aggregate._HARNESS_ONLY_SECTION_KEYS``), so the graph dump
+    holds the plan the agent made while the ADDIE output does not.
     """
+    updates = _assessment_updates(parsed)
+    if updates:
+        _merge_section(graph, trajectory, NodeType.ASSESSMENT_PLAN, updates)
+
+
+def _assessment_updates(parsed: dict) -> dict:
+    """The assessment stage's section fields, from whichever submit shape
+    carried them (the dev plan inside the plan or beside it)."""
     updates: dict = {}
     plan = parsed.get("assessment_plan")
     if isinstance(plan, dict):
@@ -203,14 +204,21 @@ def commit_assessment(graph, trajectory, parsed: dict) -> None:
             updates["dev_plan"] = plan["dev_plan"]
     if isinstance(parsed.get("dev_plan"), dict):
         updates["dev_plan"] = parsed["dev_plan"]
-    if updates:
-        _merge_section(graph, trajectory, NodeType.ASSESSMENT_PLAN, updates)
+    return updates
+
+
+def _activities_updates(parsed: dict) -> dict:
+    return {key: parsed[key] for key in
+            ("instructional_strategies", "non_instructional_strategies", "dev_plan")
+            if isinstance(parsed.get(key), dict) and parsed[key]}
+
+
+def _implementation_updates(parsed: dict) -> dict:
+    return {k: v for k, v in _guide_framing(parsed).items() if v}
 
 
 def commit_activities(graph, trajectory, parsed: dict) -> None:
-    updates = {key: parsed[key] for key in
-               ("instructional_strategies", "non_instructional_strategies", "dev_plan")
-               if isinstance(parsed.get(key), dict) and parsed[key]}
+    updates = _activities_updates(parsed)
     if updates:
         _merge_section(graph, trajectory, NodeType.ACTIVITY_PLAN, updates)
 
@@ -288,7 +296,7 @@ def commit_implementation(graph, trajectory, parsed: dict) -> None:
     delivery was divided while the judged output does not.
     """
     _merge_section(graph, trajectory, NodeType.IMPLEMENTATION_PLAN,
-                   {k: v for k, v in _guide_framing(parsed).items() if v})
+                   _implementation_updates(parsed))
 
 
 def _put(store, trajectory, key: str, document: dict) -> None:
@@ -309,15 +317,10 @@ def _put(store, trajectory, key: str, document: dict) -> None:
 
 
 def commit_analysis_prose(store, trajectory, parsed: dict) -> None:
-    """ADDITIVE at the top level, because analysis arrives in parts.
-
-    ``ProseStore.put`` overwrites, which is right for a step that submits its
-    artifact whole and wrong here: a second submit carrying only
-    ``task_analysis`` would drop the ``needs_analysis`` the first one wrote.
-    The graph arm never had this problem — ``commit_analysis`` writes each
-    section independently — so leaving it would have made the prose arm lose
-    work the graph arm keeps, on the axis that compares them.
-    """
+    """ADDITIVE at the top level, because analysis arrives in parts and
+    ``ProseStore.put`` overwrites — the graph arm writes each part to its own
+    node, so a prose arm that lost earlier parts would put a data loss on the
+    ``context_mode`` axis itself."""
     if not parsed:
         return
     existing = store.get("analysis") or {}
@@ -331,22 +334,13 @@ def commit_outcomes_prose(store, trajectory, parsed: dict) -> None:
 
 
 def commit_assessment_prose(store, trajectory, parsed: dict) -> None:
-    updates: dict = {}
-    plan = parsed.get("assessment_plan")
-    if isinstance(plan, dict):
-        updates.update(_without_dev_plan(plan))
-        if isinstance(plan.get("dev_plan"), dict):
-            updates["dev_plan"] = plan["dev_plan"]
-    if isinstance(parsed.get("dev_plan"), dict):
-        updates["dev_plan"] = parsed["dev_plan"]
+    updates = _assessment_updates(parsed)
     if updates:
         _merge_document(store, trajectory, "assessment_plan", updates)
 
 
 def commit_activities_prose(store, trajectory, parsed: dict) -> None:
-    updates = {key: parsed[key] for key in
-               ("instructional_strategies", "non_instructional_strategies", "dev_plan")
-               if isinstance(parsed.get(key), dict) and parsed[key]}
+    updates = _activities_updates(parsed)
     if updates:
         _merge_document(store, trajectory, "activity_plan", updates)
 
@@ -360,7 +354,7 @@ def commit_content_prose(store, trajectory, parsed: dict) -> None:
 
 def commit_implementation_prose(store, trajectory, parsed: dict) -> None:
     _merge_document(store, trajectory, "implementation_plan",
-                    {k: v for k, v in _guide_framing(parsed).items() if v})
+                    _implementation_updates(parsed))
 
 
 # ── what has landed, per step ───────────────────────────────────────────────
@@ -404,14 +398,16 @@ def view_outcomes_prose(store) -> dict:
     return store.get("objective") or {}
 
 
-def view_assessment(graph) -> dict:
-    plan = _section(graph, NodeType.ASSESSMENT_PLAN)
+def _assessment_view(plan: dict) -> dict:
     return {"assessment_plan": _without_dev_plan(plan), "dev_plan": plan.get("dev_plan")}
+
+
+def view_assessment(graph) -> dict:
+    return _assessment_view(_section(graph, NodeType.ASSESSMENT_PLAN))
 
 
 def view_assessment_prose(store) -> dict:
-    plan = store.get("assessment_plan") or {}
-    return {"assessment_plan": _without_dev_plan(plan), "dev_plan": plan.get("dev_plan")}
+    return _assessment_view(store.get("assessment_plan") or {})
 
 
 def view_activities(graph) -> dict:
@@ -453,10 +449,20 @@ def _nothing_arrived(parsed: dict, keys: tuple[str, ...]) -> list[str]:
     a payload is already unwrapped when the validator accepts it — would then
     accept ``{"artifact": {...}}`` as the artifact itself and commit the
     wrapper. That is the exact 2B failure ``unwrap_section`` exists to undo.
+
+    An EMPTY container has not arrived either: ``{"dev_plan": {}}`` accepted
+    here is committed as nothing, found absent, and logged as the harness's
+    ``commit_did_not_land`` for what is the model sending nothing. A
+    rejection is the honest answer and gets the model its SUBMIT_BUDGET
+    retries with the real reason.
     """
-    if any(parsed.get(key) is not None for key in keys):
+    if any(_arrived(parsed.get(key)) for key in keys):
         return []
     return [f"the submit is empty; send one of: {', '.join(keys)}"]
+
+
+def _arrived(value) -> bool:
+    return value not in (None, "", [], {})
 
 
 def _require_list(parsed: dict, path: tuple[str, ...], errors: list[str]) -> None:
@@ -492,10 +498,9 @@ def _require_list(parsed: dict, path: tuple[str, ...], errors: list[str]) -> Non
         errors.append(f"{'.'.join(path)} must be a non-empty list")
 
 
-#: The five top-level objects the Analysis artifact is made of. Declared once
-#: and read by the validator, the completeness probe and the step table.
-_ANALYSIS_PARTS = ("needs_analysis", "learner_analysis", "context_analysis",
-                   "task_analysis", "improvement_plan")
+#: The five top-level objects the Analysis artifact is made of, in the order
+#: ``_ANALYSIS_PART_NODE`` declares them.
+_ANALYSIS_PARTS = tuple(_ANALYSIS_PART_NODE)
 
 
 def validate_analysis(parsed: dict) -> list[str]:
@@ -555,7 +560,7 @@ def validate_assessment(parsed: dict) -> list[str]:
     if empty:
         return empty
     plan = parsed.get("assessment_plan")
-    if plan is None:
+    if not _arrived(plan):
         # A dev_plan-only submit: nothing to judge here. `dev_plans`
         # normalizes it and reports what it had to drop.
         return []
@@ -576,7 +581,7 @@ def validate_activities(parsed: dict) -> list[str]:
         parsed, ("instructional_strategies", "non_instructional_strategies", "dev_plan"))
     if empty:
         return empty
-    if parsed.get("instructional_strategies") is None:
+    if not _arrived(parsed.get("instructional_strategies")):
         return []
     return validate_section("activity_plan", {
         "instructional_strategies": parsed["instructional_strategies"],
@@ -590,17 +595,6 @@ def validate_content(parsed: dict) -> list[str]:
     if empty:
         return empty
     errors: list[str] = []
-    # An EMPTY list is not an arrival. `_nothing_arrived` tests `is not None`,
-    # so `{"media_selections": []}` validated clean — harmless while the field
-    # was optional (`missing_parts` never named it, so the loop finished the
-    # stage), but once it is required that submit is ACCEPTED and then found
-    # absent, which is the `commit_did_not_land` branch: the loop would log a
-    # HARNESS failure and answer "send it again" for what is the model sending
-    # nothing. A rejection is the honest answer and gets the model its
-    # SUBMIT_BUDGET retries with the real reason. `validate_activities` has
-    # the same hole for its now-required `dev_plan` ({"dev_plan": {}} passes);
-    # left alone here on purpose, it is a separate artifact and a separate
-    # measurement.
     if parsed.get("media_selections") is not None:
         _require_list(parsed, ("media_selections",), errors)
     if parsed.get("content_modules") is None:
@@ -616,6 +610,10 @@ _IMPLEMENTATION_ARTIFACTS = ("instructor_orientation", "system_check",
                             "instructor_guide", "operator_manual")
 
 
+#: Error-path prefix of the one nested field the implementation stage does not own.
+_SESSION_GUIDES_PATH = f"{NodeType.IMPLEMENTATION_PLAN}.instructor_guide.session_guides"
+
+
 def validate_implementation(parsed: dict) -> list[str]:
     # instructor_guide / operator_manual are required in the shared section
     # schema (two rubric items score them directly), so the shared validator
@@ -627,23 +625,14 @@ def validate_implementation(parsed: dict) -> list[str]:
     # over the sixth's empty envelope would cost the model the whole submit.
     # The five land, completion (`missing_parts`) keeps asking for the sixth.
     #
-    # ``arrived`` is restricted to the artifacts this stage actually declares.
-    # Built from ANY non-empty key, a payload of unrecognized names validated
-    # CLEAN — `validate_section` only emits error paths rooted at names it
-    # knows, so there was nothing left to filter and the function returned [].
-    # `unwrap_section` then took its `len(section) == 1` branch, stripped the
-    # artifact's own name off a well-formed `{"prototype_execution": {...}}`
-    # whose INNER fields failed `_NESTED_FIELDS`, and committed the inner keys
-    # at the top level of the section. Measured on run 24343e4d: four of the
-    # six artifacts were unwrapped this way, `implementation_plan_0` ended with
-    # 43 top-level keys, `operator_manual` was submitted three times and never
-    # landed once, and the loop answered each lost submit with "COMMITTED.
-    # implementation still needs: <the artifact just sent>". This stage is the
-    # only one that could reach it — it is the only one with `_NESTED_FIELDS`;
-    # the other five validators are held shut by `_nothing_arrived`, which is
-    # exactly what the restriction below restores here.
+    # ``arrived`` is restricted to the artifacts this stage DECLARES: built
+    # from any non-empty key, a payload of unrecognized names validated clean
+    # and `unwrap_section` then stripped the artifact's own name off a
+    # well-formed envelope whose inner fields were wrong (run 24343e4d: 43
+    # top-level keys on the section, `operator_manual` submitted three times
+    # and never landed).
     arrived = {k: v for k, v in (parsed or {}).items()
-               if k in _IMPLEMENTATION_ARTIFACTS and v not in (None, "", [], {})}
+               if k in _IMPLEMENTATION_ARTIFACTS and _arrived(v)}
     if not arrived:
         # A dev_plan-only submit is a valid instalment of this stage, and the
         # only one the section schema knows nothing about: `dev_plans`
@@ -681,10 +670,6 @@ def validate_implementation(parsed: dict) -> list[str]:
     return errors
 
 
-#: Error-path prefix of the one nested field this stage does not own.
-_SESSION_GUIDES_PATH = f"{NodeType.IMPLEMENTATION_PLAN}.instructor_guide.session_guides"
-
-
 def _error_field(path: str) -> str:
     """The first field of a validator error path: ``instructor_guide`` from
     ``instructor_guide.session_guides[0].activity_ids: ...``."""
@@ -715,8 +700,7 @@ class AgenticStep:
     #: this step's Developer produced their artifacts too. Rubrics is the case:
     #: it has no stage of its own any more, but ``repairs.OWNED_BY_FAMILY``
     #: still assigns it `rubric_consistency`/`evidence_alignment`, and those
-    #: must keep running somewhere. (C6/C7/orphan_rubric went with the rubric
-    #: node type on 2026-09-02.)
+    #: must keep running somewhere.
     also_repairs: tuple[str, ...] = ()
     #: Whether this step's own ``commit`` writes into the run state.
     #:
@@ -816,9 +800,7 @@ class AgenticStep:
         line: that instruction tells the model to emit the artifact
         directly, which contradicts the action protocol and (measured on a
         2B model) suppresses every tool call. The loop's protocol block
-        already pins the output contract. The rulebook carried such a line
-        (``JSON_ONLY``) for the single-shot composition; both went with the
-        scripted rescue on 2026-09-01."""
+        already pins the output contract."""
         return f"{self.intro}\n\n{self.rules}{self.parts_block()}"
 
     def parts_block(self) -> str:
@@ -849,14 +831,9 @@ class AgenticStep:
 STEPS: tuple[AgenticStep, ...] = (
     AgenticStep(
         name="analysis",
-        # Its own role, not the Outcome Designer's second job (2026-09-01).
-        # Front-end analysis and outcome design are different ISD concerns —
-        # different ADDIE phases, different deliverables, different expertise —
-        # and the persona here already said "performing the Analysis phase"
-        # under a name that says Design. A role decomposition that spans two
-        # phases is the one seam a reviewer would push on, and it cost nothing
-        # to keep: `multi` already starts each stage in a fresh context, so the
-        # identity was only ever the RECORD of who did the work.
+        # Its own role, not the Outcome Designer's second job: front-end
+        # analysis and outcome design are different ADDIE phases, and a role
+        # decomposition that spans two is the seam a reviewer pushes on.
         identity="NeedsAnalystAgent",
         family="needs_analyst",
         persona=("You are an expert instructional analyst performing the Analysis phase of "
@@ -1052,17 +1029,17 @@ STEPS: tuple[AgenticStep, ...] = (
 )
 
 
-#: The one persona the ``agent_mode="single"`` arm carries across every stage.
-#: The multi arm's per-stage personas say the same thing scoped to one concern;
-#: this says it once, unscoped. It is the ONLY prompt difference the axis
-#: introduces — task text, rules, schema, tools and budgets are identical, and
-#: ``test_ablation_flags`` pins that.
 #: The one identity the ``agent_mode="single"`` arm reports for the whole run.
 #: Identity names a ROLE, not a mechanism, so a trajectory consumer (the judge,
 #: the webapp, the pooling scripts) reads one actor for the whole single-arm run
 #: no matter how many loops it took.
 SINGLE_IDENTITY = "SingleDesignerAgent"
 
+#: The one persona the ``agent_mode="single"`` arm carries across every stage.
+#: The multi arm's per-stage personas say the same thing scoped to one concern;
+#: this says it once, unscoped. It is the ONLY prompt difference the axis
+#: introduces — task text, rules, schema, tools and budgets are identical, and
+#: ``test_ablation_flags`` pins that.
 SINGLE_PERSONA = (
     "You are an expert instructional designer responsible for this entire design, "
     "from analysis through implementation."
@@ -1104,26 +1081,12 @@ def missing_parts(step: AgenticStep, state) -> tuple[str, ...]:
 def step_done(step: AgenticStep, state) -> bool:
     """Idempotence/produced guard. ``state`` is the AlignmentGraph in graph mode
     and the ProseStore in prose mode; the guard must mean the same thing in
-    both, or a regen loop spins on one arm and not the other."""
-    from ..outputs import _empty_required_fields
+    both, or a regen loop spins on one arm and not the other.
 
+    A fan-out work set and a replan step declare ``done``; every stage submits
+    one artifact per call, so a stage is finished when every REQUIRED artifact
+    has arrived — not when its primary element pool is non-empty, which one
+    artifact alone would satisfy."""
     if step.done is not None:
         return step.done(state)
-    # Every stage submits one artifact per call, so a stage is finished when
-    # every REQUIRED artifact has arrived — not when its primary element pool
-    # is non-empty, which one artifact alone would satisfy.
-    if parts_of(step):
-        return not missing_parts(step, state)
-    graph_mode = hasattr(state, "element_nodes")
-    if step.primary_type is None:
-        if graph_mode:
-            node = state.get_node(state.section_id(NodeType.IMPLEMENTATION_PLAN))
-            data = (node or {}).get("data") or {}
-        else:
-            data = state.get("implementation_plan") or {}
-        return bool(data) and not _empty_required_fields(NodeType.IMPLEMENTATION_PLAN, data)
-    if graph_mode:
-        return bool(state.element_nodes(step.primary_type))
-    from ..prose_store import primary_items
-
-    return bool(primary_items(state, str(step.primary_type)))
+    return not missing_parts(step, state)

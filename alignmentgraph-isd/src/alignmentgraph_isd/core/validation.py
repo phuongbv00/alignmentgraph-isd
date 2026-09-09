@@ -15,8 +15,8 @@ from typing import Any
 # ``additionalProperties`` is implicitly allowed: unknown keys never error, so an
 # LLM that adds extra detail is fine. Only declared fields are type-checked.
 _SECTION_FIELDS: dict[str, dict[str, tuple[type | tuple[type, ...], bool]]] = {
-    # objective_0 only holds learning_objectives; CourseGoal is its own
-    # singleton node (no section-field schema needed — just {"statement": str}).
+    # Validated over a virtual section: the objectives live on element nodes.
+    # CourseGoal is its own singleton node ({"statement": str}, no schema).
     "objective": {
         "learning_objectives": (list, True),
     },
@@ -29,7 +29,6 @@ _SECTION_FIELDS: dict[str, dict[str, tuple[type | tuple[type, ...], bool]]] = {
     },
     "assessment": {
         "assessment_tools": (list, True),
-        "expert_review": (dict, False),
     },
     "activity": {
         "learning_activities": (list, True),
@@ -48,8 +47,7 @@ _SECTION_FIELDS: dict[str, dict[str, tuple[type | tuple[type, ...], bool]]] = {
 #: today the six implementation artifacts. Checked exactly like the top level
 #: (presence, type, placeholder), one level down. This is the upstream
 #: source for those six artifacts' deep tool-call schema too
-#: (``core/agentic/artifact_schemas.py``, since 2026-09-08) — read from here
-#: to build the ``submit_*`` tool's ``parameters``, never retyped by hand, so
+#: (``core/agentic/artifact_schemas.py``) — read from here to build the ``submit_*`` tool's ``parameters``, never retyped by hand, so
 #: the two cannot disagree about a field's presence or type.
 #:
 #: MEASURED (run e81b8108): with only the top level declared, an
@@ -126,6 +124,8 @@ _PLACEHOLDER_TOKEN = re.compile(r"^<[^<>]{1,80}>$")
 #: Suffix shared by every placeholder error, so the regen loop can filter for
 #: them exactly like `required field is missing or empty` (see outputs.py).
 PLACEHOLDER_FIELD_MARKER = "schema placeholder text left unfilled"
+#: The other way a required field can be "there but not really there".
+EMPTY_FIELD_MARKER = "required field is missing or empty"
 
 _PLACEHOLDER_SCAN_DEPTH = 6
 _PLACEHOLDER_REPORT_CAP = 3  # errors per field; one is enough to trigger regen
@@ -150,11 +150,11 @@ def _placeholder_paths(value: Any, path: str = "", depth: int = _PLACEHOLDER_SCA
 
 def _placeholder_errors(node_type: str, field: str, value: Any) -> list[str]:
     paths = _placeholder_paths(value)
-    return [
-        f"{node_type}.{field}{('' if p.startswith('[') else '.') + p if p else ''}: "
-        f"{PLACEHOLDER_FIELD_MARKER}"
-        for p in paths[:_PLACEHOLDER_REPORT_CAP]
-    ]
+    errors = []
+    for p in paths[:_PLACEHOLDER_REPORT_CAP]:
+        path = f"{node_type}.{field}" + ("" if not p else p if p.startswith("[") else f".{p}")
+        errors.append(f"{path}: {PLACEHOLDER_FIELD_MARKER}")
+    return errors
 
 # Item-level id fields per section list, validated for non-empty well-formed ids.
 _LIST_ITEM_ID_FIELD = {
@@ -176,7 +176,7 @@ def _check_fields(prefix: str, data: dict, spec: dict, errors: list[str]) -> Non
     for field, (expected_type, required) in spec.items():
         if field not in data or data[field] in (None, "", [], {}):
             if required:
-                errors.append(f"{prefix}.{field}: required field is missing or empty")
+                errors.append(f"{prefix}.{field}: {EMPTY_FIELD_MARKER}")
             continue
         if not isinstance(data[field], expected_type):
             errors.append(
@@ -286,20 +286,10 @@ def validate_addie(addie_output: Any) -> list[str]:
         if not isinstance(section, dict):
             errors.append(f"{phase}: expected object, got {type(section).__name__}")
             continue
-        for field, (expected_type, required) in spec.items():
-            if field not in section or section[field] in (None, "", [], {}):
-                if required:
-                    errors.append(f"{phase}.{field}: required field is missing or empty")
-                continue
-            if not isinstance(section[field], expected_type):
-                errors.append(
-                    f"{phase}.{field}: expected {_type_name(expected_type)}, "
-                    f"got {type(section[field]).__name__}"
-                )
-            elif required:
-                errors.extend(_placeholder_errors(phase, field, section[field]))
+        _check_fields(phase, section, spec, errors)
+        for field in spec:
             source = _ADDIE_NESTED_SOURCE.get((phase, field))
-            if source is not None:
+            if source is not None and section.get(field) not in (None, "", [], {}):
                 _check_nested(source[0], source[1], section[field], errors,
                               prefix=f"{phase}.{field}")
     return errors

@@ -53,10 +53,6 @@ class ResolvedConfig:
     source: str = SOURCE_NONE
 
     @property
-    def has_api_key(self) -> bool:
-        return bool(self.api_key)
-
-    @property
     def completion_cap(self) -> int:
         """The cap the client sends, which is also the budget's reserve."""
         return self.max_tokens or DEFAULT_MAX_TOKENS

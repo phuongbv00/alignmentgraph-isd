@@ -3,25 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..validation import validate_section
 from . import alignment
 from .graph import AlignmentGraph, NodeType
-from ..validation import validate_section
-
 
 REQUIRED_NODE_TYPES = tuple(NodeType)
-
-# Section node types that carry a structured payload worth schema-validating.
-# NEEDS_CONTEXT/EVALUATION no longer exist as node types (see graph.py's
-# NodeType docstring) — their fields are computed by ADDIEOutputAggregator
-# directly from Gap/Topic/LearnerProfile/Constraint/Improvement elements.
-_SCHEMA_VALIDATED_TYPES = (
-    NodeType.OBJECTIVE,
-    NodeType.ASSESSMENT_PLAN,
-    NodeType.ASSESSMENT,
-    NodeType.ACTIVITY_PLAN,
-    NodeType.ACTIVITY,
-    NodeType.IMPLEMENTATION_PLAN,
-)
 
 # Violation types that are audit-only by design (reported, never claimed for
 # repair by any specialist — see checks.py::measurability and
@@ -70,6 +56,9 @@ REQUIRED_SECTION_KEYS = {
                                    "monitoring", "instructor_guide", "operator_manual"),
 }
 
+#: Section node types that carry a structured payload worth schema-validating.
+_SCHEMA_VALIDATED_TYPES = tuple(REQUIRED_SECTION_KEYS)
+
 
 @dataclass
 class GraphAuditResult:
@@ -77,6 +66,8 @@ class GraphAuditResult:
     missing_node_types: list[str]
     missing_section_keys: dict[str, list[str]]
     schema_violations: dict[str, list[str]] = field(default_factory=dict)
+    #: Always empty — no objective section node exists any more (objectives
+    #: are element nodes); kept because ``metadata.audit`` is a contract.
     objective_node_id: str = ""
     objective_ids: list[str] = field(default_factory=list)
     objective_count: int = 0
@@ -107,8 +98,8 @@ class GraphAuditResult:
 
     @property
     def residual_gap_count(self) -> int:
-        """Total uncovered elements across all 16 relations — the "39->12"
-        style number RQ2 reports, now spanning the full matrix."""
+        """Total uncovered elements across all 16 relations — the audit
+        summary's residual."""
         return sum(len(info["uncovered"]) for info in self.relation_coverage.values())
 
     @property
@@ -150,18 +141,11 @@ class GraphAuditor:
             if not missing_section_keys.get(node_type):
                 missing_section_keys[node_type] = [f"__schema__:{node_type}"]
 
-        objective_node = self._first_node(NodeType.OBJECTIVE)
-        objective_node_id = objective_node.get("id", "") if objective_node else ""
-        objective_ids = self._objective_ids(objective_node)
+        objective_ids = self._objective_ids()
 
         # C2/C3 are id-reverse: the objective is the edge SOURCE, not target.
-        #
-        # ``unevaluated`` is gone with C7 (2026-09-02): it asked which
-        # objectives no rubric criterion measured, and a criterion is now a
-        # field of the item that measures the objective — so the question
-        # collapsed into ``unmeasured`` and could not have a different answer.
-        unmeasured = self._uncovered_objectives("C2", objective_node_id, objective_ids)
-        unsupported = self._uncovered_objectives("C3", objective_node_id, objective_ids)
+        unmeasured = self._uncovered_objectives("C2")
+        unsupported = self._uncovered_objectives("C3")
         violations = violations or []
         blocking_violations = [v for v in violations if v.get("type") not in AUDIT_ONLY_VIOLATION_TYPES]
         relation_cov = alignment.all_relations_coverage(self.graph)
@@ -181,7 +165,6 @@ class GraphAuditor:
             missing_node_types=missing_node_types,
             missing_section_keys=missing_section_keys,
             schema_violations=schema_violations,
-            objective_node_id=objective_node_id,
             objective_ids=objective_ids,
             objective_count=len(objective_ids),
             unmeasured_objectives=unmeasured,
@@ -191,37 +174,17 @@ class GraphAuditor:
             relation_coverage=relation_cov,
         )
 
-    def _first_node(self, node_type: str) -> dict | None:
-        nodes = self.graph.section_nodes(node_type)
-        return nodes[0] if nodes else None
-
-    def _uncovered_objectives(
-        self,
-        relation_id: str,
-        objective_node_id: str,
-        objective_ids: list[str],
-    ) -> list[str]:
-        """Coverage over objective element nodes (first-class), not just objective_0.
-
-        Every relation this is asked about (C2/C3) is id-reverse: the LO is the
-        edge's SOURCE, not its target, so coverage is checked on the source
-        side. The target-side variant went with C7 (2026-09-02), its only
-        caller. Falls back to the legacy evidence-on-section check when no
-        element nodes exist yet.
-        """
-        elements = self.graph.element_nodes(NodeType.OBJECTIVE)
-        edges = self.graph.get_edges(relation_id=relation_id)
-        covered_side = {edge.get("source") for edge in edges}
-        covered_evidence = {edge.get("evidence") for edge in edges if edge.get("evidence")}
-        if elements:
-            uncovered: list[str] = []
-            for element in elements:
-                element_id = element["id"]
-                lo_id = str(element["data"].get("id") or element_id.split(self.graph.ELEMENT_SEP, 1)[-1])
-                if element_id not in covered_side and lo_id not in covered_evidence:
-                    uncovered.append(lo_id)
-            return uncovered
-        return self._missing_edge_evidence(relation_id, objective_node_id, objective_ids)
+    def _uncovered_objectives(self, relation_id: str) -> list[str]:
+        """Objective element ids with no edge of this relation. Every relation
+        this is asked about (C2/C3) is id-reverse: the LO is the edge's
+        SOURCE, so coverage is checked on the source side."""
+        covered = {edge.get("source") for edge in self.graph.get_edges(relation_id=relation_id)}
+        uncovered: list[str] = []
+        for element in self.graph.element_nodes(NodeType.OBJECTIVE):
+            if element["id"] not in covered:
+                uncovered.append(str(element["data"].get("id")
+                                     or element["id"].split(self.graph.ELEMENT_SEP, 1)[-1]))
+        return uncovered
 
     def _missing_section_keys(self) -> dict[str, list[str]]:
         missing: dict[str, list[str]] = {}
@@ -261,35 +224,12 @@ class GraphAuditor:
                 merged[field] = parent
         return merged
 
-    def _objective_ids(self, objective_node: dict | None) -> list[str]:
-        # Element nodes first (single source of truth); the section-node path
-        # remains only for graphs built by older dumps/tests.
-        ids = [
+    def _objective_ids(self) -> list[str]:
+        return [
             str(n["data"]["id"])
             for n in self.graph.element_nodes(NodeType.OBJECTIVE)
             if isinstance(n.get("data"), dict) and n["data"].get("id")
         ]
-        if ids or not objective_node:
-            return ids
-        for item in objective_node.get("data", {}).get("learning_objectives", []):
-            if isinstance(item, dict) and item.get("id"):
-                ids.append(str(item["id"]))
-        return ids
-
-    def _missing_edge_evidence(
-        self,
-        relation_id: str,
-        objective_node_id: str,
-        objective_ids: list[str],
-    ) -> list[str]:
-        if not objective_node_id or not objective_ids:
-            return []
-        covered = {
-            edge.get("evidence")
-            for edge in self.graph.get_edges(relation_id=relation_id)
-            if edge.get("target") == objective_node_id and edge.get("evidence")
-        }
-        return [objective_id for objective_id in objective_ids if objective_id not in covered]
 
 
 def _is_empty(value: Any) -> bool:

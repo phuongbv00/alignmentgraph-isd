@@ -160,7 +160,6 @@ def test_expert_review_is_always_the_audit_record():
     artifacts it purports to review exist, is fiction) — the aggregator ALWAYS
     reports the verification that actually ran (self-validation rounds,
     repairs, relation coverage) and says so; it never fabricates an SME panel."""
-    from alignmentgraph_isd import HarnessRunConfig
     from alignmentgraph_isd.core.aggregate import ADDIEOutputAggregator
     from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
     from alignmentgraph_isd.core.trajectory import TrajectoryLogger
@@ -173,8 +172,7 @@ def test_expert_review_is_always_the_audit_record():
     trajectory.log_violations_result([])  # clean second round
     trajectory.log_repair_event("AssessmentDesignerAgent", "C2", "assessment_0", ["assessment_tools"])
 
-    development = ADDIEOutputAggregator(
-        HarnessRunConfig(), graph, trajectory)._build_development()
+    development = ADDIEOutputAggregator(graph, trajectory)._build_development()
     review = development["expert_review"]
 
     assert review["review_type"] == "internal_automated"
@@ -188,7 +186,7 @@ def test_expert_review_is_always_the_audit_record():
     # there is no model-authored channel any more: even if a stray section
     # carried an expert_review, the aggregator does not read it
     graph.add_node(NodeType.ASSESSMENT, "assessment_0", {"expert_review": {"reviewers": ["Dr. X"]}})
-    still = ADDIEOutputAggregator(HarnessRunConfig(), graph, trajectory)._build_development()
+    still = ADDIEOutputAggregator(graph, trajectory)._build_development()
     assert still["expert_review"]["review_type"] == "internal_automated"
 
 
@@ -197,7 +195,6 @@ def test_expert_review_itemises_findings_and_relation_coverage():
     must show its work, not just totals: one finding row per violated
     criterion (issues found, repairs applied) and the per-relation core
     coverage — every row traceable to a recorded trajectory event."""
-    from alignmentgraph_isd import HarnessRunConfig
     from alignmentgraph_isd.core.aggregate import ADDIEOutputAggregator
     from alignmentgraph_isd.core.alignment_graph import AlignmentGraph
     from alignmentgraph_isd.core.trajectory import TrajectoryLogger
@@ -211,8 +208,7 @@ def test_expert_review_itemises_findings_and_relation_coverage():
     ])
     trajectory.log_repair_event("AssessmentDesignerAgent", "C2", "assessment_0", ["assessment_tools"])
 
-    review = ADDIEOutputAggregator(
-        HarnessRunConfig(), graph, trajectory)._build_development()["expert_review"]
+    review = ADDIEOutputAggregator(graph, trajectory)._build_development()["expert_review"]
 
     by_criterion = {f["criterion"]: f for f in review["findings"]}
     assert by_criterion["C2"]["issues_found"] == 2
@@ -232,7 +228,6 @@ def test_assessment_items_ship_with_their_rubrics():
     elements' own aligned_assessment field) as a structured ``rubric`` list
     next to scoring_criteria, in development AND the evaluation slices, on
     both substrates."""
-    from alignmentgraph_isd import HarnessRunConfig
     from alignmentgraph_isd.core.aggregate import (
         ADDIEOutputAggregator, aggregate_prose,
     )
@@ -257,7 +252,7 @@ def test_assessment_items_ship_with_their_rubrics():
     # only has to put it in the shape the deliverable declares.
     graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {**item, "rubric": [rc]})
     graph.add_element_node(NodeType.ASSESSMENT, "AT-02", bare)
-    aggregator = ADDIEOutputAggregator(HarnessRunConfig(), graph, TrajectoryLogger())
+    aggregator = ADDIEOutputAggregator(graph, TrajectoryLogger())
 
     development = aggregator._build_development()
     by_id = {t["item_id"]: t for t in development["assessment_tools"]}

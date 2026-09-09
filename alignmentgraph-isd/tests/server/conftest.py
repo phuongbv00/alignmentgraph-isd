@@ -1,8 +1,8 @@
 """Server test fixtures.
 
 Every test gets its own data root and database, and a fake model injected at
-``server.llm_settings.build_factory`` / ``.resolve`` (NOT through
-``llm_factory_from_env``, which the server never calls) so the whole run
+``server.llm_settings.build_factory`` / ``.resolve`` (rather than through
+``llm_factory_from_env``, which ``build_factory`` wraps) so the whole run
 pipeline executes without a network.
 
 This package is skipped wholesale when FastAPI is missing, which is why the

@@ -1,11 +1,10 @@
 """The single arm: ONE ReAct loop that runs the whole design brief.
 
-WHY THIS IS SEPARATE FROM ``ToolLoop``. Until 2026-09-01 the ``single`` arm was
-seven ``ToolLoop``s driven by a ``for step in STEPS`` in ``run.py``, sharing one
-message list. The harness still decided when a stage was finished and what came
-next — in BOTH arms — so "single agent" named a context-sharing trick, not an
-agent. Here the agent decides: it is given the workflow, the schemas and the
-rules, and it chooses what to work on, in what order, and when it is done.
+WHY THIS IS SEPARATE FROM ``ToolLoop``. Six stage loops sharing one message
+list would leave the harness deciding when a stage is finished and what comes
+next, so "single agent" would name a context-sharing trick, not an agent.
+Here the agent decides: it is given the workflow, the schemas and the rules,
+and it chooses what to work on, in what order, and when it is done.
 
 ``ToolLoop`` stays exactly as it is, for ``multi`` and its Developers. Every
 guard that was paid for in measured 2B failures is shared as module-level
@@ -15,7 +14,7 @@ the transport boundary, ``protocol_leak_errors`` on the artifact,
 
 WHAT THE AGENT IS GIVEN AND WHAT IT DECIDES:
 
-  given    — the seven ADDIE stages in order, each stage's schema and rules,
+  given    — the six ADDIE stages in order, each stage's schema and rules,
              the scenario, the read tools, and a ``submit_<stage>`` for every
              stage not yet complete;
   decides  — which stage to work on next, how much to read first, how many
@@ -33,36 +32,42 @@ from __future__ import annotations
 import copy
 import json
 
-from ..brief import _format_design_brief
 from .. import dev_plans
+from ..brief import _format_design_brief
+from ..checks import serialize_violations
 from ..memory import Memory, new_agent_run_id
 from ..trajectory import WORKFLOW_ORCHESTRATOR
 from . import budget, fanout, tools
 from .loop import (
-    INVALID_TURN_NUDGE,
-    brief_stages,
-    respec,
-    STAGE_BRIEF_HEADER,
-    stage_brief_block,
-    with_progress,
-    THINKING_ONLY_NUDGE,
-    _merge_specs,
-    compact,
-    ToolLoop,
     _WORKFLOW_OVERVIEW,
-    _repair_request,
-    emit_context,
-    history_budget,
+    INVALID_TURN_NUDGE,
+    STAGE_BRIEF_HEADER,
+    THINKING_ONLY_NUDGE,
     AgenticLLM,
+    ToolLoop,
     _arg_shape,
+    _merge_specs,
+    _repair_request,
     _spec_parameters,
+    brief_stages,
+    compact,
+    emit_context,
+    empty_stage_stats,
+    forget_compacted_calls,
+    history_budget,
     message_size,
     protocol_leak_errors,
-    forget_compacted_calls,
+    respec,
+    stage_brief_block,
     trim_history,
+    with_progress,
 )
 from .specialists import (
-    SINGLE_IDENTITY, SINGLE_PERSONA, STEPS, missing_parts, step_done,
+    SINGLE_IDENTITY,
+    SINGLE_PERSONA,
+    STEPS,
+    missing_parts,
+    step_done,
 )
 from .tools import unwrap_section
 
@@ -95,6 +100,9 @@ Tools available:
 {menu}
 
 You have {max_turns} turns in total; each tool call costs one."""
+
+
+_STEP_BY_NAME = {s.name: s for s in STEPS}
 
 
 class ReactLoop:
@@ -136,20 +144,7 @@ class ReactLoop:
         self._summariser = AgenticLLM(config, trajectory, WORKFLOW_ORCHESTRATOR)
         self.messages: list = []
         self.stats: dict = {
-            "turns_used": 0, "submits_rejected": 0, "repeated_calls": 0,
-            "history_dropped": 0, "reads": 0, "context_len": 0, "batched_calls": 0,
-            # See ToolLoop: how often the window filled. This is the arm
-            # that fills it.
-            "compactions": 0,
-            # ...and how many of those folds the model actually delivered.
-            # `compactions - compaction_summaries` is the hook's failure rate
-            # on this model, which is the number that says whether the
-            # completion it spends buys anything.
-            "compaction_summaries": 0,
-            "markup_recovered": 0, "args_salvaged": 0, "truncated_turns": 0,
-            "dropped_args": 0, "repair_turns": 0, "thinking_only": 0,
-            "tool_errors": 0,
-            "via_budget_exhaustion": False,
+            **empty_stage_stats(),
             # The two numbers that separate "worked out of order" from "never
             # split the work" — different failures with identical output.
             "stage_order": [], "submits_per_stage": {},
@@ -217,11 +212,11 @@ class ReactLoop:
         """One stage's task, schema and rules — the same block the multi arm's
         specialist gets, composed here for the one stage that is current.
 
-        Not a tool any more (2026-09-06): the harness pushes it when the stage
-        comes up. What that costs this arm is the freedom to jump to a stage
-        out of turn, which `react_specs` still allows; what it buys is that the
+        Pushed by the harness when the stage comes up, not fetched by a tool.
+        What that costs this arm is the freedom to jump to a stage out of
+        turn, which `react_specs` still allows; what it buys is that the
         contract can never be missing when the stage is being written."""
-        step = {s.name: s for s in STEPS}.get(name)
+        step = _STEP_BY_NAME.get(name)
         if step is None:
             return (f"ERROR: no stage named {name!r}. The stages are: "
                     + ", ".join(s.name for s in STEPS))
@@ -249,12 +244,11 @@ class ReactLoop:
         ``ToolLoop._own_violations`` in ``loop.py`` for why: without it, a
         violation whose only sighting was here never reaches
         ``expert_review.findings``, only the ledger)."""
-        from .run import _serialize
         found = ToolLoop.own_violations(
-            self.state, self.design_brief, step, self.trajectory, self.llm)
+            self.state, self.design_brief, step, self.trajectory)
         if found:
             round_no = self.trajectory.log_violations_result(
-                _serialize(found, self.identity), agent=WORKFLOW_ORCHESTRATOR)
+                serialize_violations(found, self.identity), agent=WORKFLOW_ORCHESTRATOR)
             self.memory.observe_violations(
                 found, round=round_no,
                 phase=step.name, family=step.family, shown_to_agent=True)
@@ -293,7 +287,7 @@ class ReactLoop:
         artifact lands), and putting it back would undo that — this arm carries
         one conversation across all six stages, so the spec for work already
         written is exactly what crowds out the work still to do."""
-        step = {s.name: s for s in STEPS}.get(stage)
+        step = _STEP_BY_NAME.get(stage)
         if step is None or not missing_parts(step, self.state):
             return None
         return with_progress(self.stage_brief(stage), step, self.state)
@@ -307,20 +301,16 @@ class ReactLoop:
         arm "needs_analysis.gaps must be a non-empty list" 48 times, each time
         submitting the same broken shape again. ``history_dropped`` was 170 and
         186: ``trim_history`` drops the oldest tool observations first, and the
-        ``stage_brief`` answer is exactly that — early and large. So the agent
-        was being corrected against a specification it could no longer see.
+        stage turn is exactly that — early and large. So the agent was being
+        corrected against a specification it could no longer see.
 
         Re-attached only when it is actually gone, because it is up to 7,400
         characters and pasting it onto every rejection would push out the very
         transcript it is meant to sit beside.
 
-        ONE implementation, shared with `ToolLoop` since 2026-09-06 — which
-        NARROWS the decomposition axis rather than widening it. Only this arm
-        had it, so the multi arm was left arguing with a model that could not
-        see the spec: that is what run 2b9e911a's implementation stage is. The
-        brief differs (this one appends the fan-out output schemas, because
-        this agent writes both halves); the rule for when to re-attach it does
-        not."""
+        ONE implementation, shared with `ToolLoop`: the brief differs (this
+        one appends the fan-out output rules, because this agent writes both
+        halves); the rule for when to re-attach it does not."""
         return respec(self.messages, step,
                       with_progress(self.stage_brief(step.name), step, self.state))
 
@@ -400,7 +390,6 @@ class ReactLoop:
                 menu=_menu(STEPS, done, graph_mode=self.graph_mode),
                 max_turns=self.MAX_TURNS) + self._docket()},
         ]
-        self._by_name = {s.name: s for s in STEPS}
         self._done_set = done
         self._offer_contract()
         self._live_specs = specs
@@ -455,7 +444,7 @@ class ReactLoop:
                 self.stats["context_len"], sum(message_size(m) for m in self.messages))
 
             turn = self.llm.call_tools(self.messages, self._live_specs)
-            self.stats["batched_calls"] += turn.extra_calls
+            self.stats["batched_calls"] += len(turn.calls)
             # Every call the reply carried, in order — see ToolLoop._run.
             queue = [turn, *turn.calls]
             for index, call in enumerate(queue):
@@ -501,6 +490,16 @@ class ReactLoop:
                                   call_id=turn.call_id, text=turn.text,
                                   message=turn.message)
 
+        if turn.name == "submit":
+            # A bare `submit` is what every recovery path yields and what a
+            # model says once it has stopped reading tool names carefully;
+            # `ToolLoop` rescues it too. Here it means the one open stage whose
+            # parameters declare the payload's keys — if that is ambiguous the
+            # call falls through to the unknown-tool answer.
+            turn = turn.__class__(name=_submit_for(self._live_specs, turn.args) or turn.name,
+                                  args=turn.args, call_id=turn.call_id, text=turn.text,
+                                  message=turn.message, truncated=turn.truncated)
+
         salvaged: list[str] = []
         args = tools.coerce_args(
             _spec_parameters(self._live_specs, turn.name), turn.args, salvaged=salvaged)
@@ -509,7 +508,7 @@ class ReactLoop:
             self.stats["truncated_turns"] += 1
 
         if turn.name.startswith("submit_"):
-            step = self._by_name.get(turn.name[len("submit_"):])
+            step = _STEP_BY_NAME.get(turn.name[len("submit_"):])
             if step is None:
                 self._answer(turn, f"ERROR: no such stage in {turn.name!r}.")
                 return "continue"
@@ -665,24 +664,20 @@ class ReactLoop:
             # Element pools are additive by construction (`add_element_node`);
             # section nodes are single documents and a re-submit replaces them.
             step.commit(self.state, self.trajectory, section)
-            if spec is not None:
-                # The item lists a fan-out family's Developers would have
-                # produced in the multi arm. One "set" because this agent chose
-                # its own batching — that IS the batching.
-                fanout.commit_sets(
-                    spec, self.state, self.trajectory,
-                    [dev_plans.WorkSet(set_id=f"S{self._batch}", source="agent")],
-                    [{"set_id": f"S{self._batch}", **section}])
-                self._batch += 1
-            return
-        before = {key: self.state.get(key) for key in _doc_keys(step)}
-        step.commit_prose(self.state, self.trajectory, section)
+        else:
+            before = {key: self.state.get(key) for key in _doc_keys(step)}
+            step.commit_prose(self.state, self.trajectory, section)
         if spec is not None:
+            # The item lists a fan-out family's Developers would have produced
+            # in the multi arm. One "set" because this agent chose its own
+            # batching — that IS the batching.
             fanout.commit_sets(
                 spec, self.state, self.trajectory,
                 [dev_plans.WorkSet(set_id=f"S{self._batch}", source="agent")],
                 [{"set_id": f"S{self._batch}", **section}])
             self._batch += 1
+        if self.graph_mode:
+            return
         for key, old in before.items():
             if not isinstance(old, dict):
                 continue
@@ -713,6 +708,10 @@ class ReactLoop:
         it still accumulates is what it must actually hold in mind: every stage
         instruction, every observation, and a record of everything it has
         produced. That is the burden the axis is about."""
+        if getattr(turn, "sibling", False):
+            # The assistant message is already in the transcript, shared with
+            # the call before this one; it is not ours to replace here.
+            return
         summary = {}
         for key, value in (section or {}).items():
             if isinstance(value, list):
@@ -722,10 +721,6 @@ class ReactLoop:
                                 + (f": {', '.join(i for i in ids if i)}" if any(ids) else ""))
             else:
                 summary[key] = "committed"
-        if getattr(turn, "sibling", False):
-            # The assistant message is already in the transcript, shared with
-            # the call before this one; it is not ours to replace here.
-            return
         # Any OTHER call the same message carried keeps its id, so the tool
         # results that answer them still have a call to answer.
         others = [
@@ -819,7 +814,7 @@ def _doc_keys(step) -> tuple[str, ...]:
     return tuple(dict.fromkeys(keys))
 
 
-def _committed_note(step, done: frozenset, state=None) -> str:
+def _committed_note(step, done: frozenset, state) -> str:
     # Name the PARTS a parts-based step is still missing, not just "more":
     # the multi arm's loop says exactly that after each instalment, and an
     # agent told less here would be running a different instruction.
@@ -837,6 +832,18 @@ def _committed_note(step, done: frozenset, state=None) -> str:
                 f"Still open: {', '.join(left)}.")
     return (f"COMMITTED to {step.name}, which still needs more. "
             f"Submit again to add to it. Still open: {', '.join(left)}.")
+
+
+def _submit_for(specs: list, args) -> str | None:
+    """Which open ``submit_<stage>`` a bare ``submit`` meant: the one whose
+    parameters declare the payload's keys, when exactly one does."""
+    keys = set(args) if isinstance(args, dict) else set()
+    if not keys:
+        return None
+    matches = [name for name in tools.tool_names(specs)
+               if name.startswith("submit_")
+               and keys <= set(_spec_parameters(specs, name).get("properties") or {})]
+    return matches[0] if len(matches) == 1 else None
 
 
 def _menu(steps, done: frozenset, *, graph_mode: bool) -> str:

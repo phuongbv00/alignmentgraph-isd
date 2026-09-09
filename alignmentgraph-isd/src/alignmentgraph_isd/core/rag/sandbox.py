@@ -18,7 +18,8 @@ and scope containment for pluggable retrieval code, not OS-level isolation.
 """
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 
 from ..brief import DesignBrief
 from .agent import RetrievalAgent

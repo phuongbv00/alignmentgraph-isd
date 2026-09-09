@@ -11,8 +11,8 @@ from sqlmodel import select
 from .. import briefs
 from ..models import Message, Program, Run, RunStatus, Session
 from ..runner import RunManager
-from ..settings import Settings
 from ..schemas import MessageOut, ProgramSummary, RunSummary
+from ..settings import Settings
 
 
 def get_manager(request: Request) -> RunManager:
@@ -42,8 +42,7 @@ def primary_session(db: DBSession, program_id: str) -> Session:
         select(Session).where(Session.program_id == program_id).order_by(Session.index)
     ).first()
     if session is None:
-        # A program always gets one at creation; this only covers rows written
-        # before that invariant existed.
+        # Defensive: `create_program` always makes one.
         session = Session(program_id=program_id, index=0)
         db.add(session)
         db.commit()
@@ -68,10 +67,7 @@ def guard_no_active_run(manager: RunManager, db: DBSession, program_id: str) -> 
 
 
 def load_brief(program: Program) -> dict:
-    try:
-        return json.loads(program.brief_json or "{}")
-    except json.JSONDecodeError:
-        return {}
+    return parse_json(program.brief_json)
 
 
 def store_brief(program: Program, brief: dict) -> None:

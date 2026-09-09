@@ -117,12 +117,12 @@ def merge_patch(brief: dict, patch: Any) -> tuple[dict, list[str]]:
     return validated, warnings
 
 
-def validate_brief(payload: Any) -> tuple[dict, list[str]]:
+def validate_brief(payload: Any) -> dict:
     """Validate a brief supplied wholesale (the manual-edit path)."""
     if not isinstance(payload, dict):
         raise BriefImportError("Expected a JSON object.")
     try:
-        return DesignBrief.model_validate(payload).model_dump(), []
+        return DesignBrief.model_validate(payload).model_dump()
     except ValidationError as exc:
         raise BriefImportError(_summarize(exc)) from exc
 

@@ -295,7 +295,6 @@ export interface RunDetail {
   run: RunSummary
   stats: RunStats
   brief_preview: BriefPreview
-  graph_available: boolean
 }
 
 // ── the alignment graph ──────────────────────────────────────────────────────
@@ -457,9 +456,6 @@ export interface HelloPayload {
   error: string
   model_name: string
   stats: RunStats
-  graph_rev: number
-  contexts_rev?: number
-  violations_rev?: number
   replay?: boolean
 }
 

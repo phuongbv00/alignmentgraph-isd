@@ -1,18 +1,12 @@
 """The deep, per-field JSON Schema for every submit-able artifact.
 
-Until 2026-09-08 the model saw two declarations of an artifact's shape: a
-literal JSON-example block in the stage's own prompt turn
-(``AgenticStep.task_block()``, interpolating a ``rulebook.SCHEMA_*`` string)
-and a deliberately shallow top-level-only schema bound as the ``submit_*``
-tool's ``parameters``. The two cost double the tokens for the same
-information and the second was kept shallow specifically so it would never
-fork from the shape declared elsewhere.
-
-This module is that "elsewhere" for the field-level SHAPE (types, nesting,
-enums): the tool ``parameters`` schema is now built from here, and
-``task_block()`` no longer restates it as text — only the RULES_* prose
-(cross-field, referential and judgment-call constraints no JSON Schema can
-express) still travels in the prompt. Two things keep this from forking:
+This module is the SOLE declaration of an artifact's field-level SHAPE
+(types, nesting, enums): the ``submit_*`` tool's ``parameters`` schema is
+built from here and the stage prompt does not restate it as text — only the
+RULES_* prose (cross-field, referential and judgment-call constraints no JSON
+Schema can express) travels in the prompt. Restating the shape as a JSON
+example in the prompt cost double the tokens for the same information. Two
+things keep this from forking:
 
 * Where ``core/validation.py`` already type-checks a field (today, the six
   ``implementation_plan`` sub-artifacts), the schema here is DERIVED from
@@ -50,9 +44,7 @@ def _from_validation(field_key: str, *, exclude: tuple[str, ...] = ()) -> dict:
     straight off ``validation._NESTED_FIELDS`` rather than retyped — the
     piece that keeps this module from forking away from the validator for
     the artifacts it already type-checks. List fields are typed as arrays of
-    string: every one of the six artifacts' list fields is a plain string
-    list in ``rulebook``'s own former JSON examples, and ``validation.py``
-    itself checks no deeper than "is a list"."""
+    string: ``validation.py`` checks no deeper than "is a list"."""
     spec = validation._NESTED_FIELDS["implementation_plan"][field_key]
     properties: dict = {}
     required: list[str] = []
@@ -77,6 +69,10 @@ def _arr(items: str = "string") -> dict:
     return {"type": "array", "items": {"type": items}}
 
 
+def _arr_of(item_schema: dict) -> dict:
+    return {"type": "array", "items": item_schema}
+
+
 _BLOOM = {"type": "string", "enum": list(rules.BLOOM_LEVELS)}
 _BLOOM_VERB = {"type": "string", "enum": list(rules.BLOOM_VERBS)}
 _EVIDENCE = {"type": "string", "enum": list(rules.EVIDENCE_TYPES)}
@@ -88,9 +84,9 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
     # ── analysis (submitted piecemeal, one of these five per call) ─────────
     "needs_analysis": _obj({
         "problem_definition": {"type": "string"},
-        "gaps": _arr("object") | {"items": _obj({
+        "gaps": _arr_of(_obj({
             "id": {"type": "string"}, "description": {"type": "string"},
-            "evidence": {"type": "string"}}, ("id", "description"))},
+            "evidence": {"type": "string"}}, ("id", "description"))),
         "performance_analysis": {"type": "string"},
         "priority_matrix": _obj({
             "high": _arr(), "medium": _arr(), "low": _arr()}),
@@ -104,31 +100,31 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
         "challenges": _arr(),
     }),
     "context_analysis": _obj({
-        "constraints": _arr("object") | {"items": _obj({
+        "constraints": _arr_of(_obj({
             "id": {"type": "string"}, "description": {"type": "string"}},
-            ("id", "description"))},
+            ("id", "description"))),
         "environment": {"type": "string"},
         "duration": {"type": "string"},
         "resources": _arr(),
     }),
     "task_analysis": _obj({
-        "topics": _arr("object") | {"items": _obj({
+        "topics": _arr_of(_obj({
             "id": {"type": "string"}, "topic": {"type": "string"},
-            "subtopics": _arr()}, ("id", "topic"))},
+            "subtopics": _arr()}, ("id", "topic"))),
         "prerequisites": _arr(),
         "entry_behaviors": _arr(),
-        "initial_objectives": _arr("object") | {"items": _obj({
+        "initial_objectives": _arr_of(_obj({
             "draft": {"type": "string"}, "critique": {"type": "string"},
-            "revision": {"type": "string"}})},
+            "revision": {"type": "string"}})),
         "review_summary": {"type": "string"},
     }),
     "improvement_plan": _obj({
         "feedback_summary": {"type": "string"},
-        "improvements": _arr("object") | {"items": _obj({
+        "improvements": _arr_of(_obj({
             "id": {"type": "string"},
             "addresses_gap": {"type": "string",
                               "description": "an existing gap id from needs_analysis.gaps"},
-            "action": {"type": "string"}}, ("id", "addresses_gap", "action"))},
+            "action": {"type": "string"}}, ("id", "addresses_gap", "action"))),
         "next_iteration_goals": _arr(),
         "feedback_loop": {"type": "string"},
     }, ("improvements",)),
@@ -153,19 +149,19 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
         "formative_methods": _arr(),
         "pilot_data_plan": _obj({
             "collection_points": _arr(),
-            "anticipated_difficulties": _arr("object") | {"items": _obj({
+            "anticipated_difficulties": _arr_of(_obj({
                 "area": {"type": "string"}, "rationale": {"type": "string"},
                 "detected_by": {"type": "string"}, "first_revision": {"type": "string"}},
-                ("area", "rationale", "detected_by", "first_revision"))},
+                ("area", "rationale", "detected_by", "first_revision"))),
         }, ("anticipated_difficulties",)),
     }, ("lo_coverage_targets", "pilot_data_plan")),
     "assessment_dev_plan": _obj({
-        "instrument_sets": _arr("object") | {"items": _obj({
+        "instrument_sets": _arr_of(_obj({
             "set_id": {"type": "string"}, "objectives": _arr(),
             "plan_categories": {"type": "array", "items": _PLAN_CATEGORY},
             "expected_items": {"type": "integer"},
             "instrument_hint": {"type": "string"}, "rationale": {"type": "string"}},
-            ("set_id", "objectives", "plan_categories", "expected_items"))},
+            ("set_id", "objectives", "plan_categories", "expected_items"))),
     }, ("instrument_sets",)),
     #: Item schema — the fan-out's ``assessment_tools`` (assessment items).
     "assessment_tools": _obj({
@@ -173,23 +169,23 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
         "options": _arr(), "correct_answer": {"type": "string"},
         "aligned_objective": {"type": "string"}, "plan_category": _PLAN_CATEGORY,
         "required_cognitive_process": _BLOOM, "scoring_criteria": {"type": "string"},
-        "rubric": _arr("object") | {"items": _obj({
+        "rubric": _arr_of(_obj({
             "id": {"type": "string"}, "description": {"type": "string"},
             "evidence_type": _EVIDENCE,
             "levels": _obj({"excellent": {"type": "string"},
                             "satisfactory": {"type": "string"},
                             "needs_improvement": {"type": "string"}})},
-            ("id", "description", "evidence_type"))},
+            ("id", "description", "evidence_type"))),
     }, ("type", "question", "aligned_objective", "plan_category",
         "required_cognitive_process", "rubric")),
 
     # ── activities ───────────────────────────────────────────────────────
     "instructional_strategies": _obj({
         "model": {"type": "string"},
-        "sequence": _arr("object") | {"items": _obj({
+        "sequence": _arr_of(_obj({
             "event": {"type": "string"}, "activity": {"type": "string"},
             "duration": {"type": "string"}, "resources": _arr()},
-            ("event", "activity"))},
+            ("event", "activity"))),
         "methods": _arr(), "rationale": {"type": "string"},
     }, ("sequence",)),
     "non_instructional_strategies": _obj({
@@ -197,11 +193,11 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
         "support_strategies": _arr(),
     }),
     "activity_dev_plan": _obj({
-        "activity_blocks": _arr("object") | {"items": _obj({
+        "activity_blocks": _arr_of(_obj({
             "set_id": {"type": "string"}, "objectives": _arr(),
             "block_theme": {"type": "string"}, "expected_activities": {"type": "integer"},
             "rationale": {"type": "string"}},
-            ("set_id", "objectives", "expected_activities"))},
+            ("set_id", "objectives", "expected_activities"))),
     }, ("activity_blocks",)),
     #: Item schema — the fan-out's ``learning_activities``.
     "learning_activities": _obj({
@@ -248,11 +244,11 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
     "instructor_guide": _from_validation("instructor_guide", exclude=("session_guides",)),
     "operator_manual": _from_validation("operator_manual"),
     "implementation_dev_plan": _obj({
-        "session_blocks": _arr("object") | {"items": _obj({
+        "session_blocks": _arr_of(_obj({
             "set_id": {"type": "string"}, "expected_sessions": {"type": "integer"},
             "activity_ids": _arr(), "material_ids": _arr(),
             "block_theme": {"type": "string"}, "rationale": {"type": "string"}},
-            ("set_id", "expected_sessions", "activity_ids"))},
+            ("set_id", "expected_sessions", "activity_ids"))),
     }, ("session_blocks",)),
     #: Item schema — the fan-out's ``session_guides``.
     "session_guides": _obj({

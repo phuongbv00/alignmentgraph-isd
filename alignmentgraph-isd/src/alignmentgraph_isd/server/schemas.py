@@ -171,7 +171,6 @@ class RunDetail(BaseModel):
     run: RunSummary
     stats: dict[str, Any] = {}
     brief_preview: dict[str, Any] = {}
-    graph_available: bool = False
 
 
 class GraphNode(BaseModel):

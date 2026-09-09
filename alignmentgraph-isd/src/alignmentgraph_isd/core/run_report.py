@@ -12,11 +12,8 @@ relation coverage — the auditability claim), and a second module claiming it
 would put two meanings on the term the work stakes a claim on. Nothing here
 looks at the design at all.
 
-It is a leaf on purpose. These helpers were in ``core/runner.py`` until
-2026-09-05, which made the dependency a cycle — ``runner`` reached the executor
-and the executor reached back for these — and the only thing holding it
-together was a deferred import inside the entry point. Nothing here imports
-``core/agentic/`` or ``core/runner.py``, so that import is now ordinary.
+A leaf on purpose: nothing here imports ``core/agentic/`` or
+``core/runner.py``, so ``runner`` can import it at module level.
 """
 from __future__ import annotations
 

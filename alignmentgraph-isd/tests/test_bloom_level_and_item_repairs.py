@@ -5,12 +5,11 @@
    passed every round silently — measured on a real run, 4 of 5 arms shipped
    one. The field is also what the evaluator's Bloom sanity check reads, so an
    unvalidated value there is an unvalidated instrument.
-2. A coverage repair that must supply a MISSING assessment item asks the model
-   to write it. The old template put the objective's own statement into the
-   item's ``question``, which reads to any text-similarity measure as
-   near-perfect objective-assessment correspondence no design work produced —
-   and only the graph arm runs these cross-artifact repairs, so the artefact
-   landed on exactly the axis the ablation compares.
+2. A coverage repair never WRITES a missing assessment item: a template that
+   put the objective's own statement into the item's ``question`` read to any
+   text-similarity measure as near-perfect objective-assessment correspondence
+   no design work produced — and only the graph arm runs these cross-artifact
+   repairs, so the artefact landed on exactly the axis the ablation compares.
 """
 from __future__ import annotations
 
@@ -27,7 +26,7 @@ def _objective(level: str, verb: str = "design") -> dict:
     return {"id": "ILO-01", "level": level, "statement": _STATEMENT, "bloom_verb": verb}
 
 
-def _ctx(graph, llm_response: str = "") -> repairs.RepairContext:
+def _ctx(graph) -> repairs.RepairContext:
     return repairs.RepairContext(
         graph=graph, store=None, trajectory=TrajectoryLogger(), actor="Test")
 

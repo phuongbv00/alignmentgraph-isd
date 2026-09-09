@@ -32,7 +32,7 @@ class EventKind:
     PHASE_FINISHED = "phase_finished"
     LLM_STARTED = "llm_started"
     LLM_FINISHED = "llm_finished"
-    # One entry of the deep trajectory: a graph read, a relation walk, a node
+    # One entry of the deep trajectory: a graph read, a node
     # write, an alignment edge, a model call, a check, a repair.
     ACTION = "action"
     AGENT_STEP = "agent_step"
@@ -295,8 +295,8 @@ class RunRegistry:
         self._runs: dict[str, RunState] = {}
         self._lock = threading.Lock()
 
-    def create(self, run_id: str, program_id: str, model_name: str = "") -> RunState:
-        state = RunState(run_id=run_id, program_id=program_id, model_name=model_name)
+    def create(self, run_id: str, program_id: str) -> RunState:
+        state = RunState(run_id=run_id, program_id=program_id)
         with self._lock:
             self._runs[run_id] = state
         return state

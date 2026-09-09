@@ -19,9 +19,7 @@ holds ``graph = None``, so a stray call raises rather than leaking silently.
 kept every ``from .alignment_graph import AlignmentGraph, NodeType`` import
 site working unchanged.
 """
+from . import alignment, audit, viz
 from .graph import AlignmentGraph, NodeType
-from . import alignment
-from . import audit
-from . import viz
 
 __all__ = ["AlignmentGraph", "NodeType", "alignment", "audit", "viz"]

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import threading
 import time
 from collections import Counter
@@ -197,15 +198,6 @@ _RECOVERY_ACTIONS = frozenset({
 WORKFLOW_ORCHESTRATOR = "WorkflowOrchestrator"
 
 
-def _recovery_action(name: str) -> tuple[TrajectoryAction, dict]:
-    """Map a recovery call site to the public taxonomy. An unknown name is a
-    loud ValueError: no ``repair_*`` mapping exists here because the
-    deterministic toolbox already records each repair as ONE structured
-    ``log_repair_event`` (rule + narrative included), and a second mapping
-    here would silently double-count it."""
-    return TrajectoryAction(name), {}
-
-
 class TrajectoryLogger:
     """Accumulates the run trace, and — optionally — mirrors it live.
 
@@ -253,7 +245,7 @@ class TrajectoryLogger:
         # One chronological action log ("at time t, agent A did X"):
         # recovery / node_edit / validation / check / repair / retrieval.
         # Filter by their taxonomy action instead of keeping six parallel streams; the
-        # ``*_events`` / ``node_edits`` properties below are those filters.
+        # ``*_events`` properties below are those filters.
         self.events: list[dict] = []
         self.llm_calls: int = 0
         self.token_usage: dict = {"prompt_tokens": 0, "completion_tokens": 0}
@@ -363,10 +355,6 @@ class TrajectoryLogger:
         return self._events_of(_RECOVERY_ACTIONS)
 
     @property
-    def node_edits(self) -> list[dict]:
-        return self._events_of(frozenset({TrajectoryAction.NODE_ADD, TrajectoryAction.NODE_UPDATE}))
-
-    @property
     def validation_events(self) -> list[dict]:
         return self._events_of(TrajectoryAction.VALIDATE)
 
@@ -377,10 +365,6 @@ class TrajectoryLogger:
     @property
     def repair_events(self) -> list[dict]:
         return self._events_of(TrajectoryAction.REPAIR)
-
-    @property
-    def retrieval_events(self) -> list[dict]:
-        return self._events_of(TrajectoryAction.RETRIEVAL)
 
     def log_action(self, action: TrajectoryAction | str, *, agent: str = "", **context) -> dict:
         """Record one thing an agent did, and mirror it to any live consumer."""
@@ -489,8 +473,11 @@ class TrajectoryLogger:
         it. Call this instead of ``log_step`` for anything that is not the
         final, successful, judge-visible result of a Designer's turn."""
         agent_name = self._identity or agent_name
-        taxonomy_action, action_context = _recovery_action(action)
-        context = {**action_context, "input_summary": input_summary, "output_summary": output_summary}
+        # An unknown name is a loud ValueError: the deterministic toolbox
+        # records each repair as ONE ``log_repair_event``, and a mapping here
+        # would double-count it.
+        taxonomy_action = TrajectoryAction(action)
+        context = {"input_summary": input_summary, "output_summary": output_summary}
         self._record_event(taxonomy_action, "recovery_event", agent=agent_name, **context)
         self.log_action(taxonomy_action, agent=agent_name, **context)
 
@@ -500,9 +487,7 @@ class TrajectoryLogger:
                            node_type=node_type)
 
     def log_llm_call(self, prompt_tokens: int = 0, completion_tokens: int = 0) -> None:
-        # Concurrent specialists can each finish a model call at the same
-        # moment; += is a read-modify-write and would silently lose counts
-        # without this.
+        # See ``_counter_lock``.
         with self._counter_lock:
             self.llm_calls += 1
             self.token_usage["prompt_tokens"] += prompt_tokens

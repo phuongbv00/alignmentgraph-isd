@@ -61,9 +61,6 @@ def hello_payload(state: RunState) -> dict:
         "error": state.error,
         "model_name": state.model_name,
         "stats": state.public_stats(),
-        "graph_rev": state.graph_rev,
-        "contexts_rev": state.contexts_rev,
-        "violations_rev": state.violations_rev,
     }
 
 
@@ -90,6 +87,9 @@ async def live_stream(
 
     cursor = after
     while True:
+        # Cleared BEFORE the scan, so a wakeup that lands while a frame is being
+        # yielded is kept for the wait below instead of erased by a clear after it.
+        wakeup.clear()
         if await request.is_disconnected():
             return
 
@@ -114,7 +114,6 @@ async def live_stream(
             # stops EventSource reconnecting forever. The client closes on its side.
             return
 
-        wakeup.clear()
         try:
             await asyncio.wait_for(wakeup.wait(), timeout=HEARTBEAT_SECONDS)
         except asyncio.TimeoutError:

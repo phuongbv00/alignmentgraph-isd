@@ -57,21 +57,6 @@ _FALLBACK_REPLY = (
 )
 
 
-def configuration_error() -> str:
-    return llm_settings.probe()
-
-
-def model_name() -> str:
-    """The configured model's name, for display.
-
-    Reported from the configuration rather than by building a client and
-    inspecting it: construction can fail for reasons that have nothing to do
-    with the name (a missing key, an unreachable endpoint), and a label that
-    silently goes blank in those cases is worse than no label at all.
-    """
-    return llm_settings.resolve().model_name
-
-
 def plan_turn(history: list[dict], brief: dict, user_message: str) -> dict:
     """One planning turn.
 

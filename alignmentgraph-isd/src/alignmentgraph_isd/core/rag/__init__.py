@@ -1,4 +1,4 @@
-from .agent import RetrievalTool, RetrievalAgent, RetrievalAgentRegistry
+from .agent import RetrievalAgent, RetrievalAgentRegistry, RetrievalTool
 from .planner import RetrievalPlanner
 
 __all__ = [

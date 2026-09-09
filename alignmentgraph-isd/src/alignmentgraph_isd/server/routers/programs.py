@@ -4,7 +4,15 @@ from __future__ import annotations
 import json
 import shutil
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Response,
+    UploadFile,
+    status,
+)
 from sqlmodel import Session as DBSession
 from sqlmodel import select
 
@@ -132,10 +140,10 @@ def replace_brief(
     program = load_program(db, program_id)
     guard_no_active_run(manager, db, program_id)
     try:
-        brief, warnings = briefs.validate_brief(payload.brief)
+        brief = briefs.validate_brief(payload.brief)
     except briefs.BriefImportError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
-    return _store(db, program, brief, warnings)
+    return _store(db, program, brief, [])
 
 
 @router.post("/{program_id}/brief/import", response_model=BriefResponse)

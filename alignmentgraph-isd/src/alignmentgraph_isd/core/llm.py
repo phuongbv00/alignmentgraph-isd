@@ -3,7 +3,7 @@
 The core harness never constructs an LLM itself — it only consumes an injected
 ``llm_factory`` (see ``HarnessRunConfig.llm_factory``). Benchmark integrations
 supply that factory from ``shared.llm``. This module gives the *standalone* paths
-(the CLI, scripts, the planned app) a way to build the same kind of factory from
+(the CLI, scripts, the demo app) a way to build the same kind of factory from
 CLI flags / environment variables **without** depending on the benchmark.
 
 The provider client libraries (``langchain-openai`` / ``langchain-anthropic``)

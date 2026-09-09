@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session as DBSession
 
-from .. import llm_settings, planner
+from .. import llm_settings
 from ..db import get_session
 from ..models import LLMConnection
 from ..runner import RunManager
@@ -34,10 +34,13 @@ def health(
     rather than letting someone fill in a whole brief and only then find out
     there is no model behind it.
     """
-    error = planner.configuration_error()
+    error = llm_settings.probe()
+    # The name comes from the configuration, not from a built client: construction
+    # can fail for reasons unrelated to the name, and a label that silently goes
+    # blank then is worse than none.
     return HealthResponse(
         llm_configured=not error,
-        model_name=planner.model_name(),
+        model_name=llm_settings.resolve().model_name,
         model_error=error,
         active_runs=len(manager.registry.active()),
         max_concurrent_runs=settings.max_concurrent_runs,
