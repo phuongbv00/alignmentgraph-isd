@@ -24,9 +24,11 @@ interface Props {
   brief: Brief
   graph: AlignmentGraphPayload | null
   /** The run's ledger, so a node's failed checks can show their own words
-   *  rather than a type name. Empty while a run is going — a finding's outcome
-   *  is not known until the last look settles it — which is why the FAILED
-   *  LIST comes from the graph and only the wording comes from here. */
+   *  rather than a type name. It now fills in WHILE a run is going, so these
+   *  words appear as the checks run rather than only at the end. The FAILED
+   *  LIST still comes from the graph and only the wording comes from here:
+   *  the graph is what the node itself records, and a finding's outcome stays
+   *  provisional until the last look settles it. */
   findings: Finding[]
   runId: string | null
   collapsed: boolean

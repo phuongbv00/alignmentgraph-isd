@@ -121,3 +121,59 @@ def _graph_attaching(on_event, graph: AlignmentGraph, design_brief: DesignBrief)
         on_event("graph_snapshot", graph.to_full_dict(design_brief_id=design_brief.id))
 
     return emit
+
+
+def _ledger_attaching(on_event, memory):
+    """Wrap a consumer so it also receives ``violations_snapshot`` events.
+
+    The ledger of what a run found wrong (``core.memory.Memory``) is the same
+    kind of thing as the graph: live state in the run's own scope, not part of
+    any recorded stream, and the thing a viewer most wants to watch fill in.
+    So it is attached the same way, where the object is in hand.
+
+    REV-GATED, not time-throttled. A real run mutates the ledger ~80-150 times
+    (six owned families x ``SELF_VALIDATION_BUDGET`` rounds x ~2 mutators, once
+    for the per-stage net and again in ``_reconcile``, plus the agent tier's
+    ``_own_violations``/``_budget_stopped``) — roughly one every 2-4 seconds
+    over a 4-7 minute run, already below any interval worth imposing. But
+    ``RunState.append`` notifies on essentially every trajectory event, so a
+    wrapper that fired on each of them would send ~400 frames, most of them
+    byte-identical. The dedup that pays is on THIS side, and one integer
+    comparison is the whole of it.
+
+    Emits to the RAW consumer it was handed, so a snapshot never re-enters
+    ``_graph_attaching`` — see the composition order in ``core/agentic/run.py``.
+    Graph-snapshot cadence is unchanged by this wrapper existing.
+
+    Never touches ``trajectory``: the ledger is not folded into it (the judge
+    reads that and the benchmark compares it across arms), and going out
+    through the consumer directly rather than through ``TrajectoryLogger.emit``
+    makes that structural rather than a rule to remember.
+
+    One aliasing note, because ``events.py`` asks for pre-serialized state:
+    ``Finding.as_dict`` copies ``metadata`` shallowly, so a list-valued entry
+    (``{"item_ids": [...]}``) is shared with whatever holds the frame. Safe as
+    written — metadata is copied at first sighting and each check round builds
+    fresh ``Violation`` objects rather than mutating the old ones — so this is
+    said rather than paid for with a deep copy of every finding, every frame.
+    """
+    # Starts at the ledger's OWN starting revision, not below it: a run that
+    # has not written a finding yet has nothing to say, and opening every run
+    # with an empty frame would set `RunState.violations` to `[]` — which reads
+    # as falsy, so `_live_or_persisted` would fall through to a `violations.json`
+    # that does not exist yet. A clean run simply never sends one.
+    sent_rev = memory.findings_rev
+
+    def emit(kind: str, payload: dict) -> None:
+        nonlocal sent_rev
+        on_event(kind, payload)
+        if memory.findings_rev == sent_rev:
+            return
+        sent_rev = memory.findings_rev
+        # A dict, like every other payload on this channel: `on_event` is typed
+        # `(kind, payload: dict)` and consumers read it as one. The findings go
+        # out under a key rather than as the payload itself.
+        on_event("violations_snapshot",
+                 {"findings": [f.as_dict() for f in memory.findings]})
+
+    return emit

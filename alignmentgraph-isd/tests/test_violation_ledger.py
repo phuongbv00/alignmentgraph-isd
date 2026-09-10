@@ -16,7 +16,7 @@ import pytest
 from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core import checks
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph
-from alignmentgraph_isd.core.memory import Memory
+from alignmentgraph_isd.core.memory import Finding, Memory
 
 from conftest import FakeChatModel, load_brief, run_brief
 
@@ -244,7 +244,82 @@ def test_a_budget_stop_is_not_overwritten_by_a_later_convergence():
 @pytest.mark.parametrize("agent_mode", ["multi", "single"])
 def test_the_ledger_is_not_folded_into_the_trajectory(agent_mode):
     """The judge reads the trajectory and the benchmark compares it across
-    arms. A per-finding history there would change what is measured."""
+    arms. A per-finding history there would change what is measured.
+
+    Now that the ledger is also PUBLISHED as it fills, the snapshot must not
+    leak into the recorded streams either: it goes out through the consumer
+    directly, never through ``TrajectoryLogger``'s recorded actions."""
     result = _run(agent_mode)
     for key in ("trajectory", "trajectory_deep"):
         assert "violations" not in result[key]
+    actions = result["trajectory_deep"].get("actions") or []
+    assert not any(a.get("action") == "violations_snapshot" for a in actions)
+
+
+# ── published while the run is still going ──────────────────────────────────
+
+def _snapshots(agent_mode: str = "multi", **config):
+    """Run the harness with a watcher and keep every ledger it published."""
+    seen: list[list[dict]] = []
+
+    def on_event(kind, payload):
+        if kind == "violations_snapshot":
+            seen.append(payload["findings"])
+
+    cfg = HarnessRunConfig(agent_mode=agent_mode, **config)
+    cfg.llm_factory = lambda: FakeChatModel()
+    result = run_brief(load_brief("java_oop_brief.json"), cfg, on_event=on_event)
+    return seen, result
+
+
+@pytest.mark.parametrize("agent_mode", ["multi", "single"])
+def test_the_ledger_is_published_while_the_run_is_still_going(agent_mode):
+    """The Violations tab used to stay empty for the whole 4-7 minutes and fill
+    in at the end. The ledger is state, like the graph and the transcripts, so
+    it is published as it is written — a viewer watches findings appear and
+    move from open to repaired instead of seeing the result of that.
+
+    The last thing published is what the run returns: `settle` runs inside the
+    harness and its frame goes out on the reconcile phase's exit, so a watcher
+    that saw every frame ends on the SETTLED ledger and needs no re-fetch.
+    """
+    seen, result = _snapshots(agent_mode)
+
+    assert len(seen) > 1, "a ledger published once is the behaviour this replaced"
+    counts = [len(s) for s in seen]
+    assert counts == sorted(counts), (
+        "a finding is never removed, only re-outcomed, so the ledger only grows")
+    assert seen[-1] == result["violations"], "the last frame is the settled ledger"
+
+
+def test_a_ledger_that_did_not_change_is_not_republished():
+    """What the revision counter buys over a time throttle.
+
+    The producer is hooked to the event stream, which wakes on nearly every
+    trajectory event — far more often than a finding is written. Gating on
+    `Memory.findings_rev` means a frame is only ever sent for a ledger that
+    actually moved, so no two consecutive frames can be identical."""
+    seen, _ = _snapshots()
+    assert all(a != b for a, b in zip(seen, seen[1:]))
+
+
+def test_nobody_watching_never_serializes_the_ledger(monkeypatch):
+    """The benchmark must not pay to serve a viewer that is not there.
+
+    Emitting is a no-op without a consumer, but BUILDING the payload is not —
+    the same rule `emit_context` follows. Here it is stronger than a gate: with
+    no consumer the wrapper is never constructed, so `as_dict` is not called
+    once. What the run itself returns is built from the findings directly."""
+    calls = Counter()
+    original = Finding.as_dict
+    monkeypatch.setattr(
+        Finding, "as_dict",
+        lambda self: (calls.update(["as_dict"]), original(self))[1])
+
+    cfg = HarnessRunConfig()
+    cfg.llm_factory = lambda: FakeChatModel()
+    result = run_brief(load_brief("java_oop_brief.json"), cfg, on_event=None)
+
+    assert result["violations"], "the fixture must actually find something"
+    assert calls["as_dict"] == len(result["violations"]), (
+        "only the run's own result serialized the ledger; nothing published it")

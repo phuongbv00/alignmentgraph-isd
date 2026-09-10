@@ -100,6 +100,19 @@ export default function App() {
   // The COUNT ON THE TAB is what is still open, not what was ever found: a run
   // that found twelve problems and fixed eleven is a good run, and a tab
   // reading "12" says the opposite.
+  //
+  // Shown for any run, INCLUDING zero. The other tabs hide a zero, but they are
+  // never actually zero once a run is under way, so hiding it there costs
+  // nothing; this one is legitimately zero — that is the outcome the design is
+  // aiming at — and a bare "Violations" then reads as a tab that has not loaded
+  // rather than as a clean run. It was already inconsistent with itself: a run
+  // that found problems and repaired them all has `findings` yet zero open, so
+  // it printed "(0)" while a run that found nothing printed nothing.
+  // The stream wins whenever it has anything, and it is guaranteed to have the
+  // SETTLED ledger by the end: `Memory.settle` runs inside the harness, its
+  // frame goes out on the reconcile phase's exit, and the SSE follow loop
+  // yields pending violations frames BEFORE it returns on a terminal run. The
+  // fetched copy is what a reload or a replayed run gets.
   const findings = stream.findings.length > 0 ? stream.findings : finishedFindings
   const openFindings = findings.filter((f) => f.outcome === 'open').length
   const deepActions = stream.actions.length > 0 ? stream.actions : finishedDeep
@@ -130,10 +143,12 @@ export default function App() {
   // transcript from the last fetch — which is why the row says how many turns
   // it has now, so a stale body is visible as stale rather than passing for
   // current.
-  // The ledger is fetched, not streamed progressively: a finding's outcome is
-  // not known until the run's last look has settled it, so there is no partial
-  // state worth showing. The stream still carries it (one frame, at the end)
-  // for a viewer that was already watching.
+  // Fetched once so a reload mid-run, and a finished run replayed from disk,
+  // both start with what the ledger holds — `_live_or_persisted` answers from
+  // live state while the run is in the registry and from violations.json after.
+  // The stream takes over from there and needs no phase-boundary re-fetch the
+  // way the contexts do: a violations frame carries the whole ledger, where a
+  // context row carries only its head.
   useEffect(() => {
     setFinishedFindings([])
     if (!runId || stream.status === 'idle') return
@@ -349,7 +364,7 @@ export default function App() {
                 Context{liveContextCount > 0 ? ` (${liveContextCount})` : ''}
               </button>
               <button className={`tab${tab === 'violations' ? ' active' : ''}`} onClick={() => setTab('violations')}>
-                Violations{findings.length > 0 ? ` (${openFindings})` : ''}
+                Violations{stream.status !== 'idle' ? ` (${openFindings})` : ''}
               </button>
               <button className={`tab${tab === 'graph' ? ' active' : ''}`} onClick={() => setTab('graph')}>
                 Graph{graph ? ` (${graph.nodes.length})` : ''}

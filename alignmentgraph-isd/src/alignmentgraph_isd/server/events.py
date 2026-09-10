@@ -96,6 +96,9 @@ class RunState:
     #: Every distinct finding of the run, latest state, in first-seen order.
     #: Published whole rather than incrementally: unlike a transcript a finding
     #: is small, and unlike the graph it is a list the tab renders directly.
+    #: Replaced as the run goes — the harness republishes the whole ledger
+    #: whenever a finding is written — so like `contexts` this is state, and
+    #: only its latest form is worth reading.
     violations: list[dict] = field(default_factory=list)
     violations_rev: int = 0
 
@@ -162,9 +165,14 @@ class RunState:
         # `llm_finished` bracket every model call, which is what the turns are.
 
     def set_violations(self, findings: list[dict]) -> None:
-        """Replace the ledger. Like `add_context`, deliberately WITHOUT a
-        `_notify()`: the frame rides the next event's wakeup, and waking the
-        stream on its own drains it ahead of the events.jsonl flusher."""
+        """Replace the ledger, which the harness republishes whole every time
+        it writes a finding.
+
+        Like `add_context`, deliberately WITHOUT a `_notify()`: the frame rides
+        the next event's wakeup, and waking the stream on its own drains it
+        ahead of the events.jsonl flusher. There is always one close behind —
+        the producer only emits from inside the consumer chain, so an event has
+        just gone through."""
         with self._lock:
             self.violations = list(findings)
             self.violations_rev += 1

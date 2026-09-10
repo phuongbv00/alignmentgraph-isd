@@ -222,6 +222,7 @@ class Memory:
         self._transcript_index: dict[str, int] = {}
         self._plans: dict[str, list[Plan]] = {}
         self._findings: dict[str, Finding] = {}
+        self._findings_rev = 0
 
     # ── the substrate ───────────────────────────────────────────────────────
     @classmethod
@@ -280,6 +281,28 @@ class Memory:
         return tuple(plan for rounds in self._plans.values() for plan in rounds)
 
     # ── findings ────────────────────────────────────────────────────────────
+    def _write(self, key: str, finding: Finding) -> None:
+        """The ONE way a finding is written, so the revision cannot be
+        forgotten.
+
+        Every mutator below rebuilds a frozen ``Finding`` and puts it back;
+        routing all of them through here means a future fifth mutator has to
+        touch the private dict directly to bypass the counter, which is a
+        review-visible act in a way a forgotten call never is."""
+        self._findings[key] = finding
+        self._findings_rev += 1
+
+    @property
+    def findings_rev(self) -> int:
+        """Bumped on every write. What a live watcher polls to know the ledger
+        moved, so it never re-serializes one that has not.
+
+        A counter and not a callback: `Memory` still stores and does not
+        decide. It publishes nothing and calls nobody, which is also why it
+        cannot become a cancellation point — the consumer that raises
+        ``HarnessCancelled`` stays on the emit side, where it already was."""
+        return self._findings_rev
+
     def observe_violations(self, violations, *, round: int, phase: str = "",
                            family: str = "", shown_to_agent: bool = False):
         """Record one check round. Returns the key set it saw.
@@ -297,7 +320,7 @@ class Memory:
             existing = self._findings.get(key)
             message = violation.message
             if existing is None:
-                self._findings[key] = Finding(
+                self._write(key, Finding(
                     key=key, node_id=violation.node_id, edge_type=violation.edge_type,
                     violation_type=violation.violation_type, severity=violation.severity,
                     repair_hint=violation.repair_hint, metadata=dict(violation.metadata),
@@ -311,9 +334,9 @@ class Memory:
                     open_reason=("unowned"
                                  if violation.violation_type not in repairs.OWNER_BY_VIOLATION
                                  else ""),
-                )
+                ))
                 continue
-            self._findings[key] = replace(
+            self._write(key, replace(
                 existing,
                 last_round=round,
                 sightings=existing.sightings + 1,
@@ -322,7 +345,7 @@ class Memory:
                 target_designer=violation.target_designer or existing.target_designer,
                 messages=(existing.messages if message in existing.messages
                           else existing.messages + (message,)),
-            )
+            ))
         return frozenset(seen)
 
     def credit_repair(self, closed, *, by: str, round: int, harness: bool) -> None:
@@ -337,9 +360,9 @@ class Memory:
             existing = self._findings.get(key)
             if existing is None or existing.outcome != "open":
                 continue
-            self._findings[key] = replace(
+            self._write(key, replace(
                 existing, repaired_by=by, repaired_at_round=round, open_reason="",
-                outcome="repaired_by_harness" if harness else "repaired_by_agent")
+                outcome="repaired_by_harness" if harness else "repaired_by_agent"))
 
     #: Which reason survives when a finding collects more than one.
     #:
@@ -366,12 +389,12 @@ class Memory:
                 # Already explained by something at least as strong; only the
                 # round of an actual convergence is still worth recording.
                 if reason == "converged" and not existing.converged_at_round:
-                    self._findings[key] = replace(existing, converged_at_round=round)
+                    self._write(key, replace(existing, converged_at_round=round))
                 continue
-            self._findings[key] = replace(
+            self._write(key, replace(
                 existing, open_reason=reason,
                 converged_at_round=round if reason == "converged"
-                else existing.converged_at_round)
+                else existing.converged_at_round))
 
     def settle(self, open_keys) -> None:
         """Called once on the run's final re-derived residual.
@@ -383,12 +406,12 @@ class Memory:
         for key, finding in list(self._findings.items()):
             if key in remaining:
                 if not finding.open_reason:
-                    self._findings[key] = replace(finding, open_reason="unexplained")
+                    self._write(key, replace(finding, open_reason="unexplained"))
                 continue
             if finding.outcome == "open":
-                self._findings[key] = replace(
+                self._write(key, replace(
                     finding, outcome="repaired_by_agent" if finding.shown_to_agent
-                    else "repaired_by_harness", open_reason="")
+                    else "repaired_by_harness", open_reason=""))
 
     @property
     def findings(self) -> tuple[Finding, ...]:

@@ -8,9 +8,11 @@ import type { Finding } from '../api/types'
 interface Props {
   findings: Finding[]
   runId: string | null
-  /** A run still going exports what has been found so far, and the file says
-   *  so in its name — an outcome column read off a live run is provisional in
-   *  a way a finished one is not. */
+  /** Whether the run is still going. The ledger streams as it fills, so this
+   *  tab is provisional while that is true: a row's outcome can still change,
+   *  and the export says so in its filename. Only the WORDING depends on it —
+   *  whether a finding has been explained yet is read off the finding itself
+   *  (`openReasonLabel`), which stays right for a cancelled run too. */
   runActive: boolean
 }
 
@@ -26,6 +28,11 @@ interface Props {
  * Grouped by OUTCOME rather than by type, because the first question about a
  * finished run is "what is still wrong", and the second is "did anything fix
  * it". Within a group, ordered as the run met them.
+ *
+ * LIVE: the ledger is published whenever a finding is written, so rows appear
+ * while the run is still going and move between the groups as the repair net
+ * closes them. That is worth watching, but it means every group here is a
+ * snapshot until the run settles — hence the "so far" wording below.
  */
 export function ViolationGrid({ findings, runId, runActive }: Props) {
   const [openKey, setOpenKey] = useState<string | null>(null)
@@ -33,16 +40,22 @@ export function ViolationGrid({ findings, runId, runActive }: Props) {
     const open = findings.filter((f) => f.outcome === 'open')
     const fixed = findings.filter((f) => f.outcome !== 'open')
     return [
-      { id: 'open', title: 'Still open', rows: open },
+      { id: 'open', title: runActive ? 'Open so far' : 'Still open', rows: open },
       { id: 'fixed', title: 'Repaired', rows: fixed },
     ].filter((g) => g.rows.length > 0)
-  }, [findings])
+  }, [findings, runActive])
 
   if (findings.length === 0) {
+    // Three different nothings, and only the last is a result: no run to speak
+    // of, a run whose checks have not caught up yet, and a run that genuinely
+    // found nothing wrong — which is what the design is aiming at.
     return (
       <div className="empty">
-        Every check the run ran came back clean, or the run has not reached its
-        first check yet.
+        {!runId
+          ? 'No run selected yet.'
+          : runActive
+            ? 'Nothing found yet — the first check has not run, or everything it looked at came back clean.'
+            : 'Every check the run ran came back clean.'}
       </div>
     )
   }
@@ -51,7 +64,8 @@ export function ViolationGrid({ findings, runId, runActive }: Props) {
     <div className="scroll">
       <div className="ctx-toolbar">
         <span className="muted small">
-          {findings.length} distinct finding{findings.length === 1 ? '' : 's'} ·{' '}
+          {findings.length} distinct finding{findings.length === 1 ? '' : 's'}
+          {runActive ? ' so far' : ''} ·{' '}
           {findings.filter((f) => f.outcome === 'open').length} still open
         </span>
         {runId && (

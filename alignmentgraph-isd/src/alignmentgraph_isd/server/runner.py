@@ -188,6 +188,15 @@ class RunManager:
                 state.add_context(payload)
                 return
 
+            if kind == "violations_snapshot":
+                # State, not a forwarded event, for the same reason a context
+                # is: the whole ledger is republished whenever a finding is
+                # written, and only its latest form is worth reading. It is
+                # deliberately absent from `_FORWARDED` so it never becomes an
+                # action on the run's timeline.
+                state.set_violations(payload.get("findings") or [])
+                return
+
             if kind == "graph_snapshot":
                 # Serialized here, on this thread, while the payload is still
                 # the state it describes. See rule 1 in the module docstring.
@@ -221,9 +230,13 @@ class RunManager:
             # rest; the harness's own list (core.memory) is the record, the
             # live one off the event stream is what the page shows meanwhile.
             result.setdefault("contexts", list(state.contexts))
-            # The ledger only exists at the end — a finding's outcome is not
-            # known until the last look has settled it — so unlike the contexts
-            # there is nothing to stream progressively.
+            # The stream already carried the ledger as it filled. This is the
+            # backstop that makes the SETTLED one the last word — `settle` runs
+            # inside the harness and its frame goes out on the reconcile phase's
+            # exit, so this is the same content again — and it is the only form
+            # `write_result` persists. A run that was cancelled or failed
+            # reaches neither: its partial ledger stays in `state` for whoever
+            # is watching and is gone once the registry evicts the run.
             state.set_violations(result.get("violations") or [])
             stats = _stats_from_result(result)
             # The harness is built to survive a failing specialist, so it

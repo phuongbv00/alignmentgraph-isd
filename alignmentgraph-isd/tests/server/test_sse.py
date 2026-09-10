@@ -133,6 +133,37 @@ def test_streaming_an_unknown_run_is_404(client):
     assert client.get("/api/runs/nope/events").status_code == 404
 
 
+def test_the_ledger_streams_live_and_replaces_rather_than_piles_up():
+    """The Violations tab is live too: the harness republishes the whole ledger
+    whenever it writes a finding, so a viewer watches problems appear and move
+    from open to repaired instead of seeing only the settled result.
+
+    Sent WHOLE, unlike the contexts, because a finding is a row rather than a
+    transcript — there is no heavy half to leave behind and fetch per row.
+
+    And, like `add_context`, deliberately without a `_notify()`: waking the
+    stream every time a finding is written would drain it far ahead of the
+    events.jsonl flusher. The frame rides the next event's wakeup, and there is
+    always one close behind — the producer only emits from inside the consumer
+    chain, so an event has just gone through.
+    """
+    from alignmentgraph_isd.server.events import RunState
+
+    state = RunState(run_id="r", program_id="p")
+    state.set_violations([{"key": "a", "outcome": "open", "open_reason": ""}])
+    state.set_violations([{"key": "a", "outcome": "open", "open_reason": ""},
+                          {"key": "b", "outcome": "open", "open_reason": ""}])
+    state.set_violations([{"key": "a", "outcome": "repaired_by_harness", "open_reason": ""},
+                          {"key": "b", "outcome": "open", "open_reason": "converged"}])
+
+    assert [f["key"] for f in state.violations] == ["a", "b"], (
+        "each publish replaces the ledger; appending would pile up prefixes")
+    assert state.violations[0]["outcome"] == "repaired_by_harness", "the latest wins"
+    assert state.violations_rev == 3, "every change is a revision the stream can follow"
+    assert state._unflushed == [], (
+        "the ledger is state, not an event — nothing here belongs in events.jsonl")
+
+
 def test_contexts_stream_live_and_replace_rather_than_pile_up():
     """The Context tab is live now: a loop republishes its context after every
     turn, so a viewer watches the transcript grow instead of seeing it appear

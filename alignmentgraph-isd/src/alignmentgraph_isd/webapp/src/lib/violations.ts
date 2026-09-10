@@ -61,7 +61,19 @@ const OPEN_REASONS: Record<string, string> = {
   unexplained: 'still open, reason not recorded',
 }
 
+/** A finding with no reason recorded has not been SETTLED yet.
+ *
+ *  `Memory.settle` (core/memory.py) stamps `unexplained` on everything still
+ *  open, so once a run has finished `outcome === 'open'` implies a non-empty
+ *  `open_reason`. Blank therefore means exactly one thing: the ledger is still
+ *  being written — the tab is live now, and a cancelled run keeps its partial
+ *  ledger forever without ever reaching settle.
+ *
+ *  Handled here rather than by passing the run's live/finished state down to
+ *  the row, because the fact is a property of the FINDING, and a cancelled run
+ *  is not "active" yet still has unsettled rows. */
 export function openReasonLabel(reason: string): string {
+  if (!reason) return 'still being worked on'
   return OPEN_REASONS[reason] ?? reason
 }
 

@@ -138,9 +138,11 @@ def stream_response(generator: AsyncIterator[str]) -> StreamingResponse:
 def _violations_frame(state: RunState) -> str:
     """The run's ledger: every distinct finding and what became of it.
 
-    Sent whole — a finding is a row, not a transcript — and only when the
-    revision moves, which in practice is once, at the end: an outcome is not
-    known until the final look has settled it."""
+    Sent whole — a finding is a row, not a transcript — and whenever the
+    revision moves, which is throughout the run: the harness publishes the
+    ledger as it writes it, so the tab fills in the way the Context tab does.
+    An outcome stays provisional until the final look settles it, and a
+    finding with no `open_reason` yet is precisely one that has not been."""
     rows = json.dumps(state.violations, ensure_ascii=False)
     return f"event: violations\ndata: {rows}\n\n"
 

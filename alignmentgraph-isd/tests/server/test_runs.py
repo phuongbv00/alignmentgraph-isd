@@ -685,6 +685,58 @@ def test_a_clean_run_exports_a_header_and_no_rows(client, ready_program, blocked
     assert f"violations-partial-{run_id}.csv" in response.headers["content-disposition"]
 
 
+def test_the_consumer_turns_a_ledger_snapshot_into_state_not_an_event(settings, tmp_path):
+    """The ledger is STATE, the way a context and the graph are: republished
+    whole whenever a finding is written, and only its latest form is worth
+    reading. Appending it to the timeline instead would put a hundred-odd
+    `violations_snapshot` actions in front of a reader looking for what the
+    agents did."""
+    from alignmentgraph_isd.server.events import RunState
+    from alignmentgraph_isd.server.runner import RunManager
+
+    state = RunState(run_id="r", program_id="p")
+    consume = RunManager(settings)._make_consumer(state)
+
+    consume("violations_snapshot", {"findings": [{"key": "a", "outcome": "open"}]})
+    consume("violations_snapshot", {"findings": [
+        {"key": "a", "outcome": "repaired_by_harness"}, {"key": "b", "outcome": "open"}]})
+
+    assert [f["key"] for f in state.violations] == ["a", "b"], "replaced, not piled up"
+    assert state.violations[0]["outcome"] == "repaired_by_harness", "the latest wins"
+    assert state.violations_rev == 2, "every change is a revision the stream can follow"
+    assert state.events == [], "state, never an action on the timeline"
+
+
+def test_a_run_in_flight_exports_the_findings_so_far(client, ready_program, blocked_run):
+    """The partial export finally has something to export.
+
+    `/violations/export` has always named its file `violations-partial-` for a
+    run still going, but until the ledger streamed there were never any rows
+    behind that name — the findings did not exist outside the harness until it
+    returned."""
+    run_id = start(client, ready_program)
+    state = client.app.state.run_manager.registry.get(run_id)
+    assert state is not None, "the run must still be in the registry to be live"
+
+    state.set_violations([{
+        "key": "C2|objective:ILO-01", "type": "C2", "node_id": "objective:ILO-01",
+        "edge_type": "", "severity": "high", "outcome": "open", "open_reason": "",
+        "repair_hint": "write an item for it", "metadata": {"lo_id": "ILO-01"},
+        "target_designer": "assessment_designer", "messages": ["not assessed"],
+        "first_round": 1, "first_phase": "assessment", "first_family": "assessment_designer",
+        "last_round": 1, "sightings": 1, "shown_to_agent": 0, "report_only": False,
+        "repaired_by": "", "repaired_at_round": 0, "converged_at_round": 0,
+    }])
+
+    assert client.get(f"/api/runs/{run_id}/violations").json(), (
+        "the endpoint answers from live state while the run is in the registry")
+
+    response = client.get(f"/api/runs/{run_id}/violations/export")
+    assert f"violations-partial-{run_id}.csv" in response.headers["content-disposition"]
+    rows = list(csv.DictReader(io.StringIO(response.text)))
+    assert [row["key"] for row in rows] == ["C2|objective:ILO-01"]
+
+
 def test_exporting_violations_of_a_run_that_does_not_exist_is_a_404(client):
     assert client.get("/api/runs/does-not-exist/violations/export").status_code == 404
 

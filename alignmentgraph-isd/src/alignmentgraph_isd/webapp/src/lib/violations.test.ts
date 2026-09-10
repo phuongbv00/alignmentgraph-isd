@@ -37,4 +37,17 @@ describe('openReasonLabel', () => {
     expect(openReasonLabel('budget')).not.toBe(openReasonLabel('converged'))
     expect(openReasonLabel('budget')).toContain('budget')
   })
+
+  it('says an unsettled finding is unsettled rather than showing nothing', () => {
+    // The ledger streams as it fills, so a row can be read before anything has
+    // explained it. `Memory.settle` stamps `unexplained` on whatever is still
+    // open at the end, so a BLANK reason means exactly "not settled yet" — and
+    // stays that way forever on a cancelled run. Falling through to the raw
+    // value printed an empty cell in the one column this tab exists for.
+    const blank = openReasonLabel('')
+    expect(blank).not.toBe('')
+    for (const settled of ['converged', 'budget', 'unowned', 'unexplained']) {
+      expect(blank).not.toBe(openReasonLabel(settled))
+    }
+  })
 })

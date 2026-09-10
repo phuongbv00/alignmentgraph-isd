@@ -47,6 +47,7 @@ from ..outputs import (
 from ..prose_store import ProseStore
 from ..run_report import (
     _graph_attaching,
+    _ledger_attaching,
     _llm_metadata,
     _maybe_dump_graph,
     _safe_emit,
@@ -608,9 +609,20 @@ def run_agentic_brief(config, design_brief: DesignBrief, *, on_event=None) -> di
     memory = Memory(graph=AlignmentGraph()) if graph_mode else Memory(store=ProseStore())
     graph, store, state = memory.graph, memory.store, memory.state
 
-    attach_graph = on_event is not None and graph is not None
-    trajectory = TrajectoryLogger(
-        _graph_attaching(on_event, graph, design_brief) if attach_graph else on_event)
+    # Both live views a watcher gets — the alignment graph and the ledger of
+    # what the run found wrong — hang off the consumer, because neither is part
+    # of a recorded stream. ORDER IS LOAD-BEARING: the ledger goes INSIDE, so
+    # its `violations_snapshot` reaches the raw consumer and never passes back
+    # down through `_graph_attaching`, which would answer it with an extra
+    # ~95 KB `to_full_dict()` of its own. Nothing is gated on `is_observed`
+    # either: with no consumer neither wrapper is built, so an unwatched run
+    # pays one integer increment per finding and serializes nothing.
+    emit = on_event
+    if on_event is not None:
+        emit = _ledger_attaching(emit, memory)
+        if graph is not None:
+            emit = _graph_attaching(emit, graph, design_brief)
+    trajectory = TrajectoryLogger(emit)
     if graph is not None:
         graph.set_observer(trajectory.graph_observer())
 

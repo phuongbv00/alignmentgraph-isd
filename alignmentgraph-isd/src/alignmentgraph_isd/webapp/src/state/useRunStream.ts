@@ -31,8 +31,10 @@ export interface RunStreamState {
    *  transcript is fetched per row, so watching a run costs one small
    *  frame per turn instead of every transcript re-sent. */
   contextRows: AgentContextRow[]
-  /** The run's ledger. Arrives once, at the end: a finding's outcome is
-   *  not known until the last look has settled it. */
+  /** The run's ledger, streamed as it fills: the harness republishes it
+   *  whenever a finding is written, so rows appear and change group while the
+   *  run is still going. Whole-list replacement, so a repeated frame is
+   *  idempotent. A finding's outcome stays provisional until the run settles. */
   findings: Finding[]
   phase: { name: string; index: number; total: number } | null
   /** Set while a model call is in flight, so the UI can run an elapsed timer
