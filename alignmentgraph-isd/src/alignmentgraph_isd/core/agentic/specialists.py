@@ -24,6 +24,53 @@ from ..alignment_graph import NodeType, alignment
 from ..validation import validate_section
 
 
+#: Blackboard documents whose ``commit_prose`` is ALREADY additive, so
+#: ``ReactLoop._commit`` must not append them a second time. That re-merge
+#: exists only because a prose commit replaces its key; a commit that appends
+#: for itself has outgrown it.
+ADDITIVE_PROSE_DOC_KEYS = frozenset({str(NodeType.OBJECTIVE)})
+
+
+def _fold(item: dict, field: str) -> str:
+    return str(item.get(field) or "").strip().casefold()
+
+
+def _dedup_new(existing: list, incoming: list, dedup_field: str) -> tuple[list, int]:
+    """Which of ``incoming`` are new by ``dedup_field``, and how many repeated.
+
+    Pure, and shared by both substrates on purpose: the graph arm drops a
+    repeated objective at :func:`_decompose` and the prose arm at
+    :func:`commit_outcomes_prose`, and two implementations of "is this the same
+    element" would be a difference sitting on the ``context_mode`` axis rather
+    than on the machinery that axis ablates.
+    """
+    if not dedup_field:
+        return [i for i in incoming if isinstance(i, dict)], 0
+    seen = {_fold(i, dedup_field) for i in existing if isinstance(i, dict)} - {""}
+    kept: list = []
+    dropped = 0
+    for item in incoming:
+        if not isinstance(item, dict):
+            continue
+        key = _fold(item, dedup_field)
+        if key and key in seen:
+            dropped += 1
+            continue
+        seen.add(key)
+        kept.append(item)
+    return kept, dropped
+
+
+def _log_duplicates(trajectory, what: str, dropped: int, kept: int, dedup_field: str) -> None:
+    """One event shape for both substrates — see :func:`_dedup_new`."""
+    if not dropped:
+        return
+    trajectory.log_recovery_event(
+        "", "duplicate_element_dropped",
+        f"{what}: {dropped} of {dropped + kept} duplicated by {dedup_field}",
+        f"kept {kept}")
+
+
 def _decompose(graph, trajectory, node_type: str, items: object, *,
                id_field: str = "id", dedup_field: str = "") -> list[str]:
     """Turn a just-generated list into element nodes AND log each one.
@@ -44,33 +91,17 @@ def _decompose(graph, trajectory, node_type: str, items: object, *,
     node_ids: list[str] = []
     if not isinstance(items, list):
         return node_ids
-    seen: set[str] = set()
-    if dedup_field:
-        seen = {
-            str((n.get("data") or {}).get(dedup_field) or "").strip().casefold()
-            for n in graph.element_nodes(node_type)
-        } - {""}
-    dropped = 0
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        raw_id = item.get(id_field)
-        if not raw_id:
-            continue
-        if dedup_field:
-            key = str(item.get(dedup_field) or "").strip().casefold()
-            if key and key in seen:
-                dropped += 1
-                continue
-            seen.add(key)
-        node_id = graph.add_element_node(node_type, str(raw_id), dict(item))
+    # An id-less item is skipped BEFORE the dedup, so it is never counted as a
+    # duplicate of something it could not have been committed as anyway.
+    candidates = [i for i in items if isinstance(i, dict) and i.get(id_field)]
+    existing = ([(n.get("data") or {}) for n in graph.element_nodes(node_type)]
+                if dedup_field else [])
+    kept, dropped = _dedup_new(existing, candidates, dedup_field)
+    for item in kept:
+        node_id = graph.add_element_node(node_type, str(item[id_field]), dict(item))
         node_ids.append(node_id)
         trajectory.log_node_edit("add", node_id, node_type)
-    if dropped:
-        trajectory.log_recovery_event(
-            "", "duplicate_element_dropped",
-            f"{node_type}: {dropped} of {dropped + len(node_ids)} duplicated by {dedup_field}",
-            f"kept {len(node_ids)}")
+    _log_duplicates(trajectory, node_type, dropped, len(node_ids), dedup_field)
     return node_ids
 
 
@@ -329,8 +360,26 @@ def commit_analysis_prose(store, trajectory, parsed: dict) -> None:
 
 
 def commit_outcomes_prose(store, trajectory, parsed: dict) -> None:
-    _merge_document(store, trajectory, "objective",
-                    {k: v for k, v in (parsed or {}).items() if v})
+    """ADDITIVE on the objective LIST, with the same dedup the graph arm runs.
+
+    ``_merge_document`` REPLACES a key, and the graph arm's ``_decompose``
+    appends each objective as its own element node — so a regen or a second
+    accepted submit left the two substrates holding different designs, which
+    is a data loss sitting on the ``context_mode`` axis itself rather than on
+    the alignment machinery that axis exists to ablate. Both now append and
+    both drop a repeated ``statement`` through :func:`_dedup_new`.
+
+    ``course_goal`` keeps merge-on-key: it is one document, not a list.
+    """
+    updates = {k: v for k, v in (parsed or {}).items() if v}
+    incoming = updates.get("learning_objectives")
+    if isinstance(incoming, list):
+        existing = [i for i in store.items(str(NodeType.OBJECTIVE), "learning_objectives")
+                    if isinstance(i, dict)]
+        kept, dropped = _dedup_new(existing, incoming, "statement")
+        updates["learning_objectives"] = existing + kept
+        _log_duplicates(trajectory, str(NodeType.OBJECTIVE), dropped, len(kept), "statement")
+    _merge_document(store, trajectory, str(NodeType.OBJECTIVE), updates)
 
 
 def commit_assessment_prose(store, trajectory, parsed: dict) -> None:

@@ -64,6 +64,7 @@ from .loop import (
     with_progress,
 )
 from .specialists import (
+    ADDITIVE_PROSE_DOC_KEYS,
     SINGLE_IDENTITY,
     SINGLE_PERSONA,
     STEPS,
@@ -796,8 +797,13 @@ class ReactLoop:
 
 
 def _doc_keys(step) -> tuple[str, ...]:
-    """Blackboard documents this step writes — read back so a second submit
-    ADDS to them rather than replacing them.
+    """Blackboard documents this step writes whose commit REPLACES its key —
+    read back so a second submit ADDS to them instead.
+
+    A commit that appends for itself is excluded
+    (``specialists.ADDITIVE_PROSE_DOC_KEYS``): appending it here too would
+    double it, and its own commit is the better place because it can dedup,
+    which this cannot.
 
     Taken from the fan-out outputs and the step's primary type, NOT from
     ``step.family``: a family name ("outcome_designer") is not a document key
@@ -809,7 +815,11 @@ def _doc_keys(step) -> tuple[str, ...]:
         keys += [o.doc_key[0] for o in spec.outputs if o.doc_key[0]]
     if step.primary_type:
         keys.append(str(step.primary_type))
-    return tuple(dict.fromkeys(keys))
+    # A document whose own commit already appends must NOT be appended again
+    # here, or a second submit lands `previous + (previous + new)`. This
+    # re-merge exists only for the commits that still replace their key.
+    return tuple(k for k in dict.fromkeys(keys)
+                 if k not in ADDITIVE_PROSE_DOC_KEYS)
 
 
 def _committed_note(step, done: frozenset, state) -> str:
