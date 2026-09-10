@@ -26,6 +26,27 @@ def composed_prompts() -> dict[str, str]:
     return {**_agentic_prompts(), **_check_messages()}
 
 
+def _ceiling_briefs() -> dict:
+    """Briefs that pin each rung of the ILO-ceiling policy.
+
+    Written here rather than read from ``tests/fixtures/*.json`` so the pin
+    does not move when a fixture brief is edited for an unrelated reason.
+    """
+    from alignmentgraph_isd.core.brief import DesignBrief
+
+    goals3 = ["goal one", "goal two", "goal three"]
+    goals4 = goals3 + ["goal four"]
+    return {
+        "short3": DesignBrief(context={"duration": "Short-term intensive (within 1 week)"},
+                              learning_goals=goals3),
+        "mid3": DesignBrief(context={"duration": "Mid-term course (2-4 weeks)"},
+                            learning_goals=goals3),
+        "long4": DesignBrief(context={"duration": "Long-term course (1-6 months)"},
+                             learning_goals=goals4),
+        "no_goals": DesignBrief(context={"duration": "Long-term course (1-6 months)"}),
+    }
+
+
 def _agentic_prompts() -> dict[str, str]:
     """The executor's own comparability surface.
 
@@ -33,7 +54,8 @@ def _agentic_prompts() -> dict[str, str]:
     the bound TOOL SCHEMAS are the other half, and a change to either is a
     change to what the ladder measured. So both are pinned: the per-stage
     block (task + rules — no schema text since 2026-09-08, see
-    ``AgenticStep.task_block``), the shared workflow overview, and the
+    ``AgenticStep.task_block`` — plus, for ``outcomes``, one rendering per
+    rung of the brief-derived ILO ceiling), the shared workflow overview, and the
     serialized tool specs for each stage in each context mode — which is
     where an artifact's field-level SHAPE now lives
     (``artifact_schemas.ARTIFACT_SCHEMAS``, reached through
@@ -44,6 +66,8 @@ def _agentic_prompts() -> dict[str, str]:
     from alignmentgraph_isd.core.agentic.loop import _WORKFLOW_OVERVIEW, compaction_note
     from alignmentgraph_isd.core.agentic.specialists import SINGLE_PERSONA, STEPS
 
+    _CEILING_BRIEFS = _ceiling_briefs()
+
     pinned: dict[str, str] = {
         "agentic._WORKFLOW_OVERVIEW": _WORKFLOW_OVERVIEW,
         "agentic.SINGLE_PERSONA": SINGLE_PERSONA,
@@ -51,6 +75,17 @@ def _agentic_prompts() -> dict[str, str]:
     for step in STEPS:
         pinned[f"agentic.{step.name}.persona"] = step.persona
         pinned[f"agentic.{step.name}.task_block"] = step.task_block()
+        if step.rules_vars is not None:
+            # The one step whose rules carry a per-BRIEF number (the ILO
+            # ceiling). Pinning a single rendering would pin the template and
+            # leave the POLICY — the short/mid/long multipliers and the
+            # per-goal scaling — unpinned, so a change to the numbers would
+            # turn no test red. A change to them is a change to what the ladder
+            # measured, exactly like a reworded rule. Each pinned brief fixes
+            # its own number, so the keys are stable.
+            for label, brief in _CEILING_BRIEFS.items():
+                pinned[f"agentic.{step.name}.task_block.{label}"] = (
+                    step.task_block(brief))
         for context_mode, graph_mode in (("graph", True), ("prose", False)):
             specs = agentic_tools.tool_specs(step, graph_mode=graph_mode)
             pinned[f"agentic.{step.name}.tools.{context_mode}"] = json.dumps(

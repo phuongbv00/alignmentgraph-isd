@@ -51,6 +51,7 @@ from ..run_report import (
     _llm_metadata,
     _maybe_dump_graph,
     _safe_emit,
+    _objective_ceiling_metadata,
     _token_usage_metadata,
 )
 from ..trajectory import WORKFLOW_ORCHESTRATOR, TrajectoryLogger
@@ -725,6 +726,7 @@ def run_agentic_brief(config, design_brief: DesignBrief, *, on_event=None) -> di
         "task_attempts": task_attempts,
         "repair_metrics": repair_metrics,
         "autonomy": autonomy,
+        "objective_ceiling": _objective_ceiling_metadata(design_brief, addie_output),
     }
     result = {
         "addie_output": addie_output,

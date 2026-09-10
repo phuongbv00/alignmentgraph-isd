@@ -221,7 +221,7 @@ class ReactLoop:
         if step is None:
             return (f"ERROR: no stage named {name!r}. The stages are: "
                     + ", ".join(s.name for s in STEPS))
-        block = stage_brief_block(step)
+        block = stage_brief_block(step, self.design_brief)
         # A fan-out family's stage block shows only the PLAN's rules, because
         # in the multi arm its items come from Developers who are shown
         # theirs separately. This agent writes both, so it has to see both

@@ -623,7 +623,11 @@ def test_neither_arm_composes_its_own_rules_or_schema():
     loop = react.ReactLoop(config, AlignmentGraph(), TrajectoryLogger(), brief)
 
     for step in STEPS:
-        task = step.task_block()
+        # The SAME brief the loop holds: one step's rules carry a number
+        # derived from it (the ILO ceiling), so composing the reference text
+        # without it would compare two different briefs' prompts and read the
+        # difference as the single arm having rewritten the task.
+        task = step.task_block(brief)
         assert task in loop.stage_brief(step.name), (
             f"the single arm rewrote {step.name}'s task instead of reading it")
         # ...and those rules are the RULEBOOK's own text, not a paraphrase the

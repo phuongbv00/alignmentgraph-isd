@@ -872,14 +872,20 @@ _BRIEF_HEADER_RE = re.compile(
     re.escape(STAGE_BRIEF_HEADER).replace(re.escape("{stage}"), r"(\S+)"))
 
 
-def stage_brief_block(step) -> str:
+def stage_brief_block(step, design_brief: object = None) -> str:
     """One stage's turn: the header, then its task, schema and rules.
 
     The stage marker deliberately does NOT use the "=== HEADER ===" form: that
     form means "injected prior-artifact context" everywhere else in the package
     (the docket and the scenario use it, and readers — the test fixture
-    included — strip on it). A stage boundary is neither."""
-    return f"{STAGE_BRIEF_HEADER.format(stage=step.name)}\n{step.task_block()}"
+    included — strip on it). A stage boundary is neither.
+
+    ``design_brief`` reaches ``task_block`` because one step's rules carry a
+    number derived from it (the ILO ceiling). Threaded through this ONE
+    function rather than composed per arm: both loops call it, so neither can
+    tell the model a different number than the other."""
+    return (f"{STAGE_BRIEF_HEADER.format(stage=step.name)}\n"
+            f"{step.task_block(design_brief)}")
 
 
 def brief_stages(messages: list) -> set[str]:
@@ -1409,7 +1415,7 @@ class ToolLoop:
         # by a tool: fetched, the contract could be compacted away with
         # nothing to put it back (run 2b9e911a); pushed, `compact`'s
         # `restore` re-attaches it.
-        parts = [stage_brief_block(self.step), protocol]
+        parts = [stage_brief_block(self.step, self.design_brief), protocol]
         resuming = _still_needed(self.step, self.state)
         if resuming:
             parts.append(resuming)
@@ -2283,7 +2289,8 @@ class ToolLoop:
         like everything else, and it comes back when it goes."""
         if stage != self.step.name:
             return None
-        return with_progress(stage_brief_block(self.step), self.step, self.state)
+        return with_progress(stage_brief_block(self.step, self.design_brief),
+                             self.step, self.state)
 
     def _respec(self) -> str:
         """The contract, re-attached to a rejection when it is no longer in the
@@ -2293,7 +2300,8 @@ class ToolLoop:
         trim did not report (a regen starting a fresh message list, a stage
         turn dropped before this loop's own restore could run)."""
         return respec(self.messages, self.step,
-                      with_progress(stage_brief_block(self.step), self.step, self.state))
+                      with_progress(stage_brief_block(self.step, self.design_brief),
+                                    self.step, self.state))
 
     def _give_up(self, reason: str, *, last_resort: dict | None = None) -> None:
         """End a step with whatever the MODEL produced, and record that it did
