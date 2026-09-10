@@ -284,12 +284,17 @@ class RunState:
             return {**self.stats, "event_count": len(self.events), "graph_rev": self.graph_rev}
 
 
-class RunRegistry:
-    """Every run this process knows about, live or recently finished.
+#: Finished runs kept in memory. They are kept at all so a viewer who
+#: reconnects right after completion gets the tail from memory instead of
+#: falling back to disk, which is a question of seconds — and each one holds
+#: its graph dump and every transcript, so keeping them for the life of the
+#: process is megabytes per run that nothing will read again. Anything evicted
+#: is still on disk and still served, by the replay path in the runs router.
+TERMINAL_RUNS_RETAINED = 8
 
-    Finished runs stay so a viewer who reconnects right after completion still
-    gets the tail from memory rather than falling back to disk.
-    """
+
+class RunRegistry:
+    """Every run this process knows about, live or recently finished."""
 
     def __init__(self) -> None:
         self._runs: dict[str, RunState] = {}
@@ -299,6 +304,12 @@ class RunRegistry:
         state = RunState(run_id=run_id, program_id=program_id)
         with self._lock:
             self._runs[run_id] = state
+            # Insertion order, so the oldest finished runs go first. Live runs
+            # are never evicted, whatever their number: the registry IS how a
+            # run in flight is reached.
+            terminal = [rid for rid, s in self._runs.items() if s.is_terminal]
+            for rid in terminal[:max(0, len(terminal) - TERMINAL_RUNS_RETAINED)]:
+                self._runs.pop(rid, None)
         return state
 
     def get(self, run_id: str) -> RunState | None:

@@ -36,7 +36,7 @@ class ADDIEOutputAggregator:
             "implementation": implementation,
             "evaluation": evaluation,
         }
-        return _strengthen_alignment(output, self.graph)
+        return _add_alignment_views(output, self.graph)
 
     # ── analysis phase: computed from real Gap/Topic/LearnerProfile/Constraint elements ──
     def _build_analysis(self) -> dict:
@@ -345,15 +345,11 @@ def aggregate_prose(store, trajectory) -> dict:
 
     - no ``design.alignment_matrix`` — it is built from established edges and
       has no graph-free equivalent;
-    - no output-level C2 coverage net (``_ensure_assessment_coverage``) — a
-      cross-artifact safeguard;
     - ``expert_review`` fallback reports the within-artifact validation
       rounds only, with no relation-coverage sentence.
 
-    Kept: the storyboard computation, ``objective_assessment_map`` and
-    ``_strengthen_implementation`` (which does write fixed operational text
-    into non-empty implementation sections — see its docstring), none of
-    which is a cross-artifact repair.
+    Kept: the storyboard computation and ``objective_assessment_map``, both
+    deterministic readings of what the documents already declare.
     """
     def doc(key: str) -> dict:
         value = store.get(key)
@@ -500,7 +496,6 @@ def aggregate_prose(store, trajectory) -> dict:
             ]
             for lo_id in objective_ids
         }
-    _strengthen_implementation(implementation)
     return output
 
 
@@ -573,19 +568,27 @@ def _merge_node_data(nodes: list[dict]) -> dict:
     return merged
 
 
-def _strengthen_alignment(output: dict, graph) -> dict:
+def _add_alignment_views(output: dict, graph) -> dict:
+    """The two derived views the deliverable declares: the per-objective
+    alignment matrix, read off ESTABLISHED edges, and the objective-to-item
+    map, read off the items' own ``aligned_objective``. Both are readings of
+    what the design holds.
+
+    Nothing here writes design content. A harness that fills a gap it is also
+    measuring satisfies its own check by existing, which is the objection that
+    keeps P6 audit-only; the net that used to sit here appended an assessment
+    item whose ``question`` carried the objective's own statement, which read
+    to the RQ2 similarity signals as correspondence no design work produced,
+    and it ran on the graph arm only, so the artefact sat on the
+    ``context_mode`` axis itself."""
     design = output["design"]
     development = output["development"]
-    implementation = output["implementation"]
 
     objectives = design.get("learning_objectives", []) or []
     assessment_tools = development.get("assessment_tools", []) or []
 
     objective_ids = [lo.get("id") for lo in objectives if isinstance(lo, dict) and lo.get("id")]
     if objective_ids:
-        # Last-resort coverage net (when the repair budget ran out before
-        # closing every C2 gap).
-        _ensure_assessment_coverage(objectives, assessment_tools, graph)
         design["alignment_matrix"] = _build_alignment_matrix(objective_ids, graph)
         development["objective_assessment_map"] = {
             lo_id: [
@@ -596,37 +599,7 @@ def _strengthen_alignment(output: dict, graph) -> dict:
             for lo_id in objective_ids
         }
 
-    _strengthen_implementation(implementation)
     return output
-
-
-def _ensure_assessment_coverage(objectives: list, assessment_tools: list, graph) -> None:
-    """Output-level safety net: guarantee every objective has at least one
-    assessment item in the FINAL output."""
-    if not isinstance(assessment_tools, list):
-        return
-    covered = {
-        item.get("aligned_objective")
-        for item in assessment_tools
-        if isinstance(item, dict) and item.get("aligned_objective")
-    }
-    for objective in objectives:
-        if not isinstance(objective, dict):
-            continue
-        lo_id = objective.get("id")
-        if not lo_id or lo_id in covered:
-            continue
-        item_id = f"AT-R-{lo_id}"
-        assessment_tools.append({
-            "item_id": item_id,
-            "type": "performance_task",
-            "question": f"Demonstrate the target performance for {lo_id}: {objective.get('statement', '')}",
-            "aligned_objective": lo_id,
-            "plan_category": "summative",
-            "scoring_criteria": "Rubric scores task completion, communication accuracy, context appropriateness, peer-feedback quality, and transfer.",
-            "coverage_repair": True,
-        })
-        covered.add(lo_id)
 
 
 def _build_alignment_matrix(objective_ids: list[str], graph) -> list[dict]:
@@ -662,58 +635,3 @@ def _build_alignment_matrix(objective_ids: list[str], graph) -> list[dict]:
             ]
         matrix.append(entry)
     return matrix
-
-
-def _strengthen_implementation(implementation: dict) -> None:
-    """Fill gaps in NON-EMPTY implementation sections with fixed operational
-    text: ``setdefault`` for the absent fields, plus a rewrite of
-    learner-facing ``orientation_objectives`` and three appended system
-    checks. An entirely empty section is left empty: painting content onto
-    nothing turns a dead generation into a partially-scored output and masks
-    the failure from both the completeness tier and the judge. This text is
-    harness-written and reaches the judge on every alignmentgraph arm."""
-    orientation = implementation.setdefault("instructor_orientation", {})
-    if isinstance(orientation, dict) and orientation:
-        objectives = orientation.get("orientation_objectives", [])
-        learner_facing = (
-            not objectives
-            or any(isinstance(item, str) and item.lower().startswith("learners can") for item in objectives)
-        )
-        if learner_facing:
-            orientation["orientation_objectives"] = [
-                "Instructors and support staff can prepare the learning environment, assign learner roles, and start each session safely.",
-                "Instructors can facilitate practice activities and apply the scoring rubrics consistently.",
-                "Support staff can monitor access, resolve resource issues, and escalate delivery incidents during large-group sessions.",
-            ]
-        orientation.setdefault("schedule", "90-minute facilitator/support orientation plus a 30-minute hands-on delivery rehearsal before pilot launch.")
-        orientation.setdefault("materials", [
-            "Facilitator runbook",
-            "Delivery troubleshooting checklist",
-            "Assessment and peer-feedback rubric pack",
-        ])
-        orientation.setdefault("competency_checklist", [
-            "Launch, reset, and recover the learning environment without learner data loss.",
-            "Score a sample learner performance using the aligned rubric.",
-            "Resolve or escalate access, login, resource, and network issues.",
-        ])
-
-    system_check = implementation.setdefault("system_check", {})
-    if isinstance(system_check, dict) and system_check:
-        checklist = list(system_check.get("checklist", []))
-        required_checks = [
-            "Verify learning platform, lab resources, app login, and network access before each session.",
-            "Confirm learner grouping, data capture, submission channels, and privacy settings.",
-            "Validate accessibility alternatives and fallback materials for learners who cannot use the primary environment.",
-        ]
-        for check in required_checks:
-            if check not in checklist:
-                checklist.append(check)
-        system_check["checklist"] = checklist
-        system_check.setdefault(
-            "technical_validation",
-            "Platform, resource access, network, data capture, accessibility, and fallback checks are completed before pilot launch.",
-        )
-        system_check.setdefault("contingency_plans", [
-            "Switch learners to offline or low-bandwidth materials if the primary environment fails.",
-            "Use delayed submission or local notes if network connectivity drops.",
-        ])

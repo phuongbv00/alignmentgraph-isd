@@ -1114,6 +1114,21 @@ def empty_stage_stats() -> dict:
             "set_submits_rejected": 0}
 
 
+def turns_left_hint(remaining: int) -> str:
+    """The countdown a loop appends to a tool observation near its ceiling.
+
+    ONE implementation and one wording for both arms — see
+    ``budget.TURNS_LEFT_WARNING`` for why, and why the countdown exists at
+    all. Empty until the ceiling is close, so an ordinary turn is unchanged.
+    """
+    if remaining > budget.TURNS_LEFT_WARNING:
+        return ""
+    if remaining <= 0:
+        return "\n\n[No turns left. This was your last observation.]"
+    return (f"\n\n[{remaining} turn(s) left. Submit what you have now — "
+            "an incomplete submit is better than none.]")
+
+
 #: What an empty turn is answered with. ONE constant, used by both loops: it
 #: lands in the transcript, the transcript is what the model sees, and a nudge
 #: worded differently on each side of the decomposition axis is a second
@@ -1854,20 +1869,7 @@ class ToolLoop:
             self.stats["tool_errors"] += 1
             if self.stats["tool_errors"] <= self.ERROR_ALLOWANCE:
                 self._refunded += 1
-        # MEASURED FAILURE (run single_20260831_160530): 10 of 13 fallbacks
-        # were "turn budget exhausted", and the single+graph arm spent all
-        # eight turns reading on 6 of 7 stages without ever submitting. The
-        # budget is stated once in the system prompt and then never again,
-        # which a small model does not track. Counting it down in the
-        # observation channel costs nothing and uses the one surface the
-        # model is definitely reading.
-        remaining = self.MAX_TURNS + self._refunded - self._turn_no
-        if remaining <= 2:
-            observation += (
-                f"\n\n[{remaining} turn(s) left. Submit your artifact now — "
-                "an incomplete submit is better than none.]"
-                if remaining else
-                "\n\n[No turns left. This was your last observation.]")
+        observation += turns_left_hint(self.MAX_TURNS + self._refunded - self._turn_no)
         # The logged tool name carries its scoping argument so the
         # judge-visible trace distinguishes read_nodes(objective) from
         # read_nodes(assessment) — same-name entries with different

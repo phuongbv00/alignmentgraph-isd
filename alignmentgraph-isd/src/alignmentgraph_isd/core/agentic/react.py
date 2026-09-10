@@ -60,6 +60,7 @@ from .loop import (
     respec,
     stage_brief_block,
     trim_history,
+    turns_left_hint,
     with_progress,
 )
 from .specialists import (
@@ -628,10 +629,7 @@ class ReactLoop:
             self.stats["tool_errors"] += 1
             if self.stats["tool_errors"] <= ToolLoop.ERROR_ALLOWANCE:
                 self._refunded += 1
-        remaining = self.MAX_TURNS + self._refunded - self._turn_no
-        if remaining <= 3:
-            observation += (f"\n\n[{remaining} turn(s) left. Submit what you have for the "
-                            "stages still open.]")
+        observation += turns_left_hint(self.MAX_TURNS + self._refunded - self._turn_no)
         scope = str(args.get("node_type") or args.get("relation_id")
                     or args.get("key") or "").strip()
         self.trajectory.log_step(

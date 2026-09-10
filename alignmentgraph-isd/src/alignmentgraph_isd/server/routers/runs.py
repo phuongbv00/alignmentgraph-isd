@@ -67,13 +67,18 @@ def start_run(
 
     try:
         manager.start_run(run, brief)
-    except RuntimeError as exc:
+    except Exception as exc:  # noqa: BLE001
+        # Any reason at all: a row left RUNNING with nothing behind it blocks
+        # every later write to this program. RuntimeError is the configuration
+        # case the UI explains; anything else is a server fault.
         run.status = RunStatus.FAILED
         run.error = str(exc)
         run.finished_at = utcnow()
         db.add(run)
         db.commit()
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+        code = (status.HTTP_503_SERVICE_UNAVAILABLE if isinstance(exc, RuntimeError)
+                else status.HTTP_500_INTERNAL_SERVER_ERROR)
+        raise HTTPException(code, str(exc)) from exc
 
     return RunCreated(run_id=run.id, status=run.status)
 

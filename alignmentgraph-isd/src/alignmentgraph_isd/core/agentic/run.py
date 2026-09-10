@@ -456,7 +456,8 @@ def _replan_sets(state, spec, step, gaps: list, round_index: int) -> list:
         objectives = replan.objectives_of(gaps)
         if not objectives:
             return []
-        work_sets, _stats = dev_plans.normalize_activity_dev_plan(plan, list(objectives))
+        work_sets, _stats = dev_plans.normalize_activity_dev_plan(
+            plan, list(objectives), fanout.items_by_lo(state))
     return replan.tag_round(work_sets, round_index)
 
 

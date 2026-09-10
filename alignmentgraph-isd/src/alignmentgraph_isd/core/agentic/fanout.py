@@ -178,13 +178,48 @@ def _assessment_sets(state, parsed: dict) -> tuple[list, dict]:
 
 
 def _activity_sets(state, parsed: dict) -> tuple[list, dict]:
-    return dev_plans.normalize_activity_dev_plan(parsed.get("dev_plan"), _lo_ids(state))
+    return dev_plans.normalize_activity_dev_plan(
+        parsed.get("dev_plan"), _lo_ids(state), items_by_lo(state))
 
 
 def _material_sets(state, parsed: dict) -> tuple[list, dict]:
     sets = dev_plans.material_work_units(
-        parsed.get("content_modules") or [], parsed.get("media_selections") or [], [])
+        parsed.get("content_modules") or [], parsed.get("media_selections") or [],
+        _constraints(state))
     return sets, _deterministic_stats(sets)
+
+
+def items_by_lo(state) -> dict[str, list[str]]:
+    """Which committed assessment items each objective already has.
+
+    An activity set names the items its activities prepare for (``C4``), and a
+    Developer told to prepare learners for AT-03 without being told what AT-03
+    asks has to go and read it — the read cost ``_resolved_references`` exists
+    to remove."""
+    by_lo: dict[str, list[str]] = {}
+    for item in _element_data(state, NodeType.ASSESSMENT, ("assessment", "assessment_tools")):
+        lo_id = dev_plans._bare(str(item.get("aligned_objective") or ""))
+        item_id = str(item.get("item_id") or "")
+        if lo_id and item_id:
+            by_lo.setdefault(lo_id, []).append(item_id)
+    return by_lo
+
+
+def _constraints(state) -> list[dict]:
+    """The context constraints, which a material unit resolves for the media
+    selections that declare ``respects_constraints``. Prose keeps them nested
+    inside the analysis document rather than as their own element pool, which
+    is why this does not go through :func:`_element_data`."""
+    if hasattr(state, "element_nodes"):
+        return [n["data"] for n in state.element_nodes(NodeType.CONSTRAINT)]
+    context = (state.get("analysis") or {}).get("context_analysis") or {}
+    return [c for c in (context.get("constraints") or []) if isinstance(c, dict)]
+
+
+def _element_data(state, node_type: str, doc: tuple[str, str]) -> list[dict]:
+    if hasattr(state, "element_nodes"):
+        return [n["data"] for n in state.element_nodes(node_type)]
+    return [i for i in state.items(*doc) if isinstance(i, dict)]
 
 
 def _has_section(state, node_type: str, doc_key: str) -> bool:

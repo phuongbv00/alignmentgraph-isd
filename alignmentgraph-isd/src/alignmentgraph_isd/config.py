@@ -32,8 +32,8 @@ class HarnessRunConfig(BaseModel):
     # relation joins, the alignment-state docket), the cross-artifact checks and
     # the repairs they own run over its edges, the residual GraphAuditor pass
     # runs at the end, the aggregator's graph-derived enrichments apply
-    # (``design.alignment_matrix``, the ``_ensure_assessment_coverage`` backstop,
-    # the coverage-aware ``expert_review``), and the run ships the graph dump.
+    # (``design.alignment_matrix`` and the coverage-aware ``expert_review``),
+    # and the run ships the graph dump.
     # Cross-artifact violations are reconciled ONCE after the last stage, in a
     # bounded pass: each residual violation goes to the family that owns it
     # (``repairs.OWNED_BY_FAMILY``, carried on ``Violation.target_designer``).

@@ -198,3 +198,16 @@ REPLAN_ROUNDS = 1
 #: route/repair/recheck is no longer bounded by the stage order, and unbounded
 #: on an SLM it is a hang.
 SELF_VALIDATION_BUDGET = 2
+
+
+#: How many turns from the ceiling a loop starts counting down in the
+#: observation channel. MEASURED (run single_20260831_160530): 10 of 13
+#: give-ups were "turn budget exhausted" and the single+graph arm spent every
+#: turn reading on 6 of 7 stages without submitting. The budget is stated once
+#: in the system prompt and a small model does not track it from there.
+#:
+#: ONE number, and ONE wording (``loop.turns_left_hint``), because this is
+#: text the model reads: at 2 turns on one arm and 3 on the other, with
+#: different sentences, the countdown itself was a second variable sitting on
+#: the ``agent_mode`` axis.
+TURNS_LEFT_WARNING = 3

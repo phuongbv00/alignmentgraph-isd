@@ -106,14 +106,27 @@ class RunManager:
         # and abort a model call already in flight. Without it, a cancel has to
         # wait out the rest of that call.
         http_client = llm_settings.new_http_client()
-        config = llm_settings.resolve()
-        factory = llm_settings.build_factory(config, http_client=http_client)
-        if factory is None:
-            raise RuntimeError("No model configured.")
-        # Read with the factory, from the same connection, so a run's transcript
-        # budget matches the client it is actually calling — and so editing the
-        # connection mid-run cannot change either one under it.
-        window = llm_settings.window_settings(config)
+        # EVERYTHING that can fail happens BEFORE the run is registered, and the
+        # submit that follows is guarded. A RunState in the registry with no
+        # worker behind it is never finished, so `active_for_program` keeps
+        # returning it and every later write to that program answers 409 until
+        # the process restarts.
+        try:
+            config = llm_settings.resolve()
+            factory = llm_settings.build_factory(config, http_client=http_client)
+            if factory is None:
+                raise RuntimeError("No model configured.")
+            # Read with the factory, from the same connection, so a run's
+            # transcript budget matches the client it is actually calling — and
+            # so editing the connection mid-run cannot change either one under it.
+            window = llm_settings.window_settings(config)
+
+            directory = artifacts.resolve(self.settings, run.artifact_dir)
+            directory.mkdir(parents=True, exist_ok=True)
+            artifacts.write_json(directory / artifacts.ARTIFACT_FILES["brief"], brief)
+        except BaseException:
+            _close_quietly(http_client)
+            raise
 
         state = self.registry.create(run.id, run.program_id)
         state.http_client = http_client
@@ -121,12 +134,13 @@ class RunManager:
             state.attach_loop(self._loop, self.wakeup_for(run.id))
         state.append(EventKind.RUN_STARTED, {"run_id": run.id, "program_id": run.program_id})
 
-        directory = artifacts.resolve(self.settings, run.artifact_dir)
-        directory.mkdir(parents=True, exist_ok=True)
-        artifacts.write_json(directory / artifacts.ARTIFACT_FILES["brief"], brief)
-
-        self._executor.submit(
-            self._execute, run.id, run.program_id, run.artifact_dir, brief, factory, window)
+        try:
+            self._executor.submit(
+                self._execute, run.id, run.program_id, run.artifact_dir, brief, factory, window)
+        except BaseException as exc:  # a shut-down executor, most likely
+            state.release_http()
+            state.finish(RunStatus.FAILED, str(exc))
+            raise
         return state
 
     def request_cancel(self, run_id: str) -> bool:
@@ -338,6 +352,16 @@ def _barren_run_error(result: dict) -> str:
     detail = first.partition(": ")[2] or first
     suffix = "" if len(errors) == 1 else f" (all {len(errors)} agent attempts failed the same way)"
     return f"No design output: every specialist failed. {detail}{suffix}"
+
+
+def _close_quietly(http_client) -> None:
+    """The transport, when a run failed to start and no RunState owns it yet."""
+    if http_client is None:
+        return
+    try:
+        http_client.close()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _stats_from_result(result: dict) -> dict:
