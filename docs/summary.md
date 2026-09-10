@@ -226,6 +226,15 @@ Tổ chức theo nhóm, không liệt kê từng bài:
     - **Graph dump**: cuối run xuất JSON đầy đủ node/edge/state + Graphviz DOT, tách khỏi trajectory — hiện thực hoá "
       explicit and auditable" thay cho tuyên bố "aligned by construction"; educator kiểm được từng mục tiêu đo bởi đánh
       giá nào, can thiệp/override khi cần (educator-in-the-loop).
+    - **Trần số mục tiêu học tập (ILO ceiling, 2026-09-10)**: harness tính một con số từ chính design brief và
+      đưa vào rules của stage `outcomes`. Công thức là `per_goal(context.duration) × len(learning_goals)`, với 2/3/4
+      cho ngắn/vừa/dài. Trên 90 scenario của test_90, trần rơi vào 6/8/9/12/16. Hai trường `class_size` và
+      `difficulty` cố ý không nằm trong công thức. Số học viên đổi cách triển khai khoá học chứ không đổi số mục tiêu.
+      `difficulty` mô tả ràng buộc của đề bài, phân bố 30/30/30 và độc lập với duration, nên nó không đo khối lượng
+      nội dung. **Trần chỉ được thông báo, không được cưỡng chế**: không có cơ chế nào cắt bớt danh sách dài hơn.
+      Vì vậy `metadata.objective_ceiling` ghi lại trần, số thực tế và cờ `respected`, và **tỷ lệ tuân thủ mới là
+      kết quả cần báo cáo**. Lý do phải nêu trong Method: đây là ràng buộc harness đặt lên quyền tự quyết của agent,
+      có ở cả bốn arm alignmentgraph và không có ở sáu baseline.
 - **7.5** Pseudocode quy trình ISD cố định.
 - **7.7** Khác biệt với baseline gần nhất (react-isd, addie-agent…): trạng thái alignment tường minh dùng chung vs. văn
   xuôi/trajectory ngầm.
@@ -376,6 +385,12 @@ footnote.
       `docs/review_q2.md` R2).
 
 ## 11. Threats to Validity — SUBSECTION CUỐI CỦA DISCUSSION trong `07_discussion.tex` (2026-08-11; file 08 bỏ)
+
+- **Trần ILO là ràng buộc chỉ có ở hệ đề xuất (2026-09-10)**: bốn arm alignmentgraph được cho biết một trần số mục
+  tiêu suy ra từ brief; sáu baseline không có. Trần đẩy số mục tiêu xuống, nên mọi tín hiệu panel tính trung bình
+  trên tập mục tiêu đều được tính trên một tập bị chặn ở phía hệ đề xuất và không bị chặn ở phía baseline. Phải nói
+  rõ điều này. Mức claim phải hẹp đúng cơ chế: agent được cho biết một trần, không có gì cưỡng chế nó, và tỷ lệ tuân
+  thủ được báo cáo kèm. Đo trên 63 run đã có, trung vị là 4 mục tiêu và trần chỉ chạm khoảng 11% đuôi trên.
 
 Mỗi nguy cơ kèm mitigation:
 
