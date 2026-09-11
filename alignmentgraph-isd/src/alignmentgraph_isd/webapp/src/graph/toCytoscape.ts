@@ -93,10 +93,15 @@ export function toCytoscape(
         label: shortLabel(node.id, node.type),
         type: node.type,
         kind: isElementNode(node.id) ? 'element' : 'section',
-        // Rendered as a ✓/✗ badge: measured / supported. There is no rubric
-        // leg any more — a criterion is a field of the item that measures the
-        // objective, so that flag was true whenever `measured` was.
-        badge: flags ? `${flags.measured ? '✓' : '✗'}${flags.supported ? '✓' : '✗'}` : '',
+        // Rendered as a ✓/✗ badge: measured / supported / prepares — the
+        // three legs of `aligned`. There is no rubric leg any more: a
+        // criterion is a field of the item that measures the objective, so
+        // that flag was true whenever `measured` was. An archived run has no
+        // `prepares` and gets a two-character badge rather than a false ✗.
+        badge: flags
+          ? `${flags.measured ? '✓' : '✗'}${flags.supported ? '✓' : '✗'}`
+            + (flags.prepares === undefined ? '' : flags.prepares ? '✓' : '✗')
+          : '',
         aligned: flags ? flags.aligned : null,
         bloomOk: flags ? flags.bloom_ok : null,
         // Every type standing against this node, for the tooltip and for the

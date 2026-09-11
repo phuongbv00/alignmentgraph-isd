@@ -1,30 +1,28 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-Constructive alignment becomes difficult to inspect when objectives, activities,
-assessments, and evaluation evidence are generated as one fluent document. Under a
-small-model serving envelope, the MAS must also preserve those relations without
-placing the whole task in one call.
+Constructive alignment is hard to inspect when objectives, activities, assessments
+and delivery are generated as one fluent document, and harder still under a
+small-model serving envelope, where the system must preserve those relations without
+placing the whole task in a single call.
 
-This paper contributes AlignmentGraph-ISD, a multi-agent system that coordinates specialists
-through explicit graph state and exports that state for audit. Every system is
-scored both by the benchmark's LLM judges and by a no-LLM panel of
-alignment scores (textual correspondence and cognitive demand). That panel
-measures signals of constructive alignment, not the validated construct itself.
+This paper contributes AlignmentGraph-ISD, a multi-agent system that runs the six
+ADDIE concerns as separate stages over a shared alignment graph, commits every
+cross-artifact relation as typed state at the moment it is created, checks that state
+deterministically, and exports it after every run so that a design can be audited
+rather than only read. The division of labour is explicit: the model writes
+instructional content, and the harness decides what is asked for, what is committed,
+what is checked, and what is reported. Where a relation is missing, the system says
+so instead of filling it in.
 
-Across the Qwen 0.8B--9B ladder, the MAS produced usable output for every
-scenario, led ADDIE and the pre-specified alignment panel at every size, and showed its
-largest relative advantage toward the small end. The three LLM judge scores remain
-co-equal: \texttt{total\_score} loses to one baseline at the smallest size, and
-ReAct-ISD reaches ADDIE parity at 9B.
+Every system is scored both by the benchmark's LLM judges and by a no-LLM panel of
+six alignment scores covering textual correspondence and cognitive demand. That panel
+measures signals of constructive alignment; it does not validate the construct, and a
+small blinded expert review accompanies it for that reason.
 
-The ablation narrows the mechanism claim. Removing graph context lowers the alignment
-panel at every size while leaving ADDIE nearly invariant; the verifier is a repair
-backstop and source of audit evidence, not a supported score effect in the shipped
-configuration. Because every arm retains specialist decomposition, its contribution
-to robustness is established only at the system level.
-
-The evidence supports educator-in-the-loop use of an auditable graph-guided multi-agent system
-within the evaluated ladder. A blinded expert-validation round with a
-pre-specified prediction is underway to test machine--human agreement and to
-distinguish the favorable and adversarial readings of the ablation.
+Results from the ladder comparison and the factorial ablation are \TBD{}, and the
+claims this paper makes will be stated at the level each experiment supports: system
+behaviour across the ladder from the first, attribution between decomposition and
+substrate from the second, and no transfer between them. Conclusions will hold on the
+Qwen3.5 0.8B--9B ladder and on this benchmark, and the additional cost of explicit
+alignment state will be reported as the trade it is.

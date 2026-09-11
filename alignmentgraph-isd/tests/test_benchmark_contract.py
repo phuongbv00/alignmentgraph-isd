@@ -229,9 +229,10 @@ def test_graph_dump_shape(result):
     for flags in graph["objective_alignment"].values():
         # `bloom_ok` stays the conjunction — `to_dot` and every archived run
         # read it — beside the two halves it used to hide and the checks' own
-        # wording, which is what lets a reader see WHICH rule failed.
-        assert set(flags) == {"measured", "supported", "bloom_ok", "aligned",
-                              "bloom_assessment_ok", "bloom_activity_ok",
+        # wording, which is what lets a reader see WHICH rule failed. It is no
+        # longer a leg of `aligned`, which is the structural triad C2/C3/C4.
+        assert set(flags) == {"measured", "supported", "prepares", "aligned",
+                              "bloom_ok", "bloom_assessment_ok", "bloom_activity_ok",
                               "bloom_notes"}
 
     assert set(graph["metadata"]) >= {

@@ -1,219 +1,203 @@
 \section{Results}
 \label{sec:results}
 
-Tables and figures in this section are generated from artifacts; every mean is
-paired with the between-run SD of the same score, and cells with fewer than
-\ladderNumScenarios{} scenarios are marked in footnotes. Because every score
-comparison is conditional on an agent producing output at all, we present
-output robustness first.
+\emph{TN1 and TN2 have not yet been run on the frozen configuration. This section
+states what each analysis reports and in what order; every value is marked \TBD{}
+and will be filled from the generated artifacts, never typed by hand. No number
+from system development enters this section.}
 
-\subsection{Output robustness by model size}
+\subsection{Output robustness across the ladder}
 \label{sec:robustness}
 
-AlignmentGraph-ISD produced usable output for every scenario at every size,
-whereas the two least scaffolded agents lost most of their outputs at the small
-end (\Cref{fig:failure-rate}); the failure-rate differences are significant
-under Fisher tests with Holm correction. The failure mechanisms differ: for
-\costWorstCoverageAgent{} at \costWorstCoverageSize{},
-\costWorstCoverageTruncPct\% of missing artifacts ended in
-\texttt{LengthFinishReasonError} at exactly
-\texttt{completion\_tokens = 8192}, whereas EduPlanner failures were dominated
-by schema parsing. Under the envelope in \Cref{sec:assumptions}, this is a
-deployability result: one-shot generation often cannot finish a design within
-the call budget of the deployment target, while individual specialist calls
-stay far below the limit. Because truncation does not explain every failure,
-score analyses use \texttt{failure=0} as the primary layer and complete-case
-as sensitivity.
+The first question is whether a system produces a usable design at all, because a
+comparison of quality among systems that did not all finish is a comparison among
+survivors. We report, per system and size, the proportion of the 90 scenarios
+yielding a complete ADDIE output, with Fisher's exact test under Holm correction
+(\Cref{fig:failure-rate}). Failure mechanisms are named per system rather than
+pooled, since they have different causes and different implications: a run that
+stops at the per-call token cap is a deployment property of that architecture,
+while a schema parse failure is not. Values: \TBD.
 
-\begin{figure*}[!htbp]
+\begin{figure}[t]
   \centering
-  \includegraphics[width=0.9\textwidth]{fig_failure_rate.pdf}
-  \Description{Share of scenarios without scorable output by agent and model size.}
-  \caption{Share of scenarios without scorable output (mean over runs;
-  whiskers: min--max across runs). AlignmentGraph-ISD and the scaffolded agents
-  reach 0\% at every size.}
+  \fbox{\parbox[c][0.28\textheight][c]{0.88\columnwidth}{\centering
+    \emph{Pending TN1.}\\[2pt]
+    \footnotesize Output-failure rate per system across the four ladder sizes.}}
+  \Description{Placeholder for the output-failure-rate figure, pending the TN1 run.}
+  \caption{Output-failure rate by system and model size, with per-system failure
+  mechanisms distinguished. Generated from the TN1 artifacts.}
   \label{fig:failure-rate}
-\end{figure*}
+\end{figure}
 
-\subsection{Objective 2: Quality on LLM judge scores}
+\subsection{LLM judge scores (Objective 2)}
 \label{sec:rq1}
 
-On ADDIE, AlignmentGraph-ISD leads at the three smaller sizes and reaches
-parity with ReAct-ISD at 9B (\Cref{tab:rq1-ladder}, \Cref{fig:rq1-components}).
-ADDIE leads this account because its rubric matches the construct Objective~2
-addresses, not because it was chosen as an endpoint; the three LLM judge scores have
-equal standing, and their disagreements are stated directly below. Full
-per-score tables for Trajectory and \texttt{total\_score} appear in
-\Cref{sec:appendix-tables}.
+The three judge scores are reported side by side with identical analyses
+(\Cref{tab:rq1-ladder}, \Cref{fig:rq1-components}). ADDIE leads the narrative
+because its rubric matches the construct of Objective~2, but no score is treated as
+an endpoint, and where the composite disagrees with ADDIE that disagreement is
+reported rather than resolved in favour of the more convenient one. Each cell states
+its $n$; any cell averaged over fewer than all scenarios carries a footnote, because
+a mean over survivors is not comparable with a mean over everyone. Per-size paired
+comparisons, effect sizes and intervals: \TBD. The second-judge subset, which tests
+whether the direction of the conclusion depends on the judge: \TBD. The trajectory
+score is reported at both caps, and the two are read together: \TBD.
 
-\input{../../generated/tab_rq1}
+The scale part of Objective~2 is a separate analysis, not a reading of the per-size
+results. The difference-in-differences between the largest and smallest size, with
+its bootstrap interval and $p$: \TBD.
 
-\begin{figure*}[!htbp]
+\begin{table}[t]
+  \caption{LLM judge scores by system and model size, with per-cell $n$. Generated
+  from the TN1 artifacts.}
+  \label{tab:rq1-ladder}
+  \small
   \centering
-  \includegraphics[width=0.95\textwidth]{fig_rq1_components.pdf}
-  \Description{Three panels: ADDIE, Trajectory, and Total scores by model size for seven agents.}
-  \caption{The three LLM judge scores by model size. ADDIE: the MAS leads at
-  the three smaller sizes and converges with ReAct-ISD at 9B. Trajectory: the
-  MAS scores below ReAct-ISD and ADDIE-Agent at every size. Total: the
-  composite inherits Trajectory's process penalty.}
+  \fbox{\parbox[c][0.16\textheight][c]{0.88\columnwidth}{\centering
+    \emph{Pending TN1.}}}
+\end{table}
+
+\begin{figure}[t]
+  \centering
+  \fbox{\parbox[c][0.26\textheight][c]{0.88\columnwidth}{\centering
+    \emph{Pending TN1.}\\[2pt]
+    \footnotesize Per-component ADDIE rubric scores across the ladder.}}
+  \Description{Placeholder for the ADDIE component figure, pending the TN1 run.}
+  \caption{ADDIE rubric components by system and model size. Generated from the TN1
+  artifacts.}
   \label{fig:rq1-components}
-\end{figure*}
+\end{figure}
 
-The proposed system produces stronger ADDIE artifacts, but its multi-agent
-architecture with a verify--repair loop yields a longer, less compact trace
-than single-loop designs, so Trajectory favors ReAct-ISD and ADDIE-Agent at
-every size (\Cref{fig:rq1-components}, middle panel), and the
-\texttt{total\_score} composite inherits this process penalty: at the smallest
-size, the MAS reaches \rqOneHarnessTotalZeroEightB{} versus
-\rqOneBestBaselineTotalZeroEightB{} for \rqOneBestBaselineNameZeroEightB{},
-despite leading ADDIE and the alignment panel. The ADDIE gap is also uneven: at
-0.8B, the delta against the strongest baseline
-(\rqOneBestBaselineNameZeroEightB{}) is $\rqOneDeltaBestAddieZeroEightB$ and
-not significant after Holm ($p_{\mathrm{Holm}}$ at most
-$\rqOnePHolmMaxZeroEightB$), while at 4B the delta against ReAct-ISD narrows
-to $\rqOneDeltaBestAddieFourB$. At the large end, the ADDIE difference from
-ReAct-ISD is $\rqOneDeltaBestAddieNineB$ with bootstrap 95\% CI
-$[\rqOneDeltaBestAddieCILoNineB,\rqOneDeltaBestAddieCIHiNineB]$; this supports
-a conclusion of parity, not superiority.
-
-The scale interaction, by contrast, is clear: against \rqOneDiDBaselineName{},
-the largest-minus-smallest ADDIE DiD is $\rqOneDiDVsBestBaseline$ (95\% CI
-$[\rqOneDiDVsBestBaselineCILo,\rqOneDiDVsBestBaselineCIHi]$,
-$p=\rqOneDiDVsBestBaselineP$). In the primary layer, the MAS's advantage
-contracts as the model grows on all three LLM judge scores. Failures concentrate
-at the small end, so the very large deltas against Baseline and EduPlanner at
-0.8B stand on very small complete-case scenario counts (column $n$,
-\Cref{tab:rq1-ladder}): they are artifacts of failure rate and cannot be read
-as quality gaps. This is precisely the selection effect that the
-\texttt{failure=0} layer avoids.
-
-\subsection{Objective 3: Quality on alignment scores}
+\subsection{Alignment scores (Objective 3)}
 \label{sec:rq2}
 
-Under the pre-specified interpretation rule, the panel concludes an advantage
-for AlignmentGraph-ISD at every size: at least four of the six directional
-scores are significantly positive after within-score Holm correction, and no
-score is significantly negative (\Cref{tab:rq2-panel}; the full 7-score
-$\times$ 7-agent picture is in \Cref{fig:rq2-components}). Family A separates
-most clearly on $\sigma_{\mathrm{meas}}$, the score corresponding to the
-\emph{measures} facet of \Cref{eq:aligned}; the Bloom-based Family B
-contributes independent evidence through congruence, Porter, and Webb. The
-reverse-direction score $\sigma_{\mathrm{rev}}$ remains diagnostic and does
-not participate in the directional count.
+The panel is read by the pre-specified rule of \Cref{sec:alignment-measures}: an
+advantage requires at least four of the six scores significantly positive after
+within-score Holm correction with none significantly negative, and every other
+pattern is reported as mixed with the losing side named. All six scores are reported
+for every comparison, win or lose (\Cref{tab:rq2-panel},
+\Cref{fig:rq2-components,fig:rq2-forest}). Per-size panel readings: \TBD. The
+panel-wide Holm sensitivity: \TBD. The scale interaction on
+$\sigma_{\mathrm{meas}}$, with the remaining scores alongside: \TBD.
 
-\input{../../generated/tab_rq2_panel}
+Absolute levels are reported descriptively only. The comparative claim is what the
+design supports; a panel value on its own has no external calibration.
 
-\begin{figure*}[!htbp]
+\begin{table*}[t]
+  \caption{The six alignment scores by system and model size, with per-cell $n$.
+  Generated from the TN1 artifacts.}
+  \label{tab:rq2-panel}
+  \small
   \centering
-  \includegraphics[width=0.98\textwidth]{fig_rq2_components.pdf}
-  \Description{Heatmap of seven alignment scores for seven agents, one grid cell per model size.}
-  \caption{The seven-score alignment panel by agent and model size; each cell
-  shows the mean value, white rules separate the two instrument families, and
-  red text marks survivor cells with small $n$. Exact numbers with SD:
-  \Cref{tab:rq2-panel}.}
+  \fbox{\parbox[c][0.20\textheight][c]{0.9\textwidth}{\centering
+    \emph{Pending TN1.}}}
+\end{table*}
+
+\begin{figure}[t]
+  \centering
+  \fbox{\parbox[c][0.26\textheight][c]{0.88\columnwidth}{\centering
+    \emph{Pending TN1.}\\[2pt]
+    \footnotesize Panel scores by system across the ladder.}}
+  \Description{Placeholder for the alignment panel figure, pending the TN1 run.}
+  \caption{Alignment scores by system and model size. Generated from the TN1
+  artifacts.}
   \label{fig:rq2-components}
-\end{figure*}
+\end{figure}
 
-\begin{figure*}[!htbp]
+\begin{figure}[t]
   \centering
-  \includegraphics[width=0.9\textwidth]{fig_rq2_forest.pdf}
-  \Description{Forest plot of per-score alignment deltas between the proposed system and ReAct-ISD by model size.}
-  \caption{Per-score panel $\Delta$ (proposed $-$ ReAct-ISD) with bootstrap
-  95\% CI, failure=0 layer; filled markers = within-score
-  $p_{\mathrm{Holm}} < 0.05$; \dag{} = non-directional score.}
+  \fbox{\parbox[c][0.26\textheight][c]{0.88\columnwidth}{\centering
+    \emph{Pending TN1.}\\[2pt]
+    \footnotesize Paired differences with bootstrap intervals, per panel score.}}
+  \Description{Placeholder for the alignment forest plot, pending the TN1 run.}
+  \caption{Paired proposed-minus-baseline differences on each alignment score, with
+  bootstrap 95\% intervals. Generated from the TN1 artifacts.}
   \label{fig:rq2-forest}
-\end{figure*}
+\end{figure}
 
-The graph-context mechanism carries objectives into each specialist's
-generation call; this explains the broad textual-correspondence profile, while
-Family B checks cognitive demand through an entirely different mechanism, so
-the agreement of the two families supports multiple measurable signals rather
-than one composite claim. Against ReAct-ISD, the strongest comparator, the
-per-score deltas are significantly positive at every size
-(\Cref{fig:rq2-forest}), and the $\sigma_{\mathrm{meas}}$ gap widens toward
-smaller models: the DiD is $\rqTwoSimDiDVsBaseline$ (95\% CI
-$[\rqTwoSimDiDVsBaselineCILo,\rqTwoSimDiDVsBaselineCIHi]$,
-$p=\rqTwoSimDiDVsBaselineP$). $\beta_{\mathrm{webb}}$ is the adverse exception
-at small models; the profile must therefore be read score by score.
-
+\subsubsection{Instrument sensitivity}
 \label{sec:sensitivity}
-This reading does not depend on the instrument configuration. The direction of
-the pairwise comparisons favoring AlignmentGraph-ISD persists across
-independent neural-encoder lineages, the TF--IDF lexical floor, the
-BERT--lexicon Bloom axis, and the complete-case slice: on the encoder axis the
-system remains first in \rqTwoSensTopOneCellsEncoderAxis{} arm--size cells,
-and on the Bloom axis in \rqTwoSensTopOneCellsBloomAxis{} cells. The
-comparative conclusion therefore does not depend on one specific encoder, on
-semantic embeddings as a method class, or on one specific Bloom classifier
-(\Cref{tab:rq2-sensitivity}). The complete-case result is sensitivity
-evidence, not an unconditional analysis.
 
-\input{../../generated/tab_sensitivity}
+The sensitivity star asks whether the ranking is a property of the outputs or an
+artifact of one instrument. The reported quantity is whether the \emph{direction} of
+each pairwise comparison survives each arm---not a rank correlation over the full
+ordering, which the mid-table systems are too close to resolve and which the paper
+never claimed. Encoder-lineage arms, the non-semantic floor, and the Bloom arm:
+\TBD{} (\Cref{tab:rq2-sensitivity}).
 
-\subsection{Ablation study: Mechanism evidence}
+\begin{table}[t]
+  \caption{Agreement of each sensitivity arm with the primary configuration.
+  Generated from the TN1 artifacts.}
+  \label{tab:rq2-sensitivity}
+  \small
+  \centering
+  \fbox{\parbox[c][0.14\textheight][c]{0.88\columnwidth}{\centering
+    \emph{Pending TN1.}}}
+\end{table}
+
+\subsection{Ablation (Objective 4)}
 \label{sec:ablation}
 
-The ablation results are judge-invariant but alignment-shifted: removing graph
-context changes ADDIE scores very little (\Cref{tab:ablation}) but lowers the
-alignment panel broadly (\Cref{fig:ablation-components}); removing the verifier from
-the shipped configuration produces no significant score effect; and every arm
-produces complete output. The mechanism picture thus separates into three
-layers. The decomposition layer (kept by every arm, not ablated) is associated
-with what persists across all arms---robustness and the ADDIE advantage over
-baselines: that advantage remains intact even with graph context disabled, so
-the ablation does not explain the gap on LLM judge scores, and without a monolithic control no
-causal credit can be assigned to decomposition. The graph-context layer is the
-mechanism supported by the evidence for the alignment scores. The verifier
-layer produces no measurable improvement in the shipped configuration and at
-most sizes lowers Trajectory; its role is a repair backstop and a source of
-audit evidence. When graph context is disabled, the verifier's simple effect
-on $\sigma_{\mathrm{meas}}$ is positive at every size, from
-\ablVerifCtxOffNineB{} to \ablVerifCtxOffZeroEightB{}; this counterfactual
-does not establish a score effect in the shipped system.
+TN2 separates the two factors of \Cref{tab:ablation-arms} at 0.8B and 4B. The
+readout is the internal audit metrics---relation coverage, residual violations,
+stages that gave up---together with the alignment panel; the LLM judge is a
+cross-check only. Main effects of decomposition and of substrate, and their
+interaction: \TBD{} (\Cref{tab:ablation}, \Cref{fig:ablation-components}). The
+registered directional prediction, that quality degrades with stage position under
+\texttt{single} and less so under \texttt{multi}, widening as the model shrinks:
+\TBD. The budget-parity condition---that no arm was cut short by its turn
+budget---holds or does not: \TBD; the ablation may be read only if it holds.
 
-\input{../../generated/tab_ablation}
+Each statement below will name the instrument family it rests on. Where the judge
+and the panel disagree about the arms, that disagreement is a finding and is
+reported in both readings (\Cref{sec:discussion}), not resolved silently.
 
-\begin{figure*}[!htbp]
+\begin{table}[t]
+  \caption{The four ablation arms at 0.8B and 4B. Generated from the TN2 artifacts.}
+  \label{tab:ablation}
+  \small
   \centering
-  \includegraphics[width=0.98\textwidth]{fig_ablation_components.pdf}
-  \Description{Heatmap of seven alignment scores for four ablation arms, one grid cell per model size.}
-  \caption{The seven-score alignment panel across the four ablation arms. A1 (verifier
-  removed) nearly coincides with A0; A2 and A3 (graph context removed) decline
-  broadly at every size---the alignment-shifted half of the pattern; the
-  judge-invariant half is in \Cref{tab:ablation}.}
-  \label{fig:ablation-components}
-\end{figure*}
+  \fbox{\parbox[c][0.16\textheight][c]{0.88\columnwidth}{\centering
+    \emph{Pending TN2.}}}
+\end{table}
 
-\subsection{Cost and throughput}
+\begin{figure}[t]
+  \centering
+  \fbox{\parbox[c][0.26\textheight][c]{0.88\columnwidth}{\centering
+    \emph{Pending TN2.}\\[2pt]
+    \footnotesize Panel scores across the four ablation arms.}}
+  \Description{Placeholder for the ablation panel figure, pending the TN2 run.}
+  \caption{Alignment scores across the four ablation arms at both sizes. Generated
+  from the TN2 artifacts.}
+  \label{fig:ablation-components}
+\end{figure}
+
+\subsection{Expert review}
+\label{sec:expert-results}
+
+The blinded expert review is reported descriptively: how reviewers rated
+constructive alignment, feasibility and clarity, how much revision each design would
+need, and how those ratings relate to the panel. It is corroboration, not a second
+endpoint, and it is not used to adjudicate the automated results. \TBD.
+
+\subsection{Cost}
 \label{sec:cost}
 
-The MAS uses \costHarnessCallsTwoB{} calls and \costHarnessTokensTwoB{}
-thousand tokens per design at 2B; its token use is
-\costTokenRatioVsMedianBaselineNineB$\times$--
-\costTokenRatioVsMedianBaselineZeroEightB$\times$ the median baseline and
-\costTokenRatioVsCheapestCompleteZeroEightB$\times$--
-\costTokenRatioVsCheapestCompleteTwoB$\times$ ReAct-ISD, the cheapest baseline
-with complete coverage. Tokens per ADDIE point favor the trade-off at the two
-smaller sizes, deteriorate at 4B, and lose at 9B, where ReAct-ISD reaches
-parity or better with approximately
-$1/\costTokenRatioVsCheapestCompleteNineB$ of the tokens
-(\Cref{fig:cost-quality}). Component telemetry attributes
-\costVerifierTokenOverheadFourB\%--\costVerifierTokenOverheadTwoB\% token
-overhead to the verifier and \costGraphContextTokenOverheadZeroEightB\%--
-\costGraphContextTokenOverheadTwoB\% to graph context; graph context creates
-the larger overhead and is also the mechanism supported by the alignment-panel ablation.
+Cost is reported as a trade-off, not as an efficiency claim. Per-scenario model
+calls and token totals per system and size, read from \texttt{token\_usage} only,
+appear in \Cref{fig:cost-quality} against quality. Two disclosures accompany every
+cost statement: the cost columns for systems that did not complete every scenario
+are survivor numbers, so cost comparisons use only systems with full coverage; and
+wall-clock time is queued throughput under parallel scheduling, not latency, so it
+is not reported as such. Values: \TBD.
 
-\begin{figure*}[!htbp]
+\begin{figure}[t]
   \centering
-  \includegraphics[width=0.8\textwidth]{fig_cost_quality.pdf}
-  \Description{ADDIE score versus token cost for seven agents across four model sizes.}
-  \caption{ADDIE quality versus token cost by model size. The MAS's
-  trade-off is favorable at the small end and erodes as the model grows.}
+  \fbox{\parbox[c][0.26\textheight][c]{0.88\columnwidth}{\centering
+    \emph{Pending TN1.}\\[2pt]
+    \footnotesize Tokens per scenario against ADDIE score, by system and size.}}
+  \Description{Placeholder for the cost-quality figure, pending the TN1 run.}
+  \caption{Cost against quality by system and model size. Generated from the TN1
+  artifacts.}
   \label{fig:cost-quality}
-\end{figure*}
-
-The Baseline and EduPlanner token columns are survivor statistics, because
-truncated cases leave no artifact; cost comparisons therefore use only
-baselines with complete coverage. Wall-clock values measure queued throughput,
-with up to \costMaxInflightDesigns{} designs in flight, and must not be read
-as request latency.
+\end{figure}

@@ -4,7 +4,7 @@
 > hậu xử lý ra số cho paper, kèm định nghĩa metric (Phụ lục A). Mục tiêu: đọc mỗi file này là
 > tái lập được thực nghiệm.
 >
-> Mọi lệnh chạy từ `isd-agent-benchmark/` trừ khi ghi khác. Bối cảnh RQ: [`docs/summary.md`](summary.md).
+> Mọi lệnh chạy từ `isd-agent-benchmark/` trừ khi ghi khác. Bối cảnh RQ: bản thảo `docs/paper/acm/` (§Experimental Design) + [`docs/rq2_protocol.md`](rq2_protocol.md).
 
 **Ba quy tắc không được vi phạm:**
 
@@ -19,14 +19,34 @@
 ## Pipeline
 
 ```
-[1] setup ─► [2] split data ─► [3] serving ─► [4] TUNE (train_30) ─┐
-                                                 loop đến khi chốt │
-                                                                   ▼
-[8] pool ◄── [7] score alignment ◄── [6] audit ◄── [5] BENCH test_90 (ladder)
-     │            (RQ2, local)                       4 size × 3 run × 10 agent
+[1] setup ─► [2] split data ─► [3] serving ─► [4] TUNE (train_30) ─► CODE FREEZE ─┐
+                                                 loop đến khi chốt                │
+                                                                                  ▼
+[8] pool ◄── [7] score alignment ◄── [6] audit ◄── [5] TN1 test_90  4 size × 1 run × 7 agent
+     │            (RQ2, local)                         TN2 test_30  2 size × 1 run × 4 arm
      ▼
 [9] gen tables + figures ─► [10] teardown
 ```
+
+**Hai thí nghiệm chính thức, tách rời (chốt 2026-09-10 theo định hướng GVHD sau Sprint 1):**
+
+| | TN1 — ladder | TN2 — ablation 2×2 |
+|---|---|---|
+| Trả lời | Objective 2 + 3 | Objective 4 |
+| Agent | 7 hệ (6 baseline + hệ đề xuất) | 4 arm (A0 + 3) |
+| Size | 0.8B / 2B / 4B / 9B | 0.8B / 4B |
+| Dataset | `test_90` | `test_30` |
+| Run/ô | 1 (deterministic) | 1 (deterministic) |
+| Tag | `r1` | `a1` |
+| Launcher | `.../02_run_ladder.sh` | `.../ablation/02_run_ablation.sh` |
+
+**A0 chạy LẠI trong TN2**, không mượn từ TN1: judge session, scenario set và dải size đều khác,
+nên delta arm−A0 chỉ sạch khi hai vế đến từ cùng một run. Trước 2026-09-10 các arm chạy chung
+trong ladder (10 agent một run) — mọi mô tả kiểu đó trong tài liệu cũ đã hết hiệu lực.
+
+**1 run mỗi ô, không phải 3.** Bất định ước lượng theo SCENARIO (paired Wilcoxon + bootstrap trên
+90 cặp), không theo run. Lặp chỉ dùng cho *targeted repeat* — vài ô quyết định, báo riêng với n
+riêng: `RUN_TAGS="r2,r3" LADDER_SLOTS="qwen08b,qwen4b" AGENTS="..." .../02_run_ladder.sh`.
 
 ### Bản đồ script
 
@@ -38,12 +58,14 @@ Script chung ở `scripts/`; pipeline ladder ở `scripts/alignmentgraph-isd-ben
 | `.../00_validate_bloom.py`                | **chạy trước mọi thứ, một lần**: validate cả hai Bloom arm vs nhãn chuyên gia | A.3 |
 | `1_setup.sh`                              | venv + deps + agents/evaluator (editable)                            | 1   |
 | `2_split_data.sh`                         | split gốc train/test 95/5 (seed 42)                                  | 2   |
-| `2_split_stratified_subset.py`            | cắt `train_30` / `test_90`                                           | 2   |
+| `2_split_stratified_subset.py`            | cắt `train_30` / `test_90` / `test_30` (+ `--disjoint-from` để kiểm) | 2   |
 | `3_sync_runpod_pods_env.py`               | list pod → verify model → ghi env-quad agent vào `.env`              | 3.4 |
 | `3_run_benchmark_test.sh`                 | smoke run 1 scenario                                                 | 1   |
 | `4_run_benchmark.sh`                      | launcher tmux tổng quát — dùng cho **tune**                          | 4   |
 | `.../01_audit_preflight.py`               | audit trước launch: pod/auth/model/flags/smoke/disk                  | 6.1 |
-| `.../02_run_ladder.sh`                    | launcher ladder 4 size × 3 run × 10 agent                            | 5   |
+| `.../02_run_ladder.sh`                    | launcher **TN1**: 4 size × 1 run × 7 agent, `test_90`                | 5   |
+| `.../ablation/02_run_ablation.sh`         | launcher **TN2**: 2 size × 1 run × 4 arm, `test_30`                  | 5.4 |
+| `.../_run_matrix.sh`                      | máy chạy dùng chung của hai launcher (slot, key, manifest, tmux)     | 5   |
 | `.../03_audit_inflight.py`                | audit khi đang chạy: red-flag trong log + progress freshness         | 6.2 |
 | `.../04_audit_postrun.py`                 | audit sau run: completeness / integrity / metrics / trường RQ2       | 6.3 |
 | `.../04_repair_ladder_results.py`         | chấm lại judge cho agent lỗi transient, **không** sinh lại output    | 6.4 |
@@ -191,14 +213,16 @@ RUN_TAGS=tune1 ./scripts/4_run_benchmark.sh
 - Thu hẹp `--agents` cho rẻ khi debug, nhưng **vòng chốt cuối chạy đủ 7 agent** để chắc thay đổi không phá agent khác.
 - Kết thúc tune = **commit đóng băng code** (manifest ladder sẽ ghi commit hash).
 
-## 5. Bench `test_90` — ladder
+## 5. Bench — TN1 (`test_90`) và TN2 (`test_30`)
 
 ### 5.1 Quy mô
 
-4 size × 3 run × 10 agent × 90 scenario ≈ **10 800 agent generation**, mỗi generation thêm 2 judge evaluation.
-Một run đơn ở rate `turbo` mất vài giờ; cả ladder ~1 ngày wall-clock (size chạy song song, 3 run của một size tuần tự).
+TN1: 4 size × 1 run × 7 agent × 90 scenario ≈ **2 520 agent generation**. TN2: 2 size × 1 run × 4 arm
+× 30 scenario = **240 generation**. Mỗi generation thêm judge evaluation (1 judge full + judge thứ
+hai trên subset corroboration). Một run đơn ở rate `turbo` mất vài giờ; TN1 chạy 4 size song song.
 
-10 agent = 6 default + `alignmentgraph-isd` + 3 arm ablation. Không cái nào nằm trong defaults — launcher đã thêm sẵn.
+7 agent TN1 = 6 default + `alignmentgraph-isd` (không nằm trong defaults — launcher thêm sẵn).
+Ba arm ablation KHÔNG chạy ở đây nữa; chúng là TN2 (mục 5.4).
 
 ### 5.2 Launch
 
@@ -208,9 +232,13 @@ source .env
 ```
 
 - Env-quad lấy từ managed block; thiếu base URL ⇒ hard-fail kèm hướng dẫn.
-- Mỗi size một tmux session (`ladder-qwen08b`...), chạy **song song**; trong mỗi session 3 run **tuần tự** với
-  `--run-tag r1|r2|r3` → `results/test_90_benchmark_<model>_r<N>_<ts>/`.
-- **Manifest reproducibility** ghi TRƯỚC khi launch vào `results/ladder_<ts>/ladder_manifest.json`: model/provider/URL
+- Mỗi size một tmux session (`ladder-qwen08b`...), chạy **song song**; trong mỗi session các tag chạy
+  **tuần tự** — mặc định một tag `r1` → `results/test_90_benchmark_<model>_r1_<ts>/`.
+- **`.env` không đổi được cái gì được chạy.** Launcher snapshot `DATASET`/`AGENTS`/`RUN_TAGS`/
+  `RATE_LIMIT`/`*_SLOTS` trước khi `source .env`, rồi trả lại — override gõ inline
+  (`DATASET=x ./script`) thắng, còn giá trị sót lại trong `.env` từ một phiên tune thì không. Nếu
+  `DATASET` khác split chính thức của thí nghiệm, banner nói thẳng đây không phải TN chính thức.
+- **Manifest reproducibility** ghi TRƯỚC khi launch vào `results/tn1_ladder_<ts>/tn1_manifest.json`: model/provider/URL
   từng slot, dataset, agents, run tag, judge model, **git commit của cả benchmark lẫn monorepo cha**. Giữ file này.
 - Log per-slot: `results/ladder_<ts>/<slot>.log`.
 
@@ -251,11 +279,31 @@ Cap thực tế được ghi vào `metadata.run_config.llm_max_concurrency` nên
 **Hệ quả cần biết:** arm multi sẽ chậm hơn trước vì fan-out bị chia thành nhiều đợt. Đó là cái giá để hai phía của trục
 `agent_mode` chịu cùng một điều kiện phục vụ. Mọi số multi-vs-single đo trước 2026-08-31 đều dính nhiễu này.
 
-### 5.4 Ablation (4 arm, nằm trong chính run của ladder)
+### 5.4 TN2 — Ablation 2×2 (thí nghiệm riêng)
 
-**Không có benchmark run riêng.** 4 arm chạy như 4 agent bên trong run ladder nên được gộp 3 run/size như phần còn lại,
-và mọi arm được chấm trong **cùng judge session** per scenario → delta arm-vs-A0 không dính judge drift. A0 **chính là**
-`alignmentgraph-isd` của ladder, nên không bảng nào cần chú thích hoà giải hai con số A0.
+```bash
+# sau khi TN1 xong và code đã freeze
+./scripts/alignmentgraph-isd-bench/ablation/02_run_ablation.sh
+```
+
+**Có benchmark run riêng (đổi 2026-09-10).** TN2 = 4 arm × 2 size (0.8B, 4B) × `test_30`, 1 run
+deterministic mỗi ô, tag `a1`. Bốn arm nằm trong **cùng một run** mỗi size nên chia chung judge
+session per scenario → delta arm-vs-A0 không dính judge drift.
+
+**A0 chạy lại trong TN2, không lấy từ TN1.** Judge session, scenario set và dải size đều khác, nên
+so một arm TN2 với A0 của ladder là so xuyên thí nghiệm. `08_pool_ablation_runs.py` vẫn đặt A0 của
+TN2 cạnh A0 của TN1 nhưng như một **drift gauge**: nó chặn trên phần delta có thể do session gây
+ra, không phải một phép so arm. Trước 2026-09-10 hai con số này đến từ cùng một run và phải bằng
+nhau — mô tả đó đã hết hiệu lực.
+
+`test_30` là subset stratified 1/ô của `test_90` (seed 42), nên hai thí nghiệm rút từ một pool
+held-out duy nhất và A0 hai bên đọc được cạnh nhau; vẫn không phải paired, nên delta còn mang cả
+sampling. Kiểm disjoint với tập tune:
+
+```bash
+python scripts/2_split_stratified_subset.py --source scenarios/test_90 --target scenarios/test_30 \
+    --per-cell 1 --disjoint-from scenarios/train_30 --disjoint-from scenarios/train
+```
 
 **Trần ILO có ở CẢ BỐN arm và không có ở baseline (2026-09-10).** Harness tính
 `per_goal(context.duration) × len(learning_goals)` (2/3/4 cho ngắn/vừa/dài) và đưa con số đó vào rules của stage
@@ -290,7 +338,7 @@ Post-processing chạy **sau khi ladder xong** (consistency check cần `pooled_
 
 ```bash
 python scripts/alignmentgraph-isd-bench/ablation/08_pool_ablation_runs.py \
-    --auto-glob 'results/test_90_benchmark_*_r[123]_*' \
+    --auto-glob 'results/test_30_benchmark_*_a*' \
     --ladder-pooled results/pooled_ladder.json          # → results/pooled_ablation.json
 python scripts/alignmentgraph-isd-bench/ablation/11_gen_ablation_tables.py
 python scripts/alignmentgraph-isd-bench/ablation/12_gen_ablation_figures.py
@@ -357,8 +405,10 @@ python scripts/alignmentgraph-isd-bench/04_audit_postrun.py --fields-only <run_d
 Script phân biệt **RED** (lỗi hạ tầng: stub / rỗng / token=0 / sai model / thiếu metric) với **info** (agent fail kiểu
 capability — hợp lệ, failure policy ở mục 8 xử lý, **không** re-run). Nó phủ ba tầng:
 
-- **Completeness** — 90 scenario/run; mỗi scenario đủ output của các agent; có `comparison_report.json`;
-  `benchmark_summary.json` tồn tại; đủ 3 run × 4 size trước khi pool.
+- **Completeness** — roster và số scenario suy ra từ prefix dataset của thư mục run (`test_90_` → 7 agent
+  × 90 scenario, `test_30_` → 4 arm × 30); override bằng `--agents` / `--expected-scenarios`. Mỗi scenario
+  đủ output của các agent trong roster; có `comparison_report.json`; `benchmark_summary.json` tồn tại;
+  đủ 4 size (TN1) / 2 size (TN2) trước khi pool.
 - **Integrity** — stub/default output (stub đủ 33 sub-item nên nhìn "đầy đủ", phải quét bằng marker), output < 1KB,
   trajectory rỗng, `token_usage.total_tokens = 0`, model name trong metadata khớp thư mục run, duration hợp lý.
 - **Metrics** — mỗi `comparison_report.json` có `total_score` (median multi-judge), `addie_score`, `trajectory_score`;
@@ -410,7 +460,7 @@ command. Deploy **nhiều pod cùng lúc** thì scorer tự load-balance round-r
 Chuẩn bị trước một lần: checkpoint Bloom (arm chính) — xem A.3.
 
 ```bash
-RUNS='results/test_90_benchmark_*_r[123]_*'
+RUNS='results/test_90_benchmark_*_r* results/test_30_benchmark_*_a*'
 
 # (1) arm primary — cần pod đang chạy
 python scripts/alignmentgraph-isd-bench/05_sync_embed_pod_env.py   # --dry-run để xem trước
@@ -493,7 +543,7 @@ python scripts/alignmentgraph-isd-bench/07_pool_ladder_runs.py \
     --auto-glob 'results/test_90_benchmark_*_r*' --auto-encoders --auto-bloom
 ```
 
-Output `results/pooled_ladder.json` + report stdout. Gộp 3 run/size (mean-of-runs), rồi per-size: Wilcoxon paired
+Output `results/pooled_ladder.json` + report stdout. Gộp run/size (mean-of-runs; TN1 mặc định 1 run), rồi per-size: Wilcoxon paired
 (proposed vs 6 baseline), Holm, bootstrap CI, rank-biserial, 3 failure policy, interaction DiD + trend slope — định
 nghĩa ở A.2. RQ2 pool từ `alignment_scores.json` (A.3). Kèm section `token_usage` (A.4).
 
@@ -550,10 +600,10 @@ không kiểm nó.
 
 **Quy ước artifact (2026-07-30, enforce bằng `99_audit_artifacts.py` check I):** mọi text trong artifact là
 **tiếng Anh**, số dùng **dấu chấm** (`87.77`). Caption chỉ nói *bảng chiếu gì* và *một ô là gì*, ~100–250 ký tự;
-phần biện luận phương pháp thuộc mục Methods. Mean và ±SD phải cùng một signal (`run_to_run_sd_{addie,traj,total}`
+phần biện luận phương pháp thuộc mục Methods. Mean và SD phải cùng một signal (`sd_{addie,traj,total}_across_scenarios`
 trong pooled; `run_to_run_sd` trần là Total, chỉ còn tồn tại cho `08_pool_ablation_runs.py`). Ô nào tính trên tập
 scenario thiếu thì phải in `n` + footnote — RQ2 đếm scenario có **ít nhất một** run chấm được, điều kiện yếu hơn
-complete-case đủ 3 run của RQ1, nên hai bảng ghi nhãn khác nhau.
+complete-case (đủ mọi run của ô) của RQ1, nên hai bảng ghi nhãn khác nhau.
 Số format kiểu VN (`{,}`). `sync_generated.sh` là **bước copy duy nhất** sang `docs/generated/`; LaTeX trỏ tới đó bằng
 đường dẫn tương đối.
 
@@ -561,7 +611,7 @@ Hình (cả `.pdf` vector lẫn `.png` preview; text trong hình tiếng Anh, ca
 
 | Hình                     | Nội dung                                                                     |
 |--------------------------|------------------------------------------------------------------------------|
-| `fig_rq1_ladder`         | Total vs model size, error bar = run-to-run SD (headline RQ1)                |
+| `fig_rq1_ladder`         | ADDIE vs model size, error bar = ±SEM across scenarios (headline RQ1)        |
 | `fig_rq1_delta`          | Δ(proposed − baseline) per size, CI95, marker đặc = p_holm < 0,05, kèm slope |
 | `fig_rq1_components`     | ADDIE vs Trajectory theo size                                                |
 | `fig_rq2_ladder`         | Objective–assessment alignment vs size (headline RQ2)                        |
@@ -653,17 +703,21 @@ Về composite: per-scenario `total_score` trong `comparison_report.json` —
 ## A.2 RQ1 statistics
 
 File: [`07_pool_ladder_runs.py`](../isd-agent-benchmark/scripts/alignmentgraph-isd-bench/07_pool_ladder_runs.py).
-Input: 4 size × 3 run × 90 scenario, mỗi scenario đã có `Total` cho từng agent.
+Input: 4 size × 1 run × 90 scenario (TN1), mỗi scenario đã có `Total` cho từng agent.
 
-- **`mean_total`** — trung bình `Total` của một agent tại một size, pool qua 3 run rồi qua scenario (complete-case là
+- **`mean_total`** — trung bình `Total` của một agent tại một size, pool qua run rồi qua scenario (complete-case là
   policy chính).
-- **`run_to_run_sd`** — SD giữa 3 giá trị trung bình cấp-run (độ ổn định run-to-run, tách khỏi phương sai giữa
-  scenario).
-  Tính trên **đúng tập complete-case của `mean_total`**, không phải trên mọi scenario có điểm trong từng run: nếu mỗi
-  run
-  trung bình trên một tập scenario khác nhau thì các run mean không so sánh được, và độ tản của chúng lẫn biến thiên
-  run-to-run với khác biệt thành phần scenario. Đây là con số in kèm `mean_total` trong `tab_rq1.tex` và làm error bar
-  của `fig_rq1_ladder`, nên hai số phải cùng mẫu.
+- **`sd_{total,addie,traj}_across_scenarios`** — SD **giữa các scenario** của chính signal đó. Đây là con số in trong
+  ngoặc cạnh mean ở `tab_rq1.tex` và vẽ thành **SEM** (`sd/√n`) làm error bar của `fig_rq1_ladder`. Nó là **độ tản mô
+  tả**, không phải ước lượng độ chính xác — khoảng tin cậy là bootstrap CI ở tầng so sánh. Cùng quy ước với bảng/hình
+  panel RQ2, nên error bar hai họ instrument có cùng nghĩa.
+- **`run_to_run_sd{,_addie,_traj,_total}`** — SD giữa các giá trị trung bình cấp-run. **`None` khi ô chỉ có 1 run**,
+  tức mặc định của TN1; chỉ những ô nằm trong *targeted repeat* mới có số. Tính trên **đúng tập complete-case của
+  `mean_total`**: nếu mỗi run trung bình trên một tập scenario khác nhau thì các run mean không so sánh được, và độ tản
+  của chúng lẫn biến thiên run-to-run với khác biệt thành phần scenario. Consumer phải kiểm `isinstance(x, float)`
+  trước khi in.
+- **JSON hợp lệ**: `json_safe()` đổi mọi float không hữu hạn thành `null` ngay tại chỗ dump, nên `pooled_ladder.json`
+  đọc được bằng parser chặt (`json.dumps(..., allow_nan=False)`), không còn token `NaN` trần.
 - **Paired Wilcoxon signed-rank** — khớp cặp theo scenario, proposed vs từng baseline, two-sided. Với `n_effective ≤ 25`
   dùng **exact permutation null** (bắt buộc: xấp xỉ chuẩn anti-conservative ở n nhỏ — exact p sàn two-sided là 0,25 tại
   n=3). Ô có complete-case n≤5 khai báo *not testable* bằng score test; bằng chứng tại đó lấy từ failure-rate test.

@@ -258,13 +258,18 @@ function AlignmentFlags({ flags }: { flags: ObjectiveAlignment }) {
     <>
       <div className="section-title">Constructive alignment</div>
       {/* Mirrors viz.objective_annotations: measured = C2 assessed_by,
-          supported = C3 practiced_by. There is no rubric leg since
-          2026-09-02 — a criterion is a field of the item that measures the
-          objective, so it was true whenever `measured` was. An archived run
-          still carries the flag and is still shown its own answer. */}
+          supported = C3 practiced_by, prepares = the C4 edge that closes the
+          triad between those two. There is no rubric leg since 2026-09-02 — a
+          criterion is a field of the item that measures the objective, so it
+          was true whenever `measured` was. An archived run still carries the
+          flag and is still shown its own answer. */}
       <div className="flags">
         <Flag on={flags.measured} label="assessed by an assessment task (C2)" />
         <Flag on={flags.supported} label="practiced by an activity (C3)" />
+        {flags.prepares !== undefined && (
+          <Flag on={flags.prepares}
+                label="that activity prepares for that assessment task (C4)" />
+        )}
         {flags.evaluated !== undefined && (
           <Flag on={flags.evaluated} label="scored by a rubric criterion (C7, retired)" />
         )}
@@ -282,8 +287,8 @@ function AlignmentFlags({ flags }: { flags: ObjectiveAlignment }) {
       </div>
       <div className="small muted" style={{ marginTop: 6 }}>
         {flags.aligned
-          ? 'Fully aligned: every leg of the objective is covered.'
-          : 'Not fully aligned — one of the legs above is missing.'}
+          ? 'The constructive-alignment triad closes on this objective.'
+          : 'The triad does not close — one of C2, C3, C4 above is missing.'}
       </div>
     </>
   )

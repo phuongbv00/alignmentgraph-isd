@@ -42,8 +42,12 @@ function fixture(): AlignmentGraphPayload {
       edge('', 'narrates', 'improvement_0', 'objective:LO-01', ''),
     ],
     objective_alignment: {
-      'objective:LO-01': { measured: true, supported: true, bloom_ok: true, aligned: true },
-      'objective:LO-02': { measured: false, supported: false, bloom_ok: false, aligned: false },
+      'objective:LO-01': {
+        measured: true, supported: true, prepares: true, bloom_ok: true, aligned: true,
+      },
+      'objective:LO-02': {
+        measured: false, supported: false, prepares: false, bloom_ok: false, aligned: false,
+      },
     },
     relation_coverage: {},
     metadata: {},
@@ -146,11 +150,11 @@ describe('toCytoscape', () => {
 
     expect(aligned.classes).toContain('aligned')
     expect(aligned.classes).not.toContain('unaligned')
-    expect(aligned.data.badge).toBe('✓✓')
+    expect(aligned.data.badge).toBe('✓✓✓')
 
     expect(unaligned.classes).toContain('unaligned')
     expect(unaligned.classes).toContain('bloom-warning')
-    expect(unaligned.data.badge).toBe('✗✗')
+    expect(unaligned.data.badge).toBe('✗✗✗')
   })
 
   it('marks section nodes so they read as holding a whole ADDIE section', () => {

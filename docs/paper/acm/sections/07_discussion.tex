@@ -1,142 +1,143 @@
 \section{Discussion}
 \label{sec:discussion}
 
-The ladder and ablation support different claims. At the system level, the ADDIE
-advantage is largest at the small end of the Qwen 0.8B--9B ladder and contracts to
-parity with ReAct-ISD at 9B; the alignment panel satisfies its pre-specified rule at
-every size (\Cref{sec:rq1,sec:rq2}). At the mechanism level, removing graph context
-shifts the alignment panel downward while ADDIE remains nearly invariant
-(\Cref{sec:ablation}). Explicit shared state is therefore supported as the mechanism
-carrying the measured alignment profile, but not as an improvement to LLM judge scores or as a mechanism whose effect strengthens toward smaller models. The
-verifier has no score effect in the shipped configuration; it is a backstop and an
-audit trail.
+The two experiments support claims at two different levels, and keeping them apart
+is what makes either usable. TN1 is a system-level comparison: it can say how
+AlignmentGraph-ISD stands against the benchmark agents at each size and whether that
+standing changes as the model shrinks, but it cannot say which part of the design is
+responsible. TN2 is where attribution happens, and only between the two factors it
+manipulates. A statement that mixes the two---reading an ablation gradient as though
+it explained the ladder gap---would not be supported by either. The findings from
+each are \TBD.
 
-Every ablation arm produced usable output, which locates robustness in the execution
-structure common to those arms rather than in graph context or verification alone.
-Because no monolithic arm exists, this remains a system-level attribution, not a
-causal estimate for decomposition. More broadly, the study complements evidence
-that MAS sensitivity can be non-monotonic across model tiers
-~\cite{cho2026harness}: the observed interaction, rather than prior literature,
-supports the small-end result. Numerical comparison with studies using different
-models, tasks, budgets, or judges would not support the same inference.
+Two readings will have to be distinguished rather than assumed. If the LLM judge
+scores are close across the ablation arms while the alignment panel separates them,
+the favourable reading is that general-purpose judges are insensitive to alignment,
+which is exactly what an independent alignment measurement exists to expose, and
+known evaluator biases make that credible~\cite{panickssery2024llm}. The adversarial
+reading is that the only instrument separating the arms shares a construct with the
+design being ablated, while the mechanically independent judge family does not---the
+pattern one expects under weak discriminant validity. Automated scores alone cannot
+choose between these, which is why the prediction that distinguishes them is
+registered before the expert review is read (\Cref{sec:expert}) and why that review
+is part of the design rather than future work.
 
-The practical proposition is that the MAS runs reliably and remains worth
-running at the small end within the serving envelope in \Cref{sec:assumptions}.
-Its case weakens as capacity rises: at the smallest size it loses to one baseline on
-\texttt{total\_score}, while at 9B ReAct-ISD is equal or better depending on the
-LLM judge score and uses substantially fewer tokens (\Cref{sec:cost}).
-AlignmentGraph-ISD is therefore decision support, not expert replacement. Its graph dump gives an
-educator an audit-and-override interface for tracing relations and verifier actions;
-professional review remains necessary for pedagogical suitability, context,
-accessibility, and use.
+The practical proposition is bounded in the same way. Explicit alignment state is
+not free: the system spends more model calls and more tokens than a single-loop
+agent, and the multiple is \TBD{} (\Cref{sec:cost}). The honest statement of that
+trade is that the method exchanges additional cost for explicit state, an audit
+trail, and controlled cross-artifact references---not that it is cheaper, which it
+is not, at any size measured here. Whether the exchange is worth making is a
+deployment question with a different answer at each end of the ladder, and the
+evidence for each end is \TBD.
 
-The judge-invariant but alignment-shifted ablation admits two competing readings.
-On the favorable reading, general LLM judges are insensitive to alignment, which is
-what the independent alignment-score measurement is meant to expose; known evaluator
-biases make that possibility credible~\cite{panickssery2024llm}. On the adversarial
-reading, only the instrument designed around the ablated construct separates the
-arms, while the mechanically independent judge family does not---the pattern
-expected under weak discriminant validity. The current evidence cannot choose
-between them. This ambiguity motivates the expert-validation direction specified
-below.
-
-These interpretations are bounded by the study design and the instruments that
-produce them. The following threats state those boundaries together with the
-corresponding mitigations, then derive the next experiments from what remains
-unresolved.
+One design decision deserves to be stated as a finding rather than a footnote. An
+earlier version of the harness closed missing relations with generated stand-ins---a
+placeholder activity for an objective nothing practiced, a module for an
+unsupported activity. Each of those satisfied its own check by existing, so coverage
+looked complete while the design was not. Removing them raises the residual
+violation counts this paper reports. That is the correct direction: a system whose
+purpose is to make alignment checkable must not manufacture the relations it is
+checking, and the boundary it draws---the harness may rearrange what the design
+already contains, but only an agent may write instructional content---is what gives
+the exported graph its evidentiary value. A tool that repairs its own audit is not
+an audit.
 
 \subsection{Threats to Validity and Limitations}
 \label{sec:threats-limitations}
 
-Internal validity is affected by the interaction between the 8192-token cap and
-architecture: decomposition can complete within a budget that truncates one-shot
-generation. This interaction is also part of the deployment condition, so we derive
-the cap from the checkable envelope in \Cref{sec:assumptions}, apply it uniformly,
-and report failures and truncation by agent and size (\Cref{sec:robustness}). A
-higher-cap run remains a separate sensitivity rather than a change to that condition.
-The only baseline-specific intervention was translating ReAct-ISD's prompt
-scaffolding into English; disclosure permits alternative translations while holding
-the method fixed. LLM-judge drift and self-preference remain possible
-~\cite{panickssery2024llm}, mitigated by the no-LLM second instrument, separate
-agent and judge families, and same-session ablation contrasts.
+\paragraph{Internal validity.}
+The 8192-token cap interacts with architecture: a decomposed system can finish
+within a budget that truncates one-shot generation. This interaction is part of the
+deployment condition rather than a confound to apologise for, so the cap is derived
+from the checkable envelope in \Cref{sec:assumptions}, applied uniformly to every
+system, and failures and truncations are reported per system and size
+(\Cref{sec:robustness}). A higher-cap run remains a separate sensitivity, not a
+change to the condition. The only baseline-specific intervention was translating
+ReAct-ISD's prompt scaffolding into English; disclosing it permits an alternative
+translation while holding the method fixed. Judge drift and self-preference remain
+possible~\cite{panickssery2024llm}, mitigated by the no-LLM second instrument,
+separate agent and judge families, and the second-judge subset.
 
-External validity is bounded by one model family. The four Qwen checkpoints share a
-pretraining recipe, so size is confounded with recipe differences within that
-family. Conclusions therefore apply only across the Qwen 0.8B--9B ladder;
-generalization to Llama, Gemma, or Phi requires another experiment. The scenarios
-also come from one stratified benchmark rather than institutional practice. Domain
-and difficulty stratification mitigate narrow sampling, but educator-reviewed field
-replication is still needed.
+\paragraph{External validity.}
+Conclusions are bounded by one model family. The four Qwen checkpoints share a
+pretraining recipe, so capacity is confounded with recipe differences inside that
+family, and results are stated on the Qwen3.5 0.8B--9B ladder only; extending them to
+Llama, Gemma, or Phi is a hypothesis requiring another experiment. The scenarios come
+from one stratified benchmark rather than institutional practice; stratification by
+domain and difficulty mitigates narrow sampling, but field replication with
+educator-authored briefs is still needed.
 
-Construct validity is the central limitation: similarity is not alignment. Family A
-measures textual correspondence, and its bridge to constructive alignment rests on
-the measurement's evidence structure and established criteria
-~\cite{biggs2011teaching,porter2002measuring,webb1997criteria}, not its metric names.
-In particular, \texttt{assessment\_objective\_similarity} cannot distinguish useful
-coverage from restatement and is excluded from directional counts. The primary
-Bloom checkpoint is learned from one institution's coding convention
-~\cite{li2022bloomclassification}; its individual decisions are not traceable to
-Anderson--Krathwohl~\cite{anderson2001taxonomy}, nor has it been validated on
-machine-generated objectives. Encoder and classifier error may be differential
-across systems that paraphrase, repeat, or distribute content differently. The
-three-axis sensitivity star---independent neural lineages, a TF--IDF floor, and a
-BERT--lexicon substitution---reduces but does not remove this threat
-(\Cref{sec:sensitivity}). Pinned revisions and cached embeddings reproduce reported
-scores up to neural floating-point noise, not necessarily bit for bit.
+\paragraph{Construct validity.}
+Similarity is not alignment. Family A measures textual correspondence, and its bridge
+to constructive alignment rests on the measurement's evidence structure and on
+established criteria~\cite{biggs2011teaching,porter2002measuring,webb1997criteria},
+not on what the scores are named. The two instrument families are also not fully
+independent: $\beta_{\mathrm{cong}}$ pairs an objective with an assessment task by
+cosine before comparing Bloom levels, so it shares the embedding step with Family A,
+and only $\beta_{\mathrm{port}}$ and $\beta_{\mathrm{webb}}$ are free of similarity
+entirely. Triangulation claims therefore rest on those two. The primary Bloom
+checkpoint is learned from one institution's coding
+convention~\cite{li2022bloomclassification}; its individual decisions are not
+traceable to Anderson--Krathwohl~\cite{anderson2001taxonomy}, and it has not been
+validated on machine-generated objectives. Encoder and classifier error may be
+differential across systems that paraphrase, repeat, or distribute content
+differently, which could change a ranking rather than merely add noise; the
+sensitivity star---independent neural lineages, a non-semantic floor, and a
+classifier substitution---reduces this threat without removing it
+(\Cref{sec:sensitivity}). Pinned revisions and cached embeddings reproduce the
+reported scores up to floating-point noise, not bit for bit. Finally, the panel
+measures properties of a document, not learning: it says nothing about what students
+would learn from these designs.
 
-Conclusion validity depends on \ladderNumScenarios{} paired scenarios and
-\ladderNumRunsPerModel{} runs per cell. The run count limits variance estimation;
-between-run SDs, bootstrap intervals, and exact permutation nulls for small paired
-samples mitigate that limit. Within-score and panel-wide Holm corrections expose
-the multiplicity trade-off. Output failure is post-treatment, so complete-case
-analysis can discard an agent's worst cases; \texttt{failure=0} is primary,
-complete-case is sensitivity rather than unconditional, and failure rates are
-reported separately (\Cref{sec:stats}). The failure policy and panel rule were fixed
-before pooled alignment results were inspected, limiting outcome-contingent interpretation
-without claiming external preregistration.
+\paragraph{Conclusion validity.}
+Inference rests on 90 paired scenarios per size, with one deterministic generation
+per cell. Uncertainty is therefore estimated over scenarios rather than over repeated
+runs, which is the dominant source of variation at this sample size but leaves
+run-to-run variability unestimated for most cells; the targeted repeats
+(\Cref{sec:setup}) cover only the decisive cells and are reported separately with
+their own $n$. Bootstrap intervals and exact permutation nulls for small paired
+samples mitigate the small-sample limits; within-score and panel-wide Holm
+corrections expose the multiplicity trade-off. Output failure is a post-treatment
+variable, so complete-case analysis can discard a system's worst cases:
+\texttt{failure=0} is the primary layer, complete-case is a sensitivity computed over
+available outputs, and failure rates are reported separately (\Cref{sec:stats}). The
+failure policy, the panel rule, the trajectory-cap policy and the ablation prediction
+were all fixed before any TN1 or TN2 output was scored, which limits
+outcome-contingent interpretation without amounting to external preregistration.
 
 \paragraph{Future directions.}
 \label{sec:future-work}
-Each next experiment follows from one of these limits. Because every ablation
-retains the specialist workflow, a monolithic arm in the same package and under the
-same per-scenario token budget should separate decomposition from codebase,
-prompting, and test-time compute. A higher-cap sensitivity on the rented 24\,GB
-device should test whether robustness and rankings persist when one-shot agents
-receive a larger serving allowance while prompts, scenarios, decoding, failure
-policy, and reporting rules remain fixed.
+Each direction follows from one of the limits above. A higher-cap sensitivity on a
+larger device would test whether robustness and rankings persist when one-shot agents
+receive a bigger serving allowance, with prompts, scenarios, decoding, failure policy
+and reporting held fixed. A second model family would separate capacity from
+pretraining recipe. The expert layer in this study is deliberately small; a larger
+blind-coding study reporting Cohen's $\kappa$ against the full panel is what would
+turn corroboration into construct validation.
 
 A further limit is the generation order itself. Each artifact family is produced
-once, in fixed ADDIE sequence, so verification can only repair inside the phase
-that has just run, and a problem that becomes visible only after a later family
-exists cannot send the MAS back. The absence of a verifier score effect is
-consistent with that bound (\Cref{sec:ablation}): a check-and-repair backstop
-confined to one phase has little headroom. Feasibility is the clearest case, since
-total learner workload and resource demand are properties of the finished design
-that no phase-local check can act on. A state-driven variant would instead select
-the next specialist from the current graph, and would treat termination as a
-conjunctive property of that graph---structural completeness, constraint
-satisfaction, and a stated alignment condition---rather than as a completed visit
-list. Orchestrators that re-plan from shared state are established outside
-education~\cite{fourney2024magenticone,zhang2026patchboard}, and pedagogically
-driven course generation was posed as non-linear planning before LLMs
-~\cite{ullrich2008paigos}, but LLM-based instructional-design systems remain
+once, in fixed ADDIE sequence, so checking can only repair inside the stage that has
+just run, and a problem visible only after a later family exists cannot send the
+system back. Feasibility is the clearest case: total learner workload and resource
+demand are properties of the finished design that no stage-local check can act on. A
+state-driven variant would select the next stage from the current graph and treat
+termination as a conjunctive property of that graph---structural completeness,
+constraint satisfaction, and a stated alignment condition---rather than as a
+completed visit list. Orchestrators that re-plan from shared state are established
+outside education~\cite{fourney2024magenticone,zhang2026patchboard}, and
+pedagogically driven course generation was posed as non-linear planning before LLMs
+~\cite{ullrich2008paigos}, while LLM-based instructional-design systems remain
 fixed-role pipelines~\cite{zhang2025eduplanner,yao2025instructionalagents,
 isdagentbench}. Two conditions would make such a study interpretable. The
-fixed-order MAS reported here is the required baseline, because the contrast
-is orchestration policy rather than agent count. And the stopping condition must
-not be the alignment panel: driving generation with the same score that
-evaluates it would separate that score from the construct it stands for
-~\cite{gao2023scaling}, so the loop would have to stop on structural and
-constraint predicates while the panel remains an untouched post-hoc measurement.
+fixed-order system reported here is the required baseline, because the contrast is
+orchestration policy rather than agent count. And the stopping condition must not be
+the alignment panel: driving generation with the same score that evaluates it would
+separate that score from the construct it stands for~\cite{gao2023scaling}, so the
+loop would have to stop on structural and constraint predicates while the panel
+remains an untouched post-hoc measurement.
 
-The missing human evidence tier motivates expert validation. A first round is
-designed and being fielded: three to five instructional-design experts
-independently rate a stratified, blinded sample of generated designs on
-alignment, feasibility, pedagogical soundness, and required revision, with
-inter-expert agreement and machine--human association analyzed under a
-prediction fixed before any labels are examined; that prediction is written to
-adjudicate the competing ablation readings above. A larger blind-coding study
-with Cohen's $\kappa$ against the full alignment panel remains future work. Finally, because the panel measures textual-correspondence and
-cognitive-demand scores rather than learning outcomes, subsequent work must
-connect its profiles to educator decisions and learner outcomes before making
-claims about instructional effectiveness.
+Finally, because the panel measures textual correspondence and cognitive demand
+rather than learning outcomes, connecting its profiles to educator decisions and to
+what learners actually achieve is the step that would license any claim about
+instructional effectiveness.

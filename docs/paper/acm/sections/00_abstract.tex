@@ -1,26 +1,20 @@
 \begin{abstract}
-Current commercial LLMs already provide strong support for instructional systems
-design (ISD). However, dependence on third-party APIs, high costs, and data
-safety risks remain barriers to practical deployment in educational institutions.
-Open-weight SLMs deployed on-premise offer a more viable path, but as models
-become smaller, the quality burden shifts from the model to the system around
-it---above all constructive alignment, the coherence among objectives,
-activities, and assessments, which existing agent systems leave for the model to
-maintain implicitly. Research on ISD agents has not yet
-treated quality retention under model downscaling as a central problem. We therefore
-propose AlignmentGraph-ISD, a multi-agent system (MAS) that organizes the ISD process
-around an alignment graph: explicit, checkable alignment state that takes this
-coherence burden off the model. We evaluate
-it with ISD-Agent-Bench and a deterministic, no-LLM alignment-score measurement
-across a four-size Qwen model ladder (0.8B--9B). As models shrink, the MAS remains competitive and
-robust, with a 0\% failure rate, satisfies the panel advantage
-rule on alignment scores ($\geq$4 of 6 directional scores are
-significantly positive at every size), and leads on ADDIE score at the three
-smaller sizes (\rqOneHarnessAddieTwoB{} versus \rqOneBestBaselineAddieTwoB{} for
-the strongest baseline at 2B). Its gap widens significantly toward smaller models
-before reaching parity with the strongest baseline at 9B. This robustness comes
-with significantly lower Trajectory scores than the leading single-loop systems
-and token costs above the baseline median. Beyond quantitative measurement, the MAS's explicit
-alignment graph lets instructional designers audit and refine final outputs,
-supporting teacher-in-the-loop practice.
+Agent systems built on commercial large language models (LLMs) already support
+much of instructional systems design (ISD), but their dependence on third-party
+APIs---inference cost, and learner data leaving the institution---is a documented
+barrier to institutional deployment. Open-weight small language
+models (SLMs) running on-premise are the practical alternative, and they shift the quality
+burden from the model to the system around it. What fails first is constructive
+alignment---the coherence among objectives, activities and assessments---which
+existing systems leave the model to maintain implicitly in prose. Research on ISD agents has not treated quality retention under downscaling as a
+design and evaluation goal, nor offered a way to observe alignment that does not
+rest on a judge model. We propose
+AlignmentGraph-ISD, a multi-agent system (MAS) that organizes ADDIE generation
+around an alignment graph: explicit, checkable alignment state, exported after
+every run for audit. We evaluate it with ISD-Agent-Bench and a deterministic,
+no-LLM alignment-score measurement over 90 scenarios, six comparison systems and a
+four-size Qwen ladder (0.8B--9B), plus a factorial ablation crossing decomposition
+against substrate. Results on robustness, ADDIE quality, alignment
+scores, and the cost trade-off are \TBD. The exported graph lets instructional designers audit and revise
+the relations behind a design, supporting teacher-in-the-loop practice.
 \end{abstract}

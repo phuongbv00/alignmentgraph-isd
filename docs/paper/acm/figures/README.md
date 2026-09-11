@@ -3,10 +3,22 @@
 | file | role |
 |---|---|
 | `architecture.drawio` | **editable master** — open at <https://app.diagrams.net> or in the draw.io desktop app |
-| `architecture.svg` | versioned build source, exported from the `.drawio` |
+| `make_architecture_svg.py` | writes `architecture.svg` from the same coordinates as the `.drawio`, for machines with no draw.io |
+| `architecture.svg` | versioned build source |
 | `architecture.pdf` | build artifact, gitignored; this is what `main.tex` includes |
 
 ## Editing loop
+
+Two ways in, and they must not disagree — the `.drawio` and the generator carry the
+same geometry, so a change made in one has to be mirrored in the other.
+
+**Without draw.io** (how the 2026-09-10 rewrite was made): edit
+`make_architecture_svg.py`, run it from this directory to rewrite
+`architecture.svg`, mirror the same coordinates into `architecture.drawio`, then
+build the PDF as below. The generator emits native SVG `<text>`, so the label
+rewriting described further down does not apply to its output.
+
+**With draw.io:**
 
 1. Edit `architecture.drawio` in draw.io.
 2. *File → Export as → SVG…*, save over `architecture.svg`. Default settings are
@@ -31,9 +43,20 @@ plain text and line breaks convert; tables, lists and nested formatting do not.
 ## What the figure has to stay consistent with
 
 Every box, arrow and relation label in Figure 1 is meant to be traceable to
-Algorithm 1 in `sections/04_method.tex`, to `core/nodes.py:build_graph`, and to
-the relation registry in `core/alignment.py` (only R1–R13 exist; `implementation_plan`
-participates in none of them). Check the caption after moving or deleting anything.
+Algorithm 1 in `sections/04_method.tex` and to the package itself:
+
+- the six stage boxes and their order are `core/agentic/specialists.py::STEPS`;
+- the `developers` chips are on exactly the stages that dispatch work sets;
+- `check · repair` is on exactly the stages that own checks — `analysis` owns none,
+  see `core/repairs.py::OWNED_BY_FAMILY`;
+- every relation label is a key of `core/alignment_graph/alignment.py::REGISTRY`,
+  drawn in the direction that registry gives it. C2 and C3 are *id-reverse*: the
+  objective is the edge SOURCE even though the assessment task and the activity are
+  the artifacts that declare the reference;
+- the three heavy edges C2, C3, C4 are the triad of `eq:aligned`, and the note in
+  the band accounts for every relation not drawn (16 total: C1–C5 and P1–P11).
+
+Check the caption after moving or deleting anything.
 
 Palette (desaturated, print-safe): slate `#3E5F7E` for agents and process steps,
 ochre `#8A6A3B` for the alignment graph and its relations, brick `#8C4B47` for

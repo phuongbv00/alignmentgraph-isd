@@ -155,14 +155,70 @@ def test_graph_dump_written_when_env_opts_in(tmp_path, monkeypatch):
     assert open(dot_path, encoding="utf-8").read().startswith("digraph alignment {")
 
 
+def _triad_graph(*, with_c4: bool, same_assessment: bool = True) -> AlignmentGraph:
+    """An objective assessed by AT-01 and practiced by TLA-01, with the C4 edge
+    optionally closing the triad — onto AT-01, or onto an unrelated item."""
+    graph = AlignmentGraph()
+    graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01", "level": "apply"})
+    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01"})
+    graph.add_element_node(NodeType.ASSESSMENT, "AT-99", {"item_id": "AT-99"})
+    graph.add_element_node(NodeType.ACTIVITY, "TLA-01", {"activity_name": "practice"})
+    # C2 (assessed_by) and C3 (practiced_by) are id-reverse: source=LO.
+    graph.add_edge("C2-assessed_by", "objective:ILO-01", "assessment:AT-01",
+                   relation_id="C2", established_by="id")
+    graph.add_edge("C3-practiced_by", "objective:ILO-01", "activity:TLA-01",
+                   relation_id="C3", established_by="id")
+    if with_c4:
+        target = "assessment:AT-01" if same_assessment else "assessment:AT-99"
+        graph.add_edge("C4-prepares_for", "activity:TLA-01", target,
+                       relation_id="C4", established_by="id")
+    return graph
+
+
 def test_objective_annotation_flags_unaligned_objective():
     graph = AlignmentGraph()
     graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01", "level": "apply"})
     graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01"})
     # C2 (assessed_by) is id-reverse: source=LO, target=Assessment.
     graph.add_edge("C2-assessed_by", "objective:ILO-01", "assessment:AT-01", relation_id="C2", established_by="id")
-    # measured (assessed) only — no practiced/rubric-measured edge -> not fully aligned
+    # measured (assessed) only — no practiced edge -> the triad cannot close
     ann = viz.objective_annotations(graph)["objective:ILO-01"]
     assert ann["measured"] and not ann["supported"]
     assert "evaluated" not in ann
     assert ann["aligned"] is False
+
+
+def test_aligned_needs_the_triad_to_close():
+    """C2 and C3 alone are two spokes. Before 2026-09-10 that read as aligned."""
+    ann = viz.objective_annotations(_triad_graph(with_c4=False))["objective:ILO-01"]
+    assert ann["measured"] and ann["supported"]
+    assert ann["prepares"] is False
+    assert ann["aligned"] is False
+
+    ann = viz.objective_annotations(_triad_graph(with_c4=True))["objective:ILO-01"]
+    assert ann["prepares"] is True
+    assert ann["aligned"] is True
+
+
+def test_c4_onto_an_unrelated_item_does_not_close_the_triad():
+    """The activity prepares for SOMETHING, just not for what assesses this
+    objective — the case a per-edge existential would wave through."""
+    ann = viz.objective_annotations(
+        _triad_graph(with_c4=True, same_assessment=False))["objective:ILO-01"]
+    assert ann["measured"] and ann["supported"]
+    assert ann["prepares"] is False
+    assert ann["aligned"] is False
+
+
+def test_bloom_is_no_longer_a_leg_of_aligned():
+    """Bloom is a content condition; `aligned` is the structural triad. A
+    closed triad stays aligned however the Bloom cross-check lands, and the
+    cross-check is still reported on its own flags."""
+    graph = _triad_graph(with_c4=True)
+    # An Apply-level objective assessed by a recall-only item: the Bloom
+    # cross-check fails while every structural edge stands.
+    graph.update_node("assessment:AT-01", {"required_cognitive_process": "remember"})
+    ann = viz.objective_annotations(graph)["objective:ILO-01"]
+    assert ann["aligned"] is True
+    assert ann["bloom_ok"] is False
+    assert ann["bloom_notes"]

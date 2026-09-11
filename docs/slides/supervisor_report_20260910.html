@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AlignmentGraph-ISD — Báo cáo tổng hợp Sprint 1 · 10/09/2026</title>
+<style>
+  :root {
+    --ink: #1a2233;
+    --muted: #5b6577;
+    --accent: #1f5fa8;
+    --accent2: #b3541e;
+    --ok: #1e7a46;
+    --warn: #a8322d;
+    --bg: #fbfbf8;
+    --card: #ffffff;
+    --line: #d8dce4;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: #2b2f38; }
+  body { font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: var(--ink); }
+
+  .slide {
+    display: none;
+    width: 100vw; height: 100vh;
+    background: var(--bg);
+    padding: 3.2vh 4.5vw;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .slide.active { display: flex; }
+
+  .slide h1 { font-size: 4.6vh; line-height: 1.15; color: var(--accent); }
+  .slide h2 { font-size: 3.9vh; color: var(--accent); margin-bottom: 1.4vh; border-bottom: 2px solid var(--line); padding-bottom: 0.7vh; }
+  .slide h3 { font-size: 2.7vh; color: var(--ink); margin-bottom: 0.7vh; }
+  .kicker { font-size: 2.1vh; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent2); font-weight: 600; margin-bottom: 0.6vh; }
+  .lede { font-size: 2.6vh; line-height: 1.4; color: var(--ink); background: var(--card); border-left: 4px solid var(--accent2);
+          padding: 1vh 1.4vw; margin-bottom: 1.4vh; border-radius: 0 8px 8px 0; }
+
+  ul { list-style: none; }
+  li { font-size: 2.55vh; line-height: 1.4; margin: 1vh 0; padding-left: 2.4vh; position: relative; }
+  li::before { content: "▸"; position: absolute; left: 0; color: var(--accent2); }
+  li ul li { font-size: 2.3vh; margin: 0.45vh 0; }
+  li ul li::before { content: "–"; color: var(--muted); }
+  b, strong { color: var(--accent); }
+  .neg { color: var(--warn); font-weight: 600; }
+  .pos { color: var(--ok); font-weight: 600; }
+  .en { font-style: italic; }
+  .note { font-size: 2vh; color: var(--muted); margin-top: auto; padding-top: 1vh; border-top: 1px dashed var(--line); }
+
+  .cols { display: flex; gap: 2.5vw; flex: 1; min-height: 0; align-items: stretch; }
+  .col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .col.narrow { flex: 0.72; }
+  .col.wide { flex: 1.35; }
+
+  table { border-collapse: collapse; width: 100%; background: var(--card); font-size: 2.05vh; }
+  th, td { border: 1px solid var(--line); padding: 0.6vh 0.8vh; text-align: center; }
+  th { background: #eef2f8; color: var(--accent); }
+  td.l, th.l { text-align: left; }
+  tr.hl td { background: #f0f6ee; font-weight: 600; }
+  tr.bad td { background: #fbeeee; }
+  .claim { font-size: 2.75vh; line-height: 1.4; background: var(--card); border-left: 4px solid var(--accent);
+           padding: 1.2vh 1.2vw; border-radius: 0 8px 8px 0; margin: 0.6vh 0 1.2vh; }
+  .sub-note { font-size: 2.15vh; line-height: 1.42; color: var(--muted); }
+  .sub-note b { color: var(--ink); }
+  .tcap { font-size: 1.9vh; color: var(--muted); margin-top: 0.5vh; }
+
+  .badge { display: inline-block; font-size: 1.85vh; font-weight: 700; padding: 0.25vh 1.1vh; border-radius: 99px; margin-right: 0.6vw; }
+  .badge.b1 { background: #e3ecf7; color: var(--accent); }
+  .badge.b2 { background: #f7ece3; color: var(--accent2); }
+  .badge.b3 { background: #e5f2ea; color: var(--ok); }
+  .badge.b4 { background: #f7e6e5; color: var(--warn); }
+
+  .pipeline { display: flex; align-items: stretch; gap: 0.5vw; margin: 1.2vh 0; }
+  .pstep { flex: 1; background: var(--card); border: 1.5px solid var(--accent); border-radius: 8px; padding: 0.8vh 0.6vw; text-align: center; }
+  .pstep .pn { font-size: 1.65vh; font-weight: 700; color: var(--accent2); }
+  .pstep .pt { font-size: 1.9vh; font-weight: 600; color: var(--ink); line-height: 1.25; }
+  .parrow { align-self: center; color: var(--muted); font-size: 2.4vh; }
+
+  .footer { position: fixed; bottom: 1.4vh; right: 2vw; font-size: 1.8vh; color: #9aa2b0; z-index: 5; }
+
+  .title-slide { justify-content: center; align-items: flex-start; gap: 2.2vh; }
+  .title-slide .rule { width: 18vw; height: 4px; background: var(--accent2); border-radius: 2px; }
+  .title-slide h1 { font-size: 6vh; max-width: 78vw; }
+  .title-slide .sub { font-size: 3vh; color: var(--muted); max-width: 74vw; line-height: 1.4; }
+  .title-slide .meta { font-size: 2.4vh; color: var(--ink); margin-top: 2vh; line-height: 1.5; }
+
+  svg text { font-family: "Avenir Next", "Segoe UI", Arial, sans-serif; }
+
+  @media print {
+    html, body { background: #fff; }
+    .slide { display: flex !important; page-break-after: always; width: 100%; height: 100vh; }
+    .slide:last-of-type { page-break-after: auto; }
+    .footer { display: none; }
+  }
+  @page { size: 13.33in 7.5in; margin: 0; }
+</style>
+</head>
+<body>
+
+<!-- ============ 1. TITLE ============ -->
+<section class="slide title-slide active">
+  <div class="kicker">Báo cáo tổng hợp Sprint 1 · 28/08 – 08/09/2026</div>
+  <h1>AlignmentGraph-ISD</h1>
+  <div class="rule"></div>
+  <div class="sub en">A Graph-Guided Multi-Agent Harness for Auditable Instructional Systems Design
+    with Small Language Models</div>
+  <div class="meta">
+    Học viên: Bùi Việt Phương &nbsp;·&nbsp; ~30 phút
+  </div>
+</section>
+
+<!-- ============ 2. BỐI CẢNH & VẤN ĐỀ ============ -->
+<section class="slide">
+  <h2>Bối cảnh và vấn đề</h2>
+  <div class="lede">Các <b>agent system dựng trên LLM thương mại</b> đã hỗ trợ được phần lớn quy trình instructional systems design (ISD).</div>
+  <div class="cols">
+    <div class="col">
+      <h3>Đường đi xuống small language model</h3>
+      <ul>
+        <li>Các agent system này <b>phụ thuộc API bên thứ ba</b>: chi phí inference, và
+          <b>dữ liệu người học rời khỏi tổ chức</b> — rào cản triển khai ở cấp tổ chức đã được ghi nhận trong văn liệu.</li>
+        <li>Phương án khả thi: <b>SLM open-weight chạy on-premise</b>.</li>
+        <li>Nhưng đổi lại, chúng <b>dịch chuyển gánh nặng chất lượng từ model sang hệ dựng quanh model</b> —
+          tức sang chính phần <b>agent harness</b> mà đề tài này đề xuất.</li>
+        <li>Văn liệu cho thấy decomposition là con đường có căn cứ, nhưng quan hệ giữa decomposition và chất lượng <b>không đơn điệu</b>. Đề tài vì vậy đặt MAS ở vị trí một <b>giả thuyết cần đo</b>.</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Thứ hỏng trước tiên khi model nhỏ đi</h3>
+      <ul>
+        <li><b>Constructive alignment</b> — sự ăn khớp giữa <b>mục tiêu, hoạt động và đánh giá</b> — là thứ hỏng trước tiên khi model thu nhỏ.</li>
+        <li>Các hệ hiện có <b>để model tự duy trì alignment một cách implicit, trong prose</b> truyền giữa các bước.
+          Tức chúng dựa vào <b>đúng cái năng lực suy giảm sớm nhất khi model thu nhỏ</b>.</li>
+        <li>Hệ quả: <b>một bản thiết kế có thể đọc trôi chảy mà vẫn lệch alignment nghiêm trọng</b> — và không có chỗ
+          nào trong hệ để kiểm điều đó.</li>
+      </ul>
+      <div class="note" style="margin-top:auto">Ca quan sát được trong giai đoạn vừa qua: một hệ đối sánh sinh design
+        có 5 learning objective mang id đầy đủ, nhưng <b>không một phần nào của design tham chiếu tới bất kỳ id nào
+        trong số đó</b> — 13 trên 14 run.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3. GAP · RQ · CONTRIBUTION ============ -->
+<section class="slide">
+  <h2>Khoảng trống, câu hỏi nghiên cứu và đóng góp</h2>
+  <div class="lede"><b>Gap:</b> nghiên cứu về <b>ISD agent</b> chưa coi <b>việc giữ chất lượng khi model thu nhỏ</b> là một mục tiêu <b>thiết kế và đánh giá</b>, và chưa có <b>cách quan sát alignment độc lập với judge model</b>.</div>
+  <div class="cols">
+    <div class="col">
+      <h3>Hai câu hỏi nghiên cứu</h3>
+      <ul>
+        <li><b>RQ1 — chất lượng theo cỡ model.</b> Tại mỗi size Qwen 0.8B–9B, chất lượng thiết kế so với các hệ đối sánh ra sao, và <b>khoảng cách có nới rộng khi model nhỏ đi</b> không? Đo bằng <b>LLM judge</b>, với ADDIE dẫn narrative.</li>
+        <li><b>RQ2 — tín hiệu alignment.</b> Các <b>measurable signal</b> của constructive alignment diễn biến thế nào theo size. Đo bằng <b>alignment score</b> deterministic; kết luận dừng ở mức measurable signal, phát biểu mạnh hơn cần expert study.</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Đóng góp</h3>
+      <div class="claim"><b>AlignmentGraph-ISD</b> — một multi-agent system tổ chức việc sinh chương trình ADDIE quanh
+        một <b>alignment graph</b>: alignment state <b>tường minh, kiểm được, và xuất ra sau mỗi run để audit</b>.</div>
+      <div class="sub-note">Bản xuất graph là thứ làm cho đóng góp này kiểm được: instructional designer đọc và
+        <b>sửa lại các quan hệ đằng sau một bản thiết kế</b> — teacher-in-the-loop. Phép đo deterministic không dùng
+        LLM là <b>measurement requirement</b> của RQ2 và thuộc phần Experimental Design.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 7. KIẾN TRÚC ============ -->
+<section class="slide">
+  <h2>Tổng quan hệ thống</h2>
+  <div class="lede">Mọi stage ADDIE là một vòng lặp <b>act → observe</b> gọi tool thật, và <b>artifact chính là arguments của tool call submit</b>. Thứ tự sáu stage được instruct y hệt ở cả hai phiên bản; quyền tự chủ của agent nằm ở <span class="en">cách một stage được chạy</span>.</div>
+  <div class="cols">
+    <div class="col wide">
+      <h3>Sáu stage ADDIE</h3>
+      <table>
+        <tr><th class="l">Stage</th><th class="l">Vai trò</th><th class="l">Artifact chính</th><th>Fan-out</th></tr>
+        <tr><td class="l">Analysis</td><td class="l">Needs Analyst</td><td class="l">5 artifact phân tích</td><td>–</td></tr>
+        <tr><td class="l">Outcomes</td><td class="l">Outcome Designer</td><td class="l">course goal, learning objectives</td><td>–</td></tr>
+        <tr><td class="l">Assessment</td><td class="l">Assessment Designer</td><td class="l">assessment plan + dev plan</td><td>✓</td></tr>
+        <tr><td class="l">Activities</td><td class="l">Activity Designer</td><td class="l">instructional strategies + dev plan</td><td>✓</td></tr>
+        <tr><td class="l">Content</td><td class="l">Content Designer</td><td class="l">content modules, media selections</td><td>✓</td></tr>
+        <tr><td class="l">Implementation</td><td class="l">Implementation Planner</td><td class="l">6 artifact khung + dev plan chia session</td><td>✓</td></tr>
+      </table>
+      <div class="tcap"><b>Fan-out:</b> Designer chia việc thành work set, mỗi work set giao cho một Developer viết —
+        đây là tầng tạo ra tính multi-agent, bên cạnh việc phân vai.</div>
+    </div>
+    <div class="col narrow">
+      <h3>Hai trục ablation (2×2)</h3>
+      <ul>
+        <li><b>Trục 1 — ranh giới context</b> (<span class="en">multi</span> / <span class="en">single</span>):
+          <span class="en">multi</span> mở context mới mỗi stage dưới identity của stage đó;
+          <span class="en">single</span> mang một context qua cả sáu.</li>
+        <li><b>Trục 2 — alignment machinery</b> (<span class="en">graph</span> / <span class="en">prose</span>):
+          <span class="en">graph</span> có relation registry, residual audit và repair liên artifact;
+          <span class="en">prose</span> chạy blackboard không graph.</li>
+        <li>Chênh lệch số call giữa hai phiên bản <b>chính là treatment</b>; điều kiện parity được kiểm là <b>không phiên bản nào bị cắt bởi turn budget</b>.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 7b. DIAGRAM — LUỒNG MỘT RUN ============ -->
+<section class="slide">
+  <h2>Kiến trúc — luồng một run</h2>
+  <div class="cols">
+    <div class="col wide">
+      <svg viewBox="0 0 520 470" style="width:100%;height:100%;max-height:72vh">
+        <defs>
+          <marker id="a1" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#454e5c"/></marker>
+          <marker id="a2" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#98a0ab"/></marker>
+        </defs>
+        <g font-size="11.5" fill="#1a2233" text-anchor="middle">
+
+          <rect x="168" y="2" width="184" height="30" rx="5" fill="#fff" stroke="#98a0ab" stroke-width="1.2"/>
+          <text x="260" y="21" font-size="10.5" fill="#4a5462">Caller — benchmark · CLI · web app</text>
+          <line x1="260" y1="32" x2="260" y2="50" stroke="#454e5c" stroke-width="1.4" marker-end="url(#a1)"/>
+
+          <rect x="196" y="52" width="128" height="28" rx="5" fill="#fff" stroke="#454e5c" stroke-width="1.4"/>
+          <text x="260" y="70">Run orchestration</text>
+          <line x1="260" y1="80" x2="260" y2="90" stroke="#454e5c" stroke-width="1.4"/>
+          <polygon points="260,86 330,112 260,138 190,112" fill="#f1f3f5" stroke="#454e5c" stroke-width="1.3"/>
+          <text x="260" y="117" font-size="10.5" font-weight="700">Axis 1</text>
+          <text x="260" y="149" font-size="9.5" fill="#4a5462">context boundary</text>
+
+          <path d="M190,112 H120 V150" fill="none" stroke="#454e5c" stroke-width="1.4" marker-end="url(#a1)"/>
+          <text x="150" y="106" font-size="11" font-weight="700">multi</text>
+          <path d="M330,112 H400 V150" fill="none" stroke="#454e5c" stroke-width="1.4" marker-end="url(#a1)"/>
+          <text x="372" y="106" font-size="11" font-weight="700">single</text>
+
+          <rect x="25" y="152" width="190" height="48" rx="5" fill="#fff" stroke="#1a2233" stroke-width="2.2"/>
+          <rect x="29" y="156" width="182" height="40" rx="3" fill="none" stroke="#1a2233" stroke-width="0.8"/>
+          <text x="120" y="172" font-weight="600">Stage loop — six stages</text>
+          <text x="120" y="187" font-size="10" fill="#4a5462">fresh context per stage · 24 turns</text>
+          <line x1="120" y1="200" x2="120" y2="220" stroke="#454e5c" stroke-width="1.4" marker-end="url(#a1)"/>
+          <text x="166" y="214" font-size="10" fill="#4a5462">dev plan</text>
+
+          <rect x="25" y="222" width="190" height="48" rx="5" fill="#fff" stroke="#1a2233" stroke-width="2.2"/>
+          <rect x="29" y="226" width="182" height="40" rx="3" fill="none" stroke="#1a2233" stroke-width="0.8"/>
+          <text x="120" y="242" font-weight="600">Developer tier — fan-out</text>
+          <text x="120" y="257" font-size="10" fill="#4a5462">four families · 12 turns per work set</text>
+          <line x1="120" y1="270" x2="120" y2="288" stroke="#454e5c" stroke-width="1.4" marker-end="url(#a1)"/>
+
+          <rect x="25" y="290" width="190" height="40" rx="5" fill="#f1f3f5" stroke="#454e5c" stroke-width="1.3"/>
+          <text x="120" y="306" font-size="11">Checks + deterministic repair</text>
+          <text x="120" y="320" font-size="10" font-weight="700">after EACH stage</text>
+          <line x1="120" y1="330" x2="120" y2="346" stroke="#454e5c" stroke-width="1.4" marker-end="url(#a1)"/>
+
+          <rect x="25" y="348" width="190" height="38" rx="5" fill="#fff" stroke="#1a2233" stroke-width="2.2"/>
+          <text x="120" y="364" font-weight="600">Replan — one round</text>
+          <text x="120" y="378" font-size="10" fill="#4a5462">gaps return to the Designer</text>
+          <path d="M25,367 H10 V246 H22" fill="none" stroke="#98a0ab" stroke-width="1.2"
+                stroke-dasharray="4 3" marker-end="url(#a2)"/>
+
+          <rect x="305" y="152" width="190" height="60" rx="5" fill="#fff" stroke="#1a2233" stroke-width="2.2"/>
+          <rect x="309" y="156" width="182" height="52" rx="3" fill="none" stroke="#1a2233" stroke-width="0.8"/>
+          <text x="400" y="172" font-weight="600">One single context</text>
+          <text x="400" y="187" font-size="10" fill="#4a5462">the agent walks all six stages</text>
+          <text x="400" y="201" font-size="10" fill="#4a5462">288 turns per run · no fan-out</text>
+          <line x1="400" y1="212" x2="400" y2="288" stroke="#454e5c" stroke-width="1.4" marker-end="url(#a1)"/>
+
+          <rect x="305" y="290" width="190" height="40" rx="5" fill="#f1f3f5" stroke="#454e5c" stroke-width="1.3"/>
+          <text x="400" y="306" font-size="11">Checks + deterministic repair</text>
+          <text x="400" y="320" font-size="10" font-weight="700">ONCE at the end, all six</text>
+
+          <rect x="228" y="222" width="64" height="108" rx="5" fill="#fafafa" stroke="#98a0ab"
+                stroke-width="1.2" stroke-dasharray="5 3"/>
+          <text x="260" y="258" font-size="10" fill="#4a5462">Substrate</text>
+          <text x="260" y="274" font-size="10.5" font-weight="700">graph</text>
+          <text x="260" y="288" font-size="9.5" fill="#4a5462">OR</text>
+          <text x="260" y="302" font-size="10.5" font-weight="700">prose</text>
+          <path d="M215,246 H226" fill="none" stroke="#98a0ab" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#a2)"/>
+          <path d="M305,246 H294" fill="none" stroke="#98a0ab" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#a2)"/>
+          <text x="260" y="238" font-size="9.5" fill="#98a0ab">commit</text>
+
+          <path d="M120,386 V404 H180" fill="none" stroke="#454e5c" stroke-width="1.4"/>
+          <path d="M400,330 V404 H340" fill="none" stroke="#454e5c" stroke-width="1.4"/>
+          <rect x="180" y="390" width="160" height="28" rx="5" fill="#fff" stroke="#454e5c" stroke-width="1.4"/>
+          <text x="260" y="408">Cross-family reconcile</text>
+          <line x1="260" y1="418" x2="260" y2="432" stroke="#454e5c" stroke-width="1.4" marker-end="url(#a1)"/>
+
+          <rect x="150" y="434" width="220" height="34" rx="5" fill="#e9ecef" stroke="#1a2233" stroke-width="1.5"/>
+          <text x="260" y="449" font-weight="600">Aggregate → ADDIE output</text>
+          <text x="260" y="462" font-size="9.5" fill="#4a5462">+ trajectory · violation ledger · graph dump</text>
+        </g>
+      </svg>
+    </div>
+    <div class="col narrow">
+      <h3>Ba khác biệt giữa hai đường</h3>
+      <table>
+        <tr><th class="l"></th><th><span class="en">multi</span></th><th><span class="en">single</span></th></tr>
+        <tr><td class="l">Developer tier</td><td class="pos">Có</td><td class="neg">Không</td></tr>
+        <tr><td class="l">Replan</td><td class="pos">Có</td><td class="neg">Không</td></tr>
+        <tr><td class="l">Thời điểm repair</td><td>Sau mỗi stage</td><td>Một lần ở cuối</td></tr>
+      </table>
+      <ul style="margin-top:0.6vh">
+        <li>Cả ba khác biệt đều là <b>hệ quả của trục ranh giới context</b>: một agent tự quyết thứ tự thì không có mốc "sau mỗi stage" để bám vào.</li>
+        <li>Repair dùng <b>cùng bộ check, cùng budget và cùng toolbox</b> ở hai phiên bản; khác biệt nằm ở <b>thời điểm</b>.</li>
+        <li><b>Reconcile và aggregate là chung</b> cho cả hai đường.</li>
+        <li>Trục 2 ablate đúng phần substrate: một run giữ <b>graph hoặc prose</b>.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 7c. DIAGRAM — VÒNG LẶP ACT→OBSERVE ============ -->
+<section class="slide">
+  <h2>Kiến trúc — vòng lặp act → observe</h2>
+  <div class="cols">
+    <div class="col wide">
+      <svg viewBox="0 0 530 400" style="width:100%;height:100%;max-height:70vh">
+        <defs>
+          <marker id="b1" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#454e5c"/></marker>
+          <marker id="b3" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#98a0ab"/></marker>
+        </defs>
+        <g font-size="11.5" fill="#1a2233" text-anchor="middle">
+
+          <rect x="160" y="2" width="210" height="32" rx="16" fill="#e9ecef" stroke="#1a2233" stroke-width="1.4"/>
+          <text x="265" y="15" font-size="10.5">Enter stage: bind tools</text>
+          <text x="265" y="28" font-size="10.5">+ push the artifact contract</text>
+          <line x1="265" y1="34" x2="265" y2="52" stroke="#454e5c" stroke-width="1.4" marker-end="url(#b1)"/>
+
+          <rect x="205" y="54" width="120" height="34" rx="5" fill="#fff" stroke="#1a2233" stroke-width="1.9"/>
+          <text x="265" y="76" font-weight="600">Model turn</text>
+
+          <path d="M205,62 H122" fill="none" stroke="#454e5c" stroke-width="1.3" marker-end="url(#b1)"/>
+          <text x="163" y="56" font-size="10" fill="#4a5462">read</text>
+          <rect x="18" y="42" width="100" height="46" rx="5" fill="#fff" stroke="#454e5c" stroke-width="1.3"/>
+          <text x="68" y="60" font-size="11">Observe</text>
+          <text x="68" y="76" font-size="9.5" fill="#4a5462">result into history</text>
+          <path d="M100,88 V120 H150" fill="none" stroke="#454e5c" stroke-width="1.3"/>
+          <path d="M150,183 V80 H203" fill="none" stroke="#454e5c" stroke-width="1.3" marker-end="url(#b1)"/>
+
+          <path d="M40,88 V150" fill="none" stroke="#98a0ab" stroke-width="1.2" stroke-dasharray="5 3" marker-end="url(#b3)"/>
+          <text x="96" y="106" font-size="9" fill="#98a0ab">history exceeds</text>
+          <text x="96" y="117" font-size="9" fill="#98a0ab">the context window</text>
+          <rect x="8" y="152" width="120" height="62" rx="5" fill="#fafafa" stroke="#98a0ab" stroke-width="1.3"/>
+          <text x="68" y="169" font-size="10.5" font-weight="700" fill="#4a5462">Compaction</text>
+          <text x="68" y="184" font-size="9.5" fill="#4a5462">drop oldest observations</text>
+          <text x="68" y="196" font-size="9.5" fill="#4a5462">+ summarise what went</text>
+          <text x="68" y="208" font-size="9.5" fill="#4a5462">+ restore the contract</text>
+          <path d="M128,183 H150" fill="none" stroke="#98a0ab" stroke-width="1.2" stroke-dasharray="4 3"/>
+
+          <line x1="265" y1="88" x2="265" y2="106" stroke="#454e5c" stroke-width="1.4" marker-end="url(#b1)"/>
+          <text x="297" y="101" font-size="10" fill="#4a5462">submit</text>
+          <polygon points="265,106 340,133 265,160 190,133" fill="#f1f3f5" stroke="#454e5c" stroke-width="1.3"/>
+          <text x="265" y="130" font-size="11" font-weight="600">Validate</text>
+          <text x="265" y="144" font-size="9.5" fill="#4a5462">deterministic</text>
+
+          <path d="M340,133 H372 V66 H327" fill="none" stroke="#1a2233" stroke-width="1.3" marker-end="url(#b1)"/>
+          <text x="366" y="104" font-size="10" font-weight="700" text-anchor="end">reject</text>
+          <text x="366" y="116" font-size="9.5" fill="#4a5462" text-anchor="end">exact errors returned</text>
+
+          <line x1="265" y1="160" x2="265" y2="176" stroke="#454e5c" stroke-width="1.4" marker-end="url(#b1)"/>
+          <text x="299" y="173" font-size="10" font-weight="700">accept</text>
+          <rect x="195" y="178" width="140" height="30" rx="5" fill="#fff" stroke="#454e5c" stroke-width="1.3"/>
+          <text x="265" y="197" font-size="11">Commit to substrate</text>
+          <line x1="265" y1="208" x2="265" y2="224" stroke="#454e5c" stroke-width="1.4" marker-end="url(#b1)"/>
+
+          <polygon points="265,224 345,251 265,278 185,251" fill="#fff" stroke="#454e5c" stroke-width="1.3"/>
+          <text x="265" y="255" font-size="11">All artifacts in?</text>
+          <path d="M345,251 H402 V80 H327" fill="none" stroke="#454e5c" stroke-width="1.3" marker-end="url(#b1)"/>
+          <text x="396" y="244" font-size="10" font-weight="700" text-anchor="end">not yet</text>
+
+          <line x1="265" y1="278" x2="265" y2="296" stroke="#454e5c" stroke-width="1.4" marker-end="url(#b1)"/>
+          <text x="286" y="292" font-size="10" font-weight="700">yes</text>
+          <rect x="175" y="298" width="180" height="44" rx="5" fill="#f1f3f5" stroke="#454e5c" stroke-width="1.4"/>
+          <text x="265" y="315" font-size="11" font-weight="600">Repair turn</text>
+          <text x="265" y="331" font-size="9.5" fill="#4a5462">own-stage violations · up to three turns</text>
+          <path d="M175,320 H166 V96 H230 V90" fill="none" stroke="#454e5c" stroke-width="1.2"
+                stroke-dasharray="4 3" marker-end="url(#b1)"/>
+          <line x1="265" y1="342" x2="265" y2="358" stroke="#454e5c" stroke-width="1.4" marker-end="url(#b1)"/>
+          <rect x="205" y="360" width="120" height="30" rx="15" fill="#e9ecef" stroke="#1a2233" stroke-width="1.4"/>
+          <text x="265" y="379" font-weight="600">Done</text>
+
+          <path d="M300,54 V44 H474 V54" fill="none" stroke="#454e5c" stroke-width="1.3"
+                stroke-dasharray="5 3" marker-end="url(#b1)"/>
+          <rect x="422" y="56" width="104" height="52" rx="5" fill="#fff" stroke="#454e5c"
+                stroke-width="1.3" stroke-dasharray="5 3"/>
+          <text x="474" y="73" font-size="10" font-weight="700">Turn budget out</text>
+          <text x="474" y="88" font-size="9.5" fill="#4a5462">stop, commit</text>
+          <text x="474" y="100" font-size="9.5" fill="#4a5462">best effort</text>
+        </g>
+      </svg>
+    </div>
+    <div class="col narrow">
+      <ul>
+        <li>Đây là <b>đơn vị thực thi thật</b> của hệ, và <b>cả hai phiên bản dùng chung hình dạng này</b> — chỉ khác phạm vi
+          một vòng: một stage, hay cả brief.</li>
+        <li>Artifact chính là arguments của tool call <span class="en">submit</span>, nên <b>validate deterministic là tuyến đầu</b>, và một submit bị từ chối được <b>trả về đúng lỗi</b> để sửa.</li>
+        <li><b>Bốn nhánh thoát</b> — submit bị reject, hết turn budget, repair turn, và compaction — mỗi nhánh có một đường xử lý xác định, và <b>mọi nội dung được commit đều do model viết</b>.</li>
+        <li><b>Repair turn giống hệt nhau ở cả hai phiên bản</b>, để khác biệt chất lượng đo được quy về <b>ranh giới context</b> thay vì về việc phiên bản nào được nhìn thấy violation của mình.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 8. ALIGNMENTGRAPH ============ -->
+<section class="slide">
+  <h2>AlignmentGraph — 16 quan hệ, 5 lõi</h2>
+  <div class="cols">
+    <div class="col narrow">
+      <svg viewBox="0 0 340 260" style="width:100%;height:auto">
+        <defs>
+          <marker id="ar" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#454e5c"/></marker>
+          <marker id="ar2" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#98a0ab"/></marker>
+        </defs>
+        <g fill="#1a2233">
+          <rect x="105" y="8" width="130" height="34" rx="5" fill="#fff" stroke="#1a2233" stroke-width="1.5"/>
+          <text x="170" y="30" text-anchor="middle" font-size="14">Course goal</text>
+          <line x1="170" y1="42" x2="170" y2="72" stroke="#454e5c" stroke-width="1.6" marker-end="url(#ar)"/>
+          <text x="178" y="62" font-size="12" font-weight="700">C1</text>
+          <rect x="105" y="74" width="130" height="34" rx="5" fill="#f1f3f5" stroke="#1a2233" stroke-width="1.5"/>
+          <text x="170" y="96" text-anchor="middle" font-size="14">Objective</text>
+          <line x1="128" y1="108" x2="70" y2="160" stroke="#454e5c" stroke-width="1.6" marker-end="url(#ar)"/>
+          <text x="84" y="136" font-size="12" font-weight="700">C3</text>
+          <line x1="212" y1="108" x2="270" y2="160" stroke="#454e5c" stroke-width="1.6" marker-end="url(#ar)"/>
+          <text x="240" y="136" font-size="12" font-weight="700">C2</text>
+          <rect x="10" y="162" width="118" height="34" rx="5" fill="#f1f3f5" stroke="#1a2233" stroke-width="1.5"/>
+          <text x="69" y="184" text-anchor="middle" font-size="14">Activity</text>
+          <rect x="212" y="162" width="118" height="34" rx="5" fill="#f1f3f5" stroke="#1a2233" stroke-width="1.5"/>
+          <text x="271" y="184" text-anchor="middle" font-size="14">Assessment</text>
+          <line x1="128" y1="179" x2="212" y2="179" stroke="#454e5c" stroke-width="1.6" marker-end="url(#ar)"/>
+          <text x="163" y="173" font-size="12" font-weight="700">C4</text>
+          <rect x="10" y="216" width="118" height="34" rx="5" fill="#fff" stroke="#454e5c" stroke-width="1.3"/>
+          <text x="69" y="238" text-anchor="middle" font-size="14">Content</text>
+          <line x1="69" y1="216" x2="69" y2="198" stroke="#454e5c" stroke-width="1.6" marker-end="url(#ar)"/>
+          <text x="76" y="212" font-size="12" font-weight="700">C5</text>
+          <rect x="212" y="216" width="118" height="34" rx="5" fill="#fff" stroke="#98a0ab" stroke-width="1.2" stroke-dasharray="4 3"/>
+          <text x="271" y="238" text-anchor="middle" font-size="12.5" fill="#4a5462">Session guide</text>
+          <line x1="212" y1="233" x2="130" y2="233" stroke="#98a0ab" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#ar2)"/>
+          <text x="163" y="228" font-size="11" fill="#4a5462">P10</text>
+        </g>
+      </svg>
+      <div class="tcap" style="text-align:center">C2 · C3 · C4 chính là <b>tam giác Biggs</b> —
+        và cũng đúng là ba cạnh mà alignment score đo bằng encoder.</div>
+    </div>
+    <div class="col wide">
+      <h3>5 core relation — xương sống construct validity</h3>
+      <table>
+        <tr><th>Id</th><th class="l">Quan hệ</th><th class="l">Lý thuyết</th></tr>
+        <tr><td><b>C1</b></td><td class="l">Course goal phân rã thành learning outcome</td><td class="l">Outcome-based / Backward Design</td></tr>
+        <tr><td><b>C2</b></td><td class="l">Outcome được đo bằng assessment task</td><td class="l">Constructive Alignment (Biggs) + UbD</td></tr>
+        <tr><td><b>C3</b></td><td class="l">Outcome được luyện qua activity</td><td class="l">Constructive Alignment (Biggs)</td></tr>
+        <tr><td><b>C4</b></td><td class="l">Activity chuẩn bị cho assessment task</td><td class="l">Backward Design + CA</td></tr>
+        <tr><td><b>C5</b></td><td class="l">Content module hỗ trợ activity</td><td class="l">Backward Design</td></tr>
+      </table>
+      <ul style="margin-top:0.8vh">
+        <li><b>11 quan hệ phụ (P1–P11)</b> phục vụ provenance và traceability; bằng chứng construct validity chỉ đến từ năm quan hệ lõi.</li>
+        <li><b>Năm quan hệ lõi đều có thể fail, và đó là điều kiện để chúng mang bằng chứng.</b> Hai quan hệ từng được tính là lõi đã bị rút vì cách chúng được ghi khiến coverage luôn bằng 1,00 trên cả 28 run.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 8c. ALIGNMENTGRAPH FULL ============ -->
+<section class="slide">
+  <h2>AlignmentGraph — toàn bộ 16 quan hệ</h2>
+  <div class="lede">Năm quan hệ lõi (nét liền) là xương sống construct validity. Mười một quan hệ phụ (nét đứt) ghi lại
+    <b>provenance và traceability</b>: một artifact <b>đến từ đâu</b> và <b>được hiện thực bởi cái gì</b> —
+    chúng làm bản xuất graph đọc được cho người audit, còn bằng chứng construct validity đến từ năm quan hệ lõi.</div>
+  <svg viewBox="0 0 900 322" style="width:100%;flex:1;min-height:0">
+    <defs>
+      <marker id="c1" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L7,3 L0,6 Z" fill="#1a2233"/></marker>
+      <marker id="c2" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L7,3 L0,6 Z" fill="#98a0ab"/></marker>
+    </defs>
+    <g font-size="10.5" fill="#1a2233" text-anchor="middle">
+      <g font-size="9.5" fill="#98a0ab" letter-spacing="1.2">
+        <text x="72" y="12">ANALYSIS</text>
+        <text x="307" y="12">DESIGN</text>
+        <text x="542" y="12">DEVELOPMENT</text>
+        <text x="707" y="12">IMPLEMENTATION</text>
+        <text x="840" y="12">EVALUATION</text>
+      </g>
+
+      <g fill="#fff" stroke="#454e5c" stroke-width="1.2">
+        <rect x="20" y="38" width="105" height="28" rx="4"/>
+        <rect x="20" y="86" width="105" height="28" rx="4"/>
+        <rect x="20" y="134" width="105" height="28" rx="4"/>
+        <rect x="20" y="182" width="105" height="28" rx="4"/>
+        <rect x="180" y="38" width="105" height="28" rx="4"/>
+        <rect x="180" y="88" width="105" height="28" rx="4"/>
+        <rect x="485" y="238" width="115" height="28" rx="4"/>
+        <rect x="655" y="196" width="105" height="28" rx="4"/>
+        <rect x="790" y="158" width="100" height="28" rx="4"/>
+      </g>
+      <g fill="#f1f3f5" stroke="#1a2233" stroke-width="1.5">
+        <rect x="180" y="140" width="105" height="28" rx="4"/>
+        <rect x="180" y="200" width="105" height="28" rx="4"/>
+        <rect x="330" y="52" width="105" height="28" rx="4"/>
+        <rect x="330" y="120" width="105" height="28" rx="4"/>
+        <rect x="330" y="188" width="105" height="28" rx="4"/>
+        <rect x="485" y="158" width="115" height="28" rx="4"/>
+      </g>
+
+      <text x="72" y="57">gap</text>
+      <text x="72" y="105">topic</text>
+      <text x="72" y="153">constraint</text>
+      <text x="72" y="201">learner profile</text>
+      <text x="232" y="57">assessment plan</text>
+      <text x="232" y="107">activity plan</text>
+      <text x="232" y="159" font-weight="600">course goal</text>
+      <text x="232" y="219" font-weight="600">objective</text>
+      <text x="382" y="71" font-weight="600">assessment</text>
+      <text x="382" y="139" font-weight="600">activity</text>
+      <text x="382" y="207" font-weight="600">content module</text>
+      <text x="542" y="177" font-weight="600">material</text>
+      <text x="542" y="257">media selection</text>
+      <text x="707" y="215">session guide</text>
+      <text x="840" y="177">improvement</text>
+
+      <g stroke="#98a0ab" stroke-width="1.1" stroke-dasharray="4 3" fill="none" marker-end="url(#c2)">
+        <path d="M125,58 L176,205"/>
+        <path d="M125,104 L176,210"/>
+        <path d="M125,196 L176,214"/>
+        <path d="M285,54 L328,62"/>
+        <path d="M285,104 L328,130"/>
+        <path d="M435,200 L483,174"/>
+        <path d="M542,238 L542,188"/>
+        <path d="M125,110 L328,194"/>
+        <path d="M125,155 H152 V300 H542 V270"/>
+        <path d="M72,38 V26 H840 V156"/>
+        <path d="M700,196 V134 H437"/>
+        <path d="M655,212 L604,180"/>
+      </g>
+      <g font-size="9.5" fill="#7a828f" font-weight="600" stroke="#fbfbf8" stroke-width="3"
+         paint-order="stroke" stroke-linejoin="round">
+        <text x="150" y="142">P1</text>
+        <text x="150" y="208">P2</text>
+        <text x="306" y="52">P3</text>
+        <text x="306" y="120">P4</text>
+        <text x="459" y="190">P5</text>
+        <text x="542" y="214">P6</text>
+        <text x="315" y="190">P7</text>
+        <text x="300" y="303">P8</text>
+        <text x="620" y="29">P9</text>
+        <text x="560" y="137">P10</text>
+        <text x="630" y="199">P11</text>
+      </g>
+
+      <g stroke="#1a2233" stroke-width="1.6" fill="none" marker-end="url(#c1)">
+        <path d="M232,168 V196"/>
+        <path d="M285,206 L328,84"/>
+        <path d="M285,218 L328,140"/>
+        <path d="M382,120 V84"/>
+        <path d="M382,188 V152"/>
+      </g>
+      <g font-size="10.5" fill="#1a2233" font-weight="700" stroke="#fbfbf8" stroke-width="3"
+         paint-order="stroke" stroke-linejoin="round">
+        <text x="243" y="187">C1</text>
+        <text x="306" y="146">C2</text>
+        <text x="295" y="197">C3</text>
+        <text x="393" y="103">C4</text>
+        <text x="393" y="171">C5</text>
+      </g>
+    </g>
+  </svg>
+  <div class="note"><b>Động từ của các quan hệ phụ:</b> P1 <span class="en">informs</span> · P2
+    <span class="en">fits</span> · P3, P4, P6 <span class="en">realizes</span> · P5, P7 <span class="en">covers</span> ·
+    P8 <span class="en">constrains</span> · P9 <span class="en">addresses</span> · P10 <span class="en">delivers</span> ·
+    P11 <span class="en">provisions</span>. &nbsp;<b>Chiều đọc coverage là một phần của định nghĩa:</b> C2 và C3 tính
+    trên nguồn — bao nhiêu objective có ít nhất một assessment hoặc một activity; các quan hệ còn lại tính trên đích,
+    nên <b>một activity không được xếp lịch chính là một activity không có P10 đi vào</b>.</div>
+</section>
+
+<!-- ============ 8b. AUDITABILITY ============ -->
+<section class="slide">
+  <h2>Auditability và ranh giới của cơ chế tự sửa</h2>
+  <div class="cols">
+    <div class="col">
+      <h3>Auditability trong vận hành</h3>
+      <ul>
+        <li>Cuối mỗi run, <b>alignment graph được xuất ra đầy đủ</b>, tách riêng khỏi trajectory. Một nhà thiết kế dạy
+          học mở bản xuất, đọc được <b>assessment nào đo objective nào</b>, và <b>sửa lại quan hệ</b> nếu thấy sai.</li>
+        <li>Hệ đóng vai <b>decision support cho chuyên gia ISD</b> — teacher-in-the-loop.</li>
+        <li>Các liên kết bắt buộc được tạo ra <b>ngay tại thời điểm sinh</b>, bởi <b>constrained decomposition</b>: mỗi item phải khai id của objective thượng nguồn nó phục vụ, và mỗi specialist chỉ ghi được lát cắt của mình.</li>
+        <li>Phiên bản <span class="en">prose</span> của hệ không sinh bản xuất này; <b>tương phản auditability được báo cáo chính là sự vắng mặt đó</b>.</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Nguyên tắc: cơ chế tự sửa không viết nội dung</h3>
+      <ul>
+        <li><b>Deterministic repair chỉ được sắp xếp lại</b> những gì bản thiết kế đã có: nối lại một tham chiếu treo,
+          chuẩn hoá một động từ Bloom về đúng bậc, định dạng lại một item sai khuôn.</li>
+        <li><b>Quyết định một content module hỗ trợ activity nào là viết ra chính lời khẳng định alignment</b> mà hệ sinh ra để làm cho kiểm được. Việc đó được trả về <b>chính agent sở hữu nó</b> dưới dạng một lượt sửa, trong cùng một hội thoại.</li>
+        <li><b>Mọi đường dự phòng do harness tự sinh nội dung đều đã được gỡ bỏ.</b> Một stage không sinh được gì thì được ghi nhận là thiếu và <b>hiện ra trong báo cáo residual</b>.</li>
+        <li><b>Cái giá là số violation còn lại tăng lên</b>; đổi lại, con số đó trung thực và bản xuất graph mới có giá trị làm bằng chứng.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 9. ĐO LƯỜNG ============ -->
+<section class="slide">
+  <h2>Thiết lập đo lường — mỗi câu hỏi một công cụ</h2>
+  <div class="cols">
+    <div class="col">
+      <h3>RQ1 · LLM judge — ba điểm, báo song song</h3>
+      <table>
+        <tr><th class="l">Điểm</th><th class="l">Chấm gì</th></tr>
+        <tr><td class="l"><b>ADDIE</b></td><td class="l">Chất lượng nội dung thiết kế theo rubric ADDIE: 33 sub-step → 13 item → 5 phase</td></tr>
+        <tr><td class="l"><b>Trajectory</b></td><td class="l">Cách agent dùng tool, bốn tiêu chí BFCL</td></tr>
+        <tr><td class="l"><b>Total</b></td><td class="l">0,7·ADDIE + 0,3·Trajectory</td></tr>
+      </table>
+      <ul>
+        <li><b>ADDIE dẫn narrative</b> vì đo đúng construct mà RQ1 hỏi; <b>Trajectory đo process conformance</b>, một construct khác.</li>
+        <li><b>Total giữ nguyên trọng số của benchmark</b> và được dùng để so sánh với kết quả đã công bố của ISD-Agent-Bench.</li>
+        <li>Ba điểm <b>báo ngang hàng</b>.</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>RQ2 · Alignment score — 6 tín hiệu, phẳng</h3>
+      <table>
+        <tr><th class="l">Tín hiệu</th><th>Dụng cụ</th><th>Cạnh</th></tr>
+        <tr><td class="l">Objective ↔ assessment</td><td>encoder</td><td>C2</td></tr>
+        <tr><td class="l">Objective ↔ activity</td><td>encoder</td><td>C3</td></tr>
+        <tr><td class="l">Activity ↔ assessment</td><td>encoder</td><td>C4</td></tr>
+        <tr><td class="l">Cognitive congruence</td><td>lai</td><td>C2</td></tr>
+        <tr><td class="l">Porter Alignment Index</td><td>Bloom</td><td>C2+C3+C4</td></tr>
+        <tr><td class="l">Webb–Bloom consistency</td><td>Bloom</td><td>C2</td></tr>
+      </table>
+      <ul>
+        <li><b>Toàn bộ deterministic và không dùng LLM.</b> Cosine được <span class="en">rectified</span> về [0, 1] như một lựa chọn <b>thang đo</b>; phép đo chạy liên tục, <b>không đặt ngưỡng khớp</b>.</li>
+        <li>Hai họ dụng cụ đo <b>cùng ba cạnh</b> bằng hai cơ chế khác nhau. <b>Porter và Webb–Bloom</b> là hai tín hiệu đối trọng với cosine; cognitive congruence dùng cosine để <b>ghép cặp</b> trước khi so Bloom nên chia chung một phần dụng cụ với họ encoder.</li>
+        <li><b>Quy tắc đọc, pre-specified:</b> kết luận có lợi thế khi ít nhất <b>4/6</b> tín hiệu dương có ý nghĩa sau
+          hiệu chỉnh Holm <b>và</b> không tín hiệu nào âm có ý nghĩa; mọi hình dạng khác báo là <b>mixed</b>.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 10. TN1 / TN2 ============ -->
+<section class="slide">
+  <h2>Hai thí nghiệm</h2>
+  <div class="cols">
+    <div class="col">
+      <h3>Thí nghiệm 1 — Ladder comparison (RQ1 + RQ2)</h3>
+      <ul>
+        <li><b>Ladder:</b> Qwen3.5 ở <b>0.8B / 2B / 4B / 9B</b> — một họ model, để chỉ capacity thay đổi.
+          Deployment envelope là <b>một GPU 12–16 GB</b>: 4B là điểm lớn nhất nằm trong envelope, 9B là mốc tham chiếu
+          bên ngoài. Output cap 8192 token, đồng nhất mọi hệ và mọi size.</li>
+        <li><b>Dữ liệu:</b> 90 scenario, stratified 10 domain × 3 mức khó, seed 42.</li>
+        <li><b>Bảy hệ:</b> hệ đề xuất và sáu hệ đối sánh.</li>
+        <li><b>Trả lời cả hai câu hỏi:</b> LLM judge cho RQ1, alignment score cho RQ2 — 6 tín hiệu ở cấu hình chính kèm
+          <b>sensitivity star</b> — mỗi nhánh lệch khỏi cấu hình chính đúng một trục dụng cụ.</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Thí nghiệm 2 — Ablation factorial 2×2</h3>
+      <ul>
+        <li><b>Bốn phiên bản</b> giao nhau giữa hai trục: <b>decomposition</b> (nhiều agent / một agent) ×
+          <b>substrate</b> (graph / prose), trên <b>hai size</b> ở hai đầu envelope, 30 scenario
+          <b>disjoint</b> với tập tune.</li>
+        <li><b>Đọc bằng hai dụng cụ deterministic:</b> metric nội tại của harness — relation coverage, violation ledger,
+          mức hoàn thành, hành vi context, cost — và alignment score. <b>LLM judge chỉ kiểm tra chéo.</b></li>
+        <li><b>Hai dự đoán pre-specified</b> cần cả hai size mới kiểm được: chất lượng suy giảm theo <b>vị trí stage</b>
+          ở phiên bản một agent và không suy giảm ở phiên bản nhiều agent; và <b>decomposition có lợi hơn dưới
+          substrate graph</b>.</li>
+        <li>Hệ đề xuất <b>chạy lại trong chính thí nghiệm 2</b>, để mọi phiên bản được chấm trong cùng một điều kiện.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 11. QUY MÔ & THỐNG KÊ ============ -->
+<section class="slide">
+  <h2>Quy mô và nguyên tắc suy luận</h2>
+  <div class="cols">
+    <div class="col narrow">
+      <table>
+        <tr><th class="l">Hạng mục</th><th class="l">Cấu hình</th></tr>
+        <tr><td class="l"><b>Thí nghiệm 1</b></td><td class="l">4 size × 7 hệ × 90 scenario = <b>2.520</b> lượt sinh</td></tr>
+        <tr><td class="l"><b>Thí nghiệm 2</b></td><td class="l">2 size × 4 phiên bản × 30 scenario = <b>240</b> lượt sinh</td></tr>
+        <tr><td class="l"><b>Lặp lại</b></td><td class="l"><b>Một lần chạy deterministic mỗi ô</b> — decoding deterministic, fixed seed — cộng lặp <b>có mục tiêu</b> trên subset quan trọng</td></tr>
+        <tr><td class="l"><b>LLM judge</b></td><td class="l">Một judge chấm toàn bộ; judge thứ hai đối chứng trên subset stratified</td></tr>
+        <tr><td class="l"><b>Alignment score</b></td><td class="l">Cấu hình chính chạy đầy đủ; sensitivity trên subset</td></tr>
+      </table>
+      <div class="tcap">Toàn bộ output và điểm số được cache theo hash, nên một lần chấm lại không đòi hỏi sinh lại
+        output.</div>
+    </div>
+    <div class="col">
+      <h3>Suy luận thống kê</h3>
+      <ul>
+        <li><b>Ghép cặp theo scenario:</b> paired Wilcoxon trên từng cặp hệ, bootstrap 95% CI (10.000 lần, seed 42),
+          effect size rank-biserial.</li>
+        <li><b>Hiệu chỉnh multiplicity hai tầng, báo cả hai:</b> Holm trong từng tín hiệu, và Holm trên toàn bộ họ
+          tín hiệu × hệ đối sánh.</li>
+        <li><b>Độ bất định được ước lượng từ ghép cặp theo scenario.</b></li>
+      </ul>
+      <h3 style="margin-top:1vh">Failure policy</h3>
+      <ul>
+        <li><b>Layer chính là <span class="en">failure = 0</span>:</b> một hệ không sinh được output được tính là <b>chất lượng 0</b>. Loại scenario đó khỏi tập ghép cặp chính là conditioning trên một biến hậu-can-thiệp.</li>
+        <li><b>Complete-case được báo như sensitivity.</b> Tỉ lệ không sinh được output khác nhau theo hệ và theo size, mạnh nhất ở model nhỏ — đúng nơi giả thuyết sống.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 12. PHẠM VI & GIỚI HẠN ============ -->
+<section class="slide">
+  <h2>Phạm vi kết luận và giới hạn đã biết</h2>
+  <div class="cols">
+    <div class="col">
+      <h3>Phạm vi</h3>
+      <ul>
+        <li>Kết luận sống trên <b>ladder Qwen3.5 0.8B–9B</b> và <b>benchmark ISD-Agent-Bench mở rộng</b>.</li>
+        <li>Alignment graph làm cho quan hệ giữa mục tiêu, hoạt động, nội dung và đánh giá trở thành <b>explicit và auditable</b>; tính đúng đắn ngữ nghĩa của những quan hệ đó do phép đo và chuyên gia phán xét.</li>
+        <li>Alignment score cho thấy <b>measurable signals</b> của constructive alignment; kết luận về chất lượng sư phạm vẫn cần <b>phán đoán của chuyên gia</b>.</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Giới hạn</h3>
+      <ul>
+        <li><b>Chi phí:</b> hệ <b>đánh đổi chi phí để lấy explicit state, audit trail và kiểm soát tham chiếu</b>.
+          Chi phí hiện cao hơn hệ đối sánh nhiều lần, và được báo cáo theo từng size, không làm tròn có lợi.</li>
+        <li><b>Điểm Trajectory bị trừ vì hai lý do cơ học:</b> một vòng lặp tool thật sinh lượt lặp thật nên tiêu chí
+          <span class="en">tránh gọi trùng</span> luôn bị trừ; và evaluator chỉ hiển thị cho judge
+          <b>20 tool call đầu tiên</b>, trong khi một hệ phân rã sinh hàng trăm call.</li>
+        <li><b>Một họ model duy nhất</b> và <b>đánh giá tự động</b> — chưa có classroom study.</li>
+        <li><b>Construct của panel chưa được validate</b>; <b>expert validation</b> trên một mẫu đại diện là bước bổ
+          sung đã lên kế hoạch.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 13. TRẠNG THÁI ============ -->
+<section class="slide">
+  <h2>Trạng thái hiện tại</h2>
+  <div class="lede">Giai đoạn vừa qua tập trung vào <b>tái thiết lập và định hình kiến trúc</b>. <b>Thí nghiệm chính thức chưa chạy</b>; những số hiện có được đo trên <b>một scenario thuộc tập tune</b> và dùng cho chẩn đoán. <b>Kết quả khoa học chỉ đến từ thí nghiệm chính thức</b>, và tập test còn nguyên vẹn cho nó.</div>
+  <div class="cols">
+    <div class="col">
+      <h3>Hệ đã đạt được gì</h3>
+      <ul>
+        <li><b>Toàn bộ hệ đã chuyển sang kiến trúc trình bày ở trên:</b> mọi stage là một vòng lặp act→observe gọi tool
+          thật, hai trục ablation, 16 quan hệ, panel 6 tín hiệu.</li>
+        <li><b>Các chỉ số cấu trúc phản ứng đúng với từng bản vá</b> — chuỗi quan hệ lõi lần đầu cùng đạt coverage
+          <b>0,90–1,00</b>, và tỉ lệ stage không hoàn thành giảm từ <b>4/6</b> xuống <b>1/6</b>.</li>
+        <li><b>Mỗi bản vá có một run làm bằng chứng và một test tái hiện</b>; bộ test tăng từ <b>367 lên 621</b>.</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>Điều kiện trước khi chạy chính thức</h3>
+      <ul>
+        <li><b>Đóng băng toàn bộ cấu hình:</b> code, prompt, split dữ liệu, metric, cấu hình evaluator, seed và
+          model checkpoint — ghi thành manifest kèm checksum.</li>
+        <li><b>Chốt chính sách hiển thị trajectory</b> trước khi chạy, vì thay đổi sau đó buộc chấm lại toàn bộ.</li>
+        <li><b>Đưa chi phí về mức chấp nhận được</b>, hoặc khai báo minh bạch thành giới hạn kèm lập luận đánh đổi.</li>
+        <li><b>Tập tune và tập test phải disjoint</b>, và <b>không kết quả tune nào được dùng trong bài</b>.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 14. LỘ TRÌNH & QUYẾT ĐỊNH ============ -->
+<section class="slide">
+  <h2>Lộ trình còn lại và các quyết định đã chốt</h2>
+  <div class="cols">
+    <div class="col narrow">
+      <h3>Lộ trình</h3>
+      <div class="pipeline" style="flex-direction:column;gap:0.5vh">
+        <div class="pstep"><div class="pn">1</div><div class="pt">Tối ưu chi phí, kiểm parity giữa bốn phiên bản</div></div>
+        <div class="pstep"><div class="pn">2</div><div class="pt">Chạy tune đầy đủ trên tập tune</div></div>
+        <div class="pstep"><div class="pn">3</div><div class="pt">Đồng bộ bản thảo với kiến trúc hiện tại</div></div>
+        <div class="pstep" style="border-width:2.4px"><div class="pn">4</div><div class="pt">Code freeze — manifest, checksum, tag</div></div>
+        <div class="pstep"><div class="pn">5</div><div class="pt">Thí nghiệm 1 rồi thí nghiệm 2</div></div>
+        <div class="pstep"><div class="pn">6</div><div class="pt">Expert validation trên mẫu đại diện</div></div>
+      </div>
+      <div class="tcap">Sau code freeze, chỉ chạy lại những ô có lỗi kỹ thuật thật sự — không chạy lại vì điểm chưa đẹp.</div>
+    </div>
+    <div class="col">
+      <h3>Những quyết định đã chốt cho giai đoạn thực nghiệm</h3>
+      <ul>
+        <li><b>Một lần chạy deterministic mỗi ô, cộng lặp có mục tiêu trên subset.</b> Decoding deterministic và fixed
+          seed thay cho việc nhân ba toàn bộ ladder; <b>độ bất định đến từ ghép cặp theo scenario</b>, không từ độ lệch
+          chuẩn giữa các lần chạy lặp.</li>
+        <li><b>Trajectory chấm thành hai lớp.</b> Lớp <b>benchmark-comparable</b> giữ trần 20 tool call kèm khai báo
+          giới hạn; lớp <b>diagnostic</b> chấm ở trần bao phủ một run điển hình của hệ phân rã. Trajectory được lưu để
+          chấm lại offline, và <b>trần không đổi sau khi đã nhìn thấy kết quả</b>.</li>
+        <li><b>Ba điểm judge báo song song, ADDIE dẫn narrative</b>; Total dùng để đối chiếu với benchmark.</li>
+        <li><b>Expert validation:</b> 5 chuyên gia, mỗi người chấm 8–12 sản phẩm <b>đã ẩn tên hệ</b>, tiến hành
+          <b>sau code freeze</b> và sau khi có output chính thức.</li>
+        <li><b>Giữ kiến trúc hiện tại cho ladder.</b> Mô hình "graph điều khiển vòng lặp tool" chỉ được cân nhắc sau khi
+          có kết quả tune, vì nó chuyển referential integrity thành <b>bảo đảm bằng xây dựng</b> và buộc phát biểu lại
+          đóng góp thành hai tầng: cấu trúc được bảo đảm, ngữ nghĩa được đo.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="note">Mọi hạng mục của thiết kế thực nghiệm đã được chốt. Việc còn lại tới code freeze là
+    <b>kỹ thuật</b>: đưa chi phí về mức chấp nhận được, chạy tune đầy đủ, và đồng bộ bản thảo với kiến trúc hiện tại.</div>
+</section>
+
+<div class="footer"><span id="pageno"></span></div>
+
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  let cur = 0;
+  function show(i) {
+    cur = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach((s, k) => s.classList.toggle('active', k === cur));
+    document.getElementById('pageno').textContent = (cur + 1) + ' / ' + slides.length;
+    location.hash = cur + 1;
+  }
+  document.addEventListener('keydown', e => {
+    if (['ArrowRight', ' ', 'PageDown'].includes(e.key)) { e.preventDefault(); show(cur + 1); }
+    else if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); show(cur - 1); }
+    else if (e.key === 'Home') show(0);
+    else if (e.key === 'End') show(slides.length - 1);
+  });
+  document.addEventListener('click', e => {
+    if (e.target.closest('a')) return;
+    show(e.clientX < window.innerWidth * 0.2 ? cur - 1 : cur + 1);
+  });
+  show((parseInt(location.hash.slice(1), 10) || 1) - 1);
+</script>
+</body>
+</html>

@@ -2,9 +2,10 @@
 
 > **Đây là đặc tả canonical của RQ2 protocol** — paper được cập nhật TỪ file này (methodology §RQ2,
 > results §RQ2, threats/limitations). Trước đây nội dung này nằm trong `docs/summary.md`
-> §"Alignment evaluation protocol"; tách ra 2026-08-03 khi summary.md được tái cấu trúc thành giàn ý paper.
+> §"Alignment evaluation protocol"; tách ra 2026-08-03, và từ 2026-09-10 thì summary.md đã xoá hẳn —
+> bản thảo là source of truth cho nội dung, file này cho phép đo.
 >
-> - Giàn ý paper + RQ context: [`docs/summary.md`](summary.md)
+> - Mức claim + luật viết: [`docs/paper/claim-rules.md`](paper/claim-rules.md); nội dung paper: `docs/paper/acm/`
 > - Lệnh chạy scorer/pooling + metrics reference: [`docs/benchmark_guides.md`](benchmark_guides.md) (§7, Appendix A)
 > - Code: `isd-agent-benchmark/evaluator/src/isd_evaluator/metrics/alignment.py`, scorer
 >   `scripts/alignmentgraph-isd-bench/06_score_alignment.py`, pooling `07_pool_ladder_runs.py`
@@ -18,7 +19,7 @@
 > "the measurement" thay vì "the/our protocol". Thuật ngữ điểm số trong paper (2026-08-29): giá trị panel =
 > **"alignment score(s)"**, điểm benchmark = **"LLM judge score(s)"**; tên từng score vẫn operation-named.
 > File này vẫn là **spec canonical** cho code + số liệu + mức claim;
-> tên "protocol" giữ trong tài liệu nội bộ. Chi tiết: `docs/summary.md` mục 4.6, 8.6.
+> tên "protocol" giữ trong tài liệu nội bộ. Mức claim: [`docs/paper/claim-rules.md`](paper/claim-rules.md).
 
 Tên gọi (nội bộ): **automated constructive-alignment evaluation protocol operationalizing established criteria**
 (VN: quy trình đánh giá constructive alignment tự động, operationalize các tiêu chí đã được thiết lập). **Không phải metric mới**;
@@ -322,7 +323,7 @@ chính cái panel.
   test với các cell đó impute 0.0. Hai layer comparative/descriptive ở trên tính trên **complete-case trên output có
   sẵn**, tức **không phải unconditional** và là **sensitivity, không phải kết quả chính**: agent crash thì benchmark
   không ghi `*_output.json` nên scenario rơi khỏi tập ghép cặp và cú crash không tốn gì cho agent (điều kiện hoá trên
-  biến hậu-treatment — xem rationale failure policy ở giàn ý `summary.md` mục 8). Không có `failure=min` vì endpoint đã sàn ở 0.0. **Artifact chấm
+  biến hậu-treatment — rationale failure policy nằm ở §Experimental Design của bản thảo). Không có `failure=min` vì endpoint đã sàn ở 0.0. **Artifact chấm
   trước 2026-07-27 chưa có roster** → pooling báo `UNKNOWN` (không phải "không có failure"); phải re-score
   `--overwrite` mới có layer chính này.
 - Macros LaTeX: `rqTwoHarnessSim*`, `rqTwoHarnessSimCILo/Hi*`, `rqTwoSimPHolmMax*`, `rqTwoSimDiDVsBaseline*` — tên
@@ -427,7 +428,7 @@ chứng trên, không nằm ở tên metric (§4) và bản thân cách đặt t
    - `pawar2018similarity` — "Bloom Index": similarity cặp động từ cho Bloom-level matching. Thêm vào dòng rule-based
      Bloom cùng Omar/Haris/Jayakodi — precedent gần nhất cho thiết kế `LexiconBloomClassifier` (dẫn từ động từ, không
      học từ nhãn).
-- **Tiền đề task decomposition** (giàn ý `summary.md` mục 4.5, nợ R7 — **đã trả**, metadata đã verify, đã có trong
+- **Tiền đề task decomposition** (nợ R7 — **đã trả**, metadata đã verify, đã có trong
   `docs/paper/acm/references.bib`): zhou2023leasttomost (Least-to-Most, ICLR 2023), khot2023decomposed (Decomposed
   Prompting, ICLR 2023), ferraz2024decrim (DeCRIM, Findings of EMNLP 2024), shen2024multillmagent (Small LLMs Are Weak
   Tool Learners, EMNLP 2024 main) — kèm belcak2025slm đã có sẵn. Bốn nguồn này chỉ đỡ vế "tác vụ hẹp dễ hơn tác vụ rộng

@@ -18,6 +18,15 @@ multi-agent revision, and multi-agent course generation over commercial APIs
 yao2025instructionalagents}. Across this work, preserving quality while reducing
 the foundation model is not a joint MAS-design and evaluation target.
 
+Architecturally these systems, and the one proposed here, belong to the
+workflow-style or SOP family of multi-agent designs, in which roles and their order
+are fixed in advance and coordination is static rather than
+negotiated~\cite{hong2024metagpt}; within a role, execution follows the
+reasoning--acting pattern of tool-using agents~\cite{yao2023react}. What differs
+between them is not the number of agents but what the agents share: whether the
+design passes between roles as prose, or as state a later role can query and a
+reader can audit.
+
 \subsection{Small and On-Premise Language Models in Education}
 
 A second line examines why and how institutions run language models locally.

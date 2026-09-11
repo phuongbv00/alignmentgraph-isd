@@ -15,9 +15,11 @@ Two artifacts:
       dot -Tsvg <stem>.dot -o <stem>.svg
 
 Colouring is the structural alignment state, not decoration:
-- objective nodes: green when measured (C2) and supported (C3) and the
-  Bloom/format rule holds, amber otherwise. The third leg went with C7 on
-  2026-09-02, when a rubric criterion became a field of its assessment item.
+- objective nodes: green when the constructive-alignment triad CLOSES on the
+  objective — measured (C2), supported (C3), and the supporting activity
+  prepares for the measuring item (C4) — amber otherwise. Bloom is not part of
+  that test; it is a content condition and rides as a separate ⚠ on the label
+  and on the offending edge.
 - edges by establishment mechanism: id-match solid green, type-match solid blue,
   provenance solid grey; a C2/C3 edge that fails the Bloom/format rule is
   red-dashed (e.g. an MCQ assessing an Apply objective).
@@ -47,17 +49,52 @@ _INVALID_EDGE = "#dc2626"      # red — a measures edge failing the Bloom/forma
 
 
 def objective_annotations(graph: AlignmentGraph) -> dict[str, dict]:
-    """Per-objective structural alignment: is it assessed and practiced, and
-    does the Bloom cross-check hold? All read from the graph's established
-    edges via the single alignment definition. C2 (assessed_by) and C3
-    (practiced_by) are both id-reverse — the LO is the edge SOURCE."""
+    """Per-objective structural alignment: does the constructive-alignment
+    triad close on this objective, and does the Bloom cross-check hold?
+
+    All read from the graph's established edges via the single alignment
+    definition. C2 (assessed_by) and C3 (practiced_by) are both id-reverse —
+    the LO is the edge SOURCE — while C4 (prepares_for) runs activity→
+    assessment and touches the objective only through those two.
+
+    ``aligned`` is the Biggs triad CLOSED on the objective (2026-09-10): it is
+    practiced by an activity that prepares for an item that assesses that same
+    objective. Two changes at once, and both were needed to make this a
+    statement the paper can carry:
+
+    * C4 joined it. "Assessed" and "practiced" alone are two independent
+      existentials — an objective could be measured by one item and rehearsed
+      by an activity pointing at some unrelated item, and still read aligned.
+      The third edge is what makes it a triangle rather than two spokes, and it
+      is the edge the RQ2 panel's third family-A signal measures, so the
+      predicate and the measurement now name the same three relations.
+    * ``bloom_ok`` left it. Bloom is a CONTENT condition standing in a
+      predicate ``alignment.py`` documents as "the single definition of what
+      aligned means STRUCTURALLY" — the same module that calls Bloom
+      "attribute-based, not an edge". It is unchanged as its own flag below,
+      where a reader who wants the cognitive check can still find it.
+
+    The two move ``aligned`` in opposite directions, so it is not comparable
+    with any archived run. That is affordable exactly once: no ladder has been
+    run against the current architecture."""
     assessment = {v["node_id"]: v for v in alignment.bloom_assessment_violations(graph)}
     activity = {v["node_id"]: v for v in alignment.bloom_activity_violations(graph)}
     out: dict[str, dict] = {}
     for node in graph.element_nodes(NodeType.OBJECTIVE):
         node_id = node["id"]
-        assessed = bool(graph.get_edges(relation_id="C2", source=node_id))
-        practiced = bool(graph.get_edges(relation_id="C3", source=node_id))
+        assessing = {e["target"] for e in graph.get_edges(relation_id="C2", source=node_id)}
+        practicing = {e["target"] for e in graph.get_edges(relation_id="C3", source=node_id)}
+        assessed = bool(assessing)
+        practiced = bool(practicing)
+        # The closing edge, and the reason it is quantified over BOTH sets
+        # rather than asked of either alone: "some activity of mine prepares
+        # for something" and "some item of mine is prepared for by something"
+        # are each satisfiable without the triangle ever meeting.
+        prepares = any(
+            edge["target"] in assessing
+            for activity_id in practicing
+            for edge in graph.get_edges(relation_id="C4", source=activity_id)
+        )
         # SPLIT, because the union answered "something Bloom is wrong" and the
         # reader then had to open the trajectory to learn which of the two —
         # the question this whole flag was supposed to answer.
@@ -67,14 +104,15 @@ def objective_annotations(graph: AlignmentGraph) -> dict[str, dict]:
         # No rubric leg since 2026-09-02: a criterion is a field of the item it
         # marks, so "is this objective scored by a rubric" was true for every
         # objective that had an item at all. It never varied, so it never
-        # narrowed `aligned` — dropping it changes the definition and not the
+        # narrowed `aligned` — dropping it changed the definition and not the
         # answer.
         out[node_id] = {
             "measured": assessed,
             "supported": practiced,
-            # Kept as the conjunction: `to_dot`, the benchmark contract and
-            # every archived run read it, and its MEANING is unchanged — what
-            # it never said is which of the two failed.
+            # The C4 leg gets its own flag for the reason the Bloom flag was
+            # split: a conjunction tells a reader that something failed and
+            # not which, and this is the leg they will not guess.
+            "prepares": prepares,
             "bloom_ok": bloom_ok,
             "bloom_assessment_ok": bloom_assessment_ok,
             "bloom_activity_ok": bloom_activity_ok,
@@ -83,7 +121,7 @@ def objective_annotations(graph: AlignmentGraph) -> dict[str, dict]:
             #: instead of a boolean whose two causes were unioned away.
             "bloom_notes": [v["message"] for v in
                             (assessment.get(node_id), activity.get(node_id)) if v],
-            "aligned": assessed and practiced and bloom_ok,
+            "aligned": assessed and practiced and prepares,
         }
     return out
 
@@ -152,6 +190,7 @@ def _node_label(node: dict, annotations: dict) -> str:
             flags = "".join([
                 "M" if ann["measured"] else "·",
                 "S" if ann["supported"] else "·",
+                "P" if ann["prepares"] else "·",
                 "" if ann["bloom_ok"] else " ⚠bloom",
             ])
             lines.append(("✓ " if ann["aligned"] else "✗ ") + flags)
@@ -177,7 +216,7 @@ def _legend() -> list[str]:
         f'    leg_type [label="type-match edge", shape=plaintext, fontcolor="{_EDGE_COLOR["type"]}"];',
         f'    leg_prov [label="provenance edge", shape=plaintext, fontcolor="{_EDGE_COLOR["provenance"]}"];',
         f'    leg_bad [label="Bloom/format ⚠ (invalid)", shape=plaintext, fontcolor="{_INVALID_EDGE}"];',
-        f'    leg_ok [label="objective aligned (M/S ok)", shape=box, style="filled,rounded", fillcolor="{_ALIGNED_FILL}"];',
+        f'    leg_ok [label="objective aligned (M/S/P ok)", shape=box, style="filled,rounded", fillcolor="{_ALIGNED_FILL}"];',
         f'    leg_gap [label="objective has a gap", shape=box, style="filled,rounded", fillcolor="{_UNALIGNED_FILL}"];',
         "    leg_id -> leg_type -> leg_prov -> leg_bad [style=invis];",
         "  }",

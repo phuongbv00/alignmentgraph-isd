@@ -4,85 +4,140 @@
 \subsection{Objectives and analyses}
 \label{sec:rqs}
 
-Objective~1 is met by the MAS in \Cref{sec:method}; the remaining three map
-onto the analyses as follows. Objective~2 has two parts---the level at each size
-and the scale interaction---which have equal standing and are tested by two separate analyses
-(per-size and difference-in-differences, \Cref{sec:stats}); significance at one
-size must not be read as evidence about downscaling. Objective~3 applies the same
-two analyses to the alignment panel and stops at measurable signals; construct
-validation requires expert evidence beyond automated scores. Objective~4 is tested
-by the three ablation arms below, which run inside the same ladder sessions.
+Objective~1 is met by the MAS in \Cref{sec:method}; the remaining three map onto
+two experiments. Experiment~1 (TN1) is the ladder comparison against the benchmark
+agents and answers Objectives~2 and~3. Experiment~2 (TN2) is the factorial ablation
+and answers Objective~4. Objective~2 has two parts---the level at each size and the
+scale interaction---which have equal standing and are tested by two separate
+analyses (per-size and difference-in-differences, \Cref{sec:stats}); significance at
+one size must not be read as evidence about downscaling. Objective~3 applies the
+same two analyses to the alignment panel and stops at measurable signals; validating
+the construct requires expert evidence beyond automated scores.
+
+Both experiments run on a configuration frozen before either begins: code and
+prompt hashes, model checkpoints, dataset splits, seeds, decoding and serving
+settings, output and trajectory caps, judge prompts, metric versions, and the panel
+interpretation rule. Nothing in that list is revisited after results are seen, and a
+cell is re-run only for a genuine technical failure.
 
 \subsection{Comparison conditions}
 \label{sec:conditions}
 
-The primary comparison includes seven systems: AlignmentGraph-ISD and six
-benchmark agents (Baseline, EduPlanner, ADDIE-Agent, RPISD-Agent,
-Dick-Carey-Agent, and ReAct-ISD) at every size and every run.
+TN1 compares seven systems: AlignmentGraph-ISD and six benchmark agents (Baseline,
+EduPlanner, ADDIE-Agent, RPISD-Agent, Dick-Carey-Agent, and ReAct-ISD), at every
+size.
 
-For the ablation study, three arms of the proposed system run alongside, each
-disabling exactly one part of the mechanism in \Cref{sec:method}: $-$Verifier
-disables the check-and-repair layer (\Cref{sec:qc}) while keeping decomposition
-and graph context; $-$GraphContext disables the context-slice reads $C(s)$
-while keeping writes under the contract $W(s)$ (\Cref{sec:alignment-graph});
-and the skeleton disables both, keeping only specialist decomposition. This
-design tests the two mechanisms built on top of decomposition, not
-decomposition itself---the inherited architectural foundation
-(\Cref{sec:decomposition}). All three arms run inside the same ladder sessions,
-so arm-minus-A0 deltas share a judge session and avoid judge drift; the
-in-session A0 also serves as a consistency check against the three primary A0
-runs.
+TN2 is a $2\times2$ factorial over the two design choices of \Cref{sec:method}
+(\Cref{tab:ablation-arms}). The first factor is \emph{decomposition}: \texttt{multi}
+runs the six stages as six agents, each starting in a fresh context under its own
+identity, while \texttt{single} carries one context across all six stages under one
+identity. The second factor is the \emph{substrate}: \texttt{graph} is the alignment
+graph of \Cref{sec:alignment-graph}, while \texttt{prose} replaces it with a
+graph-free blackboard in which each step deposits its parsed output under a document
+key and later steps read whole documents back verbatim. The proposed system is the
+\texttt{multi}$\times$\texttt{graph} cell.
 
-\subsection{Data and model ladder}
+Each factor is a bundle, and saying so is part of the claim rather than a caveat
+attached to it. Decomposition varies the context boundary, how many personas the
+run has, and whether work is delegated---these travel together because they are what
+``multi-agent'' means to a reader, and separating them would test something no one
+builds. The substrate factor likewise removes the whole alignment machinery: without
+the graph there is no cross-artifact relation, no coverage audit, no reconciliation
+pass, and no graph dump, so only the within-artifact checks survive.
+
+The arms are not held to equal model effort, and equal effort is not the parity
+condition. An agent that plans its own order and writes its own batches cannot spend
+the same number of calls as a harness walking a fixed plan with developer agents;
+that difference \emph{is} the treatment. The condition that must hold, and that we
+verify, is that no arm was cut short by its turn budget---while that holds, an
+outcome difference cannot be attributed to the ceiling.
+
+We register one directional prediction before running TN2: under \texttt{single},
+quality degrades with the position of a stage in the ADDIE sequence, and this
+degradation is absent or weaker under \texttt{multi} and widens as the model
+shrinks. TN2 is read out on the internal audit metrics and the alignment panel; the
+LLM judge serves only as a cross-check and never leads the ablation narrative.
+
+\begin{table}[t]
+  \caption{TN2's four arms. The proposed system is the top-left cell; each of the
+  other three differs from it on exactly one factor.}
+  \label{tab:ablation-arms}
+  \small
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    & \texttt{graph} substrate & \texttt{prose} substrate \\
+    \midrule
+    \texttt{multi} agents & AlignmentGraph-ISD & multi\,$\times$\,prose \\
+    \texttt{single} agent & single\,$\times$\,graph & single\,$\times$\,prose \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Data, model ladder, and run structure}
 \label{sec:dataset}
 \label{sec:setup}
 
-Every condition runs on the \texttt{test\_90} split of
-ISD-Agent-Bench~\cite{isdagentbench}: 90 scenarios selected by stratified
-sampling with seed 42, shared by all systems. The ladder comprises Qwen
-checkpoints at 0.8B, 2B, 4B, and 9B; holding the model family constant means
-only capacity changes between sizes. Each agent--size cell has three
-independent runs over all 90 scenarios. Scenarios and prompts for all seven
-agents are English by design; the only baseline-specific intervention
-translates ReAct-ISD's prompt scaffolding into English without changing its
-method. Manifests record checkpoints, prompts, seeds, decoding settings, and
-judges.
+TN1 runs on the \texttt{test\_90} split of ISD-Agent-Bench~\cite{isdagentbench}: 90
+scenarios drawn by stratified sampling with seed 42 and shared by all systems. TN2
+runs on \texttt{test\_30}, a stratified 30-scenario split drawn with the same seed
+and verified disjoint from the tuning split. No tuning or debugging output enters
+either experiment; parameters were fixed on a separate training split before the
+freeze.
+
+The ladder comprises Qwen3.5 checkpoints at 0.8B, 2B, 4B, and 9B; holding the model
+family constant means only capacity changes between sizes. TN1 covers all four
+sizes, TN2 the two ends of the deployment envelope, 0.8B and 4B.
+
+Each cell is generated once under deterministic decoding rather than averaged over
+repeated runs. Uncertainty is carried by the paired, per-scenario analyses of
+\Cref{sec:stats}, which resample scenarios rather than runs; with 90 paired
+scenarios, scenario-level variation dominates the run-to-run variation that
+repetition would estimate, and the saving is spent on the ablation and the expert
+review instead. Repetition is used where it answers a question of its own: a
+targeted repeat re-runs a small set of decisive cells---the proposed system, the
+strongest baseline, and ReAct-ISD at 0.8B and 4B---and is reported as its own
+robustness sub-study with its own $n$, not folded into the main estimates.
+
+Scenarios and prompts for all seven systems are English by design. The only
+baseline-specific intervention translates ReAct-ISD's prompt scaffolding into
+English without altering its method.
 
 \subsection{Deployment envelope and serving conditions}
 \label{sec:assumptions}
 
-The deployment target is a single 12--16\,GB GPU. At two bytes per parameter,
-bf16 weights require approximately 1.6\,GB for 0.8B, 4\,GB for 2B, 8\,GB for
-4B, and 18\,GB for 9B; the 9B model therefore does not fit, and 4B is the
-largest in-target checkpoint. The remaining VRAM must hold the KV cache and
-runtime overhead, leaving a budget of roughly 8k tokens per call. This chain of
-reasoning is checkable independently of experiment timing; 9B is an
-out-of-target reference point, not a proposed deployment configuration.
+The deployment target is a single 12--16\,GB GPU. At two bytes per parameter, bf16
+weights require approximately 1.6\,GB for 0.8B, 4\,GB for 2B, 8\,GB for 4B, and
+18\,GB for 9B; the 9B model therefore does not fit, and 4B is the largest in-target
+checkpoint. The remaining VRAM must hold the KV cache and runtime overhead, leaving
+a budget of roughly 8k tokens per call. This chain of reasoning is checkable
+independently of experiment timing; 9B is an out-of-target reference point, not a
+proposed deployment configuration.
 
-All agents run through vLLM with streaming enabled, thinking disabled, and a
-common generation cap. We cap generation at 8192 tokens per call---the budget a
-4B model leaves on a single 12--16\,GB GPU, the deployment target this work
-claims. The 24--32\,GB pods were rental convenience for running the ladder in
-parallel, not the claimed envelope. Whether an architecture completes within
-this limit is therefore a measured deployment property.
+All agents run through vLLM with streaming enabled, thinking disabled, and a common
+generation cap. We cap generation at 8192 tokens per call---the budget a 4B model
+leaves on a single 12--16\,GB GPU, the deployment target this work claims. The
+24--32\,GB pods were rental convenience for running the ladder in parallel, not the
+claimed envelope. Whether an architecture completes within this limit is therefore a
+measured deployment property.
 
 \subsection{Measures}
 \label{sec:metrics}
 
-Two measurement families are applied to the same saved outputs: the benchmark's
-LLM judge scores, and a deterministic alignment-score measurement that
-uses no LLM. They are mechanically independent, so agreement between them carries
-more weight than either family alone.
+Two measurement families are applied to the same saved outputs: the benchmark's LLM
+judge scores, and a deterministic alignment-score measurement that uses no LLM.
+Their mechanisms differ, so agreement between them carries more weight than either
+alone.
 
 \subsubsection{LLM judge scores}
 
-For Objective~2, two fixed judges from families separate from the agents---
-\texttt{openai/gpt-4o-mini} and \texttt{google/gemini-2.5-flash-lite}---score
-every artifact; this separation reduces self-preference
-risk~\cite{panickssery2024llm}. The scenario score is the mean of the two
-judges. The three LLM judge scores are reported in parallel with identical
-analyses and equal standing (\Cref{tab:judge-signals}); ADDIE leads the
-narrative because its rubric matches the construct Objective~2 addresses.
+For Objective~2, one fixed judge from a family separate from the agents scores every
+output; this separation reduces self-preference risk~\cite{panickssery2024llm}. A
+second, independently chosen judge scores a stratified subset covering the proposed
+system, ReAct-ISD, and the strongest baseline, to test whether the direction of the
+conclusion depends on the judge. The three LLM judge scores are reported in parallel
+with identical analyses and equal standing (\Cref{tab:judge-signals}); ADDIE leads
+the narrative because its rubric matches the construct Objective~2 addresses, and
+the composite is retained only for comparability with how ISD-Agent-Bench reports.
 
 \begin{table}[t]
   \caption{The three LLM judge scores (scale /100).}
@@ -102,131 +157,135 @@ narrative because its rubric matches the construct Objective~2 addresses.
   \end{tabular}
 \end{table}
 
+The trajectory score requires a disclosure that shapes how it may be read. The
+benchmark shows the judge only the first 20 tool calls of a run. A single-loop system
+makes roughly five calls and is seen in full; a decomposed system makes one to two
+orders of magnitude more and is seen only at the beginning, so a low trajectory score
+may reflect a display limit rather than behaviour. We fix the policy before running
+and report two layers: a benchmark-comparable layer at the original cap of 20, and a
+diagnostic layer at a cap of 120, which covers a typical decomposed run end to end.
+Full trajectories are stored, so the second layer is a re-scoring of the same
+outputs and requires no regeneration. Neither cap is revisited after results are
+seen.
+
 \subsubsection{Alignment scores}
 \label{sec:alignment-measures}
 
-The LLM judge scores above inherit the systematically documented biases of
-rubric-scoring LLMs~\cite{zheng2023judging,panickssery2024llm,norman2026reliability},
-and here the judge and generator families overlap. The study therefore adds a
-second, mechanically independent measurement that reads the semantic layer
-corresponding to the structural relations the graph makes explicit: it measures
-signals associated with the three facets of \Cref{eq:aligned} on the rendered
-output of every system. It operationalizes established criteria and follows two
-principles:
+The LLM judge scores inherit the documented biases of rubric-scoring
+LLMs~\cite{zheng2023judging,panickssery2024llm,norman2026reliability}, and they do
+not expose alignment relations at all. The study therefore adds a second measurement
+that reads the semantic layer corresponding to the structural relations the graph
+makes explicit, on the rendered output of every system. It operationalizes
+established criteria and follows two principles:
 \begin{itemize}
   \item \emph{No LLM in measurement}: there is no prompting, sampling, or matching
-  threshold; after the encoder and Bloom classifier are pinned, every score is a
+  threshold; once the encoder and Bloom classifier are pinned, every score is a
   fixed function of text.
-  \item \emph{Read only text from saved output}: self-declared graph identifiers
-  are excluded from score computation and retained only as validity evidence, so
-  every system is measured on the same basis.
+  \item \emph{Read only text from saved output}: self-declared graph identifiers are
+  excluded from score computation and retained only as validity evidence, so every
+  system is measured on the same basis.
 \end{itemize}
 
-The panel contains seven alignment scores from two mechanically independent instrument
-families: \emph{Family A} measures textual correspondence between artifacts with
-embeddings; \emph{Family B} measures cognitive demand through Bloom levels and
-does not use cosine similarity. From each system output, the measurement extracts four
-text sets: $\mathcal{O}$ (objectives), $\mathcal{A}$ (assessment items),
-$\mathcal{X}$ (learning activities), and $\mathcal{E}$ (evaluation items). Family
-A uses the mean--max rectified-cosine operator
+The panel is a pre-specified flat set of six alignment scores in two instrument
+families. \emph{Family A} measures textual correspondence between artifacts with
+embeddings; \emph{Family B} measures cognitive demand through Bloom levels. From
+each output the measurement extracts three text sets: $\mathcal{O}$ (objectives),
+$\mathcal{A}$ (assessment tasks), and $\mathcal{X}$ (learning activities). Family A
+uses the mean--max rectified-cosine operator
 \[
   \mathrm{sim}(S,T)
   = |S|^{-1}\sum_{u\in S}\;\max_{t\in T}\;\max\bigl(0,\cos(e_u,e_t)\bigr),
 \]
-where $e_u$ is the embedding of text span $u$; $\max(0,\cdot)$ is a scale choice
-on $[0,1]$, not a matching threshold. \Cref{tab:panel-signals} specifies the seven
-scores: four Family A scores correspond to the three facets of
-\Cref{eq:aligned} plus a reverse diagnostic direction, while three Family B scores
-directly inherit established alignment instruments from educational measurement.
+where $e_u$ is the embedding of text span $u$; $\max(0,\cdot)$ is a scale choice on
+$[0,1]$, not a matching threshold. \Cref{tab:panel-signals} specifies the six scores.
+Family A is exactly the three edges of the constructive-alignment triad, one per core
+relation of \Cref{eq:aligned}, so no panel score measures something the graph does
+not model.
 
 \begin{table*}[t]
-  \caption{The seven alignment scores. Family A applies the $\mathrm{sim}$ operator
-  to four text sets extracted from output; Family B uses Bloom levels and does not
-  use cosine similarity. \dag{} = non-directional and excluded from directional
-  counts under the panel interpretation rule. Parenthetical names are the
-  corresponding fields in the generated artifact.}
+  \caption{The six alignment scores. Family A applies the $\mathrm{sim}$ operator to
+  text sets extracted from the output, one score per edge of \Cref{eq:aligned};
+  Family B uses Bloom levels. Parenthetical names are the corresponding fields in
+  the generated artifact.}
   \label{tab:panel-signals}
   \small
-  \begin{tabular}{@{}lp{0.20\textwidth}p{0.22\textwidth}p{0.27\textwidth}@{}}
+  \begin{tabular}{@{}lp{0.17\textwidth}p{0.22\textwidth}p{0.29\textwidth}@{}}
     \toprule
     Symbol & Formula & Measurement & Selection basis \\
     \midrule
     $\sigma_{\mathrm{meas}}$ {\scriptsize(objective\_assessment\_similarity)} &
     $\mathrm{sim}(\mathcal{O},\mathcal{A})$ &
-    how closely an assessment corresponds in content to each objective &
-    \emph{measures} facet of \Cref{eq:aligned}; precedent for embedding-based
-    item--standard mapping~\cite{xu2025itemalignment,clelandhuang2018traceability} \\
+    how closely an assessment task corresponds in content to each objective &
+    the $C_2$ edge; precedent for embedding-based item--standard
+    mapping~\cite{xu2025itemalignment,clelandhuang2018traceability} \\
     $\sigma_{\mathrm{supp}}$ {\scriptsize(objective\_activity\_similarity)} &
     $\mathrm{sim}(\mathcal{O},\mathcal{X})$ &
     how closely learning activities address each objective &
-    \emph{supports} facet; constructive alignment requires activities to support
+    the $C_3$ edge; constructive alignment requires activities to support
     objectives~\cite{biggs1996enhancing} \\
-    $\sigma_{\mathrm{eval}}$ {\scriptsize(objective\_evaluation\_similarity)} &
-    $\mathrm{sim}(\mathcal{O},\mathcal{E})$ &
-    how closely evaluation covers each objective &
-    \emph{evaluates} facet; Quality Matters requires evaluation to connect to
-    objectives~\cite{qm2018rubric} \\
-    $\sigma_{\mathrm{rev}}$\,\dag{} {\scriptsize(assessment\_objective\_similarity)} &
-    $\mathrm{sim}(\mathcal{A},\mathcal{O})$ &
-    whether each assessment item corresponds to an objective &
-    reverse-direction diagnostic; a high value may indicate either good coverage
-    or mere objective repetition \\
+    $\sigma_{\mathrm{prep}}$ {\scriptsize(activity\_assessment\_similarity)} &
+    $\mathrm{sim}(\mathcal{X},\mathcal{A})$ &
+    whether what learners practice corresponds to what they are assessed on &
+    the $C_4$ edge, which closes the triad; independent of $\mathcal{O}$ and so
+    computable whenever activities and tasks exist \\
     \midrule
     $\beta_{\mathrm{cong}}$ {\scriptsize(objective\_cognitive\_congruence)} &
-    proportion of objectives whose best-matching assessment has the same Bloom
-    level & objective--assessment cognitive-level agreement &
-    assessment demand should match objective demand
-    ~\cite{anderson2001taxonomy} \\
+    proportion of objectives whose best-matching assessment task reaches their
+    Bloom level & objective--task cognitive-demand agreement &
+    assessment demand should match objective
+    demand~\cite{anderson2001taxonomy} \\
     $\beta_{\mathrm{port}}$ {\scriptsize(porter\_mean)} &
-    mean Porter index over topic$\times$Bloom distributions &
-    agreement between the two content--demand distributions &
+    mean Porter index over topic$\times$Bloom distributions, over the same three
+    edges & agreement between two content--demand distributions &
     Porter alignment index~\cite{porter2002measuring,fulmer2011estimating} \\
     $\beta_{\mathrm{webb}}$ {\scriptsize(webb\_bloom\_consistency)} &
     Webb cognitive-demand consistency criterion &
-    demand consistency from the item perspective &
+    demand consistency from the task perspective &
     Webb criterion~\cite{webb1997criteria} \\
     \bottomrule
   \end{tabular}
 \end{table*}
 
-Both underlying instruments are version-pinned. The embedding encoder maps each
-text span to vector $e_u$ for the $\mathrm{sim}$ operator; the primary
-configuration uses Nemotron-8B, and \Cref{tab:rq2-arms} specifies alternative
-encoder arms. The Bloom classifier assigns an Anderson--Krathwohl level to each
-objective and assessment item for the three Family B scores; the primary
-configuration is a BERT checkpoint fine-tuned on an expert-labeled learning-
-objective corpus~\cite{li2022bloomclassification}, with a verb lexicon as the
-comparison arm (\Cref{tab:rq2-arms}).
+The two families are independent in mechanism but not perfectly so, and the
+exception belongs here rather than in a reviewer's report.
+$\beta_{\mathrm{cong}}$ selects the assessment task to compare against by cosine
+similarity before comparing Bloom levels, so it shares the embedding step with
+Family~A. $\beta_{\mathrm{port}}$ and $\beta_{\mathrm{webb}}$ involve no similarity
+at all and are therefore the full counterweights; agreement between Family~A and
+those two carries the triangulation argument.
 
-Finally, we report the seven alignment scores as a pre-specified flat panel with no primary
-endpoint. There are two reasons: constructive alignment has multiple facets, and
-any composite would impose weights without a theoretical basis. The two
-mechanically independent instrument families also enable triangulation: conclusions
-are stronger only when different mechanisms agree. Each score is named after the
-operation it computes, and none is called ``precision''; \emph{alignment score}
-is the collective term for the panel values, while the construct itself lives in
-\Cref{eq:aligned}. We therefore claim only
-measurable signals of constructive alignment. The measurement does not itself validate
-the construct; that bridge requires a human-expert evaluation layer.
-Scoring runs offline on saved outputs; instruments are configured by preset
-(\Cref{tab:rq2-arms}): the primary
-configuration pairs the Nemotron encoder with the fine-tuned BERT checkpoint,
-and four sensitivity arms form a star around it---each arm deviates on exactly
-one axis, not a grid. The BERT checkpoint always returns an argmax whereas the
-lexicon can abstain, so Family-B denominators may differ between the two Bloom
-arms. The panel interpretation rule is pre-specified: a size shows an advantage
-when at least four of the six directional scores are significantly positive
-after within-score Holm correction and no score is significantly negative;
-the reversed pattern indicates disadvantage, and all other patterns are mixed.
-The seventh, non-directional score is still reported. Operationally, scoring
-uses no LLM and has no stochastic component; results are reproducible given
-pinned encoder versions and the embedding cache. Cost telemetry reads only
+Both instruments are version-pinned. The encoder maps each text span to $e_u$; the
+primary configuration uses Nemotron-8B, with alternative encoder arms in
+\Cref{tab:rq2-arms}. The Bloom classifier assigns an Anderson--Krathwohl level to
+each objective and assessment task; the primary configuration is a BERT checkpoint
+fine-tuned on an expert-labeled learning-objective
+corpus~\cite{li2022bloomclassification}, with a verb lexicon as the comparison arm.
+The checkpoint always returns an argmax whereas the lexicon may abstain, so Family-B
+denominators differ between the two Bloom arms. Sensitivity arms form a star around
+the primary configuration---each deviates on exactly one axis, not a grid---and are
+run on a subset rather than over the whole ladder.
+
+The panel is reported flat, with no primary endpoint, for two reasons: constructive
+alignment has several facets, and any composite would impose weights with no
+theoretical basis. Each score is named after the operation it computes, and none is
+called ``precision''; \emph{alignment score} is the collective term for the panel
+values, while the construct itself lives in \Cref{eq:aligned}. The interpretation
+rule is pre-specified: a size shows an alignment advantage over a comparison system
+when at least four of the six scores are significantly positive after within-score
+Holm correction and none is significantly negative; the reversed pattern indicates a
+disadvantage, and every other pattern---including five positive with one
+significantly negative---is reported as mixed, with the losing side named. This is
+not a composite: nothing is summed or normalized, and each score keeps its own $p$.
+We therefore claim only measurable signals of constructive alignment; the
+measurement does not validate the construct, and that bridge needs the expert layer
+below. Scoring runs offline on saved outputs, uses no LLM, and has no stochastic
+component; results are reproducible given pinned encoder revisions and the embedding
+cache, up to floating-point noise. Cost telemetry reads only
 \texttt{metadata.token\_usage}.
 
 \begin{table}[t]
-  \caption{Instrument configurations: the primary configuration and four
-  sensitivity arms (a star---each arm deviates from the primary on exactly one
-  axis).}
+  \caption{Instrument configurations: the primary configuration and four sensitivity
+  arms (a star---each arm deviates from the primary on exactly one axis).}
   \label{tab:rq2-arms}
   \small
   \begin{tabular}{@{}lllp{0.2\columnwidth}@{}}
@@ -244,42 +303,56 @@ pinned encoder versions and the embedding cache. Cost telemetry reads only
   \end{tabular}
 \end{table}
 
+\subsubsection{Expert review}
+\label{sec:expert}
+
+Automated scores alone cannot connect the panel to educational value, so a small
+expert layer accompanies them. Three to five instructors experienced in course
+design each review 8--12 outputs with the system name withheld, judging
+constructive alignment, feasibility, clarity, and how much revision the design would
+need before use. The review is conducted after the configuration freeze and on
+official output, and is reported descriptively alongside the panel. It is not used
+to select methods, adjust prompts, or choose among configurations; doing so after
+seeing results would make the whole evaluation retrospective.
+
 \subsection{Statistical analysis}
 \label{sec:stats}
 
-The unit of inference is a scenario's mean over three runs. For the level part
-of Objective~2, paired Wilcoxon signed-rank tests compare A0 with each baseline at
-every size and on all three LLM judge scores; Objective~3 applies the same test to each
+The unit of inference is the scenario. For the level part of Objective~2, paired
+Wilcoxon signed-rank tests compare the proposed system with each baseline at every
+size and on all three LLM judge scores; Objective~3 applies the same test to each
 alignment score. When a paired sample has $n\leq25$, we use the exact permutation
-null. We report paired mean differences, rank-biserial effects, and bootstrap
+null. We report paired mean differences, rank-biserial effect sizes, and bootstrap
 95\% confidence intervals from 10{,}000 scenario resamples with seed 42.
 
 Holm correction covers the six proposed-versus-baseline comparisons per size,
-separately for each score. Objective~3 additionally reports panel-wide Holm correction
-over seven scores and six comparisons as multiplicity sensitivity; this
+separately for each score. Objective~3 additionally reports a panel-wide Holm
+correction over six scores and six comparisons as a multiplicity sensitivity; that
 correction creates no hierarchy among scores. For the scale part of Objective~2, let
-$\Delta_s$ be the paired A0-minus-baseline gap at size $s$. The pre-specified
-interaction is $\Delta_{\mathrm{largest}}-\Delta_{\mathrm{smallest}}$, tested
-with paired Wilcoxon and a bootstrap interval; a negative value means a larger
-A0 advantage at the small end. Objective~3 uses the same interaction, with
-$\sigma_{\mathrm{meas}}$ leading the scale narrative and the other scores
-reported alongside it.
+$\Delta_s$ be the paired proposed-minus-baseline gap at size $s$. The pre-specified
+interaction is $\Delta_{\mathrm{largest}}-\Delta_{\mathrm{smallest}}$, tested with
+paired Wilcoxon and a bootstrap interval; a negative value means a larger advantage
+at the small end. A difference observed at a single size is never read as a trend
+across sizes. Objective~3 uses the same interaction, with $\sigma_{\mathrm{meas}}$
+leading the scale narrative and the other scores reported alongside it.
 
-For missing outputs, the primary layer assigns \texttt{failure=0}: an agent
-that produces no output has quality zero, not missing data. Complete-case
-inference is only a sensitivity analysis and never unconditional, because it
-conditions on a post-treatment variable: it removes precisely the most severe
-failures, especially at smaller sizes. Objective~2 additionally reports
-\texttt{failure=min}; Objective~3 does not use this layer because its scores already
-have floor zero. Output-failure rates are compared separately with Fisher's
-exact test under Holm correction.
+For missing outputs, the primary layer assigns \texttt{failure=0}: a system that
+produces no output has quality zero, not missing data. Complete-case inference is a
+sensitivity analysis only, computed over available outputs and never described as
+unconditional, because it conditions on a post-treatment variable---it removes
+precisely the most severe failures, and does so most at the small sizes where the
+hypothesis lives. Objective~2 additionally reports \texttt{failure=min};
+Objective~3 does not, because its scores already floor at zero. Output-failure rates
+are compared separately with Fisher's exact test under Holm correction.
 
 \subsection{Reproducibility}
 \label{sec:reproducibility}
 
-All measured values are generated from saved run, judge, alignment, and
-ablation artifacts and enter the paper only through generated files; no number
-is hand-typed. Every table cell pairs its mean with the between-run SD of the
-same score. Manifests pin runtime and model settings; revision-aware embedding
-caches support exact re-analysis from saved vectors. Results produced before
-the study pivot are excluded.
+Every measured value is generated from saved run, judge, alignment, and ablation
+artifacts and enters the paper only through generated files; no number is hand-typed.
+The frozen manifest pins code and prompt hashes, checkpoints, splits, seeds,
+decoding and serving settings, caps, judge prompts, and metric versions, and
+revision-aware embedding caches support exact re-analysis from saved vectors.
+Because full trajectories and all outputs are stored, every reported statistic can
+be recomputed without regenerating a single model response. Results produced before
+the architecture pivot are excluded.

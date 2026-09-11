@@ -273,7 +273,7 @@ def test_objective_alignment_survives_to_the_api(client, ready_program, wait_for
     alignment = graph["objective_alignment"]
     assert alignment
     for flags in alignment.values():
-        assert set(flags) >= {"measured", "supported", "bloom_ok", "aligned"}
+        assert set(flags) >= {"measured", "supported", "prepares", "bloom_ok", "aligned"}
     # 16 relations total: 5 core (C1-C5) + 11 secondary (P1-P11) — see
     # alignment.py::REGISTRY (renamed from the old R1..R13 scheme).
     from alignmentgraph_isd.core.alignment_graph import alignment as alignment_module

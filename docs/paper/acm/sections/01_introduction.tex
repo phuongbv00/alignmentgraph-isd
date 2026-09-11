@@ -1,11 +1,11 @@
 \section{Introduction}
 \label{sec:introduction}
 
-In recent years, commercial large language models (LLMs) have progressed from
-supporting individual writing tasks to handling nearly the full instructional
-systems design (ISD) process: systems based on GPT-4 and comparable models can
-generate lesson plans, assessment sets, and even complete course-material packages
-from a single design request
+In recent years, agent systems built on commercial large language models (LLMs)
+have progressed from supporting individual writing tasks to handling nearly the
+full instructional systems design (ISD) process: systems built on GPT-4 and
+comparable models generate lesson plans, assessment sets, and even complete
+course-material packages from a single design request
 ~\cite{yao2025instructionalagents,zhang2025eduplanner,agentlesson2026,zeng2026coma,hu2024teachingplan}.
 Several comparative studies have validated quality at the component level:
 learning objectives comparable to faculty-authored versions~\cite{doyle2025objectives},
@@ -55,8 +55,9 @@ constrained generation consistent, precisely the capacity expected to diminish
 first as the model shrinks. Downscaling therefore puts alignment at risk before
 fluency, and in a form that neither a reader nor a generic rubric readily sees.
 
-This context reveals the central research gap. Existing ISD and lesson-planning
-agents are built and evaluated on capable commercial models
+This context reveals the central research gap, and it has two halves that meet in
+the same place. Existing ISD and lesson-planning agents are built and evaluated on
+capable commercial models
 ~\cite{yao2025instructionalagents,zhang2025eduplanner,agentlesson2026,hu2024teachingplan,isdagentbench},
 and none of the surveyed systems represents the
 objective--activity--assessment relations as explicit, checkable state during
@@ -65,7 +66,12 @@ closest studies each address only one part of the problem
 ~\cite{jaldi2026slmassessment,zheng2025lessonplanlm,reza2025smallmodels,lee2026educlaw,wei2026slmeducation}.
 To our knowledge, no study has shown that an agent system can retain end-to-end ISD
 quality on small models without fine-tuning, nor has any study evaluated that
-quality systematically across a model-size ladder.
+quality systematically across a model-size ladder. The second half follows from
+trying to answer the first: the question is about alignment, and the instrument
+these benchmarks use---LLM judge rubric scoring---does not expose alignment
+relations at all, so a design that reads well can score well while the relations
+underneath it are broken. Answering the first half honestly therefore requires a
+way to observe alignment signals that does not rest entirely on a judge model.
 
 This study aims to retain ISD quality as models shrink by taking the coherence
 burden off the model: instead of relying on the model to keep the design
@@ -81,8 +87,9 @@ that a model of any size can be checked against (\Cref{sec:method}). We pursue t
   \item \textbf{Objective 3 (alignment scores).} Measure the same outputs on a
   panel of alignment scores computed without an LLM, and test the same size
   interaction.
-  \item \textbf{Objective 4 (mechanism).} Attribute the observed behaviour to
-  parts of the MAS by disabling graph context and the verifier.
+  \item \textbf{Objective 4 (mechanism).} Separate what the two design choices
+  contribute, in a factorial experiment that crosses the decomposition of the
+  work across agents with the substrate those agents share.
 \end{itemize}
 
 This paper contributes AlignmentGraph-ISD: a multi-agent system that organizes
@@ -92,7 +99,7 @@ exported so that an instructional designer can inspect each
 objective--activity--assessment relation and intervene when needed, following the
 teacher-in-the-loop principle.
 
-Evaluating this aim requires an instrument that can see alignment. LLM judge
+The second half of the gap shapes how the aim is evaluated. LLM judge
 rubric scoring---the instrument of current ISD and education benchmarks
 ~\cite{isdagentbench,edubench2025,tutorbench2025,mathtutorbench2025}---exhibits
 documented systematic biases~\cite{zheng2023judging,panickssery2024llm} and does

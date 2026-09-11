@@ -321,9 +321,13 @@ export interface GraphEdge {
 export interface ObjectiveAlignment {
   measured: boolean
   supported: boolean
-  /** The CONJUNCTION of the two below. Kept because `to_dot`, the benchmark
-   *  contract and every archived run read it — what it never said is which of
-   *  the two failed, which is what sent a reader into the trajectory. */
+  /** The edge that closes the triad: the practicing activity (C3) prepares for
+   *  the assessing item (C2). Added 2026-09-10 with `aligned`, which is now
+   *  exactly these three. Optional so an archived run still parses — it will
+   *  simply not show the leg. */
+  prepares?: boolean
+  /** The CONJUNCTION of the two below. NOT part of `aligned` since 2026-09-10:
+   *  Bloom is a content condition, and `aligned` is the structural triad. */
   bloom_ok: boolean
   /** Optional so an archived run still renders. */
   bloom_assessment_ok?: boolean
@@ -331,6 +335,10 @@ export interface ObjectiveAlignment {
   /** The checks' own messages, verbatim: the level targeted, the level
    *  actually reached, and the field to edit. */
   bloom_notes?: string[]
+  /** The constructive-alignment triad closed on this objective:
+   *  `measured && supported && prepares`. An archived run computed it as
+   *  `measured && supported && bloom_ok` instead, so the value is not
+   *  comparable across the 2026-09-10 change. */
   aligned: boolean
   /** Gone with C7 (2026-09-02): a rubric criterion is a field of the item that
    *  measures the objective, so this was true whenever `measured` was and

@@ -12,8 +12,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is a master's thesis monorepo with four top-level parts:
 
 - **`docs/`** — research documents.
-  - `docs/summary.md` — the **paper outline** (giàn ý): 15 sections following the supervisor's frame (`docs/paper/structure-guide.md`), each mapped to its `.tex` file, with per-section must-say bullets, allowed/forbidden claims, and canonical sentences. Also carries the RQ context (RQ1 = quality vs Qwen model scale, RQ2 = constructive-alignment evaluation protocol, flat 7-signal panel with **no primary endpoint**). Every paper section is checked against this file.
-  - `docs/rq2_protocol.md` — **the canonical spec of the RQ2 protocol** (§1–§8: positioning, pipeline, panel, statistics, sensitivity star, validity evidence, citation checklist — the paper is updated FROM this file; split out of `summary.md` 2026-08-03).
+  - **The paper itself (`docs/paper/acm/`) is the source of truth for CONTENT** — structure, argument, section order, what each section says. The old outline `docs/summary.md` was deleted 2026-09-10: it duplicated the paper's content and had drifted badly from it (it still described the LangGraph pipeline, a verifier with LLM repair, and a 7-signal panel). Do not recreate it.
+  - `docs/paper/claim-rules.md` — the **rules the paper is checked against**, and the only thing that survived summary.md: what may not be claimed and the exact replacement wording, the score vocabulary, the verbatim canonical sentences, the mandatory disclosures, and the scope limits. Rules only, never content, so it cannot go stale against the paper. Its authority is the supervisor's post-Sprint-1 review and experiment roadmap in `docs/feedbacks/sprint1_20260828_0908/`, received 2026-09-10, which also fix the experiment design (TN1 = ladder, one deterministic run per cell, one judge plus a corroboration subset; TN2 = the 2x2 ablation on `test_30` at two sizes, with A0 re-run inside it).
+  - `docs/rq2_protocol.md` — **the canonical spec of the RQ2 protocol** (§1–§8: positioning, pipeline, panel, statistics, sensitivity star, validity evidence, citation checklist — the paper is updated FROM this file). The panel is **6 signals**; the RQ context lives here and in the paper, not in a separate outline.
   - `docs/benchmark_guides.md` — **single source of truth for the whole benchmark workflow**: data split → RunPod/vLLM serving → tune → ladder run → audit → RQ2 scoring → pooling → paper tables, plus the full metrics reference (Appendix A). Consult it before touching anything experiment-related; it superseded and replaced the old `metrics.md`, `notes-serving-setup.md`, `results-audit-checklist.md`, and the benchmark's `scripts/README_ladder.md`.
   - `docs/paper/` — the research paper: `acm/` (ACM template; the benchmark's `scripts/alignmentgraph-isd-bench/09_gen_paper_tables.py` + `10_gen_paper_figures.py` write generated tables/macros/figures to the benchmark's `results/generated/`, and `docs/scripts/sync_generated.sh` copies them into `docs/generated/` (the paper \input/\includegraphics targets, via relative paths) — numbers in the paper are generated, never hand-typed), `structure-guide.md`, `refs-deployment-survey.md`.
   - `docs/refs/` — reference material pulled in from other repos.
@@ -94,10 +95,15 @@ All commands run from inside `isd-agent-benchmark/`. The `scripts/` number prefi
 python run_benchmark.py --install   # reinstall agent/evaluator packages (editable)
 python run_benchmark.py --check     # verify all agent modules import cleanly
 
-# Data (committed; only re-run when rebuilding from scratch, seed 42)
+# Data. `scenarios/train` and `scenarios/test` are committed; every DERIVED subset is
+# gitignored (`scenarios/.gitignore`: test_*, train_*) and reproduced from them with seed 42,
+# so rebuild these three rather than looking for them in git.
 ./scripts/2_split_data.sh                                  # 95/5 train/test split
 python scripts/2_split_stratified_subset.py --source scenarios/train --target scenarios/train_30
 python scripts/2_split_stratified_subset.py --source scenarios/test  --target scenarios/test_90 --per-cell 3
+# TN2's ablation split: 1 per cell out of test_90, with the disjointness guard the design asks for
+python scripts/2_split_stratified_subset.py --source scenarios/test_90 --target scenarios/test_30 \
+    --per-cell 1 --disjoint-from scenarios/train_30 --disjoint-from scenarios/train
 
 # Serving env: sync RunPod pod env-quads into .env (managed block)
 python scripts/3_sync_runpod_pods_env.py        # --dry-run to preview
@@ -108,11 +114,14 @@ python scripts/3_sync_runpod_pods_env.py        # --dry-run to preview
 # Tune on train_30 (one tmux session per slot; RUN_TAGS = sequential tagged runs)
 DATASET=train_30 AGENT_MODEL_SLOTS=qwen2b RUN_TAGS=tune1 ./scripts/4_run_benchmark.sh
 
-# RQ1 ladder + ablation arms in one go (EXPENSIVE — 4 sizes × 3 runs × 10 agents × 90 scenarios) + audits
+# TN1 — ladder (EXPENSIVE: 4 sizes × 1 deterministic run × 7 agents × 90 scenarios) + audits
 python scripts/alignmentgraph-isd-bench/01_audit_preflight.py
 ./scripts/alignmentgraph-isd-bench/02_run_ladder.sh
 python scripts/alignmentgraph-isd-bench/03_audit_inflight.py    # every 30–60 min while running
 python scripts/alignmentgraph-isd-bench/04_audit_postrun.py     # after runs finish
+
+# TN2 — 2×2 ablation, its OWN experiment (2 sizes × 1 run × 4 arms × 30 scenarios, tag a1)
+./scripts/alignmentgraph-isd-bench/ablation/02_run_ablation.sh
 
 # Post-processing (local; no agent/judge calls)
 python scripts/alignmentgraph-isd-bench/06_score_alignment.py results/test_90_benchmark_<...>   # per run dir (RQ2; needs NEMOTRON_EMBED_BASE_URLS, see guides §7)
@@ -124,11 +133,11 @@ python scripts/alignmentgraph-isd-bench/14_gen_sensitivity_table.py   # if poole
 ../docs/scripts/sync_generated.sh   # copy generated artifacts into docs/generated/
 python scripts/alignmentgraph-isd-bench/99_audit_artifacts.py   # FINAL GATE — run after sync; exit 1 = something missing/stale/placeholder/unwired
 
-# Ablation study (defense). Since 2026-07-26 the 4 arms run INSIDE the ladder
-# (02_run_ladder.sh launches 10 agents), so there is no separate ablation run and
-# A0 is literally the ladder's alignmentgraph-isd — no judge-drift caveat needed.
+# Ablation post-processing. TN2 is a SEPARATE experiment since 2026-09-10 (test_30,
+# 0.8B+4B, tag a1) and A0 is re-run inside it rather than taken from the ladder —
+# the A0-vs-ladder row is a drift gauge, never an arm comparison.
 # Full pipeline: docs/benchmark_guides.md §5.4
-python scripts/alignmentgraph-isd-bench/ablation/08_pool_ablation_runs.py --auto-glob 'results/test_90_benchmark_*_r[123]_*'
+python scripts/alignmentgraph-isd-bench/ablation/08_pool_ablation_runs.py --auto-glob 'results/test_30_benchmark_*_a*'
 python scripts/alignmentgraph-isd-bench/ablation/11_gen_ablation_tables.py    # tab_ablation{,_factorial,_factorial_full}.tex + abl_macros.tex + stats_ablation.md
 python scripts/alignmentgraph-isd-bench/ablation/12_gen_ablation_figures.py   # figures/fig_ablation{,_factorial,_ladder,_components}
 
@@ -147,7 +156,7 @@ python run_benchmark.py \
 python run_benchmark.py --dataset test_90 --agents baseline,alignmentgraph-isd
 ```
 
-Default agents: `eduplanner, baseline, react-isd, addie-agent, dick-carey-agent, rpisd-agent`. **`alignmentgraph-isd` is NOT in the defaults — add it explicitly with `--agents`.** The ablation arms (`alignmentgraph-isd-single-prose`, `alignmentgraph-isd-single-graph`, `alignmentgraph-isd-multi-prose`) are likewise registry-only: same adapter package with the `agent_mode`/`context_mode` kwargs pinned per agent_id, selected explicitly via `--agents` — they are part of `02_run_ladder.sh`'s 10-agent list.
+Default agents: `eduplanner, baseline, react-isd, addie-agent, dick-carey-agent, rpisd-agent`. **`alignmentgraph-isd` is NOT in the defaults — add it explicitly with `--agents`.** The ablation arms (`alignmentgraph-isd-single-prose`, `alignmentgraph-isd-single-graph`, `alignmentgraph-isd-multi-prose`) are likewise registry-only: same adapter package with the `agent_mode`/`context_mode` kwargs pinned per agent_id, selected explicitly via `--agents` — they are the other three cells of TN2's 2×2 and are launched by `ablation/02_run_ablation.sh`, not by the ladder. The two launchers share their machinery via `scripts/alignmentgraph-isd-bench/_run_matrix.sh`, which also makes an inline `DATASET=x ./script` win over a stale `DATASET` left in `.env` — without that, a tuning leftover silently ran an official experiment on the wrong split with the wrong agent list.
 
 Rate-limit presets (`-r conservative|moderate|aggressive|turbo`) set worker counts and `BENCHMARK_DELAY` together; per-slot override via `<SLOT>_RATE_LIMIT`. See the benchmark README for the full flag/env matrix.
 
@@ -176,5 +185,5 @@ cd isd-agent-benchmark/evaluator && ruff check src/
 - Numbers reported in the paper must come from the generated artifacts (`09_gen_paper_tables.py` output), never typed by hand.
 - **Generated artifacts are English with a decimal point.** Every caption, column header, table footnote, `\newcommand` comment and `stats_*.md` heading in `results/generated/` is English (in-figure text always was); numbers render `87.77`, not `87,77`. `fmt_num()`/`size_display()` in `09_gen_paper_tables.py` (and 11's own copies) enforce the decimal mark — do not reintroduce a `.replace(".", "{,}")`. `99_audit_artifacts.py` check I fails RED on Vietnamese letters or a `{,}` decimal in any artifact.
 - **Captions state what the table shows and what a cell is** — roughly 100–250 chars. Methodological justification ("why this metric", "how the arms were run") belongs in the methods section, not in a caption.
-- **A mean and its ±SD must come from the same signal.** The pooled per-agent dict carries `run_to_run_sd_{addie,traj,total}`; `RQ1_SD_FIELD` in `09_gen_paper_tables.py` maps each mean to its own SD. The bare `run_to_run_sd` is Total, kept only because `ablation/08_pool_ablation_runs.py` checks A0 drift on `total_score` — never pair it with an ADDIE or Trajectory mean.
+- **A mean and its SD must come from the same signal**, and since 2026-09-10 that SD is **across SCENARIOS, not across runs**. TN1 generates one deterministic run per cell, so a run-to-run SD has a single value and does not exist. The pooled per-agent dict carries `sd_{addie,traj,total}_across_scenarios`, which the tables print in parentheses and the figures draw as SEM (`sd/sqrt(n)`); `RQ1_SD_FIELD` in `09_gen_paper_tables.py` and `10_gen_paper_figures.py` maps each mean to its own. It is descriptive spread, never a precision claim — interval estimates are the bootstrap CIs. `run_to_run_sd_{addie,traj,total}` still exist and are `None` unless a cell has two or more runs (the targeted repeats do); the bare `run_to_run_sd` is Total, kept only because `ablation/08_pool_ablation_runs.py` reads it for the A0 drift gauge — never pair it with an ADDIE or Trajectory mean, and never print it without an `isinstance(x, float)` check. `07_pool_ladder_runs.py::json_safe` converts every non-finite float to `null` at the dump, so `pooled_ladder.json` is valid JSON for strict parsers.
 - **Any table cell averaged over a partial scenario set must disclose it.** RQ1 tables print `n` per cell with a starred footnote; the RQ2 tables and panel do the same (RQ2's `n` counts scenarios with *at least one* scored run — a weaker condition than RQ1's all-3-runs complete case, so the two are labelled distinctly).
