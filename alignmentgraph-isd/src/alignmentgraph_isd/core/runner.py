@@ -11,7 +11,7 @@ module-level.
 from __future__ import annotations
 
 from ..config import HarnessRunConfig
-from .agentic import run_agentic_brief
+from .agentic import execute_brief
 from .brief import DesignBrief
 
 
@@ -44,4 +44,4 @@ class MetaAgent:
                 "Benchmark integrations should construct DesignBrief externally "
                 "and pass a configured HarnessRunConfig."
             )
-        return run_agentic_brief(self.config, design_brief, on_event=on_event)
+        return execute_brief(self.config, design_brief, on_event=on_event)

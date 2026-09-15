@@ -542,6 +542,37 @@ def _repair_all(memory, trajectory, design_brief, *, graph_mode: bool,
                        ctx=ctx, identity=identity, phase="design")
 
 
+def _run_single(config, memory, trajectory, design_brief, *,
+                graph_mode: bool, phase_total: int) -> tuple[dict, list, dict]:
+    """The single arm: ONE agent carries ONE context across all six stages and
+    walks them itself (``react.ReactLoop``). Contrast the multi arm below,
+    where the harness walks the stages and each starts in a fresh context.
+
+    One phase, because there is one loop — the stage boundaries are the
+    agent's, not the harness's, so there is nothing here to bracket per stage.
+    """
+    with _phase(trajectory, "design", 1, phase_total):
+        # The loop is kept past its own scope so ``_repair_all`` runs in the
+        # context it built — that is the axis expressed at repair time.
+        loop = react.ReactLoop(config, memory, trajectory, design_brief)
+        try:
+            # Every read and write this loop makes is the one agent's, and an
+            # event outside a scope lands with an EMPTY agent.
+            with trajectory.acting_as(SINGLE_IDENTITY):
+                loop.run()
+        except Exception as exc:  # noqa: BLE001 - same containment as the multi arm
+            errors = [f"{SINGLE_IDENTITY}: {exc}"]
+            trajectory.log_recovery_event(
+                SINGLE_IDENTITY, "agent_error", "", str(exc)[:400])
+        else:
+            errors = []
+        # Outside the ReAct loop, so the orchestrator's — same rule as the
+        # multi arm's per-stage net.
+        _repair_all(memory, trajectory, design_brief,
+                    graph_mode=graph_mode, identity=SINGLE_IDENTITY)
+    return {"design": loop.stats}, errors, {"design": 1}
+
+
 def _run_multi(config, memory, graph, store, trajectory, design_brief, *,
                graph_mode: bool, regen_budget: int, backoff: float,
                phase_total: int) -> tuple[dict, list, dict]:
@@ -626,9 +657,16 @@ def _run_multi(config, memory, graph, store, trajectory, design_brief, *,
     return autonomy, errors, task_attempts
 
 
-def run_agentic_brief(config, design_brief: DesignBrief, *, on_event=None) -> dict:
-    graph_mode = getattr(config, "context_mode", "graph") != "prose"
-    single = getattr(config, "agent_mode", "multi") == "single"
+def execute_brief(config, design_brief: DesignBrief, *, on_event=None) -> dict:
+    """Run one brief end to end and return the result contract.
+
+    Named for what it does, not for which executor it is: the ``agentic``
+    in the old ``run_agentic_brief`` distinguished it from the LangGraph
+    pipeline removed 2026-09-01, so it named a choice that no longer exists
+    while stuttering against its own package (``agentic.run_agentic_brief``).
+    """
+    graph_mode = config.context_mode != "prose"
+    single = config.agent_mode == "single"
 
     # ONE memory for the run: the live substrate, every agent's transcript,
     # and every plan a Designer made. `state` stays bound to the SUBSTRATE, not
@@ -657,31 +695,15 @@ def run_agentic_brief(config, design_brief: DesignBrief, *, on_event=None) -> di
 
     # stages (or the single arm's one loop) + reconciliation + aggregate
     phase_total = (3 if single else len(STEPS) + 2)
-    regen_budget = max(0, int(getattr(config, "regen_budget", 2)))
-    backoff = max(0.0, float(getattr(config, "regen_backoff_seconds", 0.0)))
+    # Clamped, not defaulted: the fields always exist (``HarnessRunConfig``
+    # declares them), but nothing stops a caller setting a negative one.
+    regen_budget = max(0, int(config.regen_budget))
+    backoff = max(0.0, float(config.regen_backoff_seconds))
 
-    #: The single arm's transcript, kept so its repairs run in the context it
-    #: built — that is the axis expressed at repair time.
     if single:
-        with _phase(trajectory, "design", 1, phase_total):
-            loop = react.ReactLoop(config, memory, trajectory, design_brief)
-            try:
-                # Every read and write this loop makes is the one agent's, and
-                # an event outside a scope lands with an EMPTY agent.
-                with trajectory.acting_as(SINGLE_IDENTITY):
-                    loop.run()
-            except Exception as exc:  # noqa: BLE001 - same containment as the multi arm
-                errors = [f"{SINGLE_IDENTITY}: {exc}"]
-                trajectory.log_recovery_event(
-                    SINGLE_IDENTITY, "agent_error", "", str(exc)[:400])
-            else:
-                errors = []
-            autonomy = {"design": loop.stats}
-            # Outside the ReAct loop, so the orchestrator's — same rule as the
-            # multi arm's per-stage net.
-            _repair_all(memory, trajectory, design_brief,
-                        graph_mode=graph_mode, identity=SINGLE_IDENTITY)
-        task_attempts = {"design": 1}
+        autonomy, errors, task_attempts = _run_single(
+            config, memory, trajectory, design_brief,
+            graph_mode=graph_mode, phase_total=phase_total)
     else:
         autonomy, errors, task_attempts = _run_multi(
             config, memory, graph, store, trajectory, design_brief,

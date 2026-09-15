@@ -46,7 +46,7 @@ def test_the_residual_audit_is_logged_and_matches_the_metadata_copy():
 
 
 # `test_the_agentic_arm_also_logs_the_residual_audit` was removed 2026-09-04.
-# It called `run_agentic_brief` directly with the same config and brief as the
+# It called `execute_brief` directly with the same config and brief as the
 # test above, which reaches the same function through `run_brief` — one
 # executor, so "also" named a second one that does not exist — and then made a
 # strict subset of that test's assertions. What is worth distinguishing is the

@@ -1345,7 +1345,7 @@ class ToolLoop:
         #: Carried out for the caller: the single arm hands this to the next
         #: stage, the multi arm throws it away.
         self.messages: list = list(messages) if messages else []
-        #: Per-stage instrumentation, read by ``run_agentic_brief`` into
+        #: Per-stage instrumentation, read by ``execute_brief`` into
         #: ``metadata.autonomy`` — see ``empty_stage_stats`` for the keys.
         self.stats: dict = empty_stage_stats()
         #: ``node_type -> heading`` for artifact pools the assignment already

@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 
 from alignmentgraph_isd import HarnessRunConfig
-from alignmentgraph_isd.core.agentic import run_agentic_brief
+from alignmentgraph_isd.core.agentic import execute_brief
 from alignmentgraph_isd.core.agentic.specialists import STEPS
 from alignmentgraph_isd.core.alignment_graph import NodeType
 
@@ -55,7 +55,7 @@ class SubmitWrappingModel(FakeChatModel):
 
 def _agentic_result():
     config = HarnessRunConfig(llm_factory=lambda: SubmitWrappingModel())
-    return run_agentic_brief(config, load_brief("minimal_brief.json"))
+    return execute_brief(config, load_brief("minimal_brief.json"))
 
 
 def test_end_to_end_result_contract_and_every_step_produced():
