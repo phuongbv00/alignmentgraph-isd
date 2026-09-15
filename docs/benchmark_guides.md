@@ -305,12 +305,6 @@ python scripts/2_split_stratified_subset.py --source scenarios/test_90 --target 
     --per-cell 1 --disjoint-from scenarios/train_30 --disjoint-from scenarios/train
 ```
 
-**Trần ILO có ở CẢ BỐN arm và không có ở baseline (2026-09-10).** Harness tính
-`per_goal(context.duration) × len(learning_goals)` (2/3/4 cho ngắn/vừa/dài) và đưa con số đó vào rules của stage
-`outcomes`. Nó nằm trong hệ được kiểm chứ không phải một control áp cho cả benchmark, nên khi so alignmentgraph với
-baseline thì phải nói rõ. Giữa bốn arm thì nó là hằng số, nên không ảnh hưởng delta arm-vs-A0. Trần **không được
-cưỡng chế**; `metadata.objective_ceiling` ghi lại và tỷ lệ tuân thủ là số cần báo cáo (xem Phụ lục A.4).
-
 Ma trận 2×2 = `agent_mode` (decomposition) × `context_mode` (alignment machinery):
 
 | Arm            | agent_id                          | agent_mode | context_mode |
@@ -1008,9 +1002,3 @@ alignment:
   fairness).
 - **`execution_time_seconds`** — **chỉ lưu thô, KHÔNG dùng để báo cáo/so sánh**: nó phản ánh tải serving/latency API
   chứ không phải bản chất method.
-- **`objective_ceiling`** — `{limit, written, respected}` (từ 2026-09-10). `limit` là trần số mục tiêu suy ra từ
-  design brief, `written` là số mục tiêu run thực sự viết ra. Trần chỉ được thông báo trong rules của stage
-  `outcomes`, không có gì cưỡng chế nó, nên **tỷ lệ `respected` chính là số cần báo cáo**: không có nó thì một
-  results dir không trả lời được câu hỏi chỉ dẫn kia có tác dụng gì không. Chỉ có ở bốn arm alignmentgraph, không có
-  ở sáu baseline. Muốn đưa tỷ lệ này vào paper thì phải thêm vào `15_gen_facts_sheet.py` và gate bằng
-  `99_audit_artifacts.py`, theo đúng quy tắc số trong paper phải sinh tự động.

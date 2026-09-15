@@ -23,7 +23,7 @@ from __future__ import annotations
 # deterministic split uses, imported rather than written twice: a planner told
 # "at most 8" while the harness splits at 6 would have its own grouping taken
 # apart behind it. Cycle-free: dev_plans imports nothing local.
-from .dev_plans import max_objectives as _max_objectives, max_units as _max_units
+from .dev_plans import max_units as _max_units
 
 #: Enum vocabularies shared between the deep tool-call schema
 #: (``core/agentic/artifact_schemas.py``) and this module's own ``RULES_*``
@@ -39,45 +39,15 @@ RULES_ANALYSIS = """\
 Every improvement in improvement_plan.improvements must set addresses_gap to an existing gap id
 from needs_analysis.gaps."""
 
-#: TEMPLATE, not final text — the only ``RULES_*`` block that is one.
-#:
-#: The ILO ceiling is a function of the BRIEF (:func:`dev_plans.max_objectives`)
-#: rather than a constant, and ``%`` formatting is a single pass, so the bloom
-#: vocabularies cannot be filled at import and the ceiling later. All three are
-#: filled together by :func:`outcomes_vars`, called from
-#: ``AgenticStep.rules_text`` — the one seam BOTH decomposition arms render, so
-#: the two arms are told the same number by construction rather than by a test.
-#:
-#: The ceiling is TOLD and not enforced; nothing trims a longer list. So this
-#: text must never claim otherwise — a sentence like "only the first N reach
-#: the design" would be the prompt telling the model something untrue about the
-#: harness. See :func:`dev_plans.max_objectives` for why enforcement was
-#: rejected rather than forgotten.
-#:
-#: The two clauses that used to push the count UP ("every gap and topic
-#: identified must be addressed", "do not merge unrelated gaps to hit a count")
-#: are RECONCILED with the ceiling here, not left standing beside it: a small
-#: model told both "cover every gap" and "at most 9" satisfies one of them at
-#: random. Coverage becomes a priority-and-omission rule, and the anti-merge
-#: clause is kept and strengthened, because the failure it guards against —
-#: hollow objectives carrying hollow assessment and activities — is exactly the
-#: one a ceiling invites.
 RULES_OUTCOMES = """\
 Each objective (ILO = Intended Learning Outcome) decomposes course_goal and is grounded in the
 gaps/topics/learner profile given.
 
-Write between 1 and %(max_objectives)d objectives; never an empty list, and never more than
-%(max_objectives)d. That ceiling is the size of course THIS brief describes, read from its stated
-duration and its learning goals. Within it YOU decide how many the scenario needs, and fewer than
-the ceiling is a normal answer: do not pad to a round number, and do not pad to the ceiling.
-
-Derive the number from the analysis. Work through the gaps and topics in the order they matter to
-this course, giving each one an objective, until either the gaps run out or the ceiling does. When
-there are more gaps and topics than %(max_objectives)d objectives can carry one-to-one, the ones you
-leave out are the ones this course does not have the time to teach: leave them out, and put the ones
-that matter first. Do NOT merge unrelated gaps into one objective, and do NOT write a thinner
-objective for each so that they all fit. A merged or hollowed objective is worse than an honest
-omission, because the assessment and the activities built on it will be hollow too.
+Return at least 1 objective; never an empty list. Beyond that YOU decide how many the scenario
+needs. Derive that number from the analysis: every gap and topic identified must be addressed by
+at least one objective, at a grain the stated duration, scope and learner profile can
+realistically deliver. A short workshop and a semester-long course do not need the same number.
+Do not pad to a round number, and do not merge unrelated gaps into one objective to hit a count.
 
 Set each objective's ``level`` from the performance its gap actually demands, not from a
 fixed progression. A gap about professional judgement yields an evaluate-level objective even if
@@ -87,17 +57,8 @@ it is the only such objective.
 ``level`` must be one of: %(bloom_levels)s.
 Use only these bloom_verb values: %(bloom_verbs)s."""
 
-
-def outcomes_vars(design_brief: object = None) -> dict:
-    """The ``%``-values for :data:`RULES_OUTCOMES`, this run's ceiling included.
-
-    The ceiling is IMPORTED from the module that defines it, never written
-    twice here — the rule ``RULES_ACTIVITY_DEV_PLAN`` already follows for
-    ``max_units("activity")``.
-    """
-    return {"bloom_levels": ", ".join(BLOOM_LEVELS),
-            "bloom_verbs": ", ".join(BLOOM_VERBS),
-            "max_objectives": _max_objectives(design_brief)}
+RULES_OUTCOMES = RULES_OUTCOMES % {
+    "bloom_levels": ", ".join(BLOOM_LEVELS), "bloom_verbs": ", ".join(BLOOM_VERBS)}
 
 RULES_ASSESSMENT_PLAN = """\
 lo_coverage_targets and expected_evidence must have one entry per learning objective given.

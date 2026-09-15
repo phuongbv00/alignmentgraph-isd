@@ -743,13 +743,7 @@ class AgenticStep:
     family: str
     persona: str                  #: specialist persona sentence(s)
     intro: str                    #: one-line task framing
-    #: Rulebook rules text. Stays a plain ``str`` even for the one step whose
-    #: rules carry a per-run number: ``tests/test_ablation_flags.py`` asserts
-    #: ``step.rules.strip()`` is one of the rulebook's own blocks, so a
-    #: callable here would break the parity guard that makes the two arms
-    #: comparable. The per-run fill happens in :meth:`rules_text` instead, and
-    #: what lives here is the unfilled template.
-    rules: str
+    rules: str                    #: rulebook rules text
     primary_type: str | None      #: element type whose pool proves the step produced
     #: Extra families whose checks and repairs run after this step, because
     #: this step's Developer produced their artifacts too. Rubrics is the case:
@@ -816,14 +810,6 @@ class AgenticStep:
     #: ``ToolLoop._already_in_assignment``. Empty for a stage agent, which
     #: reads live state it was not handed.
     resolved_labels: dict = field(default_factory=dict)
-    #: Per-RUN ``%``-values for :attr:`rules`, from the design brief. Set only
-    #: on ``outcomes``, whose ILO ceiling is a function of the brief rather
-    #: than a constant; every other step's rules are final at import. Declared
-    #: here rather than composed in either loop for the reason
-    #: :meth:`parts_block` is composed from the flag: BOTH arms render
-    #: :meth:`task_block`, so a per-run number reaches them byte-identically by
-    #: construction instead of by two call sites agreeing.
-    rules_vars: Callable[[object], dict] | None = None
     validate: Callable[[dict], list[str]] = lambda parsed: []
     commit: Callable[[object, object, dict], None] = lambda graph, trajectory, parsed: None
     commit_prose: Callable[[object, object, dict], None] = lambda store, trajectory, parsed: None
@@ -847,7 +833,7 @@ class AgenticStep:
     #: — while the family was deposited in one batch at the end, the pool was
     #: empty for every set and the default guard happened to be right.)
     done: Callable[[object], bool] | None = None
-    def task_block(self, design_brief: object = None) -> str:
+    def task_block(self) -> str:
         """Task + rules for the tool-loop prompt. No schema block: the
         artifact's field-level SHAPE (types, nesting, enums) lives in the
         bound ``submit_*`` tool's own ``parameters`` now
@@ -864,17 +850,7 @@ class AgenticStep:
         directly, which contradicts the action protocol and (measured on a
         2B model) suppresses every tool call. The loop's protocol block
         already pins the output contract."""
-        return f"{self.intro}\n\n{self.rules_text(design_brief)}{self.parts_block()}"
-
-    def rules_text(self, design_brief: object = None) -> str:
-        """This step's rules, with any per-run values filled in.
-
-        The identity for every step but ``outcomes``. See :attr:`rules_vars`
-        for why the fill lives here and not in the field itself.
-        """
-        if self.rules_vars is None:
-            return self.rules
-        return self.rules % self.rules_vars(design_brief)
+        return f"{self.intro}\n\n{self.rules}{self.parts_block()}"
 
     def parts_block(self) -> str:
         """The instalment instruction, for a step whose artifact is declared in
@@ -940,7 +916,6 @@ STEPS: tuple[AgenticStep, ...] = (
         intro=("State what this course is for and what learners will be able to do, grounded in "
                "the analysis already in the design graph."),
         rules=rules.RULES_OUTCOMES,
-        rules_vars=rules.outcomes_vars,
         primary_type=NodeType.OBJECTIVE,
         readable_types=(NodeType.GAP, NodeType.TOPIC, NodeType.LEARNER_PROFILE, NodeType.CONSTRAINT),
         readable_docs=("analysis",),

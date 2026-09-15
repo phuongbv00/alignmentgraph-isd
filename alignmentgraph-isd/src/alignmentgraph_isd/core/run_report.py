@@ -24,7 +24,6 @@ from pathlib import Path
 from ..config import HarnessRunConfig
 from .alignment_graph import AlignmentGraph
 from .brief import DesignBrief
-from .dev_plans import max_objectives
 from .trajectory import TrajectoryLogger
 
 
@@ -56,27 +55,6 @@ def _token_usage_metadata(trajectory: TrajectoryLogger) -> dict:
         "total_tokens": prompt + completion,
         "llm_calls": trajectory.llm_calls,
     }
-
-
-def _objective_ceiling_metadata(design_brief: DesignBrief, addie_output: dict) -> dict:
-    """What the run was TOLD about objective count, and what it wrote.
-
-    The ILO ceiling is instruction and not enforcement — nothing trims a
-    longer list (see :func:`dev_plans.max_objectives`) — so whether the model
-    respected it is the only evidence the instruction did anything. That makes
-    this a measurement rather than a status line, and it belongs beside the
-    other things a run reports about ITSELF.
-
-    ``respected`` is deliberately not a pass/fail the harness acts on. A run
-    that overruns is a finding about the model, in the way ``gave_up`` counts
-    are: the number is worth having precisely because nothing was done about
-    it.
-    """
-    design = addie_output.get("design") if isinstance(addie_output, dict) else None
-    objectives = (design or {}).get("learning_objectives") or []
-    written = len(objectives) if isinstance(objectives, list) else 0
-    limit = max_objectives(design_brief)
-    return {"limit": limit, "written": written, "respected": written <= limit}
 
 
 def _maybe_dump_graph(graph: AlignmentGraph, design_brief: DesignBrief, metadata: dict) -> None:

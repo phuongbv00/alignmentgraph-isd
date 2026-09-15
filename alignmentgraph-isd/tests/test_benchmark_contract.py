@@ -79,12 +79,6 @@ METADATA_KEYS = {
     # decomposition axis is read off, so it is part of the contract, not a
     # debugging extra.
     "autonomy",
-    # The ILO ceiling this brief implied and what the run actually wrote.
-    # Contract, not a debugging extra, for the same reason: the ceiling is
-    # TOLD and never enforced, so whether it was respected is the only
-    # evidence the instruction did anything, and a results dir that does not
-    # carry it cannot answer that afterwards.
-    "objective_ceiling",
 }
 RUN_CONFIG_KEYS = {
     "agent_mode", "context_mode",
@@ -221,7 +215,6 @@ def test_metadata_keys(result):
     assert set(metadata["run_config"]) == RUN_CONFIG_KEYS
     assert set(metadata["audit"]) == AUDIT_KEYS
     assert set(metadata["repair_metrics"]) == REPAIR_METRIC_KEYS
-    assert set(metadata["objective_ceiling"]) == {"limit", "written", "respected"}
 
 
 def test_addie_output_phases(result):
