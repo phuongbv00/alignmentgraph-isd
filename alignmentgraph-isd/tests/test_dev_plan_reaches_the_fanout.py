@@ -24,7 +24,7 @@ import pytest
 
 from alignmentgraph_isd.core.aggregate import _merge_node_data
 from alignmentgraph_isd.core.agentic import fanout, specialists as sp
-from alignmentgraph_isd.core.agentic.run import _dispatch_payload
+from alignmentgraph_isd.core.runner import _dispatch_payload
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
 from alignmentgraph_isd.core.prose_store import ProseStore
 from alignmentgraph_isd.core.trajectory import TrajectoryLogger

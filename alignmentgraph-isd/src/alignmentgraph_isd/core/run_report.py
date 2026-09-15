@@ -1,7 +1,7 @@
 """What a run reports about ITSELF, as opposed to what it produces.
 
 Two audiences, one module. For the RECORD: model provenance, token totals, and
-the opt-in graph dump — the fields ``core/agentic/run.py`` assembles its
+the opt-in graph dump — the fields ``core/runner.py`` assembles its
 ``metadata`` from. For a LIVE watcher: the safe-emit guarantee and the
 ``graph_snapshot`` wrapper, which is how the demo app sees the alignment graph
 fill in during the 4-7 minutes a run takes.
@@ -13,7 +13,8 @@ would put two meanings on the term the work stakes a claim on. Nothing here
 looks at the design at all.
 
 A leaf on purpose: nothing here imports ``core/agentic/`` or
-``core/runner.py``, so ``runner`` can import it at module level.
+``core/runner.py``, so the runner — which is both the entry point and the
+executor — can import it at module level.
 """
 from __future__ import annotations
 
@@ -142,7 +143,7 @@ def _ledger_attaching(on_event, memory):
     comparison is the whole of it.
 
     Emits to the RAW consumer it was handed, so a snapshot never re-enters
-    ``_graph_attaching`` — see the composition order in ``core/agentic/run.py``.
+    ``_graph_attaching`` — see the composition order in ``core/runner.py``.
     Graph-snapshot cadence is unchanged by this wrapper existing.
 
     Never touches ``trajectory``: the ledger is not folded into it (the judge

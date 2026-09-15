@@ -4,7 +4,7 @@ scores that ADDIE phase 0 at the judge). Reproduces the small-model failure
 mode where an endpoint intermittently returns an empty/unparseable payload for
 one call.
 
-The regen loop lives in ``core/agentic/run.py`` and is coarse and per-stage
+The regen loop lives in ``core/runner.py`` and is coarse and per-stage
 ("did this stage's artifact get committed at all"), bounded by
 ``HarnessRunConfig.regen_budget``. What keeps it from re-rolling work that
 already landed is ``specialists.step_done``: a re-run starts the stage's tool
@@ -165,10 +165,10 @@ def test_regen_budget_is_config_driven():
 def test_regen_backoff_sleeps_before_each_rerun(monkeypatch):
     """A re-run after a rate-limited call must wait, or it hammers the same
     window it was throttled by."""
-    import alignmentgraph_isd.core.agentic.run as agentic_run
+    import alignmentgraph_isd.core.runner as runner_module
 
     slept: list[float] = []
-    monkeypatch.setattr(agentic_run.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(runner_module.time, "sleep", lambda s: slept.append(s))
     factory, _state = _flaky_factory("the course goal and learning objectives",
                                      "design_calls", fail_first=999)
     _run(factory, regen_backoff_seconds=0.5)

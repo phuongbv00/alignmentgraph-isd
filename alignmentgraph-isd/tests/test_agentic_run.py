@@ -1,12 +1,11 @@
-"""End-to-end tests of the executor (core/agentic/run.py): full run over the
+"""End-to-end tests of the executor (core/runner.py): full run over the
 canned fixture payloads, the result contract the benchmark adapter reads, and
 graph parity between the two decomposition arms."""
 from __future__ import annotations
 
 import json
 
-from alignmentgraph_isd import HarnessRunConfig
-from alignmentgraph_isd.core.agentic import execute_brief
+from alignmentgraph_isd import HarnessRunConfig, MetaAgent
 from alignmentgraph_isd.core.agentic.specialists import STEPS
 from alignmentgraph_isd.core.alignment_graph import NodeType
 
@@ -55,7 +54,7 @@ class SubmitWrappingModel(FakeChatModel):
 
 def _agentic_result():
     config = HarnessRunConfig(llm_factory=lambda: SubmitWrappingModel())
-    return execute_brief(config, load_brief("minimal_brief.json"))
+    return MetaAgent(config).run(load_brief("minimal_brief.json"))
 
 
 def test_end_to_end_result_contract_and_every_step_produced():
@@ -285,7 +284,7 @@ def _reconcile_once():
     dispatches to is structural, so it takes no LLM and cannot open a context
     of its own. A violation that needs WRITING was offered to its agent inside
     that agent's own loop long before this pass runs."""
-    from alignmentgraph_isd.core.agentic.run import _reconcile
+    from alignmentgraph_isd.core.runner import _reconcile
     from alignmentgraph_isd.core.trajectory import TrajectoryLogger
 
     graph = _graph_with_an_unassessed_objective()
@@ -334,23 +333,23 @@ def test_reconcile_is_bounded_by_the_self_validation_budget():
     """Route -> repair -> recheck -> route is no longer bounded by the stage
     order, so it must be bounded explicitly. An unbounded pass on a small model
     is a hang, not a fix."""
-    from alignmentgraph_isd.core.agentic import run as agentic_run
+    from alignmentgraph_isd.core import runner as runner_module
     from alignmentgraph_isd.core.agentic.budget import SELF_VALIDATION_BUDGET
 
     rounds = {"n": 0}
-    real = agentic_run.repairs.repair
+    real = runner_module.repairs.repair
 
     def counting_repair(family, violations, ctx):
         rounds["n"] += 1
         return violations  # never resolves anything -> the pass must still stop
 
-    agentic_run.repairs.repair = counting_repair
+    runner_module.repairs.repair = counting_repair
     try:
         _residual, events = _reconcile_once()
     finally:
-        agentic_run.repairs.repair = real
+        runner_module.repairs.repair = real
 
-    assert rounds["n"] <= SELF_VALIDATION_BUDGET * len(agentic_run.repairs.OWNED_BY_FAMILY)
+    assert rounds["n"] <= SELF_VALIDATION_BUDGET * len(runner_module.repairs.OWNED_BY_FAMILY)
     assert events
 
 

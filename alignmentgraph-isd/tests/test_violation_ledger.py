@@ -214,7 +214,7 @@ def test_a_type_no_family_owns_is_recorded_rather_than_dropped():
     nobody, and provoked by one vague objective — so the graph below is the
     whole setup the defect needs.
     """
-    from alignmentgraph_isd.core.agentic.run import _verify_family
+    from alignmentgraph_isd.core.runner import _verify_family
     from alignmentgraph_isd.core.repairs import OWNED_BY_FAMILY, RepairContext
     from alignmentgraph_isd.core.trajectory import WORKFLOW_ORCHESTRATOR, TrajectoryLogger
 

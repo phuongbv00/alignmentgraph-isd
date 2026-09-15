@@ -35,7 +35,7 @@ def test_no_action_is_ever_attributed_to_nobody(agent_mode, context_mode):
 
 def test_no_action_is_ever_attributed_to_nobody_with_a_live_on_event_consumer():
     """Regression: a real ``on_event`` consumer (the server, the demo app) makes
-    ``execute_brief`` wrap it with ``_graph_attaching``, which serializes a
+    ``MetaAgent.run`` wraps it with ``_graph_attaching``, which serializes a
     ``graph_snapshot`` synchronously inside ``trajectory.emit(...)`` — including
     on the very first ``phase_started``, fired before ``acting_as`` has even
     been entered. `run_brief(..., on_event=None)` (the default, used by

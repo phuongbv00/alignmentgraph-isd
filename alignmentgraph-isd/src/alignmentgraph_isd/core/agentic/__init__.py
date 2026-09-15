@@ -1,9 +1,8 @@
-"""The executor: the 6 artifact families, each produced by a native
-tool-calling act→observe loop.
+"""The executor's PARTS: the act→observe loops, their tools, the stage table
+and the Developer fan-out.
 
-It honours both ablation axes; ``core/runner.py::MetaAgent`` dispatches
-here. See ``run.py`` for the design notes and ``loop.py`` for the transport.
+The run that drives them is ``core/runner.py::MetaAgent.run`` — it sits there,
+not here, because it orchestrates a dozen private helpers of its own and
+splitting it from them would make every one of them public API for one caller.
+This package deliberately exports nothing: each module is imported by name.
 """
-from .run import execute_brief
-
-__all__ = ["execute_brief"]

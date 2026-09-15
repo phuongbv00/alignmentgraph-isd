@@ -10,7 +10,7 @@ LATER stage surfaces but an EARLIER family owns cannot be repaired that way --
 the owning stage has already finished. Those become cross-agent feedback: the
 reconciliation pass that runs once after the last stage stamps
 ``target_designer`` from ``repairs.OWNER_BY_VIOLATION`` and hands each
-violation to the family that owns it. See ``core/agentic/run.py::_reconcile``.
+violation to the family that owns it. See ``core/runner.py::_reconcile``.
 """
 from __future__ import annotations
 

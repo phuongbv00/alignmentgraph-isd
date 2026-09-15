@@ -135,7 +135,7 @@ class TrajectoryAction(StrEnum):
     #: reads tool_calls/reasoning_steps/agent_interactions, never ``events``.)
     DOC_WRITE = "doc_write"
     #: A residual cross-artifact violation handed to the family that owns it,
-    #: after the last stage. See ``core/agentic/run.py::_reconcile``.
+    #: after the last stage. See ``core/runner.py::_reconcile``.
     RECONCILE = "reconcile"
     DEV_PLAN = "dev_plan"
     #: A repair that must SUPPLY a missing artifact asked the model to write it

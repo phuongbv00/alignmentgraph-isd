@@ -20,7 +20,7 @@ const ORCH = 'WorkflowOrchestrator'
 
 /**
  * A miniature agentic run in the shape the harness actually emits
- * (`core/agentic/run.py`): stages in sequence, a stage that fans out to
+ * (`core/runner.py`): stages in sequence, a stage that fans out to
  * Developers INSIDE its own phase, then the reconciliation pass, then
  * aggregation.
  */

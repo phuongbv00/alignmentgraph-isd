@@ -15,7 +15,8 @@ from __future__ import annotations
 
 
 from alignmentgraph_isd import HarnessRunConfig
-from alignmentgraph_isd.core.agentic import budget, replan, run as run_module
+from alignmentgraph_isd.core import runner as run_module
+from alignmentgraph_isd.core.agentic import budget, replan
 from alignmentgraph_isd.core.dev_plans import WorkSet
 
 from conftest import FakeChatModel, load_brief, run_brief
