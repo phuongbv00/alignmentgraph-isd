@@ -108,7 +108,7 @@ class Relation:
         return source_type
 
 
-REGISTRY: dict[str, Relation] = {
+REGISTRY: dict[RelationId, Relation] = {
     r.relation_id: r
     for r in (
         # ── Core (C1-C5): construct-validity backbone ───────────────────────
