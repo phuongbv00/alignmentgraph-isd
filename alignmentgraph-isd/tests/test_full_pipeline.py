@@ -1,5 +1,5 @@
 """The default config runs the full pipeline end-to-end: stable result
-contract + all 18 alignment relations (7 core + 11 secondary) established
+contract + all 16 alignment relations (5 core + 11 secondary) established
 (and repaired to closure)."""
 from __future__ import annotations
 
@@ -34,6 +34,27 @@ def test_default_config_produces_contract():
     addie = result["addie_output"]
     assert set(addie) == {"analysis", "design", "development", "implementation", "evaluation"}
     assert addie["design"]["learning_objectives"]
+
+
+def test_every_established_edge_matches_its_declared_endpoint_types():
+    """The registry DECLARES each relation's endpoint types; nothing at edge
+    creation enforces them (``add_edge`` deliberately doesn't import the
+    registry, and ``record_provenance`` only checks a node EXISTS), so a
+    declaration can quietly drift from what the establishers actually write.
+    It had: P1 declared a single GAP source while ``commit_outcomes`` passes
+    ``gap_ids + topic_ids``, so every topic-sourced P1 edge in every recorded
+    run was undeclared. The field is a tuple now; this is what keeps it true."""
+    config = HarnessRunConfig()
+    config.llm_factory = lambda: FakeChatModel()
+    result = run_brief(load_brief("minimal_brief.json"), config)
+
+    node_type = {n["id"]: n["type"] for n in result["graph"]["nodes"]}
+    for edge in _graph_edges(result):
+        relation = alignment.REGISTRY.get(edge.get("relation_id", ""))
+        if relation is None:
+            continue  # structural edges (narrates/precedes) are not relations
+        assert node_type[edge["source"]] in relation.source_node_types, edge
+        assert node_type[edge["target"]] in relation.target_node_types, edge
 
 
 def test_run_establishes_every_relation_and_repairs_gaps():

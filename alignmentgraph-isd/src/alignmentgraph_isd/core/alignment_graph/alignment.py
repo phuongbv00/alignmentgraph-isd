@@ -55,7 +55,7 @@ class Relation:
     label: str
     edge_type: str  # the bare verb ("assessed_by", "realizes", ...)
     mechanism: str  # "id-reverse" | "id-list" | "id-list-reverse" | "type" | "provenance"
-    source_node_type: str
+    source_node_types: tuple[str, ...]  # coverage is checked over these when coverage_side="source"
     target_node_types: tuple[str, ...]  # coverage is checked over these target element types
     coverage_side: Literal["source", "target"]
     tier: Literal["core", "secondary"]
@@ -66,51 +66,67 @@ class Relation:
         """The edge ``type`` this relation stamps: ``"C2-assessed_by"``."""
         return f"{self.relation_id}-{self.edge_type}"
 
+    @property
+    def single_source_type(self) -> str:
+        """The ONE type an id-mechanism establisher resolves a bare ref
+        against (``"ILO-01"`` -> ``"objective:ILO-01"``): with two candidate
+        types that resolution is ambiguous, so those mechanisms require a
+        single source and this raises rather than picking one. Provenance
+        relations, whose source ids arrive already resolved, may declare
+        several (P1: a learning outcome is informed by gaps AND topics)."""
+        source_type, = self.source_node_types
+        return source_type
+
 
 REGISTRY: dict[str, Relation] = {
     r.relation_id: r
     for r in (
         # ── Core (C1-C5): construct-validity backbone ───────────────────────
         Relation("C1", "course goal decomposes to learning outcome", "decomposes_to", "provenance",
-                 NodeType.COURSE_GOAL, (NodeType.OBJECTIVE,), "target", "core",
+                 (NodeType.COURSE_GOAL,), (NodeType.OBJECTIVE,), "target", "core",
                  theory="Outcome-based design / Backward Design (Wiggins & McTighe)"),
         Relation("C2", "learning outcome assessed by assessment task", "assessed_by", "id-reverse",
-                 NodeType.OBJECTIVE, (NodeType.ASSESSMENT,), "source", "core",
+                 (NodeType.OBJECTIVE,), (NodeType.ASSESSMENT,), "source", "core",
                  theory="Constructive Alignment (Biggs) + Understanding by Design Stage 2"),
         Relation("C3", "learning outcome practiced by activity", "practiced_by", "id-list-reverse",
-                 NodeType.OBJECTIVE, (NodeType.ACTIVITY,), "source", "core",
+                 (NodeType.OBJECTIVE,), (NodeType.ACTIVITY,), "source", "core",
                  theory="Constructive Alignment (Biggs)"),
         Relation("C4", "activity prepares for assessment task", "prepares_for", "id-list",
-                 NodeType.ACTIVITY, (NodeType.ASSESSMENT,), "target", "core",
+                 (NodeType.ACTIVITY,), (NodeType.ASSESSMENT,), "target", "core",
                  theory="Backward Design + Constructive Alignment"),
         Relation("C5", "content module supports activity", "supports", "provenance",
-                 NodeType.CONTENT, (NodeType.ACTIVITY,), "target", "core",
+                 (NodeType.CONTENT,), (NodeType.ACTIVITY,), "target", "core",
                  theory="Backward Design (Wiggins & McTighe)"),
         # ── Secondary (P1-P11): provenance/traceability, not construct-validity ──
         Relation("P1", "gap/topic informs learning outcome", "informs", "provenance",
-                 NodeType.GAP, (NodeType.OBJECTIVE,), "target", "secondary"),
+                 (NodeType.GAP, NodeType.TOPIC), (NodeType.OBJECTIVE,), "target", "secondary"),
         Relation("P2", "learner profile fits learning outcome", "fits", "provenance",
-                 NodeType.LEARNER_PROFILE, (NodeType.OBJECTIVE,), "target", "secondary"),
+                 (NodeType.LEARNER_PROFILE,), (NodeType.OBJECTIVE,), "target", "secondary"),
         Relation("P3", "assessment plan realized by assessment task", "realizes", "type",
-                 NodeType.ASSESSMENT_PLAN, (NodeType.ASSESSMENT,), "target", "secondary"),
+                 (NodeType.ASSESSMENT_PLAN,), (NodeType.ASSESSMENT,), "target", "secondary"),
         Relation("P4", "activity plan realized by activity", "realizes", "provenance",
-                 NodeType.ACTIVITY_PLAN, (NodeType.ACTIVITY,), "target", "secondary"),
+                 (NodeType.ACTIVITY_PLAN,), (NodeType.ACTIVITY,), "target", "secondary"),
         Relation("P5", "content module covers material", "covers", "provenance",
-                 NodeType.CONTENT, (NodeType.MATERIAL,), "target", "secondary"),
+                 (NodeType.CONTENT,), (NodeType.MATERIAL,), "target", "secondary"),
         Relation("P6", "media selection realized by material", "realizes", "type",
-                 NodeType.MEDIA_SELECTION, (NodeType.MATERIAL,), "target", "secondary"),
+                 (NodeType.MEDIA_SELECTION,), (NodeType.MATERIAL,), "target", "secondary"),
         Relation("P7", "topic covered by content module", "covers", "provenance",
-                 NodeType.TOPIC, (NodeType.CONTENT,), "target", "secondary"),
+                 (NodeType.TOPIC,), (NodeType.CONTENT,), "target", "secondary"),
         Relation("P8", "constraint constrains media selection", "constrains", "provenance",
-                 NodeType.CONSTRAINT, (NodeType.MEDIA_SELECTION,), "target", "secondary"),
+                 (NodeType.CONSTRAINT,), (NodeType.MEDIA_SELECTION,), "target", "secondary"),
         Relation("P9", "gap addressed by improvement", "addresses", "provenance",
-                 NodeType.GAP, (NodeType.IMPROVEMENT,), "target", "secondary"),
+                 (NodeType.GAP,), (NodeType.IMPROVEMENT,), "target", "secondary"),
         Relation("P10", "session guide delivers activity", "delivers", "provenance",
-                 NodeType.SESSION_GUIDE, (NodeType.ACTIVITY,), "target", "secondary"),
+                 (NodeType.SESSION_GUIDE,), (NodeType.ACTIVITY,), "target", "secondary"),
         Relation("P11", "session guide provisions material", "provisions", "provenance",
-                 NodeType.SESSION_GUIDE, (NodeType.MATERIAL,), "target", "secondary"),
+                 (NodeType.SESSION_GUIDE,), (NodeType.MATERIAL,), "target", "secondary"),
     )
 }
+
+# Only a provenance relation may declare several sources: every other
+# mechanism resolves a bare ref against ONE type (see ``single_source_type``).
+assert all(len(r.source_node_types) == 1
+           for r in REGISTRY.values() if r.mechanism != "provenance")
 
 ALIGNMENT_LEGS: tuple[str, ...] = ("C2", "C3", "C4")
 assert all(relation_id in REGISTRY for relation_id in ALIGNMENT_LEGS)
@@ -156,11 +172,11 @@ def match_id_reverse(
     target=referencing node — for relations where the theoretical direction
     (e.g. "LO assessed_by Assessment") is the reverse of which artifact
     actually declares the cross-reference field (the Assessment item declares
-    ``aligned_objective``, not the LO). ``relation.source_node_type`` is the
+    ``aligned_objective``, not the LO). ``relation.single_source_type`` is the
     RESOLVED type (edge source); ``relation.target_node_types[0]`` is the
     REFERENCING type (edge target, the one with ``field`` in its data)."""
     relation = REGISTRY[relation_id]
-    resolved_type = relation.source_node_type
+    resolved_type = relation.single_source_type
     referencing_type = relation.target_node_types[0]
     violations: list[dict] = []
     for node in graph.element_nodes(referencing_type):
@@ -194,7 +210,7 @@ def match_list(
     relation = REGISTRY[relation_id]
     target_node_type = relation.target_node_types[0]
     violations: list[dict] = []
-    for node in graph.element_nodes(relation.source_node_type):
+    for node in graph.element_nodes(relation.single_source_type):
         refs = node["data"].get(field) or []
         if not isinstance(refs, list):
             refs = [refs]
@@ -228,10 +244,10 @@ def match_list_reverse(
     """C3-style: the REFERENCING element (``relation.target_node_types[0]``,
     e.g. an Activity) declares a LIST of resolved-type ids in ``field`` (e.g.
     ``aligned_objectives``), but the edge is stored source=resolved node
-    (``relation.source_node_type``, e.g. the LO), target=referencing node —
+    (``relation.single_source_type``, e.g. the LO), target=referencing node —
     mirrors ``match_id_reverse`` for the list case."""
     relation = REGISTRY[relation_id]
-    resolved_type = relation.source_node_type
+    resolved_type = relation.single_source_type
     referencing_type = relation.target_node_types[0]
     violations: list[dict] = []
     for node in graph.element_nodes(referencing_type):
@@ -630,9 +646,10 @@ def relation_coverage(graph: AlignmentGraph, relation_id: str) -> tuple[float, l
     every other relation checks the *target* side."""
     relation = REGISTRY[relation_id]
     required: list[dict] = []
-    check_type = relation.source_node_type if relation.coverage_side == "source" else relation.target_node_types[0]
-    for target_type in ((check_type,) if relation.coverage_side == "source" else relation.target_node_types):
-        required.extend(graph.element_nodes(target_type))
+    check_types = (relation.source_node_types if relation.coverage_side == "source"
+                   else relation.target_node_types)
+    for check_type in check_types:
+        required.extend(graph.element_nodes(check_type))
     if not required:
         return 1.0, []
     if relation.coverage_side == "source":

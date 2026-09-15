@@ -608,7 +608,7 @@ def _build_alignment_matrix(objective_ids: list[str], graph) -> list[dict]:
     objective_relations = [
         rid for rid, relation in alignment.REGISTRY.items()
         if NodeType.OBJECTIVE in relation.target_node_types or (
-            relation.coverage_side == "source" and relation.source_node_type == NodeType.OBJECTIVE
+            relation.coverage_side == "source" and NodeType.OBJECTIVE in relation.source_node_types
         )
     ]
     matrix: list[dict] = []
@@ -620,7 +620,7 @@ def _build_alignment_matrix(objective_ids: list[str], graph) -> list[dict]:
             # LO is the edge's target for C1 (id "decomposes_to"
             # direction), but the edge's SOURCE for C2/C3 (the id-reverse
             # relations) — read whichever side actually names an objective.
-            if relation.coverage_side == "source" and relation.source_node_type == NodeType.OBJECTIVE:
+            if relation.coverage_side == "source" and NodeType.OBJECTIVE in relation.source_node_types:
                 edges = graph.get_edges(relation_id=relation_id, source=target_id)
             else:
                 edges = graph.get_edges(relation_id=relation_id, target=target_id)
