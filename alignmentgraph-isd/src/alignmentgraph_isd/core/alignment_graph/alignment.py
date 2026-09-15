@@ -44,14 +44,29 @@ bare ``relation_id`` (``"C2"``) stays on the edge for coverage indexing (see
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, get_args
 
 from .graph import AlignmentGraph, NodeType
+
+#: The closed set of relation ids. A type alias, not an enum: an id travels as
+#: a plain string (it is stored on every edge, serialized into ``graph.json``,
+#: read back off archived dumps, and read by the webapp's TypeScript), and it
+#: shares a namespace with the non-relation check names in
+#: ``repairs.OWNED_BY_FAMILY``, so a distinct runtime type would have to be
+#: unwrapped at every one of those boundaries. This costs nothing at runtime
+#: and lets a type checker or an editor catch a typo'd id in an annotated
+#: signature. ``graph.py`` deliberately does NOT use it — that module resolves
+#: no relations and importing this would be the ``graph <-> alignment`` cycle
+#: ``add_edge``'s docstring exists to avoid.
+RelationId = Literal[
+    "C1", "C2", "C3", "C4", "C5",
+    "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P11",
+]
 
 
 @dataclass(frozen=True)
 class Relation:
-    relation_id: str
+    relation_id: RelationId
     label: str
     edge_type: str  # the bare verb ("assessed_by", "realizes", ...)
     mechanism: str  # "id-reverse" | "id-list" | "id-list-reverse" | "type" | "provenance"
@@ -123,16 +138,19 @@ REGISTRY: dict[str, Relation] = {
     )
 }
 
+assert set(get_args(RelationId)) == set(REGISTRY), (
+    "RelationId and REGISTRY must name the same relations")
+
 # Only a provenance relation may declare several sources: every other
 # mechanism resolves a bare ref against ONE type (see ``single_source_type``).
 assert all(len(r.source_node_types) == 1
            for r in REGISTRY.values() if r.mechanism != "provenance")
 
-ALIGNMENT_LEGS: tuple[str, ...] = ("C2", "C3", "C4")
+ALIGNMENT_LEGS: tuple[RelationId, ...] = ("C2", "C3", "C4")
 assert all(relation_id in REGISTRY for relation_id in ALIGNMENT_LEGS)
 
 
-def leg_verb(relation_id: str) -> str:
+def leg_verb(relation_id: RelationId) -> str:
     """The field name a leg is reported under: the relation's own verb.
 
     ``assessed_by`` / ``practiced_by`` / ``prepares_for`` — so an objective's
@@ -164,7 +182,7 @@ def bare_ref(ref: object) -> str:
 
 def match_id_reverse(
     graph: AlignmentGraph,
-    relation_id: str,
+    relation_id: RelationId,
     *,
     field: str,
 ) -> list[dict]:
@@ -200,7 +218,7 @@ def match_id_reverse(
 
 def match_list(
     graph: AlignmentGraph,
-    relation_id: str,
+    relation_id: RelationId,
     *,
     field: str,
 ) -> list[dict]:
@@ -237,7 +255,7 @@ def match_list(
 
 def match_list_reverse(
     graph: AlignmentGraph,
-    relation_id: str,
+    relation_id: RelationId,
     *,
     field: str,
 ) -> list[dict]:
@@ -387,7 +405,7 @@ def match_p6_realizes(graph: AlignmentGraph) -> list[dict]:
 
 def record_provenance(
     graph: AlignmentGraph,
-    relation_id: str,
+    relation_id: RelationId,
     source_ids: list[str],
     target_id: str,
     *,
@@ -638,7 +656,7 @@ def bloom_activity_violations(graph: AlignmentGraph) -> list[dict]:
 
 # ── coverage aggregation (structural, no LLM) ────────────────────────────────
 
-def relation_coverage(graph: AlignmentGraph, relation_id: str) -> tuple[float, list[str]]:
+def relation_coverage(graph: AlignmentGraph, relation_id: RelationId) -> tuple[float, list[str]]:
     """Fraction of the relation's required elements (on ``coverage_side``)
     that have >=1 edge of this relation_id on that side, plus the list of
     uncovered node ids. Core relations (C2/C3) check the *source* side
@@ -666,7 +684,7 @@ def relation_coverage(graph: AlignmentGraph, relation_id: str) -> tuple[float, l
     return covered / len(required), uncovered
 
 
-def all_relations_coverage(graph: AlignmentGraph) -> dict[str, dict]:
+def all_relations_coverage(graph: AlignmentGraph) -> dict[RelationId, dict]:
     """Per-relation coverage + uncovered ids for every C1..C5/P1..P11 — the
     data behind the aggregator's alignment_matrix and the audit summary."""
     return {

@@ -174,7 +174,7 @@ class GraphAuditor:
             relation_coverage=relation_cov,
         )
 
-    def _uncovered_objectives(self, relation_id: str) -> list[str]:
+    def _uncovered_objectives(self, relation_id: alignment.RelationId) -> list[str]:
         """Objective element ids with no edge of this relation. Every relation
         this is asked about (C2/C3) is id-reverse: the LO is the edge's
         SOURCE, so coverage is checked on the source side."""
