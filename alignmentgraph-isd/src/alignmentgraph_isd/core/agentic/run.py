@@ -657,6 +657,81 @@ def _run_multi(config, memory, graph, store, trajectory, design_brief, *,
     return autonomy, errors, task_attempts
 
 
+def _metadata(config, trajectory, design_brief, *, single: bool, graph_mode: bool,
+              regen_budget: int, backoff: float, errors: list, validation_errors: list,
+              audit: dict, task_attempts: dict, repair_metrics: dict,
+              autonomy: dict) -> dict:
+    """What the run reports about ITSELF, as opposed to what it produced."""
+    return {
+        "llm": _llm_metadata(config),
+        "token_usage": _token_usage_metadata(trajectory),
+        "run_config": {
+            "agent_mode": "single" if single else "multi",
+            "context_mode": "graph" if graph_mode else "prose",
+            "history_char_budget": history_budget(config),
+            "max_turns": react.MAX_TURNS if single else ToolLoop.MAX_TURNS,
+            "submit_budget": ToolLoop.SUBMIT_BUDGET,
+            "use_rag": config.use_rag,
+            "regen_budget": regen_budget,
+            "regen_backoff_seconds": backoff,
+            # Serving posture: a results dir has to say how many requests
+            # the run was allowed to keep in flight, because that is the
+            # difference between a 429-throttled arm and a clean one.
+            "llm_max_concurrency": config.llm_max_concurrency,
+            "llm_min_interval_seconds": config.llm_min_interval_seconds,
+        },
+        "design_brief_id": design_brief.id,
+        "errors": errors,
+        "validation_errors": validation_errors,
+        "audit": audit,
+        "task_attempts": task_attempts,
+        "repair_metrics": repair_metrics,
+        "autonomy": autonomy,
+    }
+
+
+def _result_payload(memory, design_brief, *, addie_output: dict, metadata: dict,
+                    trajectory, trajectory_payload: dict, on_event) -> dict:
+    """The result contract, and the last writes of the run.
+
+    Report writing happens here because it happens LAST: the observer is
+    detached first, so the deep trajectory ends with the last thing an agent
+    did rather than with the dump.
+    """
+    result = {
+        "addie_output": addie_output,
+        "trajectory": trajectory_payload,
+        "trajectory_deep": trajectory.to_dict_deep(),
+        "metadata": metadata,
+        # What the run remembered, beside what it produced. Deliberately NOT
+        # inside `trajectory`: the judge reads that and the benchmark compares
+        # it across arms, and transcripts alone would multiply its size by the
+        # number of turns. The benchmark runner writes named keys only, so
+        # these reach the app and the CLI and nothing else.
+        "contexts": [t.as_dict() for t in memory.transcripts],
+        "plans": [p.as_dict() for p in memory.plans],
+        # Every DISTINCT finding of the run, with what became of it. Not a
+        # second copy of `metadata.audit.violations`: that is the graph arm's
+        # residual only (the prose arm has no graph to audit), it is a snapshot
+        # rather than a history, and it cannot say whether a violation was
+        # repaired, converged, or simply ran out of budget.
+        "violations": [f.as_dict() for f in memory.findings],
+    }
+    if memory.graph is not None:
+        memory.graph.set_observer(None)
+        _maybe_dump_graph(memory.graph, design_brief, metadata)
+        final_graph = memory.graph.to_full_dict(design_brief_id=design_brief.id)
+        _safe_emit(on_event, "graph_snapshot", final_graph)
+        result["graph"] = final_graph
+    if memory.store is not None:
+        # The prose arm's counterpart artifact (saved as <agent_id>_prose.json
+        # by the benchmark): the blackboard documents verbatim. Inspection
+        # material only — it carries no relations and no coverage, so the "a
+        # prose run ships no alignment audit" contrast is untouched.
+        result["prose"] = memory.store.to_full_dict(design_brief_id=design_brief.id)
+    return result
+
+
 def execute_brief(config, design_brief: DesignBrief, *, on_event=None) -> dict:
     """Run one brief end to end and return the result contract.
 
@@ -749,65 +824,14 @@ def execute_brief(config, design_brief: DesignBrief, *, on_event=None) -> dict:
                 trajectory.log_audit_result(audit_result, agent=WORKFLOW_ORCHESTRATOR)
                 audit = audit_result.to_dict()
 
-    repair_metrics = trajectory.summary_metrics(len(residual))
-    trajectory_payload = trajectory.finalize()
-    metadata = {
-        "llm": _llm_metadata(config),
-        "token_usage": _token_usage_metadata(trajectory),
-        "run_config": {
-            "agent_mode": "single" if single else "multi",
-            "context_mode": "graph" if graph_mode else "prose",
-            "history_char_budget": history_budget(config),
-            "max_turns": react.MAX_TURNS if single else ToolLoop.MAX_TURNS,
-            "submit_budget": ToolLoop.SUBMIT_BUDGET,
-            "use_rag": config.use_rag,
-            "regen_budget": regen_budget,
-            "regen_backoff_seconds": backoff,
-            # Serving posture: a results dir has to say how many requests
-            # the run was allowed to keep in flight, because that is the
-            # difference between a 429-throttled arm and a clean one.
-            "llm_max_concurrency": config.llm_max_concurrency,
-            "llm_min_interval_seconds": config.llm_min_interval_seconds,
-        },
-        "design_brief_id": design_brief.id,
-        "errors": errors,
-        "validation_errors": validation_errors,
-        "audit": audit,
-        "task_attempts": task_attempts,
-        "repair_metrics": repair_metrics,
-        "autonomy": autonomy,
-    }
-    result = {
-        "addie_output": addie_output,
-        "trajectory": trajectory_payload,
-        "trajectory_deep": trajectory.to_dict_deep(),
-        "metadata": metadata,
-        # What the run remembered, beside what it produced. Deliberately NOT
-        # inside `trajectory`: the judge reads that and the benchmark compares
-        # it across arms, and transcripts alone would multiply its size by the
-        # number of turns. The benchmark runner writes named keys only, so
-        # these reach the app and the CLI and nothing else.
-        "contexts": [t.as_dict() for t in memory.transcripts],
-        "plans": [p.as_dict() for p in memory.plans],
-        # Every DISTINCT finding of the run, with what became of it. Not a
-        # second copy of `metadata.audit.violations`: that is the graph arm's
-        # residual only (the prose arm has no graph to audit), it is a snapshot
-        # rather than a history, and it cannot say whether a violation was
-        # repaired, converged, or simply ran out of budget.
-        "violations": [f.as_dict() for f in memory.findings],
-    }
-    # Report writing — detach the observer so the deep trajectory ends with
-    # the last thing an agent did.
-    if graph is not None:
-        graph.set_observer(None)
-        _maybe_dump_graph(graph, design_brief, metadata)
-        final_graph = graph.to_full_dict(design_brief_id=design_brief.id)
-        _safe_emit(on_event, "graph_snapshot", final_graph)
-        result["graph"] = final_graph
-    if store is not None:
-        # The prose arm's counterpart artifact (saved as <agent_id>_prose.json
-        # by the benchmark): the blackboard documents verbatim. Inspection
-        # material only — it carries no relations and no coverage, so the "a
-        # prose run ships no alignment audit" contrast is untouched.
-        result["prose"] = store.to_full_dict(design_brief_id=design_brief.id)
-    return result
+    metadata = _metadata(
+        config, trajectory, design_brief, single=single, graph_mode=graph_mode,
+        regen_budget=regen_budget, backoff=backoff, errors=errors,
+        validation_errors=validation_errors, audit=audit,
+        task_attempts=task_attempts,
+        repair_metrics=trajectory.summary_metrics(len(residual)),
+        autonomy=autonomy)
+    return _result_payload(
+        memory, design_brief, addie_output=addie_output, metadata=metadata,
+        trajectory=trajectory, trajectory_payload=trajectory.finalize(),
+        on_event=on_event)
