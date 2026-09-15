@@ -205,6 +205,11 @@ def _node_display(node: dict) -> dict:
     }
 
 
+#: The verbs the structural relations stamp, for reading an archived payload
+#: whose edges predate their registration (see ``_edge_display``).
+_STRUCTURAL_EDGE_TYPES = frozenset(r.edge_type for r in alignment.STRUCTURAL.values())
+
+
 def _edge_display(edge: dict, annotations: dict) -> dict:
     """The display fields of one edge.
 
@@ -229,7 +234,10 @@ def _edge_display(edge: dict, annotations: dict) -> dict:
     elif relation_id:
         tier = "core" if relation_id.startswith("C") else "secondary"
     else:
-        tier = ""
+        # An archived payload: the S relations were registered on 2026-09-16
+        # and every dump written before that carries "" on exactly the edges
+        # they now name, so the empty id still means structural.
+        tier = "structural" if edge.get("type") in _STRUCTURAL_EDGE_TYPES else ""
     # An `assessed_by`/`practiced_by` edge out of an objective whose Bloom level
     # does not hold up. Each side is judged by ITS OWN check: a `practiced_by`
     # edge reddened because an assessment ITEM was too shallow pointed a reader
@@ -250,7 +258,7 @@ def _edge_display(edge: dict, annotations: dict) -> dict:
     return {
         "id": "|".join((relation_id or "scaffold", str(edge.get("source", "")),
                         str(edge.get("target", "")), str(edge.get("type", "")))),
-        "layer": ("scaffolding" if not relation_id
+        "layer": ("scaffolding" if tier in ("structural", "")
                   else "alignment" if tier == "core" else "provenance"),
         "tier": tier,
         "invalid": bool(reason),

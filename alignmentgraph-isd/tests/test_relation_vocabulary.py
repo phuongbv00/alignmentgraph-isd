@@ -57,9 +57,13 @@ def test_the_webapp_keeps_no_table_of_relation_wording():
 
 def test_every_registry_verb_is_the_one_the_edge_carries():
     """The edge `type` IS `"<id>-<verb>"`, so the words on a rendered edge are
-    the registry's own and cannot be restated anywhere."""
-    for relation_id, relation in alignment.REGISTRY.items():
+    the registry's own and cannot be restated anywhere. A structural relation
+    stamps the bare verb instead — the prefix only disambiguates a verb two
+    relations share, and `precedes`/`narrates` are each one relation's own."""
+    for relation_id, relation in alignment.MATRIX.items():
         assert relation.key == f"{relation_id}-{relation.edge_type}"
+    for relation in alignment.STRUCTURAL.values():
+        assert relation.key == relation.edge_type
 
 
 @pytest.mark.parametrize("verb", ["measures", "evaluates", "scores", "derived_from",

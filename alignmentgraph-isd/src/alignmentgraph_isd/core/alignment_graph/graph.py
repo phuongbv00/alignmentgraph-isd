@@ -94,7 +94,7 @@ class AlignmentGraph:
         self._observer = observer
         self._nodes: dict[str, dict] = {}
         self._edges: list[dict] = []
-        # Re-entrant: ``add_edge``/``link_section_narrative`` call other
+        # Re-entrant: ``add_edge`` and ``alignment``'s establishers call other
         # locked methods on the same thread. See ``transaction`` for why the
         # lock stays although the executor is sequential.
         self._lock = threading.RLock()
@@ -320,34 +320,6 @@ class AlignmentGraph:
             relation_id=relation_id or "*", result_count=len(edges),
         )
         return edges
-
-    def link_section_narrative(self, node_type: NodeType | str,
-                               element_type: NodeType | str | None = None) -> None:
-        """Structural ``narrates`` edges (non-registry — the ``precedes``
-        class) from a narrative section node to every element of its type.
-
-        For the HUMAN auditor: in the dump/DOT/web view the section-level
-        judgement (``priority_matrix``, ``review_summary``, ...) is otherwise
-        an unreachable island floating next to the very elements it talks
-        about. These edges are navigation, not construct-validity claims:
-        they carry no ``relation_id``, so the docket, every check and all
-        coverage machinery skip them — they exist only in
-        the dump and the visualizations. Idempotent (edge identity dedups).
-
-        ``element_type`` names a DIFFERENT element pool when the narrative and
-        its elements are two types: ``implementation_plan_0`` carries the
-        instructor guide's framing (overview, facilitation tips,
-        troubleshooting) while the guides themselves are ``session_guide``
-        elements. Same relationship, two type names, and without it the plan
-        section is the island this method exists to prevent."""
-        section_id = self.section_id(node_type)
-        if self.get_node(section_id) is None:
-            return
-        for node in self.element_nodes(element_type or node_type):
-            self.add_edge(
-                "narrates", section_id, node["id"], established_by="provenance",
-                rationale=f"{section_id} carries the section-level narrative for {node['id']}.",
-            )
 
     def is_empty(self, node_type: NodeType | str) -> bool:
         """True if no non-empty node of this type exists."""

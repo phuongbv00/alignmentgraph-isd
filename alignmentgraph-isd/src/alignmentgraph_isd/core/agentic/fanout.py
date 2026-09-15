@@ -633,21 +633,15 @@ def _establish(spec: FanoutSpec, state, committed: dict[str, list[str]]) -> None
         if state.get_node(plan_id):
             for node_id in node_ids:
                 alignment.record_provenance(state, "P4", [plan_id], node_id)
-        for node_id in node_ids:
-            node = state.get_node(node_id)
-            for prereq in (node or {}).get("data", {}).get("prerequisite_activities", []) or []:
-                source = f"{NodeType.ACTIVITY}{state.ELEMENT_SEP}{prereq}"
-                if state.get_node(source):
-                    state.add_edge("precedes", source, node_id, relation_id="",
-                                   established_by="id", evidence=str(prereq))
+        alignment.link_prerequisites(state, node_ids)
     elif spec.stage == "implementation":
         alignment.establish_delivery(state, committed.get("session_guides", []))
         # The plan section holds the guide's FRAMING and the guides are its
         # elements, which is exactly what `narrates` is for. Without it
         # `implementation_plan_0` is an edgeless island — the thing P10/P11
         # were added to stop, back when they hung off the section itself.
-        state.link_section_narrative(NodeType.IMPLEMENTATION_PLAN,
-                                     NodeType.SESSION_GUIDE)
+        alignment.link_section_narrative(state, NodeType.IMPLEMENTATION_PLAN,
+                                         NodeType.SESSION_GUIDE)
     elif spec.stage == "content":
         for node_id in committed.get("learner_materials", []):
             data = state.get_node(node_id)["data"]

@@ -287,8 +287,8 @@ def test_objective_alignment_survives_to_the_api(client, ready_program, wait_for
     # 16 relations total: 5 core (C1-C5) + 11 secondary (P1-P11) — see
     # alignment.py::REGISTRY (renamed from the old R1..R13 scheme).
     from alignmentgraph_isd.core.alignment_graph import alignment as alignment_module
-    assert set(graph["relation_coverage"]) == set(alignment_module.REGISTRY)
-    assert len(alignment_module.REGISTRY) == 16   # C6/C7 went with the rubric node type
+    assert set(graph["relation_coverage"]) == set(alignment_module.MATRIX)
+    assert len(alignment_module.MATRIX) == 16   # C6/C7 went with the rubric node type
 
 
 # ── cancellation and restart ─────────────────────────────────────────────────

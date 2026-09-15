@@ -21,6 +21,12 @@ Kept in the graph dump for full auditability, but not claimed as
 construct-validity evidence — dropping one doesn't argue anything went
 pedagogically wrong, only that a bookkeeping trace is thinner.
 
+**Structural** (``S1``-``S2``): navigation for the human auditor — a section
+node reaching the elements it narrates, one activity reaching the one it
+precedes. Declared here so one table names every edge kind, but held OUT of
+:data:`MATRIX`, which is what everything that measures the construct iterates.
+Coverage over a navigation edge is not a finding; see MATRIX's own note.
+
 Edge direction convention
 --------------------------
 Some core relations are the *reverse* of which artifact declares the
@@ -61,6 +67,7 @@ from .graph import AlignmentGraph, NodeType
 RelationId = Literal[
     "C1", "C2", "C3", "C4", "C5",
     "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P11",
+    "S1", "S2",
 ]
 
 
@@ -73,13 +80,21 @@ class Relation:
     source_node_types: tuple[str, ...]  # coverage is checked over these when coverage_side="source"
     target_node_types: tuple[str, ...]  # coverage is checked over these target element types
     coverage_side: Literal["source", "target"]
-    tier: Literal["core", "secondary"]
+    tier: Literal["core", "secondary", "structural"]
     theory: str = ""  # citation anchor for core relations; empty for secondary
 
     @property
     def key(self) -> str:
-        """The edge ``type`` this relation stamps: ``"C2-assessed_by"``."""
-        return f"{self.relation_id}-{self.edge_type}"
+        """The edge ``type`` this relation stamps: ``"C2-assessed_by"``.
+
+        The ``S`` relations stamp their BARE verb (``"narrates"``). The prefix
+        exists only to keep keys unique where a verb repeats (``realizes``
+        across P3/P4/P6) and these two repeat nothing, while the bare verb is
+        the type they have carried in every recorded dump — the webapp, the
+        DOT renderer and ``with_display_semantics`` all read it, so prefixing
+        it now would rename an edge type for no gain."""
+        return (self.edge_type if self.tier == "structural"
+                else f"{self.relation_id}-{self.edge_type}")
 
     @property
     def single_source_type(self) -> str:
@@ -135,16 +150,54 @@ REGISTRY: dict[str, Relation] = {
                  (NodeType.SESSION_GUIDE,), (NodeType.ACTIVITY,), "target", "secondary"),
         Relation("P11", "session guide provisions material", "provisions", "provenance",
                  (NodeType.SESSION_GUIDE,), (NodeType.MATERIAL,), "target", "secondary"),
+        # ── Structural (S1-S2): navigation, never alignment evidence ────────
+        Relation("S1", "activity precedes activity", "precedes", "id-list-reverse",
+                 (NodeType.ACTIVITY,), (NodeType.ACTIVITY,), "target", "structural"),
+        Relation("S2", "section narrates element", "narrates", "provenance",
+                 (NodeType.GAP, NodeType.TOPIC, NodeType.CONSTRAINT,
+                  NodeType.IMPROVEMENT, NodeType.IMPLEMENTATION_PLAN),
+                 (NodeType.GAP, NodeType.TOPIC, NodeType.CONSTRAINT,
+                  NodeType.IMPROVEMENT, NodeType.SESSION_GUIDE),
+                 "target", "structural"),
     )
+}
+
+#: The 16-relation ALIGNMENT MATRIX: everything ``REGISTRY`` holds except the
+#: structural edges. This, not ``REGISTRY``, is what every consumer of the
+#: construct iterates — ``all_relations_coverage``, the coverage sweep in
+#: ``checks``, the aggregator's alignment matrix — and its size is the number
+#: the paper reports.
+#:
+#: The split is the whole reason S1/S2 can live in the registry at all. They
+#: belong there: one table naming every edge kind, one ``RelationId``, one
+#: lookup for a relation read off an edge, and the endpoint-type guard covering
+#: them like anything else. But a navigation edge must never acquire a coverage
+#: figure — "37% of activities have no incoming ``precedes``" is not a finding,
+#: and reported beside C2 it reads as one. Iterating the wrong name is the way
+#: that happens, so the guard is a test, not a convention:
+#: ``test_structural_relations_stay_out_of_the_alignment_matrix``.
+MATRIX: dict[RelationId, Relation] = {
+    rid: r for rid, r in REGISTRY.items() if r.tier != "structural"
+}
+
+#: The other side of that split, for the two establishers below.
+STRUCTURAL: dict[RelationId, Relation] = {
+    rid: r for rid, r in REGISTRY.items() if r.tier == "structural"
 }
 
 assert set(get_args(RelationId)) == set(REGISTRY), (
     "RelationId and REGISTRY must name the same relations")
+assert MATRIX.keys() | STRUCTURAL.keys() == REGISTRY.keys()
+assert not MATRIX.keys() & STRUCTURAL.keys()
+# Every relation's id is its own key, and an edge stamps a unique type.
+assert all(rid == r.relation_id for rid, r in REGISTRY.items())
+assert len({r.key for r in REGISTRY.values()}) == len(REGISTRY)
 
 # Only a provenance relation may declare several sources: every other
 # mechanism resolves a bare ref against ONE type (see ``single_source_type``).
 assert all(len(r.source_node_types) == 1
-           for r in REGISTRY.values() if r.mechanism != "provenance")
+           for r in (*REGISTRY.values(), *STRUCTURAL.values())
+           if r.mechanism != "provenance")
 
 ALIGNMENT_LEGS: tuple[RelationId, ...] = ("C2", "C3", "C4")
 assert all(relation_id in REGISTRY for relation_id in ALIGNMENT_LEGS)
@@ -465,6 +518,65 @@ def establish_delivery(graph: AlignmentGraph, session_node_ids: list[str]) -> No
                 record_provenance(graph, relation_id, [node_id], f"{node_type}{sep}{ref}")
 
 
+# ── structural: navigation for the human auditor, no relation id ────────────
+
+def link_section_narrative(graph: AlignmentGraph, node_type: NodeType | str,
+                           element_type: NodeType | str | None = None) -> None:
+    """``narrates`` edges from a narrative section node to every element of
+    its type.
+
+    For the HUMAN auditor: in the dump/DOT/web view the section-level
+    judgement (``priority_matrix``, ``review_summary``, ...) is otherwise an
+    unreachable island floating next to the very elements it talks about.
+    These edges are navigation, not construct-validity claims: S2 is outside
+    :data:`MATRIX`, so the docket, every check and all coverage machinery skip
+    it — it exists only in the dump and the visualizations. Idempotent (edge
+    identity dedups).
+
+    ``element_type`` names a DIFFERENT element pool when the narrative and its
+    elements are two types: ``implementation_plan_0`` carries the instructor
+    guide's framing (overview, facilitation tips, troubleshooting) while the
+    guides themselves are ``session_guide`` elements. Same relationship, two
+    type names, and without it the plan section is the island this function
+    exists to prevent.
+
+    Lives here, beside the other establishers, rather than on ``AlignmentGraph``:
+    the graph is the store and this is an establisher, and only from here can it
+    read its own declaration out of the registry (``graph.py`` importing this
+    module would be the cycle ``add_edge``'s docstring exists to avoid)."""
+    relation = REGISTRY["S2"]
+    section_id = graph.section_id(node_type)
+    if graph.get_node(section_id) is None:
+        return
+    for node in graph.element_nodes(element_type or node_type):
+        graph.add_edge(
+            relation.key, section_id, node["id"],
+            relation_id=relation.relation_id, established_by="provenance",
+            rationale=f"{section_id} carries the section-level narrative for {node['id']}.",
+        )
+
+
+def link_prerequisites(graph: AlignmentGraph, node_ids: list[str]) -> None:
+    """``precedes`` edges from each activity named in an activity's
+    ``prerequisite_activities`` to that activity.
+
+    Ordering within a family, not alignment across families — so like
+    ``narrates`` it sits outside :data:`MATRIX` and no check reads it. The
+    positions the Developer wrote were resolved to committed ids by
+    ``dev_plans._resolve_positions`` before the nodes were committed, and a
+    reference that did not resolve was dropped there, so a missing edge here is
+    a dropped reference rather than a dangling one."""
+    relation = REGISTRY["S1"]
+    for node_id in node_ids:
+        data = (graph.get_node(node_id) or {}).get("data") or {}
+        for prereq in data.get("prerequisite_activities") or []:
+            source = f"{NodeType.ACTIVITY}{graph.ELEMENT_SEP}{prereq}"
+            if graph.get_node(source):
+                graph.add_edge(relation.key, source, node_id,
+                               relation_id=relation.relation_id,
+                               established_by="id", evidence=str(prereq))
+
+
 # ── Bloom/cognitive-process cross-checks — attribute-based, not an edge ─────
 # Revised Bloom's Taxonomy (Anderson & Krathwohl) is not a relation in
 # REGISTRY: it is a set of attributes (``level`` on Objective,
@@ -685,8 +797,9 @@ def relation_coverage(graph: AlignmentGraph, relation_id: RelationId) -> tuple[f
 
 
 def all_relations_coverage(graph: AlignmentGraph) -> dict[RelationId, dict]:
-    """Per-relation coverage + uncovered ids for every C1..C5/P1..P11 — the
-    data behind the aggregator's alignment_matrix and the audit summary."""
+    """Per-relation coverage + uncovered ids for every relation in
+    :data:`MATRIX` — the data behind the aggregator's alignment_matrix and the
+    audit summary. The structural S relations are not in it, by design."""
     return {
         relation_id: {
             "label": relation.label,
@@ -695,5 +808,5 @@ def all_relations_coverage(graph: AlignmentGraph) -> dict[RelationId, dict]:
             "coverage": (result := relation_coverage(graph, relation_id))[0],
             "uncovered": result[1],
         }
-        for relation_id, relation in REGISTRY.items()
+        for relation_id, relation in MATRIX.items()
     }

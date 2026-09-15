@@ -49,7 +49,7 @@ export interface CyElement {
  *  the alignment layer. */
 export function edgeLayer(edge: GraphEdge): EdgeLayer {
   if (edge.layer) return edge.layer
-  if (!edge.relation_id) return 'scaffolding'
+  if (!edge.relation_id || edge.relation_id.startsWith('S')) return 'scaffolding'
   return edge.relation_id.startsWith('C') ? 'alignment' : 'provenance'
 }
 

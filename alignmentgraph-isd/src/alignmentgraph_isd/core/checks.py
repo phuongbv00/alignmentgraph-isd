@@ -830,7 +830,7 @@ def relation_coverage(graph) -> list[Violation]:
     # them apart without a table to keep in step.
     reported = {(v.violation_type, v.node_id) for v in violations}
 
-    for relation_id, relation in alignment.REGISTRY.items():
+    for relation_id, relation in alignment.MATRIX.items():
         _, uncovered = alignment.relation_coverage(graph, relation_id)
         for node_id in uncovered:
             if (relation_id, node_id) in reported:

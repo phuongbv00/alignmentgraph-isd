@@ -157,11 +157,37 @@ def test_relation_coverage_full_when_no_required_targets_exist():
     assert coverage == 1.0 and uncovered == []
 
 
+def test_structural_relations_stay_out_of_the_alignment_matrix():
+    """S1/S2 are registered so one table names every edge kind, but a
+    navigation edge must never acquire a coverage figure: "37% of activities
+    have no incoming `precedes`" is not a finding, and reported beside C2 it
+    reads as one. Everything that measures the construct iterates MATRIX, and
+    this is what says so — `REGISTRY` is one careless `.items()` away."""
+    assert set(alignment.STRUCTURAL) == {"S1", "S2"}
+    assert not set(alignment.MATRIX) & set(alignment.STRUCTURAL)
+    assert set(alignment.MATRIX) | set(alignment.STRUCTURAL) == set(alignment.REGISTRY)
+
+    graph = AlignmentGraph()
+    graph.add_node(NodeType.GAP, graph.section_id(NodeType.GAP), {"priority_matrix": "..."})
+    graph.add_element_node(NodeType.GAP, "GAP-01", {"description": "g1"})
+    graph.add_element_node(NodeType.ACTIVITY, "TLA-01", {"id": "TLA-01"})
+    alignment.link_section_narrative(graph, NodeType.GAP)
+    assert graph.get_edges(relation_id="S2")  # the edges really are there
+
+    assert set(alignment.all_relations_coverage(graph)) == set(alignment.MATRIX)
+
+    # And the coverage sweep raises no violation naming one — TLA-01 has no
+    # incoming `precedes`, which is the non-finding this test exists for.
+    from alignmentgraph_isd.core import checks
+    types = {v.violation_type for v in checks.relation_coverage(graph)}
+    assert not types & set(alignment.STRUCTURAL)
+
+
 def test_all_relations_coverage_covers_the_whole_registry():
     graph = AlignmentGraph()
     result = alignment.all_relations_coverage(graph)
-    assert set(result.keys()) == set(alignment.REGISTRY.keys())
-    assert len(result) == len(alignment.REGISTRY)
+    assert set(result.keys()) == set(alignment.MATRIX.keys())
+    assert len(result) == len(alignment.MATRIX)
     # FIVE core relations since 2026-09-02, not seven. C6/C7 went with the
     # rubric node type: a criterion is written by the same call as the item it
     # marks and the rules require it to name that item's objective, so neither
@@ -171,6 +197,9 @@ def test_all_relations_coverage_covers_the_whole_registry():
     # are guaranteed.
     assert sum(1 for r in alignment.REGISTRY.values() if r.tier == "core") == 5
     assert sum(1 for r in alignment.REGISTRY.values() if r.tier == "secondary") == 11
+    # The structural pair is registered but deliberately outside the matrix.
+    assert sum(1 for r in alignment.REGISTRY.values() if r.tier == "structural") == 2
+    assert set(alignment.STRUCTURAL) & set(result) == set()
     # Every core relation still carries the theory it claims.
     assert all(r.theory for r in alignment.REGISTRY.values() if r.tier == "core")
 

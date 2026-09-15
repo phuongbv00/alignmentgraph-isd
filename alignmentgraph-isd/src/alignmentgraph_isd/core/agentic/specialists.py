@@ -116,7 +116,7 @@ def _store_narrative(graph, trajectory, node_type: str, section: dict,
         section_id = graph.section_id(node_type)
         graph.add_node(node_type, section_id, narrative)
         trajectory.log_node_edit("add", section_id, node_type)
-        graph.link_section_narrative(node_type)
+        alignment.link_section_narrative(graph, node_type)
 
 
 # ── per-step commits ───────────────────────────────────────────────────────

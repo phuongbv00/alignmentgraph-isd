@@ -606,7 +606,7 @@ def _build_alignment_matrix(objective_ids: list[str], graph) -> list[dict]:
     """Per-objective alignment record built from **established** edges
     (relation_id, established_by, evidence) — the real C1/C2/C3 picture."""
     objective_relations = [
-        rid for rid, relation in alignment.REGISTRY.items()
+        rid for rid, relation in alignment.MATRIX.items()
         if NodeType.OBJECTIVE in relation.target_node_types or (
             relation.coverage_side == "source" and NodeType.OBJECTIVE in relation.source_node_types
         )
@@ -616,7 +616,7 @@ def _build_alignment_matrix(objective_ids: list[str], graph) -> list[dict]:
         target_id = f"{NodeType.OBJECTIVE}{graph.ELEMENT_SEP}{lo_id}"
         entry = {"objective_id": lo_id, "relations": {}}
         for relation_id in objective_relations:
-            relation = alignment.REGISTRY[relation_id]
+            relation = alignment.MATRIX[relation_id]
             # LO is the edge's target for C1 (id "decomposes_to"
             # direction), but the edge's SOURCE for C2/C3 (the id-reverse
             # relations) — read whichever side actually names an objective.

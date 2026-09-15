@@ -43,7 +43,10 @@ def test_every_established_edge_matches_its_declared_endpoint_types():
     declaration can quietly drift from what the establishers actually write.
     It had: P1 declared a single GAP source while ``commit_outcomes`` passes
     ``gap_ids + topic_ids``, so every topic-sourced P1 edge in every recorded
-    run was undeclared. The field is a tuple now; this is what keeps it true."""
+    run was undeclared. The field is a tuple now; this is what keeps it true.
+
+    Covers the structural edges as well since S1/S2 were registered — they are
+    the two whose endpoints nothing else checks."""
     config = HarnessRunConfig()
     config.llm_factory = lambda: FakeChatModel()
     result = run_brief(load_brief("minimal_brief.json"), config)
@@ -52,7 +55,7 @@ def test_every_established_edge_matches_its_declared_endpoint_types():
     for edge in _graph_edges(result):
         relation = alignment.REGISTRY.get(edge.get("relation_id", ""))
         if relation is None:
-            continue  # structural edges (narrates/precedes) are not relations
+            continue  # a fixture's unregistered edge
         assert node_type[edge["source"]] in relation.source_node_types, edge
         assert node_type[edge["target"]] in relation.target_node_types, edge
 

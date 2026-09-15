@@ -73,7 +73,7 @@ def test_result_carries_full_graph_dump_separate_from_trajectory():
     typed_edges = [e for e in graph["edges"] if e.get("relation_id")]
     assert typed_edges and all("established_by" in e for e in typed_edges)
     from alignmentgraph_isd.core.alignment_graph import alignment
-    assert set(graph["relation_coverage"]) == set(alignment.REGISTRY)
+    assert set(graph["relation_coverage"]) == set(alignment.MATRIX)
     # dump metadata: brief id, timestamp, counts by type
     meta = graph["metadata"]
     assert meta["design_brief_id"] and meta["generated_at"]
@@ -352,9 +352,11 @@ def test_an_edge_id_is_stable_unique_and_covers_scaffolding():
     ids = [edge["id"] for edge in payload["edges"]]
     assert len(ids) == len(set(ids))
     assert all(ids)
+    # No relation_id: the shape of every dump archived before S1/S2 were
+    # registered, and it still reads as structural (off the edge type).
     scaffolding = next(e for e in payload["edges"] if e["layer"] == "scaffolding")
     assert scaffolding["id"].startswith("scaffold|")
-    assert scaffolding["tier"] == ""
+    assert scaffolding["tier"] == "structural"
     # Stable: re-serializing the same graph gives the same ids.
     assert [e["id"] for e in viz.to_node_link(graph)["edges"]] == ids
 
