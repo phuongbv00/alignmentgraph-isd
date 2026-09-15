@@ -85,10 +85,8 @@ _DESIGN = {
 
 _ASSESSMENT_PLAN = {
     "assessment_plan": {
-        "diagnostic": ["Pre-quiz on OOP terms"],
-        "formative": ["Weekly design critique"],
-        "summative": ["Final design project"],
-        "lo_coverage_targets": {f"ILO-0{i}": ["formative", "summative"] for i in range(1, 6)},
+        "lo_coverage_targets": {f"ILO-0{i}": ["diagnostic", "formative", "summative"]
+                                for i in range(1, 6)},
         "expected_evidence": {f"ILO-0{i}": "A working code artifact with justification." for i in range(1, 6)},
         "formative_methods": ["Weekly design critique with rubric", "Exit tickets after each module"],
         "pilot_data_plan": {
@@ -112,7 +110,8 @@ _ASSESSMENT_PLAN = {
 #: 2026-09-05, a fixture that never sends it stalls every stage that needs one.
 _ASSESSMENT_DEV_PLAN = {"dev_plan": {
     "instrument_sets": [
-        {"set_id": f"SET-0{i}", "objectives": [f"ILO-0{i}"], "plan_categories": ["formative", "summative"],
+        {"set_id": f"SET-0{i}", "objectives": [f"ILO-0{i}"],
+         "plan_categories": ["diagnostic", "formative", "summative"],
          "expected_items": 2,
          "instrument_hint": "Combined formative/summative check for this objective.",
          "rationale": "One instrument per objective keeps scope contained."}
@@ -124,6 +123,11 @@ _ASSESSMENT_DEV_PLAN = {"dev_plan": {
 def _assessment_tools() -> list[dict]:
     los = [f"ILO-0{i}" for i in range(1, 6)]
     types = ["multiple_choice", "short_answer", "performance_task"]
+    #: The three the plan above promises. Items and plan must name the SAME
+    #: vocabulary: an item realizing a category `lo_coverage_targets` never
+    #: asked for is a P3 gap by construction, and the cycling below deliberately
+    #: leaves some promised pairs unrealised — that is the `plan_coverage`
+    #: residual `test_replan` and the budget-stop test both run on.
     categories = ["diagnostic", "formative", "summative"]
     cognitive = ["remember", "understand", "apply", "analyze", "evaluate"]
     tools = []
@@ -134,7 +138,7 @@ def _assessment_tools() -> list[dict]:
             "type": types[i % 3],
             "question": f"Demonstrate mastery of {los[lo_idx]} in a realistic scenario.",
             "aligned_objective": los[lo_idx],
-            "plan_category": categories[i % 3],
+            "plan_category": categories[i % len(categories)],
             "required_cognitive_process": cognitive[lo_idx],
             "scoring_criteria": "Rubric scores correctness, design quality, and explanation against observable criteria (0-4 each).",
             "difficulty": ["easy", "medium", "hard"][i % 3],

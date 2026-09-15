@@ -205,9 +205,10 @@ them the modules should cover every activity. ``read_nodes`` already lists every
 its name and cognitive process, which is what this decision needs; read one in full only when
 its listing line leaves you unsure. Every module
 should set ``covers_topics`` to existing topic ids. Every media selection should set
-``respects_constraints`` to existing constraint ids it was chosen in light of (e.g. avoid
-bandwidth-heavy video under a low-bandwidth constraint). media_type must be one of:
-%(media_types)s. Every media selection should also set ``for_modules`` to
+``respects_constraints`` to the ids of the constraints it was chosen in light of, copied from
+``read_nodes``, which lists every constraint of this brief with its description — a constraint
+you did not read there does not exist, and a name you invent links to nothing.
+media_type must be one of: %(media_types)s. Every media selection should also set ``for_modules`` to
 the content module id(s) it serves — a later step develops materials one module at a time and
 needs to know which media belong to which module.
 

@@ -52,7 +52,37 @@ def test_match_list_reverse_reports_activity_with_no_resolvable_objective():
 
 # ── type-match (P3, P6) ────────────────────────────────────────────────────
 
-def test_match_p3_realizes_requires_nonempty_plan_category():
+def test_p3_reads_the_field_the_plan_is_actually_required_to_write():
+    """P3 used to hang on three OPTIONAL plan keys — `diagnostic`,
+    `formative`, `summative` — that no rule asked for and the schema no longer
+    declares, so the relation could not fire on any run.
+
+    MEASURED (run 7ef3ed16, multi+graph): the model wrote the REQUIRED
+    `lo_coverage_targets` and all 13 items carried a valid `plan_category`;
+    P3 scored 0.0 and `assessment_plan_0` was the only isolated node in a
+    139-node graph. The plan's promise and the item's claim are now read off
+    the same field `checks.plan_coverage` reads.
+    """
+    graph = AlignmentGraph()
+    graph.add_node(NodeType.ASSESSMENT_PLAN, "assessment_plan_0", {
+        "lo_coverage_targets": {"ILO-01": ["formative"], "ILO-02": ["formative"]}})
+    graph.add_element_node(NodeType.ASSESSMENT, "AT-01",
+                           {"item_id": "AT-01", "plan_category": "formative"})
+    # Unfailable is the C6/C7 trap: a category the plan never promised, and an
+    # item that declares none at all, still have no edge.
+    graph.add_element_node(NodeType.ASSESSMENT, "AT-02",
+                           {"item_id": "AT-02", "plan_category": "summative"})
+    graph.add_element_node(NodeType.ASSESSMENT, "AT-03", {"item_id": "AT-03"})
+
+    violations = alignment.match_p3_realizes(graph)
+
+    assert {v["node_id"] for v in violations} == {"assessment:AT-02", "assessment:AT-03"}
+    assert {e["target"] for e in graph.get_edges(relation_id="P3")} == {"assessment:AT-01"}
+
+
+def test_match_p3_realizes_still_reads_an_archived_plan_s_buckets():
+    """The three bucket keys survive as a fallback and for nothing else, so a
+    graph dumped before 2026-09-16 still scores the same P3 it scored then."""
     graph = AlignmentGraph()
     graph.add_node(NodeType.ASSESSMENT_PLAN, "assessment_plan_0", {"summative": ["final exam"], "diagnostic": [], "formative": []})
     graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01", "plan_category": "summative"})

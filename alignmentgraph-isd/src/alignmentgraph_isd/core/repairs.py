@@ -94,7 +94,15 @@ OWNED_BY_FAMILY: dict[str, frozenset[str]] = {
          "item_completeness"}),
     "activity_designer": frozenset(
         {"C3", "C4", "P4", "activity_engagement", "bloom_mismatch_activity"}),
-    "content_designer": frozenset({"C5", "P5", "P6", "orphan_content"}),
+    # P8 joined 2026-09-16. It was owned by nobody, so a media selection whose
+    # `respects_constraints` named nothing real produced no finding at all:
+    # `record_provenance` no-ops on an id that does not exist, and the gap
+    # surfaced only in the final residual audit, with nothing to explain it.
+    # MEASURED (run 7ef3ed16): all 24 media selections wrote "low_bandwidth" /
+    # "high_bandwidth" — copied from the rule's own parenthetical example —
+    # against constraint nodes c1..c7; P8 scored 0.0, the ledger held zero P8
+    # findings, and the Content Designer was never told.
+    "content_designer": frozenset({"C5", "P5", "P6", "P8", "orphan_content"}),
     "rubric_designer": frozenset(
         {"rubric_consistency", "evidence_alignment"}),
     "implementation_planner": frozenset({"feasibility", "actionability", "P10", "P11"}),
@@ -122,7 +130,11 @@ OWNED_BY_FAMILY: dict[str, frozenset[str]] = {
 #: touched by the deterministic net. What survives the agent's repair budget
 #: is counted as residual.
 REPORT_ONLY: frozenset[str] = frozenset({
-    "C3", "C5", "P4", "P6", "P10", "P11",
+    # P8: which constraints a media selection was chosen in light of is a
+    # design judgment, not a rearrangement of what the design already holds.
+    # The net could only pick a constraint at random and make the check pass by
+    # existing — the objection that has always kept P6 audit-only.
+    "C3", "C5", "P4", "P6", "P8", "P10", "P11",
     "activity_engagement", "bloom_mismatch_activity",
     "rubric_consistency", "feasibility", "actionability",
 })
@@ -326,9 +338,14 @@ def repair_assessment_coverage(ctx: RepairContext, violations: list) -> None:
     tools = [dict(n["data"]) for n in graph.element_nodes(NodeType.ASSESSMENT)]
     lo_map = _element_lo_map(graph)
     plan_node = graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))
-    plan_categories = [
-        cat for cat in alignment._ASSESSMENT_PLAN_CATEGORIES if plan_node and plan_node["data"].get(cat)
-    ] or ["summative"]
+    # The categories the plan PROMISED, read the one way every consumer of
+    # `lo_coverage_targets` reads it. This used to scan the plan's optional
+    # `diagnostic`/`formative`/`summative` buckets, which no rule asks for and
+    # which the schema no longer declares — so it always fell through to
+    # ["summative"] and re-pointed every malformed item there.
+    plan_categories = sorted(
+        alignment._promised_categories(plan_node["data"] if plan_node else {})
+    ) or ["summative"]
 
     repaired_ids: list[str] = []
     for violation in violations:

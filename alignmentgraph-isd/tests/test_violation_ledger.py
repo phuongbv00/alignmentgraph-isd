@@ -75,11 +75,22 @@ def test_every_check_in_a_broken_design_is_distinguishable():
         found += getattr(checks, name)(graph)
 
     collisions = {k for k, n in Counter(v.key for v in found).items() if n > 1}
-    # P6 collides on purpose: its establisher says "this material matched no
-    # media selection" and the coverage sweep says "it has no P6 coverage" —
-    # one fact stated twice by two producers, which the ledger keeps as one
-    # finding carrying both wordings.
-    assert collisions == {"P6|material:MAT-0101"}, collisions
+    # NO key appears twice, P3 and P6 included. Their establisher and the
+    # coverage sweep judge the SAME node — an item gets its edge iff the
+    # establisher did not report it — so the sweep used to restate the
+    # establisher's finding in vaguer words. The ledger merged the two, the raw
+    # list did not, and everything counting the list double-counted: MEASURED
+    # (run 7ef3ed16) 13 assessment items reported as 26, three reconcile rounds
+    # spent re-deriving them, and three `plan_coverage` findings stamped
+    # `budget` when they had converged. `checks.relation_coverage` now skips a
+    # node its own establisher already reported, keeping the specific wording.
+    assert collisions == set(), collisions
+
+    # Dropping the duplicate must not drop the finding: MAT-0101 is still
+    # reported once, in the establisher's own words rather than the sweep's.
+    p6 = [v for v in found if v.violation_type == "P6"]
+    assert len(p6) == 1 and p6[0].node_id == "material:MAT-0101"
+    assert "media selection" in p6[0].message
 
 
 # ── the ledger ──────────────────────────────────────────────────────────────
@@ -185,6 +196,73 @@ def test_a_pass_that_repairs_nothing_stops_and_says_so():
         "reconcile ran more rounds than it has families — the budget is global "
         "again, so a family clean in round 1 is re-checked because another "
         "family had work")
+
+
+def test_a_type_no_family_owns_is_recorded_rather_than_dropped():
+    """A check whose result reaches nothing is a check that did not run.
+
+    ``_verify_family`` used to filter its collected violations down to the
+    family's owned types and THROW THE REST AWAY, so a type ``OWNED_BY_FAMILY``
+    does not list never became a Finding at all. MEASURED (run 7ef3ed16): the
+    run's own ``graph.json`` flagged 27 nodes — 3 ``measurability`` and 24
+    ``P8`` — that ``violations.json`` did not list, and the outcomes check
+    round recorded ``violation_count: 0`` on a stage whose objectives were
+    failing a check the same round had just run. The graph view and the
+    Violations tab described two different runs.
+
+    ``measurability`` is the type to assert on: audit-only by design, owned by
+    nobody, and provoked by one vague objective — so the graph below is the
+    whole setup the defect needs.
+    """
+    from alignmentgraph_isd.core.agentic.run import _verify_family
+    from alignmentgraph_isd.core.repairs import OWNED_BY_FAMILY, RepairContext
+    from alignmentgraph_isd.core.trajectory import WORKFLOW_ORCHESTRATOR, TrajectoryLogger
+
+    assert "measurability" not in OWNED_BY_FAMILY["outcome_designer"], (
+        "this test needs a type its family does not own")
+
+    graph = AlignmentGraph()
+    graph.add_element_node("objective", "ILO-01", {
+        "id": "ILO-01", "level": "understand", "bloom_verb": "explain",
+        "statement": "Students will understand object-oriented design."})
+    memory = Memory(graph=graph)
+    trajectory = TrajectoryLogger()
+    ctx = RepairContext(graph=graph, store=None, trajectory=trajectory,
+                        actor=WORKFLOW_ORCHESTRATOR)
+
+    still_open = _verify_family(
+        "outcome_designer", state=graph, design_brief=None, graph_mode=True,
+        memory=memory, trajectory=trajectory, ctx=ctx,
+        identity=WORKFLOW_ORCHESTRATOR, phase="outcomes")
+
+    # Not returned — it drives no repair, no routing, no convergence decision.
+    assert [v.violation_type for v in still_open] == []
+    # But recorded, with the reason that says nobody was ever asked.
+    unowned = [f for f in memory.findings if f.violation_type == "measurability"]
+    assert len(unowned) == 1, [f.violation_type for f in memory.findings]
+    assert unowned[0].open_reason == "unowned"
+    assert unowned[0].shown_to_agent == 0
+    assert unowned[0].report_only is True
+    # Never credited: the harness may not repair what it does not own, so a
+    # key that vanishes from the next collect must not read as a fix.
+    assert unowned[0].outcome == "open"
+
+
+def test_the_graph_and_the_ledger_describe_the_same_run():
+    """``graph.json``'s ``node_violations`` and ``violations.json`` are two
+    views of one check pass and must not disagree about which TYPES fired.
+
+    MEASURED (run 7ef3ed16): the graph flagged ``measurability`` on three
+    objectives and ``P8`` on 24 media selections while the Violations tab
+    listed neither — 27 nodes badged "a check failed here" with nothing behind
+    the badge. That is the same drop this file's previous test isolates, seen
+    from the reader's side."""
+    result = _run()
+    flagged = {t for types in result["graph"]["node_violations"].values() for t in types}
+    recorded = {f["type"] for f in result["violations"]}
+
+    assert flagged <= recorded, (
+        f"the graph badges types the ledger never recorded: {sorted(flagged - recorded)}")
 
 
 def test_converged_and_out_of_budget_are_different_answers():

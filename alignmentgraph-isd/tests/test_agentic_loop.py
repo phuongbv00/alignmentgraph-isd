@@ -129,7 +129,6 @@ _ASSESSMENT_DEV_PLAN = {"dev_plan": {"instrument_sets": [
 
 _ASSESSMENT = {
     "assessment_plan": {
-        "diagnostic": ["Pre-quiz"], "formative": ["Critique"], "summative": ["Project"],
         "lo_coverage_targets": {"ILO-01": ["summative"]},
         "expected_evidence": {"ILO-01": "A working artifact."},
         "formative_methods": ["Weekly critique with rubric"],
@@ -1856,3 +1855,43 @@ def test_both_arms_refund_a_failed_call_on_the_same_rule():
         source = inspect.getsource(owner)
         assert 'startswith("ERROR")' in source and "ERROR_ALLOWANCE" in source, owner
 
+
+
+def test_a_field_the_artifact_does_not_have_is_rejected_by_name():
+    """MEASURED (run 7ef3ed16): ``submit_assessment_plan`` arrived carrying
+    ``pilot_data_plan`` and, beside it at the TOP level, the four fields of one
+    ``anticipated_difficulties`` entry — ``area``, ``rationale``,
+    ``detected_by``, ``first_revision``. The schema allowed extra keys and
+    ``validate_section`` only checks the required ones, so the stray object
+    went into the graph node, through the aggregator, and into
+    ``addie_output.json`` for the judge.
+
+    Naming the keys is what makes it fixable in one turn: the model wrote the
+    content, it just put it one level too high."""
+    step = STEP_BY_NAME["assessment"]
+    difficulty = {"area": "x", "rationale": "y", "detected_by": "z", "first_revision": "w"}
+    plan = {"lo_coverage_targets": {"ILO-01": ["formative"]},
+            "pilot_data_plan": {"anticipated_difficulties": [difficulty]}}
+
+    assert tools.undeclared_key_errors(step, {"assessment_plan": plan}) == []
+
+    errors = tools.undeclared_key_errors(step, {"assessment_plan": {**plan, **difficulty}})
+    assert len(errors) == 1
+    # Every stray key named, and the artifact's real fields listed beside them.
+    for key in difficulty:
+        assert key in errors[0]
+    assert "lo_coverage_targets" in errors[0] and "pilot_data_plan" in errors[0]
+
+
+def test_the_undeclared_key_gate_judges_objects_only():
+    """An ARRAY field's items are the Developer tier's contract
+    (``fanout.output_errors``), and a stray key inside a nested object is a
+    different, unmeasured failure. A gate is worth its submit budget only where
+    it has been seen to fire."""
+    step = STEP_BY_NAME["assessment"]
+    # An array submit field, and a nested object one level down: neither judged.
+    assert tools.undeclared_key_errors(
+        STEP_BY_NAME["outcomes"], {"learning_objectives": [{"whatever": 1}]}) == []
+    assert tools.undeclared_key_errors(step, {"assessment_plan": {
+        "lo_coverage_targets": {"ILO-01": ["formative"]},
+        "pilot_data_plan": {"anticipated_difficulties": [], "invented": 1}}}) == []

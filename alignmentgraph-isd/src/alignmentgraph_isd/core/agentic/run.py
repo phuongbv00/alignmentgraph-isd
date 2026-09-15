@@ -122,26 +122,55 @@ def _verify_family(family: str, *, state, design_brief, graph_mode: bool, memory
     """
     owned_types = repairs.OWNED_BY_FAMILY.get(family, frozenset())
 
-    def collect() -> list:
+    def collect() -> tuple[list, list]:
+        """What this family owns, and what it merely ran into.
+
+        The split used to be a filter that THREW THE SECOND HALF AWAY, which
+        made the deterministic net the only thing a violation could reach: a
+        type no family owns was computed on every round and then dropped, so
+        it never became a Finding and the ledger could not say it existed.
+
+        MEASURED (run 7ef3ed16): the run's own ``graph.json`` flagged 27 nodes
+        — 3 ``measurability`` (ILO-02/03/06, "Students will know ...") and 24
+        ``P8`` — while ``violations.json`` listed none of them, and the
+        outcomes check round recorded ``violation_count: 0`` on a stage whose
+        objectives were failing a check the same round had just run. The graph
+        and the Violations tab were describing two different runs.
+
+        Only the OWNED half drives repair, routing and convergence — that part
+        is unchanged, and is what ``_verify_family`` returns. The other half is
+        recorded and nothing more; ``Memory.observe_violations`` already stamps
+        it ``open_reason: "unowned"``, and ``_REASON_PRECEDENCE`` already ranks
+        that above ``converged`` so a later round cannot relabel it.
+        """
         violations = (_collect_violations(family, state, design_brief) if graph_mode
                       else _collect_violations_prose(family, state))
         owned = [v for v in violations if v.violation_type in owned_types]
+        unowned = [v for v in violations if v.violation_type not in owned_types]
         if route:
             for v in owned:
                 v.target_designer = repairs.OWNER_BY_VIOLATION[v.violation_type]
-        return owned
+        return owned, unowned
 
-    def observe(found: list) -> tuple[int, set]:
+    def observe(found: list, unowned: list) -> tuple[int, set]:
+        """One round, both halves — and only the owned keys handed back.
+
+        ``credit_repair`` closes whatever is in the returned set and missing
+        from the next ``collect()``; an unowned key is missing from it by
+        construction, so returning one would credit the harness with a repair
+        it is not even allowed to attempt.
+        """
         round_no = trajectory.log_violations_result(
-            serialize_violations(found, identity), agent=WORKFLOW_ORCHESTRATOR)
+            serialize_violations(found + unowned, identity), agent=WORKFLOW_ORCHESTRATOR)
         keys = memory.observe_violations(found, round=round_no, phase=phase, family=family)
+        memory.observe_violations(unowned, round=round_no, phase=phase, family=family)
         return round_no, keys
 
     found: list = []
     with trajectory.acting_as(WORKFLOW_ORCHESTRATOR):
         for _ in range(budget.SELF_VALIDATION_BUDGET):
-            found = collect()
-            round_no, keys = observe(found)
+            found, unowned = collect()
+            round_no, keys = observe(found, unowned)
             if not found:
                 break
             if route:
@@ -154,12 +183,12 @@ def _verify_family(family: str, *, state, design_brief, graph_mode: bool, memory
                     family, sorted(keys), [v.violation_type for v in found],
                     round_number=round_no, agent=WORKFLOW_ORCHESTRATOR)
                 break
-            memory.credit_repair(keys - {v.key for v in collect()},
+            memory.credit_repair(keys - {v.key for v in collect()[0]},
                                  by=identity, round=round_no, harness=True)
         else:
             if final_look:
-                found = collect()
-                observe(found)
+                found, unowned = collect()
+                observe(found, unowned)
                 memory.mark_open_reason({v.key for v in found}, reason="budget")
     return found
 

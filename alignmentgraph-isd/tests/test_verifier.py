@@ -125,7 +125,29 @@ def test_evaluation_quality_silent_when_methods_and_pilot_data_declared():
     assert checks.evaluation_quality(graph) == []
 
 
+def test_evaluation_quality_reads_formative_intent_off_lo_coverage_targets():
+    """The gate used to be ``plan["formative"]`` — one of the three optional
+    buckets P3 also hung on, asked for by no rule and no longer declared by the
+    schema. So this check could not fire on a real plan either: MEASURED (run
+    7ef3ed16) the plan promised a formative item for eight of nine objectives,
+    shipped a ``pilot_data_plan`` with no ``collection_points``, and produced
+    zero ``evaluation_quality`` findings."""
+    graph = AlignmentGraph()
+    graph.add_node(NodeType.ASSESSMENT_PLAN, "assessment_plan_0", {
+        "lo_coverage_targets": {"ILO-01": ["formative"]},
+        "formative_methods": [],
+    })
+    assert "evaluation_quality" in _types(checks.evaluation_quality(graph))
+
+
 def test_evaluation_quality_silent_when_no_formative_intent():
+    graph = AlignmentGraph()
+    graph.add_node(NodeType.ASSESSMENT_PLAN, "assessment_plan_0", {
+        "lo_coverage_targets": {"ILO-01": ["summative"]}, "formative_methods": []})
+    assert checks.evaluation_quality(graph) == []
+
+
+def test_evaluation_quality_silent_when_no_formative_intent_archived_plan():
     graph = AlignmentGraph()
     graph.add_node(NodeType.ASSESSMENT_PLAN, "assessment_plan_0", {"formative": [], "formative_methods": []})
     assert checks.evaluation_quality(graph) == []

@@ -25,7 +25,12 @@ def _collect_violations(node_name: str, graph, design_brief) -> list:
         bloom = [v for v in checks.bloom_mismatches(graph) if v.violation_type == "bloom_mismatch_activity"]
         return coverage + checks.activity_engagement(graph) + bloom
     if node_name == "content_designer":
-        coverage = [v for v in checks.relation_coverage(graph) if v.violation_type in ("C5", "P5", "P6")]
+        # P8: a media selection whose `respects_constraints` names no constraint
+        # that exists. Report-only for the harness (picking one would be a
+        # design judgment), so the Designer is shown it in its own repair turn
+        # — which is the only way it is shown at all.
+        coverage = [v for v in checks.relation_coverage(graph)
+                    if v.violation_type in ("C5", "P5", "P6", "P8")]
         return coverage + checks.orphan_content(graph)
     if node_name == "rubric_designer":
         # No relation coverage: a criterion is a FIELD of the item it marks.

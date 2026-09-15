@@ -47,7 +47,7 @@ from ..ratelimit import gate_for
 from ..trajectory import WORKFLOW_ORCHESTRATOR
 from . import budget, compaction, tools
 from .specialists import STEPS, AgenticStep, missing_parts, parts_of, step_done
-from .tools import unwrap_section
+from .tools import undeclared_key_errors, unwrap_section
 
 
 @dataclass
@@ -1358,12 +1358,17 @@ class ToolLoop:
         return hasattr(self.state, "element_nodes")
 
     def _validate(self, section: dict) -> list[str]:
-        """The step's own deterministic checks, plus the protocol-leak gate.
-        Composed here rather than inside the step table because the gate is a
-        property of the TRANSPORT, not of the artifact contract: it catches a
-        model that echoes a tool name into the artifact, which the step's own
-        checks have no reason to know about."""
-        return list(self.step.validate(section)) + protocol_leak_errors(section)
+        """The step's own deterministic checks, plus the two transport gates.
+
+        Composed here rather than inside the step table because both are
+        properties of the TRANSPORT rather than of any one artifact's contract:
+        one catches a model echoing a tool name into the artifact, the other a
+        model writing a field the artifact does not have. Neither is something
+        a step's own checks have a reason to know about, and both are the same
+        for every step."""
+        return (list(self.step.validate(section))
+                + protocol_leak_errors(section)
+                + undeclared_key_errors(self.step, section))
 
     # ── prompt assembly ─────────────────────────────────────────────────────
     def _retrieval_available(self) -> bool:

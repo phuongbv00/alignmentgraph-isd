@@ -262,17 +262,50 @@ def match_list_reverse(
 _ASSESSMENT_PLAN_CATEGORIES = ("diagnostic", "formative", "summative")
 
 
+def _promised_categories(plan: dict) -> set[str]:
+    """The plan categories the assessment plan actually COMMITS to.
+
+    Read off ``lo_coverage_targets`` — the plan's REQUIRED field, the one
+    ``RULES_ASSESSMENT_PLAN`` asks for and the one ``checks.plan_coverage``
+    and ``dev_plans`` already read — through the single shared reader, so
+    every consumer of this field normalizes it the same way.
+
+    MEASURED (run 7ef3ed16, multi+graph, 13 items): P3 used to require a
+    non-empty ``plan["diagnostic"|"formative"|"summative"]``. Those three keys
+    are OPTIONAL in ``artifact_schemas`` and are named by no rule, so the model
+    wrote the required ``lo_coverage_targets`` ({"ILO-01": ["diagnostic",
+    "formative"], ...}) and left them absent. All 13 items carried a valid
+    ``plan_category``, and P3 still scored 0.0 — the relation could not fire on
+    any run. Two parts of one system were reading two different keys for one
+    fact.
+
+    The three bucket keys stay as a fallback for an archived plan that has
+    them, and for nothing else.
+
+    This does NOT make P3 unfailable (the objection that retired C6/C7): an
+    item with no ``plan_category``, or one naming a category the plan never
+    promised, still has no edge.
+    """
+    from .. import dev_plans
+
+    promised = {category
+                for _, category in dev_plans.plan_category_pairs(
+                    plan.get("lo_coverage_targets"))}
+    promised |= {c for c in _ASSESSMENT_PLAN_CATEGORIES if plan.get(c)}
+    return promised
+
+
 def match_p3_realizes(graph: AlignmentGraph) -> list[dict]:
     """P3: an assessment item realizes the plan when its declared
-    ``plan_category`` names a non-empty list in ``assessment_plan_0`` (the
-    Assessment Designer tags each item with the plan category it fulfills
-    when it generates it, in the same run as the plan itself)."""
+    ``plan_category`` is one the plan promised (see
+    :func:`_promised_categories`)."""
     plan_node = graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))
     plan = plan_node["data"] if plan_node else {}
+    promised = _promised_categories(plan)
     violations: list[dict] = []
     for item in graph.element_nodes(NodeType.ASSESSMENT):
         category = str(item["data"].get("plan_category", "") or "").strip().lower()
-        if category in _ASSESSMENT_PLAN_CATEGORIES and plan.get(category):
+        if category and category in promised:
             graph.add_edge(
                 REGISTRY["P3"].key, graph.section_id(NodeType.ASSESSMENT_PLAN), item["id"],
                 evidence=category, relation_id="P3", established_by="type",

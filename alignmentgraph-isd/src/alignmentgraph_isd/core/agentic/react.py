@@ -350,6 +350,10 @@ class ReactLoop:
         dispatch_keys = [k for k, _t, _r in step.submit_fields]
         if any(k in present for k in dispatch_keys):
             errors += list(step.validate(section))
+            # Same transport gate the stage loop applies, on the same terms:
+            # only the dispatch keys that actually arrived are judged, so a
+            # partial submit is not penalised for what it left out.
+            errors += tools.undeclared_key_errors(step, present)
         if spec is not None:
             # The SAME item rules a Developer's submit is held to
             # (`fanout.output_errors`), because this agent is writing exactly

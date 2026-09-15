@@ -561,8 +561,14 @@ def evaluation_quality(graph) -> list[Violation]:
 
 
 def evaluation_quality_data(node_id: str, data: dict) -> list[Violation]:
-    formative_intent = data.get("formative")
-    if not formative_intent:
+    # "Declares formative intent" = the plan PROMISED a formative item for some
+    # objective, read off `lo_coverage_targets` like everything else that asks
+    # what the plan committed to. It used to gate on `data["formative"]`, one of
+    # the three optional buckets P3 also hung on: no rule asked for them and the
+    # schema no longer declares them, so this check could not fire either —
+    # measured on run 7ef3ed16, whose plan named formative for eight of nine
+    # objectives and produced zero `evaluation_quality` findings.
+    if "formative" not in alignment._promised_categories(data):
         return []
     violations: list[Violation] = []
     if not _has_concrete_items(data.get("formative_methods")):
@@ -802,9 +808,33 @@ def relation_coverage(graph) -> list[Violation]:
             metadata={"node_id": node_id, "item_id": bare_id},
         ))
 
+    # What the establishers already reported, by the SAME identity the ledger
+    # uses (``Violation.key``; no relation id is in ``IDENTITY_FIELDS``, so the
+    # pair IS the key). P3 and P6 check their ``coverage_side`` node directly —
+    # an item gets its edge iff it is not a gap — so the loop below would raise
+    # a second Violation on the very node just reported, with a vaguer message.
+    #
+    # MEASURED (run 7ef3ed16): 13 assessment items reported as 26 P3
+    # violations. The ledger deduplicated them, the raw list did not, and the
+    # cost landed on the reconciliation pass — rounds 12/13/14 each returned
+    # the same 29, ``SELF_VALIDATION_BUDGET`` ran out, and three
+    # ``plan_coverage`` findings were stamped ``open_reason: "budget"`` when
+    # they had in fact converged. That relabels a parameter we chose as a
+    # result about the model, which is the one thing ``memory.py``'s reason
+    # precedence exists to prevent.
+    #
+    # C2/C3/C4 are deliberately NOT skipped: they report on the node that
+    # DECLARES the reference (the item, the activity) while their coverage side
+    # is the node that should receive one (the objective, the assessment task).
+    # Two different node sets, two different findings — the pair below tells
+    # them apart without a table to keep in step.
+    reported = {(v.violation_type, v.node_id) for v in violations}
+
     for relation_id, relation in alignment.REGISTRY.items():
         _, uncovered = alignment.relation_coverage(graph, relation_id)
         for node_id in uncovered:
+            if (relation_id, node_id) in reported:
+                continue
             metadata = {"node_id": node_id}
             if node_id.startswith(f"{NodeType.OBJECTIVE}{graph.ELEMENT_SEP}"):
                 metadata["lo_id"] = _bare_id(graph, node_id)
@@ -824,6 +854,9 @@ def relation_coverage(graph) -> list[Violation]:
 #: "establish a link" is the class of instruction a small model does not act
 #: on; naming the field is what closes the gap.
 _COVERAGE_HINTS = {
+    "P8": ("This media selection names no constraint that exists. Set "
+           "`respects_constraints` to constraint ids from `read_nodes`, which "
+           "lists every constraint of this brief."),
     "P10": ("Nobody scheduled this activity. Put it in a session block of the "
             "implementation dev_plan, so a session guide delivers it."),
     "P11": ("Nobody hands this material out. Put it in a session block of the "

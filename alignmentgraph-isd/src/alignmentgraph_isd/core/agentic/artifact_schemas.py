@@ -62,7 +62,23 @@ def _from_validation(field_key: str, *, exclude: tuple[str, ...] = ()) -> dict:
 
 
 def _obj(properties: dict, required: tuple[str, ...] = ()) -> dict:
-    return {"type": "object", "properties": properties, "required": list(required)}
+    """``additionalProperties: false`` — the declared keys ARE the artifact.
+
+    MEASURED (run 7ef3ed16): ``submit_assessment_plan`` arrived carrying
+    ``pilot_data_plan`` AND, beside it at the top level, the four fields of a
+    single ``anticipated_difficulty`` (``area``, ``rationale``,
+    ``detected_by``, ``first_revision``) — one element of that list written
+    outside the list. Nothing objected: the schema allowed extra keys and
+    ``validate_section`` only checks the REQUIRED ones. The stray object went
+    into the graph node, through the aggregator, and into
+    ``addie_output.json`` for the judge to read.
+
+    Declared on the shape rather than enforced only at submit so the model is
+    told before it writes; ``tools.undeclared_key_errors`` is the half that
+    makes the refusal real.
+    """
+    return {"type": "object", "properties": properties,
+            "required": list(required), "additionalProperties": False}
 
 
 def _arr(items: str = "string") -> dict:
@@ -138,8 +154,13 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
     }, ("id", "level", "statement", "bloom_verb")),
 
     # ── assessment ───────────────────────────────────────────────────────
+    # No "diagnostic"/"formative"/"summative" buckets. They were optional here,
+    # named by no rule, and read by nothing but the old P3 establisher — which
+    # is exactly why P3 could not fire (see
+    # `alignment._promised_categories`). The plan states its categories ONCE,
+    # in `lo_coverage_targets`, per objective; an optional second place to say
+    # the same thing only invites a small model to guess.
     "assessment_plan": _obj({
-        "diagnostic": _arr(), "formative": _arr(), "summative": _arr(),
         "lo_coverage_targets": {"type": "object",
             "description": "objective id -> list of plan categories covering it",
             "additionalProperties": {"type": "array", "items": _PLAN_CATEGORY}},

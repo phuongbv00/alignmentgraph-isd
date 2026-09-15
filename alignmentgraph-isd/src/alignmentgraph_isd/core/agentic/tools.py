@@ -481,6 +481,48 @@ def _parameters_from(fields: tuple, schema_keys: dict[str, str] | None = None) -
     return {"type": "object", "properties": properties, "required": required}
 
 
+def undeclared_key_errors(step: "AgenticStep", section: dict) -> list[str]:
+    """Top-level keys an OBJECT artifact does not declare, named back.
+
+    The enforcement half of ``artifact_schemas._obj``'s
+    ``additionalProperties: false``. A property of the CONTRACT rather than of
+    the artifact's pedagogy, which is why it composes into the loops'
+    ``_validate`` beside ``protocol_leak_errors`` instead of living in any
+    step's own validator.
+
+    MEASURED (run 7ef3ed16): ``assessment_plan`` shipped ``area``,
+    ``rationale``, ``detected_by`` and ``first_revision`` at the top level —
+    one ``pilot_data_plan.anticipated_difficulties`` entry written outside its
+    list. It passed the submit, the audit and the aggregate, and reached the
+    judge. Naming the keys is what makes this fixable in one turn: the model
+    wrote the content, it simply put it one level too high.
+
+    Only OBJECT fields are judged, and only their top level. An array field's
+    ITEMS are the Developer tier's contract (``fanout.output_errors``), and a
+    stray key inside a nested object is a different, unmeasured failure — a
+    gate is worth its submit budget only where it has been seen to fire.
+    """
+    errors: list[str] = []
+    for key, json_type, _required in getattr(step, "submit_fields", ()):
+        if json_type != "object":
+            continue
+        value = section.get(key)
+        if not isinstance(value, dict) or not value:
+            continue
+        schema = ARTIFACT_SCHEMAS.get((step.schema_keys or {}).get(key, key))
+        declared = (schema or {}).get("properties")
+        if not declared:
+            continue
+        extra = sorted(k for k in value if k not in declared)
+        if extra:
+            errors.append(
+                f"{key}: {', '.join(extra)} " + ("is" if len(extra) == 1 else "are")
+                + " not part of this artifact. Its fields are: "
+                + ", ".join(sorted(declared))
+                + ". Move that content into the field it belongs to, or drop it.")
+    return errors
+
+
 def submit_parameters(step: "AgenticStep") -> dict:
     """The stage's WHOLE artifact as one schema — every top-level key at once.
 
