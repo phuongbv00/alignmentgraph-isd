@@ -45,7 +45,7 @@ def test_single_prose_run_end_to_end(fake_llm_factory):
 
     # A prose run has no graph and therefore no graph artifact keys at all.
     assert set(result) >= {"addie_output", "trajectory", "metadata"}
-    assert "graph" not in result and "graph_dot" not in result
+    assert "graph" not in result
     addie = result["addie_output"]
     assert set(addie) == {"analysis", "design", "development", "implementation", "evaluation"}
     assert addie["design"]["learning_objectives"], "expected learning objectives"
@@ -60,7 +60,7 @@ def test_multi_prose_run_is_graph_free_and_unrouted(fake_llm_factory):
     brief = load_brief("minimal_brief.json")
     result = run_brief(brief, HarnessRunConfig(llm_factory=fake_llm_factory, context_mode="prose"))
 
-    assert "graph" not in result and "graph_dot" not in result
+    assert "graph" not in result
     addie = result["addie_output"]
     assert addie["design"]["learning_objectives"]
     assert addie["development"]["assessment_tools"]

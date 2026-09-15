@@ -1,37 +1,25 @@
 /** What a violation type is called, in words.
  *
- *  The FIRST such table in the repo. Until now the app showed raw snake_case
- *  straight from the checks — `bloom_mismatch_activity(2)` in the timeline —
- *  and the one place that did use words, the objective inspector's
- *  "Bloom level consistent" flag, was a hardcoded JSX literal on a boolean
- *  that had already unioned two different rules together. So the label a
- *  reader saw could not be traced to the check that produced it.
+ *  Until this existed the app showed raw snake_case straight from the checks —
+ *  `bloom_mismatch_activity(2)` in the timeline — so the label a reader saw
+ *  could not be traced to the check that produced it.
  *
- *  The C and P relation types take their wording from `alignment.REGISTRY`,
- *  which is where the canonical phrasing already lives; the rest are named
- *  after what the check asserts, not after what it forbids, so a clean design
- *  reads as a list of properties that hold.
+ *  This table names CHECKS, and only checks. A relation (C1-C5, P1-P11) is
+ *  named by `alignment.REGISTRY`, which travels in the graph payload as
+ *  `relation_coverage[id].label` — so `violationLabel` is given that map and
+ *  reads the wording from it.
+ *
+ *  It used to hold all sixteen relations too, under a comment claiming they
+ *  took their wording from the registry. None of them did: every one was a
+ *  paraphrase and most reversed the direction — C1 "objective derived from the
+ *  course goal" for `decomposes_to`, P10 "activity scheduled by a session
+ *  guide" for `delivers`, P5 "material traceable to a module" for `covers`.
+ *  A second vocabulary for the thing this system is about is exactly what a
+ *  single registry is for.
  */
 const LABELS: Record<string, string> = {
-  // Core alignment relations (the construct-validity backbone)
-  C1: 'objective derived from the course goal',
-  C2: 'objective assessed by an assessment item',
-  C3: 'objective practiced by an activity',
-  C4: 'activity prepares for its assessment',
-  C5: 'activity supported by content',
-  // Secondary provenance relations
-  P1: 'objective traceable to a gap or topic',
-  P2: 'objective informed by the learner profile',
-  P3: 'assessment item realises the plan',
-  P4: 'activity realises the instructional strategy',
-  P5: 'material traceable to a module',
-  P6: 'media selection realised by a material',
-  P7: 'module covers a task topic',
-  P8: 'media selection respects a constraint',
-  P9: 'improvement addresses a gap',
-  P10: 'activity scheduled by a session guide',
-  P11: 'material provisioned by a session guide',
-  // Within-artifact quality checks
+  // Within-artifact quality checks, named after what the check ASSERTS rather
+  // than what it forbids, so a clean design reads as properties that hold.
   bloom: "objective's Bloom verb and level agree",
   bloom_mismatch_assessment: 'objective assessed at its own Bloom level',
   bloom_mismatch_activity: 'objective practiced at its own Bloom level',
@@ -47,8 +35,15 @@ const LABELS: Record<string, string> = {
   actionability: 'implementation plan is concrete enough to run',
 }
 
-export function violationLabel(type: string): string {
-  return LABELS[type] ?? type
+/** `relations` is the payload's `relation_coverage`, whose entries carry the
+ *  registry's own `label`. Without it a relation id falls through as itself —
+ *  "C4" reads as nothing, but it is at least not a word this system does not
+ *  use. */
+export function violationLabel(
+  type: string,
+  relations?: Record<string, { label?: string }>,
+): string {
+  return LABELS[type] ?? relations?.[type]?.label ?? type
 }
 
 /** Why a finding is still open. Four different facts that "open" alone hid —

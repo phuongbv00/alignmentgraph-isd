@@ -77,6 +77,11 @@ def test_the_graph_arrives_as_state_not_as_replayed_events(client, ready_program
     last = graph_frames[-1]["data"]
     assert last["nodes"] and last["edges"]
     assert all("data" not in n for n in last["nodes"]), "wire frames must be the light view"
+    # ...and the light view must still be drawable: `data` is the only thing
+    # dropped, so every display field is on the wire.
+    assert all(n["label"] and n["kind"] for n in last["nodes"]), \
+        "the light frame must still carry what a renderer draws from"
+    assert last["legend"]["nodes"], "the legend rides with the graph it explains"
 
     counts = [len(f["data"]["nodes"]) for f in graph_frames]
     assert counts == sorted(counts), "the live graph shrank between frames"

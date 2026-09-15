@@ -6,8 +6,10 @@ import { api } from '../../api/client'
 import { BriefDetail } from './BriefDetail'
 import { Collapsible, JsonRoot } from './JsonTree'
 import { violationLabel } from '../../lib/violations'
+import { edgeId } from '../../graph/toCytoscape'
 import type {
   AlignmentGraphPayload,
+  AlignmentLeg,
   Brief,
   DeepAction,
   Finding,
@@ -143,6 +145,7 @@ function NodeDetail({
   }, [runId, nodeId])
 
   const alignment = graph?.objective_alignment?.[nodeId]
+  const graphNode = graph?.nodes.find((n) => n.id === nodeId)
   const incident = (graph?.edges ?? []).filter((e) => e.source === nodeId || e.target === nodeId)
 
   return (
@@ -150,9 +153,13 @@ function NodeDetail({
       <div className="section-title">Node</div>
       <dl className="kv">
         <dt>Id</dt><dd className="mono">{nodeId}</dd>
-        <dt>Type</dt><dd>{node?.type || graph?.nodes.find((n) => n.id === nodeId)?.type || '—'}</dd>
+        <dt>Type</dt><dd>{node?.type || graphNode?.type || '—'}</dd>
         <dt>Kind</dt>
-        <dd>{nodeId.includes(':') ? 'element (one item)' : 'section (a whole ADDIE section)'}</dd>
+        {/* From the payload (`node.kind`), not re-derived from the id — this
+            was a second copy of `AlignmentGraph.is_element` in a third place. */}
+        <dd>{graphNode?.kind === 'section' ? 'section (a whole ADDIE section)'
+          : graphNode?.kind === 'element' ? 'element (one item)'
+          : nodeId.includes(':') ? 'element (one item)' : 'section (a whole ADDIE section)'}</dd>
       </dl>
 
       {alignment && <AlignmentFlags flags={alignment} />}
@@ -161,12 +168,13 @@ function NodeDetail({
         nodeId={nodeId}
         types={graph?.node_violations?.[nodeId] ?? []}
         findings={findings}
+        relations={graph?.relation_coverage}
         // An objective's four alignment legs are already drawn above as
         // flags; repeating them here would say the same thing twice in two
         // shapes. Everything ELSE that failed on it — a vague statement, a
         // Bloom verb that disagrees with its level, a passive-only practice —
         // had nowhere to appear at all.
-        skip={alignment ? OBJECTIVE_FLAG_TYPES : []}
+        skip={alignment ? flagDrawnTypes(alignment) : []}
       />
 
       {incident.length > 0 && (
@@ -177,15 +185,14 @@ function NodeDetail({
               key={index}
               className="timeline-row"
               style={{ padding: '5px 0' }}
-              onClick={() => onSelect({
-                kind: 'graph-edge',
-                id: `${edge.relation_id}|${edge.source}|${edge.target}|${edge.type}`,
-                edge,
-              })}
+              // `edgeId`, not a second composition of it: this used to build
+              // the id WITHOUT the `scaffold` prefix the canvas uses, so
+              // opening a `narrates` edge from here selected nothing there.
+              onClick={() => onSelect({ kind: 'graph-edge', id: edgeId(edge), edge })}
             >
               <div className="small icon-label">
                 {edge.source === nodeId ? <ArrowRight size={12} /> : <ArrowLeft size={12} />}
-                <span className="mono">{edge.type || 'rooted-in'}</span>{' '}
+                <span className="mono">{edge.type}</span>{' '}
                 <span className="muted">{edge.source === nodeId ? edge.target : edge.source}</span>
               </div>
             </button>
@@ -201,11 +208,15 @@ function NodeDetail({
   )
 }
 
-//: The checks `AlignmentFlags` already draws, so `FailedChecks` does not
-//: repeat them for an objective.
-const OBJECTIVE_FLAG_TYPES = [
-  'C2', 'C3', 'bloom_mismatch_assessment', 'bloom_mismatch_activity',
-]
+/** The checks `AlignmentFlags` already draws, so `FailedChecks` does not repeat
+ *  them for an objective. DERIVED from the legs the payload declares rather
+ *  than listed by hand: the hand-written list said C2 and C3 and was never
+ *  updated when the C4 leg was added, so a C4 gap showed up twice — once as a
+ *  flag and once as a failed check. */
+function flagDrawnTypes(flags: ObjectiveAlignment): string[] {
+  const legs = flags.legs?.map((leg) => leg.relation_id) ?? ['C2', 'C3']
+  return [...legs, 'bloom_mismatch_assessment', 'bloom_mismatch_activity']
+}
 
 /**
  * What is wrong with THIS node, whatever kind it is.
@@ -220,11 +231,13 @@ const OBJECTIVE_FLAG_TYPES = [
  * run's ledger when it has settled. So a node shows its failed checks by name
  * during the run and gains the check's own message and repair hint at the end.
  */
-function FailedChecks({ nodeId, types, findings, skip }: {
+function FailedChecks({ nodeId, types, findings, skip, relations }: {
   nodeId: string
   types: string[]
   findings: Finding[]
   skip: string[]
+  /** The registry's own wording for a C/P relation, from the payload. */
+  relations?: Record<string, { label?: string }>
 }) {
   const shown = types.filter((type) => !skip.includes(type))
   if (shown.length === 0) return null
@@ -235,7 +248,7 @@ function FailedChecks({ nodeId, types, findings, skip }: {
     <>
       <div className="section-title">Failed checks ({shown.length})</div>
       <div className="flags">
-        {shown.map((type) => <Flag key={type} on={false} label={violationLabel(type)} />)}
+        {shown.map((type) => <Flag key={type} on={false} label={violationLabel(type, relations)} />)}
       </div>
       {shown.map((type) => {
         const finding = said.get(type)
@@ -253,23 +266,45 @@ function FailedChecks({ nodeId, types, findings, skip }: {
   )
 }
 
+/** The legs to draw. An archived payload has the scalars but no `legs`, so it
+ *  is turned into the same shape here rather than rendered down a second code
+ *  path — the relation ids are the only wording that has to be invented, and
+ *  only for a payload that predates the list. */
+function legsOf(flags: ObjectiveAlignment): AlignmentLeg[] {
+  if (flags.legs) return flags.legs
+  const legacy: [string, string, boolean | undefined][] = [
+    ['assessed_by', 'C2', flags.assessed_by ?? flags.measured],
+    ['practiced_by', 'C3', flags.practiced_by ?? flags.supported],
+    ['prepares_for', 'C4', flags.prepares_for ?? flags.prepares],
+  ]
+  return legacy
+    .filter(([, , ok]) => ok !== undefined)
+    .map(([verb, relation_id, ok]) => ({
+      relation_id, verb, ok: Boolean(ok), label: relation_id,
+    }))
+}
+
 function AlignmentFlags({ flags }: { flags: ObjectiveAlignment }) {
   return (
     <>
       <div className="section-title">Constructive alignment</div>
-      {/* Mirrors viz.objective_annotations: measured = C2 assessed_by,
-          supported = C3 practiced_by, prepares = the C4 edge that closes the
-          triad between those two. There is no rubric leg since 2026-09-02 — a
-          criterion is a field of the item that measures the objective, so it
-          was true whenever `measured` was. An archived run still carries the
-          flag and is still shown its own answer. */}
+      {/* One row per leg, in the order the harness declares them, worded by
+          `alignment.REGISTRY` — a leg IS a core relation seen from the
+          objective, so naming it again here would be a second vocabulary. The
+          hand-written rows this replaced had already drifted: they said
+          "assessed by an assessment task" where the registry says "assessment
+          task", and they were one of the four places the C4 leg had to be
+          added by hand in 2026-09-10.
+          `legsOf` falls back to the scalars for an archived payload. There is
+          no rubric leg since 2026-09-02 — a criterion is a field of the item
+          that measures the objective, so it was true whenever `measured` was. */}
       <div className="flags">
-        <Flag on={flags.measured} label="assessed by an assessment task (C2)" />
-        <Flag on={flags.supported} label="practiced by an activity (C3)" />
-        {flags.prepares !== undefined && (
-          <Flag on={flags.prepares}
-                label="that activity prepares for that assessment task (C4)" />
-        )}
+        {legsOf(flags).map((leg) => (
+          <Flag key={leg.relation_id} on={leg.ok} label={`${leg.label} (${leg.relation_id})`} />
+        ))}
+        {/* C7 is retired, so there is no registry entry to take wording from.
+            The ONE hand-written relation label left, kept verbatim so an
+            archived run still reads as it did, and marked as retired. */}
         {flags.evaluated !== undefined && (
           <Flag on={flags.evaluated} label="scored by a rubric criterion (C7, retired)" />
         )}
@@ -288,7 +323,7 @@ function AlignmentFlags({ flags }: { flags: ObjectiveAlignment }) {
       <div className="small muted" style={{ marginTop: 6 }}>
         {flags.aligned
           ? 'The constructive-alignment triad closes on this objective.'
-          : 'The triad does not close — one of C2, C3, C4 above is missing.'}
+          : `The triad does not close — one of ${legsOf(flags).map((l) => l.relation_id).join(', ')} above is missing.`}
       </div>
     </>
   )
@@ -323,7 +358,11 @@ function EdgeDetail({
     <div className="inspector-body">
       <div className="section-title">Relation</div>
       <dl className="kv">
-        <dt>Relation</dt><dd className="mono">{edge.type || 'rooted-in (structural)'}</dd>
+        {/* The edge's own `type` — `C2-assessed_by`, or `narrates` for a
+            structural edge. Every edge has one, so the two DIFFERENT invented
+            fallbacks that used to sit here and on the relations list
+            ('rooted-in' / 'rooted-in (structural)') named nothing real. */}
+        <dt>Relation</dt><dd className="mono">{edge.type}</dd>
         {coverage && <><dt>Means</dt><dd>{coverage.label}</dd></>}
         <dt>From</dt>
         <dd>

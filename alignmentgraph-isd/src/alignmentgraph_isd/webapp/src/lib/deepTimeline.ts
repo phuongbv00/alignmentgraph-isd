@@ -114,7 +114,13 @@ const ONE_PER_ROW = new Set<WorkKind>(
   ['check', 'repair', 'validate', 'audit', 'plan', 'route', 'step', 'model', 'error'],
 )
 
-export function foldChronological(actions: DeepAction[]): DeepRow[] {
+/** `relations` carries each C/P relation's canonical wording, straight from the
+ *  graph payload's `relation_coverage` (which is `alignment.REGISTRY`). Passed
+ *  down rather than kept in a table here: a relation is named in one place. */
+export function foldChronological(
+  actions: DeepAction[],
+  relations?: Record<string, { label?: string }>,
+): DeepRow[] {
   const rows: DeepRow[] = []
 
   for (const action of actions) {
@@ -135,7 +141,7 @@ export function foldChronological(actions: DeepAction[]): DeepRow[] {
       previous.actions.push(action)
       previous.count = previous.actions.length
       previous.title = titleFor(kind, previous.actions)
-      previous.detail = detailFor(kind, previous.actions)
+      previous.detail = detailFor(kind, previous.actions, relations)
       continue
     }
 
@@ -144,7 +150,7 @@ export function foldChronological(actions: DeepAction[]): DeepRow[] {
       action: action.action,
       kind,
       title: titleFor(kind, [action]),
-      detail: detailFor(kind, [action]),
+      detail: detailFor(kind, [action], relations),
       actions: [action],
       count: 1,
       tone: toneFor(kind, action),
@@ -221,7 +227,7 @@ function titleFor(kind: WorkKind, actions: DeepAction[]): string {
   }
 }
 
-function detailFor(kind: WorkKind, actions: DeepAction[]): string {
+function detailFor(kind: WorkKind, actions: DeepAction[], relations?: Record<string, { label?: string }>): string {
   const first = actions[0]
   const context = first.context
   switch (kind) {
@@ -260,7 +266,7 @@ function detailFor(kind: WorkKind, actions: DeepAction[]): string {
         // Named, not raw. `bloom_mismatch_activity(2)` told a reader the check
         // fired and nothing else — and it was the app's only word for it.
         return Object.entries(byType)
-          .map(([type, n]) => `${violationLabel(type)}${n > 1 ? ` ×${n}` : ''}`)
+          .map(([type, n]) => `${violationLabel(type, relations)}${n > 1 ? ` ×${n}` : ''}`)
           .join(', ')
       }
       return 'No violations'
@@ -290,7 +296,7 @@ function detailFor(kind: WorkKind, actions: DeepAction[]): string {
       ].filter(Boolean).join(' · ')
     }
     case 'route':
-      return (context.violation_types as string[] | undefined)?.map(violationLabel).join(', ') || 'no violation types recorded'
+      return (context.violation_types as string[] | undefined)?.map((type) => violationLabel(type, relations)).join(', ') || 'no violation types recorded'
     case 'audit': {
       const gaps = Number(context.residual_gap_count ?? 0)
       const gapped = (context.gapped_relations as string[] | undefined) ?? []

@@ -421,10 +421,12 @@ export default function App() {
                   runActive={runActive}
                   selection={selection}
                   onSelect={(value) => { setSelection(value); setInspectorCollapsed(false) }}
+                  relations={graph?.relation_coverage}
                 />
               )}
               {tab === 'violations' && (
-                <ViolationGrid findings={findings} runId={runId} runActive={runActive} />
+                <ViolationGrid findings={findings} runId={runId} runActive={runActive}
+                                relations={graph?.relation_coverage} />
               )}
               {tab === 'context' && (
                 <ContextGrid contexts={contexts} rows={stream.contextRows} runId={runId} />

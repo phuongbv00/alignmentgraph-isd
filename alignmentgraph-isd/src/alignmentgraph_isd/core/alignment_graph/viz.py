@@ -5,21 +5,41 @@ reconstruction from the ADDIE output) — it shows repair-added nodes, every
 established edge's ``relation_id`` / ``established_by`` mechanism, and the
 structural alignment state the verifier actually saw.
 
-Two artifacts:
-- ``<stem>.json`` — the full dump (``AlignmentGraph.to_full_dict``): node-link
-  JSON with complete node payloads, per-objective and per-relation alignment
+ONE artifact, two renderings of it:
+- ``<stem>.json`` — the dump (``AlignmentGraph.to_full_dict``): node-link JSON
+  with complete node payloads, per-objective and per-relation alignment
   annotations from the single definition in ``alignment.py`` (nothing
-  re-implements the rules here), plus run metadata (brief id, timestamp,
-  node/edge counts by type).
-- ``<stem>.dot`` — GraphViz DOT, renderable in one command:
+  re-implements the rules here), the display semantics below, plus run metadata
+  (brief id, timestamp, node/edge counts by type).
+- GraphViz DOT, rendered FROM that payload on demand and never persisted:
+      alignmentgraph-isd dot <stem>.json -o <stem>.dot
       dot -Tsvg <stem>.dot -o <stem>.svg
 
-Colouring is the structural alignment state, not decoration:
+The payload carries every DISPLAY SEMANTIC, and that is the point of it: a node
+knows its ``label`` and ``kind``, an edge its ``id``, ``layer``, ``tier`` and
+whether it is ``invalid``, an objective the ordered ``legs`` of its alignment,
+and the whole graph its ``legend``. Two rules follow, and both are load-bearing:
+
+- **Colour and shape are the renderer's, everything else is the payload's.**
+  GraphViz and cytoscape share no primitives (there is no ``folder`` shape in
+  cytoscape), so each keeps a key -> style table and nothing more.
+- **No renderer reads** ``node["data"]`` **to draw.** That is what lets the
+  server's wire frame drop ``data`` and stay complete, and it is why
+  ``label``/``detail``/``level``/``repaired`` exist as fields.
+
+A relation is named by ``alignment.REGISTRY`` — its ``edge_type`` verb
+(``assessed_by``) and its ``label`` sentence — verbatim, everywhere, in both
+renderers. No synonyms and no reversed phrasings: that is how the app came to
+call C1 "derived from" and P10 "scheduled by", words this system does not use.
+
+Colouring is the structural alignment state, not decoration (DOT's table; the
+webapp keeps its own against the same legend keys):
 - objective nodes: green when the constructive-alignment triad CLOSES on the
-  objective — measured (C2), supported (C3), and the supporting activity
-  prepares for the measuring item (C4) — amber otherwise. Bloom is not part of
-  that test; it is a content condition and rides as a separate ⚠ on the label
-  and on the offending edge.
+  objective — it is ``assessed_by`` an item (C2), ``practiced_by`` an activity
+  (C3), and that activity ``prepares_for`` that item (C4) — amber otherwise.
+  Those three verbs are the relations' own, and they are what the legs are
+  reported under. Bloom is not part of that test; it is a content condition and
+  rides as a separate ⚠ on the label and on the offending edge.
 - edges by establishment mechanism: id-match solid green, type-match solid blue,
   provenance solid grey; a C2/C3 edge that fails the Bloom/format rule is
   red-dashed (e.g. an MCQ assessing an Apply objective).
@@ -45,7 +65,19 @@ _NODE_STYLE = {
 _ALIGNED_FILL = "#bbf7d0"      # green
 _UNALIGNED_FILL = "#fde68a"    # amber
 _EDGE_COLOR = {"id": "#16a34a", "type": "#2563eb", "provenance": "#6b7280"}
-_INVALID_EDGE = "#dc2626"      # red — a measures edge failing the Bloom/format rule
+#: red — an `assessed_by` (C2) or `practiced_by` (C3) edge failing its own
+#: Bloom/format rule. Named by the relation's own verb: there is no relation
+#: called "measures", and a synonym here is how the webapp came to invent a
+#: whole vocabulary of its own ("derived from", "traceable to", "scheduled by").
+_INVALID_EDGE = "#dc2626"
+
+#: The node id separator, borrowed rather than restated: `kind` must agree with
+#: `AlignmentGraph.is_element`, which is the authority on what an element is.
+ELEMENT_SEP = AlignmentGraph.ELEMENT_SEP
+
+#: Bumped when the display fields below change shape. A payload that does not
+#: carry it predates them and is upgraded on read (`with_display_semantics`).
+SCHEMA_VERSION = 2
 
 
 def objective_annotations(graph: AlignmentGraph) -> dict[str, dict]:
@@ -106,13 +138,28 @@ def objective_annotations(graph: AlignmentGraph) -> dict[str, dict]:
         # objective that had an item at all. It never varied, so it never
         # narrowed `aligned` — dropping it changed the definition and not the
         # answer.
+        held = {"C2": assessed, "C3": practiced, "C4": prepares}
+        #: The legs as a RENDERABLE list, in the order `ALIGNMENT_LEGS` declares
+        #: — what the DOT label, the app's badge and the inspector's flag rows
+        #: all read, so the three cannot show different legs in different orders.
+        #: Every word in it comes from the REGISTRY: a leg is a core relation
+        #: seen from the objective, so the verb and the wording are the
+        #: relation's own. `ok` is the only thing this function contributes.
+        legs = [
+            {"relation_id": relation_id,
+             "verb": alignment.leg_verb(relation_id),
+             "label": alignment.REGISTRY[relation_id].label,
+             "ok": held[relation_id]}
+            for relation_id in alignment.ALIGNMENT_LEGS
+        ]
         out[node_id] = {
-            "measured": assessed,
-            "supported": practiced,
-            # The C4 leg gets its own flag for the reason the Bloom flag was
-            # split: a conjunction tells a reader that something failed and
-            # not which, and this is the leg they will not guess.
-            "prepares": prepares,
+            # One scalar per leg, named by the relation's own VERB. They were
+            # `measured`/`supported`/`prepares` until 2026-09-14 — a third set
+            # of names for C2/C3/C4, beside the registry's and the app's own.
+            # Nothing outside this package ever read them (no benchmark script,
+            # no evaluator), so the rename costs an archived dump a lookup in
+            # `_LEGACY_LEG_FLAGS` and costs nothing else.
+            **{leg["verb"]: leg["ok"] for leg in legs},
             "bloom_ok": bloom_ok,
             "bloom_assessment_ok": bloom_assessment_ok,
             "bloom_activity_ok": bloom_activity_ok,
@@ -121,29 +168,181 @@ def objective_annotations(graph: AlignmentGraph) -> dict[str, dict]:
             #: instead of a boolean whose two causes were unioned away.
             "bloom_notes": [v["message"] for v in
                             (assessment.get(node_id), activity.get(node_id)) if v],
-            "aligned": assessed and practiced and prepares,
+            "legs": legs,
+            #: Derived FROM `legs` rather than written out again, so the
+            #: predicate and what a reader is shown cannot disagree.
+            "aligned": all(leg["ok"] for leg in legs),
         }
     return out
 
 
-def to_node_link(graph: AlignmentGraph, *, include_data: bool = True) -> dict:
-    """Node-link snapshot + alignment annotations.
+def _node_display(node: dict) -> dict:
+    """The display fields of one node: what a renderer needs and nothing else.
 
-    ``include_data=True`` (the disk dump) keeps each node's full ``data``
-    payload. ``include_data=False`` (the always-in-metadata snapshot) drops it,
-    since the payload duplicates the ADDIE output — the structural view
-    (topology + each edge's ``relation_id``/``established_by`` + coverage) is
-    what alignment inspection needs, at a fraction of the size."""
-    payload = graph.to_dict()
-    if not include_data:
-        payload["nodes"] = [
-            {k: v for k, v in node.items() if k != "data"}
-            for node in payload["nodes"]
-        ]
+    ``label``/``detail``/``level``/``repaired`` exist so that **no renderer
+    reads** ``node["data"]`` **to draw anything**. That four-branch ``or`` chain
+    used to live in ``_node_label``, which made it a derivation the webapp had
+    to either duplicate or do without — it did without, and showed a bare id.
+
+    It is also what makes the server's light view safe: that frame drops
+    ``data`` and nothing else, and ``data`` is by this rule not part of drawing.
+    """
+    data = node.get("data") or {}
+    node_id = str(node.get("id", ""))
+    node_type = str(node.get("type", ""))
+    element = ELEMENT_SEP in node_id
+    is_objective = node_type == NodeType.OBJECTIVE
+    return {
+        # Element: the item id it carries (`objective:LO-01` -> `LO-01`).
+        # Section: the type, because a section node IS its type.
+        "label": node_id.split(ELEMENT_SEP, 1)[-1] if element else (node_type or node_id),
+        "kind": "element" if element else "section",
+        "detail": "" if is_objective else str(
+            data.get("type") or data.get("activity_name")
+            or data.get("title") or data.get("item_id") or ""),
+        "level": str(data.get("level") or "") if is_objective else "",
+        "repaired": bool(data.get("repaired")),
+    }
+
+
+def _edge_display(edge: dict, annotations: dict) -> dict:
+    """The display fields of one edge.
+
+    ``id`` is the identity tuple ``_find_edge`` matches on, rendered as one
+    string — so it is unique, and stable across snapshots because those four
+    fields never change after an edge is created (only ``evidence``,
+    ``rationale`` and ``established_by`` are refreshed). It is exactly the
+    string the webapp used to compose for cytoscape; composed here, the
+    inspector can no longer compose a DIFFERENT one, which it did — it dropped
+    the ``scaffold`` fallback, so selecting a ``narrates`` edge from a node's
+    relation list matched nothing on the canvas.
+
+    ``tier``/``layer`` come from ``REGISTRY``, not from the id's first letter.
+    The prefix is only a fallback for an id the registry does not know (a test
+    fixture's ``R3``); with the registry in charge, a future secondary relation
+    numbered C would no longer land in the alignment layer by accident.
+    """
+    relation_id = str(edge.get("relation_id") or "")
+    relation = alignment.REGISTRY.get(relation_id)
+    if relation is not None:
+        tier = relation.tier
+    elif relation_id:
+        tier = "core" if relation_id.startswith("C") else "secondary"
+    else:
+        tier = ""
+    # An `assessed_by`/`practiced_by` edge out of an objective whose Bloom level
+    # does not hold up. Each side is judged by ITS OWN check: a `practiced_by`
+    # edge reddened because an assessment ITEM was too shallow pointed a reader
+    # at the wrong artifact, and splitting `bloom_ok` in two existed precisely
+    # to answer "which of the two failed".
+    #
+    # A payload older than the split flags (29 of 36 archived dumps) has only
+    # the union, so it falls back to it — the coarser marking is what that run
+    # itself recorded, and dropping the red edge entirely would lose 13 real
+    # findings rather than re-describe them.
+    flags = annotations.get(str(edge.get("source", ""))) or {}
+    union = flags.get("bloom_ok")
+    reason = ""
+    if relation_id == "C2" and flags.get("bloom_assessment_ok", union) is False:
+        reason = "bloom_assessment"
+    elif relation_id == "C3" and flags.get("bloom_activity_ok", union) is False:
+        reason = "bloom_activity"
+    return {
+        "id": "|".join((relation_id or "scaffold", str(edge.get("source", "")),
+                        str(edge.get("target", "")), str(edge.get("type", "")))),
+        "layer": ("scaffolding" if not relation_id
+                  else "alignment" if tier == "core" else "provenance"),
+        "tier": tier,
+        "invalid": bool(reason),
+        "invalid_reason": reason,
+    }
+
+
+#: What each leg's scalar was called before 2026-09-14, when the legs took the
+#: relations' own verbs. Read-only, and the only place these words survive:
+#: 36 archived dumps carry them, and re-rendering one must not silently lose a
+#: leg just because the field has since been renamed.
+_LEGACY_LEG_FLAGS = {"C2": "measured", "C3": "supported", "C4": "prepares"}
+
+
+def _with_legs(annotation: dict) -> dict:
+    """Backfill an objective's ordered ``legs`` from the scalars beside them.
+
+    An archived payload has the scalars but no list — and everything that draws
+    a leg reads the list. A leg the payload says nothing about is DROPPED
+    rather than rendered as a failure: a dump from before ``prepares`` existed
+    is silent about C4, and a `✗` there would be an answer that run never gave.
+    """
+    if "legs" in annotation:
+        return annotation
+    legs = []
+    for relation_id in alignment.ALIGNMENT_LEGS:
+        verb = alignment.leg_verb(relation_id)
+        for field in (verb, _LEGACY_LEG_FLAGS[relation_id]):
+            if field in annotation:
+                legs.append({"relation_id": relation_id, "verb": verb,
+                             "label": alignment.REGISTRY[relation_id].label,
+                             "ok": bool(annotation[field])})
+                break
+    return {**annotation, "legs": legs}
+
+
+def with_display_semantics(payload: dict) -> dict:
+    """A NEW payload whose nodes and edges carry their display fields.
+
+    The one place display semantics are decided, and therefore the one place
+    both renderers read: ``to_dot`` below, and the webapp. Pure and idempotent,
+    and it needs only ``nodes``/``edges``/``objective_alignment``, which every
+    archived dump already has — so a ``graph.json`` written before this existed
+    upgrades by passing through here rather than by the browser computing the
+    same rules a second time in another language.
+
+    **Never mutates its input.** ``AlignmentGraph.to_dict`` hands back the LIVE
+    node and edge dicts, so writing a key here would edit the running graph.
+    Every node and edge is shallow-copied before a field is added.
+
+    That copy is shallow on purpose: ``data`` is still the live object it
+    always was, so a ``graph_snapshot`` must STILL be serialized on the
+    producing thread (``server/runner.py`` rule 1, ``run_report._graph_attaching``).
+    This function reads like it hands back a safe copy and it does not — it
+    makes the wrappers safe and leaves ``data`` aliased. Deep-copying would cost
+    the whole payload on every frame to buy what that rule already gives.
+    """
+    annotations = {node_id: _with_legs(annotation)
+                   for node_id, annotation in (payload.get("objective_alignment") or {}).items()}
+    return {
+        **payload,
+        "nodes": [{**node, **_node_display(node)} for node in payload.get("nodes") or []],
+        "edges": [{**edge, **_edge_display(edge, annotations)}
+                  for edge in payload.get("edges") or []],
+        "objective_alignment": annotations,
+        "legend": _legend_entries(),
+        "schema_version": SCHEMA_VERSION,
+    }
+
+
+def without_node_data(payload: dict) -> dict:
+    """The same payload with each node's ``data`` dropped, and nothing else lost.
+
+    The server's wire view. It is here, beside the producer, rather than in the
+    server, because the server must be able to LEAVE OUT but never to decide:
+    an earlier version of this lived there and rebuilt each node as a whitelist
+    of ``{id, type}``, which silently discards every field above.
+    """
+    return {
+        **payload,
+        "nodes": [{k: v for k, v in node.items() if k != "data"}
+                  for node in payload.get("nodes") or []],
+    }
+
+
+def to_node_link(graph: AlignmentGraph) -> dict:
+    """Node-link snapshot + alignment annotations + display semantics."""
+    payload = graph.to_dict()          # LIVE dicts — never written to
     payload["objective_alignment"] = objective_annotations(graph)
     payload["relation_coverage"] = alignment.all_relations_coverage(graph)
     payload["node_violations"] = node_violations(graph)
-    return payload
+    return with_display_semantics(payload)   # ← the copy
 
 
 def node_violations(graph: AlignmentGraph) -> dict[str, list[str]]:
@@ -178,61 +377,139 @@ def _esc(text: str) -> str:
     return str(text).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
 
 
+def _leg_flags(annotation: dict) -> str:
+    """``C2 C3 C4`` / ``C2 · C4``: the legs in the declared order, each named or
+    replaced by a dot.
+
+    The relation's own id, not an initial. It used to be ``MSP``, which spelled
+    the legs' old invented names (Measured/Supported/Prepares) — and once those
+    went, the glyphs were the last thing still saying them."""
+    return " ".join(leg["relation_id"] if leg["ok"] else "·" for leg in annotation["legs"])
+
+
 def _node_label(node: dict, annotations: dict) -> str:
-    data = node.get("data") or {}
+    """The DOT label, composed from the node's DISPLAY fields.
+
+    Reads no ``data``: whatever a renderer needs to draw was decided once, in
+    ``_node_display``. DOT names a node by its id, so that is the first line
+    here where the app uses ``label`` — the same declared fields, a different
+    choice of which to show."""
     lines = [node["id"]]
     if node["type"] == NodeType.OBJECTIVE:
-        level = data.get("level")
-        if level:
-            lines.append(f"level: {level}")
+        if node.get("level"):
+            lines.append(f"level: {node['level']}")
         ann = annotations.get(node["id"])
         if ann:
-            flags = "".join([
-                "M" if ann["measured"] else "·",
-                "S" if ann["supported"] else "·",
-                "P" if ann["prepares"] else "·",
-                "" if ann["bloom_ok"] else " ⚠bloom",
-            ])
+            flags = _leg_flags(ann) + ("" if ann["bloom_ok"] else " ⚠bloom")
             lines.append(("✓ " if ann["aligned"] else "✗ ") + flags)
     else:
-        detail = data.get("type") or data.get("activity_name") or data.get("title") or data.get("item_id")
-        if detail:
-            lines.append(str(detail))
-        if data.get("repaired"):
+        if node.get("detail"):
+            lines.append(str(node["detail"]))
+        if node.get("repaired"):
             lines.append("(repair)")
     return "\\n".join(_esc(line) for line in lines)
 
 
-def _legend() -> list[str]:
-    """A compact legend cluster: what edge colours and node fills mean.
+def _legend_entries() -> dict[str, list[dict]]:
+    """The legend as MEANING — what each key says — with no colour and no shape.
+
+    It ships in the payload so both renderers read one list. They used to keep
+    one each and they had drifted: the DOT legend named four edge rows and two
+    node rows, the app's named four and six, and the app's never mentioned the
+    alignment legs at all — so the green fill it explains could not be traced
+    to the three relations that produce it.
+
+    The aligned row is composed from ``ALIGNMENT_LEGS``, so it cannot go stale
+    the way a hand-written "(M/S ok)" did when the C4 leg was added."""
+    leg_ids = "/".join(alignment.ALIGNMENT_LEGS)
+    return {
+        "edges": [
+            {"key": "id", "label": "id-match edge"},
+            {"key": "type", "label": "type-match edge"},
+            {"key": "provenance", "label": "provenance edge"},
+            {"key": "secondary", "label": "secondary (P) relation"},
+            {"key": "invalid", "label": "Bloom/format ⚠ (invalid)"},
+        ],
+        "nodes": [
+            {"key": "objective_aligned", "label": f"objective aligned ({leg_ids} ok)"},
+            {"key": "objective_unaligned", "label": "objective has a gap"},
+            {"key": "course_goal", "label": "course goal"},
+            {"key": "assessment", "label": "assessment task (AT)"},
+            {"key": "activity", "label": "activity (TLA)"},
+            {"key": "content", "label": "content module / material"},
+            {"key": "section", "label": "section node (a whole ADDIE section)"},
+            {"key": "has_violation", "label": "a check failed on this node"},
+        ],
+    }
+
+
+#: DOT can only draw the rows it has a colour or a fill for; the app draws the
+#: rest. Each renderer owns its own key -> style table, which is the whole of
+#: what a renderer still decides after this change.
+_LEGEND_DOT_EDGE_COLOR = {
+    "id": _EDGE_COLOR["id"], "type": _EDGE_COLOR["type"],
+    "provenance": _EDGE_COLOR["provenance"], "invalid": _INVALID_EDGE,
+}
+_LEGEND_DOT_NODE_FILL = {
+    "objective_aligned": _ALIGNED_FILL, "objective_unaligned": _UNALIGNED_FILL,
+}
+
+
+def _legend(entries: dict[str, list[dict]]) -> list[str]:
+    """A compact legend cluster, rendered from the payload's own legend.
 
     The edge label is just the relation key ("C2-assessed_by"); the *mechanism*
     (id/type/provenance) is carried by colour and explained here, so the graph
     itself stays low-ink."""
-    return [
+    lines = [
         "  subgraph cluster_legend {",
         '    label="Legend"; fontsize=11; style=dotted; color="#9ca3af"; fontname="Helvetica";',
-        f'    leg_id [label="id-match edge", shape=plaintext, fontcolor="{_EDGE_COLOR["id"]}"];',
-        f'    leg_type [label="type-match edge", shape=plaintext, fontcolor="{_EDGE_COLOR["type"]}"];',
-        f'    leg_prov [label="provenance edge", shape=plaintext, fontcolor="{_EDGE_COLOR["provenance"]}"];',
-        f'    leg_bad [label="Bloom/format ⚠ (invalid)", shape=plaintext, fontcolor="{_INVALID_EDGE}"];',
-        f'    leg_ok [label="objective aligned (M/S/P ok)", shape=box, style="filled,rounded", fillcolor="{_ALIGNED_FILL}"];',
-        f'    leg_gap [label="objective has a gap", shape=box, style="filled,rounded", fillcolor="{_UNALIGNED_FILL}"];',
-        "    leg_id -> leg_type -> leg_prov -> leg_bad [style=invis];",
-        "  }",
     ]
+    drawn = []
+    for index, entry in enumerate(entries.get("edges") or []):
+        colour = _LEGEND_DOT_EDGE_COLOR.get(entry["key"])
+        if not colour:
+            continue
+        name = f"leg_e{index}"
+        drawn.append(name)
+        lines.append(f'    {name} [label="{_esc(entry["label"])}", shape=plaintext, '
+                     f'fontcolor="{colour}"];')
+    for index, entry in enumerate(entries.get("nodes") or []):
+        fill = _LEGEND_DOT_NODE_FILL.get(entry["key"])
+        if not fill:
+            continue
+        lines.append(f'    leg_n{index} [label="{_esc(entry["label"])}", shape=box, '
+                     f'style="filled,rounded", fillcolor="{fill}"];')
+    if len(drawn) > 1:
+        lines.append("    " + " -> ".join(drawn) + " [style=invis];")
+    lines.append("  }")
+    return lines
 
 
-def to_dot(graph: AlignmentGraph, *, title: str = "") -> str:
-    annotations = objective_annotations(graph)
+def to_dot(payload: dict, *, title: str = "") -> str:
+    """Render a node-link PAYLOAD as GraphViz DOT.
+
+    Takes the payload, not a graph, so that everything DOT draws has to be a
+    declared field — which is what makes the browser and this renderer show the
+    same picture instead of two independent readings of the same graph. A live
+    graph renders through ``AlignmentGraph.to_dot``.
+
+    An archived payload (no ``schema_version``) is upgraded on the way in, so
+    this is the only place the renderer computes anything, and only for a file
+    written before the fields existed."""
+    if isinstance(payload, AlignmentGraph):
+        raise TypeError(
+            "to_dot takes a node-link payload, not an AlignmentGraph — "
+            "call graph.to_dot(...) or viz.to_dot(viz.to_node_link(graph))")
+    if payload.get("schema_version") != SCHEMA_VERSION:
+        payload = with_display_semantics(payload)
+    annotations = payload.get("objective_alignment") or {}
     # Visualise the 16-relation matrix only: edges that carry a relation_id.
     # Internal scaffolding edges (``precedes``/``narrates``, relation_id="") stay in the JSON
     # dump but are dropped here — they add no matrix information and dominate the
     # picture. A node renders iff it is an objective or takes part in a matrix edge.
-    matrix_edges = [e for e in graph.get_edges() if e.get("relation_id")]
+    matrix_edges = [e for e in payload.get("edges") or [] if e["layer"] != "scaffolding"]
     linked_ids = {e["source"] for e in matrix_edges} | {e["target"] for e in matrix_edges}
-    bloom_violated_objectives = {v["node_id"] for v in alignment.bloom_assessment_violations(graph)}
-    bloom_violated_objectives |= {v["node_id"] for v in alignment.bloom_activity_violations(graph)}
 
     lines = [
         "digraph alignment {",
@@ -245,10 +522,10 @@ def to_dot(graph: AlignmentGraph, *, title: str = "") -> str:
     ]
     if title:
         lines.append(f'  labelloc="t"; label="{_esc(title)}"; fontname="Helvetica";')
-    lines.extend(_legend())
+    lines.extend(_legend(payload.get("legend") or _legend_entries()))
 
-    for node in graph.get_nodes():
-        is_objective = node["type"] == NodeType.OBJECTIVE and graph.is_element(node["id"])
+    for node in payload.get("nodes") or []:
+        is_objective = node["type"] == NodeType.OBJECTIVE and node["kind"] == "element"
         if not is_objective and node["id"] not in linked_ids:
             continue
         style = dict(_NODE_STYLE.get(node["type"], {"shape": "ellipse", "style": "filled", "fillcolor": "#f3f4f6"}))
@@ -259,16 +536,13 @@ def to_dot(graph: AlignmentGraph, *, title: str = "") -> str:
         lines.append(f'  "{_esc(node["id"])}" [label="{_node_label(node, annotations)}", {attrs}];')
 
     for edge in matrix_edges:
-        established_by = edge.get("established_by", "")
-        relation_id = edge.get("relation_id") or ""
-        is_bad_bloom = relation_id in ("C2", "C3") and edge["source"] in bloom_violated_objectives
-        if is_bad_bloom:
+        if edge["invalid"]:
             color, style = _INVALID_EDGE, "dashed"
         else:
-            color = _EDGE_COLOR.get(established_by, "#9ca3af")
-            style = "dotted" if relation_id.startswith("P") else "solid"
+            color = _EDGE_COLOR.get(edge.get("established_by", ""), "#9ca3af")
+            style = "dotted" if edge["tier"] == "secondary" else "solid"
         # Label is the relation key only; colour (+legend) carries the mechanism.
-        label = str(edge["type"]) + (" ⚠" if is_bad_bloom else "")
+        label = str(edge["type"]) + (" ⚠" if edge["invalid"] else "")
         lines.append(
             f'  "{_esc(edge["source"])}" -> "{_esc(edge["target"])}" '
             f'[label="{_esc(label)}", color="{color}", style="{style}", fontcolor="{color}"];'
@@ -285,13 +559,16 @@ def dump(
     title: str = "",
     design_brief_id: str | None = None,
 ) -> list[Path]:
-    """Write ``<stem>.json`` (the full dump, ``AlignmentGraph.to_full_dict``)
-    and ``<stem>.dot``. Returns the paths written."""
+    """Write ``<stem>.json`` (the full dump, ``AlignmentGraph.to_full_dict``).
+
+    One file, not two: the DOT is a RENDERING of this payload and is
+    reproducible from it byte-for-byte (``alignmentgraph-isd dot <stem>.json``),
+    while the payload carries what the DOT cannot — every node's ``data``, the
+    scaffolding edges, relation coverage, the violation index. ``title`` is
+    kept for callers and for that renderer."""
     stem = Path(path_stem)
     stem.parent.mkdir(parents=True, exist_ok=True)
     json_path = stem.with_suffix(".json")
-    dot_path = stem.with_suffix(".dot")
     payload = graph.to_full_dict(design_brief_id=design_brief_id)
     json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    dot_path.write_text(to_dot(graph, title=title), encoding="utf-8")
-    return [json_path, dot_path]
+    return [json_path]

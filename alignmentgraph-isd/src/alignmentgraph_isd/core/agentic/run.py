@@ -755,7 +755,6 @@ def run_agentic_brief(config, design_brief: DesignBrief, *, on_event=None) -> di
         final_graph = graph.to_full_dict(design_brief_id=design_brief.id)
         _safe_emit(on_event, "graph_snapshot", final_graph)
         result["graph"] = final_graph
-        result["graph_dot"] = graph.to_dot(title=design_brief.id or "alignment-graph")
     if store is not None:
         # The prose arm's counterpart artifact (saved as <agent_id>_prose.json
         # by the benchmark): the blackboard documents verbatim. Inspection

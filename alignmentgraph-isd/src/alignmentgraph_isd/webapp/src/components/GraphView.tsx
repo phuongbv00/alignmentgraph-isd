@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import cytoscape from 'cytoscape'
 import dagre from 'cytoscape-dagre'
 import { Eye, EyeOff, Maximize2 } from 'lucide-react'
-import { buildStylesheet, LEGEND } from '../graph/stylesheet'
+import { buildStylesheet, LEGEND_COLOURS, LEGEND_FALLBACK } from '../graph/stylesheet'
 import { DEFAULT_FILTERS, layerCounts, toCytoscape, type GraphFilters } from '../graph/toCytoscape'
 import type { AlignmentGraphPayload, GraphEdge, Selection } from '../api/types'
 
@@ -38,6 +38,8 @@ export function GraphView({ graph, graphRev, runId, selection, onSelect }: Props
   const [filters, setFilters] = useState<GraphFilters>(DEFAULT_FILTERS)
   const [showLegend, setShowLegend] = useState(true)
 
+  // Shipped with the graph; the fallback is for a payload archived before it.
+  const legend = graph?.legend ?? LEGEND_FALLBACK
   const counts = useMemo(() => layerCounts(graph), [graph])
   const elements = useMemo(() => toCytoscape(graph, filters), [graph, filters])
 
@@ -195,17 +197,20 @@ export function GraphView({ graph, graphRev, runId, selection, onSelect }: Props
 
         {showLegend && graph && (
           <div className="legend">
+            {/* The wording comes with the graph, so this legend and the DOT
+                export's explain the same picture in the same words. Only the
+                swatch is ours: a row with no colour of our own is skipped. */}
             <div className="muted" style={{ marginBottom: 4 }}>Edges</div>
-            {LEGEND.edges.map((item) => (
-              <div className="legend-row" key={item.label}>
-                <span className="swatch" style={{ background: item.colour }} />
+            {legend.edges.filter((item) => LEGEND_COLOURS[item.key]).map((item) => (
+              <div className="legend-row" key={item.key}>
+                <span className="swatch" style={{ background: LEGEND_COLOURS[item.key] }} />
                 <span>{item.label}</span>
               </div>
             ))}
             <div className="muted" style={{ margin: '8px 0 4px' }}>Nodes</div>
-            {LEGEND.nodes.map((item) => (
-              <div className="legend-row" key={item.label}>
-                <span className="swatch node" style={{ background: item.colour }} />
+            {legend.nodes.filter((item) => LEGEND_COLOURS[item.key]).map((item) => (
+              <div className="legend-row" key={item.key}>
+                <span className="swatch node" style={{ background: LEGEND_COLOURS[item.key] }} />
                 <span>{item.label}</span>
               </div>
             ))}

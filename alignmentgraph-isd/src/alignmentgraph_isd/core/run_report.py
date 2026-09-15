@@ -80,9 +80,9 @@ def _objective_ceiling_metadata(design_brief: DesignBrief, addie_output: dict) -
 
 
 def _maybe_dump_graph(graph: AlignmentGraph, design_brief: DesignBrief, metadata: dict) -> None:
-    """Write ``<brief_id>_graph.json`` + ``<brief_id>_graph.dot`` when opted in
-    via the ``ALIGNMENTGRAPH_DUMP_DIR`` env var. Opt-in and best-effort: a dump
-    failure never breaks a run, it only annotates metadata."""
+    """Write ``<brief_id>_graph.json`` when opted in via the
+    ``ALIGNMENTGRAPH_DUMP_DIR`` env var. Opt-in and best-effort: a dump failure
+    never breaks a run, it only annotates metadata."""
     dump_dir = os.environ.get("ALIGNMENTGRAPH_DUMP_DIR")
     if not dump_dir:
         return

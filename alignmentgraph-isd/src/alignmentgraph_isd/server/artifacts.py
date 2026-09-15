@@ -4,8 +4,12 @@ Layout mirrors the benchmark's results tree closely enough to be familiar:
 
     <data_root>/programs/<program_id>/runs/<run_id>/
         brief.json  addie_output.json  trajectory.json  trajectory_deep.json
-        metadata.json  graph.json  graph.dot  contexts.json  plans.json
+        metadata.json  graph.json  contexts.json  plans.json
         violations.json  events.jsonl
+
+``graph.json`` is the whole of the alignment graph: it carries the display
+semantics too, so the DOT rendering is reproducible from it
+(``alignmentgraph-isd dot graph.json``) and is not written here.
 """
 from __future__ import annotations
 
@@ -25,7 +29,6 @@ ARTIFACT_FILES: dict[str, str] = {
     "trajectory_deep": "trajectory_deep.json",
     "metadata": "metadata.json",
     "graph": "graph.json",
-    "graph_dot": "graph.dot",
     "contexts": "contexts.json",
     "plans": "plans.json",
     "violations": "violations.json",
@@ -70,7 +73,6 @@ def write_result(directory: Path, brief: dict, result: dict) -> None:
     write_json(directory / ARTIFACT_FILES["trajectory_deep"], result.get("trajectory_deep", {}))
     write_json(directory / ARTIFACT_FILES["metadata"], result.get("metadata", {}))
     write_json(directory / ARTIFACT_FILES["graph"], result.get("graph", {}))
-    write_text(directory / ARTIFACT_FILES["graph_dot"], result.get("graph_dot", ""))
     write_json(directory / ARTIFACT_FILES["contexts"], result.get("contexts", []))
     # How each family's work was divided, round by round, with the whole work
     # set each Developer was handed. The `dev_plan` trajectory event keeps a

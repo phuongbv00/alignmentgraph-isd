@@ -5,9 +5,10 @@ Design notes worth keeping in mind when changing this:
 * **Events are a cursor-replayable list, not a queue.** One shared list per run
   serves any number of readers, each holding its own offset. That is what makes
   a page reload mid-run resumable and multiple browser tabs free.
-* **The graph is state, not an event.** A full graph dump is ~95 KB; a run
-  produces a dozen-odd of them, and only the latest is ever wanted. Storing the
-  newest and bumping a revision beats replaying stale copies.
+* **The graph is state, not an event.** A full graph dump runs ~170 KB at the
+  median and ~880 KB at the worst measured (36 archived runs); a run produces a
+  dozen-odd of them, and only the latest is ever wanted. Storing the newest and
+  bumping a revision beats replaying stale copies.
 * **Everything is stored pre-serialized.** The harness hands us live dicts from
   inside the running graph, which later phases keep mutating. Serializing on the
   worker thread at the moment of the event is what makes a snapshot a snapshot.
@@ -76,8 +77,11 @@ class RunState:
 
     events: list[Event] = field(default_factory=list)
     # Latest graph only, pre-serialized. `light` drops the per-node `data`
-    # payloads (~95 KB -> ~35 KB) and is what goes over the wire; `full` backs
-    # the on-demand node-detail endpoint.
+    # payloads and NOTHING else (~170 KB -> ~92 KB at the median) and is what
+    # goes over the wire; `full` backs the on-demand node-detail endpoint.
+    # Everything a renderer needs to draw is a declared field beside `data`, so
+    # the light frame draws the whole graph — that is why the cut is exactly
+    # `data` and why it is `viz.without_node_data` that makes it.
     graph_light_json: str = ""
     graph_full_json: str = ""
     graph_rev: int = 0

@@ -30,7 +30,7 @@ def test_default_config_produces_contract():
     config.llm_factory = lambda: FakeChatModel()
     result = run_brief(load_brief("minimal_brief.json"), config)
 
-    assert set(result) >= {"addie_output", "trajectory", "metadata", "graph", "graph_dot"}
+    assert set(result) >= {"addie_output", "trajectory", "metadata", "graph"}
     addie = result["addie_output"]
     assert set(addie) == {"analysis", "design", "development", "implementation", "evaluation"}
     assert addie["design"]["learning_objectives"]

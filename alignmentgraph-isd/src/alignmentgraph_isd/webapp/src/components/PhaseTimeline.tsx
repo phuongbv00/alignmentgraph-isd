@@ -18,6 +18,10 @@ interface Props {
   runActive: boolean
   selection: Selection
   onSelect: (selection: Selection) => void
+  /** The graph's `relation_coverage`, carrying each relation's canonical
+   *  wording from `alignment.REGISTRY` — so a C/P relation is named in exactly
+   *  one place for the whole app. */
+  relations?: Record<string, { label?: string }>
 }
 
 /**
@@ -31,7 +35,7 @@ interface Props {
  * the Audit toggle) — demoted, never dropped.
  */
 export function PhaseTimeline({
-  actions, runId, runStarted, runActive, selection, onSelect,
+  actions, runId, runStarted, runActive, selection, onSelect, relations,
 }: Props) {
   const blocks = useMemo(() => buildPhaseTimeline(actions), [actions])
   const agents = useMemo(() => timelineAgents(blocks), [blocks])
@@ -110,6 +114,7 @@ export function PhaseTimeline({
                 audit={audit}
                 selection={selection}
                 onSelect={onSelect}
+                relations={relations}
               />
             ) : (
               // Same order they started in, not a 2-column layout: two agents
@@ -128,6 +133,7 @@ export function PhaseTimeline({
                     audit={audit}
                     selection={selection}
                     onSelect={onSelect}
+                    relations={relations}
                   />
                 ))}
               </div>
@@ -167,27 +173,30 @@ function groupParallel(blocks: PhaseBlock[]): PhaseBlock[][] {
 }
 
 function Block({
-  block, dimmed, audit, selection, onSelect,
+  block, dimmed, audit, selection, onSelect, relations,
 }: {
   block: PhaseBlock
   dimmed: boolean
   audit: boolean
   selection: Selection
   onSelect: (selection: Selection) => void
+  relations?: Record<string, { label?: string }>
 }) {
   return (
-    <PhaseCard block={block} dimmed={dimmed} audit={audit} selection={selection} onSelect={onSelect} />
+    <PhaseCard block={block} dimmed={dimmed} audit={audit} selection={selection}
+               onSelect={onSelect} relations={relations} />
   )
 }
 
 function PhaseCard({
-  block, dimmed, audit, selection, onSelect,
+  block, dimmed, audit, selection, onSelect, relations,
 }: {
   block: PhaseBlock
   dimmed: boolean
   audit: boolean
   selection: Selection
   onSelect: (selection: Selection) => void
+  relations?: Record<string, { label?: string }>
 }) {
   const [expanded, setExpanded] = useState(false)
   const open = audit || expanded
@@ -320,7 +329,7 @@ function PhaseCard({
       )}
 
       <AuditChip block={block} open={open} onToggle={() => setExpanded((value) => !value)} />
-      {open && <AuditRows block={block} selection={selection} onSelect={onSelect} />}
+      {open && <AuditRows block={block} selection={selection} onSelect={onSelect} relations={relations} />}
     </div>
   )
 }
@@ -350,13 +359,14 @@ function AuditChip({
  *  which stays at its chronological position — so check → repair → check
  *  reads exactly as it happened. Clicking a row opens it in the inspector. */
 function AuditRows({
-  block, selection, onSelect,
+  block, selection, onSelect, relations,
 }: {
   block: PhaseBlock
   selection: Selection
   onSelect: (selection: Selection) => void
+  relations?: Record<string, { label?: string }>
 }) {
-  const rows = useMemo(() => foldChronological(block.actions), [block.actions])
+  const rows = useMemo(() => foldChronological(block.actions, relations), [block.actions, relations])
   const selectedId = selection.kind === 'action' ? selection.id : null
 
   return (

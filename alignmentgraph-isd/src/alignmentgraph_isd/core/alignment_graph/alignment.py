@@ -72,55 +72,57 @@ REGISTRY: dict[str, Relation] = {
     for r in (
         # ── Core (C1-C5): construct-validity backbone ───────────────────────
         Relation("C1", "course goal decomposes to learning outcome", "decomposes_to", "provenance",
-                  NodeType.COURSE_GOAL, (NodeType.OBJECTIVE,), "target", "core",
-                  theory="Outcome-based design / Backward Design (Wiggins & McTighe)"),
+                 NodeType.COURSE_GOAL, (NodeType.OBJECTIVE,), "target", "core",
+                 theory="Outcome-based design / Backward Design (Wiggins & McTighe)"),
         Relation("C2", "learning outcome assessed by assessment task", "assessed_by", "id-reverse",
-                  NodeType.OBJECTIVE, (NodeType.ASSESSMENT,), "source", "core",
-                  theory="Constructive Alignment (Biggs) + Understanding by Design Stage 2"),
+                 NodeType.OBJECTIVE, (NodeType.ASSESSMENT,), "source", "core",
+                 theory="Constructive Alignment (Biggs) + Understanding by Design Stage 2"),
         Relation("C3", "learning outcome practiced by activity", "practiced_by", "id-list-reverse",
-                  NodeType.OBJECTIVE, (NodeType.ACTIVITY,), "source", "core",
-                  theory="Constructive Alignment (Biggs)"),
+                 NodeType.OBJECTIVE, (NodeType.ACTIVITY,), "source", "core",
+                 theory="Constructive Alignment (Biggs)"),
         Relation("C4", "activity prepares for assessment task", "prepares_for", "id-list",
-                  NodeType.ACTIVITY, (NodeType.ASSESSMENT,), "target", "core",
-                  theory="Backward Design + Constructive Alignment"),
+                 NodeType.ACTIVITY, (NodeType.ASSESSMENT,), "target", "core",
+                 theory="Backward Design + Constructive Alignment"),
         Relation("C5", "content module supports activity", "supports", "provenance",
-                  NodeType.CONTENT, (NodeType.ACTIVITY,), "target", "core",
-                  theory="Backward Design (Wiggins & McTighe)"),
+                 NodeType.CONTENT, (NodeType.ACTIVITY,), "target", "core",
+                 theory="Backward Design (Wiggins & McTighe)"),
         # ── Secondary (P1-P11): provenance/traceability, not construct-validity ──
         Relation("P1", "gap/topic informs learning outcome", "informs", "provenance",
-                  NodeType.GAP, (NodeType.OBJECTIVE,), "target", "secondary"),
+                 NodeType.GAP, (NodeType.OBJECTIVE,), "target", "secondary"),
         Relation("P2", "learner profile fits learning outcome", "fits", "provenance",
-                  NodeType.LEARNER_PROFILE, (NodeType.OBJECTIVE,), "target", "secondary"),
+                 NodeType.LEARNER_PROFILE, (NodeType.OBJECTIVE,), "target", "secondary"),
         Relation("P3", "assessment plan realized by assessment task", "realizes", "type",
-                  NodeType.ASSESSMENT_PLAN, (NodeType.ASSESSMENT,), "target", "secondary"),
+                 NodeType.ASSESSMENT_PLAN, (NodeType.ASSESSMENT,), "target", "secondary"),
         Relation("P4", "activity plan realized by activity", "realizes", "provenance",
-                  NodeType.ACTIVITY_PLAN, (NodeType.ACTIVITY,), "target", "secondary"),
+                 NodeType.ACTIVITY_PLAN, (NodeType.ACTIVITY,), "target", "secondary"),
         Relation("P5", "content module covers material", "covers", "provenance",
-                  NodeType.CONTENT, (NodeType.MATERIAL,), "target", "secondary"),
+                 NodeType.CONTENT, (NodeType.MATERIAL,), "target", "secondary"),
         Relation("P6", "media selection realized by material", "realizes", "type",
-                  NodeType.MEDIA_SELECTION, (NodeType.MATERIAL,), "target", "secondary"),
+                 NodeType.MEDIA_SELECTION, (NodeType.MATERIAL,), "target", "secondary"),
         Relation("P7", "topic covered by content module", "covers", "provenance",
-                  NodeType.TOPIC, (NodeType.CONTENT,), "target", "secondary"),
+                 NodeType.TOPIC, (NodeType.CONTENT,), "target", "secondary"),
         Relation("P8", "constraint constrains media selection", "constrains", "provenance",
-                  NodeType.CONSTRAINT, (NodeType.MEDIA_SELECTION,), "target", "secondary"),
+                 NodeType.CONSTRAINT, (NodeType.MEDIA_SELECTION,), "target", "secondary"),
         Relation("P9", "gap addressed by improvement", "addresses", "provenance",
-                  NodeType.GAP, (NodeType.IMPROVEMENT,), "target", "secondary"),
-        # P10/P11 close the one artifact that used to sit in the graph with no
-        # edge at all. Measured before adding them: the implementation plan
-        # referenced graph ids in 30/30 scenarios (836 activity, 656 material,
-        # 111 objective, 59 assessment) and none of it was recorded, so the
-        # graph could not answer "was this activity ever scheduled" or "was
-        # this material ever handed out" — questions the auditability claim
-        # implies it can. Secondary tier: delivery traceability is standard ISD
-        # (ADDIE's Implementation phase executes the design), not a
-        # constructive-alignment claim, and the P tier is exactly where
-        # traceability without a construct claim belongs.
+                 NodeType.GAP, (NodeType.IMPROVEMENT,), "target", "secondary"),
         Relation("P10", "session guide delivers activity", "delivers", "provenance",
-                  NodeType.SESSION_GUIDE, (NodeType.ACTIVITY,), "target", "secondary"),
+                 NodeType.SESSION_GUIDE, (NodeType.ACTIVITY,), "target", "secondary"),
         Relation("P11", "session guide provisions material", "provisions", "provenance",
-                  NodeType.SESSION_GUIDE, (NodeType.MATERIAL,), "target", "secondary"),
+                 NodeType.SESSION_GUIDE, (NodeType.MATERIAL,), "target", "secondary"),
     )
 }
+
+ALIGNMENT_LEGS: tuple[str, ...] = ("C2", "C3", "C4")
+assert all(relation_id in REGISTRY for relation_id in ALIGNMENT_LEGS)
+
+
+def leg_verb(relation_id: str) -> str:
+    """The field name a leg is reported under: the relation's own verb.
+
+    ``assessed_by`` / ``practiced_by`` / ``prepares_for`` — so an objective's
+    alignment reads in the same words as the edges it is made of."""
+    return REGISTRY[relation_id].edge_type
+
 
 #: "<node_type>:" prefixes a model sometimes copies into id-reference fields.
 _NAMESPACE_PREFIXES: tuple[str, ...] = tuple(f"{t}:" for t in NodeType)
@@ -388,8 +390,8 @@ def establish_delivery(graph: AlignmentGraph, session_node_ids: list[str]) -> No
     for node_id in session_node_ids:
         data = (graph.get_node(node_id) or {}).get("data") or {}
         for field, node_type, relation_id in (
-            ("activity_ids", NodeType.ACTIVITY, "P10"),
-            ("material_ids", NodeType.MATERIAL, "P11"),
+                ("activity_ids", NodeType.ACTIVITY, "P10"),
+                ("material_ids", NodeType.MATERIAL, "P11"),
         ):
             referenced = [bare_ref(r) for r in (data.get(field) or []) if r]
             for ref in dict.fromkeys(referenced):
@@ -430,6 +432,8 @@ def formats_reaching(level: int) -> str:
     table the check actually applies."""
     ceilinged = {fmt for fmt, cap in _ITEM_TYPE_CAPABILITY.items() if cap < level}
     return (", ".join(sorted(ceilinged)) if ceilinged else "")
+
+
 _ITEM_TYPE_CAPABILITY: dict[str, int] = {
     "true_false": 1,
     "matching": 1,

@@ -1,4 +1,4 @@
-import type { AlignmentGraphPayload, GraphEdge } from '../api/types'
+import type { AlignmentGraphPayload, GraphEdge, GraphNode, ObjectiveAlignment } from '../api/types'
 
 /**
  * Turning an alignment-graph dump into something legible.
@@ -42,15 +42,51 @@ export interface CyElement {
   classes?: string
 }
 
+/** The layer an edge is on. The harness ships this (`edge.layer`), read off
+ *  `alignment.REGISTRY`; the prefix test below is the fallback for a payload
+ *  archived before that field existed. Guessing from the id's first letter is
+ *  what this replaced — a secondary relation numbered C would have landed in
+ *  the alignment layer. */
 export function edgeLayer(edge: GraphEdge): EdgeLayer {
+  if (edge.layer) return edge.layer
   if (!edge.relation_id) return 'scaffolding'
   return edge.relation_id.startsWith('C') ? 'alignment' : 'provenance'
 }
 
 /** Element nodes carry one artifact item (`objective:LO-01`); section nodes
- *  (`objective_0`) carry a whole ADDIE section. The distinction is the `:`. */
+ *  (`objective_0`) carry a whole ADDIE section. The harness decides this
+ *  (`node.kind`, from `AlignmentGraph.is_element`); the `:` test is the
+ *  fallback for an archived payload. */
 export function isElementNode(id: string): boolean {
   return id.includes(':')
+}
+
+function nodeKind(node: GraphNode): 'element' | 'section' {
+  return node.kind ?? (isElementNode(node.id) ? 'element' : 'section')
+}
+
+/** The `id` cytoscape selects an element by. Shipped as `edge.id`; composed
+ *  here only for an archived payload, in the ONE form both this file and the
+ *  inspector must agree on — they did not, and a scaffolding edge opened from
+ *  the inspector selected nothing. */
+export function edgeId(edge: GraphEdge): string {
+  return edge.id ?? `${edge.relation_id || 'scaffold'}|${edge.source}|${edge.target}|${edge.type}`
+}
+
+/** ✓/✗ per leg of the constructive-alignment triad, in the order the harness
+ *  declares them — the same legs, in the same order, that the DOT export
+ *  prints as `MSP`. */
+export function alignmentBadge(flags: ObjectiveAlignment | undefined): string {
+  if (!flags) return ''
+  if (flags.legs) return flags.legs.map((leg) => (leg.ok ? '✓' : '✗')).join('')
+  // Archived payload with no `legs` list: the scalars, under whichever of the
+  // two names that dump used. A leg it says nothing about is left out rather
+  // than shown as a ✗ — an answer that run never gave.
+  return [
+    flags.assessed_by ?? flags.measured,
+    flags.practiced_by ?? flags.supported,
+    flags.prepares_for ?? flags.prepares,
+  ].filter((ok) => ok !== undefined).map((ok) => (ok ? '✓' : '✗')).join('')
 }
 
 export function shortLabel(id: string, type: string): string {
@@ -85,31 +121,22 @@ export function toCytoscape(
     if (!isObjectiveElement && !touched.has(node.id)) continue
 
     const flags = alignment[node.id]
+    const badge = alignmentBadge(flags)
     present.add(node.id)
     elements.push({
       group: 'nodes',
       data: {
         id: node.id,
-        label: shortLabel(node.id, node.type),
+        // The badge rides IN the label: it is the one thing on an objective a
+        // reader wants without clicking — which leg is missing — and it was
+        // computed here for months while nothing rendered it, so the app said
+        // only "green or amber" where the DOT export said `✓ MSP`.
+        label: badge ? `${node.label ?? shortLabel(node.id, node.type)}\n${badge}`
+                     : (node.label ?? shortLabel(node.id, node.type)),
         type: node.type,
-        kind: isElementNode(node.id) ? 'element' : 'section',
-        // Rendered as a ✓/✗ badge: measured / supported / prepares — the
-        // three legs of `aligned`. There is no rubric leg any more: a
-        // criterion is a field of the item that measures the objective, so
-        // that flag was true whenever `measured` was. An archived run has no
-        // `prepares` and gets a two-character badge rather than a false ✗.
-        badge: flags
-          ? `${flags.measured ? '✓' : '✗'}${flags.supported ? '✓' : '✗'}`
-            + (flags.prepares === undefined ? '' : flags.prepares ? '✓' : '✗')
-          : '',
-        aligned: flags ? flags.aligned : null,
-        bloomOk: flags ? flags.bloom_ok : null,
-        // Every type standing against this node, for the tooltip and for the
-        // marker below.
-        violations: violations[node.id] ?? [],
       },
       classes: nodeClasses(
-        node.type, node.id, flags?.aligned, flags?.bloom_ok,
+        node.type, nodeKind(node), flags?.aligned, flags?.bloom_ok,
         (violations[node.id] ?? []).length > 0),
     })
   }
@@ -120,17 +147,18 @@ export function toCytoscape(
     if (!present.has(edge.source) || !present.has(edge.target)) continue
     // An assessed_by/practiced_by edge out of an objective whose Bloom level
     // does not hold up is the single most important defect the graph can show,
-    // so it is called out in red rather than left to the badge alone. C2/C3
-    // are id-reverse relations — the LO is the edge SOURCE — and the same
-    // C2/C3-on-a-violated-source rule drives the DOT export's red edges.
+    // so it is called out in red rather than left to the badge alone. The
+    // harness decides it (`edge.invalid`), judging C2 on the assessment rule
+    // and C3 on the activity rule; the fallback below is the archived payload's
+    // coarser union, which reddened a `practiced_by` edge for a shallow ITEM.
     const sourceFlags = alignment[edge.source]
-    const bloomViolation =
-      (edge.relation_id === 'C2' || edge.relation_id === 'C3') && sourceFlags?.bloom_ok === false
+    const bloomViolation = edge.invalid ?? (
+      (edge.relation_id === 'C2' || edge.relation_id === 'C3') && sourceFlags?.bloom_ok === false)
 
     elements.push({
       group: 'edges',
       data: {
-        id: `${edge.relation_id || 'scaffold'}|${edge.source}|${edge.target}|${edge.type}`,
+        id: edgeId(edge),
         source: edge.source,
         target: edge.target,
         label: edge.type,
@@ -142,8 +170,10 @@ export function toCytoscape(
       classes: [
         `by-${edge.established_by || 'none'}`,
         // Secondary (P*) relations render dotted, mirroring the DOT export's
-        // solid-core / dotted-secondary distinction.
-        edge.relation_id?.startsWith('P') ? 'secondary' : '',
+        // solid-core / dotted-secondary distinction. `tier` comes from the
+        // registry; the prefix is the archived-payload fallback.
+        (edge.tier ?? (edge.relation_id?.startsWith('P') ? 'secondary' : '')) === 'secondary'
+          ? 'secondary' : '',
         bloomViolation ? 'bloom-violation' : '',
       ]
         .filter(Boolean)
@@ -156,12 +186,12 @@ export function toCytoscape(
 
 function nodeClasses(
   type: string,
-  id: string,
+  kind: 'element' | 'section',
   aligned?: boolean | null,
   bloomOk?: boolean | null,
   hasViolation = false,
 ): string {
-  const classes = [`type-${type || 'unknown'}`, isElementNode(id) ? 'element' : 'section']
+  const classes = [`type-${type || 'unknown'}`, kind]
   if (aligned === true) classes.push('aligned')
   if (aligned === false) classes.push('unaligned')
   if (bloomOk === false) classes.push('bloom-warning')

@@ -55,11 +55,14 @@ const FILLS: Record<string, string> = {
 const FALLBACK_SHAPE = 'ellipse'
 const FALLBACK_FILL = '#f3f4f6'
 
-// Edge colour by how the relation was established, as in viz.py.
+// Edge colour by how the relation was established, as in viz.py. `provenance`
+// read `#9ca3af` until 2026-09-11 — that is the DOT export's UNKNOWN-mechanism
+// fallback, taken by mistake for its provenance colour, so every provenance
+// edge here was a shade lighter than the same edge in a rendered .dot.
 const EDGE_COLOURS = {
   id: '#16a34a',
   type: '#2563eb',
-  provenance: '#9ca3af',
+  provenance: '#6b7280',
   none: '#d1d5db',
 } as const
 
@@ -114,6 +117,10 @@ export function buildStylesheet(): StylesheetStyle[] {
         'background-color': '#e5e7eb',
         'font-weight': 'bold' as never,
         'border-color': '#4b5563',
+        // Taller than the default: an objective's label carries the leg badge
+        // on a second line (`✓✓✗`), which is the one thing a reader wants off
+        // the canvas without opening the inspector.
+        height: 44,
       },
     },
     { selector: 'node.type-objective.aligned', style: { 'background-color': '#bbf7d0' } },
@@ -187,28 +194,46 @@ export function buildStylesheet(): StylesheetStyle[] {
 
     { selector: 'node:selected', style: { 'border-width': 4, 'border-color': '#2563eb' } },
     { selector: 'edge:selected', style: { width: 4, 'line-color': '#2563eb' } },
-    // Dimming rather than hiding on hover-focus: position is information too.
-    { selector: '.dimmed', style: { opacity: 0.15 } },
   ]
 }
 
 // Edge colour = HOW the relation was established (the evidence mechanism);
 // the Alignment/Provenance toggles = WHICH relation class (C1–C5 core vs
-// P1–P11 secondary, solid vs dotted). The two axes are independent: C1/C5/C6
+// P1–P11 secondary, solid vs dotted). The two axes are independent: C1 and C5
 // are core yet provenance-established, so a grey edge can still be core.
-export const LEGEND = {
+//
+// The WORDING of every legend row now ships with the graph (`payload.legend`).
+// This is the half that stays here: which colour or fill a row's `key` gets,
+// because that is the only thing a renderer still decides. The two lists had
+// drifted — this one carried six node rows to the DOT export's two and never
+// mentioned the alignment legs, so the green fill it explained could not be
+// traced to the three relations that cause it.
+export const LEGEND_COLOURS: Record<string, string> = {
+  id: EDGE_COLOURS.id,
+  type: EDGE_COLOURS.type,
+  provenance: EDGE_COLOURS.provenance,
+  secondary: EDGE_COLOURS.provenance,
+  invalid: '#dc2626',
+  objective_aligned: '#bbf7d0',
+  objective_unaligned: '#fde68a',
+  course_goal: FILLS.course_goal,
+  assessment: FILLS.assessment,
+  activity: FILLS.activity,
+  content: FILLS.content,
+  section: '#e5e7eb',
+  has_violation: '#d97706',
+}
+
+/** Shown only for a payload archived before the legend shipped with it. */
+export const LEGEND_FALLBACK = {
   edges: [
-    { label: 'established by matched ids (assessed_by / practiced_by / prepares_for)', colour: EDGE_COLOURS.id },
-    { label: 'established by matched types (realizes)', colour: EDGE_COLOURS.type },
-    { label: 'established by provenance (decomposes_to / supports, …)', colour: EDGE_COLOURS.provenance },
-    { label: 'Bloom mismatch on an assessed_by / practiced_by edge', colour: '#dc2626' },
+    { key: 'id', label: 'id-match edge' },
+    { key: 'type', label: 'type-match edge' },
+    { key: 'provenance', label: 'provenance edge' },
+    { key: 'invalid', label: 'Bloom/format ⚠ (invalid)' },
   ],
   nodes: [
-    { label: 'objective (LO), fully aligned', colour: '#bbf7d0' },
-    { label: 'objective (LO), missing a leg', colour: '#fde68a' },
-    { label: 'course goal', colour: '#fef3c7' },
-    { label: 'assessment task (AT)', colour: '#dbeafe' },
-    { label: 'activity (TLA)', colour: '#dcfce7' },
-    { label: 'content module / material', colour: '#f3f4f6' },
+    { key: 'objective_aligned', label: 'objective aligned' },
+    { key: 'objective_unaligned', label: 'objective has a gap' },
   ],
 }

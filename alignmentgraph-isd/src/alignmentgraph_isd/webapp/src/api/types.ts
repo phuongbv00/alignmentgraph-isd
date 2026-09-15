@@ -299,11 +299,29 @@ export interface RunDetail {
 
 // ── the alignment graph ──────────────────────────────────────────────────────
 
-/** Present on the full view only; the wire (light) view omits `data`. */
+/** The display fields below are decided once, by the harness (`viz.py`), and
+ *  read here — not worked out again in TypeScript. That is the 2026-09-11
+ *  arrangement: the payload carries every display SEMANTIC, this app keeps
+ *  only colour and shape. They are optional because a `graph.json` archived
+ *  before they existed still has to render; the server upgrades such a payload
+ *  on read, so the `??` fallbacks below are for a raw file, not the normal path.
+ *
+ *  `data` is present on the full view only; the wire (light) view omits it —
+ *  which works precisely because nothing here draws from `data`. */
 export interface GraphNode {
   id: string
   type: string
   data?: Record<string, any>
+  /** Element: the item id it carries (`objective:LO-01` -> `LO-01`).
+   *  Section: its type, because a section node IS its type. */
+  label?: string
+  kind?: 'element' | 'section'
+  /** The one identifying line for a non-objective node (an activity's name, a
+   *  material's title). Shipped so no renderer has to dig through `data`. */
+  detail?: string
+  /** Objectives only: the Bloom level. */
+  level?: string
+  repaired?: boolean
 }
 
 export interface GraphEdge {
@@ -316,15 +334,48 @@ export interface GraphEdge {
   /** How the edge was established: 'id' | 'type' | 'provenance', or '' for
    *  the internal scaffolding edges the DOT view also drops. */
   established_by: string
+  /** Composed by the harness. It used to be composed HERE and, separately, in
+   *  the inspector — which dropped the `scaffold` prefix, so selecting a
+   *  `narrates` edge from a node's relation list matched nothing on canvas. */
+  id?: string
+  /** Which toggle shows it. From `REGISTRY`, not from the id's first letter. */
+  layer?: 'alignment' | 'provenance' | 'scaffolding'
+  tier?: 'core' | 'secondary' | ''
+  /** An `assessed_by`/`practiced_by` edge whose objective fails ITS OWN Bloom
+   *  check — C2 judged on the assessment rule, C3 on the activity rule. */
+  invalid?: boolean
+  invalid_reason?: '' | 'bloom_assessment' | 'bloom_activity'
+}
+
+/** One leg of the constructive-alignment triad, as the harness declares it.
+ *  Every word comes from `alignment.REGISTRY`: `verb` is the relation's own
+ *  `edge_type` (`assessed_by`) and `label` its sentence. A leg IS a core
+ *  relation seen from the objective, so there is nothing to name here. */
+export interface AlignmentLeg {
+  relation_id: string
+  verb: string
+  label: string
+  ok: boolean
+}
+
+/** A legend row as MEANING. The colour or shape for `key` is this app's to
+ *  choose; the wording is not. */
+export interface LegendEntry {
+  key: string
+  label: string
 }
 
 export interface ObjectiveAlignment {
-  measured: boolean
-  supported: boolean
-  /** The edge that closes the triad: the practicing activity (C3) prepares for
-   *  the assessing item (C2). Added 2026-09-10 with `aligned`, which is now
-   *  exactly these three. Optional so an archived run still parses — it will
-   *  simply not show the leg. */
+  /** One scalar per leg, named by the relation's own verb (2026-09-14 —
+   *  they were `measured`/`supported`/`prepares`, a third set of names for
+   *  C2/C3/C4). Optional because an archived dump carries the old three; read
+   *  `legs` instead, which the server backfills either way. */
+  assessed_by?: boolean
+  practiced_by?: boolean
+  prepares_for?: boolean
+  /** The pre-2026-09-14 names, present on an archived payload only. */
+  measured?: boolean
+  supported?: boolean
   prepares?: boolean
   /** The CONJUNCTION of the two below. NOT part of `aligned` since 2026-09-10:
    *  Bloom is a content condition, and `aligned` is the structural triad. */
@@ -344,11 +395,20 @@ export interface ObjectiveAlignment {
    *  measures the objective, so this was true whenever `measured` was and
    *  never narrowed `aligned`. Optional so an archived run still parses. */
   evaluated?: boolean
+  /** The legs as an ORDERED list, which is what `aligned` is derived from.
+   *  Render these rather than the booleans above: adding a leg (C4, 2026-09-10)
+   *  used to mean editing four places that could disagree. */
+  legs?: AlignmentLeg[]
 }
 
 export interface RelationCoverage {
+  /** The relation's canonical wording, from `alignment.REGISTRY`. The one
+   *  place a C/P relation is named for a reader. */
   label: string
   mechanism: string
+  /** 'core' (C1-C5) | 'secondary' (P1-P11). Shipped all along and simply not
+   *  declared here, which is why edges used to guess it from the id prefix. */
+  tier?: 'core' | 'secondary'
   coverage: number
   uncovered: string[]
 }
@@ -362,6 +422,14 @@ export interface AlignmentGraphPayload {
    *  module does not exist. Types only: the messages are in the ledger. */
   node_violations?: Record<string, string[]>
   relation_coverage: Record<string, RelationCoverage>
+  /** What each colour and fill MEANS, shipped with the graph it explains, so
+   *  the two renderers cannot drift — they had: this app's legend listed six
+   *  node rows to the DOT export's two, and never mentioned the triad legs at
+   *  all, so the green fill it explained could not be traced to its cause. */
+  legend?: { edges: LegendEntry[]; nodes: LegendEntry[] }
+  /** Bumped when the display fields change shape; absent on a payload written
+   *  before they existed. */
+  schema_version?: number
   metadata: {
     design_brief_id?: string
     generated_at?: string

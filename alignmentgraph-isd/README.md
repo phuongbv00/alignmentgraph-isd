@@ -93,9 +93,9 @@ brief = DesignBrief(
 
 result = MetaAgent(config).run(brief)
 # result == {"addie_output": {...}, "trajectory": {...}, "metadata": {...},
-#            "graph": {...}, "graph_dot": "digraph alignment { ... }"}
-# (the graph/graph_dot keys exist on the default graph arm only — a
-#  context_mode="prose" run is graph-free and omits them)
+#            "graph": {...}}
+# (the graph key exists on the default graph arm only — a
+#  context_mode="prose" run is graph-free and omits it)
 ```
 
 `MetaAgent.run` (and the CLI) fails with a clear error if `llm_factory` is not
@@ -132,7 +132,7 @@ preset system):
   use); safeguards are limited to the within-artifact checks (bloom verbs,
   measurability, rubric consistency, evaluation quality, actionability) plus
   the shared self-repair/regen scaffolding; there is no cross-agent routing,
-  no docket, no residual audit, and **no `graph`/`graph_dot` result keys**
+  no docket, no residual audit, and **no `graph` result key**
   (its inspectability artifact is `result["prose"]` — the raw blackboard
   documents verbatim, saved by the benchmark as `<agent_id>_prose.json`; a
   content dump for debugging, not an alignment audit).
@@ -154,21 +154,30 @@ auditability contrast the ablation reports):
 
 - `result["graph"]` — `AlignmentGraph.to_full_dict()`: every node (id, type,
   complete data payload), every edge (source, target, relation key such as
-  `"R3-measures"`, `relation_id`, `established_by`, evidence, rationale),
+  `"C2-assessed_by"`, `relation_id`, `established_by`, evidence, rationale),
   per-objective / per-relation alignment annotations, and a `metadata` block
   (design brief id, UTC timestamp, node/edge counts by type). Fully
   JSON-serializable.
-- `result["graph_dot"]` — `AlignmentGraph.to_dot()`: a valid Graphviz DOT
-  document (node shape/colour by type and alignment state, edge labels by
-  relation, DOT-escaped labels — Korean/unicode content stays valid). Render
-  with `dot -Tsvg graph.dot -o graph.svg`.
 
-Write them to files with the CLI's `--graph <stem>` flag, or set the
+  It also carries the **display semantics** — a node's `label` and `kind`, an
+  edge's `id`, `layer`, `tier` and `invalid` flag, an objective's ordered
+  alignment `legs`, the graph's `legend` — so it is the single thing every
+  renderer reads. Colour and shape are all a renderer still decides.
+
+Write it to a file with the CLI's `--graph <stem>` flag, or set the
 `ALIGNMENTGRAPH_DUMP_DIR` env var to have every run write
-`<brief_id>_graph.json` + `<brief_id>_graph.dot` there automatically. The
-benchmark adapter surfaces the same keys, and the benchmark runner saves them
-as `<agent_id>_graph.json` / `<agent_id>_graph.dot` next to each scenario's
-output.
+`<brief_id>_graph.json` there automatically. The benchmark adapter surfaces
+the same key, and the benchmark runner saves it as `<agent_id>_graph.json`
+next to each scenario's output.
+
+There is no `.dot` artifact: GraphViz DOT is a RENDERING of that payload,
+reproducible from it byte-for-byte, so it is produced on demand rather than
+kept in step as a second file.
+
+```bash
+alignmentgraph-isd dot graph.json -o graph.dot
+dot -Tsvg graph.dot -o graph.svg
+```
 
 ### RAG (external corpus only)
 

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_FILTERS, edgeLayer, isElementNode, layerCounts, shortLabel, toCytoscape } from './toCytoscape'
+import {
+  alignmentBadge, DEFAULT_FILTERS, edgeId, edgeLayer, isElementNode, layerCounts,
+  shortLabel, toCytoscape,
+} from './toCytoscape'
 import type { AlignmentGraphPayload, GraphEdge } from '../api/types'
 
 /**
@@ -12,20 +15,45 @@ import type { AlignmentGraphPayload, GraphEdge } from '../api/types'
 function fixture(): AlignmentGraphPayload {
   const edge = (
     relation_id: string, type: string, source: string, target: string, established_by: string,
-  ): GraphEdge => ({ relation_id, type, source, target, established_by, evidence: '', rationale: '' })
+  ): GraphEdge => ({
+    relation_id, type, source, target, established_by, evidence: '', rationale: '',
+    // Exactly what the harness ships, composed once there.
+    id: `${relation_id || 'scaffold'}|${source}|${target}|${type}`,
+    layer: !relation_id ? 'scaffolding' : relation_id.startsWith('C') ? 'alignment' : 'provenance',
+    tier: !relation_id ? '' : relation_id.startsWith('C') ? 'core' : 'secondary',
+    invalid: false,
+    invalid_reason: '',
+  })
+
+  const node = (id: string, type: string) => ({
+    id, type,
+    label: id.includes(':') ? id.split(':').slice(1).join(':') : type,
+    kind: (id.includes(':') ? 'element' : 'section') as 'element' | 'section',
+    detail: '', level: '', repaired: false,
+  })
+
+  // The verbs and wording are the registry's, as the harness ships them.
+  const legs = (assessed: boolean, practiced: boolean, prepares: boolean) => [
+    { relation_id: 'C2', verb: 'assessed_by', ok: assessed,
+      label: 'learning outcome assessed by assessment task' },
+    { relation_id: 'C3', verb: 'practiced_by', ok: practiced,
+      label: 'learning outcome practiced by activity' },
+    { relation_id: 'C4', verb: 'prepares_for', ok: prepares,
+      label: 'activity prepares for assessment task' },
+  ]
 
   return {
     nodes: [
-      { id: 'course_goal_0', type: 'course_goal' },
-      { id: 'gap:GAP-01', type: 'gap' },
-      { id: 'objective:LO-01', type: 'objective' },
-      { id: 'objective:LO-02', type: 'objective' },
-      { id: 'assessment_plan_0', type: 'assessment_plan' },
-      { id: 'assessment:AT-01', type: 'assessment' },
-      { id: 'activity:ACT-01', type: 'activity' },
-      { id: 'content:MOD-01', type: 'content' },
-      { id: 'material:MAT-01', type: 'material' },
-      { id: 'improvement_0', type: 'improvement' },
+      node('course_goal_0', 'course_goal'),
+      node('gap:GAP-01', 'gap'),
+      node('objective:LO-01', 'objective'),
+      node('objective:LO-02', 'objective'),
+      node('assessment_plan_0', 'assessment_plan'),
+      node('assessment:AT-01', 'assessment'),
+      node('activity:ACT-01', 'activity'),
+      node('content:MOD-01', 'content'),
+      node('material:MAT-01', 'material'),
+      node('improvement_0', 'improvement'),
     ],
     edges: [
       // alignment layer = the CORE relations C1–C5, whatever established them
@@ -43,13 +71,16 @@ function fixture(): AlignmentGraphPayload {
     ],
     objective_alignment: {
       'objective:LO-01': {
-        measured: true, supported: true, prepares: true, bloom_ok: true, aligned: true,
+        assessed_by: true, practiced_by: true, prepares_for: true,
+        bloom_ok: true, aligned: true, legs: legs(true, true, true),
       },
       'objective:LO-02': {
-        measured: false, supported: false, prepares: false, bloom_ok: false, aligned: false,
+        assessed_by: false, practiced_by: false, prepares_for: false,
+        bloom_ok: false, aligned: false, legs: legs(false, false, false),
       },
     },
     relation_coverage: {},
+    schema_version: 2,
     metadata: {},
   }
 }
@@ -150,11 +181,25 @@ describe('toCytoscape', () => {
 
     expect(aligned.classes).toContain('aligned')
     expect(aligned.classes).not.toContain('unaligned')
-    expect(aligned.data.badge).toBe('✓✓✓')
 
     expect(unaligned.classes).toContain('unaligned')
     expect(unaligned.classes).toContain('bloom-warning')
-    expect(unaligned.data.badge).toBe('✗✗✗')
+  })
+
+  it('shows which leg is missing ON the node, not only in the inspector', () => {
+    // The badge was computed here for months and rendered nowhere: no
+    // stylesheet selector read `data(badge)` and the canvas has no tooltips.
+    // So the app said "green or amber" where the DOT export said `✓ MSP`.
+    const elements = toCytoscape(fixture(), DEFAULT_FILTERS)
+    const aligned = nodes(elements).find((n) => n.data.id === 'objective:LO-01')!
+    const unaligned = nodes(elements).find((n) => n.data.id === 'objective:LO-02')!
+
+    expect(aligned.data.label).toBe('LO-01\n✓✓✓')
+    expect(unaligned.data.label).toBe('LO-02\n✗✗✗')
+    // One glyph per leg, in the order the harness declares them.
+    expect(alignmentBadge(fixture().objective_alignment['objective:LO-01'])).toBe('✓✓✓')
+    // A node with no alignment flags gets a plain label, not an empty badge line.
+    expect(nodes(elements).find((n) => n.data.id === 'assessment:AT-01')!.data.label).toBe('AT-01')
   })
 
   it('marks section nodes so they read as holding a whole ADDIE section', () => {
@@ -197,5 +242,72 @@ describe('toCytoscape', () => {
 
   it('returns nothing for a missing graph', () => {
     expect(toCytoscape(null)).toEqual([])
+  })
+})
+
+/**
+ * A payload as it looked BEFORE the harness shipped display semantics
+ * (2026-09-11): no node `label`/`kind`, no edge `id`/`layer`/`tier`/`invalid`,
+ * no `legs`, no `legend`. 36 such dumps sit in the benchmark results tree.
+ *
+ * The server upgrades one of these on read, so this is not the normal path —
+ * but the `??` fallbacks in `toCytoscape` are the only thing standing between
+ * a raw archived file and a blank canvas, and a fallback nothing exercises is
+ * a fallback that has already stopped working.
+ */
+function legacyFixture(): AlignmentGraphPayload {
+  const current = fixture()
+  return {
+    ...current,
+    nodes: current.nodes.map(({ id, type }) => ({ id, type })),
+    edges: current.edges.map(({ relation_id, type, source, target, established_by }) => ({
+      relation_id, type, source, target, established_by, evidence: '', rationale: '',
+    })),
+    objective_alignment: Object.fromEntries(
+      Object.entries(current.objective_alignment).map(([id, flags]) => {
+        const { legs: _legs, ...rest } = flags
+        return [id, rest]
+      }),
+    ),
+    schema_version: undefined,
+  }
+}
+
+describe('a payload archived before the display fields existed', () => {
+  it('still draws the same graph', () => {
+    const modern = toCytoscape(fixture(), DEFAULT_FILTERS)
+    const legacy = toCytoscape(legacyFixture(), DEFAULT_FILTERS)
+
+    expect(ids(legacy)).toEqual(ids(modern))
+    expect(legacy.map((e) => e.classes)).toEqual(modern.map((e) => e.classes))
+    expect(legacy.map((e) => e.data.label)).toEqual(modern.map((e) => e.data.label))
+  })
+
+  it('composes the same edge ids the canvas selects by', () => {
+    // Including the `scaffold` prefix, which the inspector's own copy of this
+    // dropped — so opening a `narrates` edge from a node's relation list
+    // selected nothing on the canvas.
+    const scaffolding = legacyFixture().edges.find((e) => !e.relation_id)!
+    expect(edgeId(scaffolding)).toBe(`scaffold|${scaffolding.source}|${scaffolding.target}|narrates`)
+  })
+
+  it('still classifies its layers and its badge', () => {
+    const legacy = legacyFixture()
+    expect(edgeLayer(legacy.edges.find((e) => e.relation_id === 'C2')!)).toBe('alignment')
+    expect(edgeLayer(legacy.edges.find((e) => e.relation_id === 'P1')!)).toBe('provenance')
+    expect(edgeLayer(legacy.edges.find((e) => !e.relation_id)!)).toBe('scaffolding')
+    expect(alignmentBadge(legacy.objective_alignment['objective:LO-01'])).toBe('✓✓✓')
+  })
+
+  it('shortens a badge rather than inventing a ✗ for a leg it never had', () => {
+    // `prepares` arrived on 2026-09-10; a dump from before it says nothing
+    // about that leg, and a ✗ would be an answer the run never gave.
+    expect(alignmentBadge({
+      measured: true, supported: true, bloom_ok: true, aligned: true,
+    })).toBe('✓✓')
+    // ...and reads the current names just as well.
+    expect(alignmentBadge({
+      assessed_by: true, practiced_by: false, bloom_ok: true, aligned: false,
+    })).toBe('✓✗')
   })
 })

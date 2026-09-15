@@ -228,9 +228,19 @@ def test_graph_endpoint_serves_light_and_full(client, ready_program, wait_for_te
     light = client.get(f"/api/runs/{run_id}/graph", params={"view": "light"}).json()
     full = client.get(f"/api/runs/{run_id}/graph", params={"view": "full"}).json()
     assert len(light["nodes"]) == len(full["nodes"])
-    # The point of the light view: node payloads are what makes a dump ~95 kB.
+    # The point of the light view: node payloads are most of a dump's size.
     assert all("data" not in n for n in light["nodes"])
     assert any(n.get("data") for n in full["nodes"])
+
+    # And the point of the light view being a CUT and not a rebuild: it drops
+    # `data` and keeps everything a renderer draws from. It used to whitelist
+    # `{id, type}`, which would take the display fields out with it and leave
+    # the browser to work them out again — the arrangement this replaced.
+    assert all(n["label"] and n["kind"] for n in light["nodes"])
+    for lit, fat in zip(light["nodes"], full["nodes"]):
+        assert set(fat) - set(lit) == {"data"}
+    assert light["edges"] == full["edges"]
+    assert light["legend"] == full["legend"]
 
 
 def test_node_detail_is_fetched_by_id(client, ready_program, wait_for_terminal):
@@ -258,7 +268,7 @@ def test_artifacts_are_served_by_name_only(client, ready_program, wait_for_termi
 
     assert client.get(f"/api/runs/{run_id}/artifacts/addie_output").json()["design"]
     assert client.get(f"/api/runs/{run_id}/artifacts/trajectory").json()["tool_calls"]
-    assert "digraph" in client.get(f"/api/runs/{run_id}/artifacts/graph_dot").text
+    assert client.get(f"/api/runs/{run_id}/artifacts/graph").json()["nodes"]
 
     # Not a path: an arbitrary name must not reach the filesystem.
     assert client.get(f"/api/runs/{run_id}/artifacts/secrets").status_code == 404
@@ -273,7 +283,7 @@ def test_objective_alignment_survives_to_the_api(client, ready_program, wait_for
     alignment = graph["objective_alignment"]
     assert alignment
     for flags in alignment.values():
-        assert set(flags) >= {"measured", "supported", "prepares", "bloom_ok", "aligned"}
+        assert set(flags) >= {"assessed_by", "practiced_by", "prepares_for", "bloom_ok", "aligned"}
     # 16 relations total: 5 core (C1-C5) + 11 secondary (P1-P11) — see
     # alignment.py::REGISTRY (renamed from the old R1..R13 scheme).
     from alignmentgraph_isd.core.alignment_graph import alignment as alignment_module

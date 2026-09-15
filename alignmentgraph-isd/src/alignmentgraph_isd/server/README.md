@@ -5,7 +5,10 @@ scenario file), run the agent, and watch the alignment graph being built.
 
 It exists to make the thesis contribution visible. The alignment graph is
 otherwise only a `graph.json` on disk; here it is a thing you can look at,
-filter and click through while the run is still going.
+filter and click through while the run is still going. The app decides nothing
+about that graph: what a node is called, which layer an edge is on and which
+edges are marked bad all come from the payload, and the only thing this front
+end still owns is colour and shape.
 
 ## Running it
 
@@ -248,12 +251,23 @@ makes a page reload mid-run resume without gaps and multiple browser tabs free.
 They are also flushed to `events.jsonl`, so a finished run can be replayed after
 a restart.
 
-The graph is **state**, not an event: a full dump is ~95 kB and a run produces a
-dozen of them, but only the latest is ever wanted. The newest is kept and a
-revision counter bumped. What goes over the wire is a light view without the
-per-node payloads (~35 kB); the payloads are fetched per node on click, which
-matters because a section node such as `objective_0` carries an entire ADDIE
-section.
+The graph is **state**, not an event: a full dump runs ~170 kB at the median
+and ~880 kB at the worst measured, and a run produces a dozen of them, but only
+the latest is ever wanted. The newest is kept and a revision counter bumped.
+
+What goes over the wire is a light view: the same payload with each node's
+`data` dropped and **nothing else** (~92 kB at the median). Those payloads are
+fetched per node on click, which matters because a section node such as
+`objective_0` carries an entire ADDIE section.
+
+That cut is safe because of a rule the payload keeps: it carries every display
+semantic as its own field — a node's `label` and `kind`, an edge's `id`,
+`layer`, `tier` and whether it is `invalid`, an objective's ordered alignment
+`legs`, and the graph's `legend` — and **nothing reads `data` to draw**. So the
+light frame is a complete picture, not a stub. The cut is made by
+`viz.without_node_data`, not by a shape this server invents: it used to rebuild
+each node as `{id, type}`, which is the same thing only while a node carries
+nothing else worth keeping.
 
 ### Cancelling
 

@@ -354,6 +354,11 @@ class AlignmentGraph:
         return all(not n["data"] for n in self.get_nodes(node_type))
 
     def to_dict(self) -> dict:
+        """The LIVE node and edge dicts, in new lists.
+
+        Callers must not mutate them or add keys — they are the running graph.
+        ``viz.with_display_semantics`` is the one thing that attaches fields to
+        a snapshot, and it shallow-copies every node and edge first."""
         with self._lock:
             return {"nodes": list(self._nodes.values()), "edges": list(self._edges)}
 
@@ -386,7 +391,7 @@ class AlignmentGraph:
         previous_observer, self._observer = self._observer, None
         try:
             with self._lock:
-                payload = viz.to_node_link(self, include_data=True)
+                payload = viz.to_node_link(self)
                 node_counts: dict[str, int] = {}
                 for node in self._nodes.values():
                     node_counts[str(node["type"])] = node_counts.get(str(node["type"]), 0) + 1
@@ -412,7 +417,7 @@ class AlignmentGraph:
         with ``dot -Tsvg out.dot -o out.svg``."""
         from . import viz  # lazy: viz imports this module
 
-        return viz.to_dot(self, title=title)
+        return viz.to_dot(viz.to_node_link(self), title=title)
 
     @classmethod
     def from_dict(cls, payload: dict) -> "AlignmentGraph":

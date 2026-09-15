@@ -14,6 +14,10 @@ interface Props {
    *  whether a finding has been explained yet is read off the finding itself
    *  (`openReasonLabel`), which stays right for a cancelled run too. */
   runActive: boolean
+  /** The graph's `relation_coverage`, which carries each relation's canonical
+   *  wording from `alignment.REGISTRY`. Passed in rather than looked up here,
+   *  so a C/P relation is named in exactly one place for the whole app. */
+  relations?: Record<string, { label?: string }>
 }
 
 /**
@@ -34,7 +38,7 @@ interface Props {
  * closes them. That is worth watching, but it means every group here is a
  * snapshot until the run settles — hence the "so far" wording below.
  */
-export function ViolationGrid({ findings, runId, runActive }: Props) {
+export function ViolationGrid({ findings, runId, runActive, relations }: Props) {
   const [openKey, setOpenKey] = useState<string | null>(null)
   const groups = useMemo(() => {
     const open = findings.filter((f) => f.outcome === 'open')
@@ -94,6 +98,7 @@ export function ViolationGrid({ findings, runId, runActive }: Props) {
               finding={finding}
               open={openKey === finding.key}
               onToggle={() => setOpenKey(openKey === finding.key ? null : finding.key)}
+              relations={relations}
             />
           ))}
         </div>
@@ -102,10 +107,11 @@ export function ViolationGrid({ findings, runId, runActive }: Props) {
   )
 }
 
-function ViolationRow({ finding, open, onToggle }: {
+function ViolationRow({ finding, open, onToggle, relations }: {
   finding: Finding
   open: boolean
   onToggle: () => void
+  relations?: Record<string, { label?: string }>
 }) {
   const isOpen = finding.outcome === 'open'
   const hue = agentHue(finding.target_designer || 'WorkflowOrchestrator')
@@ -117,7 +123,7 @@ function ViolationRow({ finding, open, onToggle }: {
           ? <AlertTriangle size={13} className="vg-open" />
           : <CheckCircle2 size={13} className="vg-fixed" />}
         <span className="ctx-title">
-          {violationLabel(finding.type)}
+          {violationLabel(finding.type, relations)}
           <span className="mono small muted"> {finding.node_id}</span>
         </span>
         <span className="muted small ctx-meta">

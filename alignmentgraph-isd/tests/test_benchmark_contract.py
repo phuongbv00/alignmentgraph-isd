@@ -27,7 +27,10 @@ from conftest import load_brief, run_brief
 # `metadata.token_usage` where the benchmark's uniform accounter overwrites
 # them — the pooling script `ablation/08_pool_ablation_runs.py` reads `events`
 # with a per-stream fallback for pre-existing runs).
-RESULT_KEYS = {"addie_output", "trajectory", "metadata", "graph", "graph_dot"}
+# `graph_dot` went 2026-09-11: DOT is a RENDERING of `graph`, reproducible from
+# it byte-for-byte, so shipping both made the weaker one a second artifact to
+# keep in step. `alignmentgraph-isd dot <graph.json>` renders it on demand.
+RESULT_KEYS = {"addie_output", "trajectory", "metadata", "graph"}
 
 TRAJECTORY_LISTS = {"tool_calls", "reasoning_steps", "agent_interactions", "events"}
 # Every action that can reach `events` (the ones `_record_event` writes). Listed
@@ -110,9 +113,18 @@ GRAPH_KEYS = {"nodes", "edges", "objective_alignment", "relation_coverage",
               # had `objective_alignment`; an activity linked to no objective,
               # a material whose module does not exist, an item with no answer
               # key had no signal on the graph at all.
-              "node_violations", "metadata"}
-NODE_KEYS = {"type", "id", "data"}
-EDGE_KEYS = {"type", "source", "target", "evidence", "rationale", "relation_id", "established_by"}
+              "node_violations",
+              # The display semantics: the payload is what BOTH renderers read,
+              # so what a thing is called, which layer it is on and whether it
+              # is marked bad are decided here and not twice.
+              "legend", "schema_version", "metadata"}
+NODE_KEYS = {"type", "id", "data",
+             # `detail`/`level`/`repaired` are why no renderer reads `data` to
+             # draw — which is in turn why the server's wire frame can drop
+             # `data` and still be a complete picture.
+             "label", "kind", "detail", "level", "repaired"}
+EDGE_KEYS = {"type", "source", "target", "evidence", "rationale", "relation_id", "established_by",
+             "id", "layer", "tier", "invalid", "invalid_reason"}
 
 
 @pytest.fixture(scope="module")
@@ -231,9 +243,19 @@ def test_graph_dump_shape(result):
         # read it — beside the two halves it used to hide and the checks' own
         # wording, which is what lets a reader see WHICH rule failed. It is no
         # longer a leg of `aligned`, which is the structural triad C2/C3/C4.
-        assert set(flags) == {"measured", "supported", "prepares", "aligned",
+        assert set(flags) == {"assessed_by", "practiced_by", "prepares_for", "aligned",
                               "bloom_ok", "bloom_assessment_ok", "bloom_activity_ok",
-                              "bloom_notes"}
+                              "bloom_notes",
+                              # The legs as an ORDERED renderable list, which is
+                              # what `aligned` is now derived from.
+                              "legs"}
+        # Named by the relations themselves — `relation_id` and the registry's
+        # own `edge_type` verb. They read `measured`/`supported`/`prepares`
+        # until 2026-09-14, a third set of names for C2/C3/C4.
+        assert [leg["relation_id"] for leg in flags["legs"]] == ["C2", "C3", "C4"]
+        assert [leg["verb"] for leg in flags["legs"]] == [
+            "assessed_by", "practiced_by", "prepares_for"]
+        assert flags["aligned"] == all(leg["ok"] for leg in flags["legs"])
 
     assert set(graph["metadata"]) >= {
         "design_brief_id", "generated_at", "node_count", "edge_count",
@@ -241,14 +263,17 @@ def test_graph_dump_shape(result):
     }
 
 
-def test_graph_dot_is_a_digraph(result):
-    assert result["graph_dot"].lstrip().startswith("digraph")
+def test_dot_renders_from_the_payload(result):
+    """The DOT is a view of the dump, not a second artifact beside it."""
+    from alignmentgraph_isd.core.alignment_graph import viz
+
+    assert viz.to_dot(result["graph"]).lstrip().startswith("digraph")
 
 
 def test_prose_arm_omits_graph_keys_but_keeps_the_rest_of_the_contract():
-    """The prose arm runs graph-free, so ``graph``/``graph_dot`` are ABSENT —
-    the benchmark writes ``<agent_id>_graph.json``/``.dot`` only when the keys
-    exist, so absence (never an empty placeholder) is the contract. Everything
+    """The prose arm runs graph-free, so ``graph`` is ABSENT — the benchmark
+    writes ``<agent_id>_graph.json`` only when the key exists, so absence
+    (never an empty placeholder) is the contract. Everything
     else the benchmark reads keeps its shape; ``metadata.audit`` is empty
     (nothing to audit is the auditability contrast, not a missing field)."""
     from conftest import FakeChatModel
@@ -257,8 +282,8 @@ def test_prose_arm_omits_graph_keys_but_keeps_the_rest_of_the_contract():
     config.llm_factory = lambda: FakeChatModel()
     result = run_brief(load_brief("java_oop_brief.json"), config)
 
-    assert (RESULT_KEYS - {"graph", "graph_dot"}) <= set(result)
-    assert "graph" not in result and "graph_dot" not in result
+    assert (RESULT_KEYS - {"graph"}) <= set(result)
+    assert "graph" not in result
     # Its inspectability artifact is the raw blackboard instead (saved as
     # <agent_id>_prose.json): verbatim per-step documents, no relations, no
     # coverage — content dump, not an audit.

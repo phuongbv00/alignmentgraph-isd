@@ -21,7 +21,8 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--trajectory", help="Optional path for trajectory JSON only.")
     run_parser.add_argument(
         "--graph",
-        help="Optional path stem for the alignment-graph dump (writes <stem>.json + <stem>.dot).",
+        help="Optional path stem for the alignment-graph dump (writes <stem>.json). "
+             "Render it with: alignmentgraph-isd dot <stem>.json",
     )
     # Model selection (falls back to AGENT_MODEL_* env vars). Requires the
     # optional [llm] extra: pip install 'alignmentgraph-isd[llm]'.
@@ -35,6 +36,17 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--api-key", default="", help="API key (env: AGENT_MODEL_API_KEY).")
     run_parser.add_argument("--temperature", type=float, default=None, help="Sampling temperature (env: AGENT_MODEL_TEMPERATURE).")
     run_parser.add_argument("--max-tokens", type=int, default=None, help="Max output tokens (env: AGENT_MODEL_MAX_TOKENS).")
+
+    dot_parser = subparsers.add_parser(
+        "dot",
+        help="Render a graph.json as GraphViz DOT. The DOT is not persisted by a "
+             "run — it is a view of the dump, reproducible from it byte-for-byte.",
+    )
+    dot_parser.add_argument("graph_json", help="Path to a graph.json / <agent_id>_graph.json dump.")
+    dot_parser.add_argument("-o", "--output", default="", help="Write here instead of stdout.")
+    dot_parser.add_argument(
+        "--title", default="", help="Graph title (default: the dump's own design_brief_id)."
+    )
 
     serve_parser = subparsers.add_parser(
         "serve", help="Run the demo web app. Requires: pip install 'alignmentgraph-isd[server]'."
@@ -57,10 +69,29 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "run":
         return _run(args)
+    if args.command == "dot":
+        return _dot(args)
     if args.command == "serve":
         return _serve(args)
     parser.error(f"Unsupported command: {args.command}")
     return 2
+
+
+def _dot(args: argparse.Namespace) -> int:
+    """Render a saved dump. A payload written before the display fields existed
+    is upgraded on the way in, so an archived run renders too."""
+    from .core.alignment_graph import viz
+
+    payload = json.loads(Path(args.graph_json).read_text(encoding="utf-8"))
+    title = args.title or (payload.get("metadata") or {}).get("design_brief_id", "")
+    text = viz.to_dot(payload, title=title)
+    if args.output:
+        out = Path(args.output)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text, encoding="utf-8")
+    else:
+        print(text)
+    return 0
 
 
 def _serve(args: argparse.Namespace) -> int:
@@ -133,7 +164,6 @@ def _run(args: argparse.Namespace) -> int:
             json.dumps(result.get("graph", {}), ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        stem.with_suffix(".dot").write_text(result.get("graph_dot", ""), encoding="utf-8")
     return 0
 
 

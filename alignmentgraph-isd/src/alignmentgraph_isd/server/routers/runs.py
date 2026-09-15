@@ -5,9 +5,10 @@ import json
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse
 from sqlmodel import Session as DBSession
 
+from ...core.alignment_graph import viz
 from .. import artifacts, briefs, sse
 from ..db import get_session
 from ..models import Run, RunStatus, utcnow
@@ -165,7 +166,17 @@ def get_graph(
     path = artifacts.resolve(settings, run.artifact_dir) / artifacts.ARTIFACT_FILES["graph"]
     if not path.exists():
         raise HTTPException(status.HTTP_409_CONFLICT, "This run has not produced a graph yet.")
-    return Response(path.read_text(encoding="utf-8"), media_type="application/json")
+    # A dump written before the display fields existed is upgraded here, by the
+    # producer's own function, so the browser never meets a payload it would
+    # have to complete itself — which would mean the derivations this change
+    # removed growing back, in TypeScript. It re-runs a rule, it does not invent
+    # one: `schema_version` in the answer says the payload was annotated now.
+    # `GET /artifacts/graph` deliberately does NOT do this — that serves the
+    # file, and this serves the view of it.
+    return Response(
+        json.dumps(viz.with_display_semantics(json.loads(path.read_text(encoding="utf-8"))),
+                   ensure_ascii=False),
+        media_type="application/json")
 
 
 @router.get("/runs/{run_id}/nodes/{node_id:path}", response_model=GraphNode)
@@ -222,8 +233,6 @@ def get_artifact(
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"No {name} for this run.")
 
     text = path.read_text(encoding="utf-8")
-    if name == "graph_dot":
-        return PlainTextResponse(text)
     return Response(text, media_type="application/json")
 
 

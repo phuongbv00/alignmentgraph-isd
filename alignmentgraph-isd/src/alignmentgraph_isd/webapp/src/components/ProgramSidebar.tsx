@@ -136,8 +136,6 @@ function RunRow({ run, active, onSelect }: {
   active: boolean
   onSelect: () => void
 }) {
-  const running = run.status === 'running' || run.status === 'cancelling'
-
   return (
     <button
       className={`run-row${active ? ' active' : ''}`}

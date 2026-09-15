@@ -23,6 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 from ..config import HarnessRunConfig
+from ..core.alignment_graph import viz
 from ..core.brief import DesignBrief
 from ..exceptions import HarnessCancelled
 from . import artifacts, llm_settings
@@ -200,7 +201,14 @@ class RunManager:
             if kind == "graph_snapshot":
                 # Serialized here, on this thread, while the payload is still
                 # the state it describes. See rule 1 in the module docstring.
-                state.set_graph(payload, _light_graph(payload))
+                #
+                # The wire view drops each node's `data` and NOTHING else —
+                # `viz.without_node_data`, not a shape this module invents. It
+                # used to rebuild every node as `{id, type}`, which was the same
+                # thing only while a node had nothing else worth keeping; the
+                # display fields a renderer needs now live beside `data`, and a
+                # whitelist would take them out with it.
+                state.set_graph(payload, viz.without_node_data(payload))
                 return
 
             if kind in _FORWARDED:
@@ -328,18 +336,6 @@ class RunManager:
                     handle.write(json.dumps(event.to_dict(), ensure_ascii=False) + "\n")
         except Exception as exc:  # noqa: BLE001 - the run matters, the log does not
             logger.warning("could not append events for run %s: %s", state.run_id, exc)
-
-
-def _light_graph(full: dict) -> dict:
-    """The wire version of a graph dump: same shape, no per-node `data`.
-
-    Cuts a snapshot from ~95 KB to ~35 KB. The dropped payloads are what
-    ``GET /runs/{id}/nodes/{node_id}`` serves on click.
-    """
-    return {
-        **full,
-        "nodes": [{"id": n.get("id"), "type": str(n.get("type", ""))} for n in full.get("nodes", [])],
-    }
 
 
 def _barren_run_error(result: dict) -> str:

@@ -62,7 +62,7 @@ def test_end_to_end_result_contract_and_every_step_produced():
     result = _agentic_result()
 
     assert {"addie_output", "trajectory", "trajectory_deep", "metadata",
-            "graph", "graph_dot"} <= set(result)
+            "graph"} <= set(result)
     run_config = result["metadata"]["run_config"]
     assert run_config["agent_mode"] == "multi"
     assert run_config["context_mode"] == "graph"
@@ -188,11 +188,11 @@ def test_all_four_arms_honour_their_axes_and_keep_the_result_contract():
             # there is alignment state to dump. Its ABSENCE in prose is the
             # reported contrast, not an omission.
             if context_mode == "graph":
-                assert {"graph", "graph_dot"} <= set(result), label
+                assert {"graph"} <= set(result), label
                 assert "prose" not in result, label
                 assert result["metadata"]["audit"], label
             else:
-                assert "graph" not in result and "graph_dot" not in result, label
+                assert "graph" not in result, label
                 assert result["prose"], label
                 assert result["metadata"]["audit"] == {}, label
 

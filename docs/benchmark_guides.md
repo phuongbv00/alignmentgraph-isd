@@ -324,8 +324,8 @@ Ma trận 2×2 = `agent_mode` (decomposition) × `context_mode` (alignment machi
 khác của cùng dữ liệu graph: mỗi step lưu nguyên cục JSON đã parse vào một document key; step sau đọc lại verbatim
 theo read-list tĩnh (pattern named-slice của các agent không-graph); safeguard chỉ còn 5 within-artifact check
 (bloom verbs, measurability, rubric consistency, evaluation quality, actionability) + self-repair/regen dùng chung;
-không routing, không docket, không residual audit, và run **không có** key `graph`/`graph_dot` → không có file
-`<agent_id>_graph.json/.dot` cho hai arm prose (đó chính là contrast auditability, không phải thiếu file); thay vào đó
+không routing, không docket, không residual audit, và run **không có** key `graph` → không có file
+`<agent_id>_graph.json` cho hai arm prose (đó chính là contrast auditability, không phải thiếu file); thay vào đó
 hai arm prose ghi `<agent_id>_prose.json` — dump nguyên văn các document trên blackboard (artifact để inspect/debug,
 KHÔNG phải audit: không relation, không coverage). Trục vì
 vậy là một **bundle** ("bỏ máy alignment thì harness còn gì") và phải được disclose như bundle, không claim
