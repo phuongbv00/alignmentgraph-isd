@@ -74,6 +74,10 @@ export interface BriefPreview {
 
 export type RunStatus = 'running' | 'cancelling' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted'
 
+/** The two ablation axes, as the server spells them (`config.py`). */
+export type AgentMode = 'single' | 'multi'
+export type ContextMode = 'prose' | 'graph'
+
 export interface RunStats {
   node_count?: number
   edge_count?: number
@@ -88,6 +92,12 @@ export interface RunStats {
   event_count?: number
   graph_rev?: number
   model_name?: string
+  // Not statistics: the ablation ARM the run was executed under. They ride in
+  // `stats` because the run row has no column for them and the demo database
+  // has no migrations — see server/events.py::RunState. Absent on a run
+  // recorded before this existed, which is why they are optional.
+  agent_mode?: AgentMode
+  context_mode?: ContextMode
 }
 
 export interface RunSummary {

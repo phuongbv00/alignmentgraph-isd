@@ -95,7 +95,13 @@ class RunManager:
     def has_capacity(self) -> bool:
         return len(self.registry.active()) < max(1, self.settings.max_concurrent_runs)
 
-    def start_run(self, run: Run, brief: dict) -> RunState:
+    def start_run(self, run: Run, brief: dict, arm: dict[str, str] | None = None) -> RunState:
+        """Begin one run, optionally under an ablation arm other than the default.
+
+        ``arm`` carries ONLY the axes the caller named. Anything absent is left
+        out of the harness config below, so ``HarnessRunConfig`` supplies it —
+        that class is the one place the ablation defaults live.
+        """
         # Checked before the run rather than left to fail inside it: a model
         # that cannot be constructed produces a run that "completes" in
         # milliseconds with an empty graph and the reason buried in per-agent
@@ -121,6 +127,13 @@ class RunManager:
             # transcript budget matches the client it is actually calling — and
             # so editing the connection mid-run cannot change either one under it.
             window = llm_settings.window_settings(config)
+            # Built HERE, on the request thread, rather than on the worker: the
+            # browser opens the event stream as soon as it has the run id, and
+            # the `hello` frame is the only one carrying `stats` — so the arm has
+            # to be resolved before the 202 goes out. Construction is pure, and
+            # what it can raise belongs inside this guard with everything else
+            # that can.
+            harness_config = HarnessRunConfig(llm_factory=factory, **window, **(arm or {}))
 
             directory = artifacts.resolve(self.settings, run.artifact_dir)
             directory.mkdir(parents=True, exist_ok=True)
@@ -129,7 +142,9 @@ class RunManager:
             _close_quietly(http_client)
             raise
 
-        state = self.registry.create(run.id, run.program_id)
+        state = self.registry.create(run.id, run.program_id,
+                                     agent_mode=harness_config.agent_mode,
+                                     context_mode=harness_config.context_mode)
         state.http_client = http_client
         if self._loop is not None:
             state.attach_loop(self._loop, self.wakeup_for(run.id))
@@ -137,7 +152,7 @@ class RunManager:
 
         try:
             self._executor.submit(
-                self._execute, run.id, run.program_id, run.artifact_dir, brief, factory, window)
+                self._execute, run.id, run.program_id, run.artifact_dir, brief, harness_config)
         except BaseException as exc:  # a shut-down executor, most likely
             state.release_http()
             state.finish(RunStatus.FAILED, str(exc))
@@ -203,11 +218,10 @@ class RunManager:
                 # the state it describes. See rule 1 in the module docstring.
                 #
                 # The wire view drops each node's `data` and NOTHING else —
-                # `viz.without_node_data`, not a shape this module invents. It
-                # used to rebuild every node as `{id, type}`, which was the same
-                # thing only while a node had nothing else worth keeping; the
-                # display fields a renderer needs now live beside `data`, and a
-                # whitelist would take them out with it.
+                # `viz.without_node_data`, not a shape this module invents. A
+                # `{id, type}` whitelist is not the same thing: the display
+                # fields a renderer needs live beside `data`, and a whitelist
+                # takes them out with it.
                 state.set_graph(payload, viz.without_node_data(payload))
                 return
 
@@ -217,7 +231,8 @@ class RunManager:
         return consume
 
     def _execute(
-        self, run_id: str, program_id: str, artifact_dir: str, brief: dict, factory, window: dict
+        self, run_id: str, program_id: str, artifact_dir: str, brief: dict,
+        config: HarnessRunConfig,
     ) -> None:
         state = self.registry.get(run_id)
         if state is None:
@@ -225,7 +240,6 @@ class RunManager:
 
         directory = artifacts.resolve(self.settings, artifact_dir)
         design_brief = DesignBrief.model_validate(brief)
-        config = HarnessRunConfig(llm_factory=factory, **window)
 
         started = datetime.now(timezone.utc)
         status, error, stats, result = RunStatus.SUCCEEDED, "", {}, None

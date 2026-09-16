@@ -6,7 +6,7 @@ import io
 import json
 
 
-from alignmentgraph_isd import AlignmentGraph
+from alignmentgraph_isd import AlignmentGraph, HarnessRunConfig
 from alignmentgraph_isd.server import artifacts
 from alignmentgraph_isd.server.app import sweep_interrupted_runs
 from alignmentgraph_isd.server.db import session_scope
@@ -14,8 +14,13 @@ from sqlmodel import select
 
 from alignmentgraph_isd.server.models import Run, RunStatus, Session, utcnow
 
-def start(client, program_id):
-    response = client.post(f"/api/programs/{program_id}/runs")
+def start(client, program_id, **arm):
+    """Start a run, under the default arm unless one is named.
+
+    No body at all when no arm is given — that is the path the Run button takes,
+    and the one that leaves the choice to `HarnessRunConfig`.
+    """
+    response = client.post(f"/api/programs/{program_id}/runs", json=arm or None)
     assert response.status_code == 202, response.text
     return response.json()["run_id"]
 
@@ -766,3 +771,95 @@ def test_the_graph_marks_every_node_that_carries_a_violation(
     assert isinstance(marks, dict)
     for node_id, types in marks.items():
         assert types and sorted(types) == types, node_id
+
+
+# ── the ablation arm ─────────────────────────────────────────────────────────
+
+def test_a_run_with_no_arm_takes_the_harness_default(client, ready_program, wait_for_terminal):
+    """The app names no arm, so the harness decides which one it is.
+
+    Asserted against `HarnessRunConfig`'s own fields rather than against the
+    literals "multi"/"graph": those defaults live in exactly one place, and a
+    test that copied them here would be the second.
+    """
+    default = HarnessRunConfig()
+    response = client.post(f"/api/programs/{ready_program}/runs")
+    assert response.status_code == 202, response.text
+    assert response.json()["agent_mode"] == default.agent_mode
+    assert response.json()["context_mode"] == default.context_mode
+
+    stats = wait_for_terminal(response.json()["run_id"])["stats"]
+    assert stats["agent_mode"] == default.agent_mode
+    assert stats["context_mode"] == default.context_mode
+
+
+def test_a_run_can_be_started_under_another_arm(
+    client, ready_program, settings, wait_for_terminal
+):
+    run_id = start(client, ready_program, agent_mode="single", context_mode="prose")
+    detail = wait_for_terminal(run_id)
+    assert detail["run"]["status"] == "succeeded", detail["run"]["error"]
+    assert detail["stats"]["agent_mode"] == "single"
+    assert detail["stats"]["context_mode"] == "prose"
+
+    # What the run itself recorded has to agree with what the row reports: both
+    # are read off the same config object, and a disagreement would mean the
+    # badge in the app names an arm the harness did not run.
+    directory = settings.data_root / artifacts.relative_run_dir(ready_program, run_id)
+    run_config = json.loads((directory / "metadata.json").read_text(encoding="utf-8"))["run_config"]
+    assert run_config["agent_mode"] == "single"
+    assert run_config["context_mode"] == "prose"
+
+
+def test_a_prose_run_ships_no_graph(client, ready_program, settings, wait_for_terminal):
+    """The absent graph IS the treatment — this pins what the app has to explain."""
+    run_id = start(client, ready_program, agent_mode="single", context_mode="prose")
+    wait_for_terminal(run_id)
+
+    directory = settings.data_root / artifacts.relative_run_dir(ready_program, run_id)
+    assert json.loads((directory / "graph.json").read_text(encoding="utf-8")) == {}
+    assert client.get(f"/api/runs/{run_id}/graph").json().get("nodes") == []
+
+
+def test_an_unknown_arm_is_refused_before_a_run_row_exists(client, ready_program):
+    response = client.post(f"/api/programs/{ready_program}/runs", json={"agent_mode": "duo"})
+    assert response.status_code == 422, response.text
+    assert client.get(f"/api/programs/{ready_program}").json()["runs"] == []
+
+
+def test_the_closing_frame_still_names_the_arm(client, ready_program, wait_for_terminal):
+    """A watcher that stays to the end must not be left with less than a reader
+    who fetches the run afterwards.
+
+    The arm is carried beside `stats` rather than inside it, and the terminal
+    frame used to publish the raw dict the run's own counters replace — so the
+    badge showed all run and vanished at the last frame.
+    """
+    run_id = start(client, ready_program, agent_mode="single", context_mode="graph")
+    wait_for_terminal(run_id)
+
+    frames = [json.loads(line[len("data: "):])
+              for line in client.get(f"/api/runs/{run_id}/events?after=0").text.splitlines()
+              if line.startswith("data: ")]
+    terminal = [frame for frame in frames
+                if isinstance(frame, dict) and frame.get("kind") == "run_finished"]
+    assert terminal, "the stream never carried a terminal frame"
+    assert terminal[-1]["payload"]["stats"]["agent_mode"] == "single"
+    assert terminal[-1]["payload"]["stats"]["context_mode"] == "graph"
+
+
+def test_the_arm_is_known_before_the_run_starts(
+    client, ready_program, blocked_run, wait_for_terminal
+):
+    """Resolved on the request thread, not the worker.
+
+    The browser opens the event stream as soon as it has the run id, and the
+    opening frame is the only one carrying `stats` — an arm settled later would
+    reach a watcher only on reload.
+    """
+    run_id = start(client, ready_program, agent_mode="multi", context_mode="prose")
+    stats = client.get(f"/api/runs/{run_id}").json()["stats"]
+    assert (stats["agent_mode"], stats["context_mode"]) == ("multi", "prose")
+
+    blocked_run["open"] = True
+    wait_for_terminal(run_id)

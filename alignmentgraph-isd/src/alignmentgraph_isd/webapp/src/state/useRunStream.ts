@@ -141,7 +141,12 @@ function reducer(state: RunStreamState, action: Action): RunStreamState {
             ...next,
             status: (event.payload.status as RunStatus) ?? 'succeeded',
             error: String(event.payload.error ?? ''),
-            stats: (event.payload.stats as RunStats) ?? next.stats,
+            // MERGED, not replaced: the closing frame reports the run's own
+            // counters, and what the opening frame established about the run
+            // — the arm it is under — is not its to erase. A run recorded
+            // before the terminal frame carried the arm still has it from
+            // `hello`, so its badge survives a reload too.
+            stats: { ...next.stats, ...(event.payload.stats as RunStats ?? {}) },
             phase: null,
             llmStartedAt: null,
           }

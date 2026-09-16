@@ -11,6 +11,7 @@ import { ProgramSidebar } from './components/ProgramSidebar'
 import { RunHeader } from './components/RunHeader'
 import { InspectorPanel } from './components/inspector/InspectorPanel'
 import { useRunStream } from './state/useRunStream'
+import type { Arm } from './lib/arms'
 import type {
   AgentContext, AlignmentGraphPayload, DeepAction, DeepTrajectory, Finding, Health, ProgramDetail, ProgramSummary, Selection,
 } from './api/types'
@@ -76,12 +77,17 @@ export default function App() {
   useEffect(() => {
     setFinishedGraph(null)
     if (!runId || stream.graph || stream.status === 'running' || stream.status === 'idle') return
+    // A prose run builds no graph and its `graph.json` is `{}`, which the graph
+    // endpoint answers with an EMPTY payload rather than nothing. Fetched, that
+    // reads on screen as a graph that failed to draw; left unfetched, the tab
+    // keeps its empty state and `GraphView` can say why there is none.
+    if (stream.stats.context_mode === 'prose') return
     let cancelled = false
     api.getGraph(runId, 'light')
       .then((graph) => { if (!cancelled) setFinishedGraph(graph) })
       .catch(() => { /* a failed run may have no graph; the panel says so */ })
     return () => { cancelled = true }
-  }, [runId, stream.status, stream.graph])
+  }, [runId, stream.status, stream.graph, stream.stats.context_mode])
 
   // Refresh the sidebar whenever the run's status settles into something new,
   // so its badge and the program ordering catch up. `cancelling` is included
@@ -253,12 +259,17 @@ export default function App() {
     void refreshPrograms()
   }
 
-  const startRun = async () => {
+  const startRun = async (arm: Arm) => {
     if (!activeId) return
     setStarting(true)
     setError('')
     try {
-      const { run_id } = await api.startRun(activeId)
+      // The default arm sends no override at all: `HarnessRunConfig` owns those
+      // values, and posting a copy of them would be a second place they live.
+      const { run_id } = await api.startRun(
+        activeId,
+        arm.isDefault ? undefined : { agent_mode: arm.agentMode, context_mode: arm.contextMode },
+      )
       setRunId(run_id)
       setTab('trajectory')
       void refreshPrograms()
@@ -348,7 +359,7 @@ export default function App() {
               stream={stream}
               canRun={canRun}
               runDisabledReason={runDisabledReason}
-              onRun={() => void startRun()}
+              onRun={(arm) => void startRun(arm)}
               onCancel={() => void cancelRun()}
               starting={starting}
             />
@@ -436,6 +447,7 @@ export default function App() {
                   graph={graph}
                   graphRev={stream.graphRev}
                   runId={runId}
+                  contextMode={stream.stats.context_mode}
                   selection={selection}
                   onSelect={(value) => { setSelection(value); setInspectorCollapsed(false) }}
                 />

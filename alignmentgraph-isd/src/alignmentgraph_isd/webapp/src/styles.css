@@ -382,6 +382,9 @@ a.btn:hover { background: #f1f5f9; }
 .pill.succeeded { background: #f0fdf4; color: var(--good); }
 .pill.failed, .pill.interrupted { background: #fef2f2; color: var(--bad); }
 .pill.cancelled, .pill.cancelling { background: #fffbeb; color: var(--warn); }
+/* The ablation arm the run used, beside its status. Deliberately quiet: most
+   runs are the default arm and the code is only interesting when it is not. */
+.pill.arm { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
 
 .run-id {
   display: inline-flex;
@@ -395,6 +398,53 @@ a.btn:hover { background: #f1f5f9; }
   cursor: pointer;
 }
 .run-id:hover { background: #f1f5f9; color: var(--text); }
+
+/* ── the run control: one button, two segments ──────────────────────────── */
+
+/* Two <button>s and not one with a nested control, because a button inside a
+   button is not valid HTML. They read as ONE control because the seam between
+   them is a single shared border rather than a gap. `relative` is what the
+   menu below is positioned against. */
+.split { position: relative; display: inline-flex; }
+.split > .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.split > .btn + .btn {
+  /* Collapse the two 1px borders into one line. */
+  margin-left: -1px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+/* On `.btn.primary` the border colour IS the fill, so a `--border-strong` seam
+   would be invisible; it has to be drawn in the text colour instead. */
+.split > .btn.primary + .btn.primary { border-left-color: rgba(255, 255, 255, 0.45); }
+.split-caret { padding-left: 5px; padding-right: 5px; display: inline-flex; align-items: center; }
+
+/* A menu hung off a control — the app's only one. Below `.modal-backdrop`
+   deliberately: a dialog always covers a menu. */
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 40;
+  min-width: 240px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+}
+.menu-label { padding: 6px 8px 4px; font-size: 11px; }
+.menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  text-align: left;
+  font-size: 12px;
+  color: var(--text);
+}
+.menu-item:hover, .menu-item:focus-visible { background: var(--accent-soft); outline: none; }
 
 /* ── runs under a program, in the sidebar ───────────────────────────────── */
 
@@ -502,7 +552,7 @@ a.btn:hover { background: #f1f5f9; }
 .tabs {
   display: flex;
   gap: 2px;
-  padding: 0 12px;
+  padding: 0;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
   flex: 0 0 auto;
@@ -761,7 +811,7 @@ a.btn:hover { background: #f1f5f9; }
   align-items: center;
   gap: 14px;
   flex-wrap: wrap;
-  padding: 8px 14px;
+  padding: 8px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
   font-size: 12px;

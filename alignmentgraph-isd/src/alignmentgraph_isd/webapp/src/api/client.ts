@@ -1,8 +1,10 @@
 import type {
   AgentContext,
+  AgentMode,
   AlignmentGraphPayload,
   Brief,
   BriefResponse,
+  ContextMode,
   Finding,
   GraphNode,
   Health,
@@ -92,8 +94,14 @@ export const api = {
     return request<BriefResponse>(`/programs/${id}/brief/import`, { method: 'POST', body: form })
   },
 
-  startRun: (id: string) =>
-    request<{ run_id: string; status: string }>(`/programs/${id}/runs`, { method: 'POST' }),
+  // The arm is optional and is omitted for the default one: the server's
+  // `HarnessRunConfig` owns those values, and posting a copy of them from here
+  // would make this file a second place they are written down.
+  startRun: (id: string, arm?: { agent_mode: AgentMode; context_mode: ContextMode }) =>
+    request<{ run_id: string; status: string; agent_mode: string; context_mode: string }>(
+      `/programs/${id}/runs`,
+      { method: 'POST', ...(arm ? { body: JSON.stringify(arm) } : {}) },
+    ),
   getRun: (runId: string) => request<RunDetail>(`/runs/${runId}`),
   cancelRun: (runId: string) => request<{ status: string }>(`/runs/${runId}/cancel`, { method: 'POST' }),
 

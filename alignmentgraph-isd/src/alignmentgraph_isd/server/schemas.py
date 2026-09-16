@@ -12,6 +12,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from ..config import AgentMode, ContextMode
+
 
 class HealthResponse(BaseModel):
     llm_configured: bool
@@ -162,9 +164,27 @@ class BriefResponse(BaseModel):
     brief_committed_at: datetime | None = None
 
 
+class RunCreate(BaseModel):
+    """Which ablation arm to run under, and nothing else.
+
+    Both axes are optional and ``None`` means "did not say": the field is left
+    out of the harness config entirely, so ``HarnessRunConfig`` supplies it. The
+    defaults are deliberately NOT repeated here — a default written in two
+    places is a default that drifts — which is also why the browser's default
+    button sends no body at all rather than a copy of them.
+    """
+
+    agent_mode: AgentMode | None = None
+    context_mode: ContextMode | None = None
+
+
 class RunCreated(BaseModel):
     run_id: str
     status: str
+    # What the run RESOLVED to, so a caller that asked for nothing is still told
+    # which arm it got instead of having to assume.
+    agent_mode: str = ""
+    context_mode: str = ""
 
 
 class RunDetail(BaseModel):

@@ -74,6 +74,19 @@ class RunState:
     status: str = RunStatus.RUNNING
     error: str = ""
     model_name: str = ""
+    #: The ablation arm this run is under, as RESOLVED by `HarnessRunConfig` —
+    #: so a run started with no override reports the harness's own default
+    #: rather than a copy of it made here. Empty when unknown.
+    #:
+    #: Held here and published through `public_stats` rather than added to the
+    #: `Run` table: `db.init_db` is `create_all` with no migrations, so a new
+    #: column would make every existing database answer "no such column". Riding
+    #: in `stats` gives the live frame, a reload and the persisted `stats_json`
+    #: at once, with no schema change. `metadata.json`'s `run_config` names the
+    #: arm too; both are read off the same config object, this one at the start
+    #: so a run that never finished still says which arm it was.
+    agent_mode: str = ""
+    context_mode: str = ""
 
     events: list[Event] = field(default_factory=list)
     # Latest graph only, pre-serialized. `light` drops the per-node `data`
@@ -145,7 +158,7 @@ class RunState:
         many times, each one longer than the last. Appending would make the tab
         a list of prefixes of itself.
 
-        The payload already holds copies (``loop.serialize_messages``), which
+        The payload already holds copies (``transcript.serialize_messages``), which
         matters: the live transcript is appended to, trimmed, and rewritten in
         place by the single arm's compaction, so holding the harness's own
         lists would be reading state that changes underneath.
@@ -293,7 +306,15 @@ class RunState:
 
     def public_stats(self) -> dict:
         with self._lock:
-            return {**self.stats, "event_count": len(self.events), "graph_rev": self.graph_rev}
+            # The arm sits OUTSIDE `self.stats` because `finish` replaces that
+            # dict wholesale with what the run produced; merged here it survives
+            # the swap. ABSENT rather than empty when unknown, so a run recorded
+            # before the axes were carried is distinguishable from one that ran
+            # under the default.
+            arm = ({"agent_mode": self.agent_mode, "context_mode": self.context_mode}
+                   if self.agent_mode and self.context_mode else {})
+            return {**self.stats, **arm,
+                    "event_count": len(self.events), "graph_rev": self.graph_rev}
 
 
 #: Finished runs kept in memory. They are kept at all so a viewer who
@@ -312,8 +333,10 @@ class RunRegistry:
         self._runs: dict[str, RunState] = {}
         self._lock = threading.Lock()
 
-    def create(self, run_id: str, program_id: str) -> RunState:
-        state = RunState(run_id=run_id, program_id=program_id)
+    def create(self, run_id: str, program_id: str,
+               agent_mode: str = "", context_mode: str = "") -> RunState:
+        state = RunState(run_id=run_id, program_id=program_id,
+                         agent_mode=agent_mode, context_mode=context_mode)
         with self._lock:
             self._runs[run_id] = state
             # Insertion order, so the oldest finished runs go first. Live runs

@@ -13,7 +13,7 @@ from .. import artifacts, briefs, sse
 from ..db import get_session
 from ..models import Run, RunStatus, utcnow
 from ..runner import RunManager
-from ..schemas import GraphNode, RunCreated, RunDetail
+from ..schemas import GraphNode, RunCreate, RunCreated, RunDetail
 from ..settings import Settings
 from .deps import (
     get_app_settings,
@@ -36,9 +36,16 @@ router = APIRouter(tags=["runs"])
 )
 def start_run(
     program_id: str,
+    body: RunCreate | None = None,
     db: DBSession = Depends(get_session),
     manager: RunManager = Depends(get_manager),
 ) -> RunCreated:
+    """Start a run, optionally under an ablation arm other than the default.
+
+    The body is optional so a bodiless POST still means "the default arm", and
+    an axis it does not name is not forwarded at all. An unknown value never
+    reaches here: FastAPI answers 422 off the `Literal` on `RunCreate`.
+    """
     program = load_program(db, program_id)
     guard_no_active_run(manager, db, program_id)
 
@@ -67,7 +74,10 @@ def start_run(
     db.refresh(run)
 
     try:
-        manager.start_run(run, brief)
+        # `exclude_none`, not a plain dump: an axis the caller did not name must
+        # travel as an ABSENT key, or it would override the harness default with
+        # nothing.
+        state = manager.start_run(run, brief, arm=body.model_dump(exclude_none=True) if body else {})
     except Exception as exc:  # noqa: BLE001
         # Any reason at all: a row left RUNNING with nothing behind it blocks
         # every later write to this program. RuntimeError is the configuration
@@ -81,7 +91,8 @@ def start_run(
                 else status.HTTP_500_INTERNAL_SERVER_ERROR)
         raise HTTPException(code, str(exc)) from exc
 
-    return RunCreated(run_id=run.id, status=run.status)
+    return RunCreated(run_id=run.id, status=run.status,
+                      agent_mode=state.agent_mode, context_mode=state.context_mode)
 
 
 @router.get("/runs/{run_id}", response_model=RunDetail)

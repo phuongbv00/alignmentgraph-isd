@@ -4,7 +4,7 @@ import dagre from 'cytoscape-dagre'
 import { Eye, EyeOff, Maximize2 } from 'lucide-react'
 import { buildStylesheet, LEGEND_COLOURS, LEGEND_FALLBACK } from '../graph/stylesheet'
 import { DEFAULT_FILTERS, layerCounts, toCytoscape, type GraphFilters } from '../graph/toCytoscape'
-import type { AlignmentGraphPayload, GraphEdge, Selection } from '../api/types'
+import type { AlignmentGraphPayload, ContextMode, GraphEdge, Selection } from '../api/types'
 
 cytoscape.use(dagre)
 
@@ -13,6 +13,9 @@ interface Props {
   graphRev: number
   /** Which run the graph belongs to; the viewport is fitted once per run. */
   runId: string | null
+  /** The run's alignment-machinery arm, which decides what an EMPTY view means:
+   *  a graph still being built, or one this arm never builds. */
+  contextMode?: ContextMode
   selection: Selection
   onSelect: (selection: Selection) => void
 }
@@ -31,7 +34,7 @@ const LAYOUT = {
 /** Smallest zoom at which node labels are still readable. */
 const MIN_READABLE_ZOOM = 0.65
 
-export function GraphView({ graph, graphRev, runId, selection, onSelect }: Props) {
+export function GraphView({ graph, graphRev, runId, contextMode, selection, onSelect }: Props) {
   const container = useRef<HTMLDivElement>(null)
   const cy = useRef<cytoscape.Core | null>(null)
   const hasFitted = useRef(false)
@@ -191,7 +194,9 @@ export function GraphView({ graph, graphRev, runId, selection, onSelect }: Props
 
         {!graph && (
           <div className="empty" style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>
-            The alignment graph appears here as the agent builds it.
+            {contextMode === 'prose'
+              ? 'This run used the prose context arm, which builds no alignment graph: each stage deposits its whole document on a blackboard instead, and nothing is checked across artifacts. The design itself is under ADDIE output.'
+              : 'The alignment graph appears here as the agent builds it.'}
           </div>
         )}
 
