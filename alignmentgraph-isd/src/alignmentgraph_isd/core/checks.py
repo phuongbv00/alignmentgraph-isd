@@ -247,10 +247,10 @@ def _duration_hours(design_brief: DesignBrief) -> float:
 def _verbs_for(level: str, count: int = 6) -> str:
     """Example verbs OF A GIVEN LEVEL, in the rulebook's own order.
 
-    Deterministic on purpose: the hint used to slice ``_ALL_BLOOM_VERBS``,
-    which is a SET, so the model was shown eight arbitrary verbs spanning
-    arbitrary levels in an order stable only within one process — a prompt that
-    differed between two runs of the same design."""
+    Reads the per-level lists, never the flat ``_ALL_BLOOM_VERBS``: that is a
+    SET, so slicing it yields arbitrary verbs spanning arbitrary levels in an
+    order stable only within one process — a prompt that differs between two
+    runs of the same design."""
     return ", ".join(_BLOOM_VERBS.get(str(level).strip().capitalize(), [])[:count])
 
 
@@ -321,9 +321,9 @@ def bloom_verbs_items(items: list[tuple[str, dict]]) -> list[Violation]:
         declared = declared_raw
         level_idx = _BLOOM_LEVEL_INDEX.get(declared.lower())
         if not level_idx:
-            # An out-of-taxonomy level ("design", "manage") used to short-circuit
-            # the verb-vs-level comparison below and pass silently, so the field
-            # the whole Bloom apparatus reads was never validated against its own
+            # An out-of-taxonomy level ("design", "manage") short-circuits the
+            # verb-vs-level comparison below, so without this the field the whole
+            # Bloom apparatus reads would never be validated against its own
             # enum. Flag it; the repair sets the level from the verb.
             violations.append(Violation(
                 node_id=node_id, edge_type="", violation_type="bloom", severity="warning",
@@ -404,16 +404,16 @@ def measurability_items(items: list[tuple[str, dict]]) -> list[Violation]:
 
 # ══════════════════════ Assessment Designer's own checks ═══════════════════
 # `rubric_consistency` is defined below rather than here because it reads the
-# criteria off the items: since 2026-09-02 a rubric criterion is a FIELD of its
-# assessment item, not a node, so there is no separate Rubric stage to own it.
+# criteria off the items: a rubric criterion is a FIELD of its assessment item,
+# not a node, so there is no separate Rubric stage to own it.
 
 def _criteria_of(graph) -> list[tuple[str, dict]]:
     """Every rubric criterion in the design, read off the assessment items.
 
-    Since 2026-09-02 a criterion is a FIELD of the item it marks, not a node of
-    its own — it is written by the same call, in the same breath, and the rules
-    require it to name that item's objective. So the graph arm reads them the
-    way the prose arm always has, and both run the identical check.
+    A criterion is a FIELD of the item it marks, not a node of its own — it is
+    written by the same call, in the same breath, and the rules require it to
+    name that item's objective. So the graph arm reads them the way the prose
+    arm does, and both run the identical check.
     """
     found: list[tuple[str, dict]] = []
     for item in graph.element_nodes(NodeType.ASSESSMENT):
@@ -511,7 +511,7 @@ def item_completeness(graph) -> list[Violation]:
     """A selectable-response assessment item (multiple_choice/true_false/
     matching) is not an administrable instrument without its response set:
     options (except true_false, whose options are implicit) and the answer
-    key. Measured 2026-08-28: every MCQ in a 2B run shipped question-only."""
+    key. Measured: every MCQ in a 2B run shipped question-only."""
     return item_completeness_items(
         [(a["id"], a["data"]) for a in graph.element_nodes(NodeType.ASSESSMENT)]
     )
@@ -548,12 +548,11 @@ def item_completeness_items(items: list[tuple[str, dict]]) -> list[Violation]:
 
 
 def evaluation_quality(graph) -> list[Violation]:
-    """Kept in *meaning* from the formative-intent rule ("formative evaluation
-    realizes the formative plan"), but now a plain internal check rather than
-    a graph edge — there is no ``evaluation`` node to point a relation at
-    (see the aggregation-matrix note in the architecture plan). Checks
-    directly that ``assessment_plan_0.formative_methods`` is non-empty
-    whenever the plan declares a non-trivial formative intent."""
+    """The formative-intent rule ("formative evaluation realizes the formative
+    plan") as a plain internal check rather than a graph edge: there is no
+    ``evaluation`` node to point a relation at. Checks directly that
+    ``assessment_plan_0.formative_methods`` is non-empty whenever the plan
+    declares a non-trivial formative intent."""
     plan_node = graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))
     if plan_node is None:
         return []
@@ -563,11 +562,10 @@ def evaluation_quality(graph) -> list[Violation]:
 def evaluation_quality_data(node_id: str, data: dict) -> list[Violation]:
     # "Declares formative intent" = the plan PROMISED a formative item for some
     # objective, read off `lo_coverage_targets` like everything else that asks
-    # what the plan committed to. It used to gate on `data["formative"]`, one of
-    # the three optional buckets P3 also hung on: no rule asked for them and the
-    # schema no longer declares them, so this check could not fire either —
-    # measured on run 7ef3ed16, whose plan named formative for eight of nine
-    # objectives and produced zero `evaluation_quality` findings.
+    # what the plan committed to — the one field the schema requires and the
+    # rules name. Gating instead on a `data["formative"]` bucket is how this
+    # check silently never fires: measured on run 7ef3ed16, whose plan named
+    # formative for eight of nine objectives and produced zero findings.
     if "formative" not in alignment._promised_categories(data):
         return []
     violations: list[Violation] = []
@@ -698,10 +696,9 @@ def evidence_alignment(graph) -> list[Violation]:
     """A rubric criterion's declared evidence type must be producible by the
     assessment item it marks.
 
-    The item is now the criterion's PARENT rather than the far end of a C6
-    edge, so the lookup is direct: a criterion cannot be evaluated against an
-    item it does not belong to, and the "no linked item" case this used to skip
-    can no longer occur.
+    The item is the criterion's PARENT rather than the far end of an edge, so
+    the lookup is direct: a criterion cannot be evaluated against an item it
+    does not belong to, and there is no "no linked item" case to skip.
     """
     violations: list[Violation] = []
     for item in graph.element_nodes(NodeType.ASSESSMENT):
@@ -867,9 +864,7 @@ _COVERAGE_HINTS = {
 def bloom_mismatches(graph) -> list[Violation]:
     """Both cross-checks: LO vs Assessment (C2) and LO vs Activity (C3).
     Assessment Designer calls the C2 half on its own items; Activity
-    Designer calls the C3 half on its own activities — both self-contained,
-    same as ``bloom_mismatch`` was in the old single-relation (R3-only)
-    verifier."""
+    Designer calls the C3 half on its own activities — both self-contained."""
     # ``repair_hint`` is carried through, not dropped. ``_repair_request``
     # (core/agentic/loop.py) renders the "Fix:" line only when a hint exists, so
     # without this both Bloom mismatches reached the agent as a bare sentence

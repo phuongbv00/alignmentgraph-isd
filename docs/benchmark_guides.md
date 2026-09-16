@@ -305,6 +305,18 @@ python scripts/2_split_stratified_subset.py --source scenarios/test_90 --target 
     --per-cell 1 --disjoint-from scenarios/train_30 --disjoint-from scenarios/train
 ```
 
+**Trần số ILO có ở CẢ BỐN arm và không có ở sáu baseline (2026-09-16).** `rulebook.MAX_OBJECTIVES = 6` được nội suy
+vào rules của stage `outcomes`. Con số là của Biggs & Tang (`biggs2011teaching`, nguồn paper đã cite sẵn cho
+constructive alignment): "programme and course outcomes alike should rarely exceed five or six in number, otherwise it
+is practically impossible to align teaching/learning activities and assessment tasks to them all". Nó **phẳng**, không
+phụ thuộc thời lượng khoá học, vì Biggs phát biểu năm-hoặc-sáu cho chính khoá dài một học kỳ. Trần **không được cưỡng
+chế**: không có gì cắt bớt danh sách dài hơn, nên tỷ lệ tuân thủ là một phép đo, suy được thẳng từ danh sách objective
+trong `addie_output` của mỗi run mà không cần key metadata riêng.
+
+Nó nằm trong hệ được kiểm chứ không phải một control áp cho cả benchmark, nên khi so alignmentgraph với baseline thì
+phải nói rõ: mọi tín hiệu panel lấy trung bình trên tập objective được tính trên một tập bị chặn ở phía hệ đề xuất và
+không bị chặn ở phía baseline. Giữa bốn arm thì nó là hằng số, nên không ảnh hưởng delta arm-vs-A0.
+
 Ma trận 2×2 = `agent_mode` (decomposition) × `context_mode` (alignment machinery):
 
 | Arm            | agent_id                          | agent_mode | context_mode |

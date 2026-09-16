@@ -30,6 +30,29 @@ from .dev_plans import max_units as _max_units
 #: prose, so a value list is typed exactly once.
 BLOOM_LEVELS = ("remember", "understand", "apply", "analyze", "evaluate", "create")
 BLOOM_VERBS = ("recall", "explain", "apply", "analyze", "evaluate", "design")
+
+#: How many intended learning outcomes one course carries.
+#:
+#: Biggs & Tang, *Teaching for Quality Learning at University* — the source
+#: this work already cites for constructive alignment (``biggs2011teaching``)
+#: — states it four separate times: "programme and course outcomes alike
+#: should rarely exceed five or six in number", and "write a set of no more
+#: than five or six intended learning outcomes ... for a semester-long
+#: course". So the number is FLAT and does not scale with course length: the
+#: semester-long case IS the five-or-six case.
+#:
+#: What makes it the right number here rather than a borrowed one is the
+#: REASON given for it: "otherwise it is practically impossible to align
+#: teaching/learning activities and assessment tasks to them all". That is the
+#: failure this harness exhibits and this thesis measures — objective count is
+#: what every downstream family sizes itself off, and a design with 33
+#: outcomes reached 161 activities and 0 P10/P11 edges. The pedagogical limit
+#: and the engineering limit are the same phenomenon.
+#:
+#: TOLD, never enforced: nothing trims a longer list (see ``RULES_OUTCOMES``).
+#: How often it is respected is therefore a measurement, readable off the
+#: objective list in any run's own ADDIE output.
+MAX_OBJECTIVES = 6
 EVIDENCE_TYPES = ("true_false", "matching", "multiple_choice", "quiz",
                   "short_answer", "performance_task")
 #: The assessment-plan/item `plan_category` vocabulary.
@@ -43,22 +66,30 @@ RULES_OUTCOMES = """\
 Each objective (ILO = Intended Learning Outcome) decomposes course_goal and is grounded in the
 gaps/topics/learner profile given.
 
-Return at least 1 objective; never an empty list. Beyond that YOU decide how many the scenario
-needs. Derive that number from the analysis: every gap and topic identified must be addressed by
-at least one objective, at a grain the stated duration, scope and learner profile can
-realistically deliver. A short workshop and a semester-long course do not need the same number.
-Do not pad to a round number, and do not merge unrelated gaps into one objective to hit a count.
+A course has a handful of outcomes, not a catalogue: write at least 1 and no more
+than %(max_objectives)d. That is what a course can actually align — past it there are more
+outcomes than the teaching activities and assessment tasks of one course can cover, and the
+design stops hanging together. Within that, YOU decide how many this scenario needs. Do not
+pad to a round number, and do not pad to %(max_objectives)d.
 
-Set each objective's ``level`` from the performance its gap actually demands, not from a
-fixed progression. A gap about professional judgement yields an evaluate-level objective even if
-no lower-level objective precedes it; a gap about terminology yields a remember-level one even if
-it is the only such objective.
+Derive the number from the analysis. The gaps and topics must be covered BETWEEN them, which is
+not the same as one objective each: where several gaps are facets of one capability, one
+objective at the right grain covers them, and that is the grain the stated duration, scope and
+learner profile can realistically deliver. Do not merge unrelated gaps to hit a count.
+
+Give each gap the ONE objective its own demanded performance calls for. Do NOT write a series of
+objectives climbing the levels for the same gap: apply, then analyze, then evaluate, then create
+about one capability is four outcomes where the course has one, and the activities and
+assessments built on each of them multiply the same way. A gap about professional judgement
+yields a single evaluate-level objective, with no lower-level objective beneath it; a gap about
+terminology yields a single remember-level one.
 
 ``level`` must be one of: %(bloom_levels)s.
 Use only these bloom_verb values: %(bloom_verbs)s."""
 
 RULES_OUTCOMES = RULES_OUTCOMES % {
-    "bloom_levels": ", ".join(BLOOM_LEVELS), "bloom_verbs": ", ".join(BLOOM_VERBS)}
+    "bloom_levels": ", ".join(BLOOM_LEVELS), "bloom_verbs": ", ".join(BLOOM_VERBS),
+    "max_objectives": MAX_OBJECTIVES}
 
 RULES_ASSESSMENT_PLAN = """\
 lo_coverage_targets and expected_evidence must have one entry per learning objective given.
