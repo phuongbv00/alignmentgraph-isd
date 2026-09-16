@@ -2,15 +2,13 @@
 (``checks.py`` finds violations; this module fixes the fixable ones).
 
 Free functions over the run's context substrate (graph or blackboard), owned
-by neither decomposition arm: each Designer's ``repair()`` is a thin dispatch
-into :func:`repair`, and the single arm's state machine calls the same
-dispatch with its own :class:`RepairContext` — no arm instantiates the other
-arm's agent classes to borrow its corrective machinery. Repair strength is a
-safeguard held constant across the ablation (see ``config.py``), which is why
-these routines live on the shared substrate next to the checks they answer.
+by neither decomposition arm: both arms dispatch into :func:`repair` with their
+own :class:`RepairContext`, and neither instantiates the other's agent classes
+to borrow its corrective machinery. Repair strength is a safeguard held
+constant across the ablation (see ``config.py``).
 
-**Every routine here is STRUCTURAL, and none of them calls the model
-(2026-09-03).** A repair rearranges what the design already holds — substitute
+**Every routine here is STRUCTURAL, and none of them calls the model.**
+A repair rearranges what the design already holds — substitute
 a Bloom verb from the taxonomy, prune a reference that resolves to nothing,
 re-point a material at a module that exists, reformat a keyless choice item as
 short_answer. Deterministic, exact, and free.
@@ -18,30 +16,26 @@ short_answer. Deterministic, exact, and free.
 A violation that needs WRITING is not repaired here at all: it goes back to
 the agent that owns it as a repair turn inside that agent's own tool loop
 (:meth:`ToolLoop._own_violations`), where the request, the model's answer and
-the artifact it produces are three consecutive turns of ONE transcript. The
-generative routines that used to live here opened a second conversation under
-a second system prompt with no tools bound, in the name of the same agent —
-so the recorded context showed an agent producing text it had never been
-shown asking for. The context boundary is the whole ``agent_mode`` axis, and a
-repair path that quietly crossed it was measuring something else.
+the artifact it produces are three consecutive turns of ONE transcript. A
+generative routine HERE would open a second conversation under a second system
+prompt with no tools bound, in the name of the same agent, so the recorded
+context would show an agent producing text it was never shown asking for. The
+context boundary is the whole ``agent_mode`` axis, and a repair path that
+quietly crosses it is measuring something else.
 
-There is no other kind. Templated stand-ins used to close the gap — a
-"Guided practice for ILO-01" activity, a "Support module for TLA-01", one
-fixed rubric sentence, a canned list of formative methods — and each of them
-satisfied its check by existing. That is the objection that has always kept P6
-audit-only, and it applies to every one of them: a check a template can pass
-measures the template. They also polluted the signal a run is tuned on, and one
-of them (the item text built from the objective's own statement) read to a
-text-similarity measure as perfect objective-assessment correspondence that no
-design work produced.
+Templated stand-ins are not an exception — a "Guided practice for ILO-01"
+activity, a "Support module for TLA-01", a fixed rubric sentence, a canned list
+of formative methods: a check a template can pass measures the template, which
+is the objection that keeps P6 audit-only. They also pollute the signal a run
+is tuned on; item text built from the objective's own statement reads to a
+text-similarity measure as correspondence no design work produced.
 
-The consequence is deliberate: ``activity_engagement``, ``bloom_mismatch_activity``,
-``rubric_consistency``, ``feasibility``, ``actionability``, and the C3/C5
-"nothing exists yet" cases have NO repair. They stay in :data:`OWNED_BY_FAMILY`
-so reconciliation still routes them to an owner, and they come back unrepaired
-and are counted as residual. A repair that changed nothing also logs nothing —
-a repair event reporting no change is what made ``repair_success_rate``
-unreadable.
+So ``activity_engagement``, ``bloom_mismatch_activity``, ``rubric_consistency``,
+``feasibility``, ``actionability`` and the C3/C5 "nothing exists yet" cases have
+NO repair. They stay in :data:`OWNED_BY_FAMILY` so reconciliation routes them to
+an owner, come back unrepaired, and are counted as residual. A repair that
+changes nothing logs nothing: a repair event reporting no change is what makes
+``repair_success_rate`` unreadable.
 
 All logging goes through ``ctx.actor``, so a repair records whoever actually
 ran it — a specialist in the multi arm, the single designer in the single arm.
@@ -94,10 +88,10 @@ OWNED_BY_FAMILY: dict[str, frozenset[str]] = {
          "item_completeness"}),
     "activity_designer": frozenset(
         {"C3", "C4", "P4", "activity_engagement", "bloom_mismatch_activity"}),
-    # P8 joined 2026-09-16. It was owned by nobody, so a media selection whose
-    # `respects_constraints` named nothing real produced no finding at all:
+    # P8 must have an owner. Unowned, a media selection whose
+    # `respects_constraints` names nothing real produces no finding at all:
     # `record_provenance` no-ops on an id that does not exist, and the gap
-    # surfaced only in the final residual audit, with nothing to explain it.
+    # surfaces only in the final residual audit with nothing to explain it.
     # MEASURED (run 7ef3ed16): all 24 media selections wrote "low_bandwidth" /
     # "high_bandwidth" — copied from the rule's own parenthetical example —
     # against constraint nodes c1..c7; P8 scored 0.0, the ledger held zero P8
@@ -177,15 +171,13 @@ assert len(OWNER_BY_VIOLATION) == sum(len(t) for t in OWNED_BY_FAMILY.values()),
 
 def repair(family: str, violations: list, ctx: RepairContext) -> list:
     """Dispatch ``violations`` to the ``family``'s repair routines; returns the
-    violations no routine answers (mirroring each Designer's old ``repair()``
-    contract).
+    violations no routine answers.
 
     :data:`REPORT_ONLY` types never reach a routine and are returned as-is.
-    Filtering here rather than inside each family is the point: three separate
-    dispatchers each had a branch that sent C3/C5 to a routine which, once
-    its template was removed, silently dropped them — the violation left
-    ``remaining`` without anything having been done about it, which is the
-    exact failure mode the template had.
+    Filtered HERE rather than inside each family, because a per-family branch
+    that sends C3/C5 to a routine with nothing to do drops them silently: the
+    violation leaves ``remaining`` with nothing having been done about it,
+    which is the exact failure mode a template has.
     """
     reported = [v for v in violations
                 if getattr(v, "violation_type", "") in REPORT_ONLY]
@@ -330,19 +322,19 @@ def repair_assessment_coverage(ctx: RepairContext, violations: list) -> None:
     all is a MISSING ARTIFACT, and writing one is the agent's job: it comes
     back as a repair turn inside the Designer's own tool loop, where the
     request, the model's answer and the resulting artifact all sit in one
-    transcript. Writing it here meant a second conversation under a second
-    system prompt, which made the trace claim an agent said something it
-    never saw (2026-09-03).
+    transcript. Writing it here would mean a second conversation under a
+    second system prompt, making the trace claim an agent said something it
+    never saw.
     """
     graph = ctx.graph
     tools = [dict(n["data"]) for n in graph.element_nodes(NodeType.ASSESSMENT)]
     lo_map = _element_lo_map(graph)
     plan_node = graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))
     # The categories the plan PROMISED, read the one way every consumer of
-    # `lo_coverage_targets` reads it. This used to scan the plan's optional
-    # `diagnostic`/`formative`/`summative` buckets, which no rule asks for and
-    # which the schema no longer declares — so it always fell through to
-    # ["summative"] and re-pointed every malformed item there.
+    # `lo_coverage_targets` reads it. Scanning `diagnostic`/`formative`/
+    # `summative` buckets instead is how this falls through to ["summative"]
+    # and re-points every malformed item there: no rule asks for those buckets
+    # and the schema does not declare them.
     plan_categories = sorted(
         alignment._promised_categories(plan_node["data"] if plan_node else {})
     ) or ["summative"]
@@ -541,9 +533,9 @@ def repair_content_coverage(ctx: RepairContext, violations: list) -> None:
     ``orphan_content`` material would be silently swallowed.
 
     C5 — an activity with no supporting content at all — is NOT repaired. The
-    module it used to add was titled "Support module for TLA-01" and described
-    as "Content supporting activity TLA-01": a node that closed the relation
-    and taught nothing."""
+    module a repair could add here is one titled "Support module for TLA-01"
+    and described as "Content supporting activity TLA-01": a node that closes
+    the relation and teaches nothing."""
     graph = ctx.graph
     module_nodes = graph.element_nodes(NodeType.CONTENT)
     repaired_ids: list[str] = []

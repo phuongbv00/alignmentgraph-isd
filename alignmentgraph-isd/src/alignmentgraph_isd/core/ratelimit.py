@@ -1,28 +1,23 @@
 """Outbound-call gate: bounds how many LLM requests one run keeps in flight.
 
-Why this exists. The harness is now fully sequential, so the gate does not
-currently bind; it answers a MEASURED failure of the retired LangGraph
-pipeline, which ran two Designers in the same superstep and issued one
-Developer call per work set from each — N+M requests leaving the process at
-once, from a SINGLE agent. The benchmark's rate posture (``-r``: agents x
-scenarios in flight, plus ``BENCHMARK_DELAY``) counts that whole agent as one
-unit, so the in-agent fan-out was never bounded by anything. Re-introducing
-any concurrent fan-out brings that back.
+Why this exists. The harness is fully sequential, so the gate does not
+currently bind. It answers a MEASURED failure of a concurrent pipeline that ran
+two Designers in one superstep, each issuing a Developer call per work set:
+N+M requests leaving the process at once from a SINGLE agent, which the
+benchmark's rate posture (``-r``) counts as one unit, so the in-agent fan-out
+was bounded by nothing. Any concurrent fan-out brings that back.
 
-Measured against a shared endpoint that caps concurrent requests per user
-("Per-user concurrency limit exceeded. This user has 10 active units"), the two
-multi arms took 9-25 HTTP 429s per run across three runs while the sequential
-single arms took 0-2. Every dropped call costs a regen attempt and can leave an
-artifact family thin or empty, so the throttling difference landed squarely on
-the ``agent_mode`` ablation axis — the multi arms were being measured against a
-handicap the single arms never carried.
+Measured against a shared endpoint capping concurrent requests per user, the
+two multi arms took 9-25 HTTP 429s per run across three runs against 0-2 for
+the sequential single arms. A dropped call costs a regen attempt and can leave
+an artifact family thin, so that throttling difference sat squarely on the
+``agent_mode`` axis.
 
-Scope. The gate is per-run (one per :class:`HarnessRunConfig`), NOT process-wide.
-The benchmark runs several agents concurrently in one process; a shared gate
-would make one arm's fan-out queue in front of another arm's calls and inflate
-that arm's ``execution_time_seconds``, which is exactly the kind of cross-arm
-interference an ablation must not have. Total in-flight requests are therefore
-``agents_in_flight x llm_max_concurrency``, both set from the same rate preset.
+Scope. Per-run (one per :class:`HarnessRunConfig`), NOT process-wide: the
+benchmark runs several agents in one process, and a shared gate would make one
+arm queue behind another and inflate its ``execution_time_seconds``. Total
+in-flight is ``agents_in_flight x llm_max_concurrency``, both from the same
+rate preset.
 
 The endpoint's complaint is about CONCURRENCY, not request rate, so the cap
 alone is the fix. ``min_interval_seconds`` is available for an endpoint that

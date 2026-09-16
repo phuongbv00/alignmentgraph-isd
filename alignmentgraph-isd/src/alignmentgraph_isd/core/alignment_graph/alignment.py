@@ -52,6 +52,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, get_args
 
+from .. import dev_plans
 from .graph import AlignmentGraph, NodeType
 
 #: The closed set of relation ids. A type alias, not an enum: an id travels as
@@ -357,24 +358,18 @@ def _promised_categories(plan: dict) -> set[str]:
     and ``dev_plans`` already read — through the single shared reader, so
     every consumer of this field normalizes it the same way.
 
-    MEASURED (run 7ef3ed16, multi+graph, 13 items): P3 used to require a
-    non-empty ``plan["diagnostic"|"formative"|"summative"]``. Those three keys
-    are OPTIONAL in ``artifact_schemas`` and are named by no rule, so the model
-    wrote the required ``lo_coverage_targets`` ({"ILO-01": ["diagnostic",
-    "formative"], ...}) and left them absent. All 13 items carried a valid
-    ``plan_category``, and P3 still scored 0.0 — the relation could not fire on
-    any run. Two parts of one system were reading two different keys for one
-    fact.
+    Requiring a non-empty ``plan["diagnostic"|"formative"|"summative"]``
+    instead is how P3 stops firing on ANY run: those three keys are OPTIONAL in
+    ``artifact_schemas`` and named by no rule, so the model writes the required
+    ``lo_coverage_targets`` ({"ILO-01": ["diagnostic", "formative"], ...}) and
+    leaves them absent. MEASURED (run 7ef3ed16, multi+graph): all 13 items
+    carried a valid ``plan_category`` and P3 still scored 0.0 — two parts of
+    one system reading two different keys for one fact. The three bucket keys
+    stay as a fallback for an archived plan that has them, and nothing else.
 
-    The three bucket keys stay as a fallback for an archived plan that has
-    them, and for nothing else.
-
-    This does NOT make P3 unfailable (the objection that retired C6/C7): an
-    item with no ``plan_category``, or one naming a category the plan never
-    promised, still has no edge.
+    This does NOT make P3 unfailable: an item with no ``plan_category``, or one
+    naming a category the plan never promised, still has no edge.
     """
-    from .. import dev_plans
-
     promised = {category
                 for _, category in dev_plans.plan_category_pairs(
                     plan.get("lo_coverage_targets"))}
@@ -493,13 +488,11 @@ def establish_delivery(graph: AlignmentGraph, session_node_ids: list[str]) -> No
     graph therefore could not answer "was this activity ever scheduled" — a
     question the auditability claim implies it can.
 
-    The SOURCE is the session guide, not the plan section (2026-09-07). The
-    edge then says WHICH session delivers an activity rather than only that
-    some part of the plan does, and it is established from the node the
-    Developer actually wrote — the plan section no longer carries the guides.
-    Coverage is unchanged: both relations are checked on the target side, so
-    an activity nobody scheduled is still exactly an activity with no incoming
-    P10.
+    The SOURCE is the session guide, not the plan section: the edge then says
+    WHICH session delivers an activity rather than only that some part of the
+    plan does, and it is established from the node a Developer actually wrote.
+    Both relations are checked on the target side, so an activity nobody
+    scheduled is exactly an activity with no incoming P10.
 
     Ids come from the dedicated ``activity_ids``/``material_ids`` fields
     rather than from the prose beside them: the model writes ids inline in
@@ -638,11 +631,11 @@ def format_valid_for_capability(capability: int, objective_level: int | None) ->
 
     Constructive alignment asks the assessment task to require the SAME
     cognitive process the objective states, so the test is
-    ``capability >= objective_level``. It used to be a binary
+    ``capability >= objective_level`` — an ORDINAL comparison, never a binary
     recognition/non-recognition gate (``capability > 2`` for any Apply+
-    objective), which passed an Apply-level item measuring a Create-level
-    objective — a two-level shortfall it could not see, because both sides
-    are merely "not recognition".
+    objective). A binary gate passes an Apply-level item measuring a
+    Create-level objective, a two-level shortfall it cannot see because both
+    sides are merely "not recognition".
 
     Measured consequence of the coarse version: 26% of the items in a run sat
     BELOW the objective they were aligned to, the highest of the four ablation

@@ -199,27 +199,24 @@ def parse_json_array(raw: str) -> tuple[list, int]:
     braces inside strings, and parses each independently. One malformed element
     costs that element, not the whole submission.
 
-    ``dropped`` is how many blocks would not parse. It is returned rather than
-    swallowed because recovering 2 of 3 items and saying nothing is the same
-    class of failure as recovering 1: the caller has to be able to report it.
+    ``dropped`` is how many blocks would not parse, returned rather than
+    swallowed: recovering 2 of 3 items and saying nothing is the same class of
+    failure as recovering 1.
 
-    Brace balance alone is not enough, and the case it misses is not the stray
-    closer above but its opposite: an element short one CLOSING brace. Depth
-    then never returns to 0, every element after it is swallowed into a block
-    that never terminates, and the whole array is charged as one dropped block.
-    MEASURED (run 2b9e911a, the replan work set that asked for exactly one
-    summative item): a rubric criterion closing ``"full"}]}`` instead of
-    ``"full"}}]}`` recovered 0 of 3 items, the submit was rejected three times
-    as "arrived as text", and the item the round existed to produce was never
-    written. Element one was fully recoverable on its own — the scanner simply
-    never decided where it ended.
+    Brace balance alone is not enough, and the case it misses is an element
+    short one CLOSING brace: depth never returns to 0, every element after it
+    is swallowed into a block that never terminates, and the whole array is
+    charged as one dropped block. MEASURED (run 2b9e911a): a rubric criterion
+    closing ``"full"}]}`` instead of ``"full"}}]}`` recovered 0 of 3 items
+    though element one was recoverable alone, the submit was rejected three
+    times as "arrived as text", and the item the round existed to produce was
+    never written.
 
-    So a ``}`` ALSO ends an element when the bracket depth is 1 (only the outer
-    array is open) and what follows is ``,`` then ``{``. That sequence inside
-    the outer array cannot mean anything else: inside an object a comma is
-    followed by a key, and inside a nested array (``"rubric": [{…},{…}]``) the
-    same text appears at bracket depth 2. Brace depth cannot tell the two
-    apart — both leave it at 1 — which is why the brackets are counted too.
+    So a ``}`` ALSO ends an element at bracket depth 1 (only the outer array
+    open) when ``,`` then ``{`` follows. That sequence can mean nothing else
+    inside the outer array: within an object a comma is followed by a key, and
+    within a nested ``"rubric": [{…},{…}]`` the same text sits at bracket depth
+    2 — which brace depth cannot tell apart, both leaving it at 1.
     """
     text = raw.strip()
     start = text.find("[")

@@ -117,8 +117,8 @@ _ID_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_:\-]*$")
 # no nested angle brackets, so real content that merely contains markup
 # ("<p>…</p>", "a < b") never matches. Small models copy these out of the
 # prompt schemas; the value is then non-empty, so the plain required-field
-# check waves it through while the judge scores the field as absent (measured
-# 2026-08-28: an operator_manual shipping "<detailed system setup guide>").
+# check waves it through while the judge scores the field as absent (measured:
+# an operator_manual shipping "<detailed system setup guide>").
 _PLACEHOLDER_TOKEN = re.compile(r"^<[^<>]{1,80}>$")
 
 #: Suffix shared by every placeholder error, so the regen loop can filter for

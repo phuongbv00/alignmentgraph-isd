@@ -23,7 +23,7 @@ import time
 from pathlib import Path
 
 from ..config import HarnessRunConfig
-from .alignment_graph import AlignmentGraph
+from .alignment_graph import AlignmentGraph, viz
 from .brief import DesignBrief
 from .trajectory import TrajectoryLogger
 
@@ -65,8 +65,6 @@ def _maybe_dump_graph(graph: AlignmentGraph, design_brief: DesignBrief, metadata
     dump_dir = os.environ.get("ALIGNMENTGRAPH_DUMP_DIR")
     if not dump_dir:
         return
-    from .alignment_graph import viz
-
     brief_id = design_brief.id or "brief"
     stem = Path(dump_dir) / f"{brief_id}_graph"
     try:
@@ -132,31 +130,25 @@ def _ledger_attaching(on_event, memory):
     any recorded stream, and the thing a viewer most wants to watch fill in.
     So it is attached the same way, where the object is in hand.
 
-    REV-GATED, not time-throttled. A real run mutates the ledger ~80-150 times
-    (six owned families x ``SELF_VALIDATION_BUDGET`` rounds x ~2 mutators, once
-    for the per-stage net and again in ``_reconcile``, plus the agent tier's
-    ``_own_violations``/``_budget_stopped``) — roughly one every 2-4 seconds
-    over a 4-7 minute run, already below any interval worth imposing. But
-    ``RunState.append`` notifies on essentially every trajectory event, so a
-    wrapper that fired on each of them would send ~400 frames, most of them
-    byte-identical. The dedup that pays is on THIS side, and one integer
-    comparison is the whole of it.
+    REV-GATED, not time-throttled. A run mutates the ledger ~80-150 times,
+    roughly one every 2-4 seconds, already below any interval worth imposing —
+    but ``RunState.append`` notifies on essentially every trajectory event, so
+    an ungated wrapper would send ~400 frames, most byte-identical. One integer
+    comparison is the whole of the dedup.
 
     Emits to the RAW consumer it was handed, so a snapshot never re-enters
     ``_graph_attaching`` — see the composition order in ``core/runner.py``.
-    Graph-snapshot cadence is unchanged by this wrapper existing.
 
     Never touches ``trajectory``: the ledger is not folded into it (the judge
     reads that and the benchmark compares it across arms), and going out
     through the consumer directly rather than through ``TrajectoryLogger.emit``
     makes that structural rather than a rule to remember.
 
-    One aliasing note, because ``events.py`` asks for pre-serialized state:
-    ``Finding.as_dict`` copies ``metadata`` shallowly, so a list-valued entry
-    (``{"item_ids": [...]}``) is shared with whatever holds the frame. Safe as
-    written — metadata is copied at first sighting and each check round builds
-    fresh ``Violation`` objects rather than mutating the old ones — so this is
-    said rather than paid for with a deep copy of every finding, every frame.
+    One aliasing note: ``Finding.as_dict`` copies ``metadata`` shallowly, so a
+    list-valued entry is shared with whatever holds the frame. Safe as written,
+    since metadata is copied at first sighting and each check round builds
+    fresh ``Violation`` objects — said here rather than paid for with a deep
+    copy of every finding, every frame.
     """
     # Starts at the ledger's OWN starting revision, not below it: a run that
     # has not written a finding yet has nothing to say, and opening every run

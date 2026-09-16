@@ -13,6 +13,13 @@ if TYPE_CHECKING:
 else:
     ChatModelFactory = Callable[[], Any]
 
+#: The ablation axes as types, named so a caller that only forwards a choice —
+#: the server's request body — can spell the allowed values without writing the
+#: matrix down a second time. The DEFAULTS stay on the fields below and nowhere
+#: else.
+AgentMode = Literal["single", "multi"]
+ContextMode = Literal["prose", "graph"]
+
 
 class HarnessRunConfig(BaseModel):
     llm_factory: ChatModelFactory | None = None
@@ -28,39 +35,33 @@ class HarnessRunConfig(BaseModel):
     # (context boundary, who walks the stages, personas, delegation), disclosed
     # exactly as ``context_mode`` is — equal model effort is NOT claimed.
     # ``context_mode="graph"`` runs the full alignment machinery: the
-    # AlignmentGraph is written and read (relation-scoped context injection and
-    # relation joins, the alignment-state docket), the cross-artifact checks and
-    # the repairs they own run over its edges, the residual GraphAuditor pass
-    # runs at the end, the aggregator's graph-derived enrichments apply
-    # (``design.alignment_matrix`` and the coverage-aware ``expert_review``),
-    # and the run ships the graph dump.
-    # Cross-artifact violations are reconciled ONCE after the last stage, in a
-    # bounded pass: each residual violation goes to the family that owns it
-    # (``repairs.OWNED_BY_FAMILY``, carried on ``Violation.target_designer``).
-    # In ``agent_mode="multi"`` that means the owning role's own context;
-    # in ``"single"`` there is no other context, so the one agent repairs in
-    # place. Same rounds, same repair budget either way -- only WHERE the
-    # repair happens differs, which is the axis itself.
-    # ``context_mode="prose"`` runs a GRAPH-FREE prose blackboard instead
-    # (`core/prose_store.py::ProseStore`): each step deposits its whole parsed JSON
-    # under one key, later steps read documents back verbatim by a static
-    # read-list (the named-slice pattern non-graph agents use), safeguards are
-    # limited to the within-artifact checks + the shared self-repair/regen
-    # scaffolding, and there is no audit and no graph artifact.
-    # Two consequences that must be reported, not glossed:
+    # AlignmentGraph written and read (relation-scoped injection and joins, the
+    # alignment-state docket), the cross-artifact checks and their repairs over
+    # its edges, the residual GraphAuditor pass, the aggregator's graph-derived
+    # enrichments (``design.alignment_matrix``, the coverage-aware
+    # ``expert_review``), and the graph dump. Cross-artifact violations are
+    # reconciled ONCE after the last stage: each goes to the family that owns
+    # it (``repairs.OWNED_BY_FAMILY``, on ``Violation.target_designer``) — the
+    # owning role's own context in ``multi``, in place in ``single``, same
+    # rounds and same budget either way.
+    # ``context_mode="prose"`` runs a GRAPH-FREE blackboard instead
+    # (`core/prose_store.py::ProseStore`): each step deposits its whole parsed
+    # JSON under one key, later steps read documents back verbatim by a static
+    # read-list, safeguards reduce to the within-artifact checks plus the
+    # shared self-repair/regen, and there is no audit and no graph artifact.
+    # Two consequences that must be REPORTED, not glossed:
     #   * The graph arm's context is a relation-scoped SUBSET of what prose
-    #     hands the model — prose dumps whole upstream documents verbatim, so
-    #     ITS prompts are the longer ones. This axis is "graph filters and joins
-    #     upstream content, and adds a derived coverage docket", NOT "graph
-    #     gives the model more to work with".
+    #     hands the model, which dumps whole upstream documents — so PROSE has
+    #     the longer prompts. The axis is "graph filters, joins and adds a
+    #     coverage docket", NOT "graph gives the model more to work with".
     #   * Two of the six families (activity, content) carry only cross-artifact
-    #     checks, so in prose they get NO self-validation and NO repair at all —
-    #     the axis bundles "alignment machinery" with "any quality control for
-    #     those two families".
-    # The axis therefore ablates the alignment machinery as a bundle — not a
-    # rendering of the same facts, and not a single isolated variable.
-    agent_mode: Literal["single", "multi"] = "multi"
-    context_mode: Literal["prose", "graph"] = "graph"
+    #     checks, so in prose they get NO self-validation and NO repair — the
+    #     axis bundles alignment machinery with any quality control for those
+    #     two families.
+    # It ablates the machinery as a BUNDLE: not a rendering of the same facts,
+    # and not a single isolated variable.
+    agent_mode: AgentMode = "multi"
+    context_mode: ContextMode = "graph"
 
     # Robustness: re-run a specialist whose section came back with empty required
     # fields (a small model intermittently returns empty/broken JSON, or a call is

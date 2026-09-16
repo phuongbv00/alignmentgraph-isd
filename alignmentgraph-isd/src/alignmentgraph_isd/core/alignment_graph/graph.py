@@ -25,13 +25,13 @@ class NodeType(StrEnum):
     ``IMPLEMENTATION_PLAN`` is the Implementation Planner's section document
     (orientation, system check, pilot, monitoring, and the instructor guide's
     and operator manual's narrative fields). ``SESSION_GUIDE`` is the element
-    list that used to live inside it as ``instructor_guide.session_guides``:
-    one node per delivery session, and the SOURCE of the P10/P11 delivery
-    provenance edges. It was promoted to an element type on 2026-09-07 for two
-    reasons. It is an ITEM LIST, and the rule since 2026-08-27 is that element
-    nodes are the single source of truth for every item list — a section node
-    holding one was the last exception. And it is the only part of the
-    implementation artifact whose length scales with the design: a planner
+    list the contract declares at ``instructor_guide.session_guides``: one node
+    per delivery session, and the SOURCE of the P10/P11 delivery provenance
+    edges. It is an element type rather than a field of that section for two
+    reasons. It is an ITEM LIST, and element nodes are the single source of
+    truth for every item list — no section node holds one. And it is the only
+    part of the implementation artifact whose length scales with the design: a
+    planner
     asked to name every activity id in one submit cannot see them all
     (``tools.render_listing`` truncates at ``READ_CHAR_BUDGET``) and cannot
     write them all under the completion cap, which is what the Developer tier

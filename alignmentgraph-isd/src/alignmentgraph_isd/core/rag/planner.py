@@ -3,6 +3,7 @@ from __future__ import annotations
 from ...config import HarnessRunConfig
 from ..brief import DesignBrief
 from .agent import RetrievalAgentRegistry
+from .sandbox import RetrievalSandbox
 
 
 class RetrievalPlanner:
@@ -48,8 +49,6 @@ class RetrievalPlanner:
         log_llm_call=None,
     ) -> tuple[list[dict], list[dict]]:
         """Resolve the plan's agent names and run them in the retrieval sandbox."""
-        from .sandbox import RetrievalSandbox
-
         agents = [a for a in (self.registry.get(name) for name in plan.get("agents", [])) if a is not None]
         sandbox = RetrievalSandbox(self.config.llm_factory, log_llm_call=log_llm_call)
         return sandbox.execute(design_brief, task_name, plan, agents)

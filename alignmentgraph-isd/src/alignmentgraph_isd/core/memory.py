@@ -19,18 +19,14 @@ Three things, and they answer three different questions about the same run:
   and write stay the two roles they are, and the second plan is the record of
   what the first one missed.
 
-Why one object rather than three parameters. The three are read TOGETHER, by
-everything that reasons about a run rather than about one step: the
-reconciliation pass wants the graph and the owner of each violation; a
-Designer asked to fix its family's output wants the graph, the violations and
-the plan it made; the Context tab wants transcripts and the plan that produced
-the Developer ones. Passing them separately meant each such caller grew its
-own subset and its own assembly order, and a caller that needed a fourth thing
-threaded it through every frame in between.
+One object rather than three parameters, because the three are read TOGETHER
+by everything that reasons about a RUN rather than a step: reconciliation wants
+the graph and each violation's owner, a Designer fixing its family wants the
+graph, the violations and its own plan, the Context tab wants transcripts and
+the plan behind the Developer ones.
 
-It is deliberately NOT a god object. It stores; it does not decide. There is
-no check, repair, commit or model call here — those live where they already
-do, and take what they need off it.
+Deliberately NOT a god object. It stores; it does not decide. No check, repair,
+commit or model call lives here — those take what they need off it.
 
 **Never merged into the trajectory.** The judge reads ``trajectory`` and the
 benchmark compares it across arms; transcripts alone would multiply its size
@@ -41,6 +37,8 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field, replace
+
+from . import repairs
 
 
 def new_agent_run_id() -> str:
@@ -154,7 +152,7 @@ class Finding:
     first_family: str = ""
     last_round: int = 0
     sightings: int = 0
-    #: Rounds in which it reached a model through ``loop._repair_request``.
+    #: Rounds in which it reached a model through ``loop.repair_request``.
     shown_to_agent: int = 0
 
     #: ``open`` | ``repaired_by_harness`` | ``repaired_by_agent``
@@ -311,8 +309,6 @@ class Memory:
         exactly this set for its convergence test and computing the keys twice
         is how the two drift.
         """
-        from . import repairs
-
         seen: set[str] = set()
         for violation in violations:
             key = violation.key

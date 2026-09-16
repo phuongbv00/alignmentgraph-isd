@@ -233,8 +233,8 @@ class ADDIEOutputAggregator:
 def _with_session_guides(implementation: dict, guides: list) -> dict:
     """Put the session guides back where the ADDIE output contract keeps them.
 
-    They are element nodes since 2026-09-07 (``NodeType.SESSION_GUIDE``) — one
-    per delivery session, written a block at a time by the Developer tier and
+    They are element nodes (``NodeType.SESSION_GUIDE``) — one per delivery
+    session, written a block at a time by the Developer tier and
     the source of every P10/P11 edge — but the deliverable still declares them
     at ``development.instructor_guide.session_guides``
     (``validation._NESTED_FIELDS``), so the join happens here. Exactly the
@@ -258,8 +258,8 @@ def _shape_rubrics(items: list) -> list:
     """Put each item's rubric into the shape the deliverable declares.
 
     The criteria already sit on the item — filed there when they were written
-    (``fanout._attach_to_parent``), on either substrate — so this no longer
-    joins anything. What it still does is narrow each criterion to the four
+    (``fanout._attach_to_parent``), on either substrate — so this joins
+    nothing. What it does is narrow each criterion to the four
     fields the output contract names, and rename ``description`` to
     ``criterion``: the generation schema and the deliverable disagree on that
     word, and the deliverable wins.
@@ -290,10 +290,10 @@ def _review_findings(rounds: list[dict], repairs: list[dict]) -> tuple[int, dict
     inspected). Every number and example comes from a recorded trajectory
     event — nothing is invented.
 
-    Counts DISTINCT findings, by key. It used to sum ``by_type`` across rounds,
-    so a violation was counted once per round it survived — and since a check
-    round re-finds everything the previous one could not repair, a measured run
-    reported 28 issues for a set of 7. "How many things are wrong" and "how
+    Counts DISTINCT findings, by key — never a sum of ``by_type`` across
+    rounds, which counts a violation once per round it survives. A check round
+    re-finds everything the previous one could not repair, so that sum reported
+    28 issues for a measured set of 7. "How many things are wrong" and "how
     many times we looked at them" are different questions.
     """
     phases = {e["context"].get("phase") for e in rounds if e["context"].get("phase")}
@@ -576,11 +576,11 @@ def _add_alignment_views(output: dict, graph) -> dict:
 
     Nothing here writes design content. A harness that fills a gap it is also
     measuring satisfies its own check by existing, which is the objection that
-    keeps P6 audit-only; the net that used to sit here appended an assessment
-    item whose ``question`` carried the objective's own statement, which read
-    to the RQ2 similarity signals as correspondence no design work produced,
-    and it ran on the graph arm only, so the artefact sat on the
-    ``context_mode`` axis itself."""
+    keeps P6 audit-only. A net here appends an assessment item whose
+    ``question`` carries the objective's own statement, which reads to the RQ2
+    similarity signals as correspondence no design work produced — and it can
+    only run on the graph arm, so the artefact sits on the ``context_mode``
+    axis itself."""
     design = output["design"]
     development = output["development"]
 

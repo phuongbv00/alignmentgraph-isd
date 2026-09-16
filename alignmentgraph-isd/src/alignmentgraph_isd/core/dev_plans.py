@@ -837,30 +837,26 @@ def remap_and_tag(work_sets: list[WorkSet], payloads: list[dict], *, id_field: s
 
     **The HARNESS names these artifacts; the model does not.** A Developer
     submits its items without an id, and each is named here by composing the
-    SET's ordinal with the artifact's own — ``AT-0203`` is the third artifact of
-    the second work set. Workers never coordinate, so two of them would
-    otherwise propose the same name; pairing the ordinals makes the result
-    unique BY CONSTRUCTION, decided when the plan was numbered rather than by
-    which Developer committed first. It is dense — each set counts from 1 — and
-    it says who wrote what, the same fact ``plan_set`` carries.
-
-    Asking the model for an id was pure cost: it was overwritten every time,
-    while every malformed one (``AT-{``, a duplicate, an id copied out of an
-    example) was a real failure — and the field's absence shortens the
-    artifact the model has to fit under the completion cap.
+    SET's ordinal with the artifact's own — ``AT-0203`` is the third artifact
+    of the second work set. Workers never coordinate, so pairing the ordinals
+    is what makes the result unique BY CONSTRUCTION, decided when the plan was
+    numbered rather than by which Developer committed first. Dense (each set
+    counts from 1), and it says who wrote what. An id the model writes is
+    overwritten every time while every malformed one (``AT-{``, a duplicate,
+    one copied out of an example) is a real failure, and the field's absence
+    shortens what has to fit under the completion cap.
 
     ``self_ref_fields`` are references to OTHER artifacts of this same set,
     which the model writes as 1-based POSITIONS in the list it submitted ([1] =
-    the first artifact it wrote) and which are resolved here into the assigned
-    ids; one that does not resolve is DROPPED (a dangling id in the graph is
-    invisible, a dropped reference shows in the coverage numbers). Measured on
-    the test fixture before positions: 0 of 3 ``prerequisite_activities``
+    the first it wrote) and which are resolved here into the assigned ids; one
+    that does not resolve is DROPPED, because a dangling id in the graph is
+    invisible while a dropped reference shows in the coverage numbers. Measured
+    on the test fixture before positions: 0 of 3 ``prerequisite_activities``
     resolved, while ``_establish`` reads exactly that field to build the
     ``precedes`` edges.
 
-    CROSS-family references need nothing done to them and get nothing done:
-    they name an upstream family that is already committed, which the Developer
-    read in its final form.
+    CROSS-family references get nothing done to them: they name an upstream
+    family already committed, which the Developer read in its final form.
 
     ``taken`` are the ids the design state already holds, so a set committed on
     its own lands where it would have in a batch. Every committed item is also stamped

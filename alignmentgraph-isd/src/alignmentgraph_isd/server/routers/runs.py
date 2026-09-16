@@ -329,10 +329,8 @@ def get_violations(
 ) -> JSONResponse:
     """Every distinct finding of the run, and what became of it.
 
-    Not the same thing as ``metadata.audit.violations``: that is the graph
-    arm's residual only (the prose arm has no graph to audit), it is a snapshot
-    rather than a history, and it cannot say whether a finding was repaired,
-    proved unfixable, or simply ran out of budget.
+    The only artifact that answers it: ``metadata.audit`` carries the audit's
+    verdict and stopped re-copying the residual set beside this one.
 
     Live state first, then the persisted file — the same fallback
     ``get_contexts`` uses, for the same reason.
