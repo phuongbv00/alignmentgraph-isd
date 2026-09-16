@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  ArrowLeft, ArrowRight, Check, PanelRightClose, PanelRightOpen, X,
+  ArrowLeft, ArrowRight, Check, Minus, PanelRightClose, PanelRightOpen, X,
 } from 'lucide-react'
 import { api } from '../../api/client'
 import { BriefDetail } from './BriefDetail'
@@ -311,10 +311,16 @@ function AlignmentFlags({ flags }: { flags: ObjectiveAlignment }) {
         {/* Two flags, not one. `bloom_ok` was the conjunction of these, so a
           reader saw "Bloom level consistent ✗" and had to open the trajectory
           to learn WHICH of the two rules failed — the question that produced
-          the whole violation ledger. `??` keeps an archived run rendering. */}
-      <Flag on={flags.bloom_assessment_ok ?? flags.bloom_ok}
+          the whole violation ledger.
+          TRI-STATE, and the key test is `in` rather than `??`: a payload that
+          declares the flag as `null` says the rule COULD NOT BE APPLIED, and
+          `??` would have fallen through to `bloom_ok` and drawn it green. An
+          objective nothing assesses is exactly that case, so these two read ✓
+          next to a red C2 leg on the same objective. A key that is ABSENT is
+          an archived run that never split the union, which still falls back. */}
+      <Flag on={bloomFlag(flags, 'bloom_assessment_ok')}
             label="assessed at its own Bloom level (C2)" />
-      <Flag on={flags.bloom_activity_ok ?? flags.bloom_ok}
+      <Flag on={bloomFlag(flags, 'bloom_activity_ok')}
             label="practiced at its own Bloom level (C3)" />
       {(flags.bloom_notes ?? []).map((note, i) => (
         <div key={i} className="muted small vg-note">{note}</div>
@@ -329,7 +335,27 @@ function AlignmentFlags({ flags }: { flags: ObjectiveAlignment }) {
   )
 }
 
-function Flag({ on, label }: { on: boolean; label: string }) {
+/** One Bloom flag, with `null` — the rule could not be applied — kept apart
+ *  from `true`. Absent (an archived run written before the union was split)
+ *  falls back to the union it recorded. */
+export function bloomFlag(
+  flags: ObjectiveAlignment,
+  key: 'bloom_assessment_ok' | 'bloom_activity_ok',
+): boolean | null {
+  return key in flags ? flags[key] ?? null : flags.bloom_ok
+}
+
+/** Three states, because "checked and fine" and "not checked" are not the same
+ *  answer and a reader acts differently on each. `null` is neutral: the bare
+ *  `.flag` class, which is already grey. */
+function Flag({ on, label }: { on: boolean | null; label: string }) {
+  if (on === null) {
+    return (
+      <span className="flag" title="Nothing to check this rule against yet.">
+        <Minus size={12} /> {label} — not checked
+      </span>
+    )
+  }
   return (
     <span className={`flag ${on ? 'on' : 'off'}`}>
       {on ? <Check size={12} /> : <X size={12} />} {label}

@@ -377,12 +377,18 @@ export interface ObjectiveAlignment {
   measured?: boolean
   supported?: boolean
   prepares?: boolean
-  /** The CONJUNCTION of the two below. NOT part of `aligned` since 2026-09-10:
-   *  Bloom is a content condition, and `aligned` is the structural triad. */
+  /** The CONJUNCTION of the two below, with a `null` counting as no
+   *  complaint. NOT part of `aligned` since 2026-09-10: Bloom is a content
+   *  condition, and `aligned` is the structural triad. */
   bloom_ok: boolean
-  /** Optional so an archived run still renders. */
-  bloom_assessment_ok?: boolean
-  bloom_activity_ok?: boolean
+  /** TRI-STATE: true held, false violated, `null` NOT CHECKED — the rule has
+   *  nothing to judge against (no C2/C3 edge) or the objective's `level` is
+   *  outside Bloom's six. Read `=== false` for a failure and never `!x`: a
+   *  null rendered as a pass drew a green "assessed at its own Bloom level"
+   *  beside a red C2 leg on an objective no item assessed at all.
+   *  Optional so an archived run still renders. */
+  bloom_assessment_ok?: boolean | null
+  bloom_activity_ok?: boolean | null
   /** The checks' own messages, verbatim: the level targeted, the level
    *  actually reached, and the field to edit. */
   bloom_notes?: string[]

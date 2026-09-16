@@ -89,26 +89,24 @@ def objective_annotations(graph: AlignmentGraph) -> dict[str, dict]:
     the LO is the edge SOURCE — while C4 (prepares_for) runs activity→
     assessment and touches the objective only through those two.
 
-    ``aligned`` is the Biggs triad CLOSED on the objective (2026-09-10): it is
-    practiced by an activity that prepares for an item that assesses that same
-    objective. Two changes at once, and both were needed to make this a
-    statement the paper can carry:
+    ``aligned`` is the Biggs triad CLOSED on the objective: it is practiced by
+    an activity that prepares for an item that assesses that same objective.
+    Two things make that a statement the paper can carry:
 
-    * C4 joined it. "Assessed" and "practiced" alone are two independent
+    * C4 is IN. "Assessed" and "practiced" alone are two independent
       existentials — an objective could be measured by one item and rehearsed
       by an activity pointing at some unrelated item, and still read aligned.
       The third edge is what makes it a triangle rather than two spokes, and it
       is the edge the RQ2 panel's third family-A signal measures, so the
-      predicate and the measurement now name the same three relations.
-    * ``bloom_ok`` left it. Bloom is a CONTENT condition standing in a
-      predicate ``alignment.py`` documents as "the single definition of what
+      predicate and the measurement name the same three relations.
+    * ``bloom_ok`` is OUT. Bloom is a CONTENT condition, and this predicate is
+      the one ``alignment.py`` documents as "the single definition of what
       aligned means STRUCTURALLY" — the same module that calls Bloom
-      "attribute-based, not an edge". It is unchanged as its own flag below,
-      where a reader who wants the cognitive check can still find it.
+      "attribute-based, not an edge". It stands as its own flag below, where a
+      reader who wants the cognitive check can find it.
 
-    The two move ``aligned`` in opposite directions, so it is not comparable
-    with any archived run. That is affordable exactly once: no ladder has been
-    run against the current architecture."""
+    Both differ from the predicate any archived run recorded, so ``aligned`` is
+    not comparable across them."""
     assessment = {v["node_id"]: v for v in alignment.bloom_assessment_violations(graph)}
     activity = {v["node_id"]: v for v in alignment.bloom_activity_violations(graph)}
     out: dict[str, dict] = {}
@@ -130,14 +128,23 @@ def objective_annotations(graph: AlignmentGraph) -> dict[str, dict]:
         # SPLIT, because the union answered "something Bloom is wrong" and the
         # reader then had to open the trajectory to learn which of the two —
         # the question this whole flag was supposed to answer.
-        bloom_assessment_ok = node_id not in assessment
-        bloom_activity_ok = node_id not in activity
-        bloom_ok = bloom_assessment_ok and bloom_activity_ok
-        # No rubric leg since 2026-09-02: a criterion is a field of the item it
-        # marks, so "is this objective scored by a rubric" was true for every
-        # objective that had an item at all. It never varied, so it never
-        # narrowed `aligned` — dropping it changed the definition and not the
-        # answer.
+        #
+        # TRI-STATE, and `None` is the load-bearing value: both checks group by
+        # the C2/C3 edges they read, so an objective nothing assesses produces
+        # no violation and an objective whose `level` is outside the taxonomy
+        # is skipped outright. Read as a boolean that is "not violated", and
+        # the inspector drew a green "assessed at its own Bloom level (C2)"
+        # beside a red C2 leg on the very objective that had no item at all.
+        # A check that did not run must not report a pass.
+        stated = alignment.bloom_level_of(str(node["data"].get("level", ""))) is not None
+        bloom_assessment_ok = _bloom_flag(node_id, assessment, stated and assessed)
+        bloom_activity_ok = _bloom_flag(node_id, activity, stated and practiced)
+        # The conjunction as `to_dot` and every archived payload read it: a
+        # check that could not run raises no ⚠, which is what it did before.
+        bloom_ok = bloom_assessment_ok is not False and bloom_activity_ok is not False
+        # No rubric leg: a criterion is a field of the item it marks, so "is
+        # this objective scored by a rubric" holds for every objective that has
+        # an item at all. It cannot vary, so it cannot narrow `aligned`.
         held = {"C2": assessed, "C3": practiced, "C4": prepares}
         #: The legs as a RENDERABLE list, in the order `ALIGNMENT_LEGS` declares
         #: — what the DOT label, the app's badge and the inspector's flag rows
@@ -153,13 +160,16 @@ def objective_annotations(graph: AlignmentGraph) -> dict[str, dict]:
             for relation_id in alignment.ALIGNMENT_LEGS
         ]
         out[node_id] = {
-            # One scalar per leg, named by the relation's own VERB. They were
-            # `measured`/`supported`/`prepares` until 2026-09-14 — a third set
-            # of names for C2/C3/C4, beside the registry's and the app's own.
-            # Nothing outside this package ever read them (no benchmark script,
-            # no evaluator), so the rename costs an archived dump a lookup in
-            # `_LEGACY_LEG_FLAGS` and costs nothing else.
+            # One scalar per leg, named by the relation's own VERB — never an
+            # invented name, which would be a third set of words for C2/C3/C4
+            # beside the registry's and the app's. Nothing outside this package
+            # reads them (no benchmark script, no evaluator); an archived dump
+            # naming them otherwise is read through `_LEGACY_LEG_FLAGS`.
             **{leg["verb"]: leg["ok"] for leg in legs},
+            #: True = the rule holds, False = it is violated, None = it could
+            #: not be applied (nothing to judge against, or a `level` outside
+            #: the taxonomy). A renderer must tell the third apart from the
+            #: first: they are "checked and fine" and "not checked".
             "bloom_ok": bloom_ok,
             "bloom_assessment_ok": bloom_assessment_ok,
             "bloom_activity_ok": bloom_activity_ok,
@@ -176,13 +186,29 @@ def objective_annotations(graph: AlignmentGraph) -> dict[str, dict]:
     return out
 
 
+
+def _bloom_flag(node_id: str, violations: dict[str, dict], checkable: bool) -> bool | None:
+    """One Bloom flag: ``True`` held, ``False`` violated, ``None`` not checked.
+
+    The check reports a violation or says nothing, and "says nothing" has two
+    causes — it found no fault, or it never ran on this objective. Both
+    ``bloom_assessment_violations`` and ``bloom_activity_violations`` group by
+    the C2/C3 edges they read and skip an objective whose ``level`` is not one
+    of Bloom's six, so an objective nothing assesses and an objective assessed
+    at its own level were the same value.
+    """
+    if node_id in violations:
+        return False
+    return True if checkable else None
+
+
 def _node_display(node: dict) -> dict:
     """The display fields of one node: what a renderer needs and nothing else.
 
     ``label``/``detail``/``level``/``repaired`` exist so that **no renderer
-    reads** ``node["data"]`` **to draw anything**. That four-branch ``or`` chain
-    used to live in ``_node_label``, which made it a derivation the webapp had
-    to either duplicate or do without — it did without, and showed a bare id.
+    reads** ``node["data"]`` **to draw anything**. Left inside the DOT label
+    composer, that four-branch ``or`` chain is a derivation the webapp has to
+    either duplicate or do without — and doing without shows a bare id.
 
     It is also what makes the server's light view safe: that frame drops
     ``data`` and nothing else, and ``data`` is by this rule not part of drawing.
@@ -216,16 +242,15 @@ def _edge_display(edge: dict, annotations: dict) -> dict:
     ``id`` is the identity tuple ``_find_edge`` matches on, rendered as one
     string — so it is unique, and stable across snapshots because those four
     fields never change after an edge is created (only ``evidence``,
-    ``rationale`` and ``established_by`` are refreshed). It is exactly the
-    string the webapp used to compose for cytoscape; composed here, the
-    inspector can no longer compose a DIFFERENT one, which it did — it dropped
-    the ``scaffold`` fallback, so selecting a ``narrates`` edge from a node's
-    relation list matched nothing on the canvas.
+    ``rationale`` and ``established_by`` are refreshed). Composed HERE and
+    nowhere else, so the inspector cannot compose a different one: an inspector
+    that drops the ``scaffold`` fallback matches nothing on the canvas when a
+    ``narrates`` edge is selected from a node's relation list.
 
     ``tier``/``layer`` come from ``REGISTRY``, not from the id's first letter.
     The prefix is only a fallback for an id the registry does not know (a test
-    fixture's ``R3``); with the registry in charge, a future secondary relation
-    numbered C would no longer land in the alignment layer by accident.
+    fixture's ``R3``); with the registry in charge, a secondary relation
+    numbered C cannot land in the alignment layer by accident.
     """
     relation_id = str(edge.get("relation_id") or "")
     relation = alignment.REGISTRY.get(relation_id)
@@ -234,9 +259,9 @@ def _edge_display(edge: dict, annotations: dict) -> dict:
     elif relation_id:
         tier = "core" if relation_id.startswith("C") else "secondary"
     else:
-        # An archived payload: the S relations were registered on 2026-09-16
-        # and every dump written before that carries "" on exactly the edges
-        # they now name, so the empty id still means structural.
+        # An archived payload written before the S relations were registered
+        # carries "" on exactly the edges they name, so an empty id still means
+        # structural.
         tier = "structural" if edge.get("type") in _STRUCTURAL_EDGE_TYPES else ""
     # An `assessed_by`/`practiced_by` edge out of an objective whose Bloom level
     # does not hold up. Each side is judged by ITS OWN check: a `practiced_by`
@@ -266,10 +291,10 @@ def _edge_display(edge: dict, annotations: dict) -> dict:
     }
 
 
-#: What each leg's scalar was called before 2026-09-14, when the legs took the
+#: The invented leg names an archived payload may carry instead of the
 #: relations' own verbs. Read-only, and the only place these words survive:
 #: 36 archived dumps carry them, and re-rendering one must not silently lose a
-#: leg just because the field has since been renamed.
+#: leg to a field name this package does not write.
 _LEGACY_LEG_FLAGS = {"C2": "measured", "C3": "supported", "C4": "prepares"}
 
 
@@ -365,6 +390,11 @@ def node_violations(graph: AlignmentGraph) -> dict[str, list[str]]:
     Types only, not messages: this rides in the graph payload the browser gets
     on every update, and the messages are already in the run's ledger, which
     the Violations tab serves in full."""
+    # Lazy: `checks` imports this package, so a module-level import here
+    # would close the loop. The direction is the odd one — a renderer
+    # reading the verification layer — and it is deliberate: the badge has
+    # to ride in the payload the browser already gets, and the payload is
+    # built here.
     from .. import checks
 
     out: dict[str, list[str]] = {}
@@ -389,9 +419,9 @@ def _leg_flags(annotation: dict) -> str:
     """``C2 C3 C4`` / ``C2 · C4``: the legs in the declared order, each named or
     replaced by a dot.
 
-    The relation's own id, not an initial. It used to be ``MSP``, which spelled
-    the legs' old invented names (Measured/Supported/Prepares) — and once those
-    went, the glyphs were the last thing still saying them."""
+    The relation's own id, never an initial: a glyph like ``MSP`` spells an
+    invented name for the leg, which is the one thing the registry exists to
+    stop."""
     return " ".join(leg["relation_id"] if leg["ok"] else "·" for leg in annotation["legs"])
 
 
@@ -421,14 +451,14 @@ def _node_label(node: dict, annotations: dict) -> str:
 def _legend_entries() -> dict[str, list[dict]]:
     """The legend as MEANING — what each key says — with no colour and no shape.
 
-    It ships in the payload so both renderers read one list. They used to keep
-    one each and they had drifted: the DOT legend named four edge rows and two
-    node rows, the app's named four and six, and the app's never mentioned the
-    alignment legs at all — so the green fill it explains could not be traced
-    to the three relations that produce it.
+    It ships in the payload so both renderers read ONE list. A legend kept per
+    renderer drifts: four edge rows and two node rows on one side against four
+    and six on the other, with the alignment legs missing from the app's
+    entirely, so the green fill it explains cannot be traced to the three
+    relations that produce it.
 
     The aligned row is composed from ``ALIGNMENT_LEGS``, so it cannot go stale
-    the way a hand-written "(M/S ok)" did when the C4 leg was added."""
+    the way a hand-written "(M/S ok)" does when a leg is added."""
     leg_ids = "/".join(alignment.ALIGNMENT_LEGS)
     return {
         "edges": [

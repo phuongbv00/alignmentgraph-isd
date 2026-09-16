@@ -321,6 +321,41 @@ def test_the_alignment_legs_are_declared_once():
         assert leg["label"] == alignment.REGISTRY[leg["relation_id"]].label
 
 
+def test_a_bloom_rule_that_could_not_run_does_not_report_a_pass():
+    """`None`, not `True`. Both Bloom checks group by the C2/C3 edges they
+    read, so an objective nothing assesses produces no violation — and the
+    inspector, reading "no violation" as a pass, drew a green "assessed at its
+    own Bloom level (C2)" beside the red C2 leg of that same objective."""
+    graph = AlignmentGraph()
+    graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01", "level": "apply"})
+    ann = viz.objective_annotations(graph)["objective:ILO-01"]
+    assert ann["bloom_assessment_ok"] is None
+    assert ann["bloom_activity_ok"] is None
+    # The conjunction is what `to_dot` and every archived payload read, and a
+    # check that could not run raises no warning there — as it did before.
+    assert ann["bloom_ok"] is True
+
+    # An objective that IS assessed, at its own level, still reports a pass:
+    # the third state is "not checked", never "not violated".
+    graph = _triad_graph(with_c4=True)
+    graph.update_node("activity:TLA-01", {"learner_cognitive_process": "apply"})
+    ann = viz.objective_annotations(graph)["objective:ILO-01"]
+    assert ann["bloom_assessment_ok"] is True
+    assert ann["bloom_activity_ok"] is True
+
+
+def test_a_level_outside_blooms_six_is_not_checked_either():
+    """The activity rule skips such an objective outright and the assessment
+    rule compares against `None` and passes, so both said "fine" about a level
+    neither of them could read."""
+    graph = _triad_graph(with_c4=True)
+    graph.update_node("objective:ILO-01", {"level": "synthesise"})
+    graph.update_node("activity:TLA-01", {"learner_cognitive_process": "apply"})
+    ann = viz.objective_annotations(graph)["objective:ILO-01"]
+    assert ann["bloom_assessment_ok"] is None
+    assert ann["bloom_activity_ok"] is None
+
+
 def test_a_red_edge_names_the_check_that_actually_failed():
     """C2 reddens on the assessment rule, C3 on the activity rule. Under the
     old union, an objective whose ITEM was too shallow reddened its
