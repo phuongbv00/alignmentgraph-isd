@@ -32,10 +32,15 @@ import pytest
 
 from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core.agentic import compaction
-from alignmentgraph_isd.core.agentic.loop import (
-    COMPACTION_NOTE, AgenticLLM, _with_note, compact, compaction_note,
-    running_summary, stage_brief_block, trim_history,
+from alignmentgraph_isd.core.agentic.client import AgenticLLM
+from alignmentgraph_isd.core.agentic.compaction import (
+    _with_note,
+    compact,
+    compaction_note,
+    running_summary,
 )
+from alignmentgraph_isd.core.agentic.protocol import stage_brief_block
+from alignmentgraph_isd.core.agentic.transcript import COMPACTION_NOTE, trim_history
 from alignmentgraph_isd.core.agentic.specialists import STEPS
 from alignmentgraph_isd.core.trajectory import WORKFLOW_ORCHESTRATOR
 

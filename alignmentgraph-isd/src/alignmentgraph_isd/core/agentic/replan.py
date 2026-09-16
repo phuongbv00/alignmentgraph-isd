@@ -1,16 +1,14 @@
 """When the Developers leave a gap, the DESIGNER plans the next round.
 
-The loop this closes. A Designer divides its family into work sets; its
-Developers write them; the checks then find that some objective still has no
-assessment item, or some objective no activity. The deterministic net cannot
-write instructional content (``core/repairs.py``), so without this the gap
-reaches nobody who can act on it and ships as residual.
+The loop this closes. A Designer divides its family into work sets, its
+Developers write them, and the checks then find an objective with no assessment
+item or no activity. The deterministic net cannot write instructional content
+(``core/repairs.py``), so without this the gap reaches nobody who can act on it.
 
-Sending it to the Designer keeps the two roles the design already has. A
-Designer plans and does not write; a Developer writes what it is assigned. So
-the answer to "ILO-02 has no item" is not an item — it is a **work set**, and
-the Developer tier runs it exactly as it ran the first round. What the round
-costs is one Designer call plus one Developer call per gap set.
+It goes to the DESIGNER, which keeps the two roles the design already has: the
+answer to "ILO-02 has no item" is not an item but a **work set**, which the
+Developer tier runs as it ran the first round. The round costs one Designer
+call plus one Developer call per gap set.
 
 Three things keep it bounded, and each answers a way this could hang on a
 small model:

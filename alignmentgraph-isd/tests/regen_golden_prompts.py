@@ -41,11 +41,12 @@ def _agentic_prompts() -> dict[str, str]:
     from alignmentgraph_isd.core.agentic import fanout
     from alignmentgraph_isd.core.agentic import tools as agentic_tools
     from alignmentgraph_isd.core.agentic import compaction
-    from alignmentgraph_isd.core.agentic.loop import _WORKFLOW_OVERVIEW, compaction_note
+    from alignmentgraph_isd.core.agentic.compaction import compaction_note
+    from alignmentgraph_isd.core.agentic.protocol import WORKFLOW_OVERVIEW
     from alignmentgraph_isd.core.agentic.specialists import SINGLE_PERSONA, STEPS
 
     pinned: dict[str, str] = {
-        "agentic._WORKFLOW_OVERVIEW": _WORKFLOW_OVERVIEW,
+        "agentic.WORKFLOW_OVERVIEW": WORKFLOW_OVERVIEW,
         "agentic.SINGLE_PERSONA": SINGLE_PERSONA,
     }
     for step in STEPS:
@@ -96,7 +97,7 @@ def _agentic_prompts() -> dict[str, str]:
 def _check_messages() -> dict[str, str]:
     """What a repair turn actually says, per violation type.
 
-    ``loop._repair_request`` renders ``message`` and ``repair_hint`` VERBATIM
+    ``loop.repair_request`` renders ``message`` and ``repair_hint`` VERBATIM
     into a user turn, in both arms — so a check's wording is prompt surface
     exactly like a persona or a tool schema. It was the only such surface
     nothing pinned: a reworded check changed what every agent was asked to fix
@@ -125,7 +126,7 @@ def _check_messages() -> dict[str, str]:
 
     by_type: dict[str, set[str]] = {}
     for violation in produced:
-        # Exactly the two lines _repair_request renders, in its own shape.
+        # Exactly the two lines repair_request renders, in its own shape.
         rendered = f"- {violation.message}"
         if violation.repair_hint:
             rendered += f"\n  Fix: {violation.repair_hint}"

@@ -2,7 +2,7 @@
 
 Its only job is to be the fixed input the golden fixture pins check MESSAGES
 against (``tests/regen_golden_prompts.py``). Those messages are rendered
-verbatim into a user turn by ``loop._repair_request`` for both arms, so they
+verbatim into a user turn by ``loop.repair_request`` for both arms, so they
 are prompt surface exactly like a persona or a tool schema — and until
 2026-09-04 they were the only prompt surface nothing pinned. A reworded check
 could change what every agent was asked to fix without turning a single test

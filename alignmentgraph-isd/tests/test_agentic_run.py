@@ -231,7 +231,7 @@ def test_the_two_arms_are_shaped_differently_and_say_so_in_the_record():
 
 
 def test_history_trim_drops_oldest_observations_and_keeps_the_live_stage():
-    from alignmentgraph_isd.core.agentic.loop import trim_history
+    from alignmentgraph_isd.core.agentic.transcript import trim_history
 
     messages = [{"role": "system", "content": "S"}]
     messages += [{"role": "tool", "content": "x" * 1000} for _ in range(50)]
@@ -247,7 +247,7 @@ def test_history_trim_drops_oldest_observations_and_keeps_the_live_stage():
     # that shows only what is still being sent answers "what was this agent
     # shown" for the last call and loses every earlier one. They are contiguous
     # and start right after the system turn, which is what lets the viewer
-    # rebuild the conversation in order (loop.compacted_transcript).
+    # rebuild the conversation in order (transcript.compacted_transcript).
     assert dropped == messages[1:1 + len(dropped)]
     assert trimmed == messages[:1] + messages[1 + len(dropped):]
 

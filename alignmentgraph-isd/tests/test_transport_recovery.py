@@ -176,7 +176,7 @@ def test_prompt_size_counts_the_model_s_own_messages():
         {"role": "system", "content": "x" * 100},
         _Message("", [{"name": "submit", "args": {"objective": "y" * 500}}]),
     ]
-    size = loop._prompt_chars_any(transcript)
+    size = loop.prompt_chars(transcript)
     assert size > 500, "the artifact lives in the tool call, not in the content"
 
 
@@ -212,18 +212,19 @@ def test_a_truncated_submit_is_told_to_send_less_not_to_fix_fields():
     at the same place; three attempts, then the stage gave up — and the same
     thing happened on the two regen attempts after it."""
     from alignmentgraph_isd.core.agentic import loop as agentic_loop
+    from alignmentgraph_isd.core.agentic.turn import ToolTurn
 
     class _Loop:
         _reject_message = agentic_loop.ToolLoop._reject_message
 
     errors = ["learner_analysis must be a non-empty object"]
 
-    plain = _Loop()._reject_message(errors, agentic_loop.ToolTurn(name="submit"))
+    plain = _Loop()._reject_message(errors, ToolTurn(name="submit"))
     assert plain.startswith("SUBMIT REJECTED")
     assert "CUT OFF" not in plain
 
     cut = _Loop()._reject_message(
-        errors, agentic_loop.ToolTurn(name="submit", truncated=True))
+        errors, ToolTurn(name="submit", truncated=True))
     assert "CUT OFF" in cut
     assert "SHORTER" in cut
     # The errors still travel: which fields did not arrive is still the useful

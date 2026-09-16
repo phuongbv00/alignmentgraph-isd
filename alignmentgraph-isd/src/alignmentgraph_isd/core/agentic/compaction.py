@@ -1,87 +1,67 @@
 """Summarising what compaction takes out of an agent's context.
 
 When a conversation outgrows the window, ``trim_history`` removes the oldest
-tool observations. What replaces them decides how much of the run survives the
-squeeze, and there are two honest options:
-
-* a deterministic NOTE — "N turns went, their findings are in the design state,
-  read them again" — free, exact, and carrying none of the content;
-* a model-written SUMMARY of the dropped turns, folded into the note.
-
-This module is the second. The summary is rolling: each compaction folds the
-previous summary and the newly dropped turns into one, so the note stays a
-fixed size no matter how long the run gets and the input to each call is
-bounded by (previous summary + what just went).
+tool observations. What replaces them is a deterministic NOTE ("N turns went,
+their findings are in the design state") plus, from this module, a model-written
+SUMMARY of the dropped turns folded into that note. The summary is ROLLING:
+each compaction folds the previous one and the newly dropped turns into a
+single note, so the note stays a fixed size however long the run gets and each
+call's input is bounded.
 
 **This is a HOOK OF THE HARNESS, not an action of the agent.** The agent did
 not choose to compact, is not shown this conversation, and has nothing bound
-for it — offering it a ``submit_summary`` tool would put the agent's own
-tool-protocol costume on an intervention the harness makes over its head, and
-the one thing this package is most careful about is who is talking to the model
-and inside which context boundary. So the call goes out through
+for it — a ``submit_summary`` tool would dress an intervention made over the
+agent's head as a move in its own protocol. The call goes out through
 ``AgenticLLM.call_prose``: no tools, no ``response_format``, attributed to
-``WORKFLOW_ORCHESTRATOR``, and never published as one of that agent's contexts.
-``AgenticLLM`` still books its tokens, so it cannot hide from the cost table.
+``WORKFLOW_ORCHESTRATOR``, never published as one of that agent's contexts, and
+its tokens still on the cost table.
 
-That prose path is the only one left in the package, and it is deliberately
-narrow. Generative repairs used to open a second conversation under the OWNING
-AGENT'S name and were removed 2026-09-03 for exactly that reason
-(``tests/test_one_agent_one_system_prompt.py``). The difference here is the
-attribution and the absence of a published context — which is a claim that has
-to be checkable, so ``tests/test_compaction.py`` asserts that ``call_prose``
-has exactly one caller in ``src/`` and that it is this module.
+That prose path is the only one in the package. A call under the OWNING AGENT'S
+name would be a second conversation inside that agent's context boundary, which
+``tests/test_one_agent_one_system_prompt.py`` rules out; ``tests/
+test_compaction.py`` asserts that ``call_prose`` has exactly one caller in
+``src/`` and that it is this module.
 
 **On the arm asymmetry.** ``single`` carries one conversation for the whole
 brief and compacts constantly; ``multi`` starts each stage fresh and barely
-compacts at all. So this costs the two arms very differently — and that is the
-POINT, not a confound. The trigger, the prompt, the budget and the fallback are
-one implementation shared by both; what differs is how often the window
-actually fills, which is exactly the mechanism the decomposition axis is about.
-A cost that differs because of the mechanism is the effect being measured; a
-cost that differs because the harness gave one arm something it withheld from
-the other would be the confound. ``metadata.autonomy`` reports ``compactions``
-and ``compaction_summaries`` per stage, so ``compactions - compaction_summaries``
-is the summariser's failure rate on this model and the paper can state the
-price rather than imply it.
+does. The trigger, the prompt, the budget and the fallback are ONE
+implementation shared by both, so what differs is only how often the window
+fills — the mechanism the decomposition axis is about, not a confound.
+``metadata.autonomy`` reports ``compactions`` and ``compaction_summaries`` per
+stage; the difference is the summariser's failure rate on this model.
 
-**On the transport, because v1 died of it.** The first version of this module
-(2026-09-03, removed 2026-09-05) reached the model through ``AgenticLLM``'s
-JSON-mode ``__call__`` while asking for plain prose. A compliant backend
-answered with a JSON object, ``_clean`` rejected it as non-prose, and every
-compaction of run e81b8108 logged "count only" after a 2.7-4.7k-token
-completion — three calls, 11.8k completion tokens, nothing kept. Two things
-follow, and both are load-bearing: ``call_prose`` sends no ``response_format``
-at all, and ``_clean`` now SALVAGES a JSON-wrapped answer instead of discarding
-it, so the exact failure that killed v1 is a recovery here.
+**On the transport.** ``call_prose`` must send no ``response_format``: asking
+for prose down a JSON-mode path costs a full completion for nothing, since a
+compliant backend answers with a JSON object and ``_clean`` rejects it as
+non-prose (measured on run e81b8108: every compaction logged "count only",
+three calls and 11.8k completion tokens kept nothing). ``_clean`` also SALVAGES
+a JSON-wrapped answer rather than discarding it.
 
-Failure is always safe: an empty or unusable answer falls back to the previous
-summary — never to empty, or a bad fold would also erase what earlier ones
-managed to keep. A summary is an improvement on the note, never a precondition
-for compaction working.
+Failure is always safe: an empty or unusable answer falls back to the PREVIOUS
+summary, never to empty, or a bad fold would erase what earlier ones kept.
 
-**What the summary is asked to keep, and why that changed.** Run 46bd42a5's
-implementation stage compacted with six of seven artifacts committed, and the
-fold came back describing the DESIGN — "SPI protocol simulations, plan sets
-AB-01 through AB-12, must use slides (PDF, PPT), video (mp4)". Every word of
-that is committed design state the agent can read back with its own tools, and
-the prompt's own Drop clause already said so; what went missing was the only
-thing in those turns that is NOT re-readable — that it had submitted six
-artifacts and owed one. So the Keep list is now ordered and leads with the
-agent's progress through the stage, and the Drop clause names design CONTENT
-rather than "anything committed", which a model can read as covering the fact
-of having committed it.
+**What the summary is asked to keep.** The Keep list is ORDERED and leads with
+the agent's progress through the stage; the Drop clause names design CONTENT
+rather than "anything committed", which a model reads as covering the fact of
+having committed it. Measured on run 46bd42a5, whose implementation stage
+compacted with six of seven artifacts in: the fold described the DESIGN ("SPI
+protocol simulations, plan sets AB-01 through AB-12"), all of it state the
+agent can read back with its own tools, while the one fact that is NOT
+re-readable — six submitted, one owed — went missing.
 
-This is a prompt, so it is a request and not a guarantee — a small model that
-ignored the old Drop clause can ignore the new one. The guarantee for the same
-failure is deterministic and lives elsewhere: ``loop.with_progress`` appends
-``_still_needed`` to every RE-attached contract, so what the stage still owes
-comes back computed from the state whether or not the summariser cooperated.
+A prompt is a request, not a guarantee. The deterministic guarantee for the
+same failure is ``protocol.with_progress``, which appends ``still_needed`` to
+every RE-attached contract, so what the stage owes comes back from the state
+whether or not the summariser cooperated.
 """
 from __future__ import annotations
 
 import re
 
 from ..llm_io import parse_json_response
+from ..trajectory import WORKFLOW_ORCHESTRATOR
+from .protocol import BRIEF_HEADER_RE, lost_briefs
+from .transcript import COMPACTION_NOTE, prompt_chars, serialize_messages
 
 #: Characters of dropped material one summarisation may read. Past this the
 #: oldest of the dropped turns are themselves elided — a summary of a summary
@@ -134,7 +114,7 @@ markdown. If there is nothing worth keeping, answer with nothing at all.
 def summarize(call_llm, previous: str, dropped: list) -> tuple[str, str]:
     """The new running summary and why it is what it is.
 
-    ``call_llm`` is an :class:`~loop.AgenticLLM` built with the
+    ``call_llm`` is an :class:`~client.AgenticLLM` built with the
     ``WORKFLOW_ORCHESTRATOR`` identity — see the module docstring for why this
     is the harness's call and not the agent's.
 
@@ -195,12 +175,10 @@ def _render(dropped: list) -> str:
     transcript, and feeding it back in would spend the input budget
     re-summarising what the design state already holds.
     """
-    from .loop import _BRIEF_HEADER_RE, serialize_messages
-
     lines = []
     for message in serialize_messages(dropped):
         content = str(message.get("content") or "").strip()
-        if content and _BRIEF_HEADER_RE.search(content):
+        if content and BRIEF_HEADER_RE.search(content):
             continue
         calls = message.get("tool_calls") or []
         if calls:
@@ -312,3 +290,152 @@ def _unwrap(text: str) -> str:
         return ""
     values = [v.strip() for v in parsed.values() if isinstance(v, str) and v.strip()]
     return values[0] if len(values) == 1 else ""
+
+
+#: What replaces what was taken away. The bracketed part is always true and
+#: costs nothing — only observations are dropped, and their findings are in the
+#: design state — so it stands whatever the summariser does. A model-written
+#: summary of the dropped turns is folded in AFTER it by ``compaction_note``
+#: when the compaction hook delivered one (:func:`summarize`); a
+#: run where it never does reads exactly as this note has always read. Keeping
+#: the two separable is the point: the count is a fact about the trim, the
+#: summary is a claim by a model, and a reader of the transcript can tell them
+#: apart.
+_COMPACTED_NOTE = (
+    "[{count} earlier turn(s) of this conversation were removed to stay inside "
+    "the context window — the oldest tool results, nothing you were told to do. "
+    "Their findings are in the design state: read them again with the tools "
+    "above if you need them. Everything since is intact.]"
+)
+
+
+#: Appended to the note when the trim took a stage's CONTRACT with it. The
+#: standing note says the dropped findings are in the design state, which is
+#: true of tool results and false of the brief — the schema is not in the
+#: design state at all. MEASURED (run 2b9e911a): the brief went on turn 9 of
+#: the implementation stage, the model was told its findings were recoverable,
+#: and it invented field names for the rest of the stage. `forget_compacted_calls`
+#: already clears the repeat guard for the dropped result, so the re-fetch this
+#: asks for is permitted — the permission existed and the instruction did not.
+_BRIEF_LOST_NOTE = (
+    " The stage turn for {stages} went with them, so you no longer have the "
+    "schema or the field names — submit only what you are certain of, and the "
+    "contract comes back with any rejection."
+)
+
+
+def compaction_note(count: int, lost: tuple | list = (), *,
+                    summary: str = "") -> dict:
+    """The note itself, as a turn the model actually sees.
+
+    The bracket closes before the summary begins: the count and the brief-lost
+    sentence are harness facts, the summary is a model's account of turns the
+    model can no longer see, and running them together would let the second
+    borrow the authority of the first.
+
+    The summary rides as a key on the dict as well as in the text, so the next
+    fold reads it back with ``running_summary`` instead of parsing its own
+    prose out of the note. ``serialize_messages`` drops unknown keys before
+    anything is sent, exactly as it already does for ``COMPACTION_NOTE``.
+    """
+    content = _COMPACTED_NOTE.format(count=count)
+    if lost:
+        content = content.rstrip("]") + _BRIEF_LOST_NOTE.format(
+            stages=", ".join(lost)) + "]"
+    if summary.strip():
+        content += f"\n\nWhat those turns established:\n{summary.strip()}"
+    return {"role": "user", "content": content,
+            COMPACTION_NOTE: True, "summary": summary}
+
+
+def running_summary(messages: list) -> str:
+    """The summary the current note carries, for the next fold to build on."""
+    for message in messages:
+        if isinstance(message, dict) and message.get(COMPACTION_NOTE):
+            return str(message.get("summary") or "")
+    return ""
+
+
+def _with_note(messages: list, count: int, lost: tuple | list = (), *,
+               summary: str = "") -> list:
+    """The transcript with its compaction note current — one note, rewritten,
+    never a second one. It sits where the dropped turns were: after the system
+    turn (the only one `trim_history` protects) and before what survived."""
+    head = messages[:1]
+    body = [m for m in messages[1:]
+            if not (isinstance(m, dict) and m.get(COMPACTION_NOTE))]
+    return head + [compaction_note(count, lost, summary=summary)] + body
+
+
+def compact(messages: list, dropped: list, total: int, *, trajectory,
+            stats: dict, restore=None, budget: int = 0, llm=None) -> list:
+    """Record what just went, in the conversation and in the trace.
+
+    ONE implementation, called identically by both arms, so the difference
+    between them is a measurement: ``single`` carries one conversation all run
+    and reaches this often, ``multi`` starts each stage fresh and barely does.
+
+    ``llm`` is the compaction HOOK's model caller — an ``AgenticLLM`` under the
+    ``WORKFLOW_ORCHESTRATOR`` identity, never the agent's own. Given one, the
+    dropped turns are folded into a rolling summary riding in the note
+    (:func:`summarize`); given ``None``, the note is the count
+    alone. Every failure mode of the hook lands on that fallback, so a
+    compaction always succeeds whatever the model does.
+
+    The hook is the harness's call: the agent did not choose to compact, is
+    never shown that conversation, has nothing bound for it, and no context is
+    published in its name. ``stats`` carries ``compactions`` and
+    ``compaction_summaries``; the difference is the hook's failure rate.
+    """
+    stats["compactions"] = stats.get("compactions", 0) + 1
+
+    # A dropped stage BRIEF is not like a dropped observation. The note's
+    # standing promise — the findings are in the design state, read them again —
+    # is true of a tool result and false of the contract, which is not in the
+    # design state at all. So the contract is put BACK, at the tail, where it is
+    # newest and the next trim (oldest first) will not take it.
+    #
+    # Re-attaching beats asking: it costs no turn and is certain to arrive,
+    # where a note asking the model to re-fetch costs a turn and depends on it
+    # complying — and run 2b9e911a is three regens of a model that did not.
+    # It is not PROTECTED in place, which is a different thing and was rejected:
+    # a `role: "tool"` message cannot be hoisted the way the note is (the
+    # assistant turn that made the call has to precede it), and pinning it would
+    # fix a block at the front of the very window it has to make room in.
+    lost = lost_briefs(messages, dropped)
+    restored: list[tuple[str, str]] = []
+    still_lost: list[str] = []
+    for stage in lost:
+        brief = restore(stage) if restore is not None else None
+        # Only if it FITS in what the trim just freed. Draining to the
+        # low-water mark leaves room by construction, but a brief is up to
+        # 7,400 characters and a small budget could put the transcript straight
+        # back over the line and trim again on the next turn.
+        if brief and (not budget or prompt_chars(messages) + len(brief) <= budget):
+            restored.append((stage, brief))
+        else:
+            still_lost.append(stage)
+
+    previous = running_summary(messages)
+    summary, outcome = previous, "count only"
+    if llm is not None:
+        with trajectory.acting_as(WORKFLOW_ORCHESTRATOR):
+            summary, outcome = summarize(llm, previous, dropped)
+        if outcome == "summarised":
+            stats["compaction_summaries"] = stats.get("compaction_summaries", 0) + 1
+
+    # The note names only what could not be put back, so a model whose contract
+    # is sitting right there is not sent to fetch it again.
+    kept = _with_note(messages, total, still_lost, summary=summary)
+    for _stage, brief in restored:
+        kept.append({"role": "user", "content": brief})
+
+    trajectory.log_recovery_event(
+        WORKFLOW_ORCHESTRATOR, "context_compacted",
+        f"{len(dropped)} turn(s), {total} total"
+        + (f", stage brief re-attached: {', '.join(s for s, _ in restored)}" if restored else "")
+        + (f", stage brief lost: {', '.join(still_lost)}" if still_lost else ""),
+        # Both facts — the outcome and the resulting size — because the paper
+        # reports the hook's failure rate against what it was spent on.
+        f"{outcome}; live context now {prompt_chars(kept)} chars")
+    return kept

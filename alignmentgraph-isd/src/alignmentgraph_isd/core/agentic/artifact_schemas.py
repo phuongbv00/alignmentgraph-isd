@@ -154,9 +154,9 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
     }, ("id", "level", "statement", "bloom_verb")),
 
     # ── assessment ───────────────────────────────────────────────────────
-    # No "diagnostic"/"formative"/"summative" buckets. They were optional here,
-    # named by no rule, and read by nothing but the old P3 establisher — which
-    # is exactly why P3 could not fire (see
+    # No "diagnostic"/"formative"/"summative" buckets. Declared here they are
+    # optional and named by no rule, so a model leaves them empty and any
+    # establisher reading them cannot fire (see
     # `alignment._promised_categories`). The plan states its categories ONCE,
     # in `lo_coverage_targets`, per objective; an optional second place to say
     # the same thing only invites a small model to guess.

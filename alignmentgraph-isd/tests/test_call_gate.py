@@ -162,7 +162,10 @@ def test_the_history_budget_follows_the_serving_window():
     derivation lands within 2.4% of it, so the constant was well chosen; the
     point is that it now TRACKS the serving setup instead of coinciding with
     it, and a wider-window model gets the window it has."""
-    from alignmentgraph_isd.core.agentic.loop import HISTORY_CHAR_BUDGET, history_budget  # noqa: F401
+    from alignmentgraph_isd.core.agentic.transcript import (  # noqa: F401
+        HISTORY_CHAR_BUDGET,
+        history_budget,
+    )
 
     def cfg(**kw):
         return HarnessRunConfig(llm_factory=lambda: None, **kw)
@@ -180,7 +183,7 @@ def test_a_window_swallowed_by_the_reserve_still_leaves_a_working_budget():
     """A floor, so a misconfigured window cannot leave a budget too small to
     hold the system turn — which trim never drops, and which would then be the
     whole prompt with nothing able to survive beside it."""
-    from alignmentgraph_isd.core.agentic.loop import history_budget
+    from alignmentgraph_isd.core.agentic.transcript import history_budget
 
     tiny = history_budget(HarnessRunConfig(
         llm_factory=lambda: None, llm_context_window=8192, llm_completion_reserve=8192))
@@ -197,7 +200,7 @@ def test_the_token_budget_is_what_is_equal_across_arms():
     slightly different CHARACTER budgets while holding the same token budget.
     That is more correct, not less: equalising characters would have given the
     two arms different amounts of the thing that actually runs out."""
-    from alignmentgraph_isd.core.agentic.loop import history_budget, prompt_token_budget
+    from alignmentgraph_isd.core.agentic.transcript import history_budget, prompt_token_budget
 
     tokens = {
         mode: prompt_token_budget(HarnessRunConfig(
@@ -224,8 +227,11 @@ def test_the_token_ratio_is_measured_not_assumed():
 
     The exact answer already arrives: every response reports `prompt_tokens`
     for a prompt whose character count we know."""
-    from alignmentgraph_isd.core.agentic.loop import (
-        COLD_CHARS_PER_TOKEN, TokenRatio, history_budget, ratio_for,
+    from alignmentgraph_isd.core.agentic.transcript import (
+        COLD_CHARS_PER_TOKEN,
+        history_budget,
+        ratio_for,
+        TokenRatio,
     )
 
     ratio = TokenRatio()
@@ -259,7 +265,7 @@ def test_the_token_ratio_is_measured_not_assumed():
 def test_the_ratio_is_shared_across_the_whole_run():
     """Per RUN, not per agent, so both arms calibrate off the same traffic —
     the same per-config caching `ratelimit.gate_for` uses."""
-    from alignmentgraph_isd.core.agentic.loop import ratio_for
+    from alignmentgraph_isd.core.agentic.transcript import ratio_for
 
     config = HarnessRunConfig(llm_factory=lambda: None, llm_context_window=16384)
     assert ratio_for(config) is ratio_for(config)
@@ -271,7 +277,7 @@ def test_the_context_parts_are_a_true_partition():
     about what filled the window. The earlier split did not: it measured the
     bound tool SCHEMAS, which are not in the message list at all, so the parts
     overlapped the total instead of dividing it."""
-    from alignmentgraph_isd.core.agentic.loop import _prompt_chars_any, context_parts
+    from alignmentgraph_isd.core.agentic.transcript import context_parts, prompt_chars
 
     messages = [
         {"role": "system", "content": "rules"},
@@ -281,7 +287,7 @@ def test_the_context_parts_are_a_true_partition():
         {"role": "tool", "name": "submit", "content": "COMMITTED"},
     ]
     parts = context_parts(messages)
-    assert sum(parts.values()) == _prompt_chars_any(messages)
+    assert sum(parts.values()) == prompt_chars(messages)
 
     assert parts["system"] == len("rules")
     assert parts["messages"] == len("the stage instructions")

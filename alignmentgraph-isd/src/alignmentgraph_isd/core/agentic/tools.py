@@ -130,14 +130,13 @@ def render_nodes(nodes: list[dict], max_chars: int = NODE_CHAR_CAP,
     """One ``[TYPE:ID]`` block per node, data as truncated JSON, up to a total
     character budget.
 
-    Bounded by SIZE, not by a node count. The graph arm used to stop at 25 nodes
-    while the prose arm stopped at nothing, so a design with many items was
-    reported in full to one context mode and truncated in the other — an
-    asymmetry sitting on the ``context_mode`` axis itself. Dropping the count
-    cap fixed the asymmetry and created a worse problem: measured on run
-    single_20260901_154303, a prose arm that wrote 10 objectives and 112
-    materials pushed one observation to 68,786 characters, past the serving
-    window, and 28 of its 32 Developer calls fell back.
+    Bounded by SIZE, never by a node count. A count cap applied per substrate
+    — 25 nodes on the graph arm, nothing on the prose arm — reports a design
+    with many items in full to one context mode and truncated in the other, an
+    asymmetry sitting on the ``context_mode`` axis itself. No cap at all is
+    worse: measured on run single_20260901_154303, a prose arm that wrote 10
+    objectives and 112 materials pushed one observation to 68,786 characters,
+    past the serving window, and 28 of its 32 Developer calls fell back.
 
     A byte budget is the right unit because bytes are what actually breaks: it
     is the same rule in both modes, it does not pretend 25 of anything is the
@@ -232,10 +231,10 @@ def alignment_docket(graph: "AlignmentGraph", *, edges: tuple[str, ...] = (),
 def run_read_nodes(graph: "AlignmentGraph", step: "AgenticStep", args: dict) -> str:
     node_type = str(args.get("node_type", "")).strip().lower()
     if node_type not in step.readable_types:
-        # ``read_nodes`` LISTS a type; ``read_node`` READS ids. The names differ
-        # by one character and, since ``read_node`` began taking an array
-        # (2026-09-08), so do their arguments — so a model that wants "read
-        # these ids" reaches for the plural name and is refused.
+        # ``read_nodes`` LISTS a type; ``read_node`` READS ids. The names
+        # differ by one character and, because ``read_node`` takes an array, so
+        # do their arguments — so a model that wants "read these ids" reaches
+        # for the plural name and is refused.
         #
         # MEASURED (runs 53042a0d, 2559b22d): 50 of 63 ERROR observations were
         # "node_type must be one of …", and the majority carried a perfectly
@@ -282,32 +281,24 @@ def run_read_node(graph: "AlignmentGraph", step: "AgenticStep", args: dict) -> s
     content stage duly gave up — 41 turns, 35 reads, and a design left with 5
     content modules against 23 activities (C5 coverage 0.13).
 
-    This is the other half of the 2026-09-06 read-cost change. That one made
-    ``read_nodes`` a one-line-per-node LISTING so a planner could see the ids it
-    had to write; what it left behind was that the only way to then read those
-    artifacts in full was one call per id, so the listing handed the model a
-    bill it had to pay a turn at a time. The information available is unchanged
-    — this is turns, not scope.
+    The counterpart of ``read_nodes`` being a one-line-per-node LISTING:
+    without a batched read, the only way to read what the listing names is one
+    call per id, so the listing hands the model a bill it pays a turn at a
+    time. Batching changes turns, not scope.
 
-    The read budget is SHARED across the ids asked for, never multiplied by
-    them: one id still gets the whole budget (so "in full means in full" holds
-    exactly as it did), and a batch divides it, with ``NODE_CHAR_CAP`` as the
-    floor so no node is cut below what a dump has always given. What does not
-    fit is named out loud by ``render_nodes``, not dropped.
+    The read budget is SHARED across the ids, never multiplied by them: one id
+    gets the whole budget, a batch divides it, with ``NODE_CHAR_CAP`` as the
+    floor. What does not fit is named out loud by ``render_nodes``, not
+    dropped. An id that does not resolve costs THAT id and not the call — one
+    typo taking the whole batch would put back the per-id turn cost.
 
-    An id that does not resolve costs THAT id and not the call: the ids come
-    from a listing the model was shown, and one typo taking the whole batch
-    with it would put back the per-id turn cost this exists to remove.
-
-    ON THE ``context_mode`` AXIS, because this tool is bound in graph mode
-    only. It NARROWS an asymmetry that already ran against the graph arm
-    rather than opening a new one. A prose document IS a whole family — the
-    ``content`` step's ``read_document('activity')`` returns every activity in
-    one call — while the graph arm names elements one at a time, so on the
-    same design the prose arm reached the same information in 1 turn where the
-    graph arm needed 23. Reading several ids per call is what an element index
-    is FOR; the substrate difference the axis measures is what state each mode
-    holds, not how many turns the harness charges to look at it.
+    ON THE ``context_mode`` AXIS, since this tool is bound in graph mode only.
+    It NARROWS an asymmetry already running against the graph arm: a prose
+    document IS a whole family (``read_document('activity')`` returns every
+    activity in one call) while the graph arm names elements one at a time, so
+    on the same design prose reached the same information in 1 turn against 23.
+    The axis measures what state each mode holds, not how many turns the
+    harness charges to look at it.
     """
     # The mirror of `run_read_nodes`' rescue: a model that wants the LISTING
     # and reaches for the singular name has still said what it wants.
@@ -455,11 +446,10 @@ def executors_for(*, graph_mode: bool) -> dict:
 # The ladder serves vLLM with ``--enable-auto-tool-choice --tool-call-parser
 # qwen3_coder``, so tool calls are native: the serving-side parser enforces the
 # argument shape before the model's text ever reaches us. That is worth more
-# than the old JSON-action protocol at the small end of the ladder, where the
-# measured failures were shape failures (a wrapped artifact, a bare artifact on
-# turn 1, a truncated object). The guards around the loop are unchanged --
-# native transport removes one failure mode, it does not remove the need for
-# the anti-loop guard or the submit budget.
+# than a text JSON-action protocol at the small end of the ladder, where the
+# measured failures are shape failures (a wrapped artifact, a bare artifact on
+# turn 1, a truncated object). It removes ONE failure mode and no others: the
+# anti-loop guard and the submit budget are needed exactly as much.
 
 def _parameters_from(fields: tuple, schema_keys: dict[str, str] | None = None) -> dict:
     """The submit schema for a set of ``(key, json_type, required)`` fields.
@@ -526,11 +516,10 @@ def undeclared_key_errors(step: "AgenticStep", section: dict) -> list[str]:
 def submit_parameters(step: "AgenticStep") -> dict:
     """The stage's WHOLE artifact as one schema — every top-level key at once.
 
-    The multi arm no longer binds a tool shaped like this (see
-    :func:`submit_specs`): a stage there is one tool per artifact. This is the
-    SINGLE arm's per-stage submit, where one agent works the whole brief and
-    picks a stage to advance, and it is also the union the transport coercion
-    is defined against."""
+    The multi arm binds no tool shaped like this (see :func:`submit_specs`):
+    a stage there is one tool per artifact. This is the SINGLE arm's per-stage
+    submit, where one agent works the whole brief and picks a stage to advance,
+    and it is also the union the transport coercion is defined against."""
     return _parameters_from(step.submit_fields, step.schema_keys)
 
 
@@ -540,43 +529,35 @@ def submit_specs(step: "AgenticStep", only: tuple[str, ...] | None = None) -> li
     ``submit_assessment_plan`` and ``submit_assessment_dev_plan``, not one
     ``submit`` carrying both. Three things follow, and the first is the reason:
 
-    * **The model emits one artifact per call.** A stage's whole submit had to
-      fit under the 8192-token completion cap in a single tool call, and
-      ``implementation`` is six objects. That is what forced ``analysis`` to be
-      declared piecemeal; per-artifact tools make it structural for every
-      stage instead of an instruction one artifact happened to get.
+    * **The model emits one artifact per call.** A whole stage has to fit under
+      the 8192-token completion cap in a single call, and ``implementation`` is
+      six objects.
     * **A rejected artifact costs that artifact.** The validator judges what
-      arrived; the other five stay committed and are not re-emitted.
+      arrived; the rest stay committed and are not re-emitted.
     * **The tool name states what is being written**, so a plan submitted as a
       dev plan is a wrong tool rather than a mis-keyed object.
 
     The parameters keep the artifact's own key rather than taking the value
-    bare (``{"assessment_plan": {...}}``, not ``{...}``). The key is what
-    ``unwrap_section`` and every ``commit`` already address the artifact by,
-    and a weak model that has just been told the schema for `assessment_plan`
-    writes it back more reliably under that name than under an anonymous
-    payload.
+    bare (``{"assessment_plan": {...}}``, not ``{...}``): that key is what
+    ``unwrap_section`` and every ``commit`` address the artifact by, and a weak
+    model just shown the schema for `assessment_plan` writes it back more
+    reliably under that name.
 
-    The parameters go all the way down: every field's shape (types, nesting,
-    enums) comes from :data:`artifact_schemas.ARTIFACT_SCHEMAS`, the sole
-    declaration of an artifact's SHAPE — the stage prompt does not restate
-    it as text (see ``AgenticStep.task_block``). Two things keep this from
-    forking into a
-    second source of truth: where ``core/validation.py`` already type-checks a
-    field, ``artifact_schemas`` DERIVES from it rather than retyping it by
-    hand, so the two cannot disagree; and every enum value list is typed once,
-    in ``rulebook.py``, read by both the schema here and the ``RULES_*``
-    prose. The deterministic :attr:`AgenticStep.validate` stays the authority
-    on ACCEPTANCE — a rejected submit still returns its exact errors — this
-    only rejects earlier, at the transport boundary, what the parser can see
-    is malformed before it ever reaches the validator: a wrapped or key-less
-    object (what ``unwrap_section`` used to clean up after alone), a wrong
-    top-level type, or now a field of the wrong shape.
+    Every field's shape (types, nesting, enums) comes from
+    :data:`artifact_schemas.ARTIFACT_SCHEMAS`, the sole declaration of an
+    artifact's SHAPE — the stage prompt does not restate it as text (see
+    ``AgenticStep.task_block``). Two things keep that from forking: where
+    ``core/validation.py`` type-checks a field, ``artifact_schemas`` DERIVES
+    from it rather than retyping it, and every enum list is typed once in
+    ``rulebook.py``, read by both the schema and the ``RULES_*`` prose.
+    :attr:`AgenticStep.validate` stays the authority on ACCEPTANCE; this only
+    rejects earlier, at the transport boundary, what the parser can see is
+    malformed — a wrapped or key-less object, a wrong top-level type, a field
+    of the wrong shape.
 
     ``only`` binds a SUBSET, for a loop resuming a stage that already holds
-    some of its artifacts, so a regen does not offer tools for work that is
-    done. It defaults to None — every artifact — which is what a first attempt gets and
-    what ``tests/fixtures/golden_prompts.json`` pins.
+    some of its artifacts. Defaults to None — every artifact — which is what a
+    first attempt gets and what ``tests/fixtures/golden_prompts.json`` pins.
     """
     return [
         _fn(f"submit_{key}",
@@ -705,35 +686,26 @@ def coerce_args(parameters: dict, args: object, *, salvaged: list | None = None)
     tool-call parser reconstructs the call, not the value types the schema
     declares; a template-driven parser has no obligation to.
 
-    So the coercion belongs here, at the transport boundary, exactly like
-    ``unwrap_section`` sits at the envelope boundary: deterministic, cheap, and
-    applied before anything downstream can mistake a transport artifact for a
-    model mistake. A value that does not parse is left alone — then it IS a
-    model mistake, and the validator should say so.
+    So the coercion belongs here, at the transport boundary, like
+    ``unwrap_section`` at the envelope boundary: applied before anything
+    downstream can mistake a transport artifact for a model mistake. A value
+    that does not parse is left alone — then it IS a model mistake.
 
-    STRICT ``json.loads`` IS NOT ENOUGH (run single_20260901_205901). The same
-    parser that hands the value over as text also re-serializes it, and its
-    output is not always JSON: measured, one 4,371-character
-    ``instructional_strategies`` was double-quoted JSON with a single-quoted
-    element spliced in mid-array —
-    ``"resources": ["Planning template", \'Documentation of project scope\']`` —
-    so ``json.loads`` failed at character 1,979 and the whole artifact was
-    charged to the model as "arrived as text". The cost was not marginal: the
-    single-graph arm was rejected 61 times on one such value, exhausted its
-    turn budget having reached 3 of 6 stages, and scored 0.0 on Analysis,
-    Implementation and 9.4 on Development.
-
-    The harness already owns a tolerant parser for exactly this class of
-    near-JSON — ``parse_json_response``, which the plain-text path has always
-    used — so the fix is to apply it here too rather than to invent a second
-    salvage. Verified on that measured value: it returns the complete object,
-    all four keys and all nine sequence entries.
+    STRICT ``json.loads`` IS NOT ENOUGH (run single_20260901_205901): the same
+    parser that hands a value over as text re-serializes it, and the output is
+    not always JSON. Measured, one 4,371-character ``instructional_strategies``
+    was double-quoted JSON with a single-quoted element spliced in mid-array,
+    so ``json.loads`` failed at character 1,979 and the artifact was charged to
+    the model as "arrived as text" — the single-graph arm was rejected 61 times
+    on one such value, reached 3 of 6 stages, and scored 0.0 on Analysis and
+    Implementation. The tolerant ``parse_json_response`` the plain-text path
+    uses returns that value complete, so it is applied here too rather than a
+    second salvage being invented.
 
     ``salvaged`` is an optional sink: each argument name that needed the
-    tolerant path is appended to it, so the RATE is reported per stage
-    (``autonomy.args_salvaged``) beside ``markup_recovered``. Both bound how
-    much of an arm's behaviour is really the serving stack's, and a recovery
-    nobody counts is a recovery that quietly stops being exceptional.
+    tolerant path is appended, so the RATE is reported per stage
+    (``autonomy.args_salvaged``) beside ``markup_recovered`` — a recovery
+    nobody counts quietly stops being exceptional.
     """
     if isinstance(args, str):
         # Some parsers hand back the whole argument object as one JSON string.
@@ -894,6 +866,8 @@ def react_specs(steps: tuple, done: frozenset, *, graph_mode: bool = True,
 
     union = _ReadScope(read_types, read_relations, read_docs)
     specs = tool_specs(union, graph_mode=graph_mode, retrieval_available=retrieval_available)
+    # Lazy: `fanout` imports this module for the Developer tier's own
+    # submit specs, so a module-level import here would close the loop.
     from .fanout import SPECS as _FANOUT
 
     for step in steps:
@@ -930,6 +904,35 @@ class _ReadScope:
 
 def tool_names(specs: list[dict]) -> tuple[str, ...]:
     return tuple(spec["function"]["name"] for spec in specs)
+
+
+def arg_shape(args: object) -> str:
+    """``key:type`` for each argument, for the rejection record."""
+    if not isinstance(args, dict):
+        return type(args).__name__
+    return ",".join(f"{k}:{type(v).__name__}" for k, v in sorted(args.items()))[:160]
+
+
+def spec_parameters(specs: list[dict], name: str) -> dict:
+    """The declared parameter schema for one bound tool, or ``{}`` for a name we
+    never offered (which the dispatcher answers with an ERROR observation)."""
+    for spec in specs:
+        function = spec.get("function") or {}
+        if function.get("name") == name:
+            return function.get("parameters") or {}
+    return {}
+
+
+def merge_specs(seen: list, bound: list) -> list:
+    """Tool schemas in first-seen order, deduped by name."""
+    by_name = {(spec.get("function") or {}).get("name"): spec for spec in seen}
+    merged = list(seen)
+    for spec in bound:
+        name = (spec.get("function") or {}).get("name")
+        if name not in by_name:
+            by_name[name] = spec
+            merged.append(spec)
+    return merged
 
 
 def tool_menu(step: "AgenticStep", *, retrieval_available: bool = False,

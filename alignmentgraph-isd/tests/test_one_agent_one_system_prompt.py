@@ -15,7 +15,7 @@ amount of it a run received depended on how badly that run had gone.
 
 Repairs that need writing now go back to the owning agent as a user turn in
 the loop it is already running (``ToolLoop._own_violations`` ->
-``_repair_request``), so the request, the answer and the artifact are three
+``repair_request``), so the request, the answer and the artifact are three
 consecutive turns of one transcript. These tests hold that shut.
 
 ONE prose call survives, and it is not what this file forbids: the compaction

@@ -952,15 +952,15 @@ STEPS: tuple[AgenticStep, ...] = (
         readable_docs=("analysis", "objective"),
         submit_fields=(
             ("assessment_plan", "object", True),
-            # REQUIRED (2026-09-05). It was optional so that a missing plan
-            # cost the grouping rather than the stage — but optional meant
-            # the loop asked for it at most once, and on run e81b8108 the
-            # activities stage never got to ask at all (one nudge named two
-            # optionals, the model sent the other one, the stage ended) and
-            # the deterministic fallback decided the fan-out. The plan IS the
-            # grouping decision the agent_mode axis is about, so the stage
-            # keeps its turn until it lands, like any other required
-            # artifact; `dev_plans.normalize_*` still derives sets from
+            # REQUIRED. Optional, it is asked for at most once, and a stage
+            # with two optionals can land only one of them: measured on run
+            # e81b8108, the activities stage never got to ask at all (one
+            # nudge named two optionals, the model sent the other one, the
+            # stage ended) and the deterministic fallback decided the
+            # fan-out. The plan IS the grouping decision the agent_mode axis
+            # is about, so the stage keeps its turn until it lands, like any
+            # other required artifact; `dev_plans.normalize_*` still derives
+            # sets from
             # `lo_coverage_targets` when a stage gives up without one.
             ("dev_plan", "object", True),
         ),
@@ -1016,8 +1016,8 @@ STEPS: tuple[AgenticStep, ...] = (
         readable_docs=("analysis", "activity"),
         submit_fields=(
             ("content_modules", "array", True),
-            # REQUIRED (2026-09-08), for the reason the two dev plans are (see
-            # the assessment step) plus one of its own: an OPTIONAL artifact
+            # REQUIRED, for the reason the two dev plans are (see the
+            # assessment step) plus one of its own: an OPTIONAL artifact
             # gets at most ONE nudge, and a nudge is a turn the stage has to
             # REACH. MEASURED (run single_20260908_002508): the content stage
             # spent 9 of its 24 turns on repeated reads, committed MOD-01..08

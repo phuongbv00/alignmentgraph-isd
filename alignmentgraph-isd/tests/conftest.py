@@ -15,7 +15,7 @@ import pytest
 
 from alignmentgraph_isd import DesignBrief, HarnessRunConfig, MetaAgent
 from alignmentgraph_isd.core.agentic import compaction as _compaction
-from alignmentgraph_isd.core.agentic.loop import STAGE_BRIEF_HEADER
+from alignmentgraph_isd.core.agentic.protocol import STAGE_BRIEF_HEADER
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

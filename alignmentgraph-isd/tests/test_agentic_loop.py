@@ -8,8 +8,9 @@ from dataclasses import replace
 
 from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core.agentic import loop as loop_module
-from alignmentgraph_isd.core.agentic.loop import AgenticLLM, ToolLoop
-from alignmentgraph_isd.core.agentic import budget, specialists, tools
+from alignmentgraph_isd.core.agentic.client import AgenticLLM
+from alignmentgraph_isd.core.agentic.loop import ToolLoop
+from alignmentgraph_isd.core.agentic import budget, protocol, specialists, tools
 from alignmentgraph_isd.core.agentic.specialists import STEPS
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
 from alignmentgraph_isd.core.trajectory import TrajectoryLogger
@@ -561,7 +562,7 @@ def test_protocol_words_in_the_artifact_are_rejected():
     an assessment item asking learners to map SDLC phases to 'read_nodes' and
     'read_edges'. Same shape as the placeholder gate: rejected with an
     actionable message, not silently repaired."""
-    from alignmentgraph_isd.core.agentic.loop import protocol_leak_errors
+    from alignmentgraph_isd.core.agentic.protocol import protocol_leak_errors
 
     leaked = {**_ASSESSMENT}
     leaked["assessment_tools"] = [dict(_ASSESSMENT["assessment_tools"][0],
@@ -671,7 +672,7 @@ def test_message_size_counts_the_tool_call_payload():
     the whole artifact in its tool call. Measured: context_len reported ~24k
     chars for a run that burned 744k tokens, because the one thing the single
     arm accumulates was the one thing the size function could not see."""
-    from alignmentgraph_isd.core.agentic.loop import message_size, trim_history
+    from alignmentgraph_isd.core.agentic.transcript import message_size, trim_history
 
     empty_content_with_payload = {"role": "assistant", "content": "",
                                   "tool_calls": [{"name": "submit", "args": _ASSESSMENT}]}
@@ -825,9 +826,9 @@ def test_a_repeated_call_does_not_spend_a_turn_but_is_not_free():
     loop = _loop(config, graph, trajectory, brief, step)
     loop.run()
 
-    assert loop.stats["repeated_calls"] > ToolLoop.REPEAT_ALLOWANCE
+    assert loop.stats["repeated_calls"] > budget.REPEAT_ALLOWANCE
     # The refund is bounded, so the loop still terminates on its own.
-    assert loop.stats["turns_used"] <= ToolLoop.MAX_TURNS + ToolLoop.REPEAT_ALLOWANCE
+    assert loop.stats["turns_used"] <= ToolLoop.MAX_TURNS + budget.REPEAT_ALLOWANCE
 
 
 def test_a_developer_is_told_what_the_ids_in_its_assignment_mean():
@@ -1101,7 +1102,7 @@ def test_a_restored_contract_says_what_the_stage_already_committed():
     The contract itself is untouched — `with_progress` is the identity function
     until something has landed, which is what keeps a stage's OPENING turn
     byte-identical for the golden fixture."""
-    from alignmentgraph_isd.core.agentic.loop import stage_brief_block, with_progress
+    from alignmentgraph_isd.core.agentic.protocol import stage_brief_block, with_progress
 
     step = STEP_BY_NAME["analysis"]
     one_part = {"needs_analysis": _ANALYSIS["needs_analysis"]}
@@ -1122,7 +1123,7 @@ def test_a_restored_contract_says_what_the_stage_already_committed():
 
 
 def test_a_re_attached_contract_carries_the_progress_in_both_arms():
-    """One sentence, `_still_needed`, in all three places a stage is told what
+    """One sentence, `still_needed`, in all three places a stage is told what
     it owes: where it OPENS, where a submit is answered, and where the contract
     comes BACK. An arm that re-attached a bare contract would be arguing from a
     different set of facts than the other."""
@@ -1199,7 +1200,7 @@ def test_a_compacted_turn_is_kept_and_marked_not_dropped_from_the_record():
     everything the earlier ones saw would be gone but for a number in
     `history_dropped`, which says how much was lost and nothing about what.
     """
-    from alignmentgraph_isd.core.agentic.loop import compacted_transcript, trim_history
+    from alignmentgraph_isd.core.agentic.transcript import compacted_transcript, trim_history
 
     messages = [{"role": "system", "content": "S"}]
     messages += [{"role": "tool", "content": f"observation {i}" + "x" * 900}
@@ -1229,7 +1230,7 @@ def test_compaction_takes_the_stage_turn_and_that_is_the_design():
     in the design state or listed as missing, its schema and rules were never in it
     (they are behind `stage_brief`, fetchable again for one turn), and its tool
     menu is redundant with the binding, which goes out with every request."""
-    from alignmentgraph_isd.core.agentic.loop import trim_history
+    from alignmentgraph_isd.core.agentic.transcript import trim_history
 
     messages = [{"role": "system", "content": "S"},
                 {"role": "user", "content": "STAGE TURN"}]
@@ -1255,9 +1256,8 @@ def test_the_agent_is_told_when_its_context_was_compacted():
     away on every compaction of run e81b8108 after a multi-thousand-token
     completion. One implementation serves both arms and
     ``autonomy.compactions`` reports how often each reaches it."""
-    from alignmentgraph_isd.core.agentic.loop import (
-        COMPACTION_NOTE, _with_note, trim_history,
-    )
+    from alignmentgraph_isd.core.agentic.compaction import _with_note
+    from alignmentgraph_isd.core.agentic.transcript import COMPACTION_NOTE, trim_history
 
     messages = [{"role": "system", "content": "S"}, {"role": "user", "content": "TASK"}]
     messages += [{"role": "tool", "content": f"obs{i}" + "x" * 900} for i in range(20)]
@@ -1291,9 +1291,9 @@ def test_a_compacted_stage_brief_is_named_in_the_note():
 
     The note is the fallback: a contract that fits is put BACK (the test below).
     This is what the model is told when it does not."""
-    from alignmentgraph_isd.core.agentic.loop import (
-        COMPACTION_NOTE, _with_note, lost_briefs, stage_brief_block, trim_history,
-    )
+    from alignmentgraph_isd.core.agentic.compaction import _with_note
+    from alignmentgraph_isd.core.agentic.protocol import lost_briefs, stage_brief_block
+    from alignmentgraph_isd.core.agentic.transcript import COMPACTION_NOTE, trim_history
     from alignmentgraph_isd.core.agentic.specialists import STEPS
 
     step = {s.name: s for s in STEPS}["implementation"]
@@ -1325,9 +1325,9 @@ def test_a_compacted_stage_brief_is_put_back_not_just_announced():
     costs no turn and is certain. It goes at the TAIL, where it is newest and a
     trim (oldest first) will not take it again — not protected in place, which
     would pin a block at the front of the window it has to make room in."""
-    from alignmentgraph_isd.core.agentic.loop import (
-        COMPACTION_NOTE, brief_stages, compact, stage_brief_block, trim_history,
-    )
+    from alignmentgraph_isd.core.agentic.compaction import compact
+    from alignmentgraph_isd.core.agentic.protocol import brief_stages, stage_brief_block
+    from alignmentgraph_isd.core.agentic.transcript import COMPACTION_NOTE, trim_history
     from alignmentgraph_isd.core.agentic.specialists import STEPS
     from alignmentgraph_isd.core.trajectory import TrajectoryLogger
 
@@ -1365,7 +1365,7 @@ def test_a_rejection_brings_the_contract_back_in_both_arms():
 
     from alignmentgraph_isd.core.agentic import loop as agentic_loop
     from alignmentgraph_isd.core.agentic import react
-    from alignmentgraph_isd.core.agentic.loop import respec, stage_brief_block
+    from alignmentgraph_isd.core.agentic.protocol import respec, stage_brief_block
     from alignmentgraph_isd.core.agentic.specialists import STEPS
 
     step = {s.name: s for s in STEPS}["implementation"]
@@ -1387,12 +1387,12 @@ def test_the_context_reports_every_tool_the_conversation_had():
     asks for. Publishing just the live binding made the merged row claim the
     Designer never had `submit_assessment_plan`, which is how it wrote the plan
     in the first place."""
-    from alignmentgraph_isd.core.agentic.loop import _merge_specs
+    from alignmentgraph_isd.core.agentic.tools import merge_specs
 
     first = [{"function": {"name": "read_nodes"}}, {"function": {"name": "submit_plan"}}]
     later = [{"function": {"name": "read_nodes"}}, {"function": {"name": "submit_dev_plan"}}]
 
-    merged = _merge_specs(first, later)
+    merged = merge_specs(first, later)
     assert [s["function"]["name"] for s in merged] == [
         "read_nodes", "submit_plan", "submit_dev_plan"], "first seen first, deduped"
 
@@ -1427,8 +1427,10 @@ def test_a_trim_drains_to_the_low_water_mark_so_it_does_not_refire_every_turn():
     under the budget fired on three consecutive turns — each new observation
     put the history back over the line. Draining to the low-water mark leaves
     room for the conversation to grow before the next trim."""
-    from alignmentgraph_isd.core.agentic.loop import (
-        TRIM_LOW_WATER, message_size, trim_history,
+    from alignmentgraph_isd.core.agentic.transcript import (
+        message_size,
+        trim_history,
+        TRIM_LOW_WATER,
     )
 
     messages = [{"role": "system", "content": "S"}]
@@ -1636,7 +1638,7 @@ def test_a_reasoning_only_reply_is_not_charged_as_the_models_mistake():
     so the rate is attributable to the endpoint rather than to the model.
     """
     step = STEP_BY_NAME["outcomes"]
-    thinking = ToolLoop.THINKING_ALLOWANCE
+    thinking = budget.THINKING_ALLOWANCE
     model = _ThinksOnly(thinking)
     config = HarnessRunConfig(llm_factory=lambda: model)
     graph, trajectory, brief = AlignmentGraph(), TrajectoryLogger(), load_brief("minimal_brief.json")
@@ -1666,13 +1668,26 @@ def test_both_loops_refund_the_same_failures_with_the_same_words():
 
     from alignmentgraph_isd.core.agentic import react
 
+    from alignmentgraph_isd.core.agentic import turn as turn_mod
+
+    # Structural, not a string match: the refund arithmetic is ONE
+    # implementation now, so the property to hold is that both arms go through
+    # it and that it reads its allowances from `budget`. Two classes each
+    # carrying the same number is the shape a drift starts from.
     for source in (inspect.getsource(ToolLoop), inspect.getsource(react.ReactLoop)):
-        assert "REPEAT_ALLOWANCE" in source and "THINKING_ALLOWANCE" in source
-        assert "self._refunded += 1" in source
-        assert "MAX_TURNS + self._refunded" in source
-    # One wording, imported — not two that can drift.
-    assert react.INVALID_TURN_NUDGE is loop_module.INVALID_TURN_NUDGE
-    assert react.THINKING_ONLY_NUDGE is loop_module.THINKING_ONLY_NUDGE
+        assert "TurnMeter" in source, "an arm keeps its own turn accounting"
+        assert "self._refunded" not in source and "self._turn_no" not in source, (
+            "an arm kept a private copy of the meter's counters")
+    meter_source = inspect.getsource(turn_mod.TurnMeter)
+    for allowance in ("REPEAT_ALLOWANCE", "THINKING_ALLOWANCE", "ERROR_ALLOWANCE"):
+        assert f"budget.{allowance}" in meter_source
+    # One wording and one chooser: which of the two nudges an empty turn gets
+    # is `turn.nudge_for`, and neither arm decides it for itself.
+    assert turn_mod.INVALID_TURN_NUDGE is protocol.INVALID_TURN_NUDGE
+    assert turn_mod.THINKING_ONLY_NUDGE is protocol.THINKING_ONLY_NUDGE
+    for source in (inspect.getsource(ToolLoop), inspect.getsource(react.ReactLoop)):
+        assert "nudge_for(" in source, "an arm chooses its own nudge"
+        assert "INVALID_TURN_NUDGE" not in source and "THINKING_ONLY_NUDGE" not in source
 
 
 def test_a_regen_asks_only_for_what_is_still_missing():
@@ -1851,9 +1866,13 @@ def test_both_arms_refund_a_failed_call_on_the_same_rule():
 
     from alignmentgraph_isd.core.agentic import react
 
-    for owner in (loop_module.ToolLoop._handle_call, react.ReactLoop._handle_call):
+    from alignmentgraph_isd.core.agentic import turn as turn_mod
+
+    for owner in (loop_module.ToolLoop._handle_read, react.ReactLoop._handle_read):
         source = inspect.getsource(owner)
-        assert 'startswith("ERROR")' in source and "ERROR_ALLOWANCE" in source, owner
+        assert 'startswith("ERROR")' in source, owner
+        assert "tool_error()" in source, f"{owner} does not refund through the meter"
+    assert "budget.ERROR_ALLOWANCE" in inspect.getsource(turn_mod.TurnMeter.tool_error)
 
 
 

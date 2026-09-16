@@ -34,33 +34,20 @@ import json
 
 from .. import dev_plans
 from ..brief import _format_design_brief
-from ..checks import serialize_violations
 from ..memory import Memory, new_agent_run_id
 from ..trajectory import WORKFLOW_ORCHESTRATOR
-from . import budget, fanout, tools
-from .loop import (
-    _WORKFLOW_OVERVIEW,
-    INVALID_TURN_NUDGE,
+from . import budget, fanout, repair_turn, tools
+from . import turn as turn_mod
+from .client import AgenticLLM
+from .compaction import compact
+from .protocol import (
     STAGE_BRIEF_HEADER,
-    THINKING_ONLY_NUDGE,
-    AgenticLLM,
-    ToolLoop,
-    _arg_shape,
-    _merge_specs,
-    _repair_request,
-    _spec_parameters,
+    WORKFLOW_OVERVIEW,
     brief_stages,
-    compact,
-    emit_context,
     empty_stage_stats,
-    forget_compacted_calls,
-    history_budget,
-    message_size,
     protocol_leak_errors,
     respec,
     stage_brief_block,
-    trim_history,
-    turns_left_hint,
     with_progress,
 )
 from .specialists import (
@@ -71,7 +58,16 @@ from .specialists import (
     missing_parts,
     step_done,
 )
-from .tools import unwrap_section
+from .tools import merge_specs, spec_parameters
+from .transcript import (
+    answer_unexecuted,
+    append_assistant,
+    emit_context,
+    forget_compacted_calls,
+    history_budget,
+    prompt_chars,
+    trim_history,
+)
 
 #: Turn ceiling for the whole run. Deliberately NON-BINDING: `multi` spends a
 #: number of turns that is a function of how many work sets it planned, which is
@@ -111,8 +107,8 @@ class ReactLoop:
     """One agent, one context, the whole brief."""
 
     MAX_TURNS = MAX_TURNS
-    #: Held in :mod:`budget` with every other ceiling, ToolLoop's included:
-    #: this one and ``SUBMIT_BUDGET`` are the pair a reader compares.
+    #: Held in :mod:`budget` with every other ceiling, the stage loop's
+    #: included: this one and ``SUBMIT_BUDGET`` are the pair a reader compares.
     SUBMIT_CAP = budget.SUBMIT_CAP
 
     def __init__(self, config, state, trajectory, design_brief) -> None:
@@ -199,14 +195,12 @@ class ReactLoop:
         21 submits rejected, and finished 96 turns with ZERO stages complete.
 
         A schema is needed when a stage is about to be written, not for the
-        whole run. It was fetched (``stage_brief``) from 2026-09-03 to
-        2026-09-06 and is now PUSHED one stage at a time, as each comes up —
-        the same block, the same size, arriving when it is needed instead of
-        being asked for. All six at once is what this docstring rules out and
-        remains ruled out: measured, they are 27,193 characters."""
+        whole run, so it is PUSHED one stage at a time as each comes up. All
+        six at once is what this docstring rules out: measured, they are 27,193
+        characters."""
         stages = "\n".join(f"  {i}. {step.name} — {step.intro}"
                             for i, step in enumerate(STEPS, start=1))
-        return (f"{SINGLE_PERSONA}\n\n{_WORKFLOW_OVERVIEW}\n\n"
+        return (f"{SINGLE_PERSONA}\n\n{WORKFLOW_OVERVIEW}\n\n"
                 f"The stages, in order:\n{stages}\n\n"
                 f"=== SCENARIO ===\n{_format_design_brief(self.design_brief)}")
 
@@ -238,23 +232,11 @@ class ReactLoop:
 
     def _own_violations(self, step) -> list:
         """The just-finished stage's own violations, structural fixes already
-        applied. Identical to the multi arm's — one implementation, so the two
-        arms are shown the same thing about the same artifact.
-
-        Pairs the ledger write with a ``check`` trajectory event, attributed to
-        the orchestrator like every other check round (see
-        ``ToolLoop._own_violations`` in ``loop.py`` for why: without it, a
-        violation whose only sighting was here never reaches
-        ``expert_review.findings``, only the ledger)."""
-        found = ToolLoop.own_violations(
-            self.state, self.design_brief, step, self.trajectory)
-        if found:
-            round_no = self.trajectory.log_violations_result(
-                serialize_violations(found, self.identity), agent=WORKFLOW_ORCHESTRATOR)
-            self.memory.observe_violations(
-                found, round=round_no,
-                phase=step.name, family=step.family, shown_to_agent=True)
-        return found
+        applied. ONE implementation with the multi arm's, so the two arms are
+        shown the same thing about the same artifact."""
+        return repair_turn.violations_for_agent(
+            self.state, self.design_brief, step, trajectory=self.trajectory,
+            memory=self.memory, identity=self.identity, phase=step.name)
 
     def _offer_contract(self) -> None:
         """Put the CURRENT stage's contract in front of the agent, if it is not
@@ -262,7 +244,7 @@ class ReactLoop:
 
         The current stage is the first not yet done, in the instructed ADDIE
         order — which both arms are given identically
-        (``loop._WORKFLOW_OVERVIEW``), so this is the harness restating an order
+        (``loop.WORKFLOW_OVERVIEW``), so this is the harness restating an order
         the agent was already told, not choosing one for it. What it does take
         away is submitting a stage out of turn without its schema;
         ``react_specs`` still offers every incomplete stage's submit, and the
@@ -304,7 +286,7 @@ class ReactLoop:
         submitting the same broken shape again. ``history_dropped`` was 170 and
         186: ``trim_history`` drops the oldest tool observations first, and the
         stage turn is exactly that — early and large. So the agent was being
-        corrected against a specification it could no longer see.
+        corrected against a specification it could not see.
 
         Re-attached only when it is actually gone, because it is up to 7,400
         characters and pasting it onto every rejection would push out the very
@@ -389,7 +371,7 @@ class ReactLoop:
         if len(done) == len(STEPS):
             return
         specs = tools.react_specs(STEPS, done, graph_mode=self.graph_mode)
-        self._specs = _merge_specs(self._specs, specs)
+        self._specs = merge_specs(self._specs, specs)
         self.messages = [
             {"role": "system", "content": self._system_prompt()},
             {"role": "user", "content": _PROTOCOL.format(
@@ -399,16 +381,11 @@ class ReactLoop:
         self._done_set = done
         self._offer_contract()
         self._live_specs = specs
-        self._seen_calls: dict[str, str] = {}   # see loop.forget_compacted_calls
-        # Turns spent so far. ONE PER EXECUTED CALL, not per model reply — the
-        # same accounting as ToolLoop, or the arms would price a batched reply
-        # differently.
-        self._turn_no = 0
-        #: Turns given back for a call that produced no observation and no
-        #: artifact — a repeat, or a reasoning-only reply. `ToolLoop` has had
-        #: this since the repeat guard landed and this loop had none, so the
-        #: same failure cost the single arm turns the multi arm got back.
-        self._refunded = 0
+        self._seen_calls: dict[str, str] = {}   # see transcript.forget_compacted_calls
+        #: What this run has spent and what it has been given back. The stage
+        #: loop keeps one of these too, and the arithmetic is the meter's, not
+        #: either loop's — see :class:`turn.TurnMeter`.
+        self._meter = turn_mod.TurnMeter(self.stats, max_turns=self.MAX_TURNS)
         # Before the first model call, then once per turn: this arm carries ONE
         # conversation for the whole brief, so a context that only appears at
         # the end appears once, at the end of the run.
@@ -423,7 +400,7 @@ class ReactLoop:
         # read after every stage was done. Same number as a stage gets, so the
         # arms are held to one allowance.
         closing = 0
-        while self._turn_no < self.MAX_TURNS + self._refunded:
+        while not self._meter.exhausted:
             if len(self._done_set) == len(STEPS):
                 closing += 1
                 if closing > budget.STAGE_MAX_TURNS:
@@ -447,24 +424,15 @@ class ReactLoop:
                     llm=self._summariser)
             self._publish(live=True)
             self.stats["context_len"] = max(
-                self.stats["context_len"], sum(message_size(m) for m in self.messages))
+                self.stats["context_len"], prompt_chars(self.messages))
 
             turn = self.llm.call_tools(self.messages, self._live_specs)
-            self.stats["batched_calls"] += len(turn.calls)
-            # Every call the reply carried, in order — see ToolLoop._run.
-            queue = [turn, *turn.calls]
-            for index, call in enumerate(queue):
-                if self._turn_no >= self.MAX_TURNS + self._refunded:
-                    self._answer_unexecuted(queue[index:], "the turn budget ran out first")
-                    break
-                self._turn_no += 1
-                self.stats["turns_used"] += 1
-                if self._handle_call(call) == "return":
-                    self._answer_unexecuted(queue[index + 1:], "the run ended first")
-                    return
-            else:
-                continue
-            break
+            outcome = turn_mod.spend_queue(
+                turn, meter=self._meter, handle=self._handle_call,
+                unexecuted=self._answer_unexecuted,
+                ended_why="the run ended first")
+            if outcome == "done":
+                return
 
         self.stats["via_budget_exhaustion"] = True
         self.trajectory.log_recovery_event(
@@ -473,28 +441,23 @@ class ReactLoop:
     def _handle_call(self, turn) -> str:
         """One tool call, judged and answered. ``"return"`` ends the run (every
         stage has landed), ``"continue"`` hands the loop the next call or the
-        next model turn."""
+        next model turn.
+
+        Two branches: a submit to whichever stage the agent chose, and a read.
+        Everything either branch does that the stage loop must do identically —
+        recovery, coercion, refunds, the record — is in :mod:`turn`; what is
+        left here is this arm's own policy, which is one conversation across
+        six stages and a per-stage submit cap."""
         if not turn:
-            recovered = (tools.parse_tool_call_markup(turn.text)
-                         or tools.parse_tool_call_json(turn.text))
-            if recovered is None:
-                if turn.thinking_only:
-                    self.stats["thinking_only"] += 1
-                    if self.stats["thinking_only"] <= ToolLoop.THINKING_ALLOWANCE:
-                        self._refunded += 1
-                    self._nudge(turn, THINKING_ONLY_NUDGE)
-                    return "continue"
-                self.trajectory.log_recovery_event(
-                    self.identity, "invalid_action", (turn.text or "")[:120], "")
-                self._nudge(turn, INVALID_TURN_NUDGE)
+            recovered = turn_mod.recover_call(
+                turn, stats=self.stats, trajectory=self.trajectory,
+                identity=self.identity)
+            if not recovered:
+                self._nudge(turn, turn_mod.nudge_for(
+                    turn, meter=self._meter, trajectory=self.trajectory,
+                    identity=self.identity))
                 return "continue"
-            self.stats["markup_recovered"] += 1
-            self.trajectory.log_recovery_event(
-                self.identity, "tool_call_markup_recovered", recovered[0],
-                (turn.text or "")[:100])
-            turn = turn.__class__(name=recovered[0], args=recovered[1],
-                                  call_id=turn.call_id, text=turn.text,
-                                  message=turn.message)
+            turn = recovered
 
         if turn.name == "submit":
             # A bare `submit` is what every recovery path yields and what a
@@ -506,120 +469,100 @@ class ReactLoop:
                                   args=turn.args, call_id=turn.call_id, text=turn.text,
                                   message=turn.message, truncated=turn.truncated)
 
-        salvaged: list[str] = []
-        args = tools.coerce_args(
-            _spec_parameters(self._live_specs, turn.name), turn.args, salvaged=salvaged)
-        self.stats["args_salvaged"] += len(salvaged)
-        if turn.truncated and not turn.sibling:
-            self.stats["truncated_turns"] += 1
+        params = spec_parameters(self._live_specs, turn.name)
+        args = turn_mod.coerce(turn, params, stats=self.stats)
 
         if turn.name.startswith("submit_"):
-            step = _STEP_BY_NAME.get(turn.name[len("submit_"):])
-            if step is None:
-                self._answer(turn, f"ERROR: no such stage in {turn.name!r}.")
-                return "continue"
-            # A submit to a stage that already has artifacts is ACCEPTED —
-            # that is the agent adding a second batch, which is the whole
-            # point of additive submits, and the menu drops a stage when it
-            # no longer NEEDS work, not when it may no longer receive any.
-            #
-            # But it is bounded. MEASURED (run single_20260901_154303): the
-            # prose arm submitted `analysis` 61 times, spending its entire
-            # budget on one stage. Once the cap is reached the loop stops
-            # accepting and says so, because a stage submitted over and over
-            # without completing is a disagreement between the validator and
-            # the self._done_set-guard, and accepting it forever turns that
-            # disagreement into the whole run.
-            if self._submit_attempts(step.name) >= self.SUBMIT_CAP:
-                self._answer(turn, (
-                    f"You have submitted {step.name} {self.SUBMIT_CAP} times and it is still "
-                    "incomplete. Leave it and work on another stage; what is missing will be "
-                    "repaired for you."))
-                return "continue"
-            # Drop what cannot be read, THEN judge what is left — see the
-            # matching comment in ToolLoop. The two arms must agree on when
-            # a submit is acceptable, or the axis measures acceptance
-            # policy instead of the context boundary.
-            params = _spec_parameters(self._live_specs, turn.name)
-            unreadable = tools.shape_bad_keys(params, args)
-            for key in unreadable:
-                args.pop(key, None)
-            section, errors = unwrap_section(
-                args, lambda parsed, _s=step: self._validate(_s, parsed))
-            if errors and unreadable:
-                shape = tools.shape_errors(params, args, unreadable)
-                errors = shape + [e for e in errors if e not in shape]
-            if errors:
-                self.stats["submits_rejected"] += 1
-                self._rejected[step.name] = self._rejected.get(step.name, 0) + 1
-                self.trajectory.log_recovery_event(
-                    self.identity, "submit_rejected",
-                    f"{step.name} | raw={_arg_shape(turn.args)} | args={_arg_shape(args)}"
-                    + (" | TRUNCATED" if turn.truncated else ""),
-                    "; ".join(errors)[:200])
-                cut = ("YOUR ANSWER WAS CUT OFF at the length limit, so the arguments "
-                       "below never arrived in full. Do not rewrite everything — send a "
-                       "SHORTER submit: fewer items, shorter prose, required fields "
-                       "first.\n" if turn.truncated else "")
-                self._answer(turn, cut + "SUBMIT REJECTED — fix these and submit again:\n- "
-                                   + "\n- ".join(errors)
-                                   + self._respec(step))
-                return "continue"
-            if unreadable:
-                self.stats["dropped_args"] += len(unreadable)
-                self.trajectory.log_recovery_event(
-                    self.identity, "dropped_argument", ", ".join(unreadable),
-                    "arrived as text where a structure was declared; "
-                    "the rest of the submit was valid and was accepted")
-            self._commit(step, section)
-            # Judge-visible, like the multi arm's `design_<stage>`: the
-            # BFCL trajectory score reads `tool_calls`, so a submit that is
-            # only a state change makes this arm look like it did nothing.
-            # A submit answering a repair request is a different act and is
-            # named so — four identical names read as redundancy.
-            round_done = self._repairs.get(step.name, 0)
-            self.trajectory.log_step(
-                self.identity,
-                f"design_{step.name}" + (f"_fix{round_done}" if round_done else ""),
-                json.dumps(args, ensure_ascii=False)[:200],
-                json.dumps(section, ensure_ascii=False)[:200])
-            self._compact(turn, step, section)
-            self.stats["submits_per_stage"][step.name] = (
-                self.stats["submits_per_stage"].get(step.name, 0) + 1)
-            if not self.stats["stage_order"] or self.stats["stage_order"][-1] != step.name:
-                self.stats["stage_order"].append(step.name)
-            self._done_set = self._done()
-            self._offer_contract()
-            self._live_specs = tools.react_specs(STEPS, self._done_set, graph_mode=self.graph_mode)
-            self._specs = _merge_specs(self._specs, self._live_specs)
-            # Same in-loop repair the multi arm's stages get. It has to be
-            # the same or the axis grows a second variable: one arm would
-            # see its own violations and the other would not, and the
-            # quality difference would be that rather than the context
-            # boundary.
-            fixable = (self._own_violations(step)
-                       if step.name in self._done_set and self._repairs.get(step.name, 0) < budget.REPAIR_TURNS
-                       else [])
-            if fixable:
-                self._repairs[step.name] = self._repairs.get(step.name, 0) + 1
-                self.stats["repair_turns"] += 1
-                self._answer(turn, _repair_request(
-                    step.name, fixable, self._repairs[step.name], budget.REPAIR_TURNS))
-                return "continue"
-            self._answer(turn, _committed_note(step, self._done_set, self.state) + self._docket())
-            if len(self._done_set) == len(STEPS):
-                return "return"
-            return "continue"
+            return self._handle_submit(turn, args, params)
+        return self._handle_read(turn, args)
 
-        call_key = f"{turn.name}:{json.dumps(args, sort_keys=True, default=str)}"
+    def _handle_submit(self, turn, args: dict, params: dict) -> str:
+        """One artifact offered to whichever stage the agent named."""
+        step = _STEP_BY_NAME.get(turn.name[len("submit_"):])
+        if step is None:
+            self._answer(turn, f"ERROR: no such stage in {turn.name!r}.")
+            return "continue"
+        # A submit to a stage that already has artifacts is ACCEPTED —
+        # that is the agent adding a second batch, which is the whole
+        # point of additive submits, and the menu drops a stage when it
+        # stops NEEDING work, not when it may stop receiving any.
+        #
+        # But it is bounded. MEASURED (run single_20260901_154303): the
+        # prose arm submitted `analysis` 61 times, spending its entire
+        # budget on one stage. Once the cap is reached the loop stops
+        # accepting and says so, because a stage submitted over and over
+        # without completing is a disagreement between the validator and
+        # the self._done_set-guard, and accepting it forever turns that
+        # disagreement into the whole run.
+        if self._submit_attempts(step.name) >= self.SUBMIT_CAP:
+            self._answer(turn, (
+                f"You have submitted {step.name} {self.SUBMIT_CAP} times and it is still "
+                "incomplete. Leave it and work on another stage; what is missing will be "
+                "repaired for you."))
+            return "continue"
+        section, errors, unreadable = turn_mod.judge_submit(
+            params, args, lambda parsed, _s=step: self._validate(_s, parsed))
+        if errors:
+            self._rejected[step.name] = self._rejected.get(step.name, 0) + 1
+            turn_mod.note_submit_rejected(
+                step.name, turn, args, errors, stats=self.stats,
+                trajectory=self.trajectory, identity=self.identity)
+            cut = ("YOUR ANSWER WAS CUT OFF at the length limit, so the arguments "
+                   "below never arrived in full. Do not rewrite everything — send a "
+                   "SHORTER submit: fewer items, shorter prose, required fields "
+                   "first.\n" if turn.truncated else "")
+            self._answer(turn, cut + "SUBMIT REJECTED — fix these and submit again:\n- "
+                               + "\n- ".join(errors)
+                               + self._respec(step))
+            return "continue"
+        turn_mod.note_dropped_args(
+            unreadable, stats=self.stats, trajectory=self.trajectory,
+            identity=self.identity)
+        self._commit(step, section)
+        # Judge-visible, like the multi arm's `design_<stage>`: the
+        # BFCL trajectory score reads `tool_calls`, so a submit that is
+        # only a state change makes this arm look like it did nothing.
+        # A submit answering a repair request is a different act and is
+        # named so — four identical names read as redundancy.
+        round_done = self._repairs.get(step.name, 0)
+        self.trajectory.log_step(
+            self.identity,
+            f"design_{step.name}" + (f"_fix{round_done}" if round_done else ""),
+            json.dumps(args, ensure_ascii=False)[:200],
+            json.dumps(section, ensure_ascii=False)[:200])
+        self._compact(turn, step, section)
+        self.stats["submits_per_stage"][step.name] = (
+            self.stats["submits_per_stage"].get(step.name, 0) + 1)
+        if not self.stats["stage_order"] or self.stats["stage_order"][-1] != step.name:
+            self.stats["stage_order"].append(step.name)
+        self._done_set = self._done()
+        self._offer_contract()
+        self._live_specs = tools.react_specs(STEPS, self._done_set, graph_mode=self.graph_mode)
+        self._specs = merge_specs(self._specs, self._live_specs)
+        # Same in-loop repair the multi arm's stages get. It has to be
+        # the same or the axis grows a second variable: one arm would
+        # see its own violations and the other would not, and the
+        # quality difference would be that rather than the context
+        # boundary.
+        fixable = (self._own_violations(step)
+                   if step.name in self._done_set and self._repairs.get(step.name, 0) < budget.REPAIR_TURNS
+                   else [])
+        if fixable:
+            self._repairs[step.name] = self._repairs.get(step.name, 0) + 1
+            self.stats["repair_turns"] += 1
+            self._answer(turn, repair_turn.repair_request(
+                step.name, fixable, self._repairs[step.name], budget.REPAIR_TURNS))
+            return "continue"
+        self._answer(turn, _committed_note(step, self._done_set, self.state) + self._docket())
+        if len(self._done_set) == len(STEPS):
+            return "return"
+        return "continue"
+
+    def _handle_read(self, turn, args: dict) -> str:
+        """One read of the design state, answered with its observation."""
+        call_key = turn_mod.repeat_key(turn.name, args)
         if call_key in self._seen_calls:
-            self.stats["repeated_calls"] += 1
-            # Refunded exactly as in `ToolLoop`. It was refunded on ONE side of
-            # the decomposition axis and charged on the other, which is a
-            # ceiling difference sitting inside the treatment — the same defect
-            # the scripted fallback had before it was removed.
-            if self.stats["repeated_calls"] <= ToolLoop.REPEAT_ALLOWANCE:
-                self._refunded += 1
+            self._meter.repeated()
             self.trajectory.log_recovery_event(
                 self.identity, "repeated_tool_call", turn.name, str(args)[:100])
             self._answer(turn, f"You already made this exact {turn.name} call and nothing "
@@ -629,17 +572,10 @@ class ReactLoop:
 
         observation = self._read(turn.name, args)
         self.stats["reads"] += 1
-        # Refunded exactly as in `ToolLoop`, for the reason given there.
         if observation.startswith("ERROR"):
-            self.stats["tool_errors"] += 1
-            if self.stats["tool_errors"] <= ToolLoop.ERROR_ALLOWANCE:
-                self._refunded += 1
-        observation += turns_left_hint(self.MAX_TURNS + self._refunded - self._turn_no)
-        scope = str(args.get("node_type") or args.get("relation_id")
-                    or args.get("key") or "").strip()
-        self.trajectory.log_step(
-            self.identity, f"tool_{turn.name}" + (f"_{scope}" if scope else ""),
-            str(args)[:200], observation[:200])
+            self._meter.tool_error()
+        observation += self._meter.hint()
+        turn_mod.log_read(self.trajectory, self.identity, turn.name, args, observation)
         self._answer(turn, observation)
         return "continue"
 
@@ -753,10 +689,8 @@ class ReactLoop:
             # from this schema, and taking it away mid-artifact is the exact
             # failure `_respec` exists to undo.
             return
-        # The contract is a USER turn since 2026-09-06 (it was a `stage_brief`
-        # tool result before), so the release matches on the marker and not on
-        # the role — and the marker is the only thing that identifies it either
-        # way.
+        # The release matches on the MARKER, not on the message role: the
+        # marker is the only thing that identifies the contract.
         marker = STAGE_BRIEF_HEADER.format(stage=step.name)
         for message in self.messages:
             if not isinstance(message, dict):
@@ -779,25 +713,15 @@ class ReactLoop:
         self.messages.append({"role": "user", "content": text})
 
     def _ensure_assistant(self, turn) -> None:
-        """The model's message, once per model turn — a sibling call shares it
-        with the call before it (see ToolLoop._ensure_assistant)."""
-        if getattr(turn, "sibling", False):
-            return
-        self.messages.append(turn.message if turn.message is not None else {
-            "role": "assistant", "content": turn.text or ""})
+        """The model's message, once per model turn. Shared with the stage loop
+        (:func:`transcript.append_assistant`)."""
+        append_assistant(self.messages, turn)
 
     def _answer_unexecuted(self, calls: list, why: str) -> None:
-        """Close the tool_call ids of calls that will not run (see ToolLoop)."""
-        calls = [c for c in calls if c and c.call_id]
-        if not calls:
-            return
-        self._ensure_assistant(calls[0])
-        for call in calls:
-            self.messages.append({"role": "tool", "tool_call_id": call.call_id,
-                                  "name": call.name,
-                                  "content": f"[not executed — {why}.]"})
-        self.trajectory.log_recovery_event(
-            self.identity, "calls_not_executed", ", ".join(c.name for c in calls), why)
+        """Close the tool_call ids of calls that will not run. Shared with the
+        stage loop (:func:`transcript.answer_unexecuted`)."""
+        answer_unexecuted(self.messages, calls, why,
+                          trajectory=self.trajectory, identity=self.identity)
 
 
 def _doc_keys(step) -> tuple[str, ...]:
@@ -854,7 +778,7 @@ def _submit_for(specs: list, args) -> str | None:
         return None
     matches = [name for name in tools.tool_names(specs)
                if name.startswith("submit_")
-               and keys <= set(_spec_parameters(specs, name).get("properties") or {})]
+               and keys <= set(spec_parameters(specs, name).get("properties") or {})]
     return matches[0] if len(matches) == 1 else None
 
 

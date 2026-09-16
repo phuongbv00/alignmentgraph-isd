@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from alignmentgraph_isd.core.agentic.loop import ToolLoop
+from alignmentgraph_isd.core.agentic.repair_turn import own_violations
 from alignmentgraph_isd.core.agentic.specialists import STEPS
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
 from alignmentgraph_isd.core.trajectory import TrajectoryLogger
@@ -49,7 +49,7 @@ def _graph_before_the_developer_tier() -> AlignmentGraph:
 
 
 def _shown(step, graph) -> list[str]:
-    return sorted({v.violation_type for v in ToolLoop.own_violations(
+    return sorted({v.violation_type for v in own_violations(
         graph, load_brief("minimal_brief.json"), step, TrajectoryLogger())})
 
 

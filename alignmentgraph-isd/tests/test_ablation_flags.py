@@ -3,6 +3,9 @@ Defaults preserve the full pipeline (multi + graph); each axis cleanly
 switches exactly its own mechanism, independent of the other."""
 from __future__ import annotations
 
+import inspect
+import pathlib
+
 from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph
 from alignmentgraph_isd.core.prose_store import ProseStore
@@ -336,6 +339,71 @@ def test_the_agentic_arms_are_two_shapes_not_two_settings(fake_llm_factory):
     assert not autonomy["single"]["design"]["via_budget_exhaustion"]
     assert not any(s["via_budget_exhaustion"] for s in autonomy["multi"].values())
 
+def test_neither_arm_reads_its_settings_off_the_other():
+    """The two loops are different shapes on purpose; what they must NOT be is
+    two copies of the same numbers.
+
+    Every ceiling and refund lives in ``budget`` so a pair cannot drift apart —
+    a drifted pair is a ceiling difference sitting inside the treatment, which
+    is the one confound the ``agent_mode`` claim cannot survive. Reading one off
+    the OTHER LOOP'S class satisfies "they agree" while putting one arm's
+    settings inside the other's definition, so the assertion is on the source:
+    the refund allowances are named by ``TurnMeter`` and by nothing else, and
+    neither module touches the other's class at all.
+    """
+    import ast
+
+    from alignmentgraph_isd.core.agentic import react, turn as turn_mod
+
+    # The allowances have exactly one reader. A class attribute holding a copy
+    # of one is the shape a drift starts from, so there must not be one.
+    root = pathlib.Path(react.__file__).parent
+    meter = inspect.getsource(turn_mod.TurnMeter)
+    for allowance in ("REPEAT_ALLOWANCE", "THINKING_ALLOWANCE", "ERROR_ALLOWANCE"):
+        assert f"budget.{allowance}" in meter, f"TurnMeter does not read {allowance}"
+        for module in ("react.py", "loop.py"):
+            assert allowance not in (root / module).read_text(), (
+                f"{module} keeps its own copy of {allowance}")
+
+    # Source-level, because equality alone is satisfied by one class reading
+    # the other's attribute — which is exactly what this forbids.
+    for module, mine in (("react.py", "ReactLoop"), ("loop.py", "ToolLoop")):
+        other = "ToolLoop" if mine == "ReactLoop" else "ReactLoop"
+        tree = ast.parse((root / module).read_text())
+        reaching = [f"{node.value.id}.{node.attr}"
+                    for node in ast.walk(tree)
+                    if isinstance(node, ast.Attribute)
+                    and isinstance(node.value, ast.Name) and node.value.id == other]
+        assert not reaching, f"{module} reads {reaching} off the other arm's class"
+
+
+def test_the_turn_bookkeeping_both_arms_must_agree_on_has_one_implementation():
+    """Appending the model's message and closing the ids of calls that will not
+    run are TRANSPORT, not treatment: the chat API requires every call in an
+    assistant message to be answered, and the single arm re-sends its whole
+    conversation every turn, so an id left open there is a malformed request on
+    every following call. Two implementations of that would be the same class
+    of defect on one side of the axis only."""
+    import ast
+    import inspect
+    import textwrap
+
+    from alignmentgraph_isd.core.agentic import react, transcript
+    from alignmentgraph_isd.core.agentic.loop import ToolLoop
+
+    for owner in (ToolLoop, react.ReactLoop):
+        for method, shared in (("_ensure_assistant", "append_assistant"),
+                               ("_answer_unexecuted", "answer_unexecuted")):
+            source = inspect.getsource(getattr(owner, method))
+            called = {node.func.id for node in ast.walk(ast.parse(textwrap.dedent(source)))
+                      if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+            assert shared in called, (
+                f"{owner.__name__}.{method} does not go through "
+                f"transcript.{shared} — it has its own copy")
+    assert callable(transcript.append_assistant)
+    assert callable(transcript.answer_unexecuted)
+
+
 def test_an_empty_first_answer_loses_no_artifact_in_either_arm():
     """Recovery from an empty answer is scaffolding, not an ablated mechanism:
     an arm that loses artifacts a weaker model fumbled would read as a
@@ -569,7 +637,7 @@ def test_agentic_arm_keeps_one_persona_per_stage_or_one_for_the_job(fake_llm_fac
     Counted over STAGE prompts only — a repair composes its own persona-free
     system turn, and counting those would make the two arms look alike for a
     reason that has nothing to do with the axis."""
-    from alignmentgraph_isd.core.agentic.loop import _WORKFLOW_OVERVIEW
+    from alignmentgraph_isd.core.agentic.protocol import WORKFLOW_OVERVIEW
 
     brief = load_brief("minimal_brief.json")
     seen: dict[str, list[str]] = {}
@@ -590,7 +658,7 @@ def test_agentic_arm_keeps_one_persona_per_stage_or_one_for_the_job(fake_llm_fac
         run_brief(brief, config)
 
     personas = {
-        mode: {p.partition("\n\n")[0] for p in prompts if _WORKFLOW_OVERVIEW in p}
+        mode: {p.partition("\n\n")[0] for p in prompts if WORKFLOW_OVERVIEW in p}
         for mode, prompts in seen.items()
     }
     assert len(personas["single"]) == 1, personas["single"]
@@ -599,7 +667,7 @@ def test_agentic_arm_keeps_one_persona_per_stage_or_one_for_the_job(fake_llm_fac
     # makes the agents autonomous in HOW a stage is executed, never in what
     # order the stages run.
     for mode in ("multi", "single"):
-        assert any(_WORKFLOW_OVERVIEW in p for p in seen[mode])
+        assert any(WORKFLOW_OVERVIEW in p for p in seen[mode])
 
 
 def test_neither_arm_composes_its_own_rules_or_schema():
@@ -748,20 +816,20 @@ def test_the_instructed_stage_order_is_generated_from_the_step_table():
 
     A list beside the table that defines the thing is a list that will disagree
     with it."""
-    from alignmentgraph_isd.core.agentic.loop import _WORKFLOW_OVERVIEW
+    from alignmentgraph_isd.core.agentic.protocol import WORKFLOW_OVERVIEW
     from alignmentgraph_isd.core.agentic.specialists import STEPS
 
     for index, step in enumerate(STEPS, start=1):
-        assert f"{index}. {step.name}" in _WORKFLOW_OVERVIEW, step.name
+        assert f"{index}. {step.name}" in WORKFLOW_OVERVIEW, step.name
     # Nothing that is not a step: the drift this guards against is a name
     # surviving its stage, not a missing one.
-    assert f"{len(STEPS) + 1}." not in _WORKFLOW_OVERVIEW
-    assert "rubrics" not in _WORKFLOW_OVERVIEW
+    assert f"{len(STEPS) + 1}." not in WORKFLOW_OVERVIEW
+    assert "rubrics" not in WORKFLOW_OVERVIEW
 
     # Both arms are told the same order — the axis is who holds the context,
     # not who decides the sequence.
     from alignmentgraph_isd.core.agentic import react
-    assert react._WORKFLOW_OVERVIEW is _WORKFLOW_OVERVIEW
+    assert react.WORKFLOW_OVERVIEW is WORKFLOW_OVERVIEW
 
 
 def test_the_media_vocabulary_is_typed_once():

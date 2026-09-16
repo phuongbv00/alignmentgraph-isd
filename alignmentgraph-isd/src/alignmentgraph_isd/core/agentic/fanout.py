@@ -22,10 +22,9 @@ calls; what differs is who divides the work and who writes each part:
                through the same ``commit_sets`` and the same item rules
                (``output_errors``).
 
-Equal call counts are NOT the parity requirement (an agent that plans its own
-batches cannot spend the calls a harness-walked plan does); what is shared is
-the normalization, the renumbering, the establishers and the per-item rules,
-so the fan-out shape never depends on unvalidated SLM output.
+Equal call counts are NOT the parity requirement — an agent planning its own
+batches cannot spend what a harness-walked plan does. What is shared is the
+normalization, the renumbering, the establishers and the per-item rules.
 """
 from __future__ import annotations
 
@@ -35,9 +34,9 @@ from typing import Callable
 
 from .. import dev_plans
 from .. import rulebook as rules
-from ..alignment_graph import NodeType
+from ..alignment_graph import NodeType, alignment
 from . import tools
-from .specialists import AgenticStep
+from .specialists import STEPS, AgenticStep, missing_parts
 
 
 @dataclass(frozen=True)
@@ -267,9 +266,7 @@ def _every_part_dispatch_done(stage: str, state) -> bool:
     what SHIPS. The regen it triggers is narrow, not a second content stage —
     ``loop._run`` returns with zero LLM calls when the step is already done,
     the rebind offers only the missing artifact's submit, and
-    ``_still_needed`` names what is already committed as not-to-resend."""
-    from .specialists import STEPS, missing_parts
-
+    ``still_needed`` names what is already committed as not-to-resend."""
     step = next(s for s in STEPS if s.name == stage)
     return not missing_parts(step, state)
 
@@ -620,8 +617,6 @@ def _deposit_sets(spec: FanoutSpec, state, trajectory, work_sets: list,
 
 def _establish(spec: FanoutSpec, state, committed: dict[str, list[str]]) -> None:
     """Alignment relations for a family's freshly committed artifacts."""
-    from ..alignment_graph import alignment
-
     if spec.stage == "assessment":
         alignment.match_id_reverse(state, "C2", field="aligned_objective")
         alignment.match_p3_realizes(state)

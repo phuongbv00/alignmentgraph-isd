@@ -30,7 +30,7 @@ graph-free blackboard (``core/prose_store.py``) with the six within-artifact
 checks only, and ships no graph artifact.
 
 Stage ORDER stays deterministic and instructed in both arms (see
-``loop._WORKFLOW_OVERVIEW``): the agents are autonomous in how they execute a
+``loop.WORKFLOW_OVERVIEW``): the agents are autonomous in how they execute a
 stage, never in what order the stages run.
 
 Cross-artifact violations are reconciled ONCE after the last stage, bounded by
@@ -68,7 +68,10 @@ from .run_report import (
 from .trajectory import WORKFLOW_ORCHESTRATOR, TrajectoryLogger
 from .validation import validate_addie
 from .agentic import budget, fanout, react, replan
-from .agentic.loop import AgenticLLM, ToolLoop, empty_stage_stats, history_budget
+from .agentic.client import AgenticLLM
+from .agentic.loop import ToolLoop
+from .agentic.protocol import empty_stage_stats
+from .agentic.transcript import history_budget
 from .agentic.specialists import SINGLE_IDENTITY, STEPS, step_done
 
 
@@ -137,10 +140,11 @@ def _verify_family(family: str, *, state, design_brief, graph_mode: bool, memory
     def collect() -> tuple[list, list]:
         """What this family owns, and what it merely ran into.
 
-        The split used to be a filter that THREW THE SECOND HALF AWAY, which
-        made the deterministic net the only thing a violation could reach: a
-        type no family owns was computed on every round and then dropped, so
-        it never became a Finding and the ledger could not say it existed.
+        BOTH halves are returned. Filtering to the owned half and throwing the
+        rest away makes the deterministic net the only thing a violation can
+        reach: a type no family owns is computed on every round and then
+        dropped, never becomes a Finding, and the ledger cannot say it
+        existed.
 
         MEASURED (run 7ef3ed16): the run's own ``graph.json`` flagged 27 nodes
         — 3 ``measurability`` (ILO-02/03/06, "Students will know ...") and 24
@@ -219,15 +223,15 @@ def _reconcile(state, trajectory, design_brief, *, graph_mode: bool,
     (see the discussion of generation order in the paper); this pass answers it
     without giving up the bound that makes the order safe.
 
-    Deterministic and model-free: every routine in ``repairs`` is structural
-    (2026-09-03), so this pass rearranges what the design holds and writes no
-    content. A violation needing WRITING was already handed to its agent as a
-    repair turn inside that agent's own loop, which is where the ``agent_mode``
-    axis lives; opening a second conversation out here to write it would have
-    put a context boundary of its own on that axis.
+    Deterministic and model-free: every routine in ``repairs`` is structural,
+    so this pass rearranges what the design holds and writes no content. A
+    violation needing WRITING was already handed to its agent as a repair turn
+    inside that agent's own loop, which is where the ``agent_mode`` axis lives;
+    opening a second conversation out here to write it would put a context
+    boundary of its own on that axis.
 
     Bounded, and after the last stage rather than re-entering mid-pipeline: a
-    route -> repair -> recheck -> route cycle is no longer bounded by the stage
+    route -> repair -> recheck -> route cycle is not bounded by the stage
     order, and an unbounded one on a small model is a hang, not a fix.
 
     Prose runs it too and finds nothing by construction — the within-artifact
@@ -287,8 +291,8 @@ def _run_fanout(config, memory, trajectory, design_brief, step, spec, *,
     """
     # Planning and committing read and write the design state, and every such
     # event is stamped with whoever is currently acting — outside a scope they
-    # land with an EMPTY agent (the attribution class fixed on 2026-08-27).
-    # They belong to the orchestrator: neither is any one Developer's work.
+    # land with an EMPTY agent. They belong to the orchestrator: neither is any
+    # one Developer's work.
     orchestrator = WORKFLOW_ORCHESTRATOR
     state = memory.state
     with trajectory.acting_as(orchestrator):
@@ -722,11 +726,13 @@ def _result_payload(memory, design_brief, *, addie_output: dict, metadata: dict,
         # these reach the app and the CLI and nothing else.
         "contexts": [t.as_dict() for t in memory.transcripts],
         "plans": [p.as_dict() for p in memory.plans],
-        # Every DISTINCT finding of the run, with what became of it. Not a
-        # second copy of `metadata.audit.violations`: that is the graph arm's
-        # residual only (the prose arm has no graph to audit), it is a snapshot
-        # rather than a history, and it cannot say whether a violation was
-        # repaired, converged, or simply ran out of budget.
+        # Every DISTINCT finding of the run, with what became of it — the sole
+        # owner of that question. `metadata.audit` used to carry the residual
+        # set beside this one; it was the same list (the `residual` that
+        # `_reconcile` returns reaches `audit()` and `memory.settle()` in one
+        # breath), the graph arm's only, a snapshot rather than a history, and
+        # it could not say whether a violation was repaired, converged or ran
+        # out of budget. It is gone; this is where a reader is sent.
         "violations": [f.as_dict() for f in memory.findings],
     }
     if memory.graph is not None:
@@ -748,9 +754,8 @@ class MetaAgent:
     """Run one design brief through the harness — the package's entry point.
 
     ``run`` IS the run: there is no ``execute_brief`` under it to forward to.
-    It held the ``llm_factory`` guard and then delegated, which made it the
-    third such forwarder in this package's history (``run_workflow`` and
-    ``run_design_brief`` went 2026-09-05 for the same reason).
+    A method that holds the ``llm_factory`` guard and then delegates is a
+    forwarder, and this package keeps none.
     """
 
     def __init__(self, config: HarnessRunConfig) -> None:

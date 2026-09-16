@@ -12,7 +12,7 @@ from conftest import FakeChatModel, load_brief, run_brief
 
 from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core.agentic import react, tools
-from alignmentgraph_isd.core.agentic.loop import STAGE_BRIEF_HEADER
+from alignmentgraph_isd.core.agentic.protocol import STAGE_BRIEF_HEADER
 from alignmentgraph_isd.core.agentic.specialists import STEPS
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
 from alignmentgraph_isd.core.trajectory import TrajectoryLogger
@@ -27,7 +27,7 @@ def _said(loop) -> str:
     what the Context tab renders — and that is the thing these assertions are
     about.
     """
-    from alignmentgraph_isd.core.agentic.loop import compacted_transcript
+    from alignmentgraph_isd.core.agentic.transcript import compacted_transcript
     return " ".join(str(m.get("content", ""))
                     for m in compacted_transcript(loop.messages, loop.compacted)
                     if isinstance(m, dict))
@@ -159,7 +159,7 @@ def test_the_system_turn_leaves_room_for_the_transcript():
 
     A specification the agent cannot afford to remember anything alongside is
     not a specification it can act on."""
-    from alignmentgraph_isd.core.agentic.loop import HISTORY_CHAR_BUDGET
+    from alignmentgraph_isd.core.agentic.transcript import HISTORY_CHAR_BUDGET
 
     loop, _g, _t, _m = _loop([])
     system = len(loop._system_prompt())

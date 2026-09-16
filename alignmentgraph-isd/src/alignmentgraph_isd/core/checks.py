@@ -865,7 +865,7 @@ def bloom_mismatches(graph) -> list[Violation]:
     """Both cross-checks: LO vs Assessment (C2) and LO vs Activity (C3).
     Assessment Designer calls the C2 half on its own items; Activity
     Designer calls the C3 half on its own activities — both self-contained."""
-    # ``repair_hint`` is carried through, not dropped. ``_repair_request``
+    # ``repair_hint`` is carried through, not dropped. ``repair_request``
     # (core/agentic/loop.py) renders the "Fix:" line only when a hint exists, so
     # without this both Bloom mismatches reached the agent as a bare sentence
     # with no instruction — and neither has a deterministic repair either, so
