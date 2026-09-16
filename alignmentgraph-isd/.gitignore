@@ -9,3 +9,5 @@ src/alignmentgraph_isd/webapp/dist/
 *.db-wal
 *.db-shm
 .env
+# Vite dep cache, written wherever vitest is run from
+.vite/
