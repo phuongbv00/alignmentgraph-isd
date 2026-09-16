@@ -18,7 +18,7 @@ from collections.abc import AsyncIterator
 from fastapi import Request
 from fastapi.responses import StreamingResponse
 
-from .events import EventKind, RunState
+from .events import EventKind, RunState, terminal_kind
 
 HEARTBEAT_SECONDS = 15.0
 
@@ -121,14 +121,32 @@ async def live_stream(
 
 
 async def replay_stream(events: list[dict], status: dict) -> AsyncIterator[str]:
-    """A finished run whose state is no longer in memory: replay from disk and close."""
+    """A finished run whose state is no longer in memory: replay from disk and close.
+
+    There are usually NO events to replay. The wire log is deleted once a run
+    has a result (``artifacts.discard_events``), because the result's own
+    artifacts carry every frame of it, so what a reader gets is ``hello`` — the
+    `Run` row: status, error, stats — and the closing frame below. The page
+    fetches the trace itself, as it already does for the graph, the contexts
+    and the ledger.
+
+    Events ARE replayed for a run that ended with no result, which is the case
+    the log exists for: cancelled, failed, or interrupted with the process.
+    """
     yield frame("hello", status)
     for event in events:
         yield frame(event.get("kind", "event"), event, seq=event.get("seq"))
     if not any(e.get("kind") in EventKind.TERMINAL for e in events):
-        # The process died before writing a terminal event; say so explicitly so
-        # the client stops waiting for one that will never arrive.
-        yield frame(EventKind.RUN_FAILED, {"status": status.get("status"), "error": status.get("error", "")})
+        # Nothing on disk says how this ended — either the log is gone because
+        # the run has a result, or the process died before writing its terminal
+        # event. Either way the `Run` row knows, and the client stops listening
+        # only on a terminal frame, so one is synthesized rather than left for
+        # a reader that would wait forever. Named through the same mapping the
+        # live stream closes with: a run must not replay under a different
+        # terminal name than it finished under.
+        yield frame(terminal_kind(str(status.get("status") or "")),
+                    {"status": status.get("status"), "error": status.get("error", ""),
+                     "stats": status.get("stats") or {}})
 
 
 def stream_response(generator: AsyncIterator[str]) -> StreamingResponse:

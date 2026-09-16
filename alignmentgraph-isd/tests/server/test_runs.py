@@ -53,7 +53,9 @@ def test_a_run_produces_every_artifact(client, ready_program, settings, wait_for
     directory = settings.data_root / artifacts.relative_run_dir(ready_program, run_id)
     for name, filename in artifacts.ARTIFACT_FILES.items():
         assert (directory / filename).exists(), f"missing {name}"
-    assert (directory / artifacts.EVENTS_FILE).exists()
+    # Every artifact, and ONLY the artifacts: the wire log is not one of them
+    # and is gone once these exist (`artifacts.discard_events`).
+    assert not (directory / artifacts.EVENTS_FILE).exists()
 
 
 def test_the_saved_graph_round_trips(client, ready_program, settings, wait_for_terminal):
@@ -93,6 +95,57 @@ def test_the_deep_trajectory_is_written_and_served(client, ready_program, wait_f
 
     check_actions = [a for a in deep["actions"] if a["action"] == "check"]
     assert check_actions and all(a["agent"] for a in check_actions)
+
+
+def test_a_finished_runs_artifacts_carry_every_frame_of_its_wire_log(
+        client, ready_program, settings, wait_for_terminal):
+    """The log is deleted when the run gets a result — this is the reason why.
+
+    Asserted as the COVERAGE it rests on rather than as "the file is gone",
+    which the artifact test above already says: every kind the harness emits
+    has to be readable from an artifact afterwards, or deleting the log loses
+    it. Measured on run 16cef50d: 4.5 MB, 4.3 MB of it `action` frames, and not
+    one kind the artifacts did not already hold.
+    """
+    run_id = start(client, ready_program)
+    wait_for_terminal(run_id)
+
+    fetch = lambda name: client.get(f"/api/runs/{run_id}/artifacts/{name}").json()
+    deep = {a["action"] for a in fetch("trajectory_deep")["actions"]}
+    recorded = {e["action"] for e in fetch("trajectory")["events"]}
+
+    # `action` frames: the deep trajectory IS the action log.
+    assert deep
+    # Emitted beside a deep action of the same name.
+    assert {"agent_step", "llm_call", "phase_started", "phase_finished"} <= deep
+    # Emitted beside a `trajectory.events` entry under its taxonomy name —
+    # the emit kind and the action name differ here, which is the whole reason
+    # this is checked against the artifact rather than against a name list.
+    assert {"node_add", "check", "validate"} <= recorded
+    # `llm_started`/`llm_finished` are `emit` progress signals that record
+    # nothing anywhere, and the `llm_call` action holds strictly more.
+    call = next(a for a in fetch("trajectory_deep")["actions"] if a["action"] == "llm_call")
+    assert {"duration_ms", "prompt_chars", "finish_reason"} <= set(call["context"])
+    # `run_started`/`run_finished` are the `Run` row, which is what `hello`
+    # serves and what the synthesized terminal frame is built from.
+    assert client.get(f"/api/runs/{run_id}").json()["run"]["status"] == "succeeded"
+
+
+def test_a_run_that_wrote_no_result_keeps_its_whole_wire_log(tmp_path):
+    """Deleting the log is a trade, and it is off when there is nothing to trade.
+
+    A cancelled, failed or interrupted run writes no result, so its log is the
+    ONLY record of what happened — and that is the case the file is written
+    incrementally for in the first place.
+    """
+    directory = tmp_path / "run"
+    directory.mkdir()
+    (directory / artifacts.EVENTS_FILE).write_text(
+        '{"seq": 1, "kind": "action", "payload": {}}\n'
+        '{"seq": 2, "kind": "run_cancelled", "payload": {}}\n', encoding="utf-8")
+
+    assert artifacts.discard_events(directory) is False
+    assert len(artifacts.read_events(directory)) == 2
 
 
 def test_the_work_set_plans_are_written_and_served(client, ready_program, wait_for_terminal):

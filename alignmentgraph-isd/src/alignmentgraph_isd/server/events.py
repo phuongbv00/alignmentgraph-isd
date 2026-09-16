@@ -54,6 +54,21 @@ class EventKind:
     TERMINAL = (RUN_FINISHED, RUN_FAILED, RUN_CANCELLED)
 
 
+def terminal_kind(status: str) -> str:
+    """The closing frame for a run that ended with this status.
+
+    One mapping, because it is now read from two places: the live stream closes
+    a run with it, and a finished run whose wire log has been discarded has its
+    closing frame SYNTHESIZED from the `Run` row with it. Two copies would let
+    a replayed run close under a different name than it closed under live —
+    and the client stops listening on that name.
+    """
+    return {
+        RunStatus.SUCCEEDED: EventKind.RUN_FINISHED,
+        RunStatus.CANCELLED: EventKind.RUN_CANCELLED,
+    }.get(status, EventKind.RUN_FAILED)
+
+
 @dataclass(frozen=True)
 class Event:
     seq: int
@@ -253,11 +268,15 @@ class RunState:
             self.error = error
             if stats:
                 self.stats = stats
-        kind = {
-            RunStatus.SUCCEEDED: EventKind.RUN_FINISHED,
-            RunStatus.CANCELLED: EventKind.RUN_CANCELLED,
-        }.get(status, EventKind.RUN_FAILED)
-        self.append(kind, {"status": status, "error": error, "stats": self.stats})
+        # `public_stats`, not the raw dict: the closing frame reports the same
+        # stats the run's row does, so a watcher that stays connected to the end
+        # is not left with LESS than a reader who fetches the run afterwards.
+        # The arm is the case that made this matter — it lives outside
+        # `self.stats` precisely because the assignment above replaces that dict
+        # wholesale, so a terminal frame carrying the raw one dropped the arm
+        # from under a badge that had been showing all run.
+        self.append(terminal_kind(status),
+                    {"status": status, "error": error, "stats": self.public_stats()})
 
     def _notify(self) -> None:
         """Wake any SSE reader. Called from the worker thread, so it must not

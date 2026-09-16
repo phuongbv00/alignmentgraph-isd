@@ -124,7 +124,11 @@ export default function App() {
   const deepActions = stream.actions.length > 0 ? stream.actions : finishedDeep
 
   // A run that finished before this page loaded streamed no actions, so read
-  // the stored deep trajectory instead.
+  // the stored deep trajectory instead — which is where they live once a run
+  // ends: the server deletes its wire log at that point
+  // (`artifacts.discard_events`), the artifacts being the record from then on.
+  // So this is the normal path for any finished run, not a fallback for one
+  // replayed after a restart.
   useEffect(() => {
     setFinishedDeep([])
     if (!runId || stream.actions.length > 0 || stream.status === 'running' || stream.status === 'idle') {

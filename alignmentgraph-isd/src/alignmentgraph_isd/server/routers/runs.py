@@ -143,7 +143,12 @@ async def stream_events(
         wakeup = manager.wakeup_for(run_id)
         return sse.stream_response(sse.live_stream(request, state, wakeup, cursor))
 
-    # Not in memory: a finished run from an earlier process. Replay from disk.
+    # Not in memory: a finished run from an earlier process. There is usually
+    # nothing on disk to replay — a run with a result has its wire log deleted
+    # (`artifacts.discard_events`), because its artifacts carry every frame of
+    # it — so this serves `hello` plus a synthesized terminal frame, and the
+    # page fetches the trace itself. A run that ended with NO result still has
+    # its log, and that is exactly when replaying one matters.
     directory = artifacts.resolve(settings, run.artifact_dir)
     events = artifacts.read_events(directory, after=cursor)
     summary = run_summary(run)

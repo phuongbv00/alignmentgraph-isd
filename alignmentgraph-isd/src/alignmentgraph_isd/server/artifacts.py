@@ -7,9 +7,20 @@ Layout mirrors the benchmark's results tree closely enough to be familiar:
         metadata.json  graph.json  contexts.json  plans.json
         violations.json  events.jsonl
 
-``graph.json`` is the whole of the alignment graph: it carries the display
+Each file answers one question, and a fact has ONE of them as its owner.
+``graph.json`` is the whole of the alignment graph — it carries the display
 semantics too, so the DOT rendering is reproducible from it
-(``alignmentgraph-isd dot graph.json``) and is not written here.
+(``alignmentgraph-isd dot graph.json``) and is not written here — and it owns
+every measurement OF the graph, which is why ``metadata.json``'s audit block
+carries the verdict and not a second copy of the coverage. ``violations.json``
+owns every finding and what became of it. ``trajectory.json`` and
+``trajectory_deep.json`` own the trace.
+
+``events.jsonl`` is the odd one and is not an artifact of the result at all: it
+is the wire log, written as the run goes so that a viewer can follow one and
+resume after a disconnect. It is therefore the record of a run that has no
+other record, and it is deleted the moment the run has one — see
+``discard_events``, which lists what carries each of its frames instead.
 """
 from __future__ import annotations
 
@@ -83,6 +94,51 @@ def write_result(directory: Path, brief: dict, result: dict) -> None:
     # was this Developer asked for" is answerable only while the run is alive.
     write_json(directory / ARTIFACT_FILES["plans"], result.get("plans", []))
     write_json(directory / ARTIFACT_FILES["violations"], result.get("violations", []))
+
+
+def discard_events(directory: Path) -> bool:
+    """Delete ``events.jsonl`` once the run it belongs to has a result.
+
+    The log is the record of a run that has NO other record. While a run is in
+    flight it is the only thing on disk — ``write_result`` runs at the end — so
+    it carries everything, including one ``action`` frame per entry of the deep
+    trajectory. The moment the harness returns a result, the result's own
+    artifacts carry all of it, kind for kind:
+
+    * ``action`` → ``trajectory_deep.json``'s ``actions``, item for item: every
+      ``TrajectoryLogger.log_action`` appends to the list that file dumps AND
+      emits one frame here.
+    * ``agent_step``, ``llm_call``, ``phase_started``, ``phase_finished`` →
+      the same actions, in the same file.
+    * ``node_edit``, ``check_event``, ``repair_event``, ``validation_event`` →
+      ``trajectory.json``'s ``events``, under their taxonomy names
+      (``node_edit`` is ``node_add``/``node_update``, and so on): every
+      ``_record_event`` writes there and emits here.
+    * ``llm_started``/``llm_finished`` → nothing, by design. They are
+      ``TrajectoryLogger.emit`` progress signals, the only sign of life during
+      the ~50 s a model call takes, and they RECORD nothing; the ``llm_call``
+      action holds strictly more (the same ``duration_ms`` and
+      ``prompt_chars``, plus the tokens and the ``finish_reason``).
+    * ``run_started``/``run_finished`` → the ``Run`` row, which is what a
+      finished run's replay already opens with (``sse.replay_stream``'s
+      ``hello``) and what synthesizes its closing frame.
+
+    Verified kind by kind on run 16cef50d: 4.5 MB, of which 4.3 MB was the
+    ``action`` frames, and not one kind that the artifacts did not already
+    hold.
+
+    So a run that ends WITHOUT a result — cancelled, failed, or interrupted
+    with the process — keeps its log whole, actions included: there the file is
+    the only trace of what happened, which is the whole reason it is written
+    incrementally rather than at the end.
+
+    Returns whether a file was removed.
+    """
+    path = directory / EVENTS_FILE
+    if not path.exists() or not (directory / ARTIFACT_FILES["trajectory_deep"]).exists():
+        return False
+    path.unlink()
+    return True
 
 
 def read_json(path: Path):

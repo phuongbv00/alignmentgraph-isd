@@ -116,13 +116,26 @@ def test_last_event_id_header_takes_priority_over_the_query(client, ready_progra
     assert min(seqs) > cursor
 
 
-def test_a_finished_run_replays_from_disk_and_closes(client, ready_program, wait_for_terminal):
-    """After a restart the run is gone from memory, but events.jsonl is not."""
+def test_a_finished_run_replays_as_its_outcome_and_closes(client, ready_program, wait_for_terminal):
+    """After a restart the run is gone from memory — and so is its wire log.
+
+    A run with a result has the log deleted (`artifacts.discard_events`)
+    because its artifacts carry every frame of it, so the replay is `hello`
+    (the `Run` row) plus a synthesized closing frame, and the page fetches the
+    trace itself — the same division the graph, the contexts and the ledger
+    already live under.
+
+    The closing frame is the part that has to be right. The client stops
+    listening on the terminal NAME, so a synthesized one that said
+    `run_failed` for a run that succeeded would both leave the browser
+    reconnecting and show the wrong outcome. It comes from the one mapping the
+    live stream closes with (`events.terminal_kind`).
+    """
     run_id = start(client, ready_program)
     wait_for_terminal(run_id)
 
     live = read_stream(client, run_id)
-    live_seqs = [r["data"]["seq"] for r in live if "seq" in r.get("data", {})]
+    assert live[-1]["event"] == "run_finished"
 
     # Drop the in-memory state, exactly as a restart would.
     client.app.state.run_manager.registry._runs.clear()
@@ -130,8 +143,42 @@ def test_a_finished_run_replays_from_disk_and_closes(client, ready_program, wait
     replayed = read_stream(client, run_id)
     assert replayed[0]["event"] == "hello"
     assert replayed[0]["data"]["replay"] is True
-    replayed_seqs = [r["data"]["seq"] for r in replayed if "seq" in r.get("data", {})]
-    assert replayed_seqs == live_seqs, "disk replay does not match what was streamed live"
+    assert replayed[-1]["event"] == "run_finished", "a replayed run closed under another name"
+    assert replayed[-1]["data"]["status"] == "succeeded"
+    # Nothing in between: the artifacts are the record now.
+    assert len(replayed) == 2
+
+
+def test_a_run_with_no_result_replays_its_whole_log():
+    """The case the wire log exists for.
+
+    A run that ends without a result writes no artifacts, so its log is kept
+    whole — actions included — and replaying it is the only way to see what
+    happened. (That the log SURVIVES such a run is
+    `test_a_run_that_wrote_no_result_keeps_its_whole_wire_log`; this is the
+    other half: what the replay does with it.)
+
+    Its closing frame is synthesized too, through the same mapping, and
+    `interrupted` is not a status the live stream can ever emit — nothing was
+    left running to emit it — so this is the one terminal frame that only ever
+    exists here.
+    """
+    import asyncio
+
+    from alignmentgraph_isd.server import sse
+
+    events = [{"seq": 1, "kind": "action", "payload": {"action": "node_read"}},
+              {"seq": 2, "kind": "llm_started", "payload": {}}]
+    status = {"run_id": "r", "status": "interrupted", "error": "the process died",
+              "stats": {}, "replay": True}
+
+    async def collect():
+        return [chunk async for chunk in sse.replay_stream(events, status)]
+
+    records = parse_stream("".join(asyncio.run(collect())))
+    assert [r["event"] for r in records] == ["hello", "action", "llm_started", "run_failed"]
+    assert records[1]["data"]["payload"]["action"] == "node_read"
+    assert records[-1]["data"]["error"] == "the process died"
 
 
 def test_streaming_an_unknown_run_is_404(client):

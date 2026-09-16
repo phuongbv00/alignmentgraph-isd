@@ -298,6 +298,15 @@ class RunManager:
         self._flush_state(state, directory)
         state.finish(status, error, stats)
         self._flush_state(state, directory)
+        # This run has a result, so its artifacts are now the record and the
+        # wire log is not — see `artifacts.discard_events`, which is a no-op for
+        # a run that wrote none (cancelled, failed), where the log is the only
+        # trace there is. After the last flush and never before it: the flusher
+        # would otherwise re-create the file from what it still holds.
+        try:
+            artifacts.discard_events(directory)
+        except Exception as exc:  # noqa: BLE001 - the run matters, its wire log does not
+            logger.warning("could not discard the event log for run %s: %s", run_id, exc)
         self._persist_terminal(run_id, state, started, finished)
 
     def _persist_terminal(self, run_id: str, state: RunState, started, finished) -> None:
