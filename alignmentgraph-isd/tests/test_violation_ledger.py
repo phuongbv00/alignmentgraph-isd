@@ -124,11 +124,10 @@ def test_one_finding_reported_two_ways_keeps_both_wordings():
 
 
 def test_the_ledger_survives_without_a_graph_to_audit():
-    """The prose arm skips the graph audit entirely (`run.py` guards it on
-    `graph_mode`), so `metadata.audit.violations` — the only place a residual
-    body used to reach — is empty there by construction. The ledger sits on
-    memory rather than on the graph, which is what makes the two arms
-    comparable on this at all.
+    """The prose arm skips the graph audit entirely (`runner.py` guards it on
+    `graph_mode`), so `metadata.audit` is empty there by construction and
+    carries no findings on either arm. The ledger sits on memory rather than on
+    the graph, which is what makes the two arms comparable on this at all.
 
     Asserted on the MECHANISM, not on the fixture: this arm runs only the six
     within-artifact checks and the canned payloads are clean against all of

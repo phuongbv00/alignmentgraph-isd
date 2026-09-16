@@ -76,7 +76,8 @@ export interface PhaseBlock {
   schemaErrors: number | null
   /** The residual whole-graph audit (GraphAuditor), null until its event
    *  lands. Counts + the gapped relation ids only — the full per-relation
-   *  detail stays in metadata.audit, this is a summary pointer to it. */
+   *  detail is the graph payload's `relation_coverage`, which the inspector
+   *  reads; this is a summary pointer to it. */
   auditGapCount: number | null
   auditGappedRelations: string[]
   auditReady: boolean | null

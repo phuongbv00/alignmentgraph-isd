@@ -242,7 +242,7 @@ function PhaseCard({
               : `${block.schemaErrors ?? '?'} schema problem${block.schemaErrors === 1 ? '' : 's'}`}
           </span>
           {/* The residual whole-graph audit — the run's actual auditability
-              claim — used to live only in metadata.audit, invisible here. */}
+              claim — recorded only in metadata, invisible here. */}
           {block.auditGapCount !== null && (
             <span className={`pt-pill ${block.auditGapCount === 0 ? 'pt-ok' : 'pt-gap'}`}>
               {block.auditGapCount === 0

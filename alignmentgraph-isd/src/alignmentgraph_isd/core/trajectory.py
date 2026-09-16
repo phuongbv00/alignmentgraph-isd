@@ -25,7 +25,7 @@ class TrajectoryAction(StrEnum):
     NODE_UPDATE = "node_update"
     EDGE_READ = "edge_read"
     EDGE_WRITE = "edge_write"
-    #: No emitter since traversal was removed 2026-08-10 (measured: 0 of 1179
+    #: No emitter: nothing in the harness walks the graph (measured: 0 of 1179
     #: graph reads were walks). Kept so an archived run still parses, and read
     #: by string from the webapp timelines.
     EDGE_WALK = "edge_walk"
@@ -120,12 +120,11 @@ class TrajectoryAction(StrEnum):
     #: of turns that is a function of how many work sets it planned — but that
     #: the budget CUT neither arm.
     BUDGET_EXHAUSTED = "budget_exhausted"
-    #: A step ended without the agent producing a valid artifact. Until
-    #: 2026-09-01 a scripted single-shot wrote one instead and this was called
-    #: `agentic_fallback`; it was writing 26-35% of the full pipeline's
-    #: artifacts, and only in the multi arm, so the decomposition axis was
-    #: measuring who got rescued. The deterministic repair net catches what is
-    #: left, for both arms.
+    #: A step ended without the agent producing a valid artifact. Nothing
+    #: writes one on its behalf: a scripted single-shot fallback covers 26-35%
+    #: of the full pipeline's artifacts and only in the multi arm, which would
+    #: leave the decomposition axis measuring who got rescued. The
+    #: deterministic repair net catches what is left, for both arms.
     AGENTIC_GAVE_UP = "agentic_gave_up"
     #: One document written to the prose blackboard. The graph arm records
     #: every artifact it produces as ``node_add``; without this the prose arm
@@ -140,16 +139,16 @@ class TrajectoryAction(StrEnum):
     DEV_PLAN = "dev_plan"
     #: A repair that must SUPPLY a missing artifact asked the model to write it
     #: and got nothing usable back, so it wrote nothing. Recorded because the
-    #: alternative — a template that filled the hole — was removed precisely
-    #: for being invisible: the check passed, the artifact existed, and nothing
-    #: in the trace said no design work had happened. This is a recovery event,
+    #: alternative — a template that fills the hole — is invisible: the check
+    #: passes, the artifact exists, and nothing in the trace says no design
+    #: work happened. This is a recovery event,
     #: so it never reaches the judge; it is how the RATE of unfilled repairs is
     #: read per size while tuning.
     REPAIR_UNFILLED = "repair_unfilled"
     #: An OPTIONAL submit argument arrived as text where a structure was
-    #: declared, so it was removed and the rest of the submit accepted. The
-    #: alternative — refusing the whole submit — threw away a Developer's
-    #: complete set of assessment items because the criteria beside them were
+    #: declared, so it is dropped and the rest of the submit accepted. The
+    #: alternative — refusing the whole submit — throws away a Developer's
+    #: complete set of assessment items because the criteria beside them are
     #: malformed. Recorded so the rate stays visible: if it is high, the
     #: secondary output is not really being produced and the repair that
     #: covers it is doing the work.
@@ -177,9 +176,8 @@ _RECOVERY_ACTIONS = frozenset({
     TrajectoryAction.CONVERGE,
     TrajectoryAction.DUPLICATE_ELEMENT_DROPPED,
     TrajectoryAction.AGENTIC_FALLBACK,
-    # Replaced AGENTIC_FALLBACK on 2026-09-01 and was never added here, so
-    # every give-up was missing from `recovery_events` — the one view that is
-    # supposed to answer "what went wrong in this run".
+    # A give-up missing from this set is missing from `recovery_events` — the
+    # one view that answers "what went wrong in this run".
     TrajectoryAction.AGENTIC_GAVE_UP,
     TrajectoryAction.BUDGET_EXHAUSTED,
     TrajectoryAction.TOOL_BINDING_UNAVAILABLE,
@@ -224,17 +222,13 @@ class TrajectoryLogger:
         # evaluator) plus structured audit events — and each fact appears in
         # exactly one of them, never in two.
         self.actions: list[dict] = []
-        # Who/what phase is "currently acting". Plain instance state since
-        # 2026-09-04: it was thread-local while the LangGraph pipeline ran
-        # specialists on separate worker threads (content_designer and
-        # rubric_designer fanned out from one join), where a shared attribute
-        # let one thread's `acting_as` exit reset the actor out from under
-        # another. The executor is sequential — no `ThreadPoolExecutor` in
-        # `core/` outside RAG — so there is no longer a thread to isolate from,
-        # and thread-local state would now be actively WRONG for the one place
-        # concurrency remains: a retrieval worker thread would read an empty
-        # actor instead of the agent that dispatched it. Restore it if any
-        # concurrent fan-out comes back.
+        # Who/what phase is "currently acting". Plain instance state, NOT
+        # thread-local: the executor is sequential — no `ThreadPoolExecutor` in
+        # `core/` outside RAG — so there is no thread to isolate from, and
+        # thread-local state would be actively WRONG for the one place
+        # concurrency remains, where a retrieval worker thread would read an
+        # empty actor instead of the agent that dispatched it. Restore it if
+        # any concurrent fan-out comes back.
         self._actor: str = ""
         self._phase: str = ""
         self._identity: str = ""
@@ -398,13 +392,11 @@ class TrajectoryLogger:
         """Record ONE real, successful, purposeful action — the judge-visible
         surface (``tool_calls``/``reasoning_steps``/``agent_interactions``).
 
-        Since the pivot there are exactly TWO kinds, and both are acts of the
-        tool loop: a tool call the loop answered with an observation, and a
-        submit it accepted. Nothing else reaches these lists. (It used to be
-        "one per hop" — Hop A/B, the Content Designer's three steps — which is
-        machinery that no longer exists; the name ``agent_step`` is kept because
-        an act->observe turn IS a step the agent took, and because the string is
-        in every recorded run.)
+        There are exactly TWO kinds, and both are acts of the tool loop: a
+        tool call the loop answered with an observation, and a submit it
+        accepted. Nothing else reaches these lists. The name ``agent_step``
+        fits because an act->observe turn IS a step the agent took, and the
+        string is in every recorded run.
 
         The fan-out is here too: a Developer's submit is its own step under its
         own identity, which is what makes the second tier visible to the judge
@@ -469,7 +461,7 @@ class TrajectoryLogger:
         benchmark's trajectory judge only reads those three lists (confirmed:
         ``TrajectoryEvaluator._format_trajectory`` in the evaluator package),
         so recovery plumbing recorded here is fully honest for audit/debugging
-        but invisible to the redundancy-avoidance check that used to penalize
+        but invisible to the redundancy-avoidance check that would penalize
         it. Call this instead of ``log_step`` for anything that is not the
         final, successful, judge-visible result of a Designer's turn."""
         agent_name = self._identity or agent_name
@@ -527,10 +519,10 @@ class TrajectoryLogger:
         specialist actually being validated.
 
         The event keeps counts + the per-type breakdown; the full violation
-        dicts live in the deep action log (per round), in the run's ledger
-        (``core/memory.py``, which is what ``result["violations"]`` serves) and
-        — for the residual set the paper reports — in
-        ``metadata.audit.violations``.
+        dicts live in the deep action log (per round) and in the run's ledger
+        (``core/memory.py``, which is what ``result["violations"]`` serves) —
+        the ledger being the one that says what became of each finding, and so
+        the one a reader is sent to.
 
         Returns the round number it recorded."""
         by_type: dict[str, int] = {}
@@ -581,9 +573,9 @@ class TrajectoryLogger:
     ) -> None:
         """ONE record per repair — structured fields plus, when the caller has
         them, the repair routine's own narrative (``rule``/summaries). Never
-        pair this with a separate recovery event for the same repair: that was
-        the pre-2026-08-27 shape and it double-counted every repair once both
-        records landed in the unified event log."""
+        pair this with a separate recovery event for the same repair: both
+        records land in the unified event log, so the repair is counted
+        twice."""
         # Same identity override as log_step/log_recovery_event: in the
         # ablation's `single` arm every repair belongs to the one agent,
         # whatever module the repair routine lives in.
@@ -622,7 +614,8 @@ class TrajectoryLogger:
         decomposition axis expressed at repair time, so a results dir has to
         say which family a residual violation went to and how many went with
         it. Counts and types only — the violations themselves are already in
-        ``metadata.audit``; this is a pointer, not a second copy."""
+        the ledger (``result["violations"]``); this is a pointer, not a second
+        copy."""
         context = {
             "family": family,
             "routed": len(violations),
@@ -638,15 +631,14 @@ class TrajectoryLogger:
         ``GraphAuditResult`` rather than importing it — ``core/alignment_graph``
         is a higher layer than this module.
 
-        Before this, ``metadata.audit`` was the ONLY record of it: the ~300
-        graph reads that compute it show up in the deep action log (correctly
-        attributed to ``WORKFLOW_ORCHESTRATOR`` since 2026-08-27), but nothing
-        in ``trajectory`` said what they found — a run with 5 uncovered
-        relations and one with zero looked identical unless you went and read
-        ``metadata.audit`` separately. Counts and the list of gapped relation
-        ids only: the full per-relation coverage detail (labels, mechanism,
-        uncovered node ids) stays exclusively in ``metadata.audit`` — this is
-        a summary pointer to it, not a second copy."""
+        Without this, nothing in ``trajectory`` records the audit at all: the
+        ~300 graph reads that compute it show up in the deep action log under
+        ``WORKFLOW_ORCHESTRATOR``, but none of them says what they found, so a
+        run with 5 uncovered relations reads identical to one with zero. Counts
+        and the list of gapped relation ids only: the full per-relation
+        coverage detail (labels, mechanism, uncovered node ids) is
+        ``graph.json``'s ``relation_coverage`` — this is a summary pointer to
+        it, not a second copy."""
         gapped = sorted(
             relation_id for relation_id, info in residual.relation_coverage.items()
             if info["uncovered"]
@@ -709,9 +701,9 @@ class TrajectoryLogger:
 
         ``dropped_pairs`` counts obligations the plan named that its own
         coverage targets never promised (discarded), ``duplicate_pairs`` the
-        ones it named in two sets (kept once). Both were computed and never
-        logged until 2026-09-05, so a plan silently reshaped by the harness
-        read as ``source: llm`` with nothing dropped."""
+        ones it named in two sets (kept once). Both are logged so a plan the
+        harness silently reshaped cannot read as ``source: llm`` with nothing
+        dropped."""
         self._record_event(
             TrajectoryAction.DEV_PLAN, "dev_plan_event", agent=agent,
             family=family, set_count=set_count, pair_count=pair_count, sets=sets,

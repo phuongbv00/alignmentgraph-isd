@@ -64,7 +64,9 @@ def test_run_establishes_every_relation_and_repairs_gaps():
     config = HarnessRunConfig()
     config.llm_factory = lambda: FakeChatModel()
     result = run_brief(load_brief("minimal_brief.json"), config)
-    audit = result["metadata"]["audit"]
+    # Per-relation coverage is the GRAPH dump's, not `metadata.audit`'s, which
+    # carries the verdict and no longer re-copies the measurement.
+    coverage = result["graph"]["relation_coverage"]
 
     # The run builds the graph: element nodes + edges spanning all 16 relations.
     assert _element_nodes(result) and _graph_edges(result)
@@ -75,7 +77,7 @@ def test_run_establishes_every_relation_and_repairs_gaps():
     # (see audit.py::AUDIT_ONLY_VIOLATION_TYPES); excluded from the coverage check.
     checkable = [r for r in _PROVENANCE_ONLY_RELATIONS + _ID_TYPE_MATCH_RELATIONS if r != "P6"]
     for relation_id in checkable:
-        assert audit["relation_coverage"][relation_id]["coverage"] > 0.0, relation_id
+        assert coverage[relation_id]["coverage"] > 0.0, relation_id
     # A gap only "survives repair" if some family could have repaired it. Two
     # kinds cannot. P7, P10 and P11 are secondary provenance relations
     # ``OWNED_BY_FAMILY`` assigns to nobody. And ``REPORT_ONLY`` relations are
@@ -87,7 +89,7 @@ def test_run_establishes_every_relation_and_repairs_gaps():
 
     repairable = [rid for rid in checkable
                   if rid in repairs.OWNER_BY_VIOLATION and rid not in repairs.REPORT_ONLY]
-    unresolved = {rid for rid in repairable if audit["relation_coverage"][rid]["uncovered"]}
+    unresolved = {rid for rid in repairable if coverage[rid]["uncovered"]}
     assert not unresolved, f"relation gaps survived repair: {unresolved}"
 
 

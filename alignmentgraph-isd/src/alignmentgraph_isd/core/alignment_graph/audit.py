@@ -18,17 +18,17 @@ REQUIRED_NODE_TYPES = tuple(NodeType)
 # unscheduled activity is for the planner to schedule it, and auto-appending
 # an id to the session guide to satisfy coverage would invent a delivery
 # record that never happened — the exact "pad it to pass" failure the P6
-# rationale rejects. Since 2026-09-05 they are also OWNED by the
-# implementation planner (``repairs.OWNED_BY_FAMILY``, report-only), so the
+# rationale rejects. They are also OWNED by the implementation planner
+# (``repairs.OWNED_BY_FAMILY``, report-only), so the
 # planner is shown them as a repair turn inside its own loop and can write
 # the session guide that closes them; what it leaves is counted here and
 # never blocks readiness.
 AUDIT_ONLY_VIOLATION_TYPES = frozenset({"measurability", "P6", "P10", "P11"})
 
-#: Element-backed list fields: since the legacy full-list sections were
-#: retired (objective_0/assessment_0/activity_0 no longer carry their element
-#: list), the audit reconstructs each list from the element pool — the single
-#: source of truth — and validates the SAME schema as before.
+#: Element-backed list fields. A section node (objective_0/assessment_0/
+#: activity_0) carries no element list, so the audit reconstructs each list
+#: from the element pool — the single source of truth — and validates the
+#: schema the deliverable declares.
 _ELEMENT_LIST_KEYS = {
     NodeType.OBJECTIVE: "learning_objectives",
     NodeType.ASSESSMENT: "assessment_tools",
@@ -37,7 +37,7 @@ _ELEMENT_LIST_KEYS = {
 
 #: Element-backed list fields held one level DOWN, inside a section field.
 #: ``instructor_guide.session_guides`` is the one: the guides are element nodes
-#: (``NodeType.SESSION_GUIDE``, 2026-09-07) and the section holds only the
+#: (``NodeType.SESSION_GUIDE``) and the section holds only the
 #: guide's framing, but the ADDIE output contract still declares them there
 #: (``validation._NESTED_FIELDS``), so the audit validates the SAME document
 #: the aggregator ships — reconstructed from the element pool, the single
@@ -62,13 +62,16 @@ _SCHEMA_VALIDATED_TYPES = tuple(REQUIRED_SECTION_KEYS)
 
 @dataclass
 class GraphAuditResult:
+    """What the residual audit found, and everything it needed to decide it.
+
+    The FIELDS are the audit's working state; ``to_dict`` is narrower. See its
+    docstring for why, and for who owns what it leaves out.
+    """
+
     node_counts: dict[str, int]
     missing_node_types: list[str]
     missing_section_keys: dict[str, list[str]]
     schema_violations: dict[str, list[str]] = field(default_factory=dict)
-    #: Always empty — no objective section node exists any more (objectives
-    #: are element nodes); kept because ``metadata.audit`` is a contract.
-    objective_node_id: str = ""
     objective_ids: list[str] = field(default_factory=list)
     objective_count: int = 0
     unmeasured_objectives: list[str] = field(default_factory=list)
@@ -80,19 +83,51 @@ class GraphAuditResult:
     relation_coverage: dict[str, dict] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
+        """``metadata.audit``: the audit's VERDICT, and what stopped it.
+
+        Not a second copy of the graph. Five of this dataclass's fields are
+        measurements OF the graph or of the run's findings, and each already
+        has an owner in the same results directory — carried here too they were
+        a second copy that can only drift:
+
+        * ``violations`` is the ``residual`` list ``audit()`` is HANDED, and
+          the same list settles the ledger in the same breath
+          (``runner._reconcile`` → ``memory.settle`` → ``violations.json``).
+          Measured on run 16cef50d: key-for-key the ledger's ``outcome ==
+          "open"`` subset, 23 of 66, in an older field vocabulary
+          (``msg``/``owner`` for ``messages``/``target_designer``) — so the
+          copy was also the lossy one, saying nothing about whether a finding
+          was repaired, converged or ran out of budget.
+        * ``relation_coverage`` is ``graph.json``'s, from the same
+          ``alignment.all_relations_coverage`` call on the same graph — and
+          ``graph.json``'s is what every renderer already reads (``viz``, the
+          webapp inspector, the phase timeline).
+        * ``node_counts`` equals ``graph.json``'s
+          ``metadata.node_counts_by_type``.
+        * ``unmeasured_objectives``/``unsupported_objectives`` are the C2 and
+          C3 legs of ``graph.json``'s ``objective_alignment`` — and were a
+          SECOND IMPLEMENTATION of that predicate (``_uncovered_objectives``
+          here, ``viz.objective_annotations`` there), which is how one comes to
+          answer differently from the other.
+
+        They stay FIELDS because the verdict is derived from them:
+        ``ready_to_aggregate`` turns on the objectives and the blocking
+        violations, ``summary`` names the relation gaps, and
+        ``trajectory.log_audit_result`` reads the coverage. What is dropped is
+        the second copy on disk, not the audit's own reasoning.
+
+        Precedent: ``metadata.violations``/``metadata.schema_violations`` went
+        the same way on 2026-08-27, for being copies of these very fields.
+        """
         return {
-            "node_counts": self.node_counts,
             "missing_node_types": self.missing_node_types,
             "missing_section_keys": self.missing_section_keys,
             "schema_violations": self.schema_violations,
-            "objective_node_id": self.objective_node_id,
+            # The subject the verdict is about: readiness turns on there being
+            # objectives at all, so the audit says which ones it judged.
             "objective_ids": self.objective_ids,
             "objective_count": self.objective_count,
-            "unmeasured_objectives": self.unmeasured_objectives,
-            "unsupported_objectives": self.unsupported_objectives,
-            "violations": self.violations,
             "ready_to_aggregate": self.ready_to_aggregate,
-            "relation_coverage": self.relation_coverage,
             "summary": self.summary,
         }
 

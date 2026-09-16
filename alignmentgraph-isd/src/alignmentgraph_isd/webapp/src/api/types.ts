@@ -147,9 +147,9 @@ export interface ContextMessage {
 /** One violation, followed from its first sighting to its outcome.
  *
  *  Kept by the run itself (`core/memory.py`) rather than reconstructed from
- *  the trajectory. Before it, a violation existed only as a counter in a check
- *  event and — for the graph arm's residual alone — as five of its eight
- *  fields in `metadata.audit`. */
+ *  the trajectory, and the sole owner of the question: `metadata.audit` used
+ *  to publish the graph arm's residual beside it, as five of these eight
+ *  fields, and no longer does. */
 export interface Finding {
   /** Built from the SUBJECT of the finding (type + node + the metadata that
    *  says which one it is), never from the evidence behind it: a bloom

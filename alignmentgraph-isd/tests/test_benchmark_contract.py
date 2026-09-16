@@ -91,11 +91,18 @@ RUN_CONFIG_KEYS = {
     # are otherwise indistinguishable in a results dir.
     "llm_max_concurrency", "llm_min_interval_seconds",
 }
+# The audit's VERDICT and what stopped it — not a second copy of the graph.
+# `node_counts`, `relation_coverage`, `unmeasured_objectives`,
+# `unsupported_objectives` and `violations` were dropped 2026-09-16: each is a
+# measurement already owned by `graph.json` or `violations.json` in the same
+# results dir, and the last two were a second IMPLEMENTATION of a predicate
+# `viz.objective_annotations` already computes. See
+# `GraphAuditResult.to_dict`; `test_the_audit_does_not_re_copy_the_graph`
+# below is the guard.
 AUDIT_KEYS = {
-    "node_counts", "missing_node_types", "missing_section_keys", "schema_violations",
-    "objective_node_id", "objective_ids", "objective_count", "unmeasured_objectives",
-    "unsupported_objectives", "violations",
-    "ready_to_aggregate", "relation_coverage", "summary",
+    "missing_node_types", "missing_section_keys", "schema_violations",
+    "objective_ids", "objective_count",
+    "ready_to_aggregate", "summary",
 }
 REPAIR_METRIC_KEYS = {
     "repair_events", "repair_success_rate", "validation_error_count",
@@ -215,6 +222,43 @@ def test_metadata_keys(result):
     assert set(metadata["run_config"]) == RUN_CONFIG_KEYS
     assert set(metadata["audit"]) == AUDIT_KEYS
     assert set(metadata["repair_metrics"]) == REPAIR_METRIC_KEYS
+
+
+def test_the_audit_does_not_re_copy_the_graph(result):
+    """`metadata.audit` is the verdict; the measurements have their own owner.
+
+    Written against the OWNERS rather than against a key list, because the
+    failure this guards is not "a key came back" — it is the copy and the
+    original answering differently, which only shows once both are on disk.
+    Each pair below was byte-for-byte equal on run 16cef50d, which is why the
+    copy went rather than the original.
+    """
+    audit, graph = result["metadata"]["audit"], result["graph"]
+    assert audit  # this is the graph arm; the prose arm's audit is empty
+
+    assert "violations" not in audit
+    # The ledger is the owner, and it is the richer one: it says what became of
+    # each finding, which a residual snapshot cannot. What made the copy safe
+    # to drop is that both were the SAME list — the `residual` that
+    # `_reconcile` returns is handed to `audit()` and to `memory.settle()` in
+    # the same breath — and this is what that identity looks like from outside:
+    # the count the audit's own metrics report is the ledger's open set.
+    still_open = [f for f in result["violations"] if f["outcome"] == "open"]
+    assert result["metadata"]["repair_metrics"]["residual_violation_count"] == len(still_open)
+
+    for absent, owner in (
+        ("relation_coverage", graph["relation_coverage"]),
+        ("node_counts", graph["metadata"]["node_counts_by_type"]),
+    ):
+        assert absent not in audit
+        assert owner, f"{absent} left the audit, so {absent}'s owner must carry it"
+
+    # The C2/C3 legs of `objective_alignment` ARE the two objective lists the
+    # audit used to publish beside them, from a second implementation.
+    assert "unmeasured_objectives" not in audit
+    assert "unsupported_objectives" not in audit
+    for flags in graph["objective_alignment"].values():
+        assert {"assessed_by", "practiced_by"} <= set(flags)
 
 
 def test_addie_output_phases(result):

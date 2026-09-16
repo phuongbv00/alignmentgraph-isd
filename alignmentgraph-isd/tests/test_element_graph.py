@@ -23,8 +23,12 @@ def test_element_nodes_created_during_run(fake_config):
 def test_coverage_clean_after_full_run(fake_config):
     result = run_brief(load_brief("minimal_brief.json"), fake_config)
     audit = result["metadata"]["audit"]
-    assert audit["unmeasured_objectives"] == []
     assert audit["objective_count"] >= 1
+    # "Every objective is measured" is the C2 leg of the graph's own
+    # per-objective annotation — the audit's `unmeasured_objectives` was a
+    # second implementation of it and went 2026-09-16.
+    legs = result["graph"]["objective_alignment"]
+    assert legs and all(flags["assessed_by"] for flags in legs.values())
 
 
 def test_section_and_element_nodes_distinguished():
