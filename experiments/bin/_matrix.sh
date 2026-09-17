@@ -194,16 +194,21 @@ matrix_counts() {
     NUM_SLOTS=$(echo "$_SLOTS_LIST" | wc -w | tr -d ' ')
     NUM_RUNS=$(echo "$_RUN_TAGS_LIST" | wc -w | tr -d ' ')
     NUM_AGENTS=$(echo "${AGENTS//,/ }" | wc -w | tr -d ' ')
-    NUM_SCENARIOS=$(ls "scenarios/${DATASET}"/*.json 2>/dev/null | wc -l | tr -d ' ')
+    # The splits live in the BENCHMARK tree -- paths.scenarios_dir() says so,
+    # and the child command below cd's there before naming --dataset. This file
+    # cd's to EXP_ROOT, so the path has to be absolute: a bare "scenarios/..."
+    # counts zero here and stops every real launch.
+    _scenario_dir="$BENCH_ROOT/scenarios/${DATASET}"
+    NUM_SCENARIOS=$(ls "$_scenario_dir"/*.json 2>/dev/null | wc -l | tr -d ' ')
     if [[ -z "$NUM_SCENARIOS" || "$NUM_SCENARIOS" == "0" ]]; then
         # Same rule as a missing BASE_URL: a dry run reports it and carries on,
         # because nothing is about to read the split.
         if [[ "${DRY_RUN:-0}" == "1" ]]; then
-            echo "NOTE: no scenarios in scenarios/${DATASET}/ yet" >&2
+            echo "NOTE: no scenarios in ${_scenario_dir}/ yet" >&2
             NUM_SCENARIOS=0
             return 0
         fi
-        echo "ERROR: no scenarios in scenarios/${DATASET}/" >&2
+        echo "ERROR: no scenarios in ${_scenario_dir}/" >&2
         exit 1
     fi
 }
