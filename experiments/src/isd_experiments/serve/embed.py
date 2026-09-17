@@ -12,6 +12,7 @@ import os
 
 from .. import paths
 from ..alignment.presets import current as arms
+from ..config import current as current_config
 from . import env_block
 
 BLOCK = "embedding endpoints"
@@ -19,6 +20,9 @@ BLOCK = "embedding endpoints"
 
 def run(*, dry_run: bool = False, quiet: bool = False) -> int:
     registry = arms()
+    # An embedding endpoint is a different pod from the ladder's, so it may hold a
+    # different token. The serving key is its default, never its replacement.
+    default_key_env = current_config().serving.key_env
     served, offline = [], []
     lines = []
     for key, arm in registry.encoders.items():
@@ -32,7 +36,8 @@ def run(*, dry_run: bool = False, quiet: bool = False) -> int:
         lines += [
             f"{slot}_EMBED_BASE_URLS={urls}",
             f"{slot}_EMBED_MODEL={arm.model}",
-            f"{slot}_EMBED_API_KEY_ENV={os.environ.get(f'{slot}_EMBED_API_KEY_ENV', 'LLM_API_KEY')}",
+            f"{slot}_EMBED_API_KEY_ENV="
+            f"{os.environ.get(f'{slot}_EMBED_API_KEY_ENV') or default_key_env}",
             "",
         ]
     lines.insert(0, f"EMBED_SLOTS={','.join(sorted(registry.encoders))}")

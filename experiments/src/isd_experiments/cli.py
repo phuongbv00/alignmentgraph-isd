@@ -110,11 +110,33 @@ def build_parser() -> argparse.ArgumentParser:
     # ── offline scoring ──────────────────────────────────────────────────
     sc = sub.add_parser("score", help="score the alignment panel (no LLM, no regeneration)")
     sc.add_argument("run_dirs", nargs="*", metavar="RUN_DIR")
-    sc.add_argument("--encoder-presets", default=""), sc.add_argument("--bloom-presets", default="")
+    # Arm selection. With no flag the primary configuration runs alone; the
+    # sweep is a star, so an arm deviating on both axes at once is an error
+    # rather than a silent cross-product.
+    sc.add_argument("--encoder-preset", default=""), sc.add_argument("--encoder-presets", default="")
+    sc.add_argument("--all-encoders", action="store_true")
+    sc.add_argument("--bloom-preset", default=""), sc.add_argument("--bloom-presets", default="")
+    sc.add_argument("--bloom-checkpoint", type=_p)
     sc.add_argument("--all-arms", action="store_true", help="the whole sensitivity star")
-    sc.add_argument("--reaggregate", action="store_true"), sc.add_argument("--overwrite", action="store_true")
+    # Where each served arm is embedded, and how. Endpoints are per arm on
+    # purpose: the cache key does not record the backend, so one shared URL
+    # would mix two numerically different sources under one key.
+    sc.add_argument("--embed-base-urls-for", action="append", default=[], metavar="SLOT=URL,URL")
+    sc.add_argument("--embed-revision-for", action="append", default=[], metavar="SLOT=REV")
     sc.add_argument("--embed-cache-only", action="store_true")
+    sc.add_argument("--embed-api-key-env", default="",
+                    help="fallback name of the token variable for a served arm "
+                         "(default: <SLOT>_EMBED_API_KEY_ENV, then [serving].key_env)")
+    sc.add_argument("--tfidf-ngram-range", default="2-3", metavar="LO-HI")
+    sc.add_argument("--local-device")
+    # What to score.
+    sc.add_argument("--agents", help="comma-separated roster override")
+    sc.add_argument("--scenario-root", type=_p)
     sc.add_argument("--limit", type=int)
+    sc.add_argument("--reaggregate", action="store_true"), sc.add_argument("--overwrite", action="store_true")
+    sc.add_argument("--require-all", action="store_true",
+                    help="fail instead of skipping an arm that cannot run")
+    sc.add_argument("--sweep-csv", type=_p)
 
     tr = sub.add_parser("trajectory", help="re-score saved trajectories").add_subparsers(
         dest="sub", required=True)
@@ -137,14 +159,28 @@ def build_parser() -> argparse.ArgumentParser:
 
     aud = sub.add_parser("audit", help="checks before, during and after a run").add_subparsers(
         dest="sub", required=True)
-    aud.add_parser("preflight", help="endpoints, auth, flags, disk")
+    pre = aud.add_parser("preflight", help="endpoints, auth, serving limits, disk")
+    pre.add_argument("--skip-smoke", action="store_true",
+                     help="check reachability only; do not spend a completion per pod")
+    pre.add_argument("--min-disk-gb", type=int, default=20,
+                     help="fail below this much free space for results (default: 20)")
     ai = aud.add_parser("inflight", help="red flags in the live logs")
     ai.add_argument("--experiment", default=None)
     ap_ = aud.add_parser("postrun", help="completeness and integrity of finished runs")
     ap_.add_argument("run_dirs", nargs="*", metavar="RUN_DIR")
     ar = aud.add_parser("repair", help="re-run the LLM judge on cells lost to a transient failure")
-    ar.add_argument("run_dirs", nargs="*", metavar="RUN_DIR")
-    ar.add_argument("--dry-run", action="store_true")
+    ar.add_argument("run_dirs", nargs="*", metavar="RUN_DIR",
+                    help="run dirs or quoted globs; default: the ladder glob")
+    ar.add_argument("--dry-run", action="store_true",
+                    help="print the scope; no LLM judge calls and no writes")
+    ar.add_argument("--yes", "-y", action="store_true",
+                    help="skip the confirmation (this stage spends LLM judge calls)")
+    ar.add_argument("--max-attempts", type=int, default=3)
+    ar.add_argument("--backup-suffix", default=None,
+                    help="one-time backup suffix inserted before the extension")
+    ar.add_argument("--skip-audit", action="store_true",
+                    help="do not run the post-run audit afterwards")
+    ar.add_argument("--verbose", "-v", action="store_true")
     aa = aud.add_parser("artifacts", help="the final gate on generated artifacts")
     aa.add_argument("--strict", action="store_true"), aa.add_argument("--no-docs", action="store_true")
 
@@ -280,10 +316,24 @@ def _dispatch(args) -> int:
 
     if command == "score":
         from .alignment import score
-        return score.run(run_dirs=args.run_dirs, encoder_presets=args.encoder_presets,
-                         bloom_presets=args.bloom_presets, all_arms=args.all_arms,
-                         reaggregate=args.reaggregate, overwrite=args.overwrite,
-                         cache_only=args.embed_cache_only, limit=args.limit)
+        # Every option the scorer's helpers read is a parameter of `run`, and a
+        # test holds the two sets equal -- a helper reaching for an attribute no
+        # caller can set fails at the first line of the first arm.
+        return score.run(
+            run_dirs=args.run_dirs,
+            encoder_preset=args.encoder_preset, encoder_presets=args.encoder_presets,
+            all_encoders=args.all_encoders,
+            bloom_preset=args.bloom_preset, bloom_presets=args.bloom_presets,
+            bloom_checkpoint=args.bloom_checkpoint, all_arms=args.all_arms,
+            embed_base_urls_for=args.embed_base_urls_for,
+            embed_revision_for=args.embed_revision_for,
+            embed_cache_only=args.embed_cache_only,
+            embed_api_key_env=args.embed_api_key_env,
+            tfidf_ngram_range=args.tfidf_ngram_range, local_device=args.local_device,
+            agents=args.agents, scenario_root=args.scenario_root, limit=args.limit,
+            reaggregate=args.reaggregate, overwrite=args.overwrite,
+            require_all=args.require_all, sweep_csv=args.sweep_csv,
+        )
 
     if command == "trajectory" and sub == "rescore":
         from . import trajectory
@@ -334,7 +384,7 @@ def _audit(args) -> int:
     # make every other audit require a dependency it has no use for.
     if args.sub == "preflight":
         from .audit import preflight
-        return preflight.run()
+        return preflight.run(skip_smoke=args.skip_smoke, min_disk_gb=args.min_disk_gb)
     if args.sub == "inflight":
         from .audit import inflight
         return inflight.run(experiment=args.experiment)
@@ -343,7 +393,12 @@ def _audit(args) -> int:
         return postrun.run(run_dirs=args.run_dirs)
     if args.sub == "repair":
         from .audit import repair
-        return repair.run(run_dirs=args.run_dirs, dry_run=args.dry_run)
+        return repair.run(
+            run_dirs=args.run_dirs, dry_run=args.dry_run, yes=args.yes,
+            max_attempts=args.max_attempts, skip_audit=args.skip_audit,
+            verbose=args.verbose,
+            **({"backup_suffix": args.backup_suffix} if args.backup_suffix else {}),
+        )
     from .audit import artifacts
     return artifacts.run(strict=args.strict, check_docs=not args.no_docs)
 

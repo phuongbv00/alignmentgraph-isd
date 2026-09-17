@@ -38,16 +38,16 @@ The managed block, with a Nemotron pod (two endpoints) and a bge-m3 pod up:
   EMBED_SLOTS=nemotron,bgem3,tfidf
   NEMOTRON_EMBED_BASE_URLS=https://<pod_a>-8000.proxy.runpod.net/v1,https://<pod_b>-8000.proxy.runpod.net/v1
   NEMOTRON_EMBED_MODEL=nvidia/llama-embed-nemotron-8b
-  NEMOTRON_EMBED_API_KEY_ENV=VLLM_API_KEY
+  NEMOTRON_EMBED_API_KEY_ENV=<the variable [serving].key_env names>
   BGEM3_EMBED_BASE_URLS=https://<pod_c>-8000.proxy.runpod.net/v1
   BGEM3_EMBED_MODEL=BAAI/bge-m3
-  BGEM3_EMBED_API_KEY_ENV=VLLM_API_KEY
+  BGEM3_EMBED_API_KEY_ENV=<the variable [serving].key_env names>
 
 Endpoints are per slot only — there is no shared EMBED_BASE_URLS alias, because
 one URL cannot be the right endpoint for several encoder arms.
 <SLOT>_EMBED_API_KEY_ENV holds the NAME of the env var carrying the Bearer token
 (indirection, same pattern as the ladder's AGENT_MODEL_API_KEY_ENVS).
-VLLM_API_KEY itself must already be set in .env -- it is the token the
+That variable must already hold a value in .env -- it is the token the
 template's vLLM server was started with (the same RunPod secret as the ladder),
 not the RunPod API key.
 """
@@ -64,6 +64,7 @@ from datetime import datetime
 from pathlib import Path
 from ... import paths
 from ...alignment.presets import current as arms
+from ...config import current as current_config
 
 
 def _encoder_slot(key: str) -> str:
@@ -155,10 +156,12 @@ def _pod_model_hint(pod: dict) -> str:
 
 
 def _served_model(base_url: str) -> str | None:
-    """Ask the pod's vLLM server which model it actually serves (needs
-    VLLM_API_KEY). Authoritative over anything parsed from the pod record.
-    Returns None if unreachable (pod booting, key unset, ...)."""
-    vllm_key = os.environ.get("VLLM_API_KEY")
+    """Ask the pod's server which model it actually serves.
+
+    Authoritative over anything parsed from the pod record. The bearer token
+    comes from the variable `[serving].key_env` declares. Returns None if
+    unreachable (pod booting, key unset, ...)."""
+    vllm_key = os.environ.get(current_config().serving.key_env)
     if not vllm_key:
         return None
     req = urllib.request.Request(
@@ -234,12 +237,12 @@ def run(*, dry_run: bool = False, ENCODER_PRESETS=None, ENV_PATH=None, OFFLINE_K
             # this script once it answers /v1/models.
             if not allow_unverified:
                 print(f"WARNING: could not confirm pod {pod_id} via {base_url}/models "
-                      f"(booting? VLLM_API_KEY unset?) -- EXCLUDING it from .env "
+                      f"(booting? the serving key unset?) -- EXCLUDING it from .env "
                       "(re-run when it is up, or pass --allow-unverified)",
                       file=sys.stderr)
                 continue
             print(f"WARNING: could not confirm pod {pod_id} via {base_url}/models "
-                  f"(booting? VLLM_API_KEY unset?) -- including {model_name!r} "
+                  f"(booting? the serving key unset?) -- including {model_name!r} "
                   "unverified because --allow-unverified was passed", file=sys.stderr)
         if only_model and only_model.lower() not in (model_name or "").lower():
             print(f"  (skipping pod {pod_id}: serves {model_name!r}, "
@@ -257,7 +260,7 @@ def run(*, dry_run: bool = False, ENCODER_PRESETS=None, ENV_PATH=None, OFFLINE_K
     if not endpoints:
         print("\nERROR: no RUNNING, model-verified embed pod to sync. If a pod is "
               "up but its /v1/models did not answer, wait for it to finish loading "
-              "(or check VLLM_API_KEY) and re-run; --allow-unverified overrides at "
+              "(or check the serving key) and re-run; --allow-unverified overrides at "
               "the cost of the served-model guarantee.", file=sys.stderr)
         sys.exit(1)
 
@@ -302,7 +305,7 @@ def run(*, dry_run: bool = False, ENCODER_PRESETS=None, ENV_PATH=None, OFFLINE_K
             f"# {slot.lower()}: {pod_desc}",
             f"{slot}_EMBED_BASE_URLS=" + ",".join(e["base_url"] for e in pods_here),
             f"{slot}_EMBED_MODEL={model}",
-            f"{slot}_EMBED_API_KEY_ENV=VLLM_API_KEY",
+            f"{slot}_EMBED_API_KEY_ENV={current_config().serving.key_env}",
             # The served model id does not pin weights, and the revision is not
             # discoverable from /v1/models — it is hand-set once and then
             # preserved here across re-syncs.

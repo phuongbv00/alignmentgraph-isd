@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import textwrap
 
 import pytest
 
@@ -103,6 +104,101 @@ class TestShellIsValid:
         assert subprocess.run(["bash", "-n", str(path)]).returncode == 0
 
 
+@pytest.fixture(scope="module")
+def plan():
+    """The launch plan for the shipped declaration, command included."""
+    return _dry_run()
+
+
+def _dry_run(config_path=None):
+    """The launch plan, including the command the child would actually run."""
+    import os
+
+    env = dict(os.environ)
+    if config_path is not None:
+        env["ISD_EXPERIMENT_CONFIG"] = str(config_path)
+    out = subprocess.run(
+        [str(paths.exp_root() / ".venv" / "bin" / "python"),
+         "-m", "isd_experiments.cli", "comparison", "run", "--dry-run"],
+        capture_output=True, text=True, env=env, cwd=str(paths.exp_root()))
+    assert out.returncode == 0, out.stderr
+    return out.stdout
+
+
+class TestTheChildCommandCarriesTheDeclaration:
+    """A summary of the flags is not the flags.
+
+    Assembling the child command in its own function is what lets a dry run
+    print the thing that would really be executed -- and what makes the three
+    channels checkable without spending a benchmark run: an argument the parent
+    quotes, a flag list that beats the environment, and an assignment prefix
+    that sits after the child re-reads .env.
+    """
+
+    def test_the_api_spec_is_passed_and_the_vendor_label_is_gone(self, plan):
+        """`api_spec` is what the benchmark dispatches the client on. The label
+        that used to travel in its place carried the endpoint-discovery
+        provider, which is a different question with different values."""
+        assert "--agent-model-api-spec 'openai_compatible'" in plan
+        assert "--agent-model-provider" not in plan
+
+    def test_the_serving_limits_prefix_the_interpreter(self, plan):
+        """After the child sources .env and ahead of the benchmark's own dotenv
+        load, so neither can take them back."""
+        command = plan.split("command (first slot):", 1)[1]
+        for name in ("AGENT_MODEL_CONTEXT_WINDOW", "AGENT_MODEL_MAX_OUTPUT_TOKENS",
+                     "AGENT_MODEL_STREAMING"):
+            assert f"{name}='" in command
+        # Nothing between the last assignment and the interpreter: an exported
+        # variable would sit before the child re-reads .env, which is the whole
+        # difference between this and an export.
+        after = command.split("AGENT_MODEL_STREAMING='", 1)[1]
+        assert after.split("'", 1)[1].strip().startswith("'"), after[:80]
+        assert "run_benchmark.py" in after.split(";", 1)[0]
+
+    def test_every_parent_expanded_value_is_quoted(self, plan):
+        """An unquoted empty expansion disappears and shifts the next flag's
+        value onto this one -- the failure matrix_resolve_slots fails fast on."""
+        command = plan.split("command (first slot):", 1)[1]
+        for flag in ("--dataset", "--agents", "--rate-limit", "--agent-model-api-spec",
+                     "--agent-model-base-url", "--agent-model-name",
+                     "--agent-model-api-key-envs"):
+            after = command.split(f"{flag} ", 1)[1]
+            assert after.startswith("'"), f"{flag} is not quoted"
+
+    def test_an_undeclared_judge_contributes_no_flag(self, tmp_path):
+        """Undeclared has to leave the command unshifted, not empty-argumented:
+        the benchmark and the evaluator must still answer for the roster the way
+        they do with no experiment.toml at all."""
+        cfg = tmp_path / "experiment.toml"
+        cfg.write_text((paths.exp_root() / "tests" / "fixtures" / "two_rung.toml")
+                       .read_text(encoding="utf-8"), encoding="utf-8")
+        command = _dry_run(cfg).split("command (first slot):", 1)[1]
+        assert "--judge-model" not in command
+        assert "AGENT_MODEL_MAX_OUTPUT_TOKENS='" not in command
+
+    def test_a_declared_judge_reaches_the_command(self, tmp_path):
+        cfg = tmp_path / "experiment.toml"
+        cfg.write_text(
+            (paths.exp_root() / "tests" / "fixtures" / "two_rung.toml")
+            .read_text(encoding="utf-8")
+            + textwrap.dedent("""
+                [judge]
+                provider = "somehost"
+                key_env = "SOMEHOST_API_KEY"
+
+                [[judge.models]]
+                name = "vendor/model-a"
+                """),
+            encoding="utf-8")
+        command = _dry_run(cfg).split("command (first slot):", 1)[1]
+        assert "--judge-model-names 'vendor/model-a'" in command
+        assert "--judge-model-api-key-env 'SOMEHOST_API_KEY'" in command
+        # A key VALUE has no spelling in the declaration and none on the command.
+        assert "--judge-model-api-key '" not in command
+        assert "--judge-model-api-keys" not in command
+
+
 class TestNoDeclaredFieldIsInert:
     """A field the TOML declares must reach the launcher, or it is decoration.
 
@@ -162,3 +258,60 @@ class TestNoDeclaredFieldIsInert:
             f"PYTHON_ONLY names fields that no longer exist: "
             f"{sorted(set(self.PYTHON_ONLY) - declared)}"
         )
+
+    #: Serving fields consumed in Python, never handed to the shell.
+    SERVING_PYTHON_ONLY = {
+        "provider": "names the endpoint-discovery module (serve/providers/resolve); "
+                    "it never reaches an agent",
+        "key_env": "emitted as `<SLOT>_AGENT_MODEL_API_KEY_ENVS`, the plural name "
+                   "the agents read",
+        "options": "the un-popped remainder of [serving] -- a bag for a provider, "
+                   "not a field",
+    }
+
+    def test_every_serving_field_is_read_by_someone(self, envs):
+        """The defect this guards: `api_spec` was declared, parsed, and emitted
+        by nobody, while the value actually shipped under
+        `<SLOT>_AGENT_MODEL_PROVIDER` came from a different question entirely
+        (which host discovers the endpoints). One field was documentation and
+        the other was wrong, and the Profile-only walk saw neither."""
+        import dataclasses
+
+        from isd_experiments.config import Serving
+
+        emitted = set(profile_env(current().profile("tune")))
+        for field in dataclasses.fields(Serving):
+            name = field.name
+            if name in self.SERVING_PYTHON_ONLY:
+                continue
+            upper = name.upper()
+            assert any(key == upper or key.endswith(f"_AGENT_MODEL_{upper}")
+                       for key in emitted), (
+                f"Serving.{name!r} is declared in experiment.toml but never reaches "
+                f"the launcher. Either wire it through profile_env and the child "
+                f"command, or delete it. If it is read only in Python, say where in "
+                f"SERVING_PYTHON_ONLY."
+            )
+
+    def test_the_serving_python_only_list_has_no_stale_entries(self):
+        import dataclasses
+
+        from isd_experiments.config import Serving
+
+        declared = {f.name for f in dataclasses.fields(Serving)}
+        assert set(self.SERVING_PYTHON_ONLY) <= declared
+
+    def test_every_emitted_agent_model_name_appears_in_the_launcher(self, envs):
+        """Exporting into a void is the same defect from the other side: a value
+        `profile_env` publishes that no line of the launcher reads changes
+        nothing about the run it claims to describe."""
+        script = (paths.exp_root() / "bin" / "_matrix.sh").read_text(encoding="utf-8")
+        script += (paths.exp_root() / "bin" / "launch.sh").read_text(encoding="utf-8")
+        suffixes = {key.split("_AGENT_MODEL_", 1)[1]
+                    for key in profile_env(current().profile("comparison"))
+                    if "_AGENT_MODEL_" in key}
+        for suffix in sorted(suffixes):
+            assert f"_AGENT_MODEL_{suffix}" in script, (
+                f"profile_env publishes <SLOT>_AGENT_MODEL_{suffix}, which the "
+                f"launcher never reads."
+            )

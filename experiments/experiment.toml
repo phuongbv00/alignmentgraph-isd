@@ -16,6 +16,23 @@ api_spec = "openai_compatible"
 # Name of the env var holding the key every rung authenticates with.
 key_env = "LLM_API_KEY"
 
+# --- serving limits: uniform across every agent and every rung ---------------
+# Applying them uniformly is the fairness argument the comparison rests on, so
+# they sit here and never on a rung: a per-rung window would make the ladder a
+# comparison of budgets rather than of model scale. The launcher hands them to
+# the benchmark as a command prefix, so a stale .env line cannot take them back,
+# and `audit preflight` fails if .env sets any of them at all.
+#
+# The window the endpoints were launched with, in tokens.
+context_window = 16384
+# Ceiling on every agent's per-call output budget. The benchmark's model factory
+# applies it centrally as min(the agent's own budget, this), and the proposed
+# system reserves exactly this much for the answer when it sizes its transcript.
+max_output_tokens = 8192
+# Client-side streaming with stream_usage. Required behind a proxy that closes a
+# long non-streaming read before the largest rung finishes a turn.
+streaming = true
+
 [serving.runpod]
 # Only read when provider = "runpod". The URL shape is data, not code, so a
 # different proxy scheme is a config edit.
@@ -76,6 +93,30 @@ gpu = "RTX PRO 4500 Blackwell"
 vram_gb = 32
 usd_per_hour = 0.74
 
+# --- The LLM judge ----------------------------------------------------------
+# The roster decides what every reported LLM judge score means, so it is
+# declared here, where `isd-exp freeze write` fingerprints it, rather than left
+# to a .env a tuning session can leave behind. The launcher passes it to the
+# benchmark as --judge-model-* flags, and `isd-exp audit repair` names the same
+# roster, so a re-judged row is scored by the judges that scored the run.
+#
+# Only the NAME of a key variable appears here. A key value is not expressible
+# in this file -- the parser refuses one.
+[judge]
+provider = "openrouter"
+base_url = "https://openrouter.ai/api/v1"
+key_env = "OPENROUTER_API_KEY"
+
+# One table per judge, in the order the evaluator reports them. The roadmap
+# scores each cell with ONE judge; a second is the corroboration subset, and
+# adding it back changes what every reported LLM judge score is a score FROM,
+# so it is a decision rather than a knob.
+[[judge.models]]
+name = "openai/gpt-4o-mini"
+
+# [[judge.models]]
+# name = "google/gemini-2.5-flash-lite"
+
 # --- The two official experiments -------------------------------------------
 
 [experiment.comparison]
@@ -135,7 +176,7 @@ context_mode = "prose"
 title = "TUNE - cost and budget calibration"
 dataset = "train_10"
 rungs = "all"
-tags = ["tune1"]
+tags = ["t1"]
 rate_limit = "moderate"
 session_prefix = "tune"
 confirm = false

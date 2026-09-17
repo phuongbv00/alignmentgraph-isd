@@ -31,7 +31,6 @@ class Endpoint:
     model: str                      # what the server reports serving
     base_urls: list[str] = field(default_factory=list)
     key_env: str = ""               # env var holding the bearer token
-    provider: str = "static"        # label only; the API contract is api_spec
 
     @property
     def usable(self) -> bool:

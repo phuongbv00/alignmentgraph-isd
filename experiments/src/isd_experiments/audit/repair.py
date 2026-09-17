@@ -10,6 +10,10 @@ It also keeps the run-level ``benchmark_summary.json`` / ``SUMMARY.md`` in
 sync, creates one-time ``.pre-llm-judge-repair`` backups, and runs the post-run
 audit when finished.
 
+The LLM judge roster comes from the experiment declaration, so a repaired row
+is scored by the same judges as the run it is merged back into -- a different
+roster is what ``validate_repaired_entry`` rejects.
+
 Usage:
   # Inspect the repair scope; no LLM judge calls and no writes.
   ./isd-exp audit repair --dry-run
@@ -26,7 +30,6 @@ agent output and trajectory files are read but never regenerated.
 """
 from __future__ import annotations
 
-import argparse
 import copy
 import glob
 import json
@@ -39,6 +42,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from .. import bench, paths
+from ..config import current as current_config
+from ..judge import judge_env
 from typing import Any
 
 
@@ -276,7 +281,14 @@ def evaluate_target(
 
         for attempt in range(1, max_attempts + 1):
             print(f"    LLM judge attempt {attempt}/{max_attempts}", flush=True)
-            completed = subprocess.run(command, cwd=paths.bench_root(), check=False)
+            # The declared roster, or nothing when none is declared. A re-judge
+            # scored by a different roster than the original run is rejected by
+            # validate_repaired_entry, so it has to be named here rather than
+            # left to whatever the ambient environment happens to carry.
+            completed = subprocess.run(
+                command, cwd=paths.bench_root(), check=False,
+                env=bench.bench_env(judge_env(current_config().judge)),
+            )
             temp_report_path = temp_dir / "comparison_report.json"
             if completed.returncode != 0:
                 last_errors = [
@@ -392,61 +404,71 @@ def print_scope(targets: list[RepairTarget]) -> None:
         )
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument(
-        "run_dirs",
-        nargs="*",
-        help=(
-            "Run dirs or quoted globs. Default: "
-            f"{DEFAULT_RUN_GLOB!r}."
-        ),
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="List affected entries without LLM judge calls or file writes.",
-    )
-    parser.add_argument(
-        "--yes",
-        "-y",
-        action="store_true",
-        help="Skip the confirmation prompt (for non-interactive use).",
-    )
-    parser.add_argument(
-        "--max-attempts",
-        type=int,
-        default=3,
-        help="Maximum clean-evaluation attempts per affected entry (default: 3).",
-    )
-    parser.add_argument(
-        "--evaluator-bin",
-        type=Path,
-        default=Path(sys.executable).with_name("isd-evaluator"),
-        help="isd-evaluator executable (default: next to the current Python).",
-    )
-    parser.add_argument(
-        "--backup-suffix",
-        default=DEFAULT_BACKUP_SUFFIX,
-        help=(
-            "One-time backup suffix inserted before the extension "
-            f"(default: {DEFAULT_BACKUP_SUFFIX!r})."
-        ),
-    )
-    parser.add_argument(
-        "--skip-audit",
-        action="store_true",
-        help="Do not run the post-run audit after repair.",
-    )
-    parser.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        help="Pass --verbose to isd-evaluator compare.",
-    )
-    args = parser.parse_args()
-    if args.max_attempts < 1:
-        parser.error("--max-attempts must be >= 1")
-    if not args.backup_suffix:
-        parser.error("--backup-suffix must not be empty")
-    return args
+def run(*, run_dirs: list[str] | None = None, dry_run: bool = False,
+        yes: bool = False, max_attempts: int = 3,
+        backup_suffix: str = DEFAULT_BACKUP_SUFFIX,
+        skip_audit: bool = False, verbose: bool = False) -> int:
+    """Re-judge the cells a transient LLM judge failure cost, and nothing else.
+
+    The order is fixed by what is recoverable. Scope is printed before anything
+    is judged, because a repair that turns out to be larger than expected is a
+    signal about the run rather than work to get on with. Each entry is then
+    evaluated in isolation, merged, and written -- the evaluator rewrites a
+    whole report with only the agent it was given, so the merge is the step that
+    keeps the other agents' rows. A failure stops that entry and leaves the run
+    as it was; the ones already repaired stay repaired, and re-running skips
+    them because they no longer carry an error.
+    """
+    from isd_evaluator.reporters import ComparisonReporter
+
+    if max_attempts < 1:
+        raise SystemExit("max-attempts must be >= 1")
+    if not backup_suffix:
+        raise SystemExit("backup-suffix must not be empty")
+
+    resolved = resolve_run_dirs(list(run_dirs or []))
+    targets = discover_targets(resolved)
+    print_scope(targets)
+    if not targets:
+        print("Nothing to repair.")
+        return 0
+    if dry_run:
+        print("\n--dry-run: no LLM judge calls, nothing written.")
+        return 0
+
+    # Every entry costs real LLM judge calls, so the scope above is shown first
+    # and this asks against it.
+    if not yes and sys.stdin.isatty():
+        if input(f"Re-judge {len(targets)} entr(y/ies)? [y/N] ").strip().lower() != "y":
+            print("Aborted. Nothing written.")
+            return 1
+
+    reporter = ComparisonReporter()
+    binary = bench.evaluator_bin()
+    repaired = 0
+    failures: list[str] = []
+    for index, target in enumerate(targets, 1):
+        label = (f"{target.run_dir.name}/{target.variant}/"
+                 f"{target.scenario_id}: {target.agent_id}")
+        print(f"\n[{index}/{len(targets)}] {label}", flush=True)
+        report = read_json(target.report_path)
+        try:
+            entry = evaluate_target(target, report, binary, max_attempts, verbose)
+            merged = merge_repaired_entry(report, entry)
+            validate_repaired_entry(report, merged, target)
+            sync_reports(target, merged, backup_suffix, reporter)
+        except Exception as exc:                      # noqa: BLE001 - reported, not swallowed
+            print(f"    FAILED: {exc}", flush=True)
+            failures.append(f"{label}: {exc}")
+            continue
+        repaired += 1
+        print("    repaired", flush=True)
+
+    print(f"\nRepaired {repaired}/{len(targets)} entr(y/ies).")
+    for failure in failures:
+        print(f"  ! {failure}")
+
+    # The audit reads what was just written, so a partial repair is still worth
+    # auditing -- its findings are how the remaining damage is counted.
+    audit_status = 0 if skip_audit else run_postrun_audit(resolved)
+    return 1 if failures else audit_status

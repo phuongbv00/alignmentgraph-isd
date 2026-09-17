@@ -63,6 +63,28 @@ def config_fingerprint() -> dict:
         "sha256": hashlib.sha256(raw).hexdigest() if raw else None,
         "ladder": [{"slot": r.slot, "model": r.model, "params_b": r.params_b}
                    for r in cfg.ladder],
+        # Spelled out beside the hash, which already covers them byte-wise: the
+        # limits and the judge roster decide what every reported number means,
+        # and a reader should not have to re-read a config that has moved on to
+        # find out which ones a frozen run was answered under.
+        "serving_limits": {
+            "context_window": cfg.serving.context_window,
+            "max_output_tokens": cfg.serving.max_output_tokens,
+            "streaming": cfg.serving.streaming,
+        },
+        # Recorded as DECLARED, never as resolved: a blank per-judge provider
+        # means the reader derives that judge's label from its own model slug,
+        # and writing the profile in here would record a label no report will
+        # carry. Names of key variables only; the declaration holds no value.
+        "judge": {
+            "declared": cfg.judge.declared,
+            "provider": cfg.judge.provider,
+            "base_url": cfg.judge.base_url,
+            "key_env": cfg.judge.key_env,
+            "models": [{"name": m.name, "provider": m.provider,
+                        "base_url": m.base_url, "key_envs": list(m.key_envs)}
+                       for m in cfg.judge.models],
+        },
     }
 
 

@@ -162,10 +162,57 @@ class Profile:
 
 @dataclass(frozen=True)
 class Serving:
+    """How the ladder is served, and the limits every rung is served under.
+
+    The three limits are declared once for the whole ladder rather than per
+    rung: applying them uniformly to every agent and every size is the fairness
+    argument the comparison rests on, and a per-rung window would turn the
+    ladder into a comparison of budgets instead of a comparison of model scale.
+    """
+
     provider: str
     api_spec: str
     key_env: str
+    #: The window the endpoints were launched with, in tokens.
+    context_window: int | None = None
+    #: Ceiling on every agent's per-call output budget, applied centrally by the
+    #: benchmark's model factory as min(the agent's own, this).
+    max_output_tokens: int | None = None
+    #: Client-side streaming with stream_usage, for a proxy that closes a long
+    #: non-streaming read before the largest rung finishes a turn.
+    streaming: bool | None = None
     options: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class JudgeModel:
+    """One LLM judge. Empty fields fall back to the `[judge]` defaults."""
+
+    name: str
+    provider: str = ""
+    base_url: str = ""
+    key_envs: tuple[str, ...] = ()
+    credential_strategy: str = ""
+
+
+@dataclass(frozen=True)
+class Judge:
+    """The LLM judge roster.
+
+    Declared here rather than left to the environment because the roster
+    decides what every reported LLM judge score means, so it belongs in the file
+    the freeze manifest fingerprints. Only the NAME of a key variable appears;
+    a key value is not expressible in the declaration.
+    """
+
+    provider: str = ""
+    base_url: str = ""
+    key_env: str = ""
+    models: tuple[JudgeModel, ...] = ()
+
+    @property
+    def declared(self) -> bool:
+        return bool(self.models)
 
 
 @dataclass(frozen=True)
@@ -174,6 +221,7 @@ class Experiment:
 
     ladder: tuple[Rung, ...]
     serving: Serving
+    judge: Judge
     profiles: dict[str, Profile]
     source: Path
     #: Display prefix for the ladder. Presentation only -- never used to look
@@ -243,6 +291,121 @@ def _rung(raw: dict) -> Rung:
     )
 
 
+def _serving(raw: dict, src: Path) -> Serving:
+    """Pop the declared keys; whatever is left is the provider's own table."""
+    rest = dict(raw)
+    provider = rest.pop("provider", "static")
+    api_spec = rest.pop("api_spec", "openai_compatible")
+    key_env = rest.pop("key_env", "LLM_API_KEY")
+
+    def _positive_int(key: str) -> int | None:
+        value = rest.pop(key, None)
+        if value is None:
+            return None
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            raise SystemExit(f"{src}: [serving].{key} must be a positive integer, got {value!r}.")
+        return value
+
+    context_window = _positive_int("context_window")
+    max_output_tokens = _positive_int("max_output_tokens")
+    streaming = rest.pop("streaming", None)
+    if streaming is not None and not isinstance(streaming, bool):
+        raise SystemExit(f"{src}: [serving].streaming must be true or false, got {streaming!r}.")
+    if (context_window is not None and max_output_tokens is not None
+            and max_output_tokens >= context_window):
+        raise SystemExit(
+            f"{src}: [serving].max_output_tokens ({max_output_tokens}) leaves no room for a "
+            f"prompt inside context_window ({context_window})."
+        )
+
+    return Serving(provider=provider, api_spec=api_spec, key_env=key_env,
+                   context_window=context_window, max_output_tokens=max_output_tokens,
+                   streaming=streaming, options=rest)
+
+
+#: Key-shaped names refused in [judge]. The declaration carries the NAME of an
+#: environment variable; a value belongs in .env, which is not committed.
+_JUDGE_SECRET_KEYS = ("api_key", "api_keys", "key", "keys")
+
+#: A value that is joined on `,` or `|` and then quoted into the launcher's
+#: command string. Rejecting the separators here means a malformed declaration
+#: is named by its file rather than surfacing later as a misaligned roster.
+_JUDGE_FORBIDDEN_CHARS = (",", "|", "'", '"', " ", "\t")
+
+
+def _judge_scalar(raw: dict, key: str, where: str, src: Path) -> str:
+    value = raw.get(key, "")
+    if not value:
+        return ""
+    if not isinstance(value, str):
+        raise SystemExit(f"{src}: {where}.{key} must be a string, got {value!r}.")
+    bad = [c for c in _JUDGE_FORBIDDEN_CHARS if c in value]
+    if bad:
+        raise SystemExit(
+            f"{src}: {where}.{key} may not contain {bad[0]!r} -- the launcher joins these "
+            f"values on ',' and '|' and quotes them into one command."
+        )
+    return value
+
+
+def _judge(raw: dict, src: Path) -> Judge:
+    if not raw:
+        return Judge()
+
+    def _refuse_secrets(table: dict, where: str) -> None:
+        present = [k for k in _JUDGE_SECRET_KEYS if k in table]
+        if present:
+            raise SystemExit(
+                f"{src}: {where}.{present[0]} names a key VALUE. Declare the NAME of the "
+                f"environment variable holding it (`key_env` / `key_envs`) and put the value "
+                f"in .env."
+            )
+
+    _refuse_secrets(raw, "[judge]")
+    models_raw = raw.get("models", [])
+    if not models_raw:
+        raise SystemExit(
+            f"{src}: [judge] declares no [[judge.models]]. Name at least one judge, or drop "
+            f"the section and let the environment answer for the roster."
+        )
+
+    models = []
+    for idx, entry in enumerate(models_raw, 1):
+        where = f"[[judge.models]] #{idx}"
+        _refuse_secrets(entry, where)
+        name = _judge_scalar(entry, "name", where, src)
+        if not name:
+            raise SystemExit(f"{src}: {where} has no `name`.")
+        key_envs = tuple(entry.get("key_envs", ()))
+        for env_name in key_envs:
+            if not isinstance(env_name, str) or not env_name.replace("_", "a").isalnum() \
+                    or env_name[0].isdigit():
+                raise SystemExit(
+                    f"{src}: {where}.key_envs entry {env_name!r} is not an environment "
+                    f"variable name."
+                )
+        strategy = _judge_scalar(entry, "credential_strategy", where, src)
+        if strategy and strategy not in {"first", "round_robin"}:
+            raise SystemExit(
+                f"{src}: {where}.credential_strategy must be 'first' or 'round_robin', "
+                f"got {strategy!r}."
+            )
+        models.append(JudgeModel(
+            name=name,
+            provider=_judge_scalar(entry, "provider", where, src),
+            base_url=_judge_scalar(entry, "base_url", where, src),
+            key_envs=key_envs,
+            credential_strategy=strategy,
+        ))
+
+    return Judge(
+        provider=_judge_scalar(raw, "provider", "[judge]", src),
+        base_url=_judge_scalar(raw, "base_url", "[judge]", src),
+        key_env=_judge_scalar(raw, "key_env", "[judge]", src),
+        models=tuple(models),
+    )
+
+
 def _profile(name: str, raw: dict, ladder: tuple[Rung, ...]) -> Profile:
     wanted = raw.get("rungs", "all")
     if wanted == "all":
@@ -299,12 +462,8 @@ def load(path: Path | None = None) -> Experiment:
     if len(set(slots)) != len(slots):
         raise SystemExit(f"{src}: duplicate ladder slot(s) in {slots}.")
 
-    serving_raw = dict(raw.get("serving", {}))
-    provider = serving_raw.pop("provider", "static")
-    api_spec = serving_raw.pop("api_spec", "openai_compatible")
-    key_env = serving_raw.pop("key_env", "LLM_API_KEY")
-    serving = Serving(provider=provider, api_spec=api_spec, key_env=key_env,
-                      options=serving_raw)
+    serving = _serving(raw.get("serving", {}), src)
+    judge = _judge(raw.get("judge", {}), src)
 
     profiles = {
         name: _profile(name, body, rungs)
@@ -313,7 +472,7 @@ def load(path: Path | None = None) -> Experiment:
     if not profiles:
         raise SystemExit(f"{src} declares no [experiment.*] profiles.")
 
-    return Experiment(ladder=rungs, serving=serving, profiles=profiles, source=src,
+    return Experiment(ladder=rungs, serving=serving, judge=judge, profiles=profiles, source=src,
                       family=str(raw.get("models", {}).get("family", "")),
                       alignment_raw=raw.get("alignment", {}))
 

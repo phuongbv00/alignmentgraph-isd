@@ -117,6 +117,13 @@ matrix_resolve_slots() {
         fi
     done
     if [[ -n "$_missing_base_url" ]]; then
+        # A dry run assembles the command and prints it; there is no invocation
+        # for an empty expansion to corrupt, and the plan is worth seeing before
+        # the endpoints are up. Every other path stops here.
+        if [[ "${DRY_RUN:-0}" == "1" ]]; then
+            echo "NOTE: no serving BASE_URL yet for slot(s):${_missing_base_url}" >&2
+            return 0
+        fi
         echo "ERROR: no serving BASE_URL set for slot(s):${_missing_base_url}" >&2
         echo "Bring the endpoints up (see docs/guides/benchmark_guides.md), then write them into .env." >&2
         echo "With provider=\"static\" a base_url in experiment.toml is enough. Or sync them:" >&2
@@ -132,8 +139,11 @@ matrix_resolve_slots() {
 # array into a hard "unbound variable" crash (see git history for details).
 _exported_keys_list=""
 register_key_envs() {
+    # The evaluator separates the credentials of ONE judge with `|` inside a
+    # `,`-separated list of judges. Both are just separators here: every name in
+    # the value has to reach the child, whichever judge it belongs to.
     local IFS=','
-    for env_name in $1; do
+    for env_name in ${1//|/,}; do
         env_name="${env_name// /}"
         case " $_exported_keys_list " in
             *" $env_name "*) ;;
@@ -154,16 +164,102 @@ matrix_export_keys() {
         register_key_envs "${!key_envs_var:-}"
     done
     register_key_envs "${JUDGE_MODEL_API_KEY_ENV:-}"
+    register_key_envs "${JUDGE_MODEL_API_KEY_ENVS:-}"
+    # The declared roster, which does not travel under the name the evaluator
+    # reads (see matrix_judge_flags).
+    register_key_envs "${_JUDGE_MODEL_API_KEY_ENV:-}"
+    register_key_envs "${_JUDGE_MODEL_API_KEY_ENVS:-}"
 }
 
-matrix_confirm() {
+
+# Export the slot env vars so both the manifest's python and the tmux child
+# shells see them: a rung's model and api_spec may come from experiment.toml
+# alone, in which case they are plain shell variables in THIS process and
+# nothing below inherits them.
+matrix_export_slots() {
+    for slot in $_SLOTS_LIST; do
+        upper=$(slot_upper "$slot")
+        for suffix in API_SPEC BASE_URL NAME API_KEY_ENVS; do
+            export "${upper}_AGENT_MODEL_${suffix}"
+        done
+        export "${upper}_RATE_LIMIT"
+    done
+}
+
+
+# What the run costs, in the units the banner and the manifest both count in.
+# Computed unconditionally: a profile that skips the cost prompt still launches
+# through matrix_launch, which prints these.
+matrix_counts() {
     NUM_SLOTS=$(echo "$_SLOTS_LIST" | wc -w | tr -d ' ')
     NUM_RUNS=$(echo "$_RUN_TAGS_LIST" | wc -w | tr -d ' ')
     NUM_AGENTS=$(echo "${AGENTS//,/ }" | wc -w | tr -d ' ')
     NUM_SCENARIOS=$(ls "scenarios/${DATASET}"/*.json 2>/dev/null | wc -l | tr -d ' ')
-    [[ -z "$NUM_SCENARIOS" || "$NUM_SCENARIOS" == "0" ]] && {
-        echo "ERROR: no scenarios in scenarios/${DATASET}/" >&2; exit 1; }
+    if [[ -z "$NUM_SCENARIOS" || "$NUM_SCENARIOS" == "0" ]]; then
+        # Same rule as a missing BASE_URL: a dry run reports it and carries on,
+        # because nothing is about to read the split.
+        if [[ "${DRY_RUN:-0}" == "1" ]]; then
+            echo "NOTE: no scenarios in scenarios/${DATASET}/ yet" >&2
+            NUM_SCENARIOS=0
+            return 0
+        fi
+        echo "ERROR: no scenarios in scenarios/${DATASET}/" >&2
+        exit 1
+    fi
+}
 
+
+# The judge roster, as flags on the benchmark's own command line.
+#
+# Flags rather than exports: this file sources .env once in the parent and the
+# tmux child sources it again, so anything published under the name the
+# evaluator reads can be taken back by a stale line in that file. The benchmark
+# layers the flags it was given OVER the environment it hands the evaluator, so
+# a flag is the one channel .env cannot override.
+#
+# Assembled into ONE variable that is either empty or a complete, internally
+# quoted fragment. A bare `--judge-model-names ${maybe_empty}` would vanish from
+# the unquoted command string and shift the NEXT flag's value onto this one --
+# the failure matrix_resolve_slots already fails fast on for BASE_URL.
+_judge_flag() {
+    [[ -n "$2" ]] && JUDGE_FLAGS="$JUDGE_FLAGS $1 '$2'"
+    return 0
+}
+
+matrix_judge_flags() {
+    JUDGE_FLAGS=""
+    [[ -n "${_JUDGE_MODEL_NAMES:-}" ]] || return 0
+    _judge_flag --judge-model-provider              "${_JUDGE_MODEL_PROVIDER:-}"
+    _judge_flag --judge-model-providers             "${_JUDGE_MODEL_PROVIDERS:-}"
+    _judge_flag --judge-model-names                 "${_JUDGE_MODEL_NAMES:-}"
+    _judge_flag --judge-model-base-url              "${_JUDGE_MODEL_BASE_URL:-}"
+    _judge_flag --judge-model-base-urls             "${_JUDGE_MODEL_BASE_URLS:-}"
+    _judge_flag --judge-model-api-key-env           "${_JUDGE_MODEL_API_KEY_ENV:-}"
+    _judge_flag --judge-model-api-key-envs          "${_JUDGE_MODEL_API_KEY_ENVS:-}"
+    _judge_flag --judge-model-credential-strategies "${_JUDGE_MODEL_CREDENTIAL_STRATEGIES:-}"
+}
+
+
+# The serving limits, as an assignment prefix on the benchmark invocation.
+#
+# A prefix and not an export, for the same reason the judge travels as flags:
+# it is applied AFTER the child sources .env and ahead of the benchmark's own
+# dotenv load (which does not override), so neither can take it back. These
+# limits are uniform across every agent and every rung by design, which is what
+# the fairness argument rests on, so there is nothing per-slot here.
+_serving_var() {
+    [[ -n "$2" ]] && SERVING_PREFIX="$SERVING_PREFIX$1='$2' "
+    return 0
+}
+
+matrix_serving_prefix() {
+    SERVING_PREFIX=""
+    _serving_var AGENT_MODEL_CONTEXT_WINDOW    "${_AGENT_MODEL_CONTEXT_WINDOW:-}"
+    _serving_var AGENT_MODEL_MAX_OUTPUT_TOKENS "${_AGENT_MODEL_MAX_OUTPUT_TOKENS:-}"
+    _serving_var AGENT_MODEL_STREAMING         "${_AGENT_MODEL_STREAMING:-}"
+}
+
+matrix_confirm() {
     echo "=============================================================="
     echo "  ${EXPERIMENT_TITLE}"
     echo "=============================================================="
@@ -183,9 +279,8 @@ matrix_confirm() {
     for slot in $_SLOTS_LIST; do
         upper=$(slot_upper "$slot")
         name_var="${upper}_AGENT_MODEL_NAME"
-        provider_var="${upper}_AGENT_MODEL_PROVIDER"
         rate_var="${upper}_RATE_LIMIT"
-        echo "    - ${slot}: ${!name_var} (provider=${!provider_var}, rate=${!rate_var:-$RATE_LIMIT})"
+        echo "    - ${slot}: ${!name_var} (rate=${!rate_var:-$RATE_LIMIT})"
     done
     echo ""
     echo "  !! WARNING: this launches ~$((NUM_SLOTS * NUM_RUNS)) full benchmark runs"
@@ -198,17 +293,6 @@ matrix_confirm() {
         echo "Aborted. Nothing launched."
         exit 1
     fi
-
-    # Export slot env quads (+ optional per-slot rate) so both the manifest
-    # python and the tmux child shells see them (they may only be defined by
-    # this file's defaults, not by .env, so they are plain shell vars).
-    for slot in $_SLOTS_LIST; do
-        upper=$(slot_upper "$slot")
-        for suffix in PROVIDER BASE_URL NAME API_KEY_ENVS; do
-            export "${upper}_AGENT_MODEL_${suffix}"
-        done
-        export "${upper}_RATE_LIMIT"
-    done
 }
 
 # Manifest (M8 reproducibility): exact model IDs, dataset, agents, run tags,
@@ -222,9 +306,38 @@ matrix_write_manifest() {
     RATE_LIMIT="$RATE_LIMIT" SLOTS="$_SLOTS_LIST" \
     BENCH_COMMIT="$BENCH_COMMIT" BENCH_DIRTY="$BENCH_DIRTY" \
     PKG_COMMIT="$PKG_COMMIT" PKG_DIRTY="$PKG_DIRTY" \
-    JUDGE_MODEL_NAMES="${JUDGE_MODEL_NAMES:-}" JUDGE_MODEL_PROVIDER="${JUDGE_MODEL_PROVIDER:-}" \
+    JUDGE_DECLARED="${_JUDGE_MODEL_NAMES:+1}" \
+    JUDGE_MODEL_NAMES="${_JUDGE_MODEL_NAMES:-${JUDGE_MODEL_NAMES:-}}" \
+    JUDGE_MODEL_PROVIDER="${_JUDGE_MODEL_PROVIDER:-${JUDGE_MODEL_PROVIDER:-}}" \
+    JUDGE_MODEL_PROVIDERS="${_JUDGE_MODEL_PROVIDERS:-${JUDGE_MODEL_PROVIDERS:-}}" \
+    JUDGE_MODEL_BASE_URLS="${_JUDGE_MODEL_BASE_URLS:-${JUDGE_MODEL_BASE_URLS:-}}" \
+    JUDGE_MODEL_API_KEY_ENVS="${_JUDGE_MODEL_API_KEY_ENVS:-${JUDGE_MODEL_API_KEY_ENVS:-}}" \
+    AGENT_MODEL_CONTEXT_WINDOW="${_AGENT_MODEL_CONTEXT_WINDOW:-}" \
+    AGENT_MODEL_MAX_OUTPUT_TOKENS="${_AGENT_MODEL_MAX_OUTPUT_TOKENS:-}" \
+    AGENT_MODEL_STREAMING="${_AGENT_MODEL_STREAMING:-}" \
     python3 - "$manifest" <<'PYEOF'
 import json, os, sys
+
+
+def _judge_models():
+    """The roster, index-aligned exactly as the evaluator reads it."""
+    names = [m for m in os.environ.get("JUDGE_MODEL_NAMES", "").split(",") if m]
+    def at(var, idx):
+        parts = os.environ.get(var, "").split(",")
+        return parts[idx] if idx < len(parts) else ""
+    return [
+        {
+            "name": name,
+            # Blank when the roster names no per-judge provider: the evaluator
+            # then derives each label from the model slug, and filling the
+            # profile in here would record one no report carries.
+            "provider": at("JUDGE_MODEL_PROVIDERS", i),
+            "base_url": at("JUDGE_MODEL_BASE_URLS", i),
+            "api_key_envs": at("JUDGE_MODEL_API_KEY_ENVS", i),
+        }
+        for i, name in enumerate(names)
+    ]
+
 
 slots = []
 for slot in os.environ["SLOTS"].split():
@@ -232,7 +345,7 @@ for slot in os.environ["SLOTS"].split():
     slots.append({
         "slot": slot,
         "model": os.environ.get(f"{upper}_AGENT_MODEL_NAME", ""),
-        "provider": os.environ.get(f"{upper}_AGENT_MODEL_PROVIDER", ""),
+        "api_spec": os.environ.get(f"{upper}_AGENT_MODEL_API_SPEC", ""),
         "base_url": os.environ.get(f"{upper}_AGENT_MODEL_BASE_URL", ""),
         "api_key_envs": os.environ.get(f"{upper}_AGENT_MODEL_API_KEY_ENVS", ""),
         "rate_limit": os.environ.get(f"{upper}_RATE_LIMIT") or os.environ["RATE_LIMIT"],
@@ -246,8 +359,20 @@ manifest = {
     "run_tags": os.environ["RUN_TAGS"].split(),
     "rate_limit": os.environ["RATE_LIMIT"],
     "model_slots": slots,
-    "judge_models": [m for m in os.environ.get("JUDGE_MODEL_NAMES", "").split(",") if m],
-    "judge_provider": os.environ.get("JUDGE_MODEL_PROVIDER", ""),
+    # Which judge scored this run, in enough detail to answer the question
+    # without re-reading a config that may have moved on. `declared_in_config`
+    # separates a roster the experiment declared from one the environment
+    # happened to be carrying -- only the first is fingerprinted.
+    "judge": {
+        "declared_in_config": bool(os.environ.get("JUDGE_DECLARED")),
+        "provider": os.environ.get("JUDGE_MODEL_PROVIDER", ""),
+        "models": _judge_models(),
+    },
+    "serving_limits": {
+        "context_window": os.environ.get("AGENT_MODEL_CONTEXT_WINDOW", ""),
+        "max_output_tokens": os.environ.get("AGENT_MODEL_MAX_OUTPUT_TOKENS", ""),
+        "streaming": os.environ.get("AGENT_MODEL_STREAMING", ""),
+    },
     "git": {
         "isd_agent_benchmark_commit": os.environ["BENCH_COMMIT"],
         "isd_agent_benchmark_dirty": os.environ["BENCH_DIRTY"] == "true",
@@ -264,6 +389,50 @@ print(f"Manifest written: {sys.argv[1]}")
 PYEOF
 }
 
+# The command one slot's tmux session runs.
+#
+# Every value below is expanded by THIS shell and single-quoted, so an empty one
+# becomes a present-but-empty argument instead of disappearing and shifting the
+# next flag's value onto the wrong flag. The two exceptions are $SERVING_PREFIX
+# and $JUDGE_FLAGS, which are deliberately unquoted: each is either wholly empty
+# -- the correct meaning of "not declared" -- or a complete fragment that has
+# already quoted its own values.
+#
+# Built here rather than inline in matrix_launch so a dry run can print the
+# command that would actually run, which is the only way to check the flags and
+# the prefix without spending a benchmark run on it.
+matrix_child_command() {
+    local slot="$1" log_file="$2"
+    local upper base_url_var name_var key_envs_var api_spec_var rate_var slot_rate
+    upper=$(slot_upper "$slot")
+    api_spec_var="${upper}_AGENT_MODEL_API_SPEC"
+    base_url_var="${upper}_AGENT_MODEL_BASE_URL"
+    name_var="${upper}_AGENT_MODEL_NAME"
+    key_envs_var="${upper}_AGENT_MODEL_API_KEY_ENVS"
+    rate_var="${upper}_RATE_LIMIT"
+    slot_rate="${!rate_var:-$RATE_LIMIT}"
+
+    # The child runs in the BENCHMARK tree (run_benchmark.py lives there),
+    # with the experiment's .env and results dir handed over explicitly.
+    printf '%s' "cd '$BENCH_ROOT' || exit 1; \
+source '$ENV_FILE' 2>/dev/null || true; \
+export RESULTS_DIR='$RESULTS_ROOT'; \
+for tag in $_RUN_TAGS_LIST; do \
+    echo \"=== ${slot} run \$tag starting: \$(date) ===\"; \
+    $SERVING_PREFIX'$BENCH_PYTHON' run_benchmark.py \
+        --dataset '$DATASET' \
+        --agents '$AGENTS' \
+        --rate-limit '$slot_rate' \
+        --agent-model-api-spec '${!api_spec_var}' \
+        --agent-model-base-url '${!base_url_var}' \
+        --agent-model-name '${!name_var}' \
+        --agent-model-api-key-envs '${!key_envs_var}'$JUDGE_FLAGS \
+        --run-tag \"\$tag\" \
+        2>&1 | tee -a '$log_file'; \
+    echo \"=== ${slot} run \$tag finished: \$(date) ===\"; \
+done; echo 'Slot done!'; read"
+}
+
 # One tmux session per model slot; slots run in PARALLEL, the run tags of a slot
 # run SEQUENTIALLY inside its session (safe w.r.t. per-key rate limits).
 matrix_launch() {
@@ -277,10 +446,7 @@ matrix_launch() {
     for slot in $_SLOTS_LIST; do
         i=$((i + 1))
         upper=$(slot_upper "$slot")
-        provider_var="${upper}_AGENT_MODEL_PROVIDER"
-        base_url_var="${upper}_AGENT_MODEL_BASE_URL"
         name_var="${upper}_AGENT_MODEL_NAME"
-        key_envs_var="${upper}_AGENT_MODEL_API_KEY_ENVS"
         rate_var="${upper}_RATE_LIMIT"
         slot_rate="${!rate_var:-$RATE_LIMIT}"
 
@@ -289,26 +455,7 @@ matrix_launch() {
 
         echo "[${i}/${NUM_SLOTS}] ${slot}: ${!name_var} (rate=$slot_rate) x runs [$_RUN_TAGS_LIST]..."
 
-        # The child runs in the BENCHMARK tree (run_benchmark.py lives there),
-        # with the experiment's .env and results dir handed over explicitly.
-        tmux new-session -d -s "$session" \
-"cd '$BENCH_ROOT' || exit 1; \
-source '$ENV_FILE' 2>/dev/null || true; \
-export RESULTS_DIR='$RESULTS_ROOT'; \
-for tag in $_RUN_TAGS_LIST; do \
-    echo \"=== ${slot} run \$tag starting: \$(date) ===\"; \
-    '$BENCH_PYTHON' run_benchmark.py \
-        --dataset $DATASET \
-        --agents $AGENTS \
-        --rate-limit $slot_rate \
-        --agent-model-provider ${!provider_var} \
-        --agent-model-base-url ${!base_url_var} \
-        --agent-model-name ${!name_var} \
-        --agent-model-api-key-envs ${!key_envs_var} \
-        --run-tag \$tag \
-        2>&1 | tee -a $log_file; \
-    echo \"=== ${slot} run \$tag finished: \$(date) ===\"; \
-done; echo 'Slot done!'; read"
+        tmux new-session -d -s "$session" "$(matrix_child_command "$slot" "$log_file")"
     done
 
     echo ""

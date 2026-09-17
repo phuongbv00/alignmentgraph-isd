@@ -21,6 +21,7 @@ import subprocess
 from . import paths
 from .config import Profile
 from .config import current as current_config
+from .judge import judge_env
 
 LAUNCHER = paths.exp_root() / "bin" / "launch.sh"
 
@@ -65,11 +66,27 @@ def profile_env(profile: Profile, *, slots: str | None = None,
     cfg = current_config()
     for rung in profile.rungs:
         prefix = rung.env_prefix
-        env.setdefault(f"{prefix}_AGENT_MODEL_PROVIDER", cfg.serving.provider)
+        env.setdefault(f"{prefix}_AGENT_MODEL_API_SPEC", cfg.serving.api_spec)
         env.setdefault(f"{prefix}_AGENT_MODEL_NAME", rung.model)
         env.setdefault(f"{prefix}_AGENT_MODEL_API_KEY_ENVS", cfg.serving.key_env)
         if rung.base_url:
             env.setdefault(f"{prefix}_AGENT_MODEL_BASE_URL", rung.base_url)
+
+    # The serving limits and the judge roster travel under UNDERSCORED names.
+    # The launcher sources .env in its own shell before it reads any of this, so
+    # a variable published under the name the benchmark reads would be taken
+    # back by a stale line in that file; the launcher turns these into a command
+    # prefix and a flag list, which nothing downstream can override.
+    env.update({f"_{k}": v for k, v in judge_env(cfg.judge).items()})
+    serving = cfg.serving
+    if serving.context_window is not None:
+        env["_AGENT_MODEL_CONTEXT_WINDOW"] = str(serving.context_window)
+    if serving.max_output_tokens is not None:
+        env["_AGENT_MODEL_MAX_OUTPUT_TOKENS"] = str(serving.max_output_tokens)
+    if serving.streaming is not None:
+        # "0" rather than nothing: the prefix has to be able to turn streaming
+        # OFF against an environment that says otherwise.
+        env["_AGENT_MODEL_STREAMING"] = "1" if serving.streaming else "0"
     return env
 
 

@@ -27,7 +27,6 @@ def run(*, dry_run: bool = False, quiet: bool = False) -> int:
     lines = []
     for ep in endpoints:
         lines += [
-            f"{ep.slot}_AGENT_MODEL_PROVIDER={ep.provider}",
             f"{ep.slot}_AGENT_MODEL_BASE_URLS={','.join(ep.base_urls)}",
             f"{ep.slot}_AGENT_MODEL_NAME={ep.model}",
             f"{ep.slot}_AGENT_MODEL_API_KEY_ENVS={ep.key_env}",

@@ -32,5 +32,5 @@ def discover(slots: list[str]) -> list[Endpoint]:
         if not urls and rung.base_url:
             urls = [rung.base_url]
         out.append(Endpoint(slot=prefix, model=rung.model, base_urls=urls,
-                            key_env=cfg.serving.key_env, provider=name))
+                            key_env=cfg.serving.key_env))
     return out

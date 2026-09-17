@@ -19,21 +19,19 @@ Requires: RUNPOD_API_KEY in .env (https://www.runpod.io/console/user/settings) -
 loaded automatically via python-dotenv, no need to `source .env` first.
 
 Usage:
-  python scripts/3_sync_runpod_pods_env.py            # sync pods -> .env block
-  python scripts/3_sync_runpod_pods_env.py --dry-run  # print the block, write nothing
-  source .env
+  ./isd-exp serve sync-agents            # sync pods -> .env block
+  ./isd-exp serve sync-agents --dry-run  # print the block, write nothing
   ./isd-exp comparison run
 
 The managed block contains, per slot, the benchmark env-quad:
 
-  QWEN2B_AGENT_MODEL_PROVIDER=runpod-vllm
   QWEN2B_AGENT_MODEL_BASE_URLS=https://<pod_id>-8000.proxy.runpod.net/v1
     (comma-separated when several pods serve that slot -- agents round-robin)
   QWEN2B_AGENT_MODEL_NAME=<model family>/<model family>-2B
-  QWEN2B_AGENT_MODEL_API_KEY_ENVS=VLLM_API_KEY
+  QWEN2B_AGENT_MODEL_API_KEY_ENVS=<the variable [serving].key_env names>
 
-VLLM_API_KEY itself must already be set in .env -- it is the Bearer
-token the template's vLLM server was started with, not the RunPod API key.
+That variable must already hold a value in .env -- it is the Bearer token the
+template's vLLM server was started with, not the RunPod API key.
 """
 from __future__ import annotations
 
@@ -46,6 +44,8 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path
+
+from ...config import current as current_config
 
 REST_BASE = "https://rest.runpod.io/v1"
 BLOCK_BEGIN = "# >>> <slot>-ladder pods (managed by scripts/3_sync_runpod_pods_env.py) >>>"
@@ -110,11 +110,15 @@ def _match_slot(*candidates: str) -> str | None:
 
 
 def _served_model(base_url: str) -> str | None:
-    """Ask the pod's vLLM server which model it actually serves (needs
-    VLLM_API_KEY). Authoritative over anything parsed from the pod record --
-    a wrong AGENT_MODEL_NAME makes the OpenAI-compatible server 404 every
-    request. Returns None if unreachable (pod booting, key unset, ...)."""
-    vllm_key = os.environ.get("VLLM_API_KEY")
+    """Ask the pod's server which model it actually serves.
+
+    Authoritative over anything parsed from the pod record -- a wrong
+    AGENT_MODEL_NAME makes the OpenAI-compatible server 404 every request.
+    The bearer token comes from the variable `[serving].key_env` declares, so
+    the sync authenticates with the same credential the run will use. Returns
+    None if unreachable (pod booting, key unset, ...)."""
+    key_env = current_config().serving.key_env
+    vllm_key = os.environ.get(key_env)
     if not vllm_key:
         return None
     req = urllib.request.Request(
@@ -161,7 +165,8 @@ def run(*, dry_run: bool = False, ENV_PATH=None, port=8000) -> int:
                   f"{served!r}; using the server's id", file=sys.stderr)
         if not served:
             print(f"           WARNING: could not confirm via {base_url}/models "
-                  f"(pod booting? VLLM_API_KEY unset?) -- using {model_name!r} unverified",
+                  f"(pod booting? {current_config().serving.key_env} unset?) -- "
+                  f"using {model_name!r} unverified",
                   file=sys.stderr)
         if status != "RUNNING":
             print(f"           WARNING: {slot} pod is {status}, not RUNNING", file=sys.stderr)
@@ -209,13 +214,12 @@ def run(*, dry_run: bool = False, ENV_PATH=None, port=8000) -> int:
                 f"pod {p['pod_id']} ({p.get('gpu_type') or '?'}, {p['status']})"
                 for p in pods_for_slot
             ),
-            f"{upper}_AGENT_MODEL_PROVIDER=runpod-vllm",
             # Plural even for one pod: one shape for the scripts to read, and
             # adding a second pod later is then a pure data change.
             f"{upper}_AGENT_MODEL_BASE_URLS="
             + ",".join(p["base_url"] for p in pods_for_slot),
             f"{upper}_AGENT_MODEL_NAME={head['hf_model']}",
-            f"{upper}_AGENT_MODEL_API_KEY_ENVS=VLLM_API_KEY",
+            f"{upper}_AGENT_MODEL_API_KEY_ENVS={current_config().serving.key_env}",
         ]
 
     block = "\n".join(

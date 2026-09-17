@@ -31,7 +31,11 @@ MANIFEST="${MANIFEST:-1}"
 DRY_RUN="${DRY_RUN:-0}"
 
 matrix_resolve_slots
+matrix_export_slots
 matrix_export_keys
+matrix_counts
+matrix_judge_flags
+matrix_serving_prefix
 
 if [ "$DRY_RUN" = "1" ]; then
     echo "== DRY RUN — ${EXPERIMENT_TITLE:-$EXPERIMENT} =="
@@ -43,7 +47,16 @@ if [ "$DRY_RUN" = "1" ]; then
     echo "  python  : $BENCH_PYTHON"
     echo "  bench   : $BENCH_ROOT"
     echo "  env     : $ENV_FILE"
+    echo "  judge   : ${JUDGE_FLAGS:-(not declared — the environment answers)}"
+    echo "  serving : ${SERVING_PREFIX:-(not declared — benchmark defaults apply)}"
     echo "  pool    : ${POOL_HINT:-}"
+    echo ""
+    # The command itself, for the first slot: what the flags and the prefix
+    # actually come out as is not checkable from a summary of them.
+    echo "  command (first slot):"
+    matrix_child_command "${_SLOTS_LIST%% *}" "$RESULTS_ROOT/<slot>.log"
+    echo ""
+    echo ""
     echo "(nothing launched)"
     exit 0
 fi

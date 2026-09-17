@@ -60,6 +60,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
 from .. import paths
+from ..config import current as current_config
 from .presets import current as declared_arms
 
 
@@ -151,7 +152,9 @@ class EncoderSpec:
     label: str                # what lands in the score file's "encoder" field
     revision: str | None = None   # weights revision of THIS arm's model
     base_urls: list[str] = field(default_factory=list)
-    api_key_env: str = "VLLM_API_KEY"
+    #: Name of the variable holding this endpoint's bearer token. Resolved per
+    #: arm, defaulting to the key the serving declaration names.
+    api_key_env: str = ""
     bloom_key: str = ""
     bloom_kind: str = "lexicon"
     bloom_path: str | None = None
@@ -360,7 +363,7 @@ def resolve_encoder_specs(args) -> list[EncoderSpec]:
         spec.api_key_env = (
             os.environ.get(f"{slot}_EMBED_API_KEY_ENV")
             or args.embed_api_key_env
-            or "VLLM_API_KEY"
+            or current_config().serving.key_env
         )
         if spec.bloom_kind != "lexicon":
             # Same availability semantics as an encoder endpoint: a missing
@@ -1003,13 +1006,36 @@ def score_run(run_dir: Path, args, spec: EncoderSpec, base_encoder=None):
     return rows
 
 
-def run(*, run_dirs=None, encoder_presets: str = '', bloom_presets: str = '',
-        all_arms: bool = False, reaggregate: bool = False, overwrite: bool = False,
-        cache_only: bool = False, limit: int | None = None, require_all=False, sweep_csv=None) -> int:
-    # Several helpers below take the whole options bag rather than a long
-    # parameter list, which is the right shape for them -- an encoder spec is
-    # resolved from a dozen interacting flags. Rebuilding one here keeps those
-    # helpers untouched while the CLI passes ordinary keyword arguments.
+def run(*,
+        run_dirs: list[str] | tuple[str, ...] = (),
+        # arm selection
+        encoder_preset: str = "", encoder_presets: str = "",
+        all_encoders: bool = False,
+        bloom_preset: str = "", bloom_presets: str = "",
+        bloom_checkpoint: Path | None = None,
+        all_arms: bool = False,
+        # where each served arm is embedded, and how
+        embed_base_urls_for: list[str] | tuple[str, ...] = (),
+        embed_revision_for: list[str] | tuple[str, ...] = (),
+        embed_cache_only: bool = False,
+        embed_api_key_env: str = "",
+        tfidf_ngram_range: str = "2-3",
+        local_device: str | None = None,
+        # what to score
+        agents: str = "", scenario_root: Path | None = None,
+        limit: int | None = None,
+        reaggregate: bool = False, overwrite: bool = False,
+        require_all: bool = False, sweep_csv: Path | None = None) -> int:
+    """Score the alignment panel over one or more run dirs.
+
+    Several helpers below take the whole options bag rather than a long
+    parameter list, which is the right shape for them -- an encoder spec is
+    resolved from a dozen interacting flags. Every option they read is a
+    parameter here, and `tests/test_score_options.py` holds the two sets equal:
+    a helper reading an attribute no caller can set fails at the first line of
+    the first arm, and nothing about the call site says which one is missing.
+    """
+    scenario_root = scenario_root or paths.scenarios_dir()
     args = SimpleNamespace(**{k: v for k, v in locals().items() if k != "args"})
 
     specs = resolve_encoder_specs(args)
@@ -1018,25 +1044,28 @@ def run(*, run_dirs=None, encoder_presets: str = '', bloom_presets: str = '',
     # obvious thing to type (`isd-exp comparison pool --auto-glob` requires
     # it), and an unexpanded pattern otherwise fails with a confusing
     # "Not a directory: results/..._r[123]_*".
-    run_dirs, unmatched = [], []
+    resolved: list[Path] = []
+    unmatched: list[str] = []
     for pattern in run_dirs:
-        hits = sorted(globmod.glob(pattern))
+        hits = sorted(globmod.glob(str(pattern)))
         if hits:
-            run_dirs += [Path(h).resolve() for h in hits]
+            resolved += [Path(h).resolve() for h in hits]
         else:
-            unmatched.append(pattern)
+            unmatched.append(str(pattern))
     if unmatched:
         raise SystemExit("No run dir matched: " + ", ".join(unmatched))
-    not_dirs = [d for d in run_dirs if not d.is_dir()]
+    not_dirs = [d for d in resolved if not d.is_dir()]
     if not_dirs:
         raise SystemExit("Not a directory: " + ", ".join(str(d) for d in not_dirs))
-    run_dirs = list(dict.fromkeys(run_dirs))
+    run_dirs = list(dict.fromkeys(resolved))
+    if not run_dirs:
+        raise SystemExit("Name at least one run dir to score.")
 
     # Confirm every endpoint really serves what we are about to label its
     # artifacts with — once per invocation, not per run dir.
     if not reaggregate:
         probe_specs(specs, lambda s: os.environ.get(s.api_key_env),
-                    cache_only)
+                    embed_cache_only)
     if require_all:
         blocked = [s for s in specs if not s.available]
         if blocked:
