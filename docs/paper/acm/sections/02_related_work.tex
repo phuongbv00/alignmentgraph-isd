@@ -70,7 +70,7 @@ items to standards fixed before scoring~\cite{xu2025itemalignment}. For cognitiv
 demand, Li et al. provide the expert-labeled corpus used to fine-tune our Bloom
 classifier~\cite{li2022bloomclassification}, while BloomNet is a related classifier
 rather than the corpus source~\cite{waheed2021bloomnet}. These methods avoid a
-generative judge, but do not jointly assess artifacts emitted by the system being
+generative LLM judge, but do not jointly assess artifacts emitted by the system being
 measured.
 
 \subsection{Synthesis}
@@ -108,6 +108,6 @@ AlignmentGraph-ISD addresses this combination across a common Qwen ladder,
 keeping the alignment relations as explicit shared state during generation. The
 measurement foundations above shape its evaluation setup: because the existing
 alignment measures presuppose standards authored before measurement, the
-experimental design assembles deterministic alignment scores from those established
+experimental design assembles deterministic alignment signals from those established
 criteria and applies them to the generated designs themselves
 (\Cref{sec:metrics}); no new construct is claimed.

@@ -68,7 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
     bv.add_argument("--bloom-checkpoint", type=_p), bv.add_argument("--out", type=_p)
 
     # ── cheap checks ─────────────────────────────────────────────────────
-    for name, helptext in (("canary", "3 scenarios, no judge call"),
+    for name, helptext in (("canary", "3 scenarios, no LLM judge call"),
                            ("tune", "cost and budget calibration on the training split")):
         g = sub.add_parser(name, help=helptext).add_subparsers(dest="sub", required=True)
         r = g.add_parser("run", help="launch")
@@ -139,7 +139,7 @@ def build_parser() -> argparse.ArgumentParser:
     ai.add_argument("--experiment", default=None)
     ap_ = aud.add_parser("postrun", help="completeness and integrity of finished runs")
     ap_.add_argument("run_dirs", nargs="*", metavar="RUN_DIR")
-    ar = aud.add_parser("repair", help="re-judge cells lost to a transient failure")
+    ar = aud.add_parser("repair", help="re-run the LLM judge on cells lost to a transient failure")
     ar.add_argument("run_dirs", nargs="*", metavar="RUN_DIR")
     ar.add_argument("--dry-run", action="store_true")
     aa = aud.add_parser("artifacts", help="the final gate on generated artifacts")

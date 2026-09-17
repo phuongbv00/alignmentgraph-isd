@@ -16,7 +16,7 @@ the construct requires expert evidence beyond automated scores.
 
 Both experiments run on a configuration frozen before either begins: code and
 prompt hashes, model checkpoints, dataset splits, seeds, decoding and serving
-settings, output and trajectory caps, judge prompts, metric versions, and the panel
+settings, output and trajectory caps, LLM judge prompts, metric versions, and the panel
 interpretation rule. Nothing in that list is revisited after results are seen, and a
 cell is re-run only for a genuine technical failure.
 
@@ -123,25 +123,25 @@ measured deployment property.
 \subsection{Measures}
 \label{sec:metrics}
 
-Two measurement families are applied to the same saved outputs: the benchmark's LLM
-judge scores, and a deterministic alignment-score measurement that uses no LLM.
+Two measurement families are applied to the same saved outputs: the benchmark's
+LLM judge scores, and a deterministic alignment-signal measurement that uses no LLM.
 Their mechanisms differ, so agreement between them carries more weight than either
 alone.
 
 \subsubsection{LLM judge scores}
 
-For Objective~2, one fixed judge from a family separate from the agents scores every
+For Objective~2, one fixed LLM judge from a family separate from the agents scores every
 output; this separation reduces self-preference risk~\cite{panickssery2024llm}. A
-second, independently chosen judge scores a stratified subset covering the proposed
+second, independently chosen LLM judge scores a stratified subset covering the proposed
 system, ReAct-ISD, and the strongest baseline, to test whether the direction of the
-conclusion depends on the judge. The three LLM judge scores are reported in parallel
-with identical analyses and equal standing (\Cref{tab:judge-signals}); ADDIE leads
+conclusion depends on the LLM judge. The three LLM judge scores are reported in parallel
+with identical analyses and equal standing (\Cref{tab:llm-judge-scores}); ADDIE leads
 the narrative because its rubric matches the construct Objective~2 addresses, and
 the composite is retained only for comparability with how ISD-Agent-Bench reports.
 
 \begin{table}[t]
   \caption{The three LLM judge scores (scale /100).}
-  \label{tab:judge-signals}
+  \label{tab:llm-judge-scores}
   \small
   \begin{tabular}{@{}lp{0.35\columnwidth}p{0.24\columnwidth}@{}}
     \toprule
@@ -158,7 +158,7 @@ the composite is retained only for comparability with how ISD-Agent-Bench report
 \end{table}
 
 The trajectory score requires a disclosure that shapes how it may be read. The
-benchmark shows the judge only the first 20 tool calls of a run. A single-loop system
+benchmark shows the LLM judge only the first 20 tool calls of a run. A single-loop system
 makes roughly five calls and is seen in full; a decomposed system makes one to two
 orders of magnitude more and is seen only at the beginning, so a low trajectory score
 may reflect a display limit rather than behaviour. We fix the policy before running
@@ -168,7 +168,7 @@ Full trajectories are stored, so the second layer is a re-scoring of the same
 outputs and requires no regeneration. Neither cap is revisited after results are
 seen.
 
-\subsubsection{Alignment scores}
+\subsubsection{Alignment signals}
 \label{sec:alignment-measures}
 
 The LLM judge scores inherit the documented biases of rubric-scoring
@@ -179,14 +179,14 @@ makes explicit, on the rendered output of every system. It operationalizes
 established criteria and follows two principles:
 \begin{itemize}
   \item \emph{No LLM in measurement}: there is no prompting, sampling, or matching
-  threshold; once the encoder and Bloom classifier are pinned, every score is a
+  threshold; once the encoder and Bloom classifier are pinned, every signal is a
   fixed function of text.
   \item \emph{Read only text from saved output}: self-declared graph identifiers are
-  excluded from score computation and retained only as validity evidence, so every
+  excluded from signal computation and retained only as validity evidence, so every
   system is measured on the same basis.
 \end{itemize}
 
-The panel is a pre-specified flat set of six alignment scores in two instrument
+The panel is a pre-specified flat set of six alignment signals in two instrument
 families. \emph{Family A} measures textual correspondence between artifacts with
 embeddings; \emph{Family B} measures cognitive demand through Bloom levels. From
 each output the measurement extracts three text sets: $\mathcal{O}$ (objectives),
@@ -197,14 +197,14 @@ uses the mean--max rectified-cosine operator
   = |S|^{-1}\sum_{u\in S}\;\max_{t\in T}\;\max\bigl(0,\cos(e_u,e_t)\bigr),
 \]
 where $e_u$ is the embedding of text span $u$; $\max(0,\cdot)$ is a scale choice on
-$[0,1]$, not a matching threshold. \Cref{tab:panel-signals} specifies the six scores.
+$[0,1]$, not a matching threshold. \Cref{tab:panel-signals} specifies the six signals.
 Family A is exactly the three edges of the constructive-alignment triad, one per core
-relation of \Cref{eq:aligned}, so no panel score measures something the graph does
+relation of \Cref{eq:aligned}, so no panel signal measures something the graph does
 not model.
 
 \begin{table*}[t]
-  \caption{The six alignment scores. Family A applies the $\mathrm{sim}$ operator to
-  text sets extracted from the output, one score per edge of \Cref{eq:aligned};
+  \caption{The six alignment signals. Family A applies the $\mathrm{sim}$ operator to
+  text sets extracted from the output, one signal per edge of \Cref{eq:aligned};
   Family B uses Bloom levels. Parenthetical names are the corresponding fields in
   the generated artifact.}
   \label{tab:panel-signals}
@@ -267,15 +267,15 @@ run on a subset rather than over the whole ladder.
 
 The panel is reported flat, with no primary endpoint, for two reasons: constructive
 alignment has several facets, and any composite would impose weights with no
-theoretical basis. Each score is named after the operation it computes, and none is
-called ``precision''; \emph{alignment score} is the collective term for the panel
+theoretical basis. Each signal is named after the operation it computes, and none is
+called ``precision''; \emph{alignment signal} is the collective term for the panel
 values, while the construct itself lives in \Cref{eq:aligned}. The interpretation
 rule is pre-specified: a size shows an alignment advantage over a comparison system
-when at least four of the six scores are significantly positive after within-score
+when at least four of the six signals are significantly positive after within-signal
 Holm correction and none is significantly negative; the reversed pattern indicates a
 disadvantage, and every other pattern---including five positive with one
 significantly negative---is reported as mixed, with the losing side named. This is
-not a composite: nothing is summed or normalized, and each score keeps its own $p$.
+not a composite: nothing is summed or normalized, and each signal keeps its own $p$.
 We therefore claim only measurable signals of constructive alignment; the
 measurement does not validate the construct, and that bridge needs the expert layer
 below. Scoring runs offline on saved outputs, uses no LLM, and has no stochastic
@@ -306,7 +306,7 @@ cache, up to floating-point noise. Cost telemetry reads only
 \subsubsection{Expert review}
 \label{sec:expert}
 
-Automated scores alone cannot connect the panel to educational value, so a small
+Automated signals alone cannot connect the panel to educational value, so a small
 expert layer accompanies them. Three to five instructors experienced in course
 design each review 8--12 outputs with the system name withheld, judging
 constructive alignment, feasibility, clarity, and how much revision the design would
@@ -321,20 +321,21 @@ seeing results would make the whole evaluation retrospective.
 The unit of inference is the scenario. For the level part of Objective~2, paired
 Wilcoxon signed-rank tests compare the proposed system with each baseline at every
 size and on all three LLM judge scores; Objective~3 applies the same test to each
-alignment score. When a paired sample has $n\leq25$, we use the exact permutation
+alignment signal. When a paired sample has $n\leq25$, we use the exact permutation
 null. We report paired mean differences, rank-biserial effect sizes, and bootstrap
 95\% confidence intervals from 10{,}000 scenario resamples with seed 42.
 
 Holm correction covers the six proposed-versus-baseline comparisons per size,
-separately for each score. Objective~3 additionally reports a panel-wide Holm
-correction over six scores and six comparisons as a multiplicity sensitivity; that
-correction creates no hierarchy among scores. For the scale part of Objective~2, let
+separately for each LLM judge score and each alignment signal. Objective~3
+additionally reports a panel-wide Holm correction over six signals and six
+comparisons as a multiplicity sensitivity; that correction creates no hierarchy
+among signals. For the scale part of Objective~2, let
 $\Delta_s$ be the paired proposed-minus-baseline gap at size $s$. The pre-specified
 interaction is $\Delta_{\mathrm{largest}}-\Delta_{\mathrm{smallest}}$, tested with
 paired Wilcoxon and a bootstrap interval; a negative value means a larger advantage
 at the small end. A difference observed at a single size is never read as a trend
 across sizes. Objective~3 uses the same interaction, with $\sigma_{\mathrm{meas}}$
-leading the scale narrative and the other scores reported alongside it.
+leading the scale narrative and the other signals reported alongside it.
 
 For missing outputs, the primary layer assigns \texttt{failure=0}: a system that
 produces no output has quality zero, not missing data. Complete-case inference is a
@@ -342,16 +343,16 @@ sensitivity analysis only, computed over available outputs and never described a
 unconditional, because it conditions on a post-treatment variable---it removes
 precisely the most severe failures, and does so most at the small sizes where the
 hypothesis lives. Objective~2 additionally reports \texttt{failure=min};
-Objective~3 does not, because its scores already floor at zero. Output-failure rates
+Objective~3 does not, because its signals already floor at zero. Output-failure rates
 are compared separately with Fisher's exact test under Holm correction.
 
 \subsection{Reproducibility}
 \label{sec:reproducibility}
 
-Every measured value is generated from saved run, judge, alignment, and ablation
+Every measured value is generated from saved run, LLM judge, alignment, and ablation
 artifacts and enters the paper only through generated files; no number is hand-typed.
 The frozen manifest pins code and prompt hashes, checkpoints, splits, seeds,
-decoding and serving settings, caps, judge prompts, and metric versions, and
+decoding and serving settings, caps, LLM judge prompts, and metric versions, and
 revision-aware embedding caches support exact re-analysis from saved vectors.
 Because full trajectories and all outputs are stored, every reported statistic can
 be recomputed without regenerating a single model response. Results produced before

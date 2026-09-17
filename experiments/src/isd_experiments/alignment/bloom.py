@@ -25,13 +25,13 @@ The two invocations that produce the shipped artifacts (run from the benchmark
 root; `--bloom-checkpoint` needs `transformers`, so use the venv interpreter):
 
   # bloom_validation.md — lexicon only, full EDM2022CLO corpus (wide multi-label)
-  python scripts/alignmentgraph-isd-bench/00_validate_bloom.py \
+  ./isd-exp bloom validate \
       ../EDM2022CLO/data/sample_full.csv --text-col Learning_outcome \
       --label-cols Remember,Understand,Apply,Analyze,Evaluate,Create \
       --out results/generated/bloom_validation.md
 
   # bloom_arms_validation.md — both arms, held-out split next to the checkpoint
-  python scripts/alignmentgraph-isd-bench/00_validate_bloom.py \
+  ./isd-exp bloom validate \
       models/bloom-bert-edm2022/eval_split.csv --text-col text --label-col label \
       --bloom-checkpoint models/bloom-bert-edm2022 \
       --out results/generated/bloom_arms_validation.md
@@ -140,7 +140,7 @@ def _provenance_line(args, n_rows: int, n_single: int, n_multi: int, held_out: b
     if held_out:
         split = (
             "held-out eval split written next to the transformer checkpoint by "
-            "`evaluator/scripts/train_bloom_6way_classifier.py`; it is a strict subset "
+            "`isd-exp bloom train`; it is a strict subset "
             "of the corpus's single-label rows, so the lexicon figures here are nested "
             "inside the full-corpus report, not independent of it"
         )

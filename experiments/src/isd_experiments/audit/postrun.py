@@ -9,13 +9,13 @@ Per run dir (default: every results/test_90_benchmark_*_r*), reports:
                       (<200B) files, token_usage == 0, model name vs dir name,
                       suspicious durations (0s or > 1h)
   Metrics (7.5)       ranked entries have total/addie/trajectory/phase scores,
-                      uniform judge count, judge errors
-  Scored fields (7.6) the fields alignment-panel actually consumes are non-empty, measured
+                      uniform LLM judge count, LLM judge errors
+  Scored fields (7.6) the fields the alignment panel consumes are non-empty, measured
                       by calling the evaluator's own extractors
   alignment-panel readiness (8)   alignment_scores.json coverage, per encoder
 
 Missing agents are INFO, not failure — capability failures (e.g. baseline
-blowing the token cap on small models) are judge data and are handled by the
+blowing the token cap on small models) are LLM judge data and are handled by the
 pooling failure policies. Red = infrastructure-level junk (stubs, empty
 outputs, zero token accounting, model/dir mismatch).
 
@@ -44,10 +44,9 @@ from ..alignment.protocol import (
     extract_objectives,
 )
 
-# What each official experiment is supposed to produce. They used to be one
-# roster because the ablation arms rode along inside the ladder run; comparison and ablation
-# have been separate experiments since 2026-09-10, so a single hardcoded list
-# would report six missing agents and "30 of 90 scenarios" on every ablation dir.
+# What each official experiment is supposed to produce. Comparison and ablation
+# are separate experiments with different rosters, so one shared list would
+# report six missing agents and "30 of 90 scenarios" on every ablation dir.
 COMPARISON_AGENTS = ["eduplanner", "baseline", "react-isd", "addie-agent",
               "dick-carey-agent", "rpisd-agent", "alignmentgraph-isd"]
 ABLATION_AGENTS = ["alignmentgraph-isd", "alignmentgraph-isd-multi-prose",
@@ -198,7 +197,7 @@ def audit_run(run_dir: Path, fields_only: bool = False,
             info.append("could not read model name from benchmark_summary.json")
 
     # ---- metrics (7.5)
-    bad_fields, judge_counts, judge_errors = 0, set(), 0
+    bad_fields, llm_judge_counts, llm_judge_errors = 0, set(), 0
     for sd in scen_dirs:
         rep = sd / "comparison_report.json"
         if not rep.exists():
@@ -212,15 +211,15 @@ def audit_run(run_dir: Path, fields_only: bool = False,
             for k in ("total_score", "addie_median", "trajectory_score", "phase_scores"):
                 if r.get(k) in (None, {}, ""):
                     bad_fields += 1
-            judges = r.get("judges", [])
-            judge_counts.add(len(judges))
-            judge_errors += sum(1 for j in judges if j.get("error"))
+            llm_judges = r.get("judges", [])
+            llm_judge_counts.add(len(llm_judges))
+            llm_judge_errors += sum(1 for j in llm_judges if j.get("error"))
     if bad_fields:
         red.append(f"{bad_fields} ranked entries with missing metric fields")
-    if len(judge_counts) > 1:
-        red.append(f"non-uniform judge count across entries: {sorted(judge_counts)}")
-    if judge_errors:
-        red.append(f"{judge_errors} judge error(s)")
+    if len(llm_judge_counts) > 1:
+        red.append(f"non-uniform LLM judge count across entries: {sorted(llm_judge_counts)}")
+    if llm_judge_errors:
+        red.append(f"{llm_judge_errors} LLM judge error(s)")
 
     # ---- scored fields (7.6)
     fields = audit_scored_fields(run_dir, scen_dirs)
@@ -239,22 +238,22 @@ def audit_run(run_dir: Path, fields_only: bool = False,
     if 0 < primary_coverage < n:
         red.append(
             f"partial alignment_scores.json coverage: {primary_coverage}/{n} "
-            "(resume 06_score_alignment.py before pooling alignment-panel)"
+            f"(resume `{paths.cli()} score` before pooling the alignment panel)"
         )
     elif primary_coverage == 0:
         info.append(f"alignment_scores.json: {coverage.get('primary', 0)}/{n} "
-                    "(run scripts/alignmentgraph-isd-bench/06_score_alignment.py before pooling alignment-panel)")
+                    f"(run `{paths.cli()} score` before pooling the alignment panel)")
     for arm, count in sorted(coverage.items()):
         if arm != "primary" and count < n:
             red.append(f"partial alignment_scores.{arm}.json coverage: {count}/{n} "
                        "(resume that encoder arm before pooling its sensitivity results)")
 
     return {"n_scenarios": n, "missing": missing, "red": red, "info": info,
-            "judge_counts": sorted(judge_counts), "n_agents": fields["n_agents"]}
+            "llm_judge_counts": sorted(llm_judge_counts), "n_agents": fields["n_agents"]}
 
 
 def audit_scored_fields(run_dir: Path, scen_dirs: list[Path]) -> dict:
-    """Are the fields alignment-panel consumes actually populated?
+    """Are the fields the alignment panel consumes actually populated?
 
     Measured through the evaluator's own extractors, so this sees exactly what
     the alignment metric sees: an output that parses but yields no objectives
@@ -282,7 +281,7 @@ def audit_scored_fields(run_dir: Path, scen_dirs: list[Path]) -> dict:
                     f"worst {worst[0]} x{worst[1]} ({breakdown}) — "
                     "capability/parse failures; affected alignment endpoints "
                     "are scored at their metric floor")
-    return {"n_scenarios": len(scen_dirs), "missing": {}, "judge_counts": [],
+    return {"n_scenarios": len(scen_dirs), "missing": {}, "llm_judge_counts": [],
             "red": [], "info": info, "n_agents": len(agents)}
 
 
@@ -305,7 +304,7 @@ def run(*, run_dirs=None, fields_only: bool = False, agents: str | None = None, 
         verdict = "OK" if not r["red"] else "RED"
         head = f"({r['n_scenarios']} scenarios"
         if not fields_only:
-            head += f", judges/entry: {r['judge_counts']}"
+            head += f", LLM judges/entry: {r['llm_judge_counts']}"
         print(f"\n== {run_dir.name}  [{verdict}]  {head})")
         for line in r["red"]:
             print(f"  RED : {line}")

@@ -7,11 +7,10 @@ escaping for no gain. What moves here is the DECISION of what to launch: the
 profile comes from experiment.toml, so what an official run consists of is
 declared once rather than re-typed at a prompt.
 
-That also removes the hazard the old launcher guarded against with a 20-line
-snapshot dance: `.env` could override an experiment's own identity, so a
-leftover `DATASET=train_30` from a tuning session would silently run an
-official experiment on the wrong split. With the profile authoritative, the
-override cannot happen.
+That also closes a hazard that needs guarding wherever `.env` can override an
+experiment's own identity: a leftover `DATASET=train_30` from a tuning session
+would silently run an official experiment on the wrong split. With the profile
+authoritative, the override cannot happen.
 """
 
 from __future__ import annotations
@@ -59,9 +58,9 @@ def profile_env(profile: Profile, *, slots: str | None = None,
         "MANIFEST": "0" if informal else "1",
     }
 
-    # Per-slot defaults, from the declared ladder. The launcher used to carry
-    # four hard-coded blocks naming one model family, so a different ladder
-    # meant editing shell. A BASE_URL declared inline serves the "static"
+    # Per-slot defaults, from the declared ladder rather than from blocks
+    # naming one model family, so a different ladder is a config edit and not
+    # a shell edit. A BASE_URL declared inline serves the "static"
     # provider; the managed .env block overrides it when endpoints are synced.
     cfg = current_config()
     for rung in profile.rungs:

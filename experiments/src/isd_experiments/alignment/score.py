@@ -6,7 +6,7 @@ scores every ``<agent_id>_output.json`` with the deterministic, threshold-free
 :class:`isd_evaluator.metrics.alignment.AlignmentEvaluator`, writes an
 ``alignment_scores.json`` next to the outputs of each scenario, and prints a
 per-agent summary table (also written as CSV). The output is the flat panel of
-``PANEL_SIGNALS`` — there is no primary endpoint and no composite.
+``ALIGNMENT_SIGNALS`` — there is no primary endpoint and no composite.
 
 **Two sensitivity axes, one per instrument family.** Encoders come from
 the declared encoder arms (family A), Bloom classifiers from the declared
@@ -72,7 +72,7 @@ from .presets import current as declared_arms
 # shell, so an explicit export still wins.
 
 from .protocol import (  # noqa: E402
-    PANEL_SIGNALS,
+    ALIGNMENT_SIGNALS,
     AlignmentEvaluator,
     LexiconBloomClassifier,
     OpenAIAPIEncoder,
@@ -441,9 +441,9 @@ def probe_specs(specs: list[EncoderSpec], api_key_of, cache_only: bool) -> None:
 
 
 #: The reported panel, in reporting order. Derived from the evaluator's
-#: PANEL_SIGNALS rather than restated here, so a signal can never be scored by
+#: ALIGNMENT_SIGNALS rather than restated here, so a signal can never be scored by
 #: the evaluator and silently dropped by the scorer (or vice versa).
-COMPONENTS = [signal for signal, _family in PANEL_SIGNALS]
+COMPONENTS = [signal for signal, _family in ALIGNMENT_SIGNALS]
 
 
 def find_scenario_dirs(run_dir: Path) -> list[Path]:
@@ -566,7 +566,7 @@ def reusable_scores_payload(
 
     The panel-key check is the one that is easy to leave out and expensive to
     omit: encoder, revision, Bloom arm and agent roster can all still match
-    exactly while the scores predate a signal joining PANEL_SIGNALS, so the
+    exactly while the scores predate a signal joining ALIGNMENT_SIGNALS, so the
     artifact reads as complete, is reused verbatim, and the new signal is
     absent from the pooled panel with nothing recording the mixed vintage.
     """

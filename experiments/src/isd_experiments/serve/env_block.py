@@ -4,11 +4,12 @@ Every writer owns one block and touches nothing outside its markers, so a
 hand-edited credential above and a generated endpoint list below can live in
 one file.
 
-The markers deliberately name the BLOCK, not the script that writes it. The
-originals embedded a script path, so renaming the writer meant it no longer
-recognised its own block in an existing file and appended a SECOND one --
-leaving duplicate keys whose winner depended on parse order. A block is named
-for what it holds, which does not change when the code moves.
+The markers deliberately name the BLOCK, not the script that writes it. A
+marker embedding a writer's path stops matching the moment that writer is
+renamed: it then fails to recognise its own block in an existing file and
+appends a SECOND one, leaving duplicate keys whose winner depends on parse
+order. A block is named for what it holds, which does not change when the
+code moves.
 """
 
 from __future__ import annotations

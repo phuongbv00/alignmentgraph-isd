@@ -20,7 +20,7 @@ src/isd_experiments/
   runs.py schema.py    run-dir discovery; the pooled-JSON contract
   latex.py plots.py    shared formatting and figure style
   alignment/           the constructive-alignment measurement
-  pool/                judge and panel pooling, per experiment
+  pool/                LLM judge and panel pooling, per experiment
   report/              tables, figures, notes, the facts sheet, sync
   audit/               preflight, inflight, postrun, repair, artifacts
   serve/ data/ freeze/ endpoints, splits, the code-freeze manifest
@@ -40,7 +40,7 @@ in `src/` names a vendor or a model family. Running a two-rung Llama+Gemma ladde
 is a config edit.
 
 **Names say what a thing is.** No `rq1`/`rq2`/`tn1`/`tn2` in modules, constants, artifacts,
-tags or log dirs. The measurement families are `judge` and `alignment`; the experiments are
+tags or log dirs. The measurement families are `llm_judge` and `alignment`; the experiments are
 `comparison` and `ablation`.
 
 ## Getting started

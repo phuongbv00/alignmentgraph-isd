@@ -1,6 +1,6 @@
 """Generated artifacts for the manuscript, and the order they must run in.
 
-The order is a real constraint that used to live only in a comment:
+The order is a real constraint, declared here rather than left to a comment:
 
 1. tables, cost, sensitivity, ablation tables  -- write the ``*_macros.tex``
 2. figures, ablation figures                   -- independent of those

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Repair transient multi-judge failures without rerunning agent generation.
+"""Repair transient multi-LLM-judge failures without rerunning agent generation.
 
 The evaluator's ``compare --agents AGENT`` command rewrites the complete
 ``comparison_report`` with only the selected agent.  This script therefore
@@ -7,18 +7,18 @@ evaluates each affected agent in a temporary directory, validates the result,
 and merges only that repaired ranking row back into the original report.
 
 It also keeps the run-level ``benchmark_summary.json`` / ``SUMMARY.md`` in
-sync, creates one-time ``.pre-judge-repair`` backups, and runs the post-run
+sync, creates one-time ``.pre-llm-judge-repair`` backups, and runs the post-run
 audit when finished.
 
 Usage:
-  # Inspect the repair scope; no judge calls and no writes.
-  python scripts/alignmentgraph-isd-bench/04_repair_ladder_results.py --dry-run
+  # Inspect the repair scope; no LLM judge calls and no writes.
+  ./isd-exp audit repair --dry-run
 
   # Repair every ladder run found by the default glob, then audit.
-  python scripts/alignmentgraph-isd-bench/04_repair_ladder_results.py
+  ./isd-exp audit repair
 
   # Non-interactive use with an explicit set of run dirs.
-  python scripts/alignmentgraph-isd-bench/04_repair_ladder_results.py --yes \
+  ./isd-exp audit repair --yes \
       'results/test_90_benchmark_<model>_r[123]_*'
 
 The evaluator is always invoked with ``--no-run --multi-judge``.  Existing
@@ -44,7 +44,7 @@ from typing import Any
 
 
 DEFAULT_RUN_GLOB = "results/test_90_benchmark_*_r*"
-DEFAULT_BACKUP_SUFFIX = ".pre-judge-repair"
+DEFAULT_BACKUP_SUFFIX = ".pre-llm-judge-repair"
 REQUIRED_METRICS = (
     "total_score",
     "addie_median",
@@ -55,7 +55,7 @@ REQUIRED_METRICS = (
 
 @dataclass(frozen=True)
 class RepairTarget:
-    """One agent ranking whose stored judge evaluation is incomplete."""
+    """One agent ranking whose stored LLM judge evaluation is incomplete."""
 
     run_dir: Path
     variant: str
@@ -63,7 +63,7 @@ class RepairTarget:
     scenario_dir: Path
     report_path: Path
     agent_id: str
-    judge_error_count: int
+    llm_judge_error_count: int
     missing_metrics: tuple[str, ...]
 
 
@@ -122,7 +122,7 @@ def missing_metrics(row: dict[str, Any]) -> tuple[str, ...]:
 
 
 def discover_targets(run_dirs: list[Path]) -> list[RepairTarget]:
-    """Find ranking rows containing at least one judge error."""
+    """Find ranking rows containing at least one LLM judge error."""
     targets: list[RepairTarget] = []
     for run_dir in run_dirs:
         for report_path in sorted(run_dir.glob("*/*/comparison_report.json")):
@@ -132,7 +132,7 @@ def discover_targets(run_dirs: list[Path]) -> list[RepairTarget]:
             rankings = report.get("comparison", {}).get("rankings", [])
             for row in rankings:
                 error_count = sum(
-                    1 for judge in row.get("judges", []) if judge.get("error")
+                    1 for j in row.get("judges", []) if j.get("error")
                 )
                 if not error_count:
                     continue
@@ -144,18 +144,18 @@ def discover_targets(run_dirs: list[Path]) -> list[RepairTarget]:
                         scenario_dir=scenario_dir,
                         report_path=report_path,
                         agent_id=str(row.get("agent_id", "unknown")),
-                        judge_error_count=error_count,
+                        llm_judge_error_count=error_count,
                         missing_metrics=missing_metrics(row),
                     )
                 )
     return targets
 
 
-def judge_signature(row: dict[str, Any]) -> list[tuple[Any, Any]]:
-    """Return judge identities in their recorded completion order."""
+def llm_judge_signature(row: dict[str, Any]) -> list[tuple[Any, Any]]:
+    """Return LLM judge identities in their recorded completion order."""
     return [
-        (judge.get("provider"), judge.get("model"))
-        for judge in row.get("judges", [])
+        (j.get("provider"), j.get("model"))
+        for j in row.get("judges", [])
     ]
 
 
@@ -170,19 +170,19 @@ def validate_repaired_entry(
             f"agent mismatch: {old_entry.get('agent_id')} -> "
             f"{new_entry.get('agent_id')}"
         )
-    old_roster = Counter(judge_signature(old_entry))
-    new_roster = Counter(judge_signature(new_entry))
+    old_roster = Counter(llm_judge_signature(old_entry))
+    new_roster = Counter(llm_judge_signature(new_entry))
     if new_roster != old_roster:
         errors.append(
-            f"judge roster changed: {judge_signature(old_entry)} -> "
-            f"{judge_signature(new_entry)}"
+            f"LLM judge roster changed: {llm_judge_signature(old_entry)} -> "
+            f"{llm_judge_signature(new_entry)}"
         )
-    failed_judges = [
-        judge for judge in new_entry.get("judges", [])
-        if judge.get("error") or judge.get("addie_score") is None
+    failed_llm_judges = [
+        j for j in new_entry.get("judges", [])
+        if j.get("error") or j.get("addie_score") is None
     ]
-    if failed_judges:
-        errors.append(f"{len(failed_judges)} judge(s) still failed")
+    if failed_llm_judges:
+        errors.append(f"{len(failed_llm_judges)} LLM judge(s) still failed")
     missing = missing_metrics(new_entry)
     if missing:
         errors.append(f"missing metrics: {', '.join(missing)}")
@@ -250,7 +250,7 @@ def evaluate_target(
         raise ValueError(f"missing embedded scenario: {target.report_path}")
 
     last_errors: list[str] = []
-    with tempfile.TemporaryDirectory(prefix="isd-judge-repair-") as temp:
+    with tempfile.TemporaryDirectory(prefix="isd-llm-judge-repair-") as temp:
         temp_dir = Path(temp)
         shutil.copy2(output_path, temp_dir / output_path.name)
         if trajectory_path.exists():
@@ -275,7 +275,7 @@ def evaluate_target(
             command.append("--verbose")
 
         for attempt in range(1, max_attempts + 1):
-            print(f"    judge attempt {attempt}/{max_attempts}", flush=True)
+            print(f"    LLM judge attempt {attempt}/{max_attempts}", flush=True)
             completed = subprocess.run(command, cwd=paths.bench_root(), check=False)
             temp_report_path = temp_dir / "comparison_report.json"
             if completed.returncode != 0:
@@ -361,19 +361,18 @@ def sync_reports(
 
 def run_postrun_audit(run_dirs: list[Path]) -> int:
     """Run the canonical audit over exactly the repaired input run dirs."""
-    audit_script = Path(__file__).with_name("04_audit_postrun.py")
-    command = [sys.executable, str(audit_script), *map(str, run_dirs)]
+    from . import postrun
     print("\nRunning post-run audit...", flush=True)
-    return subprocess.run(command, cwd=paths.bench_root(), check=False).returncode
+    return postrun.run(run_dirs=run_dirs)
 
 
 def print_scope(targets: list[RepairTarget]) -> None:
     """Print a concise, deterministic repair manifest."""
-    judge_errors = sum(target.judge_error_count for target in targets)
+    llm_judge_errors = sum(target.llm_judge_error_count for target in targets)
     missing_count = sum(len(target.missing_metrics) for target in targets)
     print(
         f"Repair scope: {len(targets)} agent×scenario entries, "
-        f"{judge_errors} errored judge records, "
+        f"{llm_judge_errors} errored LLM judge records, "
         f"{missing_count} missing metric fields."
     )
     print(
@@ -389,7 +388,7 @@ def print_scope(targets: list[RepairTarget]) -> None:
         print(
             f"  {target.run_dir.name}/{target.variant}/"
             f"{target.scenario_id}: {target.agent_id} "
-            f"({target.judge_error_count} judge error(s){missing})"
+            f"({target.llm_judge_error_count} LLM judge error(s){missing})"
         )
 
 
@@ -406,7 +405,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="List affected entries without judge calls or file writes.",
+        help="List affected entries without LLM judge calls or file writes.",
     )
     parser.add_argument(
         "--yes",
@@ -437,7 +436,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--skip-audit",
         action="store_true",
-        help="Do not run 04_audit_postrun.py after repair.",
+        help="Do not run the post-run audit after repair.",
     )
     parser.add_argument(
         "--verbose",

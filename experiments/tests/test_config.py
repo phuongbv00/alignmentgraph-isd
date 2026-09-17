@@ -90,7 +90,7 @@ class TestShippedConfig:
     def test_canary_does_not_call_a_judge(self):
         """Its whole point is reading harness behaviour before spending money."""
         p = config.load().profile("canary")
-        assert p.judge is False and p.confirm is False
+        assert p.llm_judge is False and p.confirm is False
 
     def test_tune_is_on_the_training_split(self):
         """Tuning results never enter the paper, so they must never touch the

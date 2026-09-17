@@ -32,15 +32,15 @@ while a schema parse failure is not. Values: \TBD.
 \subsection{LLM judge scores (Objective 2)}
 \label{sec:rq1}
 
-The three judge scores are reported side by side with identical analyses
+The three LLM judge scores are reported side by side with identical analyses
 (\Cref{tab:rq1-ladder}, \Cref{fig:rq1-components}). ADDIE leads the narrative
 because its rubric matches the construct of Objective~2, but no score is treated as
 an endpoint, and where the composite disagrees with ADDIE that disagreement is
 reported rather than resolved in favour of the more convenient one. Each cell states
 its $n$; any cell averaged over fewer than all scenarios carries a footnote, because
 a mean over survivors is not comparable with a mean over everyone. Per-size paired
-comparisons, effect sizes and intervals: \TBD. The second-judge subset, which tests
-whether the direction of the conclusion depends on the judge: \TBD. The trajectory
+comparisons, effect sizes and intervals: \TBD. The second LLM judge subset, which tests
+whether the direction of the conclusion depends on the LLM judge: \TBD. The trajectory
 score is reported at both caps, and the two are read together: \TBD.
 
 The scale part of Objective~2 is a separate analysis, not a reading of the per-size
@@ -68,23 +68,23 @@ its bootstrap interval and $p$: \TBD.
   \label{fig:rq1-components}
 \end{figure}
 
-\subsection{Alignment scores (Objective 3)}
+\subsection{Alignment signals (Objective 3)}
 \label{sec:rq2}
 
 The panel is read by the pre-specified rule of \Cref{sec:alignment-measures}: an
-advantage requires at least four of the six scores significantly positive after
-within-score Holm correction with none significantly negative, and every other
-pattern is reported as mixed with the losing side named. All six scores are reported
+advantage requires at least four of the six signals significantly positive after
+within-signal Holm correction with none significantly negative, and every other
+pattern is reported as mixed with the losing side named. All six signals are reported
 for every comparison, win or lose (\Cref{tab:rq2-panel},
 \Cref{fig:rq2-components,fig:rq2-forest}). Per-size panel readings: \TBD. The
 panel-wide Holm sensitivity: \TBD. The scale interaction on
-$\sigma_{\mathrm{meas}}$, with the remaining scores alongside: \TBD.
+$\sigma_{\mathrm{meas}}$, with the remaining signals alongside: \TBD.
 
 Absolute levels are reported descriptively only. The comparative claim is what the
 design supports; a panel value on its own has no external calibration.
 
 \begin{table*}[t]
-  \caption{The six alignment scores by system and model size, with per-cell $n$.
+  \caption{The six alignment signals by system and model size, with per-cell $n$.
   Generated from the TN1 artifacts.}
   \label{tab:rq2-panel}
   \small
@@ -97,9 +97,9 @@ design supports; a panel value on its own has no external calibration.
   \centering
   \fbox{\parbox[c][0.26\textheight][c]{0.88\columnwidth}{\centering
     \emph{Pending TN1.}\\[2pt]
-    \footnotesize Panel scores by system across the ladder.}}
+    \footnotesize Panel signals by system across the ladder.}}
   \Description{Placeholder for the alignment panel figure, pending the TN1 run.}
-  \caption{Alignment scores by system and model size. Generated from the TN1
+  \caption{Alignment signals by system and model size. Generated from the TN1
   artifacts.}
   \label{fig:rq2-components}
 \end{figure}
@@ -108,9 +108,9 @@ design supports; a panel value on its own has no external calibration.
   \centering
   \fbox{\parbox[c][0.26\textheight][c]{0.88\columnwidth}{\centering
     \emph{Pending TN1.}\\[2pt]
-    \footnotesize Paired differences with bootstrap intervals, per panel score.}}
+    \footnotesize Paired differences with bootstrap intervals, per panel signal.}}
   \Description{Placeholder for the alignment forest plot, pending the TN1 run.}
-  \caption{Paired proposed-minus-baseline differences on each alignment score, with
+  \caption{Paired proposed-minus-baseline differences on each alignment signal, with
   bootstrap 95\% intervals. Generated from the TN1 artifacts.}
   \label{fig:rq2-forest}
 \end{figure}
@@ -148,7 +148,7 @@ registered directional prediction, that quality degrades with stage position und
 \TBD. The budget-parity condition---that no arm was cut short by its turn
 budget---holds or does not: \TBD; the ablation may be read only if it holds.
 
-Each statement below will name the instrument family it rests on. Where the judge
+Each statement below will name the instrument family it rests on. Where the LLM judge
 and the panel disagree about the arms, that disagreement is a finding and is
 reported in both readings (\Cref{sec:discussion}), not resolved silently.
 
@@ -165,9 +165,9 @@ reported in both readings (\Cref{sec:discussion}), not resolved silently.
   \centering
   \fbox{\parbox[c][0.26\textheight][c]{0.88\columnwidth}{\centering
     \emph{Pending TN2.}\\[2pt]
-    \footnotesize Panel scores across the four ablation arms.}}
+    \footnotesize Panel signals across the four ablation arms.}}
   \Description{Placeholder for the ablation panel figure, pending the TN2 run.}
-  \caption{Alignment scores across the four ablation arms at both sizes. Generated
+  \caption{Alignment signals across the four ablation arms at both sizes. Generated
   from the TN2 artifacts.}
   \label{fig:ablation-components}
 \end{figure}

@@ -95,7 +95,7 @@ class TestMacroRegistry:
 
 class TestHeaderComment:
     def test_names_producer_and_source_generation(self):
-        head = latex.header_comment("isd-exp report tables", "judge ladder table",
+        head = latex.header_comment("isd-exp report tables", "LLM judge ladder table",
                                     {"generated_at": "2026-01-01T00:00:00"})
         assert "isd-exp report tables" in head
         assert "2026-01-01T00:00:00" in head

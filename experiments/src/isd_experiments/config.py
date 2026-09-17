@@ -1,8 +1,8 @@
 """The experiment, read from experiment.toml.
 
-What used to be module constants spread across five generators -- the ladder
-slots, the model names, the size-to-macro-word table, the agent rosters, the
-ablation arms and their expected flags -- are derived here from one declaration.
+The ladder slots, the model names, the size-to-macro-word table, the agent
+rosters, the ablation arms and their expected flags are all derived here from
+one declaration rather than restated as constants in each generator.
 That is what makes a different ladder or a different serving host a config edit
 rather than a patch: nothing below names a vendor or a model family.
 
@@ -45,24 +45,24 @@ AGENT_ORDER = [
     "dick-carey-agent", "react-isd", "alignmentgraph-isd",
 ]
 
-#: The three LLM-judge signals, reported side by side with no composite as the
+#: The three LLM judge scores, reported side by side with no composite as the
 #: headline. ADDIE leads the narrative because it measures design quality --
 #: the construct the question is about -- while trajectory_score measures
 #: process conformance and total_score's weights come from the benchmark.
-JUDGE_SIGNALS = ("addie_median", "total_score", "trajectory_score")
-JUDGE_LEAD = "addie_median"
+LLM_JUDGE_SCORES = ("addie_median", "total_score", "trajectory_score")
+LLM_JUDGE_LEAD = "addie_median"
 
-#: How each judge signal is named in a report, spelled out so a reader does not
+#: How each LLM judge score is named in a report, spelled out so a reader does not
 #: have to know that `total_score` is the benchmark's own composite.
-JUDGE_SIGNAL_LABEL = {
+LLM_JUDGE_SCORE_LABEL = {
     "addie_median": "ADDIE rubric (/100)",
     "total_score": "total_score = 0.7*ADDIE + 0.3*Trajectory (benchmark composite)",
     "trajectory_score": "Trajectory (BFCL tool-use, /100)",
 }
 
-#: Each judge mean paired with its OWN spread. A single shared SD is a
+#: Each LLM judge mean paired with its OWN spread. A single shared SD is a
 #: total_score statistic and overstates spread next to an ADDIE mean.
-JUDGE_SD_FIELD = {
+LLM_JUDGE_SD_FIELD = {
     "mean_addie": "sd_addie_across_scenarios",
     "mean_total": "sd_total_across_scenarios",
     "mean_traj": "sd_traj_across_scenarios",
@@ -149,7 +149,7 @@ class Profile:
     proposed: str | None = None
     reference: str | None = None
     confirm: bool = True
-    judge: bool = True
+    llm_judge: bool = True
     scenario_limit: int | None = None
 
     @property
@@ -281,7 +281,7 @@ def _profile(name: str, raw: dict, ladder: tuple[Rung, ...]) -> Profile:
         proposed=raw.get("proposed"),
         reference=raw.get("reference"),
         confirm=bool(raw.get("confirm", True)),
-        judge=bool(raw.get("judge", True)),
+        llm_judge=bool(raw.get("llm_judge", True)),
         scenario_limit=raw.get("scenario_limit"),
     )
 

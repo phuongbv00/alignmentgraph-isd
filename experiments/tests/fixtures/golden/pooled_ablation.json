@@ -155,15 +155,15 @@
         }
       },
       "comparisons": {
-        "holm_family": "3 comparisons (alignmentgraph-isd vs each baseline) within model size 'qwen3.5-0.8b_a1'; Holm applied per (signal, policy).",
-        "lead_signal": "addie_median",
-        "signals": [
+        "holm_family": "3 comparisons (alignmentgraph-isd vs each baseline) within model size 'qwen3.5-0.8b_a1'; Holm applied per (score, policy).",
+        "lead_score": "addie_median",
+        "scores": [
           "addie_median",
           "total_score",
           "trajectory_score"
         ],
         "primary_policy": "complete_case",
-        "by_signal": {
+        "by_score": {
           "addie_median": {
             "label": "ADDIE rubric (/100)",
             "min_score_floor": 73.3073,
@@ -676,15 +676,15 @@
         }
       },
       "comparisons": {
-        "holm_family": "3 comparisons (alignmentgraph-isd vs each baseline) within model size 'qwen3.5-4b_a1'; Holm applied per (signal, policy).",
-        "lead_signal": "addie_median",
-        "signals": [
+        "holm_family": "3 comparisons (alignmentgraph-isd vs each baseline) within model size 'qwen3.5-4b_a1'; Holm applied per (score, policy).",
+        "lead_score": "addie_median",
+        "scores": [
           "addie_median",
           "total_score",
           "trajectory_score"
         ],
         "primary_policy": "complete_case",
-        "by_signal": {
+        "by_score": {
           "addie_median": {
             "label": "ADDIE rubric (/100)",
             "min_score_floor": 71.3745,
@@ -1182,7 +1182,7 @@
       }
     ]
   },
-  "interaction_by_signal": {
+  "interaction_by_score": {
     "addie_median": {
       "h2_note": "Ablation frame: delta = A0 - arm per scenario. H2 (capacity interaction) predicts NEGATIVE did_mean: the full architecture's advantage over this arm is largest at the smallest model and shrinks as capacity grows. A DiD near zero with per-size deltas near zero means the axis does not matter at any size; near-zero DiD with uniformly positive deltas means it matters equally at every size (decomposition/context helps, but not BECAUSE models are small).",
       "metric": "addie_median",
@@ -4110,7 +4110,7 @@
       "agentmode_multi__contextmode_prose": "alignmentgraph-isd-multi-prose",
       "agentmode_single__contextmode_prose": "alignmentgraph-isd-single-prose"
     },
-    "signals": {
+    "measures": {
       "addie_median": {
         "per_model": [
           {

@@ -8,12 +8,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..config import JUDGE_LEAD
+from .. import paths
+from ..config import LLM_JUDGE_LEAD
 
 def print_report(pooled: dict, proposed: str, baselines: list[str]) -> None:
     print("\n" + "=" * 78)
-    print("POOLED MODEL LADDER — judge judge signals reported separately; "
-          f"lead = {JUDGE_LEAD}")
+    print("POOLED MODEL LADDER — LLM judge scores reported separately; "
+          f"lead = {LLM_JUDGE_LEAD}")
     print("=" * 78)
     for model in pooled["models"]:
         print(f"\n## {model['label']}  ({model['n_runs']} runs, "
@@ -36,9 +37,9 @@ def print_report(pooled: dict, proposed: str, baselines: list[str]) -> None:
                   f"{_sd_cell(s.get('sd_total_across_scenarios'))} "
                   f"{_sd_cell(s.get('run_to_run_sd'))}")
         comp = model["comparisons"]
-        for metric in comp["signals"]:
-            block = comp["by_signal"][metric]
-            lead = "  <-- LEAD (answers the RQ)" if metric == comp["lead_signal"] else ""
+        for metric in comp["scores"]:
+            block = comp["by_score"][metric]
+            lead = "  <-- LEAD (answers the RQ)" if metric == comp["lead_score"] else ""
             print(f"\n  Paired stats on {metric} — {block['label']}{lead}")
             print(f"  ({proposed} - baseline), Holm family = {len(baselines)} "
                   "comparisons per policy in this model size:")
@@ -91,7 +92,7 @@ def print_report(pooled: dict, proposed: str, baselines: list[str]) -> None:
                       f"p={r['fisher_p_two_sided']:.2e} p_holm={r['p_holm']:.2e}")
 
     if pooled.get("alignment"):
-        print("\n## Alignment metrics (alignment-panel, pooled from alignment_scores.json)")
+        print("\n## Alignment metrics (alignment panel, pooled from alignment_scores.json)")
         align = pooled["alignment"]
         print(f"  encoder = {align.get('encoder_label')} "
               f"@ revision {align.get('encoder_revision') or 'UNPINNED'}")
@@ -103,8 +104,9 @@ def print_report(pooled: dict, proposed: str, baselines: list[str]) -> None:
                   f"score files found ({pct:.0f}%). The numbers below are pooled "
                   "over what was scored, NOT over the full design; a low per-agent "
                   "n= here is indistinguishable from agent failure. Finish scoring "
-                  "(06_score_alignment.py) and re-pool before using these for the "
-                  "paper — 04_audit_postrun.py lists which run dirs are short.")
+                  f"(`{paths.cli()} score`) and re-pool before using these for "
+                  f"the paper — `{paths.cli()} audit postrun` lists which run "
+                  "dirs are short.")
         if not align.get("encoder_revision_pinned"):
             print("  NOTE: no encoder_revision in the score files — reproducibility "
                   "rests on the embedding cache only. Set <SLOT>_EMBED_REVISION "
@@ -117,7 +119,7 @@ def print_report(pooled: dict, proposed: str, baselines: list[str]) -> None:
                 print(f"    {agent:20s} {parts}")
         stats = pooled["alignment"].get("stats")
         if stats:
-            print("\n## Alignment panel — paired stats + descriptive, every signal (alignment-panel)")
+            print("\n## Alignment panel — paired stats + descriptive, every signal")
             print(f"  {stats['definition']}")
             for entry in stats["per_model"]:
                 print(f"  [{entry['label']}]")
@@ -174,12 +176,12 @@ def print_report(pooled: dict, proposed: str, baselines: list[str]) -> None:
                           f"DiD={r['did_mean']:+7.3f} CI95[{lo:+6.3f},{hi:+6.3f}] "
                           f"p={r['did_wilcoxon_p']:.2e}")
     else:
-        print("\n## Alignment metrics: no alignment_scores.json found — skipped (alignment-panel metric "
+        print("\n## Alignment metrics: no alignment_scores.json found — skipped (the panel "
               "not yet computed; re-run pooling after it lands).")
 
     sens = pooled.get("alignment_sensitivity")
     if sens:
-        print("\n## Instrument sensitivity (alignment-panel robustness — encoder + Bloom axes)")
+        print("\n## Instrument sensitivity (panel robustness — encoder + Bloom axes)")
         print(f"  primary = {sens['primary_encoder']} (alignment_scores.json), "
               f"metric = {sens['metric']} (encoder axis) / "
               f"{sens.get('metric_bloom_axis')} (Bloom axis)")

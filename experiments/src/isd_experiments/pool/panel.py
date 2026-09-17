@@ -15,7 +15,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from ..alignment.protocol import PANEL_SIGNALS
+from .. import paths
+from ..alignment.protocol import ALIGNMENT_SIGNALS
 from ..runs import extract_alignment_metrics, load_run
 from ..stats import (
     bootstrap_ci,
@@ -66,7 +67,7 @@ def pool_alignment(models: list[dict], run_dirs_by_model: dict[str, list[Path]],
       * 'conditional_align': restricted to scenarios whose output yielded
         >=1 objective in every scored run — isolates signal quality from
         parse failure, which the complete-case layer folds in as 0;
-      * 'comparisons_failure_zero': the failure-policy layer, mirroring the judge layer.
+      * 'comparisons_failure_zero': the failure-policy layer, mirroring the LLM judge layer.
         'comparisons' are complete-case over AVAILABLE outputs — a crashed
         agent writes no *_output.json, so its scenario drops out of the paired
         set and the crash costs it nothing. The zero policy re-adds those cells
@@ -84,7 +85,7 @@ def pool_alignment(models: list[dict], run_dirs_by_model: dict[str, list[Path]],
     -output roster) and, top-level under stats, 'interaction_align' — the
     method x model-size DiD on the paired delta of ``lead_metric``.
     """
-    PANEL = [signal for signal, _family in PANEL_SIGNALS]
+    PANEL = [signal for signal, _family in ALIGNMENT_SIGNALS]
     out_models = {}
     stats_models = []
     align_maps_by_label: dict[str, dict[str, dict[str, float]]] = {}
@@ -201,7 +202,7 @@ def pool_alignment(models: list[dict], run_dirs_by_model: dict[str, list[Path]],
                 }
                 for agent in metric_map
             }
-        # Failure policy, mirroring the judge layer. align_map is complete-case over
+        # Failure policy, mirroring the LLM judge layer. align_map is complete-case over
         # AVAILABLE outputs: an agent that crashed has no *_output.json, so its
         # scenario silently leaves the paired set and the crash costs it
         # nothing. zero_map re-adds those (agent, scenario, run) cells at 0.0 —
@@ -238,7 +239,7 @@ def pool_alignment(models: list[dict], run_dirs_by_model: dict[str, list[Path]],
             zero_map = failure_zero(signal, signal_map)
             maps_by_metric.setdefault(signal, {})[label] = signal_map
             panel[signal] = {
-                "family": dict(PANEL_SIGNALS)[signal],
+                "family": dict(ALIGNMENT_SIGNALS)[signal],
                 "align_descriptive": {
                     agent: {
                         "n": len(vals),
@@ -265,7 +266,7 @@ def pool_alignment(models: list[dict], run_dirs_by_model: dict[str, list[Path]],
                 f"scenario, so the pooled panel would carry "
                 f"{len(panel)}/{len(PANEL)} signals and the whole-panel Holm "
                 f"family would shrink to match. Re-score these run dirs with "
-                f"06_score_alignment.py --overwrite (a signal added since the "
+                f"`{paths.cli()} score --overwrite` (a signal added since the "
                 f"artifacts were written is absent from them, and the cached "
                 f"artifacts are otherwise valid so a plain re-run reuses them)."
             )
@@ -298,8 +299,8 @@ def pool_alignment(models: list[dict], run_dirs_by_model: dict[str, list[Path]],
 
     # One pool = one protocol configuration. Mixing encoders (or two weight
     # revisions of one encoder) across run dirs produces a mean that measures
-    # nothing, and it used to be invisible because only the first file's
-    # metadata was kept. Fail loudly instead.
+    # nothing, and it is invisible when only the first file's metadata is
+    # kept. Fail loudly instead.
     if len(configs) > 1:
         detail = "; ".join(
             f"{enc!r} @ revision {rev!r} + bloom {bloom!r} (e.g. {where})"
@@ -308,13 +309,13 @@ def pool_alignment(models: list[dict], run_dirs_by_model: dict[str, list[Path]],
         raise SystemExit(
             f"[{scores_filename}] the pooled run dirs were scored with "
             f"{len(configs)} different protocol configurations: {detail}. "
-            "Re-score every run dir with one configuration "
-            "(06_score_alignment.py --overwrite) before pooling — a mean over "
+            f"Re-score every run dir with one configuration "
+            f"(`{paths.cli()} score --overwrite`) before pooling — a mean over "
             "two instruments is not an alignment measurement."
         )
 
     # Method x model-size interaction on the lead metric (largest -
-    # smallest size), mirroring interaction_tests()'s convention for judge Total.
+    # smallest size), mirroring interaction_tests()'s convention for LLM judge Total.
     interaction_align = None
     labels_with = [m["label"] for m in models if m["label"] in align_maps_by_label]
     if len(labels_with) >= 2:
@@ -359,7 +360,7 @@ def pool_alignment(models: list[dict], run_dirs_by_model: dict[str, list[Path]],
     # many were found. A half-scored sweep pools as if it were the whole thing —
     # and the per-agent n= in the report cannot distinguish "the agent failed
     # here" (real data, handled by the failure policy) from "this scenario was
-    # never scored" (operator error). 04_audit_postrun.py flags this per run dir;
+    # never scored" (operator error). isd-exp audit postrun flags this per run dir;
     # this is the second line of defence, at the point the numbers are made.
     n_expected = sum(m["n_scenarios_union"] * m["n_runs"] for m in models)
     coverage_complete = n_scenario_files >= n_expected
@@ -403,7 +404,7 @@ def pool_alignment(models: list[dict], run_dirs_by_model: dict[str, list[Path]],
             ),
             "panel_signals": [
                 {"signal": signal, "family": family}
-                for signal, family in PANEL_SIGNALS
+                for signal, family in ALIGNMENT_SIGNALS
             ],
             "lead_metric": lead_metric,
             "per_model": stats_models,

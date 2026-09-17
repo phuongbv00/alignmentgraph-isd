@@ -18,7 +18,7 @@ GOLDEN = paths.exp_root() / "tests" / "fixtures" / "golden"
 
 #: What the replaced generator produced, under the new semantic names.
 EXPECTED = {
-    "fig_judge_ladder", "fig_judge_delta", "fig_judge_components",
+    "fig_llm_judge_ladder", "fig_llm_judge_delta", "fig_llm_judge_components",
     "fig_alignment_ladder", "fig_alignment_components", "fig_alignment_forest",
     "fig_failure_rate", "fig_cost_quality",
 }
@@ -73,10 +73,10 @@ class TestSkippingIsExplicit:
         printed = capsys.readouterr().out
         assert "skipped fig_alignment_ladder" in printed
         assert not (out / "fig_alignment_ladder.pdf").exists()
-        # The judge figures do not depend on that layer and must still be drawn.
-        assert (out / "fig_judge_ladder.pdf").exists()
+        # The LLM judge figures do not depend on that layer and must still be drawn.
+        assert (out / "fig_llm_judge_ladder.pdf").exists()
 
     def test_the_scatter_needs_run_dirs_and_says_so(self, tmp_path, capsys):
         """It is per-scenario, so the pooled summary cannot produce it."""
         figures.run(pooled_path=GOLDEN / "pooled_comparison.json", outdir=tmp_path / "f")
-        assert "fig_alignment_vs_judge_scatter skipped" in capsys.readouterr().out
+        assert "fig_alignment_vs_llm_judge_scatter skipped" in capsys.readouterr().out

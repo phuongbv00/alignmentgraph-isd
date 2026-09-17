@@ -55,25 +55,26 @@ BLOOM = "bloom validate"
 #: The declared inventory, held honest against the generators in both
 #: directions, so a new output cannot quietly go unnoticed.
 INVENTORY: list[Spec] = [
-    # Judge and alignment tables, plus the prose macros. The judge tables lead
+    # LLM judge and alignment tables, plus the prose macros. The LLM judge
+    # tables lead
     # on ADDIE and report Total and Trajectory alongside; the alignment side
     # leads on one signal and carries the whole flat panel. Each is a separate
     # \input target.
-    Spec("tab_judge_addie.tex", TABLES, "tex", "always"),
-    Spec("tab_judge_total.tex", TABLES, "tex", "always"),
-    Spec("tab_judge_trajectory.tex", TABLES, "tex", "always"),
+    Spec("tab_llm_judge_addie.tex", TABLES, "tex", "always"),
+    Spec("tab_llm_judge_total.tex", TABLES, "tex", "always"),
+    Spec("tab_llm_judge_trajectory.tex", TABLES, "tex", "always"),
     Spec("tab_alignment.tex", TABLES, "tex", "always"),
     Spec("tab_alignment_panel.tex", TABLES, "tex", "always"),
     Spec("stats_macros.tex", TABLES, "tex", "always"),
     Spec("stats_summary.md", TABLES, "note", "always"),
     # Figures.
-    Spec("fig_judge_ladder", FIGURES, "figure", "always"),
-    Spec("fig_judge_delta", FIGURES, "figure", "always"),
-    Spec("fig_judge_components", FIGURES, "figure", "always"),
+    Spec("fig_llm_judge_ladder", FIGURES, "figure", "always"),
+    Spec("fig_llm_judge_delta", FIGURES, "figure", "always"),
+    Spec("fig_llm_judge_components", FIGURES, "figure", "always"),
     Spec("fig_alignment_ladder", FIGURES, "figure", "always"),
     Spec("fig_alignment_components", FIGURES, "figure", "always"),
     Spec("fig_alignment_forest", FIGURES, "figure", "always"),
-    Spec("fig_alignment_vs_judge_scatter", FIGURES, "figure", "always"),
+    Spec("fig_alignment_vs_llm_judge_scatter", FIGURES, "figure", "always"),
     Spec("fig_failure_rate", FIGURES, "figure", "always"),
     Spec("fig_cost_quality", FIGURES, "figure", "always"),
     # Cost. "always" because these read the run dirs directly rather than a

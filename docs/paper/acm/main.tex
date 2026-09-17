@@ -122,7 +122,7 @@
 ISD-Agent-Bench, including all six baseline agents and the evaluation
 pipeline, is publicly available~\cite{isdagentbench}. The frozen run manifest
 (code and prompt hashes, model checkpoints, seeds, dataset splits, decoding and
-serving configuration, output and trajectory caps, judge prompts, and metric
+serving configuration, output and trajectory caps, LLM judge prompts, and metric
 versions), the four ablation-arm configurations, the stored trajectories and the
 MAS source code will be released with the camera-ready version of this paper.
 The manifest is what makes the reported statistics reproducible without
@@ -135,13 +135,13 @@ regenerating any model output.
 
 \section{Additional Result Tables}
 \label{sec:appendix-tables}
-The remaining per-signal judge tables, the per-signal alignment table, and the
+The remaining per-signal LLM judge tables, the per-signal alignment table, and the
 detailed cost table; the main text reports ADDIE (\Cref{sec:rq1}), the panel
 summary (\Cref{sec:rq2}), and cost via the trade-off figure
 (\Cref{sec:cost}). These tables are generated from the TN1 and TN2 artifacts and
 are pending those runs.
-% \input{../../generated/tab_judge_trajectory}
-% \input{../../generated/tab_judge_total}
+% \input{../../generated/tab_llm_judge_trajectory}
+% \input{../../generated/tab_llm_judge_total}
 % \input{../../generated/tab_alignment}
 % \input{../../generated/tab_cost}
 

@@ -1,6 +1,6 @@
 """Sync ladder env vars from the serving provider Pods straight into .env.
 
-The ladder pods are created MANUALLY in the the serving provider console from the public
+The ladder pods are created MANUALLY in the RunPod console from the public
 vLLM template (one template for all 4 sizes; only the model -- the first
 positional token of the start command -- differs per pod; see
 ../docs/guides/benchmark_guides.md, section 4, for the template link and console steps).
@@ -8,11 +8,11 @@ This script does the remaining mechanical part: list the live pods, match
 each one to a ladder slot (by start command / pod name), confirm the served
 model against the pod's own /v1/models, and REWRITE the managed block at the
 end of the repo's .env file (between the >>>/<<< markers below) with the
-current env-quads -- so `source .env` (which 02_run_ladder.sh already does)
+current env-quads -- so `source .env` (which isd-exp comparison run already does)
 picks everything up. Re-running replaces the block, never duplicates it;
 nothing outside the markers is touched.
 
-It only ever READS from the the serving provider API (GET /pods). Creating, stopping and
+It only ever READS from the RunPod API (GET /pods). Creating, stopping and
 deleting pods stays a console operation.
 
 Requires: RUNPOD_API_KEY in .env (https://www.runpod.io/console/user/settings) --
@@ -22,7 +22,7 @@ Usage:
   python scripts/3_sync_runpod_pods_env.py            # sync pods -> .env block
   python scripts/3_sync_runpod_pods_env.py --dry-run  # print the block, write nothing
   source .env
-  ./scripts/alignmentgraph-isd-bench/02_run_ladder.sh
+  ./isd-exp comparison run
 
 The managed block contains, per slot, the benchmark env-quad:
 
@@ -33,7 +33,7 @@ The managed block contains, per slot, the benchmark env-quad:
   QWEN2B_AGENT_MODEL_API_KEY_ENVS=VLLM_API_KEY
 
 VLLM_API_KEY itself must already be set in .env -- it is the Bearer
-token the template's vLLM server was started with, not the the serving provider API key.
+token the template's vLLM server was started with, not the RunPod API key.
 """
 from __future__ import annotations
 
@@ -260,4 +260,4 @@ def run(*, dry_run: bool = False, ENV_PATH=None, port=8000) -> int:
 
     print(f"\n{action} {ENV_PATH} ({len(slots)} slot(s))")
     print("\nsource .env")
-    print("./scripts/alignmentgraph-isd-bench/02_run_ladder.sh")
+    print("./isd-exp comparison run")

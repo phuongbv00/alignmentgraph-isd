@@ -48,7 +48,7 @@ class TestDeclarationMatchesProduction:
         declared = {s.name for s in inventory.INVENTORY if s.producer == inventory.FIGURES}
         # The scatter needs per-scenario run dirs, which this call does not give
         # it, so it is expected to be absent here.
-        assert declared - drawn == {"fig_alignment_vs_judge_scatter"}
+        assert declared - drawn == {"fig_alignment_vs_llm_judge_scatter"}
         assert drawn - declared == set()
 
 

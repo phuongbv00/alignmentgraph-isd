@@ -24,7 +24,7 @@ import json
 import random
 from pathlib import Path
 
-#: Mirrors evaluator alignment.PANEL_SIGNALS. Duplicated rather than imported
+#: Mirrors evaluator alignment.ALIGNMENT_SIGNALS. Duplicated rather than imported
 #: so the fixture keeps building while the protocol module is being moved.
 PANEL = (
     "objective_assessment_similarity",
@@ -43,7 +43,7 @@ N_SCENARIOS = 6
 DATASET = "test_90"
 
 MISSING = ("scenario_03", "baseline")          # no output at all
-EVAL_ERROR = ("scenario_04", "react-isd")      # transient judge failure
+EVAL_ERROR = ("scenario_04", "react-isd")      # transient LLM judge failure
 STUB = ("scenario_05", "baseline")             # produced, but empty
 
 
@@ -157,11 +157,11 @@ def build(root: Path, tag: str = "c1", seed: int = 42) -> list[Path]:
                 row = {"agent_id": agent, "total_score": total,
                        "addie_median": addie, "trajectory_score": traj}
                 if (sid, agent) == EVAL_ERROR:
-                    # Scored cell lost to a transient judge failure: the exact
+                    # Scored cell lost to a transient LLM judge failure: the exact
                     # shape `audit repair` re-judges without regenerating output.
                     row = {"agent_id": agent, "total_score": None,
                            "addie_median": None, "trajectory_score": None,
-                           "evaluation_error": "judge timeout"}
+                           "evaluation_error": "LLM judge timeout"}
                 rankings.append(row)
                 (scen / f"{agent}_output.json").write_text(
                     json.dumps(_addie_output(agent, sid, stub), indent=2), encoding="utf-8")

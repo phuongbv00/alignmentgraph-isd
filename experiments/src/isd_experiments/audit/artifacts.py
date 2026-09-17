@@ -37,7 +37,7 @@ Checks, in report order:
                         is defined by one of the generated macro files
   I  language           artifact text is English with a decimal point, so a
                         Vietnamese caption cannot creep back in unnoticed
-  J  protocol integrity the pooled panel carries every PANEL_SIGNALS entry, and
+  J  protocol integrity the pooled panel carries every ALIGNMENT_SIGNALS entry, and
                         the encoder revision is pinned — both are invisible in
                         the artifacts yet change what the p-values mean
 
@@ -48,9 +48,9 @@ notes are WARN-only because they need a manually trained checkpoint rather
 than a pipeline step.
 
 Usage:
-  python scripts/alignmentgraph-isd-bench/99_audit_artifacts.py
-  python scripts/alignmentgraph-isd-bench/99_audit_artifacts.py --strict   # WARN also fails
-  python scripts/alignmentgraph-isd-bench/99_audit_artifacts.py --no-docs  # benchmark side only
+  ./isd-exp audit artifacts
+  ./isd-exp audit artifacts --strict   # WARN also fails
+  ./isd-exp audit artifacts --no-docs  # benchmark side only
 
 Exit code 0 = no RED findings (and no WARN under --strict), 1 = otherwise.
 """
@@ -67,7 +67,7 @@ from .. import paths
 from ..report.inventory import INVENTORY, Spec
 
 
-from ..alignment.protocol import PANEL_SIGNALS
+from ..alignment.protocol import ALIGNMENT_SIGNALS
 
 SRC_DIR = paths.generated_dir()
 POOLED_COMPARISON = paths.results_root() / "pooled_comparison.json"
@@ -214,7 +214,7 @@ def check_protocol_integrity(rep: Report, ctx: dict) -> None:
     * A panel signal that was defined on no scenario is dropped by 07, which
       shrinks the whole-panel Holm family and makes every panel-corrected p
       less conservative than its own caption says.
-    * An unpinned encoder revision disables 07's mixed-configuration guard:
+    * An unpinned encoder revision disables the pooling mixed-configuration guard:
       with ``encoder_revision`` null in every run dir they all collapse to one
       configuration key, so re-pulled encoder weights between runs would pool
       without complaint, and the embedding cache key omits the revision too.
@@ -223,8 +223,8 @@ def check_protocol_integrity(rep: Report, ctx: dict) -> None:
     if not pooled or ctx.get("ladder_demo"):
         return
     align = pooled.get("alignment") or {}
-    expected = len(PANEL_SIGNALS)
-    declared = {s for s, _f in PANEL_SIGNALS}
+    expected = len(ALIGNMENT_SIGNALS)
+    declared = {s for s, _f in ALIGNMENT_SIGNALS}
     for model in (align.get("stats") or {}).get("per_model") or []:
         pooled_panel = set(model.get("panel") or {})
         label = model.get("label")
@@ -234,18 +234,18 @@ def check_protocol_integrity(rep: Report, ctx: dict) -> None:
                            f"but {missing} are absent — the whole-panel Holm "
                            "family is built from what pooled, so every "
                            "p_holm_panel is corrected over too few comparisons. "
-                           "Re-score with 06_score_alignment.py --overwrite "
+                           f"Re-score with `{paths.cli()} score --overwrite` "
                            "(cached artifacts predating the signal are otherwise "
                            "valid, so a plain re-run reuses them), then re-pool")
         stale = sorted(pooled_panel - declared)
         if stale:
             rep.add("red", f"J: {label} pooled {stale}, which are no longer in "
-                           "PANEL_SIGNALS — this pooled file predates the current "
+                           "ALIGNMENT_SIGNALS — this pooled file predates the current "
                            "panel and its p_holm_panel was corrected over a "
                            "different family than the paper describes. Re-pool")
     if align and not align.get("encoder_revision_pinned"):
         rep.add("warn", "J: encoder revision is not pinned "
-                        "(encoder_revision null) — 07's one-pool-one-config "
+                        "(encoder_revision null) — the one-pool-one-config "
                         "guard cannot fire, since every run dir collapses to "
                         "the same key. Set <SLOT>_EMBED_REVISION before scoring "
                         "to make the guard real and the cache key revision-aware")
@@ -412,8 +412,10 @@ def check_macros(rep: Report) -> None:
     """Undefined generated macros are the one failure a file audit cannot see.
 
     Restricting the sweep to macro names whose leading lowercase run matches a
-    generated family (ladder*, rqOne*, abl*, sens*) keeps LaTeX and package
-    control sequences out of it without maintaining an allow-list.
+    generated family (ladder*, llmJudge*, alignment*, abl*, cost*) keeps LaTeX
+    and package control sequences out of it without maintaining an allow-list.
+    The families are read off the macro files themselves, so a new prefix needs
+    no edit here.
     """
     texs = manuscript_files()
     if not texs or not DOCS_DIR.exists():
@@ -454,7 +456,7 @@ def run(*, strict: bool = False, check_docs: bool = True) -> int:
     rep = Report()
     if not ctx["ladder"]:
         rep.add("red", f"B: {POOLED_COMPARISON.name} not found — nothing downstream of "
-                       "07_pool_ladder_runs.py can be trusted")
+                       f"`{paths.cli()} comparison pool` can be trusted")
     if not ctx["ablation"]:
         rep.add("info", "B: no pooled_ablation.json — ablation artifacts not expected")
     if not ctx["sensitivity"]:

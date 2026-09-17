@@ -12,12 +12,12 @@ each are \TBD.
 
 Two readings will have to be distinguished rather than assumed. If the LLM judge
 scores are close across the ablation arms while the alignment panel separates them,
-the favourable reading is that general-purpose judges are insensitive to alignment,
+the favourable reading is that general-purpose LLM judges are insensitive to alignment,
 which is exactly what an independent alignment measurement exists to expose, and
 known evaluator biases make that credible~\cite{panickssery2024llm}. The adversarial
 reading is that the only instrument separating the arms shares a construct with the
-design being ablated, while the mechanically independent judge family does not---the
-pattern one expects under weak discriminant validity. Automated scores alone cannot
+design being ablated, while the mechanically independent LLM judge family does not---the
+pattern one expects under weak discriminant validity. Automated signals alone cannot
 choose between these, which is why the prediction that distinguishes them is
 registered before the expert review is read (\Cref{sec:expert}) and why that review
 is part of the design rather than future work.
@@ -55,9 +55,9 @@ system, and failures and truncations are reported per system and size
 (\Cref{sec:robustness}). A higher-cap run remains a separate sensitivity, not a
 change to the condition. The only baseline-specific intervention was translating
 ReAct-ISD's prompt scaffolding into English; disclosing it permits an alternative
-translation while holding the method fixed. Judge drift and self-preference remain
+translation while holding the method fixed. LLM judge drift and self-preference remain
 possible~\cite{panickssery2024llm}, mitigated by the no-LLM second instrument,
-separate agent and judge families, and the second-judge subset.
+separate agent and LLM judge families, and the second LLM judge subset.
 
 \paragraph{External validity.}
 Conclusions are bounded by one model family. The four Qwen checkpoints share a
@@ -72,7 +72,7 @@ educator-authored briefs is still needed.
 Similarity is not alignment. Family A measures textual correspondence, and its bridge
 to constructive alignment rests on the measurement's evidence structure and on
 established criteria~\cite{biggs2011teaching,porter2002measuring,webb1997criteria},
-not on what the scores are named. The two instrument families are also not fully
+not on what the signals are named. The two instrument families are also not fully
 independent: $\beta_{\mathrm{cong}}$ pairs an objective with an assessment task by
 cosine before comparing Bloom levels, so it shares the embedding step with Family A,
 and only $\beta_{\mathrm{port}}$ and $\beta_{\mathrm{webb}}$ are free of similarity
@@ -86,7 +86,7 @@ differently, which could change a ranking rather than merely add noise; the
 sensitivity star---independent neural lineages, a non-semantic floor, and a
 classifier substitution---reduces this threat without removing it
 (\Cref{sec:sensitivity}). Pinned revisions and cached embeddings reproduce the
-reported scores up to floating-point noise, not bit for bit. Finally, the panel
+reported signals up to floating-point noise, not bit for bit. Finally, the panel
 measures properties of a document, not learning: it says nothing about what students
 would learn from these designs.
 
@@ -97,7 +97,7 @@ runs, which is the dominant source of variation at this sample size but leaves
 run-to-run variability unestimated for most cells; the targeted repeats
 (\Cref{sec:setup}) cover only the decisive cells and are reported separately with
 their own $n$. Bootstrap intervals and exact permutation nulls for small paired
-samples mitigate the small-sample limits; within-score and panel-wide Holm
+samples mitigate the small-sample limits; within-signal and panel-wide Holm
 corrections expose the multiplicity trade-off. Output failure is a post-treatment
 variable, so complete-case analysis can discard a system's worst cases:
 \texttt{failure=0} is the primary layer, complete-case is a sensitivity computed over
@@ -132,8 +132,8 @@ fixed-role pipelines~\cite{zhang2025eduplanner,yao2025instructionalagents,
 isdagentbench}. Two conditions would make such a study interpretable. The
 fixed-order system reported here is the required baseline, because the contrast is
 orchestration policy rather than agent count. And the stopping condition must not be
-the alignment panel: driving generation with the same score that evaluates it would
-separate that score from the construct it stands for~\cite{gao2023scaling}, so the
+the alignment panel: driving generation with the same signal that evaluates it would
+separate that signal from the construct it stands for~\cite{gao2023scaling}, so the
 loop would have to stop on structural and constraint predicates while the panel
 remains an untouched post-hoc measurement.
 

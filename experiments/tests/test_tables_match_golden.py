@@ -1,11 +1,12 @@
 """Generated tables must carry the same numbers as before the move.
 
 The artifact NAMES change in this migration -- `tab_rq1*` becomes
-`tab_judge_*` and `tab_rq2*` becomes `tab_alignment*`, because a filename
+`tab_llm_judge_*` and `tab_rq2*` becomes `tab_alignment*`, because a filename
 should say what is in it rather than index a draft's question numbering -- and
-so do the internal LaTeX labels. Nothing else may change.
+so do the internal LaTeX labels, and so does the score/signal vocabulary in
+the generated comments. Nothing else may change.
 
-So the comparison normalises exactly that rename and nothing more. A
+So the comparison normalises exactly those renames and nothing more. A
 difference that survives normalisation is a number that moved, which is the
 one thing this refactor must not do.
 """
@@ -23,9 +24,9 @@ GOLDEN = paths.exp_root() / "tests" / "fixtures" / "golden"
 
 #: new artifact name -> the name the replaced generator wrote
 RENAMED = {
-    "tab_judge_addie.tex": "tab_rq1.tex",
-    "tab_judge_total.tex": "tab_rq1_total.tex",
-    "tab_judge_trajectory.tex": "tab_rq1_traj.tex",
+    "tab_llm_judge_addie.tex": "tab_rq1.tex",
+    "tab_llm_judge_total.tex": "tab_rq1_total.tex",
+    "tab_llm_judge_trajectory.tex": "tab_rq1_traj.tex",
     "tab_alignment.tex": "tab_rq2_alignment.tex",
     "tab_alignment_panel.tex": "tab_rq2_panel.tex",
     "stats_macros.tex": "stats_macros.tex",
@@ -34,9 +35,9 @@ RENAMED = {
 
 #: The rename, as text substitutions, applied to the GOLDEN before comparing.
 SUBSTITUTIONS = [
-    (r"tab_rq1_ladder", "tab_judge_ladder"),
-    (r"tab_rq1", "tab_judge"),
-    (r"tab:rq1-ladder", "tab:judge-ladder"),
+    (r"tab_rq1_ladder", "tab_llm_judge_ladder"),
+    (r"tab_rq1", "tab_llm_judge"),
+    (r"tab:rq1-ladder", "tab:llm-judge-ladder"),
     (r"tab_rq2_alignment", "tab_alignment"),
     (r"tab_rq2_panel", "tab_alignment_panel"),
     (r"tab:rq2-alignment", "tab:alignment"),
@@ -45,6 +46,15 @@ SUBSTITUTIONS = [
     # carries, and named it imprecisely. Neutral text now; the family itself
     # comes from config and appears in the headers.
     (r"on the Qwen size ladder\.", "on the model size ladder."),
+    # Vocabulary: a panel value is an "alignment signal", never an "alignment
+    # score" -- "score" belongs to the LLM judge alone, so the word itself says
+    # which instrument produced the number.
+    (r"alignment scores", "alignment signals"),
+    (r"alignment score\b", "alignment signal"),
+    # Macro prefixes said which draft question a number served. They now say
+    # which instrument produced it, the same rule the file names follow.
+    (r"\brqOne", "llmJudge"),
+    (r"\brqTwo", "alignment"),
 ]
 
 #: Provenance lines: a timestamp and the producing command, different by design.

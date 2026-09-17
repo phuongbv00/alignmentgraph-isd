@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import random
 
-from ..config import JUDGE_LEAD
+from ..config import LLM_JUDGE_LEAD
 from ..stats import (
     BOOT_SEED,
     N_BOOT,
@@ -27,11 +27,11 @@ from ..stats import (
     wilcoxon_signed_rank,
 )
 from ..util import mean as _mean
-from .judge import scenario_mean_map
+from .llm_judge import scenario_mean_map
 
 def interaction_tests(models: list[dict], proposed: str, baselines: list[str],
                       n_boot: int = N_BOOT, seed: int = BOOT_SEED,
-                      metric: str = JUDGE_LEAD) -> dict:
+                      metric: str = LLM_JUDGE_LEAD) -> dict:
     """Method x model-size interaction (reviewer Q11).
 
     DiD = mean_i[ delta_i(largest) - delta_i(smallest) ] where

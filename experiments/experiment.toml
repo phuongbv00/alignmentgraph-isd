@@ -142,9 +142,9 @@ confirm = false
 agents = ["alignmentgraph-isd", "react-isd"]
 
 [experiment.canary]
-# Three scenarios, NO judge call. Reads gave_up, coverage, the violation
+# Three scenarios, NO LLM judge call. Reads gave_up, coverage, the violation
 # ledger, cost and the self-hosted alignment panel only.
-title = "CANARY - smoke the arms before spending on a judge"
+title = "CANARY - smoke the arms before spending on an LLM judge"
 dataset = "train_30"
 rungs = ["qwen08b"]
 tags = ["canary"]
@@ -152,7 +152,7 @@ rate_limit = "conservative"
 session_prefix = "canary"
 confirm = false
 scenario_limit = 3
-judge = false
+llm_judge = false
 agents = ["alignmentgraph-isd", "react-isd"]
 
 # --- The alignment measurement ----------------------------------------------

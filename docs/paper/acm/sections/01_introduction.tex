@@ -71,7 +71,7 @@ trying to answer the first: the question is about alignment, and the instrument
 these benchmarks use---LLM judge rubric scoring---does not expose alignment
 relations at all, so a design that reads well can score well while the relations
 underneath it are broken. Answering the first half honestly therefore requires a
-way to observe alignment signals that does not rest entirely on a judge model.
+way to observe alignment signals that does not rest entirely on an LLM judge.
 
 This study aims to retain ISD quality as models shrink by taking the coherence
 burden off the model: instead of relying on the model to keep the design
@@ -81,11 +81,11 @@ that a model of any size can be checked against (\Cref{sec:method}). We pursue t
 \begin{itemize}
   \item \textbf{Objective 1 (design).} Build a multi-agent ADDIE system that
   keeps alignment state explicit throughout generation and exports it for audit.
-  \item \textbf{Objective 2 (judge scale).} Compare the MAS with six
+  \item \textbf{Objective 2 (LLM judge scale).} Compare the MAS with six
   benchmark agents on ISD-Agent-Bench's LLM judge scores at each size of the Qwen
   0.8B--9B ladder, and test whether the gap widens as the model shrinks.
-  \item \textbf{Objective 3 (alignment scores).} Measure the same outputs on a
-  panel of alignment scores computed without an LLM, and test the same size
+  \item \textbf{Objective 3 (alignment signals).} Measure the same outputs on a
+  panel of alignment signals computed without an LLM, and test the same size
   interaction.
   \item \textbf{Objective 4 (mechanism).} Separate what the two design choices
   contribute, in a factorial experiment that crosses the decomposition of the
@@ -108,7 +108,7 @@ alignment measures score agreement with a pre-authored standard
 ~\cite{porter2002measuring,webb1997criteria,xu2025itemalignment,silva2026lessonbench}
 that a wholly generated design does not provide. The evaluation therefore
 reports, alongside ISD-Agent-Bench's LLM judge scores, a panel of deterministic
-alignment scores assembled from these established criteria; the measurement
+alignment signals assembled from these established criteria; the measurement
 setup is specified in \Cref{sec:metrics}.
 
 The remainder of the paper is organized as follows. \Cref{sec:related-work}

@@ -143,14 +143,14 @@ class TestSemanticNaming:
     `rq1`/`tn2` are indices into one draft's numbering: opaque to a reader and
     stale the moment anything is renumbered -- the same defect that made the
     old `07_`/`09_` filenames meaningless. The two measurement families are
-    `judge` and `alignment`; the two experiments are `comparison` and
+    `llm_judge` and `alignment`; the two experiments are `comparison` and
     `ablation`.
     """
 
     def test_no_question_or_experiment_indices(self):
         offenders = [h for h in _grep(r"(?i)\b(rq[12]|tn[12])\b", SRC, BIN)]
         assert offenders == [], (
-            "Name these semantically (judge/alignment, comparison/ablation):\n"
+            "Name these semantically (llm_judge/alignment, comparison/ablation):\n"
             + "\n".join(offenders)
         )
 

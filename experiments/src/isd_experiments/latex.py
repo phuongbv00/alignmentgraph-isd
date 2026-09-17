@@ -80,9 +80,9 @@ def size_display(label: str) -> str:
 def model_display(label: str) -> str:
     """Family-qualified label for a header or axis tick: '<family>-0.8B'.
 
-    The family comes from experiment.toml. It used to be a literal string in
-    ten places across four generators, so swapping the ladder left every
-    figure and header still announcing the old one.
+    The family comes from experiment.toml rather than from a literal per
+    generator, so swapping the ladder cannot leave a figure or a header
+    announcing a family the run did not use.
     """
     from .config import current          # deferred: config imports nothing here,
     return current().display_for(label)  # but this keeps the import graph acyclic

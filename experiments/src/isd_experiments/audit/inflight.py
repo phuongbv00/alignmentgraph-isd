@@ -12,9 +12,9 @@ default), the red-flag counters that must all stay at 0:
 plus ok/fail tallies and progress-log freshness (stale > --stale-min minutes
 -> warning). Run it every 30-60 minutes during the ladder, e.g.:
 
-  python scripts/alignmentgraph-isd-bench/03_audit_inflight.py            # newest ladder dir
-  python scripts/alignmentgraph-isd-bench/03_audit_inflight.py --ladder-dir results/ladder_20260722_200348
-  watch -n 300 python scripts/alignmentgraph-isd-bench/03_audit_inflight.py
+  ./isd-exp audit inflight            # newest ladder dir
+  ./isd-exp audit inflight --ladder-dir results/ladder_20260722_200348
+  watch -n 300 ./isd-exp audit inflight
 
 Exit code 0 = clean, 1 = at least one red flag > 0.
 """

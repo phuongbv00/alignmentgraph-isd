@@ -7,7 +7,7 @@ Trạng thái: `[ ]` chưa làm, `[~]` đang làm, `[x]` xong, `[?]` chờ quy�
 ## Nhóm R — backlog cũ (tái lập nhãn)
 
 - [x] **R1 — Cost framing retarget.** Giữ motivation triển khai nhưng đổi luận điểm thành "chạy được và đáng chạy ở đầu nhỏ". Cấm mọi biến thể của claim "rẻ hơn". Đã áp vào `06_results.tex`.
-- [ ] **R2 — Prediction pre-specified cho hai cách đọc ablation.** Kết quả hiện tại: judge gần bất biến giữa các arm ablation trong khi alignment panel dịch rõ. Hai cách đọc: (thuận) LLM-judge không nhạy với alignment; (ngược) thiếu discriminant validity của panel. Phải ghi một dự đoán phân biệt hai cách đọc **trước** khi có nhãn chuyên gia. Dự đoán chưa có chỗ ghi cố định — viết vào `docs/paper/claim-rules.md` (mục phải khai) trước khi chạy `isd-exp expert sample`.
+- [ ] **R2 — Prediction pre-specified cho hai cách đọc ablation.** Kết quả hiện tại: LLM judge gần bất biến giữa các arm ablation trong khi alignment panel dịch rõ. Hai cách đọc: (thuận) LLM judge không nhạy với alignment; (ngược) thiếu discriminant validity của panel. Phải ghi một dự đoán phân biệt hai cách đọc **trước** khi có nhãn chuyên gia. Dự đoán chưa có chỗ ghi cố định — viết vào `docs/paper/claim-rules.md` (mục phải khai) trước khi chạy `isd-exp expert sample`.
 - [~] **R3 — Expert study.** Trùng với T12 dưới đây; công cụ là `isd-exp expert sample` / `aggregate` (`experiments/src/isd_experiments/expert/`). Vòng tối thiểu (3–5 chuyên gia × 12 scenario) phục vụ bài Q2; bản đầy đủ (blind-code theo thủ tục gốc, κ máy-vs-người) để dành hướng ETR&D.
 - [?] **R4 — Sensitivity trần token cao hơn.** Chạy thêm một cấu hình với token cap cao hơn 8192 để preempt câu hỏi "cấp trọn 24 GB thì sao". Bị chặn trước đây vì 100% failure của baseline là truncation tại 8192. Là thí nghiệm mới, nằm ngoài lộ trình Sprint 1; chỉ chạy nếu thầy mở thêm scope.
 
@@ -32,7 +32,7 @@ Trạng thái: `[ ]` chưa làm, `[~]` đang làm, `[x]` xong, `[?]` chờ quy�
 - [ ] **T8 — Method mapping thành phần → mức bằng chứng.** Decomposition → robustness; graph context → alignment signals; verifier → audit/backstop.
 - [ ] **T9 — Results đọc cân bằng.** "Competitive and robust" thay cho "superior". Cost trade-off trung thực. Bảng lớn (full panel, sensitivity chi tiết, log thống kê) chuyển sang appendix/supplementary.
 - [ ] **T10 — Discussion/Conclusion đối chiếu checklist thầy.** Implications for ISD; teacher-in-the-loop; khi nào ReAct/single-loop hiệu quả hơn; cost; limitations đủ 6 ý: một họ model, benchmark tự động, thiếu classroom deployment, LLM judge bias, automatic metric chưa validate construct, token cap confound.
-- [ ] **T11 — Reproducibility statement.** Khai đủ: benchmark split, prompt, seed, decoding setting, judge model, metric scripts, graph dump format.
+- [ ] **T11 — Reproducibility statement.** Khai đủ: benchmark split, prompt, seed, decoding setting, LLM judge model, metric scripts, graph dump format.
 
 ### Bằng chứng bổ sung
 

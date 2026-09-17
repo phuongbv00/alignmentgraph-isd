@@ -72,7 +72,7 @@ class TestInformalRuns:
 
     def test_canary_is_small_and_judge_free(self):
         p = current().profile("canary")
-        assert p.judge is False
+        assert p.llm_judge is False
         assert p.scenario_limit == 3
         assert len(p.rungs) == 1
 

@@ -1,6 +1,6 @@
 """LaTeX tables and the prose macro file.
 
-The judge tables lead on ADDIE because it measures instructional-design content
+The LLM judge tables lead on ADDIE because it measures instructional-design content
 quality -- the construct the study asks about -- while trajectory_score measures
 process conformance and total_score's weights come from the benchmark rather
 than from this study. All three are reported side by side; none is an endpoint.
@@ -17,8 +17,8 @@ from datetime import datetime
 from pathlib import Path
 
 from .. import paths
-from ..alignment.protocol import PANEL_SIGNALS
-from ..config import AGENT_DISPLAY, AGENT_ORDER, JUDGE_LEAD, JUDGE_SD_FIELD
+from ..alignment.protocol import ALIGNMENT_SIGNALS
+from ..config import AGENT_DISPLAY, AGENT_ORDER, LLM_JUDGE_LEAD, LLM_JUDGE_SD_FIELD
 from ..config import current as current_config
 from ..latex import fmt_num, fmt_p, header_comment, model_display, size_display, size_of_label, size_word
 from ..pool.panel import SUMMARY_SIGNAL
@@ -34,8 +34,8 @@ def _size_word(label: str, index: int) -> str:
     return size_word(label, index, current_config().macro_words)
 
 
-def gen_tab_judge(pooled: dict, field: str = "mean_addie",
-                label: str = "ADDIE", tag: str = "judge-ladder",
+def gen_tab_llm_judge(pooled: dict, field: str = "mean_addie",
+                label: str = "ADDIE", tag: str = "llm-judge-ladder",
                 caption_metric: str = (
                     "mean per-scenario ADDIE rubric score (/100)")) -> str:
     models = pooled["models"]
@@ -87,9 +87,9 @@ def gen_tab_judge(pooled: dict, field: str = "mean_addie",
             val = fmt_num(s[field])
             if best_by_model.get(m["label"]) == a:
                 val = f"\\textbf{{{val}}}"
-            sd = s.get(JUDGE_SD_FIELD[field])
-            # `is not None` alone is no longer enough: a single-run cell now
-            # carries None here, and an archived pooled file carries nan.
+            sd = s.get(LLM_JUDGE_SD_FIELD[field])
+            # `is not None` alone is not enough: a single-run cell carries
+            # None here, and an archived pooled file carries nan.
             sd_txt = ("~{\\scriptsize(" + fmt_num(sd, 2) + ")}"
                       if isinstance(sd, float) and not math.isnan(sd) else "")
             n = s["n_scenarios_complete"]
@@ -129,7 +129,7 @@ def gen_tab_alignment(pooled: dict) -> str:
     if not align or not align.get("models"):
         return (header_comment(pooled, "tab_alignment.tex — placeholder")
                 + "% No alignment_scores.json data was present in the pooled input.\n"
-                  "% Re-run scripts/alignmentgraph-isd-bench/07_pool_ladder_runs.py after the alignment metric\n"
+                  "% Re-run isd-exp comparison pool after the alignment metric\n"
                   "% (alignment scoring) lands in the scenario dirs, then regenerate this file.\n"
                   "% This file intentionally renders nothing.\n")
 
@@ -142,7 +142,7 @@ def gen_tab_alignment(pooled: dict) -> str:
                       if any(a in align["models"][lb] for lb in model_labels)]
 
     demo_note = " [TBD-DEMO: synthetic values]" if demo else ""
-    # n per cell, mirroring tab_judge's two-column-per-size layout. Without it,
+    # n per cell, mirroring tab_llm_judge's two-column-per-size layout. Without it,
     # cells averaged over as few as 17 scenarios printed identically to
     # full-coverage cells and read as comparable.
     n_union = {m["label"]: m["n_scenarios_union"] for m in pooled["models"]}
@@ -154,7 +154,7 @@ def gen_tab_alignment(pooled: dict) -> str:
         " \\emph{measures} leg of \\textit{aligned(o)}. Each cell: mean"
         " per-scenario mean-max rectified cosine (SD), pooled mean-of-runs;"
         " $n$ = scenarios with at least one scored run. Remaining"
-        f" {len(PANEL_SIGNALS) - 1} panel"
+        f" {len(ALIGNMENT_SIGNALS) - 1} panel"
         " signals: \\Cref{tab:alignment-panel}." + demo_note + "}")
     lines.append("  \\label{tab:alignment}")
     lines.append("  \\small")
@@ -207,7 +207,7 @@ def gen_tab_alignment(pooled: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-#: Short LaTeX labels for the panel signals, in PANEL_SIGNALS order.
+#: Short LaTeX labels for the panel signals, in ALIGNMENT_SIGNALS order.
 PANEL_DISPLAY = {
     "objective_assessment_similarity": "Obj$\\to$Asm sim.",
     "objective_activity_similarity": "Obj$\\to$Act sim.",
@@ -246,7 +246,7 @@ def gen_tab_alignment_panel(pooled: dict) -> str:
     demo_note = " [TBD-DEMO: synthetic values]" if demo else ""
     n_union = {m["label"]: m["n_scenarios_union"] for m in pooled["models"]}
     thin_cells: list[tuple[str, str, str, int]] = []
-    n_cells = len(PANEL_SIGNALS) * len(model_labels) * len(agents_present)
+    n_cells = len(ALIGNMENT_SIGNALS) * len(model_labels) * len(agents_present)
 
     colspec = "@{}ll" + "r" * len(agents_present) + "@{}"
     lines = [header_comment(pooled, "tab_alignment_panel.tex — the full alignment-score panel")]
@@ -267,7 +267,7 @@ def gen_tab_alignment_panel(pooled: dict) -> str:
         for a in agents_present)
     lines.append(f"    Signal & Size & {heads} \\\\")
     for family in ("correspondence", "cognitive"):
-        signals = [s for s, f in PANEL_SIGNALS if f == family]
+        signals = [s for s, f in ALIGNMENT_SIGNALS if f == family]
         if not signals:
             continue
         lines.append("    \\midrule")
@@ -356,7 +356,7 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
     all_p_holm: list[float] = []
     for m, w in zip(models, words):
         agents = m["agents"]
-        rows = m["comparisons"]["by_signal"][JUDGE_LEAD]["policies"]["complete_case"]
+        rows = m["comparisons"]["by_score"][LLM_JUDGE_LEAD]["policies"]["complete_case"]
         rows_p = [r for r in rows if "p_holm" in r]
         harness = agents.get(proposed, {})
         base_vals = {a: s["mean_addie"] for a, s in agents.items()
@@ -365,11 +365,11 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
         best_b = max(base_vals, key=base_vals.get) if base_vals else None
 
         md += [f"## {m['label']} (macro suffix: {w})", ""]
-        newcmd(f"rqOneHarnessAddie{w}", fmt_num(harness.get("mean_addie", float("nan"))),
+        newcmd(f"llmJudgeHarnessAddie{w}", fmt_num(harness.get("mean_addie", float("nan"))),
                f"{proposed} pooled mean ADDIE (lead LLM judge score) at {m['label']}")
-        newcmd(f"rqOneHarnessTraj{w}", fmt_num(harness.get("mean_traj", float("nan"))),
+        newcmd(f"llmJudgeHarnessTraj{w}", fmt_num(harness.get("mean_traj", float("nan"))),
                f"{proposed} pooled mean Trajectory at {m['label']}")
-        newcmd(f"rqOneHarnessTotal{w}", fmt_num(harness.get("mean_total", float("nan"))),
+        newcmd(f"llmJudgeHarnessTotal{w}", fmt_num(harness.get("mean_total", float("nan"))),
                f"{proposed} pooled mean Total (benchmark composite) at {m['label']}")
         # Across-scenario SD, not run-to-run: with one deterministic run per
         # cell there are no run-level means to take an SD of. Emitted only when
@@ -377,20 +377,20 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
         # says so, rather than the prose quoting a silent "nan".
         sd_addie = harness.get("sd_addie_across_scenarios")
         if isinstance(sd_addie, float) and not math.isnan(sd_addie):
-            newcmd(f"rqOneHarnessSDAddie{w}", fmt_num(sd_addie),
+            newcmd(f"llmJudgeHarnessSDAddie{w}", fmt_num(sd_addie),
                    f"{proposed} SD across scenarios of ADDIE at {m['label']} "
                    f"(ADDIE, matching the lead signal — NOT the Total SD, and "
                    f"NOT a run-to-run SD)")
         if best_b:
-            newcmd(f"rqOneBestBaselineAddie{w}", fmt_num(base_vals[best_b]),
+            newcmd(f"llmJudgeBestBaselineAddie{w}", fmt_num(base_vals[best_b]),
                    f"best baseline ({best_b}) pooled mean ADDIE at {m['label']}")
-            newcmd(f"rqOneBestBaselineName{w}", AGENT_DISPLAY.get(best_b, best_b),
+            newcmd(f"llmJudgeBestBaselineName{w}", AGENT_DISPLAY.get(best_b, best_b),
                    f"name of the best baseline at {m['label']}")
             # Total of the SAME baseline the lead signal named, not the best
             # Total on the ladder: the prose quotes this right next to
-            # \rqOneBestBaselineName, and re-picking the argmax per signal would
+            # \llmJudgeBestBaselineName, and re-picking the argmax per signal would
             # name one baseline while reporting a different one's number.
-            newcmd(f"rqOneBestBaselineTotal{w}",
+            newcmd(f"llmJudgeBestBaselineTotal{w}",
                    fmt_num(agents[best_b].get("mean_total")),
                    f"that same baseline ({best_b}) pooled mean Total "
                    f"(benchmark composite) at {m['label']}")
@@ -400,19 +400,19 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
                 # suffix, so the comment must: the file also emits Total macros,
                 # and prose that quotes a Total level beside an unlabelled "delta"
                 # silently attributes an ADDIE difference to Total.
-                newcmd(f"rqOneDeltaBestAddie{w}", fmt_num(row["mean_diff"]),
+                newcmd(f"llmJudgeDeltaBestAddie{w}", fmt_num(row["mean_diff"]),
                        f"ADDIE mean paired delta {proposed} - {best_b} at "
                        f"{m['label']} (n={row['n']})")
-                newcmd(f"rqOneDeltaBestAddieCILo{w}", fmt_num(row["ci95"][0]),
+                newcmd(f"llmJudgeDeltaBestAddieCILo{w}", fmt_num(row["ci95"][0]),
                        "bootstrap 95% CI lower bound of that ADDIE delta")
-                newcmd(f"rqOneDeltaBestAddieCIHi{w}", fmt_num(row["ci95"][1]),
+                newcmd(f"llmJudgeDeltaBestAddieCIHi{w}", fmt_num(row["ci95"][1]),
                        "bootstrap 95% CI upper bound of that ADDIE delta")
-                newcmd(f"rqOneDeltaBestAddieN{w}", str(row["n"]),
+                newcmd(f"llmJudgeDeltaBestAddieN{w}", str(row["n"]),
                        "paired scenarios backing that ADDIE delta")
         if rows_p:
             pmax = max(r["p_holm"] for r in rows_p)
             all_p_holm.append(pmax)
-            newcmd(f"rqOnePHolmMax{w}", fmt_p(pmax),
+            newcmd(f"llmJudgePHolmMax{w}", fmt_p(pmax),
                    f"max Holm-adjusted p over the 6 ADDIE comparisons at {m['label']}")
 
         # Lead signal first: the paired table printed below is computed on ADDIE,
@@ -452,19 +452,19 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
         for policy in ("zero", "min_score"):
             vals = ", ".join(
                 f"{r['baseline']}={r['mean_diff']:+.2f}"
-                for r in m["comparisons"]["by_signal"][JUDGE_LEAD]["policies"][policy]
+                for r in m["comparisons"]["by_score"][LLM_JUDGE_LEAD]["policies"][policy]
                 if "mean_diff" in r)
             md.append(f"- {policy}: {vals}")
         md.append("")
 
     if all_p_holm:
-        newcmd("rqOnePHolmMaxAll", fmt_p(max(all_p_holm)),
+        newcmd("llmJudgePHolmMaxAll", fmt_p(max(all_p_holm)),
                "max Holm-adjusted p across ALL sizes x baselines (complete-case)")
 
     # scale drop of the proposed agent: Total(largest) - Total(smallest)
     h_small = models[0]["agents"].get(proposed, {}).get("mean_total", float("nan"))
     h_large = models[-1]["agents"].get(proposed, {}).get("mean_total", float("nan"))
-    newcmd("rqOneHarnessTotalGainLargestOverSmallest", fmt_num(h_large - h_small),
+    newcmd("llmJudgeHarnessTotalGainLargestOverSmallest", fmt_num(h_large - h_small),
            f"{proposed} mean TOTAL (benchmark composite, not the lead signal) at "
            f"{models[-1]['label']} minus {models[0]['label']}; positive = the "
            f"larger model scores higher")
@@ -490,25 +490,25 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
     row = next((r for r in inter.get("per_baseline", []) if r["baseline"] == did_ref),
                None)
     if row:
-        newcmd("rqOneDiDBaselineName", AGENT_DISPLAY.get(did_ref, did_ref),
+        newcmd("llmJudgeDiDBaselineName", AGENT_DISPLAY.get(did_ref, did_ref),
                "baseline the DiD is taken against: strongest baseline by ADDIE at "
                "the largest size")
-        newcmd("rqOneDiDVsBestBaseline", fmt_num(row["did_mean"]),
+        newcmd("llmJudgeDiDVsBestBaseline", fmt_num(row["did_mean"]),
                f"DiD of delta(proposed - {did_ref}) on ADDIE: largest minus "
                f"smallest size (n={row['n_paired_scenarios']} paired scenarios)")
-        newcmd("rqOneDiDVsBestBaselineCILo", fmt_num(row["did_ci95"][0]),
+        newcmd("llmJudgeDiDVsBestBaselineCILo", fmt_num(row["did_ci95"][0]),
                "bootstrap 95% CI lower bound of that DiD")
-        newcmd("rqOneDiDVsBestBaselineCIHi", fmt_num(row["did_ci95"][1]),
+        newcmd("llmJudgeDiDVsBestBaselineCIHi", fmt_num(row["did_ci95"][1]),
                "bootstrap 95% CI upper bound of that DiD")
-        newcmd("rqOneDiDVsBestBaselineP", fmt_p(row["did_wilcoxon_p"]),
+        newcmd("llmJudgeDiDVsBestBaselineP", fmt_p(row["did_wilcoxon_p"]),
                "Wilcoxon p of the per-scenario DiD values vs 0")
-        newcmd("rqOneDiDVsBestBaselineN", str(row["n_paired_scenarios"]),
+        newcmd("llmJudgeDiDVsBestBaselineN", str(row["n_paired_scenarios"]),
                "paired scenarios backing that DiD")
-        newcmd("rqOneTrendSlopeVsBaseline", fmt_num(row["trend_ols_slope_per_size_step"]),
+        newcmd("llmJudgeTrendSlopeVsBaseline", fmt_num(row["trend_ols_slope_per_size_step"]),
                f"OLS slope of delta(proposed - {did_ref}) per size step over "
                f"{len(models)} sizes (n={row.get('trend_n_common_scenarios')} "
                "scenarios common to all sizes)")
-        newcmd("rqOneTrendSlopeVsBaselineN", str(row.get("trend_n_common_scenarios")),
+        newcmd("llmJudgeTrendSlopeVsBaselineN", str(row.get("trend_n_common_scenarios")),
                "scenarios common to all sizes backing that slope")
     for r in inter.get("per_baseline", []):
         md.append(
@@ -566,21 +566,21 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
                 is_lead = signal == SUMMARY_SIGNAL
                 harness_desc = desc.get(proposed)
                 if harness_desc and is_lead:
-                    newcmd(f"rqTwoHarnessSim{w}", fmt_num(harness_desc["mean"], 3),
+                    newcmd(f"alignmentHarnessSim{w}", fmt_num(harness_desc["mean"], 3),
                            f"{proposed} mean {SUMMARY_SIGNAL} at {m['label']} "
-                           f"(1 of the {len(PANEL_SIGNALS)} alignment scores; the "
+                           f"(1 of the {len(ALIGNMENT_SIGNALS)} alignment signals; the "
                            "panel has no primary endpoint, so this is not a "
                            "summary of the panel — see tab_alignment_panel.tex for all "
-                           f"{len(PANEL_SIGNALS)})")
-                    newcmd(f"rqTwoHarnessSimCILo{w}", fmt_num(harness_desc["ci95"][0], 3),
+                           f"{len(ALIGNMENT_SIGNALS)})")
+                    newcmd(f"alignmentHarnessSimCILo{w}", fmt_num(harness_desc["ci95"][0], 3),
                            "bootstrap 95% CI lower bound of that mean")
-                    newcmd(f"rqTwoHarnessSimCIHi{w}", fmt_num(harness_desc["ci95"][1], 3),
+                    newcmd(f"alignmentHarnessSimCIHi{w}", fmt_num(harness_desc["ci95"][1], 3),
                            "bootstrap 95% CI upper bound of that mean")
                 rows_p = [r for r in rows if "p_holm" in r]
                 if rows_p and is_lead:
                     pmax = max(r["p_holm"] for r in rows_p)
                     all_align_p.append(pmax)
-                    newcmd(f"rqTwoSimPHolmMax{w}", fmt_p(pmax),
+                    newcmd(f"alignmentSimPHolmMax{w}", fmt_p(pmax),
                            f"max Holm-adjusted p over the {SUMMARY_SIGNAL} "
                            f"comparisons at {m['label']}")
                 all_panel_p += [r["p_holm_panel"] for r in rows if "p_holm_panel" in r]
@@ -636,15 +636,15 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
                             f"| {r['p_holm']:.3e} |")
                     md.append("")
         if all_align_p:
-            newcmd("rqTwoSimPHolmMaxAll", fmt_p(max(all_align_p)),
+            newcmd("alignmentSimPHolmMaxAll", fmt_p(max(all_align_p)),
                    f"max Holm-adjusted p across ALL sizes for {SUMMARY_SIGNAL} ONLY "
-                   f"— 1 of the {len(PANEL_SIGNALS)} alignment scores, corrected "
+                   f"— 1 of the {len(ALIGNMENT_SIGNALS)} alignment signals, corrected "
                    "within that signal (6 comparisons). For the whole-panel "
-                   "family use rqTwoPanelPHolmMaxAll; prose must not present "
+                   "family use alignmentPanelPHolmMaxAll; prose must not present "
                    "this as a panel-wide result")
         if all_panel_p:
-            newcmd("rqTwoPanelPHolmMaxAll", fmt_p(max(all_panel_p)),
-                   "max p across ALL sizes and ALL alignment scores under the "
+            newcmd("alignmentPanelPHolmMaxAll", fmt_p(max(all_panel_p)),
+                   "max p across ALL sizes and ALL alignment signals under the "
                    "conservative whole-panel Holm correction")
 
         inter = align["stats"].get("interaction_align")
@@ -661,20 +661,20 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
                     f"DiD={r['did_mean']:+.4f} "
                     f"CI[{r['did_ci95'][0]:+.4f}, {r['did_ci95'][1]:+.4f}] "
                     f"p={r['did_wilcoxon_p']:.3e}")
-                # Same fix as the judge DiD block: not the degenerate agent named
+                # Same fix as the LLM judge DiD block: not the degenerate agent named
                 # `baseline`, whose pairing collapses at the small end.
                 if r["baseline"] == did_ref:
-                    newcmd("rqTwoSimDiDVsBaseline", fmt_num(r["did_mean"], 3),
+                    newcmd("alignmentSimDiDVsBaseline", fmt_num(r["did_mean"], 3),
                            f"objective->assessment similarity DiD (largest - "
                            f"smallest size) of delta(proposed - {did_ref}), "
                            f"n={r['n_paired_scenarios']} paired scenarios")
-                    newcmd("rqTwoSimDiDVsBaselineCILo", fmt_num(r["did_ci95"][0], 3),
+                    newcmd("alignmentSimDiDVsBaselineCILo", fmt_num(r["did_ci95"][0], 3),
                            "bootstrap 95% CI lower bound of that similarity DiD")
-                    newcmd("rqTwoSimDiDVsBaselineCIHi", fmt_num(r["did_ci95"][1], 3),
+                    newcmd("alignmentSimDiDVsBaselineCIHi", fmt_num(r["did_ci95"][1], 3),
                            "bootstrap 95% CI upper bound of that similarity DiD")
-                    newcmd("rqTwoSimDiDVsBaselineP", fmt_p(r["did_wilcoxon_p"]),
+                    newcmd("alignmentSimDiDVsBaselineP", fmt_p(r["did_wilcoxon_p"]),
                            "Wilcoxon p of the per-scenario similarity DiD values vs 0")
-                    newcmd("rqTwoSimDiDVsBaselineN", str(r["n_paired_scenarios"]),
+                    newcmd("alignmentSimDiDVsBaselineN", str(r["n_paired_scenarios"]),
                            "paired scenarios backing that similarity DiD")
             md.append("")
 
@@ -685,22 +685,22 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
 
 
 #: Artifact name -> how it is produced. Names are semantic: the two measurement
-#: families are `judge` and `alignment`, so a reader of a filename knows what
+#: families are `llm_judge` and `alignment`, so a reader of a filename knows what
 #: is in it without consulting a numbering scheme.
 def build(pooled: dict) -> dict[str, str]:
     """Every table this command writes, as {filename: content}."""
     macros_tex, summary_md = gen_macros(pooled)
     return {
-        "tab_judge_addie.tex": gen_tab_judge(pooled),
+        "tab_llm_judge_addie.tex": gen_tab_llm_judge(pooled),
         # The benchmark composite, reported in full rather than dropped: it is
         # the benchmark's own canonical number, so comparability needs it.
-        "tab_judge_total.tex": gen_tab_judge(
-            pooled, field="mean_total", label="Total", tag="judge-ladder-total",
+        "tab_llm_judge_total.tex": gen_tab_llm_judge(
+            pooled, field="mean_total", label="Total", tag="llm-judge-ladder-total",
             caption_metric=(
                 "mean per-scenario \\texttt{total\\_score}"
                 " ($0.7\\,$ADDIE$+0.3\\,$Traj), the benchmark's own composite")),
-        "tab_judge_trajectory.tex": gen_tab_judge(
-            pooled, field="mean_traj", label="Traj", tag="judge-ladder-traj",
+        "tab_llm_judge_trajectory.tex": gen_tab_llm_judge(
+            pooled, field="mean_traj", label="Traj", tag="llm-judge-ladder-traj",
             caption_metric="mean per-scenario Trajectory score (BFCL tool-use, /100)"),
         "tab_alignment.tex": gen_tab_alignment(pooled),
         "tab_alignment_panel.tex": gen_tab_alignment_panel(pooled),

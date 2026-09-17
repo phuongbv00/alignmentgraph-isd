@@ -25,9 +25,9 @@ from typing import Iterable, Optional
 from . import paths
 
 #: Run-dir name grammar. The tag is any token that is not the timestamp, so a
-#: renamed tag namespace does not need this regex edited -- the old form pinned
-#: `r\d+`, which silently folded the tag into the model label for every other
-#: convention and produced a bogus model label rather than an error.
+#: renamed tag namespace does not need this regex edited. Pinning the tag to
+#: `r\d+` instead would silently fold every other convention's tag into the
+#: model label and produce a bogus model label rather than an error.
 RUN_DIR_RE = re.compile(
     r"^(?P<dataset>.+)_benchmark_(?P<model>.+?)"
     r"(?:_(?P<tag>[A-Za-z]+\d*))?_(?P<ts>\d{8}_\d{6})$"

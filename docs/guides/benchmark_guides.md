@@ -11,7 +11,7 @@
 1. Mọi quyết định tuning chỉ dựa trên `train_30`. `test_90` chỉ chạy sau khi freeze code. Sửa code sau đó ⇒ chạy lại
    ladder.
 2. Số trong paper **chỉ** đến từ `results/generated/` (mục 9). Không gõ tay.
-3. Cấu hình judge và 3 flag bảo hộ (mục 3.3) phải **đồng nhất** giữa mọi run và mọi agent — đó là điều kiện công bằng
+3. Cấu hình LLM judge và 3 flag bảo hộ (mục 3.3) phải **đồng nhất** giữa mọi run và mọi agent — đó là điều kiện công bằng
    của so sánh.
 
 ---
@@ -40,7 +40,7 @@
 | Tag | `r1` | `a1` |
 | Launcher | `isd-exp comparison run` | `isd-exp ablation run` |
 
-**A0 chạy LẠI trong TN2**, không mượn từ TN1: judge session, scenario set và dải size đều khác,
+**A0 chạy LẠI trong TN2**, không mượn từ TN1: LLM judge session, scenario set và dải size đều khác,
 nên delta arm−A0 chỉ sạch khi hai vế đến từ cùng một run. Trước 2026-09-10 các arm chạy chung
 trong ladder (10 agent một run) — mọi mô tả kiểu đó trong tài liệu cũ đã hết hiệu lực.
 
@@ -66,7 +66,7 @@ benchmark độc lập.
 | `isd-exp serve sync-agents` | ghi endpoint model agent vào block quản lý trong `.env` | 3.4 |
 | `isd-exp serve sync-embed` | ghi endpoint embedding cho panel alignment | 7 |
 | `isd-exp bloom train` / `validate` | huấn luyện head Bloom 6 lớp / chấm arm vs nhãn chuyên gia | A.3 |
-| `isd-exp canary run` | 3 scenario, **không gọi judge** — đọc `gave_up`, coverage, ledger, cost | 5 GĐ2 |
+| `isd-exp canary run` | 3 scenario, **không gọi LLM judge** — đọc `gave_up`, coverage, ledger, cost | 5 GĐ2 |
 | `isd-exp tune run` | hiệu chỉnh cost và budget trên `train_30` | 4 |
 | `isd-exp freeze write` / `verify` | ghi / đối chiếu manifest code freeze | 5 GĐ3 |
 | `isd-exp audit preflight` | trước launch: endpoint, auth, model, flag, disk | 6.1 |
@@ -74,13 +74,13 @@ benchmark độc lập.
 | `isd-exp ablation run [--dry-run]` | **ablation**: 2×2 phân rã × substrate | 5.4 |
 | `isd-exp audit inflight` | khi đang chạy: red flag trong log + độ tươi của progress | 6.2 |
 | `isd-exp audit postrun` | sau run: completeness / integrity / metrics | 6.3 |
-| `isd-exp audit repair` | chấm lại judge cho ô lỗi transient, **không** sinh lại output | 6.4 |
+| `isd-exp audit repair` | chấm lại LLM judge cho ô lỗi transient, **không** sinh lại output | 6.4 |
 | `isd-exp score <run-dir>` | chấm panel alignment (không LLM), `--all-arms` cho cả sao sensitivity | 7 |
 | `isd-exp trajectory rescore` | lớp diagnostic cap cao, chấm lại trajectory đã lưu *(chưa hiện thực)* | 5 GĐ1 |
 | `isd-exp comparison pool` | pool run so sánh → `pooled_comparison.json` + thống kê | 8 |
 | `isd-exp ablation pool` | pool 4 arm → `pooled_ablation.json` + factorial + drift | 5.4 |
-| `isd-exp report tables` | bảng judge + alignment, macro, `stats_summary.md` | 9 |
-| `isd-exp report figures` | hình judge + alignment | 9 |
+| `isd-exp report tables` | bảng LLM judge + alignment, macro, `stats_summary.md` | 9 |
+| `isd-exp report figures` | hình LLM judge + alignment | 9 |
 | `isd-exp report cost` | hồ sơ cost/deployability đọc thẳng từ trajectory | 9 |
 | `isd-exp report sensitivity` | bảng độ nhạy công cụ đo | 9 |
 | `isd-exp report ablation-tables` / `ablation-figures` | artifact của ablation | 5.4 |
@@ -112,15 +112,15 @@ python run_benchmark.py --check   # mọi agent module import sạch
 
 ### `.env`
 
-Agent model và judge model cấu hình **tách biệt** (tránh self-preference bias). Judge giữ nguyên xuyên suốt.
+Agent model và LLM judge model cấu hình **tách biệt** (tránh self-preference bias). LLM judge giữ nguyên xuyên suốt.
 
 ```bash
 # --- secrets ---
-OPENROUTER_API_KEY=sk-or-...     # judge
+OPENROUTER_API_KEY=sk-or-...     # LLM judge
 RUNPOD_API_KEY=rpa_...           # chỉ để script list pod (read-only)
 VLLM_API_KEY=...                 # Bearer token của server vLLM (khớp RunPod secret)
 
-# --- judge (cố định mọi giai đoạn) ---
+# --- LLM judge (cố định mọi giai đoạn) ---
 JUDGE_MODEL_PROVIDER=openrouter
 JUDGE_MODEL_NAMES=openai/gpt-4o-mini,google/gemini-2.5-flash-lite
 JUDGE_MODEL_BASE_URL=https://openrouter.ai/api/v1
@@ -236,7 +236,7 @@ RUN_TAGS=tune1 ./isd-exp tune run
 ### 5.1 Quy mô
 
 TN1: 4 size × 1 run × 7 agent × 90 scenario ≈ **2 520 agent generation**. TN2: 2 size × 1 run × 4 arm
-× 30 scenario = **240 generation**. Mỗi generation thêm judge evaluation (1 judge full + judge thứ
+× 30 scenario = **240 generation**. Mỗi generation thêm LLM judge evaluation (1 LLM judge full + LLM judge thứ
 hai trên subset corroboration). Một run đơn ở rate `turbo` mất vài giờ; TN1 chạy 4 size song song.
 
 7 agent TN1 = 6 default + `alignmentgraph-isd` (không nằm trong defaults — launcher thêm sẵn).
@@ -257,7 +257,7 @@ source .env
   (`DATASET=x ./script`) thắng, còn giá trị sót lại trong `.env` từ một phiên tune thì không. Nếu
   `DATASET` khác split chính thức của thí nghiệm, banner nói thẳng đây không phải TN chính thức.
 - **Manifest reproducibility** ghi TRƯỚC khi launch vào `results/comparison_<ts>/comparison_manifest.json`: model/provider/URL
-  từng slot, dataset, agents, run tag, judge model, **git commit của cả benchmark lẫn monorepo cha**. Giữ file này.
+  từng slot, dataset, agents, run tag, LLM judge model, **git commit của cả benchmark lẫn monorepo cha**. Giữ file này.
 - Log per-slot: `results/ladder_<ts>/<slot>.log`.
 
 Monitor: `tmux attach -t ladder-qwen2b` (detach `Ctrl+B, D`) hoặc `tail -f results/ladder_*/qwen2b.log`.
@@ -305,10 +305,10 @@ Cap thực tế được ghi vào `metadata.run_config.llm_max_concurrency` nên
 ```
 
 **Có benchmark run riêng (đổi 2026-09-10).** TN2 = 4 arm × 2 size (0.8B, 4B) × `test_30`, 1 run
-deterministic mỗi ô, tag `a1`. Bốn arm nằm trong **cùng một run** mỗi size nên chia chung judge
-session per scenario → delta arm-vs-A0 không dính judge drift.
+deterministic mỗi ô, tag `a1`. Bốn arm nằm trong **cùng một run** mỗi size nên chia chung LLM judge
+session per scenario → delta arm-vs-A0 không dính LLM judge drift.
 
-**A0 chạy lại trong TN2, không lấy từ TN1.** Judge session, scenario set và dải size đều khác, nên
+**A0 chạy lại trong TN2, không lấy từ TN1.** LLM judge session, scenario set và dải size đều khác, nên
 so một arm TN2 với A0 của ladder là so xuyên thí nghiệm. `isd-exp ablation pool` vẫn đặt A0 của
 TN2 cạnh A0 của TN1 nhưng như một **drift gauge**: nó chặn trên phần delta có thể do session gây
 ra, không phải một phép so arm. Trước 2026-09-10 hai con số này đến từ cùng một run và phải bằng
@@ -436,13 +436,13 @@ capability — hợp lệ, failure policy ở mục 8 xử lý, **không** re-ru
 - **Integrity** — stub/default output (stub đủ 33 sub-item nên nhìn "đầy đủ", phải quét bằng marker), output < 1KB,
   trajectory rỗng, `token_usage.total_tokens = 0`, model name trong metadata khớp thư mục run, duration hợp lý.
 - **Metrics** — mỗi `comparison_report.json` có `total_score` (median multi-judge), `addie_score`, `trajectory_score`;
-  đủ 5 phase ADDIE; đủ số judge cấu hình; phân phối điểm sanity (không agent nào toàn 0 hoặc toàn 100).
+  đủ 5 phase ADDIE; đủ số LLM judge cấu hình; phân phối điểm sanity (không agent nào toàn 0 hoặc toàn 100).
 
 `--fields-only` gọi thẳng extractor của evaluator để xem **đúng những trường RQ2 tiêu thụ** (objectives / assessments /
 activities / evaluation) có rỗng không. Quan trọng: output parse được nhưng không trích ra objective nào sẽ bị chấm
 `0.0` và trông y hệt một thiết kế lệch thật — chỉ ở đây mới phân biệt được parse fail với chất lượng kém.
 
-> ⚠️ **Bẫy CSV Avg**: cột `Avg` trong aggregate CSV là judge-mean, lệch khi thiếu component. Số chuẩn cho paper luôn là
+> ⚠️ **Bẫy CSV Avg**: cột `Avg` trong aggregate CSV là trung bình theo LLM judge, lệch khi thiếu component. Số chuẩn cho paper luôn là
 > per-scenario `total_score`.
 
 ### 6.4 Red flags
@@ -456,13 +456,13 @@ activities / evaluation) có rỗng không. Quan trọng: output parse được 
 | `token_usage = 0` hàng loạt      | Accounting hỏng               | Sửa trước khi chạy tiếp — số token sai hết |
 | `token_usage = 0` ở **một số** agent | Agent đó dùng `LLMConfig` đã tách khỏi counter của run | Counter đi theo lineage của config: `_get_agent_runner` mở scope bằng `new_token_scope()`, `copy_with()` chia sẻ lại. Chạy `pytest shared/tests/test_token_accounting_reaches_agents.py` |
 | Model name metadata ≠ run dir    | Nhầm URL pod ↔ slot           | Loại run, kiểm managed block               |
-| `evaluation_error` trong summary | Judge chết giữa chừng         | `04_repair_ladder_results.py` (xem dưới)   |
+| `evaluation_error` trong summary | LLM judge chết giữa chừng         | `04_repair_ladder_results.py` (xem dưới)   |
 | Pod EXITED giữa run              | OOM/crash server              | Xem RunPod console log, kiểm VRAM          |
 
-Judge lỗi transient sửa được **không cần sinh lại output**:
+LLM judge lỗi transient sửa được **không cần sinh lại output**:
 
 ```bash
-./isd-exp audit repair --dry-run   # xem phạm vi, không gọi judge
+./isd-exp audit repair --dry-run   # xem phạm vi, không gọi LLM judge
 ./isd-exp audit repair             # sửa rồi tự chạy audit post-run
 ```
 
@@ -587,8 +587,8 @@ nghĩa ở A.2. RQ2 pool từ `alignment_scores.json` (A.3). Kèm section `token
 cd .. && ./isd-exp report sync                                 # từ repo thesis
 ```
 
-Tất cả ghi vào `results/generated/` (benchmark-local, gitignored): `tab_judge_addie.tex` (ADDIE-lead) kèm
-`tab_judge_total.tex`/`tab_judge_trajectory.tex` (Total/Trajectory song song, cùng logic §A.2), `tab_alignment.tex`
+Tất cả ghi vào `results/generated/` (benchmark-local, gitignored): `tab_llm_judge_addie.tex` (ADDIE-lead) kèm
+`tab_llm_judge_total.tex`/`tab_llm_judge_trajectory.tex` (Total/Trajectory song song, cùng logic §A.2), `tab_alignment.tex`
 (tín hiệu dẫn) kèm `tab_alignment_panel.tex` (panel đầy đủ 7 tín hiệu), `stats_macros.tex` (mọi con số trong prose là
 `\newcommand`), `stats_summary.md` (bản dump người đọc để cross-check).
 
@@ -635,12 +635,12 @@ Hình (cả `.pdf` vector lẫn `.png` preview; text trong hình tiếng Anh, ca
 
 | Hình                     | Nội dung                                                                     |
 |--------------------------|------------------------------------------------------------------------------|
-| `fig_judge_ladder`         | ADDIE vs model size, error bar = ±SEM across scenarios (headline RQ1)        |
-| `fig_judge_delta`          | Δ(proposed − baseline) per size, CI95, marker đặc = p_holm < 0,05, kèm slope |
-| `fig_judge_components`     | ADDIE vs Trajectory theo size                                                |
+| `fig_llm_judge_ladder`         | ADDIE vs model size, error bar = ±SEM across scenarios (headline RQ1)        |
+| `fig_llm_judge_delta`          | Δ(proposed − baseline) per size, CI95, marker đặc = p_holm < 0,05, kèm slope |
+| `fig_llm_judge_components`     | ADDIE vs Trajectory theo size                                                |
 | `fig_alignment_ladder`         | Objective–assessment alignment vs size (headline RQ2)                        |
 | `fig_alignment_components`     | Heatmap agents × 5 alignment component per size                              |
-| `fig_alignment_vs_judge_scatter` | Per-scenario alignment vs Total, Spearman ρ per size — cần `--runs-glob`     |
+| `fig_alignment_vs_llm_judge_scatter` | Per-scenario alignment vs Total, Spearman ρ per size — cần `--runs-glob`     |
 | `fig_failure_rate`       | % scenario fail per agent × size                                             |
 | `fig_cost_quality`       | Total vs total token / exec time (deployment-cost angle)                     |
 
@@ -682,20 +682,20 @@ train tay. Exit 0 = không RED (và không WARN nếu `--strict`).
 
 Ba nhóm, theo nguồn tính toán thực tế trong code:
 
-1. **Judge quality metrics** (A.1) — LLM judge chấm từng ADDIE output, nguồn cho RQ1.
-2. **RQ1 statistics** (A.2) — thống kê suy diễn trên các judge metric đã pool theo model size.
-3. **RQ2 alignment protocol** (A.3) — thước đo constructive alignment tự động, **không LLM**, độc lập với judge và với
+1. **LLM judge quality metrics** (A.1) — LLM judge chấm từng ADDIE output, nguồn cho RQ1.
+2. **RQ1 statistics** (A.2) — thống kê suy diễn trên các LLM judge metric đã pool theo model size.
+3. **RQ2 alignment protocol** (A.3) — thước đo constructive alignment tự động, **không LLM**, độc lập với LLM judge và với
    verifier nội bộ của harness.
 
 Cộng thêm **operational metadata** (A.4) — log để debug, không vào headline stats.
 
-## A.1 Judge quality metrics (per-scenario)
+## A.1 LLM judge quality metrics (per-scenario)
 
 Nguồn: [`evaluator/src/isd_evaluator/`](../../isd-agent-benchmark/evaluator/src/isd_evaluator/).
 
 **ADDIE Rubric Score (0–100)** — `metrics/addie_rubric.py`, rubric ở `rubrics/addie_definitions.py`. Hai bước LLM-judge
 tuần tự cho mỗi sub-item: (1) *status* — phân loại vào `absent/weak/moderate/good/excellent`, mỗi trạng thái ứng một
-khoảng điểm cố định; (2) *score* — chấm chi tiết, **bị ép cứng** nằm trong khoảng của status, tránh judge chấm vượt
+khoảng điểm cố định; (2) *score* — chấm chi tiết, **bị ép cứng** nằm trong khoảng của status, tránh LLM judge chấm vượt
 khung. **33 sub-item** (Context-Matrix) → trung bình thành **13 item** → **5 phase ADDIE**. Trọng số phase mặc định
 Analysis 25 / Design 25 / Development 20 / Implementation 15 / Evaluation 15, điều chỉnh động theo context scenario
 (`metrics/context_weights.py`: suy ra hồ sơ ngữ cảnh — loại tổ chức, hình thức triển khai, người học, domain, quy mô
@@ -717,7 +717,7 @@ Total = 0,7 × ADDIE.normalized_score + 0,3 × Trajectory.total
 **Thước dẫn của RQ1 là `addie_median`, không phải composite** — ADDIE đo chất lượng nội dung thiết kế giảng dạy, tức
 đúng construct câu hỏi nghiên cứu nhắm tới; `trajectory_score` đo process conformance (construct khác); `total_score`
 mang trọng số 0,7/0,3 của benchmark, không đến từ câu hỏi nghiên cứu này. Cả ba tín hiệu được thống kê **y như nhau**
-(3 failure policy, Holm theo từng (signal, policy)) dưới `comparisons.by_signal[<signal>]`, và `total_score` vẫn báo
+(3 failure policy, Holm theo từng (signal, policy)) dưới `comparisons.by_score[<signal>]`, và `total_score` vẫn báo
 đầy đủ để so sánh được với chính ISD-Agent-Bench. Quyết định này là **post-hoc** (chọn sau khi đã thấy kết quả) và
 phải khai đúng như vậy trong paper.
 
@@ -732,7 +732,7 @@ Input: 4 size × 1 run × 90 scenario (TN1), mỗi scenario đã có `Total` cho
 - **`mean_total`** — trung bình `Total` của một agent tại một size, pool qua run rồi qua scenario (complete-case là
   policy chính).
 - **`sd_{total,addie,traj}_across_scenarios`** — SD **giữa các scenario** của chính signal đó. Đây là con số in trong
-  ngoặc cạnh mean ở `tab_judge_addie.tex` và vẽ thành **SEM** (`sd/√n`) làm error bar của `fig_judge_ladder`. Nó là **độ tản mô
+  ngoặc cạnh mean ở `tab_llm_judge_addie.tex` và vẽ thành **SEM** (`sd/√n`) làm error bar của `fig_llm_judge_ladder`. Nó là **độ tản mô
   tả**, không phải ước lượng độ chính xác — khoảng tin cậy là bootstrap CI ở tầng so sánh. Cùng quy ước với bảng/hình
   panel RQ2, nên error bar hai họ instrument có cùng nghĩa.
 - **`run_to_run_sd{,_addie,_traj,_total}`** — SD giữa các giá trị trung bình cấp-run. **`None` khi ô chỉ có 1 run**,
@@ -819,7 +819,7 @@ Hai layer validity trong `details` (**không phải tín hiệu panel** — chú
 `sanity.bloom_vs_declared_agreement` + `sanity.classifier` (calibration Bloom arm đang chấm vs declared level; key
 mang chữ "bloom" chứ không phải "lexicon" vì trục Bloom có hai arm).
 
-**Encoder.** Primary `nvidia/llama-embed-nemotron-8b` — family independence: Llama/NVIDIA ≠ agent Qwen ≠ judge
+**Encoder.** Primary `nvidia/llama-embed-nemotron-8b` — family independence: Llama/NVIDIA ≠ agent Qwen ≠ LLM judge
 OpenAI/Google. Bộ sweep là **ba neural khác lineage** + một lexical floor:
 
 | Preset     | Model                                                | Backbone    | Backend | Suffix    |

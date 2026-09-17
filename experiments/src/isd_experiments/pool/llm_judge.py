@@ -1,4 +1,4 @@
-"""Pooling the LLM-judge signals across runs and comparing agents.
+"""Pooling the LLM judge scores across runs and comparing agents.
 
 One model size at a time: every comparison is PAIRED WITHIN a size, because a
 scenario is the unit of analysis and the same scenario must be on both sides of
@@ -13,7 +13,7 @@ import math
 from pathlib import Path
 from typing import Optional
 
-from ..config import JUDGE_LEAD, JUDGE_SIGNAL_LABEL, JUDGE_SIGNALS
+from ..config import LLM_JUDGE_LEAD, LLM_JUDGE_SCORE_LABEL, LLM_JUDGE_SCORES
 from ..runs import load_run
 from ..stats import (
     bootstrap_ci,
@@ -70,12 +70,12 @@ def pool_model(label: str, run_dirs: list[Path], agents: list[str]) -> dict:
         # the three arrive together: over all 10,347 scored agent-run cells in the
         # 12 ladder runs there is no cell with total_score but a missing
         # addie_median or trajectory_score. If a future evaluator can emit one
-        # without the others, this has to become a per-signal complete-case set.
+        # without the others, this has to become a per-score complete-case set.
         complete = {sid: v for sid, v in totals[a].items() if all(x is not None for x in v)}
         scen_means = [_mean([x for x in v]) for v in complete.values()]  # type: ignore[list-item]
         # Within-scenario spread across runs. Empty with one run per cell, which
-        # is the default since 2026-09-10 — hence the None below rather than a
-        # mean over nothing.
+        # is the default — hence the None below rather than a mean over
+        # nothing.
         scen_sds = [_sd([x for x in v]) for v in complete.values() if len(v) >= 2]  # type: ignore[arg-type]
         within_sds = [x for x in scen_sds if x is not None]
         # Run-level mean -> SD across runs, over the SAME complete-case set that
@@ -84,7 +84,7 @@ def pool_model(label: str, run_dirs: list[Path], agents: list[str]) -> dict:
         # mix run-to-run variability with differences in scenario composition,
         # which is exactly the wrong thing to print as "mean_total ± SD" (and it
         # understates the SD precisely for the agents that fail most).
-        # Every judge signal gets its OWN run-to-run SD over that same set. A single
+        # Every LLM judge score gets its OWN run-to-run SD over that same set. A single
         # shared SD was a real defect: it is a total_score statistic, and printing
         # it next to an ADDIE or Trajectory mean overstated run-to-run spread by up
         # to 16x on Trajectory, which is far more stable across runs than Total.
@@ -115,7 +115,7 @@ def pool_model(label: str, run_dirs: list[Path], agents: list[str]) -> dict:
             "n_scenarios_complete": len(complete),
             "n_scenarios_any_missing": len(all_scenarios) - len(complete),
             "mean_total": _mean(scen_means),
-            # Spread ACROSS SCENARIOS, per signal. Defined with a single run, and
+            # Spread ACROSS SCENARIOS, per score. Defined with a single run, and
             # it is the spread the bootstrap resamples over, so this is what the
             # descriptive tables show now that run-to-run SD is usually absent.
             "sd_total_across_scenarios": _sd(scen_means),
@@ -125,7 +125,7 @@ def pool_model(label: str, run_dirs: list[Path], agents: list[str]) -> dict:
             "mean_addie": _mean(addie_means),
             "mean_traj": _mean(traj_means),
             "run_means_total": run_means,
-            # CONSUMERS: pick the field matching the signal you display. The bare
+            # CONSUMERS: pick the field matching the score you display. The bare
             # `run_to_run_sd` is Total and is kept only because the ablation
             # pooling (08) checks A0 drift on total_score; never pair it with an
             # ADDIE or Trajectory mean. All four are None unless this cell has
@@ -143,7 +143,7 @@ def pool_model(label: str, run_dirs: list[Path], agents: list[str]) -> dict:
         "n_scenarios_union": len(all_scenarios),
         "per_run": per_run_info,
         "agents": agents_summary,
-        # Per-scenario series for every judge signal, so the inferential layer is
+        # Per-scenario series for every LLM judge score, so the inferential layer is
         # not locked to the composite. Stripped before the JSON dump.
         "_scores": {"addie_median": addies, "total_score": totals,
                     "trajectory_score": trajs},
@@ -170,16 +170,16 @@ def scenario_mean_map(totals: dict[str, dict[str, list[Optional[float]]]],
     return out
 
 def compare_model(model: dict, proposed: str, baselines: list[str]) -> dict:
-    """Paired stats for every judge signal, each with the three failure policies.
+    """Paired stats for every LLM judge score, each with the three failure policies.
 
-    Every signal in :data:`JUDGE_SIGNALS` gets identical treatment — the lead
-    signal is a narrative choice recorded in ``lead_signal``, not a different
-    statistical standard. Holm families stay per (signal, policy): the signals
+    Every score in :data:`LLM_JUDGE_SCORES` gets identical treatment — the lead
+    score is a narrative choice recorded in ``lead_score``, not a different
+    statistical standard. Holm families stay per (score, policy): the scores
     measure different constructs, so pooling them into one family would trade
     power for a correction nobody asked for.
     """
-    by_signal: dict[str, dict] = {}
-    for metric in JUDGE_SIGNALS:
+    by_score: dict[str, dict] = {}
+    for metric in LLM_JUDGE_SCORES:
         series = model["_scores"][metric]
         observed = [x for a in series.values() for v in a.values() for x in v
                     if x is not None]
@@ -212,8 +212,8 @@ def compare_model(model: dict, proposed: str, baselines: list[str]) -> dict:
             for r, ph in zip(with_p, holm):
                 r["p_holm"] = ph
             policies[policy] = rows
-        by_signal[metric] = {
-            "label": JUDGE_SIGNAL_LABEL[metric],
+        by_score[metric] = {
+            "label": LLM_JUDGE_SCORE_LABEL[metric],
             "min_score_floor": floor,
             "policies": policies,
         }
@@ -221,10 +221,10 @@ def compare_model(model: dict, proposed: str, baselines: list[str]) -> dict:
         "holm_family": (
             f"{len(baselines)} comparisons ({proposed} vs each baseline) "
             f"within model size '{model['label']}'; Holm applied per "
-            "(signal, policy)."
+            "(score, policy)."
         ),
-        "lead_signal": JUDGE_LEAD,
-        "signals": list(JUDGE_SIGNALS),
+        "lead_score": LLM_JUDGE_LEAD,
+        "scores": list(LLM_JUDGE_SCORES),
         "primary_policy": "complete_case",
-        "by_signal": by_signal,
+        "by_score": by_score,
     }

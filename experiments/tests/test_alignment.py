@@ -614,9 +614,9 @@ class TestDefaults:
         assert all(a.artifact != "alignment_scores.json"
                    for k, a in arms.encoders.items() if k != arms.primary_encoder)
 
-        from isd_experiments.alignment.protocol import PANEL_SIGNALS
+        from isd_experiments.alignment.protocol import ALIGNMENT_SIGNALS
 
-        components = [s for s, _fam in PANEL_SIGNALS]
+        components = [s for s, _fam in ALIGNMENT_SIGNALS]
         assert "composite" not in components, "the panel has no composite endpoint"
         assert components[0] == "objective_assessment_similarity"
         # Family A is the three constructive-alignment triad edges (C2/C3/C4).
@@ -780,9 +780,9 @@ class TestCATriadCoverage:
     the measurement outright rather than kept as a diagnostic."""
 
     def test_panel_family_a_is_exactly_the_triad(self):
-        from isd_experiments.alignment.protocol import PANEL_SIGNALS
+        from isd_experiments.alignment.protocol import ALIGNMENT_SIGNALS
 
-        family_a = [s for s, fam in PANEL_SIGNALS if fam == "correspondence"]
+        family_a = [s for s, fam in ALIGNMENT_SIGNALS if fam == "correspondence"]
         assert family_a == [
             "objective_assessment_similarity",   # C2
             "objective_activity_similarity",     # C3

@@ -9,10 +9,9 @@ The sweep is a STAR, not a grid: every arm deviates from the primary
 configuration on exactly one axis, so a difference it shows is attributable to
 that axis.
 
-These used to be literal dicts in the scoring script, which meant swapping an
-encoder or adding a classifier was a code edit and the model names were
-unreachable from anywhere else. They are configuration, so they live in
-``experiment.toml``.
+They are configuration rather than code and live in ``experiment.toml``, so
+swapping an encoder or adding a classifier is a declaration edit, and the model
+names are reachable from anything that reads the experiment.
 
 **The empty suffix is load-bearing.** Exactly one encoder and one classifier
 own it, and their artifact is ``alignment_scores.json`` -- the only file

@@ -54,7 +54,7 @@ ARM_ORDER = [
     "alignmentgraph-isd-multi-prose",
     "alignmentgraph-isd-single-prose",
 ]
-#: Same arm names as 11_gen_ablation_tables.py's ARM_DISPLAY — figure legends
+#: Same arm names as ``ablation_tables.ARM_DISPLAY`` — figure legends
 #: and table rows come from the same pooled file and must read alike.
 ARM_DISPLAY_FULL = {
     "alignmentgraph-isd": "A0 — Multi-agent, graph context",
@@ -179,7 +179,7 @@ def arm_rows(pooled: dict, arm: str) -> dict[str, dict]:
     """label -> complete_case comparison row (stored direction: A0 − arm)."""
     out = {}
     for m in pooled["models"]:
-        for row in (m.get("comparisons", {}).get("by_signal", {})
+        for row in (m.get("comparisons", {}).get("by_score", {})
                     .get("addie_median", {}).get("policies", {})
                     .get("complete_case", [])):
             if row.get("baseline") == arm and row.get("n"):
@@ -187,7 +187,7 @@ def arm_rows(pooled: dict, arm: str) -> dict[str, dict]:
     return out
 
 
-#: Signal the factorial figure leads on (see 11's FACT_LEAD).
+#: Signal the factorial figure leads on (see ``ablation_tables.FACT_LEAD``).
 FACT_LEAD = "objective_assessment_similarity"
 
 #: (effect key, condition label) pairs per panel — each panel shows ONE
@@ -210,9 +210,9 @@ def fig_ablation_factorial(pooled: dict, outdir: Path, written: list[Path]) -> b
     them IS the interaction.
     """
     fact = pooled.get("factorial") or {}
-    if "skipped" in fact or not fact.get("signals"):
+    if "skipped" in fact or not fact.get("measures"):
         return False
-    per_model = fact["signals"][FACT_LEAD]["per_model"]
+    per_model = fact["measures"][FACT_LEAD]["per_model"]
     labels = [e["label"] for e in per_model]
     sizes = [size_of_label(lb) for lb in labels]
 

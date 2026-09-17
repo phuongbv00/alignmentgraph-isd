@@ -21,7 +21,7 @@ comparison — win or lose — so there is no selective reporting. The panel
 spans **two mechanically independent instrument families**, each with its own
 sensitivity axis, so that no single family carries the construct on its own:
 
-The panel is :data:`PANEL_SIGNALS`, which is the single source of truth for
+The panel is :data:`ALIGNMENT_SIGNALS`, which is the single source of truth for
 its own size — prose that repeats a count goes stale the moment a signal moves,
 so nothing here states one.
 
@@ -301,8 +301,8 @@ class LexiconBloomClassifier:
     appearing anywhere; a trailing verb usually names the purpose or the medium
     ("apply X to design Y"), not the demand being assessed.
 
-    The rule was chosen on evidence, not taste. Against the highest-wins rule
-    this lexicon previously used, on two independent labelled corpora:
+    The rule was chosen on evidence, not taste. Against a highest-wins rule,
+    on two independent labelled corpora:
 
     ======================================  ==============  ==============
     corpus                                  highest wins    leading verb
@@ -318,9 +318,9 @@ class LexiconBloomClassifier:
     Matches in noun position are rejected (see :data:`_NOUN_CONTEXT`).
 
     This is the **sensitivity** arm of the Bloom axis; the primary arm is
-    :class:`TransformerBloomClassifier` (the roles were swapped on 2026-07-29,
-    when the transformer measured kappa 0.926 against this one's 0.650 on a
-    held-out split). What this arm buys, and why it is kept: its level
+    :class:`TransformerBloomClassifier`, which measures kappa 0.926 against
+    this one's 0.650 on a held-out split. What this arm buys, and why it is
+    kept: its level
     assignment stays traceable to Anderson & Krathwohl and is bit-wise
     deterministic, neither of which holds for a softmax argmax. Note the
     coverage asymmetry between them: this one abstains (``None``) on text with
@@ -379,20 +379,19 @@ class LexiconBloomClassifier:
 class TransformerBloomClassifier:
     """Bloom classifier backed by a locally fine-tuned sequence classifier.
 
-    The **primary arm** of the Bloom axis since 2026-07-29 (kappa 0.926 vs the
-    lexicon's 0.650 on a held-out split), but it does not replace the lexicon:
+    The **primary arm** of the Bloom axis (kappa 0.926 vs the lexicon's 0.650
+    on a held-out split), but it does not replace the lexicon:
     the sweep's question is not "which classifier is more accurate" but "does
     the agent ranking depend on the choice of classifier at all". Two
     instruments derived from completely separate sources — the lexicon from
     Anderson & Krathwohl's Table 5.1, this one from 21,380 human labels —
     agreeing on the ranking is stronger evidence than either instrument alone at
     any kappa. The cost of leading with this one, which must be declared: a
-    per-case level is no longer traceable to Anderson & Krathwohl, and family B
-    stops being bit-wise deterministic (a discrete argmax, so floating-point
+    per-case level is not traceable to Anderson & Krathwohl, and family B is
+    not bit-wise deterministic (a discrete argmax, so floating-point
     noise can flip a label rather than nudge a number).
 
-    Train one with ``evaluator/scripts/train_bloom_6way_classifier.py`` (default
-    recipe: ``bert-base-uncased`` on the single-label subset of EDM2022CLO,
+    Train one with ``isd-exp bloom train`` (default recipe: ``bert-base-uncased`` on the single-label subset of EDM2022CLO,
     after Li et al. 2022). Loads a checkpoint from ``model_path`` only if it
     already exists on disk; it never downloads.
 
@@ -415,9 +414,10 @@ class TransformerBloomClassifier:
         import os
 
         if not os.path.isdir(model_path):
+            from ..paths import cli  # noqa: PLC0415 - leaf module, see header
             raise FileNotFoundError(
                 f"Bloom classifier checkpoint not found at '{model_path}'. "
-                "Fine-tune one with evaluator/scripts/train_bloom_6way_classifier.py "
+                f"Fine-tune one with `{cli()} bloom train` "
                 "or fall back to LexiconBloomClassifier."
             )
         from transformers import (  # noqa: PLC0415 - optional heavy dep
@@ -1060,7 +1060,7 @@ def extract_declared_links(addie_output: dict) -> list[tuple[str, str]]:
 class AlignmentScore:
     """The panel of alignment signals; every numeric value lies in [0, 1].
 
-    **No primary endpoint** — :data:`PANEL_SIGNALS` is a flat panel, each
+    **No primary endpoint** — :data:`ALIGNMENT_SIGNALS` is a flat panel, each
     signal answering a different question, all reported for every comparison. The
     protocol uses **no similarity threshold anywhere**: the correspondence
     between an objective and the assessments/activities is a
@@ -1114,7 +1114,7 @@ OBJECTIVE_ENDPOINTS = (
 #: tables and figures all read this so a signal can never be reported by one
 #: stage and silently dropped by another. Flat by construction: there is no
 #: primary entry and nothing here is a "secondary" index.
-PANEL_SIGNALS: tuple[tuple[str, str], ...] = (
+ALIGNMENT_SIGNALS: tuple[tuple[str, str], ...] = (
     # Family A is exactly the three edges of the constructive-alignment triad
     # (Biggs): ILO-AT, ILO-TLA, TLA-AT. Each one mirrors a core relation of the
     # harness graph (C2, C3, C4), so no panel signal measures something the
@@ -1131,10 +1131,10 @@ PANEL_SIGNALS: tuple[tuple[str, str], ...] = (
 #: ``(key, left set, right set)``. Porter compares the topic x Bloom
 #: distribution of the left set against the right one.
 #:
-#: Family B measures the SAME three edges family A does. It used to hold every
-#: set against ``objectives``, which predated C4 joining the panel and left the
-#: activity<->assessment edge measured by textual correspondence alone while
-#: the other two edges were measured by both instrument families. Mirroring the
+#: Family B measures the SAME three edges family A does. Holding every set
+#: against ``objectives`` instead would leave the activity<->assessment edge
+#: measured by textual correspondence alone while the other two edges were
+#: measured by both instrument families. Mirroring the
 #: edges makes the two families differ by INSTRUMENT and by nothing else, which
 #: is the whole point of having two of them.
 PORTER_PAIRS: tuple[tuple[str, str, str], ...] = (
@@ -1233,7 +1233,7 @@ class AlignmentEvaluator:
 
     **No similarity threshold anywhere** — the objective<->item relations are
     scored as continuous mean-max cosine, not thresholded rates. Emits the
-    flat panel of :data:`PANEL_SIGNALS`; there is no primary endpoint.
+    flat panel of :data:`ALIGNMENT_SIGNALS`; there is no primary endpoint.
 
     Family A — textual correspondence (the encoder):
 
@@ -1309,9 +1309,9 @@ class AlignmentEvaluator:
         if not objectives:
             # NOT an early return. C4 (activity<->assessment) does not involve
             # objectives at all, and Porter/Webb still describe the counterpart
-            # sets, so bailing out here used to leave four of the six panel
+            # sets, so bailing out here would leave four of the six panel
             # signals as None on exactly the outputs that failed hardest --
-            # which then dropped out of the pooled means instead of scoring
+            # which would then drop out of the pooled means instead of scoring
             # against the agent that produced them. Fall through; every block
             # below is guarded for an empty objective set.
             score.notes.append(
@@ -1411,9 +1411,9 @@ class AlignmentEvaluator:
                 score.activity_assessment_similarity = (
                     sum(per_activity_max) / len(per_activity_max))
         else:
-            # Either side empty -- including BOTH empty, which used to fall
-            # through every branch and leave the signal undefined, so the
-            # emptiest possible output was the one excluded from the mean
+            # Either side empty -- including BOTH empty, which would otherwise
+            # fall through every branch and leave the signal undefined, making
+            # the emptiest possible output the one excluded from the mean
             # rather than scored 0.0. Same convention as porter below.
             score.activity_assessment_similarity = 0.0
             missing = " and ".join(

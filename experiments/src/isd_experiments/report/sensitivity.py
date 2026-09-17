@@ -60,9 +60,9 @@ AXIS_QUANTITY = {"encoder": "Sim", "bloom": "Cong"}
 #: because "5 encoders" would mislabel the design: 4 encoders + 2 Bloom
 #: classifiers, sharing the primary configuration.
 AXIS_COUNT_MACRO = {
-    "encoder": ("rqTwoSensNumEncoders",
+    "encoder": ("alignmentSensNumEncoders",
                 "encoder arms compared, including the primary encoder"),
-    "bloom": ("rqTwoSensNumBloomClassifiers",
+    "bloom": ("alignmentSensNumBloomClassifiers",
               "Bloom classifiers compared, including the primary (its encoder "
               "is the primary encoder, unchanged)"),
 }
@@ -243,7 +243,7 @@ def axis_summary(block: dict) -> dict:
 
     Sweep arms only, like the pooled summary: the question is whether a verdict
     survives the swap, so the primary's own p-values do not belong in it (they
-    are available per row as rqTwoSensPHolmMax<PrimaryArm>). pooled summary's
+    are available per row as alignmentSensPHolmMax<PrimaryArm>). pooled summary's
     max_p_holm_* reads the encoder-axis signal for every arm including the Bloom
     arm, so the per-axis worst case is recomputed here on each row's own signal.
     """
@@ -348,7 +348,7 @@ def gen_macros(pooled: dict, blocks: list[dict]) -> str:
     summary = sens["summary"]
     by_axis = {b["axis"]: axis_summary(b) for b in blocks}
     n_arms = summary["n_encoders"] + 1
-    newcmd("rqTwoSensNumArms", str(n_arms),
+    newcmd("alignmentSensNumArms", str(n_arms),
            "sensitivity arms: the primary configuration + its single-axis deviations")
     for axis, tok, axis_name, _ in AXES:
         block = next((b for b in blocks if b["axis"] == axis), None)
@@ -356,33 +356,33 @@ def gen_macros(pooled: dict, blocks: list[dict]) -> str:
             continue
         n_rows = sum(1 for r in block["rows"] if "skipped" not in r)
         macro, desc = AXIS_COUNT_MACRO.get(
-            axis, (f"rqTwoSensNum{tok}Arms",
+            axis, (f"alignmentSensNum{tok}Arms",
                    f"arms compared on the {axis_name.lower()}, incl. the primary"))
         newcmd(macro, str(n_rows), desc)
-        newcmd(f"rqTwoSensSignal{tok}", block["metric_display"],
+        newcmd(f"alignmentSensSignal{tok}", block["metric_display"],
                f"{axis_name} signal ({block['metric']})"
                f"{signal_note(block['metric'])}")
-    newcmd("rqTwoSensPrimaryName",
+    newcmd("alignmentSensPrimaryName",
            arm_names().get(sens["primary_encoder"], sens["primary_encoder"]),
            "primary encoder display name")
     primary_bloom = (pooled.get("alignment") or {}).get("bloom_classifier")
     if primary_bloom:
-        newcmd("rqTwoSensPrimaryBloomName", arm_names().get(primary_bloom,
+        newcmd("alignmentSensPrimaryBloomName", arm_names().get(primary_bloom,
                                                              primary_bloom),
                "primary Bloom-classifier display name")
 
     # ── cross-axis worst cases (each arm on its own signal)
     for key, macro, desc in (
-        ("min_spearman_rho_any_encoder_any_size", "rqTwoSensRhoMinAll",
+        ("min_spearman_rho_any_encoder_any_size", "alignmentSensRhoMinAll",
          "min Spearman rho over every arm x size cell (each arm on its own axis signal)"),
-        ("min_kendall_tau_b_any_encoder_any_size", "rqTwoSensTauMinAll",
+        ("min_kendall_tau_b_any_encoder_any_size", "alignmentSensTauMinAll",
          "min Kendall tau-b over every arm x size cell (each arm on its own axis signal)"),
     ):
         val = summary.get(key)
         newcmd(macro, fmt_num(val, 3) if _is_num(val) else "--", desc)
     holms = [s["p_holm_max"] for s in by_axis.values() if s["p_holm_max"] is not None]
     if holms:
-        newcmd("rqTwoSensPHolmMaxAll", fmt_p(max(holms)),
+        newcmd("alignmentSensPHolmMaxAll", fmt_p(max(holms)),
                "worst within-signal Holm p over the sweep arms of both axes, each "
                "read on its own signal (recomputed per axis here, not taken from "
                "summary.max_p_holm_any_encoder_any_size, which reads the "
@@ -393,16 +393,16 @@ def gen_macros(pooled: dict, blocks: list[dict]) -> str:
         tok, s = block["macro_token"], by_axis[block["axis"]]
         low = block["name"].lower()
         if s["rho_min"] is not None:
-            newcmd(f"rqTwoSensRhoMin{tok}", fmt_num(s["rho_min"], 3),
+            newcmd(f"alignmentSensRhoMin{tok}", fmt_num(s["rho_min"], 3),
                    f"min Spearman rho vs primary over the {low} arms x sizes")
         if s["tau_min"] is not None:
-            newcmd(f"rqTwoSensTauMin{tok}", fmt_num(s["tau_min"], 3),
+            newcmd(f"alignmentSensTauMin{tok}", fmt_num(s["tau_min"], 3),
                    f"min Kendall tau-b vs primary over the {low} arms x sizes")
         if s["p_holm_max"] is not None:
-            newcmd(f"rqTwoSensPHolmMax{tok}", fmt_p(s["p_holm_max"]),
+            newcmd(f"alignmentSensPHolmMax{tok}", fmt_p(s["p_holm_max"]),
                    f"worst within-signal Holm p on the {low} "
                    f"({block['metric']}), sweep arms only")
-        newcmd(f"rqTwoSensTopOneCells{tok}", f"{s['n_cells_first']}/{s['n_cells']}",
+        newcmd(f"alignmentSensTopOneCells{tok}", f"{s['n_cells_first']}/{s['n_cells']}",
                f"{low} arm x size cells where the proposed agent ranks first "
                "(sweep arms only; the primary is the reference)")
 
@@ -417,27 +417,27 @@ def gen_macros(pooled: dict, blocks: list[dict]) -> str:
             where = f"arm {row['key']}, {block['name'].lower()}"
             rhos = [c["rho"] for c in row["cells"].values() if _is_num(c.get("rho"))]
             if rhos:
-                newcmd(f"rqTwoSensRhoMin{w}", fmt_num(min(rhos), 3),
+                newcmd(f"alignmentSensRhoMin{w}", fmt_num(min(rhos), 3),
                        f"min Spearman rho vs primary across sizes ({where})")
             arm_holms = [c["p_holm_max"] for c in row["cells"].values()
                          if c.get("p_holm_max") is not None]
             if arm_holms:
-                newcmd(f"rqTwoSensPHolmMax{w}", fmt_p(max(arm_holms)),
+                newcmd(f"alignmentSensPHolmMax{w}", fmt_p(max(arm_holms)),
                        f"worst within-signal Holm p on {metric} across sizes ({where})")
             for i, label in enumerate(labels):
                 c = row["cells"].get(label) or {}
                 sw = _size_word(label, i)
                 if c.get("mean") is not None:
-                    newcmd(f"rqTwoSens{q}{w}{sw}", fmt_num(c["mean"], 3),
+                    newcmd(f"alignmentSens{q}{w}{sw}", fmt_num(c["mean"], 3),
                            f"proposed mean {metric}{note} @ {label} ({where})")
                 if c.get("delta_best") is not None:
-                    newcmd(f"rqTwoSens{q}DeltaBest{w}{sw}", fmt_num(c["delta_best"], 3),
+                    newcmd(f"alignmentSens{q}DeltaBest{w}{sw}", fmt_num(c["delta_best"], 3),
                            f"proposed - best baseline on {metric} @ {label} ({where})")
                 if _is_num(c.get("rho")):
-                    newcmd(f"rqTwoSensRho{w}{sw}", fmt_num(c["rho"], 3),
+                    newcmd(f"alignmentSensRho{w}{sw}", fmt_num(c["rho"], 3),
                            f"Spearman rho vs primary on {metric} @ {label} ({where})")
                 if _is_num(c.get("tau")):
-                    newcmd(f"rqTwoSensTau{w}{sw}", fmt_num(c["tau"], 3),
+                    newcmd(f"alignmentSensTau{w}{sw}", fmt_num(c["tau"], 3),
                            f"Kendall tau-b vs primary on {metric} @ {label} ({where})")
     return "\n".join(tex) + "\n"
 
@@ -451,8 +451,8 @@ def gen_stats_md(pooled: dict, blocks: list[dict]) -> str:
     primary_bloom = (pooled.get("alignment") or {}).get("bloom_classifier")
     axis_line = "; ".join(f"{b['name']} on `{b['metric']}`" for b in blocks)
     out = [
-        "<!-- AUTO-GENERATED by isd-agent-benchmark/scripts/alignmentgraph-isd-bench/"
-        "14_gen_sensitivity_table.py — DO NOT EDIT BY HAND -->",
+        "<!-- AUTO-GENERATED by `isd-exp report sensitivity` "
+        "— DO NOT EDIT BY HAND -->",
         "# Alignment instrument sensitivity (star of single-axis arms)",
         "",
         f"- source pooled JSON generated_at: `{pooled.get('generated_at', '?')}`",

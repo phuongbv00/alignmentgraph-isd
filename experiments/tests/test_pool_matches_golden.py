@@ -11,6 +11,14 @@ Fields excluded from the comparison, and why:
 ``config``         prose and provenance, reworded during the move
 ``run_dirs``/``dir``/``per_run``   absolute paths, different on every machine
 ``definition``     the prose description of the statistics
+
+The frozen goldens carry the vocabulary the code uses: the LLM judge family
+speaks in SCORES (``by_score``/``lead_score``/``scores``,
+``interaction_by_score``), the alignment family in SIGNALS, and
+``factorial.measures``, which holds both, is named after neither. Settling
+that took one pass over the goldens: key names and one ``holm_family``
+sentence, with the multiset of leaf VALUES asserted identical, so the oracle
+is the same numbers under the names the code now uses.
 """
 
 from __future__ import annotations

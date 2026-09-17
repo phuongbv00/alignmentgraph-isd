@@ -1,10 +1,9 @@
 """Pool the comparison experiment: the proposed system against baselines,
 across the model ladder.
 
-What used to be eleven command-line flags is now two things: the experiment
-profile (who is compared, on which split, under which tags) comes from
-``experiment.toml``, and only the genuinely per-invocation choices stay as
-arguments.
+Two things rather than a page of flags: the experiment profile (who is
+compared, on which split, under which tags) comes from ``experiment.toml``, and
+only the genuinely per-invocation choices stay as arguments.
 """
 
 from __future__ import annotations
@@ -13,20 +12,20 @@ from datetime import datetime
 from pathlib import Path
 
 from .. import paths, runs, schema
-from ..config import JUDGE_SIGNALS, Profile
+from ..config import LLM_JUDGE_SCORES, Profile
 from ..config import current as current_config
 from ..stats import BOOT_SEED, N_BOOT
 from .arms import resolve_sensitivity_arms
 from .inference import failure_tests, interaction_tests
-from .judge import compare_model, pool_model
+from .llm_judge import compare_model, pool_model
 from .panel import SUMMARY_SIGNAL, pool_alignment, pool_alignment_sensitivity
 from .report import print_report
 from .tokens import pool_tokens
 
-#: How the judge signals are described in the pooled config block, so a reader
+#: How the LLM judge scores are described in the pooled config block, so a reader
 #: of the JSON alone knows what was measured and what was not claimed.
 SCORE_FIELD_NOTE = (
-    "Judge signals reported side by side, no composite as headline: "
+    "LLM judge scores reported side by side, no composite as headline: "
     "addie_median (LEAD — instructional-design content quality, the construct "
     "the research question is about), trajectory_score (process conformance), "
     "total_score (= 0.7*ADDIE + 0.3*Traj, the benchmark's own composite, kept "
@@ -121,9 +120,9 @@ def pool(profile: Profile, run_dirs_by_model: dict[str, list[Path]], *,
         },
         "models": models,
         "interaction": interaction_tests(models, proposed, baselines),
-        "interaction_by_signal": {
+        "interaction_by_score": {
             m: interaction_tests(models, proposed, baselines, metric=m)
-            for m in JUDGE_SIGNALS
+            for m in LLM_JUDGE_SCORES
         },
         "failure_rates": failure_tests(models, proposed, baselines),
         "alignment": alignment,

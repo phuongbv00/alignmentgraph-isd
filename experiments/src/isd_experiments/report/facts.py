@@ -16,8 +16,8 @@ from datetime import datetime
 from pathlib import Path
 
 from .. import paths
-from ..alignment.protocol import PANEL_SIGNALS
-from ..config import AGENT_DISPLAY, JUDGE_LEAD, JUDGE_SIGNALS
+from ..alignment.protocol import ALIGNMENT_SIGNALS
+from ..config import AGENT_DISPLAY, LLM_JUDGE_LEAD, LLM_JUDGE_SCORES
 from ..plots import PROPOSED
 
 PRODUCER = "isd-exp report facts"
@@ -82,14 +82,14 @@ def verdict(p, alpha=SIG_ALPHA):
 
 # ── data access helpers ────────────────────────────────────────────────────────
 
-def judge_comparisons(model_block, signal, policy="complete_case"):
-    """judge comparison rows for one signal under one failure policy.
+def llm_judge_comparisons(model_block, score, policy="complete_case"):
+    """LLM judge comparison rows for one score under one failure policy.
 
     Direction as stored: mean_diff = proposed - baseline (positive favours the
     proposed harness).
     """
-    by_signal = (model_block.get("comparisons") or {}).get("by_signal") or {}
-    sig = by_signal.get(signal) or {}
+    by_score = (model_block.get("comparisons") or {}).get("by_score") or {}
+    sig = by_score.get(score) or {}
     rows = (sig.get("policies") or {}).get(policy) or []
     return rows if isinstance(rows, list) else []
 
@@ -126,21 +126,21 @@ def panel_signal_names(pooled):
 def sec_reading_contract(lad, abl):
     L = []
     L.append("## 0. Reading contract - READ BEFORE QUOTING ANY NUMBER\n")
-    L.append("**There are two signal families in this file. They are measured by mechanically "
+    L.append("**There are two measurement families in this file. They are measured by mechanically "
              "different instruments, they are on different scales, and on the ablation they "
              "DISAGREE. Never quote a number without naming its family.**\n")
-    L.append("| Family | Signals | Scale | Instrument |")
+    L.append("| Family | Measures | Scale | Instrument |")
     L.append("|---|---|---|---|")
-    L.append(f"| JUDGE (judge) | `{'`, `'.join(JUDGE_SIGNALS)}` | rubric points /100 | LLM judge rubric |")
+    L.append(f"| LLM JUDGE (`llm_judge`) | `{'`, `'.join(LLM_JUDGE_SCORES)}` | rubric points /100 | LLM judge rubric |")
     L.append(f"| PANEL (alignment) | `{'`, `'.join(panel_signal_names(lad))}` | [0, 1] | deterministic, no LLM |")
     L.append("")
-    L.append(f"`{JUDGE_LEAD}` LEADS the judge narrative because it matches the construct the research "
-             "question is about, but it is NOT an endpoint: all three judge signals are reported "
+    L.append(f"`{LLM_JUDGE_LEAD}` LEADS the LLM judge narrative because it matches the construct the research "
+             "question is about, but it is NOT an endpoint: all three LLM judge scores are reported "
              "side by side. The panel has NO primary endpoint at all - it is flat by design, so "
              "calling any one panel signal 'primary' reintroduces the composite the protocol removes.\n")
     L.append("### Sign conventions\n")
     L.append("Each table below restates its own direction in its header. The two that bite:\n")
-    L.append("- **judge / panel comparisons**: `mean_diff = proposed - baseline`. Positive favours "
+    L.append("- **LLM judge / panel comparisons**: `mean_diff = proposed - baseline`. Positive favours "
              "the proposed harness.")
     L.append("- **Ablation**: the pooled JSON stores `A0 - arm` (the contribution of the removed "
              "component). This file prints the column `arm - A0` instead, i.e. **what happens when "
@@ -149,7 +149,8 @@ def sec_reading_contract(lad, abl):
     L.append("- **2x2 factorial**: `component ON - component OFF`. This is the OPPOSITE sign of "
              "the `arm - A0` column, by construction.\n")
     L.append("### Multiplicity\n")
-    L.append("- `p_holm` = Holm within one signal (judge: 6 baselines; ablation: 3 arms).")
+    L.append("- `p_holm` = Holm within one measure - one LLM judge score or one alignment "
+             "signal (LLM judge: 6 baselines; ablation: 3 arms).")
     L.append("- `p_holm_panel` = Holm over the whole panel x baseline family for that size. "
              "Panel rows carry both; a panel claim should survive `p_holm_panel`.")
     L.append("- Factorial p-values are UNCORRECTED - they are pre-specified structural contrasts, "
@@ -157,13 +158,13 @@ def sec_reading_contract(lad, abl):
     L.append("### Failure policies\n")
     L.append("Complete-case is over AVAILABLE outputs - never describe it as unconditional. "
              "A crashed run leaves no output to score. The `zero` policy re-runs the paired test "
-             "with those cells imputed at the signal floor.\n")
+             "with those cells imputed at that measure's floor.\n")
     L.append("### NOT in this file\n")
     L.append("- Cost ratios and token/quality economics -> `stats_cost.md`, `cost_macros.tex` "
              "(computed from run dirs, not from the pooled JSONs).")
     L.append("- Bloom classifier validity evidence -> `bloom_validation.md`, "
              "`bloom_arms_validation.md`.")
-    L.append("- Per-scenario values. Everything here is aggregated to (size, agent, signal).")
+    L.append("- Per-scenario values. Everything here is aggregated to (size, agent, measure).")
     L.append("- Figures. See `results/generated/figures/`.\n")
     return L
 
@@ -208,7 +209,7 @@ def sec_provenance(lad, abl):
     if cons:
         L.append("**A0 pooling invariant** (ablation vs ladder, on `total_score`; must be ~0 - this "
                  "checks both poolings read the same data, it is NOT a drift measurement, and "
-                 "these A0 numbers are deliberately on a different signal from the ADDIE means "
+                 "these A0 numbers are deliberately on a different LLM judge score from the ADDIE means "
                  "reported everywhere else):\n")
         L.append("| Size | A0 (ablation) | A0 (ladder) | delta | ladder run-to-run SD | within 2xSD |")
         L.append("|---|---|---|---|---|---|")
@@ -225,20 +226,20 @@ def sec_provenance(lad, abl):
 
 # ── section 2: roll-ups ────────────────────────────────────────────────────────
 
-def rollup_rq1(lad):
-    """For each baseline x judge signal: how many sizes the proposed agent wins
+def rollup_llm_judge(lad):
+    """For each baseline x LLM judge score: how many sizes the proposed agent wins
     significantly, and the delta range. Pre-computed so nobody counts by eye."""
-    L = ["### 2.1 judge judge signals - proposed vs each baseline\n",
+    L = ["### 2.1 LLM judge scores - proposed vs each baseline\n",
          "Direction: `proposed - baseline`, complete-case. "
          "`sizes SIG+` counts sizes with p_holm < 0.05 AND a positive delta; "
          "`sizes SIG-` counts sizes significant in the baseline's favour.\n",
          "| Signal | Baseline | sizes SIG+ | sizes SIG- | sizes n.s. | delta range |",
          "|---|---|---|---|---|---|"]
     models = lad.get("models") or []
-    for signal in JUDGE_SIGNALS:
+    for signal in LLM_JUDGE_SCORES:
         per_baseline = {}
         for m in models:
-            for row in judge_comparisons(m, signal):
+            for row in llm_judge_comparisons(m, signal):
                 per_baseline.setdefault(row.get("baseline"), []).append(row)
         for baseline, rows in sorted(per_baseline.items()):
             pos = sum(1 for r in rows if r.get("p_holm") is not None
@@ -286,9 +287,9 @@ def rollup_panel(lad):
 def _arm_rows(abl, signal, family):
     """[(size, arm, row)] for one signal, complete-case, with mean_diff stored as A0 - arm."""
     out = []
-    if family == "judge":
+    if family == "llm_judge":
         for m in abl.get("models") or []:
-            for row in judge_comparisons(m, signal):
+            for row in llm_judge_comparisons(m, signal):
                 out.append((m.get("label", "?"), row.get("baseline"), row))
     else:
         stats = ((abl.get("alignment") or {}).get("stats") or {})
@@ -308,9 +309,9 @@ def rollup_ablation(abl, lad):
          "| Family | Signal | Arm | cells neg | cells pos | cells SIG | delta range (arm - A0) |",
          "|---|---|---|---|---|---|---|"]
     panel_names = panel_signal_names(abl) or panel_signal_names(lad)
-    plan = [("JUDGE", s) for s in JUDGE_SIGNALS] + [("PANEL", s) for s in panel_names]
+    plan = [("LLM JUDGE", s) for s in LLM_JUDGE_SCORES] + [("PANEL", s) for s in panel_names]
     for family_label, signal in plan:
-        fam = "judge" if family_label == "JUDGE" else "panel"
+        fam = "llm_judge" if family_label == "LLM JUDGE" else "panel"
         rows = _arm_rows(abl, signal, fam)
         by_arm = {}
         for size, arm, row in rows:
@@ -323,7 +324,7 @@ def rollup_ablation(abl, lad):
             neg = sum(1 for d in deltas if d < 0)
             pos = sum(1 for d in deltas if d > 0)
             sig = sum(1 for p in ps if p is not None and p < SIG_ALPHA)
-            digits = 2 if fam == "judge" else 3
+            digits = 2 if fam == "llm_judge" else 3
             rng = f"{signed(min(deltas), digits)} .. {signed(max(deltas), digits)}" if deltas else "--"
             L.append(f"| {family_label} | `{signal}` | {ARM_LABELS.get(arm, arm)} | "
                      f"{neg}/{len(deltas)} | {pos}/{len(deltas)} | {sig}/{len(ps)} | {rng} |")
@@ -335,9 +336,9 @@ def rollup_ablation(abl, lad):
     L.append("| Arm | Family | cells | neg | pos | SIG | SIG and neg | delta range (arm - A0) |")
     L.append("|---|---|---|---|---|---|---|---|")
     for arm in sorted(ARM_LABELS, key=lambda a: ARM_LABELS[a]):
-        for family_label, signals, digits in (("JUDGE", JUDGE_SIGNALS, 2),
+        for family_label, signals, digits in (("LLM JUDGE", LLM_JUDGE_SCORES, 2),
                                               ("PANEL", tuple(panel_names), 3)):
-            fam = "judge" if family_label == "JUDGE" else "panel"
+            fam = "llm_judge" if family_label == "LLM JUDGE" else "panel"
             deltas, ps = [], []
             for signal in signals:
                 for size, a, row in _arm_rows(abl, signal, fam):
@@ -368,9 +369,9 @@ def rollup_scale_gradient(abl, lad):
          "'strongest at the smallest model' is unsupported.** Count the distribution before "
          "writing any scale claim.\n"]
     panel_names = panel_signal_names(abl) or panel_signal_names(lad)
-    for family_label, signals, digits in (("JUDGE", JUDGE_SIGNALS, 2),
+    for family_label, signals, digits in (("LLM JUDGE", LLM_JUDGE_SCORES, 2),
                                           ("PANEL", tuple(panel_names), 3)):
-        fam = "judge" if family_label == "JUDGE" else "panel"
+        fam = "llm_judge" if family_label == "LLM JUDGE" else "panel"
         L.append(f"**{family_label} family**\n")
         L.append("| Arm | Signal | argmax size | |delta| there | delta by size |")
         L.append("|---|---|---|---|---|")
@@ -399,18 +400,18 @@ def rollup_scale_gradient(abl, lad):
 
 
 def rollup_family_disagreement(abl, lad):
-    """Where the judge and the panel point opposite ways — the finding itself."""
-    L = ["### 2.5 Cross-family disagreement (judge vs panel)\n",
+    """Where the LLM judge and the panel point opposite ways — the finding itself."""
+    L = ["### 2.5 Cross-family disagreement (LLM judge vs panel)\n",
          "Same arm, same size, opposite sign between the two families. **Every row here is a "
          "place where quoting one family alone would misrepresent the result.**\n",
-         "| Arm | Size | JUDGE lead (`%s`) | PANEL (n signals neg / total) | disagreement |"
-         % JUDGE_LEAD,
+         "| Arm | Size | LLM JUDGE lead (`%s`) | PANEL (n signals neg / total) | disagreement |"
+         % LLM_JUDGE_LEAD,
          "|---|---|---|---|---|"]
     panel_names = panel_signal_names(abl) or panel_signal_names(lad)
     sizes = [m.get("label") for m in abl.get("models") or []]
     for arm in sorted(ARM_LABELS, key=lambda a: ARM_LABELS[a]):
         for size in sizes:
-            jrows = [row for s, a, row in _arm_rows(abl, JUDGE_LEAD, "judge")
+            jrows = [row for s, a, row in _arm_rows(abl, LLM_JUDGE_LEAD, "llm_judge")
                      if a == arm and s == size]
             if not jrows:
                 continue
@@ -427,21 +428,21 @@ def rollup_family_disagreement(abl, lad):
             if not ptot:
                 continue
             panel_dir = -1 if pneg > ptot / 2 else (1 if pneg < ptot / 2 else 0)
-            judge_dir = -1 if jd < 0 else (1 if jd > 0 else 0)
-            flag = "**OPPOSITE**" if judge_dir * panel_dir < 0 else "same direction"
+            llm_judge_dir = -1 if jd < 0 else (1 if jd > 0 else 0)
+            flag = "**OPPOSITE**" if llm_judge_dir * panel_dir < 0 else "same direction"
             L.append(f"| {ARM_LABELS[arm]} | {size} | {signed(jd, 2)} ({verdict(jp)}) | "
                      f"{pneg}/{ptot} negative | {flag} |")
     L.append("")
     L.append("Reading rule that follows from this table: a sentence about a mechanism must name "
              "its family. 'Removing graph context hurts alignment' and 'removing graph context "
-             "does not lower the judged score' are both true and belong in the same paragraph.\n")
+             "does not lower the LLM judge score' are both true and belong in the same paragraph.\n")
     return L
 
 
 # ── sections 3-5: full tables ──────────────────────────────────────────────────
 
-def sec_rq1_tables(lad):
-    L = ["## 3. judge judge signals - full tables\n",
+def sec_llm_judge_tables(lad):
+    L = ["## 3. LLM judge scores - full tables\n",
          "Per-agent descriptive means come from the pooled per-agent block. "
          "**A mean and its SD must come from the same signal** - the columns below are already "
          "paired correctly (`mean_addie` with `sd_addie_across_scenarios`, etc.). "
@@ -459,8 +460,8 @@ def sec_rq1_tables(lad):
                      f"{num(a.get('mean_traj'), 2)} | {num(a.get('sd_traj_across_scenarios'), 2)} | "
                      f"{num(a.get('mean_total'), 2)} | {num(a.get('sd_total_across_scenarios'), 2)} |")
         L.append("")
-        for signal in JUDGE_SIGNALS:
-            rows = judge_comparisons(m, signal)
+        for signal in LLM_JUDGE_SCORES:
+            rows = llm_judge_comparisons(m, signal)
             if not rows:
                 continue
             L.append(f"Paired vs baselines - `{signal}`, complete-case, "
@@ -529,8 +530,8 @@ def sec_ablation_tables(abl, lad):
             L.append(f"| `{agent}` | {num(a.get('mean_addie'), 2)} | "
                      f"{num(a.get('mean_traj'), 2)} | {num(a.get('mean_total'), 2)} |")
         L.append("")
-        for signal in JUDGE_SIGNALS:
-            rows = judge_comparisons(m, signal)
+        for signal in LLM_JUDGE_SCORES:
+            rows = llm_judge_comparisons(m, signal)
             if not rows:
                 continue
             L.append(f"`{signal}` - paired vs A0:\n")
@@ -573,12 +574,12 @@ def sec_ablation_tables(abl, lad):
                  "but only where both simple effects carry the beneficial sign. Where both are "
                  "negative it is a magnitude statement; where the signs differ it is a crossover, "
                  "neither substitution nor complementarity.\n")
-        for signal, block in (fac.get("signals") or {}).items():
+        for signal, block in (fac.get("measures") or {}).items():
             L.append(f"#### `{signal}`\n")
             L.append("| Size | n | decomp \\| ctx=graph | decomp \\| ctx=prose | ctx \\| decomp=multi | "
                      "ctx \\| decomp=single | interaction |")
             L.append("|---|---|---|---|---|---|---|")
-            digits = 2 if signal in JUDGE_SIGNALS else 3
+            digits = 2 if signal in LLM_JUDGE_SCORES else 3
             for row in block.get("per_model") or []:
                 def cell(key):
                     e = row.get(key) or {}
@@ -618,10 +619,10 @@ def sec_ablation_tables(abl, lad):
 
 def sec_interaction(lad):
     L = ["## 6. Scale interaction (DiD, largest size - smallest size)\n"]
-    by_signal = lad.get("interaction_by_signal") or {}
-    if not by_signal and lad.get("interaction"):
-        by_signal = {"(default)": lad["interaction"]}
-    for signal, block in by_signal.items():
+    by_score = lad.get("interaction_by_score") or {}
+    if not by_score and lad.get("interaction"):
+        by_score = {"(default)": lad["interaction"]}
+    for signal, block in by_score.items():
         L.append(f"### `{signal}`\n")
         defn = block.get("definition")
         if defn:
@@ -754,7 +755,8 @@ def sec_macros(outdir):
 
 def build(lad, abl, outdir, brief=False):
     L = ["# Facts sheet - every aggregate number in one file\n"]
-    L.append("AUTO-GENERATED by `15_gen_facts_sheet.py`. Do not edit by hand.\n")
+    L.append(f"AUTO-GENERATED by `{paths.cli()} report facts`. "
+             "Do not edit by hand.\n")
     L.append("This file exists so that a reader (human or model) can quote a number without "
              "opening six artifacts with three different sign conventions. Section 0 is the "
              "reading contract; section 2 pre-computes the roll-ups so nobody has to count "
@@ -766,7 +768,7 @@ def build(lad, abl, outdir, brief=False):
     L += sec_reading_contract(lad, abl)
     L += sec_provenance(lad, abl)
     L.append("## 2. Roll-ups - pre-computed, do not hand-count\n")
-    L += rollup_rq1(lad)
+    L += rollup_llm_judge(lad)
     L += rollup_panel(lad)
     L += rollup_ablation(abl, lad)
     L += rollup_scale_gradient(abl, lad)
@@ -775,7 +777,7 @@ def build(lad, abl, outdir, brief=False):
         L.append("_Sections 3-10 (full per-cell tables, DiD, failure rates, token usage, "
                  "sensitivity, macro index) omitted in brief mode._\n")
         return "\n".join(L) + "\n"
-    L += sec_rq1_tables(lad)
+    L += sec_llm_judge_tables(lad)
     L += sec_panel_tables(lad)
     L += sec_ablation_tables(abl, lad)
     L += sec_interaction(lad)

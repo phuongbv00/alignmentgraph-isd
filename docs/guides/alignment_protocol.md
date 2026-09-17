@@ -12,10 +12,11 @@
 
 > **Positioning trong paper (chốt 2026-08-29, hướng paper lean)**: protocol **KHÔNG còn là đóng góp** và không được
 > trình bày như một phương pháp/đề mục trong Method. Trong paper nó là **measurement setup** trong Experimental
-> Design §Measures, justify như instrument requirement (judge không lộ quan hệ alignment; phép đo sẵn có cần bộ
+> Design §Measures, justify như instrument requirement (LLM judge không lộ quan hệ alignment; phép đo sẵn có cần bộ
 > chuẩn tiền-soạn), văn phong "assemble/operationalize established criteria", không claim novelty, chữ dùng là
-> "the measurement" thay vì "the/our protocol". Thuật ngữ điểm số trong paper (2026-08-29): giá trị panel =
-> **"alignment score(s)"**, điểm benchmark = **"LLM judge score(s)"**; tên từng score vẫn operation-named.
+> "the measurement" thay vì "the/our protocol". Thuật ngữ điểm số trong paper: giá trị panel =
+> **"alignment signal(s)"**, điểm benchmark = **"LLM judge score(s)"** (luôn đủ chữ "LLM judge", không gọi cụt
+> là "judge"); tên từng signal vẫn operation-named.
 > File này vẫn là **spec canonical** cho code + số liệu + mức claim;
 > tên "protocol" giữ trong tài liệu nội bộ. Mức claim: [`docs/paper/claim-rules.md`](../paper/claim-rules.md).
 
@@ -323,7 +324,7 @@ chính cái panel.
   biến hậu-treatment — rationale failure policy nằm ở §Experimental Design của bản thảo). Không có `failure=min` vì endpoint đã sàn ở 0.0. **Artifact chấm
   trước 2026-07-27 chưa có roster** → pooling báo `UNKNOWN` (không phải "không có failure"); phải re-score
   `--overwrite` mới có layer chính này.
-- Macros LaTeX: `rqTwoHarnessSim*`, `rqTwoHarnessSimCILo/Hi*`, `rqTwoSimPHolmMax*`, `rqTwoSimDiDVsBaseline*` — tên
+- Macros LaTeX: `alignmentHarnessSim*`, `alignmentHarnessSimCILo/Hi*`, `alignmentSimPHolmMax*`, `alignmentSimDiDVsBaseline*` — tên
   macro luôn bám tên metric; để hai thứ lệch nhau là cách chắc chắn nhất để prose nói sai về số.
 
 ## 6. Sensitivity — ba trục, mỗi trục một câu hỏi khác nhau

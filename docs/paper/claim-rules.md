@@ -50,8 +50,11 @@ Cấm tuyệt đối, không có cách viết thay thế:
 
 ## 3. Từ vựng
 
-- Điểm benchmark = **"LLM judge score(s)"**. Giá trị panel = **"alignment score(s)"**. Tập hợp
-  vẫn gọi là "alignment panel".
+- Điểm benchmark (ADDIE / Trajectory / Total, do ISD-Agent-Bench chấm) = **"LLM judge
+  score(s)"** — luôn viết đủ **"LLM judge"**, không bao giờ gọi cụt là "judge", kể cả trong
+  các cụm ghép ("LLM judge prompts", "LLM judge drift", "the second LLM judge").
+  Giá trị đo bằng code tự xây = **"alignment signal(s)"**, không gọi là "alignment score(s)".
+  Tập hợp vẫn gọi là "alignment panel"; hiệu chỉnh Holm trong một tín hiệu = "within-signal".
 - Tên từng tín hiệu đặt theo **phép toán nó tính**, không theo construct nó phục vụ — nên hậu tố
   là `*_similarity`, và chữ "alignment" chỉ đứng ở tên protocol và ở các vế của `aligned(o)`.
 - RQ2 dừng ở **"measurable signals of constructive alignment"**, không phải "đo được alignment".

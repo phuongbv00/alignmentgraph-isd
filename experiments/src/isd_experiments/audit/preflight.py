@@ -18,8 +18,8 @@ Checks, per ladder slot found in .env (managed block or manual quads):
 Reads .env itself (no `source` needed). Exit code 0 = all PASS, 1 = any FAIL.
 
 Usage:
-  python scripts/alignmentgraph-isd-bench/01_audit_preflight.py
-  python scripts/alignmentgraph-isd-bench/01_audit_preflight.py --no-smoke
+  ./isd-exp audit preflight
+  ./isd-exp audit preflight --no-smoke
 """
 from __future__ import annotations
 
@@ -39,8 +39,9 @@ from ..config import current as current_config
 def slots() -> list[str]:
     """Env-quad prefixes for the declared ladder, lower-cased.
 
-    Was four literals naming one model family; the ladder is configuration, so
-    pre-flight checks whatever rungs the experiment actually declares.
+    The ladder is configuration, so pre-flight checks whatever rungs the
+    experiment actually declares rather than a fixed set of slots naming one
+    model family.
     """
     return [r.slot for r in current_config().ladder]
 

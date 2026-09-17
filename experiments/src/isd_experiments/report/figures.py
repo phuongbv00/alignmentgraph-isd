@@ -12,8 +12,8 @@ import random
 from pathlib import Path
 
 from .. import paths
-from ..alignment.protocol import PANEL_SIGNALS
-from ..config import AGENT_DISPLAY, AGENT_ORDER, JUDGE_LEAD
+from ..alignment.protocol import ALIGNMENT_SIGNALS
+from ..config import AGENT_DISPLAY, AGENT_ORDER, LLM_JUDGE_LEAD
 from ..pool.panel import SUMMARY_SIGNAL
 from ..plots import (
     AGENT_COLOR,
@@ -46,19 +46,19 @@ from ..stats import spearman_rho
 #: These are SDs across SCENARIOS, drawn as SEM: one deterministic run per cell
 #: means a run-to-run SD has a single value and does not exist. Both ladder
 #: figures use this convention, so their error bars mean the same thing.
-JUDGE_SD_FIELD = {
+LLM_JUDGE_SD_FIELD = {
     "mean_addie": "sd_addie_across_scenarios",
     "mean_traj": "sd_traj_across_scenarios",
     "mean_total": "sd_total_across_scenarios",
 }
-#: The lead signal's key in `comparisons.by_signal`, and the field holding its
+#: The lead signal's key in `comparisons.by_score`, and the field holding its
 #: mean in an agent summary row. Two different spellings of the same signal,
 #: and confusing them silently indexes the wrong dict -- so both are named.
-JUDGE_LEAD_FIELD = "mean_addie"        # agents[<id>]["mean_addie"]
+LLM_JUDGE_LEAD_FIELD = "mean_addie"        # agents[<id>]["mean_addie"]
 
 PRODUCER = "isd-exp report figures"
 
-#: The panel, and only the panel — mirror alignment.PANEL_SIGNALS.
+#: The panel, and only the panel — mirror alignment.ALIGNMENT_SIGNALS.
 PANEL_COMPONENTS = [
     ("objective_assessment_similarity", "Obj→Asm"),
     ("objective_activity_similarity", "Obj→Act"),
@@ -80,7 +80,7 @@ PANEL_FAMILY_A_N = 3
 #: status, and why some cells carry an n. No non-directionality note any more —
 #: the one non-directional signal left the panel.
 PANEL_FOOTNOTE = (
-    "Flat panel of 6 alignment scores, no primary endpoint. Family A = the three edges of the "
+    "Flat panel of 6 alignment signals, no primary endpoint. Family A = the three edges of the "
     "constructive-alignment triad (textual correspondence, rectified cosine "
     "max(0, cos) on [0,1]): Obj→Asm, Obj→Act, Act→Asm.  "
     "Family B (cognitive demand, Bloom-derived, no similarity): Cognitive congruence, "
@@ -94,20 +94,20 @@ PANEL_FOOTNOTE = (
 
 # ── figure builders ──────────────────────────────────────────────────────────
 
-def fig_judge_ladder(pooled: dict, outdir: Path, written: list[Path]) -> None:
+def fig_llm_judge_ladder(pooled: dict, outdir: Path, written: list[Path]) -> None:
     models = pooled["models"]
     agents = agents_in(pooled)
     sizes = [size_of_label(m["label"]) for m in models]
     labels = [m["label"] for m in models]
 
-    sd_field = JUDGE_SD_FIELD[JUDGE_LEAD_FIELD]
+    sd_field = LLM_JUDGE_SD_FIELD[LLM_JUDGE_LEAD_FIELD]
     union = models[0].get("n_scenarios_union") if models else None
 
     fig, ax = plt.subplots(figsize=(5.0, 3.4))
     thin_seen = False
     for a in agents:
         summaries = [m["agents"].get(a, {}) for m in models]
-        ys = [_nan(s.get(JUDGE_LEAD_FIELD)) for s in summaries]
+        ys = [_nan(s.get(LLM_JUDGE_LEAD_FIELD)) for s in summaries]
         # SD must belong to the plotted signal; if 07 did not emit the
         # per-signal field, draw no error bars rather than a foreign SD.
         # Plotted as SEM = SD / sqrt(n): the SD is spread across scenarios, and
@@ -135,7 +135,7 @@ def fig_judge_ladder(pooled: dict, outdir: Path, written: list[Path]) -> None:
                         fontsize=6, color=AGENT_COLOR.get(a, "#666666"),
                         **edge_annot_kw(x, sizes, dy=-12))
     # direct label on the proposed agent (secondary encoding beside the legend)
-    prop_y = _nan(models[-1]["agents"].get(PROPOSED, {}).get(JUDGE_LEAD_FIELD))
+    prop_y = _nan(models[-1]["agents"].get(PROPOSED, {}).get(LLM_JUDGE_LEAD_FIELD))
     if not math.isnan(prop_y):
         ax.annotate(AGENT_DISPLAY[PROPOSED], xy=(sizes[-1], prop_y),
                     xytext=(6, 0), textcoords="offset points",
@@ -152,10 +152,10 @@ def fig_judge_ladder(pooled: dict, outdir: Path, written: list[Path]) -> None:
     ax.text(0.98, 0.02, note, transform=ax.transAxes, ha="right", va="bottom",
             multialignment="right", fontsize=6.5, color="#666666", zorder=8)
     agent_legend(fig, agents, bbox_to_anchor=(0.5, -0.02))
-    save(fig, outdir, "fig_judge_ladder", written)
+    save(fig, outdir, "fig_llm_judge_ladder", written)
 
 
-def fig_judge_delta(pooled: dict, outdir: Path, written: list[Path]) -> None:
+def fig_llm_judge_delta(pooled: dict, outdir: Path, written: list[Path]) -> None:
     models = pooled["models"]
     baselines = pooled["config"]["baselines"]
     sizes = [size_of_label(m["label"]) for m in models]
@@ -166,7 +166,7 @@ def fig_judge_delta(pooled: dict, outdir: Path, written: list[Path]) -> None:
     for ax, b in zip(axes.flat, baselines):
         rows_by_size = []
         for m in models:
-            rows = m["comparisons"]["by_signal"][JUDGE_LEAD]["policies"]["complete_case"]
+            rows = m["comparisons"]["by_score"][LLM_JUDGE_LEAD]["policies"]["complete_case"]
             rows_by_size.append(next((r for r in rows if r.get("baseline") == b), {}))
         ys = [_nan(r.get("mean_diff")) for r in rows_by_size]
         los = [_nan((r.get("ci95") or [None, None])[0]) for r in rows_by_size]
@@ -216,10 +216,10 @@ def fig_judge_delta(pooled: dict, outdir: Path, written: list[Path]) -> None:
         "Paired per-scenario delta with bootstrap 95% CI "
         "(filled marker: Holm-adjusted p < 0.05)", fontsize=8.5)
     fig.tight_layout(rect=(0.02, 0, 1, 0.97))
-    save(fig, outdir, "fig_judge_delta", written)
+    save(fig, outdir, "fig_llm_judge_delta", written)
 
 
-def fig_judge_components(pooled: dict, outdir: Path, written: list[Path]) -> None:
+def fig_llm_judge_components(pooled: dict, outdir: Path, written: list[Path]) -> None:
     models = pooled["models"]
     agents = agents_in(pooled)
     sizes = [size_of_label(m["label"]) for m in models]
@@ -238,7 +238,7 @@ def fig_judge_components(pooled: dict, outdir: Path, written: list[Path]) -> Non
     axes[0].set_ylabel("Component mean")
     agent_legend(fig, agents, bbox_to_anchor=(0.5, -0.04))
     fig.tight_layout()
-    save(fig, outdir, "fig_judge_components", written)
+    save(fig, outdir, "fig_llm_judge_components", written)
 
 
 def fig_alignment_ladder(pooled: dict, outdir: Path, written: list[Path]) -> bool:
@@ -400,7 +400,7 @@ def collect_scenario_pairs(pattern: str, agents: list[str]) -> dict[str, dict[st
                 align = extract_alignment_metrics(doc, agents) if doc else {}
                 for a in agents:
                     r = payload["rankings"].get(a) or {}
-                    t, c = r.get(JUDGE_LEAD), align.get(a, {}).get("objective_assessment_similarity")
+                    t, c = r.get(LLM_JUDGE_LEAD), align.get(a, {}).get("objective_assessment_similarity")
                     if isinstance(t, (int, float)) and isinstance(c, (int, float)):
                         slot = acc.setdefault(a, {}).setdefault(sid, {"t": [], "c": []})
                         slot["t"].append(float(t))
@@ -413,7 +413,7 @@ def collect_scenario_pairs(pattern: str, agents: list[str]) -> dict[str, dict[st
     return out
 
 
-def fig_alignment_vs_judge_scatter(pairs: dict, agents: list[str], outdir: Path,
+def fig_alignment_vs_llm_judge_scatter(pairs: dict, agents: list[str], outdir: Path,
                            written: list[Path]) -> bool:
     labels = sorted(pairs, key=size_of_label)
     labels = [lb for lb in labels if any(pairs[lb].get(a) for a in agents)]
@@ -449,7 +449,7 @@ def fig_alignment_vs_judge_scatter(pairs: dict, agents: list[str], outdir: Path,
         ax.set_title(model_display(lb), fontsize=8)
         ax.text(0.04, 0.97, txt, transform=ax.transAxes, va="top",
                 fontsize=6.0, color="#333333", zorder=8)
-        ax.set_xlabel("ADDIE rubric (judge, /100)")
+        ax.set_xlabel("ADDIE rubric (LLM judge, /100)")
         ax.grid(axis="x", visible=False)
     axes[0].set_ylabel("Objective$\\to$assessment similarity")
     agent_legend(fig, agents, bbox_to_anchor=(0.5, -0.06))
@@ -460,7 +460,7 @@ def fig_alignment_vs_judge_scatter(pairs: dict, agents: list[str], outdir: Path,
              f"$\\rho_s$ ({len(agents)} agents), the per-scenario view.",
              ha="center", va="top", fontsize=6.5, color="#555555")
     fig.tight_layout()
-    save(fig, outdir, "fig_alignment_vs_judge_scatter", written)
+    save(fig, outdir, "fig_alignment_vs_llm_judge_scatter", written)
     return True
 
 
@@ -526,7 +526,7 @@ def fig_cost_quality(pooled: dict, outdir: Path, written: list[Path]) -> bool:
             cell = tok["models"][m["label"]].get(a, {}).get("total_tokens", {})
             summary = m["agents"].get(a, {})
             xs.append(_nan(cell.get("mean")))
-            ys.append(_nan(summary.get(JUDGE_LEAD_FIELD)))
+            ys.append(_nan(summary.get(LLM_JUDGE_LEAD_FIELD)))
             # the two coordinates are averaged over different scenario sets
             # (tokens over runs with metadata, ADDIE over the complete-case
             # set); flag the markers where they diverge badly
@@ -590,9 +590,9 @@ def run(*, pooled_path: Path | None = None, outdir: Path | None = None,
     agents = agents_in(pooled)
     written: list[Path] = []
 
-    fig_judge_ladder(pooled, out, written)
-    fig_judge_delta(pooled, out, written)
-    fig_judge_components(pooled, out, written)
+    fig_llm_judge_ladder(pooled, out, written)
+    fig_llm_judge_delta(pooled, out, written)
+    fig_llm_judge_components(pooled, out, written)
 
     for builder, layer in ((fig_alignment_ladder, "alignment data"),
                            (fig_alignment_components, "alignment data"),
@@ -604,10 +604,10 @@ def run(*, pooled_path: Path | None = None, outdir: Path | None = None,
     # pooled summary; without them it is skipped rather than approximated.
     if runs_glob:
         pairs = collect_scenario_pairs(runs_glob, agents)
-        if not fig_alignment_vs_judge_scatter(pairs, agents, out, written) and not quiet:
+        if not fig_alignment_vs_llm_judge_scatter(pairs, agents, out, written) and not quiet:
             print("! no per-scenario alignment data under the run glob — skipped scatter")
     elif not quiet:
-        print("- fig_alignment_vs_judge_scatter skipped (pass a run glob to enable)")
+        print("- fig_alignment_vs_llm_judge_scatter skipped (pass a run glob to enable)")
 
     fig_failure_rate(pooled, out, written)
     if not fig_cost_quality(pooled, out, written) and not quiet:

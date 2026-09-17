@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .. import paths
-from ..config import JUDGE_SIGNALS
+from ..config import LLM_JUDGE_SCORES
 from ..config import current as current_config
 from ..latex import fmt_num, fmt_p, header_comment, model_display, size_display, size_of_label, size_word
 
@@ -45,7 +45,7 @@ SIZE_WORDS = {0.8: "ZeroEightB", 2.0: "TwoB", 4.0: "FourB", 9.0: "NineB"}
 FALLBACK_WORDS = ["SizeA", "SizeB", "SizeC", "SizeD", "SizeE", "SizeF"]
 
 
-# ── formatting (same conventions as ../09_gen_paper_tables.py) ────────────────
+# ── formatting (same conventions as tables.py) ───────────────────────────────
 
 
 
@@ -91,7 +91,7 @@ def n_clause(entries: list[dict]) -> str:
 
 def comparison_row(model: dict, arm: str) -> dict:
     """complete_case comparison row (A0 − arm) for one arm, or {}."""
-    for row in (model.get("comparisons", {}).get("by_signal", {})
+    for row in (model.get("comparisons", {}).get("by_score", {})
                 .get("addie_median", {}).get("policies", {})
                 .get("complete_case", [])):
         if row.get("baseline") == arm:
@@ -172,7 +172,7 @@ def gen_tab_ablation(pooled: dict) -> str:
 
 
 #: Signal the factorial table leads on: the decomposition/context effects are
-#: expected as alignment effects, not judge effects (on ADDIE nothing may
+#: expected as alignment effects, not LLM judge effects (on ADDIE nothing may
 #: reach significance), so the table is built on the alignment signal and
 #: ADDIE is reported beside it.
 FACT_LEAD = "objective_assessment_similarity"
@@ -191,10 +191,10 @@ def gen_tab_factorial(pooled: dict) -> str:
     arms are a complete 2x2, so it is directly estimable.
     """
     fact = pooled.get("factorial") or {}
-    if "skipped" in fact or not fact.get("signals"):
+    if "skipped" in fact or not fact.get("measures"):
         return (header_comment(pooled, "tab_ablation_factorial.tex — placeholder")
                 + "% No factorial layer in pooled_ablation.json (arms missing).\n")
-    per_model = fact["signals"][FACT_LEAD]["per_model"]
+    per_model = fact["measures"][FACT_LEAD]["per_model"]
 
     lines = [header_comment(pooled, "tab_ablation_factorial.tex — 2x2 simple effects + interaction")]
     lines.append("\\begin{table}[t]")
@@ -234,7 +234,7 @@ def gen_tab_factorial(pooled: dict) -> str:
 
 
 #: Short display names for the factorial appendix table. Same labels as
-#: ../09_gen_paper_tables.py: the dagger marks the non-directional signal, and
+#: tables.py uses: the dagger marks the non-directional signal, and
 #: porter_mean is the MEAN of the three pairwise Porter indices, not one index.
 FACT_SIGNAL_DISPLAY = {
     "addie_median": "ADDIE",
@@ -249,8 +249,8 @@ FACT_SIGNAL_DISPLAY = {
 }
 
 SCALE_BLOCKS = (
-    ("Judge rubric signals (rubric points out of 100)", True),
-    ("Alignment scores (0--1)", False),
+    ("LLM judge scores (rubric points out of 100)", True),
+    ("Alignment signals (0--1)", False),
 )
 
 
@@ -265,13 +265,13 @@ def gen_tab_factorial_full(pooled: dict) -> str:
 
     The two row blocks are on different scales (rubric points vs [0,1]) and are
     labelled as such: nothing in this table licenses comparing the magnitude of
-    a judge cell with the magnitude of a panel cell.
+    an LLM judge cell with the magnitude of a panel cell.
     """
     fact = pooled.get("factorial") or {}
-    if "skipped" in fact or not fact.get("signals"):
+    if "skipped" in fact or not fact.get("measures"):
         return (header_comment(pooled, "tab_ablation_factorial_full.tex — placeholder")
                 + "% No factorial layer in pooled_ablation.json (arms missing).\n")
-    signals = fact["signals"]
+    signals = fact["measures"]
     labels = [e["label"] for e in next(iter(signals.values()))["per_model"]]
     all_entries = [e for blk in signals.values() for e in blk["per_model"]]
 
@@ -300,7 +300,7 @@ def gen_tab_factorial_full(pooled: dict) -> str:
     lines.append("    \\midrule")
     ncols = 1 + 3 * len(labels)
     for block_i, (block_name, is_judge) in enumerate(SCALE_BLOCKS):
-        block_sigs = [s for s in signals if (s in JUDGE_SIGNALS) == is_judge]
+        block_sigs = [s for s in signals if (s in LLM_JUDGE_SCORES) == is_judge]
         if not block_sigs:
             continue
         if block_i:
@@ -339,9 +339,9 @@ def gen_tab_factorial_full(pooled: dict) -> str:
 
 def factorial_macros(pooled: dict, newcmd) -> None:
     fact = pooled.get("factorial") or {}
-    if "skipped" in fact or not fact.get("signals"):
+    if "skipped" in fact or not fact.get("measures"):
         return
-    for i, e in enumerate(fact["signals"][FACT_LEAD]["per_model"]):
+    for i, e in enumerate(fact["measures"][FACT_LEAD]["per_model"]):
         w = _size_word(e["label"], i)
         for key, tag in (("decomposition_effect_given_context_graph", "DecompCtxGraph"),
                          ("decomposition_effect_given_context_prose", "DecompCtxProse"),
@@ -390,8 +390,8 @@ def gen_macros(pooled: dict) -> str:
         if s0.get("mean_addie") is not None:
             newcmd(f"ablAZeroAddie{w}", fmt_num(s0["mean_addie"]),
                    f"A0 ({a0}) mean addie_median @ {m['label']}, as re-run "
-                   "inside the ablation; all four arms share each scenario's judge "
-                   "session")
+                   "inside the ablation; all four arms share each scenario's LLM "
+                   "LLM judge session")
         for arm in arms:
             word = ARM_WORDS.get(arm)
             if word is None:
@@ -423,7 +423,7 @@ def gen_stats_md(pooled: dict) -> str:
     L: list[str] = []
     L.append("# stats_ablation.md — ablation study, full numbers")
     L.append("")
-    L.append(f"AUTO-GENERATED by ablation/11_gen_ablation_tables.py at "
+    L.append(f"AUTO-GENERATED by `{paths.cli()} report ablation-tables` at "
              f"{datetime.now().isoformat(timespec='seconds')} from "
              f"pooled_ablation.json (generated_at {pooled.get('generated_at')}). "
              f"Do not edit by hand.")
@@ -595,9 +595,9 @@ def gen_stats_md(pooled: dict) -> str:
                         f"| {row.get('p_holm', float('nan')):.3g} | {pp_txt} "
                         f"| {row['n']} |")
     else:
-        L.append("Absent — run scripts/alignmentgraph-isd-bench/06_score_alignment.py "
-                 "on each ablation run dir, then re-run "
-                 "ablation/08_pool_ablation_runs.py and this script.")
+        L.append(f"Absent — run `{paths.cli()} score` on each ablation run "
+                 f"dir, then re-run `{paths.cli()} ablation pool` and "
+                 f"`{paths.cli()} report ablation-tables`.")
     L.append("")
     inter = pooled.get("interaction") or {}
     L.append("")
@@ -613,7 +613,7 @@ def gen_stats_md(pooled: dict) -> str:
                  "near-zero DiD with near-zero deltas means the axis does not matter at "
                  "any size. Same machinery as the ladder pool's interaction layer "
                  "(Wilcoxon two-sided on per-scenario DiD, bootstrap 95% CI, complete-case); "
-                 "per-signal versions in `interaction_by_signal`.")
+                 "per-signal versions in `interaction_by_score`.")
         L.append("")
         L.append("| Arm | Δ(smallest) | Δ(largest) | DiD | CI95 | p | n | trend by size |")
         L.append("|---|---|---|---|---|---|---|---|")
@@ -632,7 +632,7 @@ def gen_stats_md(pooled: dict) -> str:
     L.append("")
     L.append("## 2x2 factorial (decomposition x context representation)")
     L.append("")
-    if "skipped" in fact or not fact.get("signals"):
+    if "skipped" in fact or not fact.get("measures"):
         L.append(fact.get("skipped", "absent"))
     else:
         L.append("Direction in this section: **multi-agent − single-agent** / "
@@ -662,11 +662,11 @@ def gen_stats_md(pooled: dict) -> str:
         L.append("")
         L.append("Signals in this section are on two scales: `addie_median`, "
                  "`trajectory_score` and `total_score` are rubric points out of "
-                 "100; the 7 alignment scores are on [0,1]. Magnitudes are not "
+                 "100; the alignment signals are on [0,1]. Magnitudes are not "
                  "comparable across the two groups.")
-        for sig, blk in fact["signals"].items():
+        for sig, blk in fact["measures"].items():
             L.append("")
-            scale = "rubric points /100" if sig in JUDGE_SIGNALS else "[0,1]"
+            scale = "rubric points /100" if sig in LLM_JUDGE_SCORES else "[0,1]"
             L.append(f"### {sig} ({scale})")
             L.append("")
             L.append("| Size | n | decomp \\| ctx=graph | decomp \\| ctx=prose "

@@ -1,15 +1,15 @@
-"""Sync the alignment-panel embedding pod's env vars from the serving provider straight into .env.
+"""Sync the alignment panel's embedding pod env vars from RunPod straight into .env.
 
-Companion of scripts/3_sync_runpod_pods_env.py (the ladder version), for the
-alignment-scoring embedding pod. The pod is created MANUALLY in the the serving provider
-console from the template ``isd-agent-bench-embed-the primary encoder arm-8b``
+Companion of the agent-side sync (`isd-exp serve sync-agents`), for the
+alignment-scoring embedding pod. The pod is created MANUALLY in the RunPod
+console from the template ``isd-agent-bench-embed-nemotron-8b``
 (https://console.runpod.io/deploy?template=3i3er665bh — vLLM
-``--task embed --trust-remote-code`` serving ``<the declared encoder model>``;
+``--task embed --trust-remote-code`` serving the declared primary encoder;
 see ../docs/guides/benchmark_guides.md, section 8). This script does the remaining
 mechanical part: find EVERY live embed pod, confirm each served model against
 the pod's own /v1/models, and REWRITE the managed block at the end of the
 repo's .env file (between the >>>/<<< markers below) — so ``source .env``
-gives 06_score_alignment.py its endpoint(s). Re-running replaces the block,
+gives `isd-exp score` its endpoint(s). Re-running replaces the block,
 never duplicates it; nothing outside the markers (including the ladder's own
 managed block) is touched.
 
@@ -18,26 +18,26 @@ MODEL — the same env-quad shape the ladder uses for agent models
 (``<SLOT>_AGENT_MODEL_BASE_URLS`` -> ``<SLOT>_EMBED_BASE_URLS``). Several pods
 in ONE slot still load-balance a single embedding space and are listed
 comma-separated; pods serving DIFFERENT models are separate arms of the
-sensitivity sweep and no longer an error. Slot names come from the scorer's
+sensitivity sweep and not an error. Slot names come from the scorer's
 arms().encoders, so the model -> slot mapping is defined in exactly one place.
 
-It only ever READS from the the serving provider API (GET /pods). Creating, stopping and
+It only ever READS from the RunPod API (GET /pods). Creating, stopping and
 deleting pods stays a console operation.
 
 Requires: RUNPOD_API_KEY in .env -- loaded automatically via python-dotenv.
 
 Usage:
-  python scripts/alignmentgraph-isd-bench/05_sync_embed_pod_env.py            # sync pods -> .env block
-  python scripts/alignmentgraph-isd-bench/05_sync_embed_pod_env.py --dry-run  # print the block, write nothing
+  ./isd-exp serve sync-embed            # sync pods -> .env block
+  ./isd-exp serve sync-embed --dry-run  # print the block, write nothing
   source .env
-  python scripts/alignmentgraph-isd-bench/06_score_alignment.py --encoder-presets the primary encoder arm,tfidf \
+  ./isd-exp score --encoder-presets nemotron,tfidf \
       --overwrite results/<run dir>
 
 The managed block, with a Nemotron pod (two endpoints) and a bge-m3 pod up:
 
-  EMBED_SLOTS=the primary encoder arm,bgem3,tfidf
+  EMBED_SLOTS=nemotron,bgem3,tfidf
   NEMOTRON_EMBED_BASE_URLS=https://<pod_a>-8000.proxy.runpod.net/v1,https://<pod_b>-8000.proxy.runpod.net/v1
-  NEMOTRON_EMBED_MODEL=<the declared encoder model>
+  NEMOTRON_EMBED_MODEL=nvidia/llama-embed-nemotron-8b
   NEMOTRON_EMBED_API_KEY_ENV=VLLM_API_KEY
   BGEM3_EMBED_BASE_URLS=https://<pod_c>-8000.proxy.runpod.net/v1
   BGEM3_EMBED_MODEL=BAAI/bge-m3
@@ -48,8 +48,8 @@ one URL cannot be the right endpoint for several encoder arms.
 <SLOT>_EMBED_API_KEY_ENV holds the NAME of the env var carrying the Bearer token
 (indirection, same pattern as the ladder's AGENT_MODEL_API_KEY_ENVS).
 VLLM_API_KEY itself must already be set in .env -- it is the token the
-template's vLLM server was started with (same the serving provider secret as the ladder),
-not the the serving provider API key.
+template's vLLM server was started with (the same RunPod secret as the ladder),
+not the RunPod API key.
 """
 from __future__ import annotations
 
@@ -62,18 +62,17 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path
-from .. import paths
-from ..alignment.presets import current as arms
+from ... import paths
+from ...alignment.presets import current as arms
 
 
 def _encoder_slot(key: str) -> str:
-    """Arm key -> env slot prefix. The registry is configuration now, so this
-    no longer means loading a script whose filename began with a digit."""
+    """Arm key -> env slot prefix, read from the declared encoder arms."""
     return arms().encoder(key).env_slot
 
 REST_BASE = "https://rest.runpod.io/v1"
 BLOCK_BEGIN = ("# >>> embed pod (managed by "
-               "scripts/alignmentgraph-isd-bench/05_sync_embed_pod_env.py) >>>")
+               "isd-exp serve sync-embed) >>>")
 BLOCK_END = "# <<< embed pod <<<"
 
 try:
@@ -83,8 +82,13 @@ except ImportError:
     pass  # Skip if dotenv is not available
 
 #: Matched case-insensitively against the pod's vLLM start command (the model
-#: is its first positional token) and the pod name.
-EMBED_PATTERN = re.compile(r"the primary encoder arm|llama-embed|bge-m3|granite-embedding|--task embed", re.I)
+#: is its first positional token) and the pod name. Deliberately LOOSER than an
+#: exact model id: a pod name is typed by a human in the console, so the terms
+#: are recognisable fragments rather than the full ids `model_to_key` matches on
+#: once a pod is confirmed. This is a provider module -- naming the models it
+#: recognises is what it is for.
+EMBED_PATTERN = re.compile(
+    r"nemotron|llama-embed|bge-m3|granite-embedding|--task embed", re.I)
 
 
 
@@ -193,7 +197,7 @@ def run(*, dry_run: bool = False, ENCODER_PRESETS=None, ENV_PATH=None, OFFLINE_K
 
     if not found:
         print("\nERROR: no embed pod found (deploy one in the console from "
-              "template isd-agent-bench-embed-the primary encoder arm-8b, "
+              "template isd-agent-bench-embed-nemotron-8b, "
               "https://console.runpod.io/deploy?template=3i3er665bh).",
               file=sys.stderr)
         sys.exit(1)
@@ -201,7 +205,7 @@ def run(*, dry_run: bool = False, ENCODER_PRESETS=None, ENV_PATH=None, OFFLINE_K
     # Verify each embed pod and file it under the slot of the model it serves.
     # Pods within ONE slot must serve the same model -- the encoder
     # load-balances batches across them, so a mismatch there would silently
-    # corrupt the run. Pods serving DIFFERENT models are no longer an error:
+    # corrupt the run. Pods serving DIFFERENT models are not an error:
     # they are separate encoder arms of the sensitivity sweep and get their
     # own <SLOT>_EMBED_* quad.
     endpoints: list[dict] = []
@@ -245,7 +249,7 @@ def run(*, dry_run: bool = False, ENCODER_PRESETS=None, ENV_PATH=None, OFFLINE_K
         if not known:
             print(f"WARNING: pod {pod_id} serves {model_name!r}, which matches no "
                   f"ENCODER_PRESETS entry -- filing it under slot {slot}; scoring "
-                  "it needs explicit 06_score_alignment.py flags.", file=sys.stderr)
+                  f"it needs explicit `{paths.cli()} score` flags.", file=sys.stderr)
         endpoints.append({"pod_id": pod_id, "status": status, "gpu": gpu,
                           "base_url": base_url, "model": model_name,
                           "verified": bool(served), "slot": slot, "known": known})
@@ -356,5 +360,5 @@ def run(*, dry_run: bool = False, ENCODER_PRESETS=None, ENV_PATH=None, OFFLINE_K
 
     print(f"\n{action} {ENV_PATH} ({len(ordered)} pod slot(s))")
     print("\nsource .env")
-    print("python scripts/alignmentgraph-isd-bench/06_score_alignment.py "
+    print("./isd-exp score "
           f"--encoder-presets {','.join(preset_keys)} --overwrite results/<run dir>")

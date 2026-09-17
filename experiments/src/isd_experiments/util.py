@@ -43,9 +43,7 @@ def json_safe(value):
 def sd(values: list[float]) -> Optional[float]:
     """Sample SD, or None when there are fewer than two values.
 
-    None rather than nan (changed 2026-09-10, when the ladder went to one
-    deterministic run per cell and every run-to-run SD lost its second value).
-    Two reasons: `json.dump` writes a bare `NaN`, which is not valid JSON and
+    None rather than nan, for two reasons: `json.dump` writes a bare `NaN`, which is not valid JSON and
     which strict parsers reject outright — so the pooled file would have been
     unreadable to anything but Python; and a consumer needs to tell "no
     dispersion estimate exists" apart from "dispersion is zero", which `is

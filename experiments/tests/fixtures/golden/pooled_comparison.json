@@ -101,15 +101,15 @@
         }
       },
       "comparisons": {
-        "holm_family": "2 comparisons (alignmentgraph-isd vs each baseline) within model size 'qwen3.5-0.8b'; Holm applied per (signal, policy).",
-        "lead_signal": "addie_median",
-        "signals": [
+        "holm_family": "2 comparisons (alignmentgraph-isd vs each baseline) within model size 'qwen3.5-0.8b'; Holm applied per (score, policy).",
+        "lead_score": "addie_median",
+        "scores": [
           "addie_median",
           "total_score",
           "trajectory_score"
         ],
         "primary_policy": "complete_case",
-        "by_signal": {
+        "by_score": {
           "addie_median": {
             "label": "ADDIE rubric (/100)",
             "min_score_floor": 56.65,
@@ -484,15 +484,15 @@
         }
       },
       "comparisons": {
-        "holm_family": "2 comparisons (alignmentgraph-isd vs each baseline) within model size 'qwen3.5-4b'; Holm applied per (signal, policy).",
-        "lead_signal": "addie_median",
-        "signals": [
+        "holm_family": "2 comparisons (alignmentgraph-isd vs each baseline) within model size 'qwen3.5-4b'; Holm applied per (score, policy).",
+        "lead_score": "addie_median",
+        "scores": [
           "addie_median",
           "total_score",
           "trajectory_score"
         ],
         "primary_policy": "complete_case",
-        "by_signal": {
+        "by_score": {
           "addie_median": {
             "label": "ADDIE rubric (/100)",
             "min_score_floor": 59.3129,
@@ -839,7 +839,7 @@
       }
     ]
   },
-  "interaction_by_signal": {
+  "interaction_by_score": {
     "addie_median": {
       "metric": "addie_median",
       "definition": "DiD on addie_median = mean over scenarios of [delta(largest size) - delta(smallest size)], delta = proposed - baseline per scenario (mean of runs, complete-case); bootstrap CI (10k, seed 42) resamples scenarios; positive DiD means the proposed method's advantage GROWS with model size, negative means it shrinks (i.e. the method helps small models more).",

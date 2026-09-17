@@ -27,13 +27,13 @@ from datetime import datetime
 from pathlib import Path
 
 from .. import paths, schema
-from ..alignment.protocol import PANEL_SIGNALS
+from ..alignment.protocol import ALIGNMENT_SIGNALS
 from ..config import current as current_config
 from ..runs import iter_scenario_dirs, load_run
 from ..stats import BOOT_SEED, N_BOOT, bootstrap_ci, rank_biserial, wilcoxon_signed_rank
 from ..util import mean as _mean
 from .comparison import discover
-from .judge import compare_model, pool_model
+from .llm_judge import compare_model, pool_model
 from .panel import pool_alignment
 from .tokens import pool_tokens
 
@@ -50,10 +50,10 @@ def expected_flags() -> dict[str, dict[str, str]]:
     return {a.id: a.expected_flags for a in profile.arms}
 
 
-#: Judge signals for the factorial readout. The ablation narrative is NOT led
-#: by the judge -- coverage, the violation ledger, `gave_up`, context behaviour
-#: and the deterministic panel are the readout, and the judge is a cross-check.
-FACTORIAL_JUDGE_SIGNALS = ("addie_median", "trajectory_score", "total_score")
+#: LLM judge scores for the factorial readout. The ablation narrative is NOT led
+#: by the LLM judge -- coverage, the violation ledger, `gave_up`, context behaviour
+#: and the deterministic panel are the readout, and the LLM judge is a cross-check.
+FACTORIAL_LLM_JUDGE_SCORES = ("addie_median", "trajectory_score", "total_score")
 
 def check_arm_flags(run_dirs_by_model: dict[str, list[Path]],
                     agents: list[str]) -> dict:
@@ -103,15 +103,9 @@ def check_arm_flags(run_dirs_by_model: dict[str, list[Path]],
 def a0_consistency(models: list[dict], a0: str, ladder_pooled_path: Path) -> dict:
     """A0 here (this experiment) vs A0 in the pooled ladder (the comparison experiment) — a drift gauge.
 
-    This flipped meaning twice. Originally the arms ran in their own session and
-    the delta measured judge/session drift; from 2026-07-26 the arms rode inside
-    the ladder runs, both numbers came from the SAME executions, and the delta
-    had to be ~0 or something was wrong; since 2026-09-10 this experiment is its own
-    experiment again, so it is a drift gauge once more.
-
     Read it as a BOUND, not as a result: it says how much of an arm delta could
     be session effect rather than treatment. Two things make a non-zero value
-    expected rather than alarming — the two experiments have separate judge
+    expected rather than alarming — the two experiments have separate LLM judge
     sessions, and this experiment scores 30 scenarios where the comparison experiment scores 90. Because
     ``test_30`` is a stratified subset of ``test_90``, the two are drawn from
     one pool and the comparison is meaningful; it is still not paired, so a
@@ -148,8 +142,8 @@ def a0_consistency(models: list[dict], a0: str, ladder_pooled_path: Path) -> dic
         })
     return {
         "definition": (
-            "A0 (full pipeline) as run inside this experiment vs A0 as run in the the comparison experiment "
-            "ladder: two separate executions, separate judge sessions, and "
+            "A0 (full pipeline) as run inside this experiment vs A0 as run in the comparison experiment "
+            "ladder: two separate executions, separate LLM judge sessions, and "
             "different scenario counts (test_30 is a 30-scenario stratified "
             "subset of test_90). A non-zero delta is expected. It bounds how "
             "much of an arm delta could be session effect rather than "
@@ -194,13 +188,13 @@ def _structured_activity(tr: dict) -> tuple[int, int]:
     )
     return verifier_n, repair_n
 
-#: Every signal the factorial layer is computed on: the three judge signals plus
-#: the whole alignment-panel panel. Deliberately exhaustive — the panel's defence against
+#: Every signal the factorial layer is computed on: the three LLM judge scores plus
+#: the whole alignment panel. Deliberately exhaustive — the panel's defence against
 #: selective reporting is that every signal is reported for every comparison,
 #: and a factorial computed on a hand-picked subset would break exactly that.
 #: The paper's main text leads on one signal; the appendix carries all of them.
-FACTORIAL_SIGNALS = FACTORIAL_JUDGE_SIGNALS + tuple(
-    sig for sig, _family in PANEL_SIGNALS)
+FACTORIAL_MEASURES = FACTORIAL_LLM_JUDGE_SCORES + tuple(
+    sig for sig, _family in ALIGNMENT_SIGNALS)
 
 
 def _paired(diffs: list[float]) -> dict:
@@ -217,20 +211,20 @@ def _paired(diffs: list[float]) -> dict:
 def per_scenario_maps(run_dirs: list[Path], agents: list[str]) -> dict:
     """signal -> agent -> {scenario: mean over runs}.
 
-    One pass over the run dirs picks up both the judge fields (from
+    One pass over the run dirs picks up both the LLM judge fields (from
     comparison_report.json) and the alignment panel (from alignment_scores.json),
     so the factorial layer never re-derives a number a different way than the
     rest of the pool does.
     """
     acc: dict[str, dict[str, dict[str, list[float]]]] = {
-        sig: {a: {} for a in agents} for sig in FACTORIAL_SIGNALS
+        sig: {a: {} for a in agents} for sig in FACTORIAL_MEASURES
     }
-    panel_signals = [sig for sig, _f in PANEL_SIGNALS]
+    panel_signals = [sig for sig, _f in ALIGNMENT_SIGNALS]
     for run_dir in run_dirs:
         for sid, payload in load_run(run_dir).items():
             for a in agents:
                 r = (payload.get("rankings") or {}).get(a) or {}
-                for sig in FACTORIAL_JUDGE_SIGNALS:
+                for sig in FACTORIAL_LLM_JUDGE_SCORES:
                     v = r.get(sig)
                     if isinstance(v, (int, float)):
                         acc[sig][a].setdefault(sid, []).append(float(v))
@@ -292,12 +286,11 @@ def self_validation_activity(run_dirs_by_model: dict[str, list[Path]],
     "self-validation runs but finds nothing to fix" from "it runs and repairs
     a lot", which is context for reading the decomposition effect.
 
-    Only comparable across arms for runs produced after 2026-08-25. Before
-    that the single arm never called log_verifier_result and ran one
-    self-validation pass over all checks against multi's one per Designer, so
-    its verifier_events were a constant 1.00/scenario against multi's 7.20 —
-    an instrumentation and budget gap, not a difference in how much either arm
-    found to fix. Numbers from an older run dir will show that artifact here.
+    Only comparable across arms once both arms record per-Designer
+    self-validation. A run dir where the single arm's verifier_events are a
+    constant 1.00/scenario against multi's 7.20 predates that instrumentation:
+    the number there is an instrumentation and budget gap, not a difference in
+    how much either arm found to fix.
     """
     out = []
     for label, dirs in run_dirs_by_model.items():
@@ -339,11 +332,11 @@ def self_validation_activity(run_dirs_by_model: dict[str, list[Path]],
 #: step table order; kept here as a literal so a results dir written by an older
 #: package version still reads in the same order it was produced in.
 #:
-#: `rubrics` was a stage of its own until 2026-09-01 and appears in results dirs
-#: written before then; it is kept in this tuple so those still read in order.
-#: Reading is driven by what a run ACTUALLY recorded (see `stages_of`), never by
-#: this tuple's length — a hardcoded seven silently dropped every arm once the
-#: package moved to six.
+#: `rubrics` appears only in results dirs written while it was a stage of its
+#: own; it is kept in this tuple so those still read in order. Reading is driven
+#: by what a run ACTUALLY recorded (see `stages_of`), never by this tuple's
+#: length — a hardcoded count silently drops every arm as soon as the package's
+#: stage list differs from it.
 STAGE_ORDER = ("analysis", "outcomes", "assessment", "activities", "content",
                "rubrics", "implementation")
 
@@ -449,11 +442,11 @@ def factorial_layer(run_dirs_by_model: dict[str, list[Path]],
     missing = [a for a in factorial_cells().values() if a not in agents]
     if missing:
         return {"skipped": f"arms missing from this pool: {missing}"}
-    signals: dict[str, dict] = {sig: {"per_model": []} for sig in FACTORIAL_SIGNALS}
+    measures: dict[str, dict] = {sig: {"per_model": []} for sig in FACTORIAL_MEASURES}
     for label, dirs in run_dirs_by_model.items():
         maps = per_scenario_maps(dirs, agents)
-        for sig in FACTORIAL_SIGNALS:
-            signals[sig]["per_model"].append(
+        for sig in FACTORIAL_MEASURES:
+            measures[sig]["per_model"].append(
                 {"label": label, **factorial_effects(maps[sig])})
     return {
         "definition": (
@@ -470,7 +463,7 @@ def factorial_layer(run_dirs_by_model: dict[str, list[Path]],
             "design, not a family of arm-vs-A0 comparisons."),
         "cells": {f"agentmode_{k[0]}__contextmode_{k[1]}": v
                   for k, v in factorial_cells().items()},
-        "signals": signals,
+        "measures": measures,
     }
 
 
@@ -486,7 +479,7 @@ def print_report(pooled: dict, a0: str, arms: list[str]) -> None:
             print(f"  {agent:<38} mean_total={s.get('mean_total', float('nan')):7.2f}  "
                   f"nCC={s.get('n_scenarios_complete', 0):3d}  "
                   f"missing={s.get('n_scenarios_any_missing', 0)}")
-        rows = (model["comparisons"]["by_signal"]["addie_median"]
+        rows = (model["comparisons"]["by_score"]["addie_median"]
                 ["policies"]["complete_case"])
         for r in rows:
             if r.get("n"):
@@ -520,12 +513,12 @@ def print_report(pooled: dict, a0: str, arms: list[str]) -> None:
                 flag = "   (within 2x ladder run SD)"
             else:
                 flag = "   <-- LARGER THAN 2x LADDER RUN SD, read arm deltas with care"
-            print(f"\n  A0 drift [{row['label']}]: this experiment−the comparison experiment "
+            print(f"\n  A0 drift [{row['label']}]: ablation−comparison "
                   f"Δ={row['delta']:+.2f}{flag}")
     if pooled.get("alignment") is None:
-        print("\n  (alignment-panel alignment layer absent — run "
-              "scripts/alignmentgraph-isd-bench/06_score_alignment.py on each "
-              "run dir, then re-pool.)")
+        print(f"\n  (the alignment layer is absent — run "
+              f"`{paths.cli()} score` on each "
+              f"run dir, then re-pool.)")
 
 
 #: Reading direction for the size interaction, stated once so nobody re-derives
@@ -576,10 +569,10 @@ def pool(run_dirs_by_model: dict[str, list[Path]], *,
 
     interaction = {"interaction_note": INTERACTION_NOTE,
                    **interaction_tests(models, ref, arm_ids)}
-    interaction_by_signal = {
+    interaction_by_score = {
         m: {"interaction_note": INTERACTION_NOTE,
             **interaction_tests(models, ref, arm_ids, metric=m)}
-        for m in FACTORIAL_JUDGE_SIGNALS
+        for m in FACTORIAL_LLM_JUDGE_SCORES
     }
 
     return {
@@ -593,12 +586,12 @@ def pool(run_dirs_by_model: dict[str, list[Path]], *,
             "score_fields": {
                 "lead": "addie_median (ADDIE rubric /100, per-scenario, "
                         "from comparison_report.json)",
-                "also_reported": list(FACTORIAL_JUDGE_SIGNALS),
+                "also_reported": list(FACTORIAL_LLM_JUDGE_SCORES),
                 "drift_check": "total_score",
             },
             "direction": "mean_diff = reference - arm = contribution of the removed component(s)",
             "design": ("all arms in one run per size, so they share each scenario's "
-                       "judge session; the reference arm is re-run here rather than "
+                       "LLM judge session; the reference arm is re-run here rather than "
                        "taken from the comparison experiment"),
             "primary_failure_policy": "complete_case",
             "holm_family": f"{len(arm_ids)} arm comparisons within each model size",
@@ -607,7 +600,7 @@ def pool(run_dirs_by_model: dict[str, list[Path]], *,
         "flag_check": flag_check,
         "models": models,
         "interaction": interaction,
-        "interaction_by_signal": interaction_by_signal,
+        "interaction_by_score": interaction_by_score,
         "reference_drift": consistency,
         "alignment": pool_alignment(models, run_dirs_by_model, agents, ref, arm_ids),
         "token_usage": pool_tokens(run_dirs_by_model, agents),
