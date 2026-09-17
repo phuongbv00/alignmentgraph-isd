@@ -7,19 +7,18 @@ Checks, per ladder slot found in .env (managed block or manual quads):
      A slot may be served by several pods: *_AGENT_MODEL_BASE_URLS (plural,
      comma-separated, what `isd-exp serve sync-agents` writes) is read first,
      falling back to the singular *_AGENT_MODEL_BASE_URL; every URL is checked.
-  2. The three protective flags are set to the required values
-     (AGENT_MODEL_MAX_OUTPUT_TOKENS=8192, AGENT_MODEL_STREAMING=1,
-     AGENT_MODEL_DISABLE_THINKING=1).
-  3. Optional smoke completion (default ON, --no-smoke to skip): one tiny
-     chat call per pod; PASS = non-empty content and no reasoning_content
-     (proves non-thinking mode actually took effect server-side).
+  2. The two protective flags are set to the required values
+     (AGENT_MODEL_MAX_OUTPUT_TOKENS=8192, AGENT_MODEL_STREAMING=1).
+  3. Smoke completion: one tiny chat call per pod; PASS = 200 and a reply that
+     carries something, in either channel. Thinking is on, so a model may
+     answer entirely inside reasoning_content and leave content empty -- that
+     is still the pod generating, which is all this check is for.
   4. Free disk space for results (warn below --min-disk-gb, default 10).
 
 Reads .env itself (no `source` needed). Exit code 0 = all PASS, 1 = any FAIL.
 
 Usage:
   ./isd-exp audit preflight
-  ./isd-exp audit preflight --no-smoke
 """
 from __future__ import annotations
 
@@ -48,7 +47,6 @@ def slots() -> list[str]:
 REQUIRED_FLAGS = {
     "AGENT_MODEL_MAX_OUTPUT_TOKENS": "8192",
     "AGENT_MODEL_STREAMING": "1",
-    "AGENT_MODEL_DISABLE_THINKING": "1",
 }
 
 _fail = 0
@@ -169,24 +167,21 @@ def run(*, skip_smoke: bool = False, min_disk_gb: int = 20) -> int:
                 report(name in served, f"{tag}served model matches NAME",
                        f"server: {served}")
                 if not skip_smoke:
-                    # Replicate ladder client conditions: non-thinking is a
-                    # CLIENT-side request flag (AGENT_MODEL_DISABLE_THINKING=1 ->
-                    # chat_template_kwargs), not a server default -- without it
-                    # the model burns the tiny budget inside <think> and content
-                    # comes back empty.
+                    # Liveness only: the pod answers and generates something.
+                    # Thinking is on, so the budget has to cover a <think> block
+                    # AND the reply, and either channel counts as generating --
+                    # asking for non-empty `content` under a tiny cap would fail
+                    # a healthy pod that simply spent the cap reasoning.
                     st, doc = http_post_json(
                         f"{base_url}/chat/completions", vllm_key,
-                        {"model": name, "max_tokens": 32,
-                         "chat_template_kwargs": {"enable_thinking": False},
+                        {"model": name, "max_tokens": 256,
                          "messages": [{"role": "user", "content": "Say OK"}]},
                     )
                     msg = (doc.get("choices") or [{}])[0].get("message", {})
-                    content_ok = bool((msg.get("content") or "").strip())
-                    no_think = not msg.get("reasoning_content")
-                    report(st == 200 and content_ok, f"{tag}smoke: content non-empty",
+                    said = bool((msg.get("content") or "").strip()
+                                or (msg.get("reasoning_content") or "").strip())
+                    report(st == 200 and said, f"{tag}smoke: the pod generated a reply",
                            f"status={st}")
-                    report(no_think, f"{tag}smoke: no reasoning_content (non-thinking)",
-                           "reasoning_content present!" if not no_think else "")
 
     if not any_slot:
         print("\nNo slot has a BASE_URL — nothing to check against.")

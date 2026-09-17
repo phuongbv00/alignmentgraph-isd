@@ -7,8 +7,8 @@ They belong together because several of them are COUPLED ACROSS the
 decomposition axis, and a ceiling that ends up different on one side of that
 axis sits INSIDE the treatment. ``react.MAX_TURNS`` is derived from
 ``STAGE_MAX_TURNS`` precisely so the two arms cannot drift apart;
-``REPEAT_ALLOWANCE``, ``THINKING_ALLOWANCE`` and ``ERROR_ALLOWANCE`` are
-mirrored in both loops for the same reason. Numbers that must move together are
+``REPEAT_ALLOWANCE`` and ``ERROR_ALLOWANCE`` are mirrored in both loops for
+the same reason. Numbers that must move together are
 easier to keep together when they are next to each other.
 
 What deliberately does NOT live here: the **how big** caps —
@@ -86,14 +86,14 @@ PART_SUBMIT_SLACK = 3
 #: not identical here — stated rather than hidden.
 SUBMIT_CAP = 8
 
-# The three refunds below are one family. A turn that produced no observation
-# and no artifact — a repeat, a reasoning-only reply, an ERROR — spends the
-# stage's budget on the model's confusion or on a serving posture rather than on
-# the design, so it is refunded instead of charged. Each is BOUNDED all the same,
-# so a model that only ever repeats, thinks or errors still reaches the ceiling
-# rather than looping forever. All three are mirrored in ``ReactLoop``: a refund
-# is a harness accounting rule, and one that existed on a single side of the
-# decomposition axis would be a ceiling difference sitting inside the treatment.
+# The two refunds below are one family. A turn that produced no observation and
+# no artifact — a repeat, or a call that came back ERROR — spends the stage's
+# budget on the model's confusion rather than on the design, so it is refunded
+# instead of charged. Each is BOUNDED all the same, so a model that only ever
+# repeats or errors still reaches the ceiling rather than looping forever. Both
+# are mirrored in ``ReactLoop``: a refund is a harness accounting rule, and one
+# that existed on a single side of the decomposition axis would be a ceiling
+# difference sitting inside the treatment.
 #
 # They are what a stage cut short actually needs. Measured over runs 53042a0d
 # and 2559b22d, 63 of 476 tool results were ERROR and 84 more were repeat
@@ -103,9 +103,6 @@ SUBMIT_CAP = 8
 
 #: Repeated calls refunded rather than charged a turn.
 REPEAT_ALLOWANCE = 3
-
-#: Reasoning-only replies refunded rather than charged a turn.
-THINKING_ALLOWANCE = 3
 
 #: Tool calls that came back ERROR, refunded rather than charged a turn.
 ERROR_ALLOWANCE = 3

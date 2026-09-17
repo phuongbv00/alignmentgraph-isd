@@ -41,7 +41,6 @@ class LLMConnectionOut(BaseModel):
     temperature: float | None = None
     max_tokens: int | None = None
     context_window: int | None = None
-    disable_thinking: bool = False
     is_active: bool = False
     updated_at: datetime | None = None
 
@@ -75,7 +74,6 @@ class LLMConnectionIn(BaseModel):
     # that is actually SENT clears the stored value; only `api_key` is kept when
     # omitted, because the browser is never given it to send back.
     context_window: int | None = Field(default=None, ge=256, le=10_000_000)
-    disable_thinking: bool = False
 
 
 class ModelListOut(BaseModel):

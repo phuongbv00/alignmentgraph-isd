@@ -61,20 +61,21 @@ blank and the harness falls back to a constant unrelated to whatever the
 connection points at: measured on run e81b8108, a stage compacted three times
 under that budget against a model whose real window was never close to full.
 
-**Disable thinking mode** is a third field, off by default. It sends
-`chat_template_kwargs: {enable_thinking: false}` in the request body — the same
-mechanism as the benchmark's `AGENT_MODEL_DISABLE_THINKING`, which cannot reach
-this app (see below). Turn it on for small Qwen3 models: left thinking, they
-spend the whole output cap inside `reasoning_content`, which arrives with empty
-content, no tool call and `finish_reason: "stop"` — so truncation salvage cannot
-see it either. The loop reads that as a turn the model wasted. Measured on run
-24343e4d: 12 of 78 calls, 47-405 billed completion tokens each, one stage turn
-gone every time.
+A model served with thinking on answers through a second channel: the endpoint's
+reasoning parser splits it out as `reasoning_content`, leaving `content` clean.
+That text is recorded and shown in the Context tab, dimmed, beside the turn it
+came from — it is part of what the agent did — but it is never sent back to the
+model, and it is not counted in the window meter, which measures what is being
+sent. A reply that is reasoning and nothing else reaches the loop as an empty
+turn and is charged like one.
 
-> **There are no migrations** — `init_db` is `create_all`, so a column added to
-> a connection is not added to a `demo.db` that already exists, and the first
-> query raises `no such column`. Delete the local database, or add the column by
-> hand, after pulling a change that adds one.
+> **There are no migrations** — `init_db` is `create_all`, so the schema of a
+> `demo.db` that already exists is never changed. A column added to a connection
+> is missing there and the first query raises `no such column`; a column removed
+> is still there as `NOT NULL` with nothing left to write into it, so saving a
+> new connection raises `NOT NULL constraint failed`. After pulling a change
+> that adds or removes one, delete the local database or fix it by hand
+> (`ALTER TABLE llmconnection ADD COLUMN …` / `DROP COLUMN …`).
 
 **Nothing else configures the model.** The app reads no `AGENT_MODEL_*` — not as
 a fallback, not as a seed, not to fill in a field left blank. Those variables

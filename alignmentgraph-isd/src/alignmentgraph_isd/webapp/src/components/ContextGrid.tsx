@@ -1,6 +1,7 @@
 import {useEffect, useMemo, useState} from 'react'
 import {ChevronDown, ChevronRight, Download, Wrench} from 'lucide-react'
 import {api} from '../api/client'
+import {Collapsible} from './inspector/JsonTree'
 import {agentHue, agentShortName, phaseLabel} from '../lib/phaseTimeline'
 import type {AgentContext, AgentContextRow, ContextMessage} from '../api/types'
 
@@ -364,6 +365,7 @@ function Turn({message, index}: { message: ContextMessage; index: number }) {
   const calls = message.tool_calls ?? []
   const isResult = message.role === 'tool'
   const compacted = message.compacted === true
+  const thinking = thinkingOf(message)
   return (
     <div className={compacted ? 'ctx-compacted' : undefined}
          title={compacted ? 'COMPACTED - dropped from the live context to stay under the window, the model no longer sees this' : undefined}>
@@ -375,6 +377,15 @@ function Turn({message, index}: { message: ContextMessage; index: number }) {
           body={message.content}
         />
       )}
+      {thinking && (
+        <div className="ctx-thinking"
+             title="REASONING - what the model thought before answering. Recorded because it is part of what this agent did; never sent back to the model, and not counted in the meter above.">
+          <Collapsible title="Reasoning" defaultOpen={false}
+                       note={`${thinking.length} chars · not sent`}>
+            <pre className="ctx-pre">{thinking}</pre>
+          </Collapsible>
+        </div>
+      )}
       {calls.length > 0 && (
         <Block
           part="tools"
@@ -385,6 +396,16 @@ function Turn({message, index}: { message: ContextMessage; index: number }) {
       )}
     </div>
   )
+}
+
+/** The reasoning to show for a turn, or '' for none.
+ *
+ *  Trimmed, because a reasoning channel that carried only whitespace is a turn
+ *  with no reasoning, and an empty fold is worse than no fold. Deliberately
+ *  NOT given a budget `part`: the blocks are coloured by the part they count
+ *  toward, and this one counts toward none — it is not sent. */
+export function thinkingOf(message: ContextMessage): string {
+  return (message.reasoning ?? '').trim()
 }
 
 /** Coloured by the PART it counts toward, using the same three colours as the

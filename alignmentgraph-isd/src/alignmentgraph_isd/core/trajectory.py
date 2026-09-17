@@ -63,13 +63,13 @@ class TrajectoryAction(StrEnum):
     COMMIT_DID_NOT_LAND = "commit_did_not_land"
     #: The reply carried the model's REASONING channel and nothing else — no
     #: content, no tool call — while `finish_reason` read "stop", so truncation
-    #: salvage could not see it either. A serving posture (Qwen3 left in
-    #: thinking mode), not the model refusing the protocol, and separated from
-    #: `invalid_action` for exactly that reason: charging the two identically
-    #: makes a serving artifact read as a finding about the model. The fix is
-    #: `disable_thinking` on the factory; this is what makes its absence
-    #: visible. MEASURED (run 24343e4d): 12 of 78 calls, 47-405 billed
-    #: completion tokens each, one stage turn gone every time.
+    #: salvage could not see it either. The loop charges it as the empty turn
+    #: it is; this names it, so the rate is readable rather than hidden inside
+    #: `invalid_action`, which also covers a model that answered with TEXT.
+    #: The reasoning itself is not here — it rides the reply into the
+    #: transcript (`transcript.serialize_messages`) and is shown beside the
+    #: turn it came from. MEASURED (run 24343e4d): 12 of 78 calls, 47-405
+    #: billed completion tokens each.
     THINKING_ONLY_REPLY = "thinking_only_reply"
     #: A submit whose payload was the artifact itself rather than the
     #: {key: artifact} envelope its tool declares — wrapped rather than

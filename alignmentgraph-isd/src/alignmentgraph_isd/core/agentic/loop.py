@@ -480,8 +480,7 @@ class ToolLoop:
                              note="implicit_submit")
                 return "return"
         self._append_text_turn(turn, turn_mod.nudge_for(
-            turn, meter=self._meter, trajectory=self.trajectory,
-            identity=self.identity))
+            turn, trajectory=self.trajectory, identity=self.identity))
         return "continue"
 
     def _handle_submit(self, turn: ToolTurn, args: dict, params: dict,

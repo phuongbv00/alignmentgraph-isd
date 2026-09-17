@@ -45,7 +45,6 @@ interface FormState {
   temperature: string
   max_tokens: string
   context_window: string
-  disable_thinking: boolean
 }
 
 const BLANK: FormState = {
@@ -56,7 +55,6 @@ const BLANK: FormState = {
   temperature: '',
   max_tokens: '',
   context_window: '',
-  disable_thinking: false,
 }
 
 const formOf = (connection: LLMConnection): FormState => ({
@@ -67,7 +65,6 @@ const formOf = (connection: LLMConnection): FormState => ({
   temperature: connection.temperature === null ? '' : String(connection.temperature),
   max_tokens: connection.max_tokens === null ? '' : String(connection.max_tokens),
   context_window: connection.context_window === null ? '' : String(connection.context_window),
-  disable_thinking: connection.disable_thinking,
 })
 
 /** Connections to OpenAI-compatible endpoints, one of them active.
@@ -193,7 +190,6 @@ export function ModelSettings({ onClose, onSaved }: Props) {
     temperature: form.temperature === '' ? null : Number(form.temperature),
     max_tokens: form.max_tokens === '' ? null : Number(form.max_tokens),
     context_window: form.context_window === '' ? null : Number(form.context_window),
-    disable_thinking: form.disable_thinking,
   })
 
   /** Run a mutation and adopt its response, which is the whole list back.
@@ -430,20 +426,6 @@ export function ModelSettings({ onClose, onSaved }: Props) {
                 transcript is trimmed to leave that much room. Leave the window
                 blank and the harness falls back to a fixed budget unrelated to
                 this model.
-              </div>
-              <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={form.disable_thinking}
-                  onChange={(e) => setForm({ ...form, disable_thinking: e.target.checked })}
-                />
-                <span>Disable thinking mode</span>
-              </label>
-              <div className="small muted" style={{ marginTop: -4 }}>
-                Sends <code>chat_template_kwargs: {'{'} enable_thinking: false {'}'}</code>.
-                Turn this on for small Qwen3 models: left thinking, they spend the
-                output cap reasoning and answer with no text and no tool call,
-                which costs the agent a turn and produces nothing.
               </div>
 
               {result && (

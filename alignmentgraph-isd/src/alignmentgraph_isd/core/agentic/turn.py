@@ -21,7 +21,7 @@ import json
 from dataclasses import dataclass
 
 from . import budget, tools
-from .protocol import INVALID_TURN_NUDGE, THINKING_ONLY_NUDGE, turns_left_hint
+from .protocol import INVALID_TURN_NUDGE, turns_left_hint
 from .tools import unwrap_section
 
 
@@ -59,36 +59,22 @@ class ToolTurn:
     #: well have been writing when it was cut off, and the model then rewrites
     #: the artifact from scratch and is cut off again.
     truncated: bool = False
-    #: The model's REASONING channel, when the backend reports one separately
-    #: (`additional_kwargs["reasoning_content"]` — vLLM's reasoning parser, and
-    #: what LangChain does with it). Carried only so an empty turn can be told
-    #: apart from a talkative one: a reply that is all reasoning and no answer
-    #: is a serving posture, not the model refusing the protocol, and charging
-    #: the two identically makes a serving artifact read as a finding about the
-    #: model. `finish_reason` is "stop" for these, so `truncated` cannot see
-    #: them either. Never sent back to the model and never in the transcript.
-    reasoning: str = ""
 
     def __bool__(self) -> bool:
         return bool(self.name)
-
-    @property
-    def thinking_only(self) -> bool:
-        """The reply carried reasoning and nothing else — no answer, no call."""
-        return bool(self.reasoning) and not (self.text or "").strip() and not self.name
 
 
 class TurnMeter:
     """What a loop has spent, and what it is given back.
 
-    Three kinds of reply produce NO observation and NO artifact: an exact
-    repeat of a call already answered, a call that came back ERROR, and a reply
-    that was all reasoning. Charging the ceiling for them spends the budget on
-    the model's confusion and leaves less for its work — measured at 19 of A0's
-    turns for repeats alone, and 13% of every tool result over runs 53042a0d
-    and 2559b22d for errors. Each is therefore refunded, and each is BOUNDED by
-    its allowance in :mod:`budget`, or a model that only ever repeats would
-    never reach the ceiling at all.
+    Two kinds of reply produce NO observation and NO artifact: an exact
+    repeat of a call already answered, and a call that came back ERROR.
+    Charging the ceiling for them spends the budget on the model's confusion
+    and leaves less for its work — measured at 19 of A0's turns for repeats
+    alone, and 13% of every tool result over runs 53042a0d and 2559b22d for
+    errors. Each is therefore refunded, and each is BOUNDED by its allowance in
+    :mod:`budget`, or a model that only ever repeats would never reach the
+    ceiling at all.
 
     The allowances are read from :mod:`budget` here rather than carried as
     class attributes on the loops: two classes holding the same number is the
@@ -123,14 +109,6 @@ class TurnMeter:
         self.stats[key] = self.stats.get(key, 0) + 1
         if self.stats[key] <= allowance:
             self.refunded += 1
-
-    def thinking_only(self) -> None:
-        """A reply that was reasoning and nothing else. Not an invalid ACTION:
-        no action was taken, and it was not the model choosing to talk — it is
-        a property of the serving posture (the fix is ``disable_thinking`` on
-        the factory), so charging it would make a serving artifact read as a
-        finding about the model."""
-        self._refund("thinking_only", budget.THINKING_ALLOWANCE)
 
     def repeated(self) -> None:
         """An exact repeat of a call already answered."""
@@ -194,15 +172,14 @@ def recover_call(turn: ToolTurn, *, stats: dict, trajectory, identity: str) -> T
                     text=turn.text, message=turn.message)
 
 
-def nudge_for(turn: ToolTurn, *, meter: TurnMeter, trajectory, identity: str) -> str:
+def nudge_for(turn: ToolTurn, *, trajectory, identity: str) -> str:
     """What an empty turn is answered with, and its entry in the record.
 
-    A reasoning-only reply gets its own wording, because telling a model "not
-    text" when it wrote none is an instruction it cannot act on.
+    ONE wording for both arms (``protocol.INVALID_TURN_NUDGE``): the nudge
+    lands in the transcript the model reads, so a sentence worded differently
+    on each side of the decomposition axis is a second variable sitting on the
+    ``agent_mode`` axis.
     """
-    if turn.thinking_only:
-        meter.thinking_only()
-        return THINKING_ONLY_NUDGE
     trajectory.log_recovery_event(
         identity, "invalid_action", (turn.text or "")[:120], "")
     return INVALID_TURN_NUDGE

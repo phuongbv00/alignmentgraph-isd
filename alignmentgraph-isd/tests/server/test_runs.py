@@ -612,6 +612,31 @@ def test_the_transcript_downloads_as_readable_markdown(
     assert body.count("\n### ") >= total_messages
 
 
+def test_the_export_carries_the_reasoning_and_says_it_was_not_sent():
+    """A downloaded transcript is the same record as the tab, or the two
+    disagree about what the agent did.
+
+    Under the message's own heading rather than a new one — the headings are
+    the message index, and reasoning belongs to the turn above it — and
+    labelled, because a reader who finds it there would otherwise take it for
+    something the model was shown.
+    """
+    from alignmentgraph_isd.server.artifacts import render_transcript
+
+    body = render_transcript([{
+        "agent": "OutcomeDesigner", "label": "outcomes", "messages": [
+            {"role": "assistant", "content": "",
+             "reasoning": "Three gaps, so three objectives.\nBut the second overlaps."},
+            {"role": "assistant", "content": "plain"},
+        ],
+    }])
+
+    assert "Three gaps, so three objectives." in body
+    assert "> But the second overlaps." in body, "multi-line reasoning stays quoted"
+    assert "never sent back to the model" in body
+    assert body.count("\n### ") == 2, "reasoning is not a heading of its own"
+
+
 def test_one_agent_can_be_exported_by_its_context_id(client, ready_program, wait_for_terminal):
     """By ID, not by label and not by position.
 

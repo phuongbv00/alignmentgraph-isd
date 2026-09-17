@@ -229,8 +229,6 @@ def empty_stage_stats() -> dict:
     difference is the compaction hook's failure rate on this model.
     ``repair_turns``: turns spent fixing the stage's OWN violations, kept
     apart so the decomposition axis is not read off a mixed turn count.
-    ``thinking_only``: replies carrying reasoning and nothing else — a
-    property of the SERVING posture, not of the axis.
     ``tool_errors``: tool calls that came back ERROR (13% of every tool
     result over runs 53042a0d/2559b22d), so the ceiling is read against
     turns that DID something.
@@ -243,7 +241,7 @@ def empty_stage_stats() -> dict:
             "compactions": 0, "compaction_summaries": 0,
             "context_len": 0, "batched_calls": 0, "markup_recovered": 0,
             "args_salvaged": 0, "truncated_turns": 0, "dropped_args": 0,
-            "repair_turns": 0, "thinking_only": 0, "tool_errors": 0,
+            "repair_turns": 0, "tool_errors": 0,
             "n_sets": 0, "sets_gave_up": 0, "set_turns": 0,
             "set_submits_rejected": 0}
 
@@ -271,11 +269,3 @@ INVALID_TURN_NUDGE = (
     "Invalid turn: you must CALL A TOOL, not answer with text. Call one of "
     "the listed tools, or call submit with the complete artifact.")
 
-
-#: What a reasoning-only turn is answered with. Separate from the above because
-#: the model did not answer with text either — telling it "not text" when it
-#: wrote none is an instruction it cannot act on.
-THINKING_ONLY_NUDGE = (
-    "Your last reply carried reasoning but no answer and no tool call, so "
-    "nothing reached this stage. Call a tool now — put the result in the tool "
-    "call itself, not in your reasoning.")

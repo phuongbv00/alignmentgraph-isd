@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 
+import pytest
+
 from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core.agentic import loop as loop_module
 from alignmentgraph_isd.core.agentic.client import AgenticLLM
@@ -1222,6 +1224,69 @@ def test_a_compacted_turn_is_kept_and_marked_not_dropped_from_the_record():
     assert not shown[-1].get("compacted"), "the live stage is never compacted"
 
 
+def test_the_reasoning_channel_is_recorded_beside_the_turn_it_came_from():
+    """The tab answers what this agent DID, and a model served with thinking on
+    does half of it in a channel that is not `content`. Dropped, the record
+    shows an empty assistant turn and nothing about why.
+
+    Read off the message object, so there is one source: the reply carries it,
+    the reply is already in the list, and nothing new is threaded through the
+    loops to get it out.
+    """
+    from alignmentgraph_isd.core.agentic.transcript import serialize_messages
+    from conftest import _Result
+
+    thought = "  The brief asks for three objectives, so...  "
+    shown = serialize_messages([
+        {"role": "system", "content": "S"},
+        _Result(content="", reasoning=thought),
+        _Result(content="an ordinary reply"),
+        {"role": "tool", "content": "COMMITTED"},
+    ])
+
+    assert shown[1]["reasoning"] == thought
+    assert "reasoning" not in shown[0], "a dict turn has no reasoning channel"
+    assert "reasoning" not in shown[2], "a reply that did not reason carries no key"
+    assert "reasoning" not in shown[3]
+    assert shown[1]["content"] == "", "the reasoning is not folded into the answer"
+
+
+def test_the_reasoning_is_shown_but_never_sent_and_never_metered():
+    """Two properties, and the whole feature rests on them.
+
+    NEVER SENT: the model is handed the live message objects, and an
+    ``AIMessage``'s ``additional_kwargs`` does not survive the conversion to a
+    request body. That is a third-party behaviour we depend on — a version that
+    started forwarding it would quietly show the model its own thinking back —
+    so it is asserted rather than assumed.
+
+    NEVER METERED: the window meter measures what is being sent, so reasoning
+    has to stay outside the partition. `context_parts` summing to
+    `prompt_chars` is what proves it did not sneak into the prompt.
+    """
+    pytest.importorskip("langchain_openai")
+    from langchain_core.messages import AIMessage
+    from langchain_openai.chat_models.base import _convert_message_to_dict
+
+    from alignmentgraph_isd.core.agentic.transcript import context_parts, prompt_chars
+
+    secret = "the model's private deliberation"
+    wire = _convert_message_to_dict(
+        AIMessage(content="answer", additional_kwargs={"reasoning_content": secret}))
+    assert secret not in json.dumps(wire, default=str)
+
+    messages = [
+        {"role": "system", "content": "rules"},
+        AIMessage(content="answer", additional_kwargs={"reasoning_content": secret}),
+        {"role": "tool", "name": "submit", "content": "COMMITTED"},
+    ]
+    parts = context_parts(messages)
+    assert sum(parts.values()) == prompt_chars(messages), (
+        "reasoning was counted into the window it is not sent in")
+    assert secret not in "".join(
+        str(m.get("content") if isinstance(m, dict) else m.content) for m in messages)
+
+
 def test_compaction_takes_the_stage_turn_and_that_is_the_design():
     """The stage turn IS droppable, deliberately — protecting it would pin a
     block at the front of the very window it has to make room in.
@@ -1602,68 +1667,12 @@ def test_a_commit_that_does_not_land_is_never_reported_as_committed():
                for e in trajectory.to_dict()["events"])
 
 
-# ── reasoning-only replies (run 24343e4d) ───────────────────────────────────
-
-class _ThinksOnly:
-    """A backend whose replies carry reasoning and nothing else.
-
-    What vLLM serving a Qwen3 in thinking mode does when the model spends its
-    completion budget reasoning: `content` empty, no tool call, and
-    `finish_reason` "stop" — so truncation salvage cannot see it either.
-    """
-
-    def __init__(self, thinking: int) -> None:
-        self._left = thinking
-
-    def bind_tools(self, _specs, **_kwargs):
-        return self
-
-    def invoke(self, _messages):
-        from conftest import _Result
-
-        if self._left > 0:
-            self._left -= 1
-            return _Result(reasoning="Let me consider the objectives... " * 8)
-        return _Result(content="I have nothing further.")
-
-
-def test_a_reasoning_only_reply_is_not_charged_as_the_models_mistake():
-    """MEASURED (run 24343e4d): 12 of 78 calls came back with empty content, no
-    tool call and 47-405 BILLED completion tokens. Each was logged
-    `invalid_action` and charged a full turn of a 12-turn stage.
-
-    It is a serving posture, not the model refusing the protocol — the fix is
-    `disable_thinking` on the factory. Until that is set, the turn is refunded
-    (bounded, exactly as a repeated call is) and recorded under its own name,
-    so the rate is attributable to the endpoint rather than to the model.
-    """
-    step = STEP_BY_NAME["outcomes"]
-    thinking = budget.THINKING_ALLOWANCE
-    model = _ThinksOnly(thinking)
-    config = HarnessRunConfig(llm_factory=lambda: model)
-    graph, trajectory, brief = AlignmentGraph(), TrajectoryLogger(), load_brief("minimal_brief.json")
-
-    loop = _loop(config, graph, trajectory, brief, step)
-    loop.run()
-
-    assert loop.stats["thinking_only"] == thinking
-    assert loop.stats["turns_used"] == ToolLoop.MAX_TURNS + thinking, (
-        "the reasoning-only turns were not given back")
-    events = [e for e in trajectory.to_dict()["events"]
-              if e["action"] in ("thinking_only_reply", "invalid_action")]
-    # The reasoning-only replies came first and every one of them is recorded
-    # as what it was. The plain-text replies after them are still invalid turns
-    # — the model DID answer with text there, which is the other failure.
-    assert [e["action"] for e in events[:thinking]] == ["thinking_only_reply"] * thinking
-    assert {e["action"] for e in events[thinking:]} == {"invalid_action"}
-
 
 def test_both_loops_refund_the_same_failures_with_the_same_words():
     """A refund is a harness accounting rule, so one that exists on a single
     side of the decomposition axis is a ceiling difference sitting inside the
-    treatment — the same defect the scripted fallback had. `ReactLoop` had no
-    refund at all, so a repeated call cost the single arm a turn the multi arm
-    got back. The nudges had drifted apart for the same reason."""
+    treatment — the same defect the scripted fallback had. Both arms go through
+    one meter and are answered in one wording."""
     import inspect
 
     from alignmentgraph_isd.core.agentic import react
@@ -1679,15 +1688,14 @@ def test_both_loops_refund_the_same_failures_with_the_same_words():
         assert "self._refunded" not in source and "self._turn_no" not in source, (
             "an arm kept a private copy of the meter's counters")
     meter_source = inspect.getsource(turn_mod.TurnMeter)
-    for allowance in ("REPEAT_ALLOWANCE", "THINKING_ALLOWANCE", "ERROR_ALLOWANCE"):
+    for allowance in ("REPEAT_ALLOWANCE", "ERROR_ALLOWANCE"):
         assert f"budget.{allowance}" in meter_source
-    # One wording and one chooser: which of the two nudges an empty turn gets
-    # is `turn.nudge_for`, and neither arm decides it for itself.
+    # One wording and one chooser: what an empty turn is answered with is
+    # `turn.nudge_for`, and neither arm decides it for itself.
     assert turn_mod.INVALID_TURN_NUDGE is protocol.INVALID_TURN_NUDGE
-    assert turn_mod.THINKING_ONLY_NUDGE is protocol.THINKING_ONLY_NUDGE
     for source in (inspect.getsource(ToolLoop), inspect.getsource(react.ReactLoop)):
         assert "nudge_for(" in source, "an arm chooses its own nudge"
-        assert "INVALID_TURN_NUDGE" not in source and "THINKING_ONLY_NUDGE" not in source
+        assert "INVALID_TURN_NUDGE" not in source
 
 
 def test_a_regen_asks_only_for_what_is_still_missing():
@@ -1836,7 +1844,7 @@ def test_a_read_that_came_through_the_neighbouring_door_is_still_served():
 
 
 def test_a_turn_that_bought_no_observation_is_refunded():
-    """The third of the same family as REPEAT_ALLOWANCE and THINKING_ALLOWANCE.
+    """The other half of the same family as REPEAT_ALLOWANCE.
     An ERROR carries no artifact and no fact about the design, so charging a
     turn for it spends the stage's budget on the model's confusion — measured
     at 13% of every tool result over runs 53042a0d/2559b22d, beside 84 repeat

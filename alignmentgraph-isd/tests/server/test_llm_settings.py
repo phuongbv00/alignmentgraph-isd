@@ -348,36 +348,3 @@ def test_connections_are_locked_while_a_run_is_going(client, ready_program, bloc
 def test_a_name_that_is_too_long_is_rejected(real_settings):
     response = real_settings.post("/api/connections", json={"name": "x" * 101})
     assert response.status_code == 422
-
-
-def test_disable_thinking_round_trips_and_reaches_the_factory(real_settings):
-    """The app has no other way to turn thinking off.
-
-    ``build_factory`` passes ``read_env=False``, so ``AGENT_MODEL_DISABLE_THINKING``
-    cannot reach a run started here — which is the 2026-09-05 rule and stays. The
-    flag therefore has to be a property of the connection, and it has to survive
-    all the way into the request body: a small Qwen3 left thinking answers with
-    reasoning only, and the loop sees an empty turn.
-    """
-    pytest.importorskip("langchain_openai")
-    from alignmentgraph_isd.server import llm_settings
-
-    connection = _only(_add(real_settings, name="RunPod 2B", base_url="http://pod/v1",
-                            api_key="k", model_name="Qwen/Qwen3.5-2B",
-                            disable_thinking=True))
-    assert connection["disable_thinking"] is True
-    client = llm_settings.build_factory()()
-    assert client.extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
-
-
-def test_disable_thinking_defaults_off_and_can_be_turned_back_off(real_settings):
-    pytest.importorskip("langchain_openai")
-    from alignmentgraph_isd.server import llm_settings
-
-    connection = _only(_add(real_settings, name="OpenAI", api_key="k", model_name="gpt-4o-mini"))
-    assert connection["disable_thinking"] is False
-    real_settings.put(f"/api/connections/{connection['id']}", json={
-        "name": "OpenAI", "model_name": "gpt-4o-mini", "disable_thinking": True})
-    real_settings.put(f"/api/connections/{connection['id']}", json={
-        "name": "OpenAI", "model_name": "gpt-4o-mini", "disable_thinking": False})
-    assert not getattr(llm_settings.build_factory()(), "extra_body", None)

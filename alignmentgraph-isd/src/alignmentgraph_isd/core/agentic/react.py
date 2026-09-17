@@ -454,8 +454,7 @@ class ReactLoop:
                 identity=self.identity)
             if not recovered:
                 self._nudge(turn, turn_mod.nudge_for(
-                    turn, meter=self._meter, trajectory=self.trajectory,
-                    identity=self.identity))
+                    turn, trajectory=self.trajectory, identity=self.identity))
                 return "continue"
             turn = recovered
 

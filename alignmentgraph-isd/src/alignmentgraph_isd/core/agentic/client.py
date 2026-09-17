@@ -120,7 +120,7 @@ class AgenticLLM:
             self.trajectory.log_llm_call(0, 0)
             self.trajectory.log_recovery_event(self.identity, "llm_error", "", str(exc))
             return ""
-        content, _calls, _cut, _reasoning = self._account(result, messages, started)
+        content, _calls, _cut = self._account(result, messages, started)
         return content
 
     def _begin(self, messages: list[dict]) -> float:
@@ -138,11 +138,11 @@ class AgenticLLM:
         return time.time()
 
     def _account(self, result, messages: list[dict],
-                 started: float) -> tuple[str, list, bool, str]:
+                 started: float) -> tuple[str, list, bool]:
         """Everything a model call must leave behind: its flattened content, its
-        tool calls, whether it was cut and its reasoning channel — plus
-        ``llm_finished``, the chars-per-token measurement, the ``llm_call``
-        action, the token totals and the thinking-only reply.
+        tool calls and whether it was cut — plus ``llm_finished``, the
+        chars-per-token measurement, the ``llm_call`` action, the token totals
+        and the thinking-only reply.
 
         ONE copy, so that a second way into the model (the compaction hook)
         cannot quietly leave the cost table."""
@@ -175,27 +175,31 @@ class AgenticLLM:
         extra = getattr(result, "additional_kwargs", None) or {}
         reasoning = str(extra.get("reasoning_content") or "") if isinstance(extra, dict) else ""
         if reasoning and not content.strip():
-            # MEASURED (run 24343e4d): 12 of 78 calls, 47-405 billed completion
-            # tokens each, every one charged a full stage turn as
-            # `invalid_action`. Recorded HERE, at the one path EVERY model call
-            # goes through — both arms and the compaction hook — so the rate is comparable across the axis and is
-            # attributable to the serving posture rather than to the model. The
-            # fix is `disable_thinking` on the factory; this is what makes its
-            # absence visible when it is not set.
+            # The reply spent its completion budget reasoning and arrived with
+            # nothing to act on: no text, no tool call, and `finish_reason`
+            # "stop", so truncation salvage cannot see it either. The loop
+            # charges it as the empty turn it is; this names it, so the rate is
+            # readable rather than hidden inside `invalid_action`. Measured on
+            # run 24343e4d: 12 of 78 calls, 47-405 billed completion tokens
+            # each. Recorded HERE, at the one path EVERY model call goes
+            # through — both arms and the compaction hook — so the rate is
+            # comparable across the axis. The reasoning ITSELF is not recorded
+            # here: it rides the reply into the transcript (see
+            # `transcript.serialize_messages`), and this carries only a prefix
+            # so the event is readable on its own.
             self.trajectory.log_recovery_event(
                 self.identity, "thinking_only_reply",
                 f"{completion_tokens} completion tokens, no content, no tool call",
                 reasoning[:200])
-        return content, calls, was_truncated(result), reasoning
+        return content, calls, was_truncated(result)
 
     def _invoke_tools(self, llm, messages: list[dict]) -> ToolTurn:
         started = self._begin(messages)
         with gate_for(self.config).hold():
             result = llm.invoke(messages)
-        content, calls, cut, reasoning = self._account(result, messages, started)
+        content, calls, cut = self._account(result, messages, started)
         if not calls:
-            return ToolTurn(text=content, message=result, truncated=cut,
-                            reasoning=reasoning)
+            return ToolTurn(text=content, message=result, truncated=cut)
         # Raw here; the loop coerces against the SPEC it bound (only it knows
         # which tool this name refers to and what types that tool declares).
         # One ToolTurn per call, all sharing the model's message: the first

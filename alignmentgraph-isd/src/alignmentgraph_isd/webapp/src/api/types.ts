@@ -21,8 +21,6 @@ export interface LLMConnection {
   max_tokens: number | null
   /** The window the endpoint serves, in tokens. */
   context_window: number | null
-  /** Ask the endpoint for non-thinking mode; needed by small Qwen3 models. */
-  disable_thinking: boolean
   is_active: boolean
   updated_at: string | null
 }
@@ -46,7 +44,6 @@ export interface LLMConnectionInput {
   temperature: number | null
   max_tokens: number | null
   context_window: number | null
-  disable_thinking: boolean
 }
 
 export interface ModelList {
@@ -146,6 +143,12 @@ export interface ContextMessage {
    *  because the tab answers "what was this agent shown", and a transcript
    *  reduced to what is still being sent answers that for the last call only. */
   compacted?: boolean
+  /** The model's reasoning channel, when the endpoint splits one out of the
+   *  answer. Shown because the tab answers what this agent did, and thinking
+   *  that goes unrecorded answers it for half the turn — but never sent back
+   *  to the model, and never counted in the window meter, which measures what
+   *  IS sent. Dimmed for exactly that reason. */
+  reasoning?: string
   role: string
   content: string
   name?: string

@@ -182,6 +182,15 @@ def render_transcript(contexts: list[dict]) -> str:
             if content:
                 out.append("")
                 out.append(content)
+            reasoning = str(message.get("reasoning") or "").strip()
+            if reasoning:
+                # A blockquote under an italic marker rather than a heading of
+                # its own: the headings are the message index, and a reasoning
+                # block is part of the turn above it, not another turn.
+                out.append("")
+                out.append("*reasoning — recorded, never sent back to the model*")
+                out.append("")
+                out.extend(f"> {line}" for line in reasoning.splitlines() or [""])
             for call in message.get("tool_calls") or []:
                 out.append("")
                 out.append("```json")

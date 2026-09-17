@@ -6,7 +6,7 @@ default), the red-flag counters that must all stay at 0:
 
   524   proxy timeout came back (streaming not effective?)      -> stop, investigate
   400   max-context rejection (token cap not applied?)          -> check MAX_TOKENS_CAP
-  empty model returned empty content ('응답 길이: 0')            -> thinking overflow?
+  empty model returned empty content ('응답 길이: 0')            -> cap spent in <think>?
   stub  baseline wrote default output ('기본 출력 반환')          -> that scenario's data is junk
 
 plus ok/fail tallies and progress-log freshness (stale > --stale-min minutes

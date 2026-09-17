@@ -11,7 +11,7 @@
 1. Mọi quyết định tuning chỉ dựa trên `train_10`. `test_90` chỉ chạy sau khi freeze code. Sửa code sau đó ⇒ chạy lại
    ladder.
 2. Số trong paper **chỉ** đến từ `results/generated/` (mục 9). Không gõ tay.
-3. Cấu hình LLM judge và 3 flag bảo hộ (mục 3.3) phải **đồng nhất** giữa mọi run và mọi agent — đó là điều kiện công bằng
+3. Cấu hình LLM judge và 2 flag bảo hộ (mục 3.3) phải **đồng nhất** giữa mọi run và mọi agent — đó là điều kiện công bằng
    của so sánh.
 
 ---
@@ -128,7 +128,7 @@ JUDGE_MODEL_API_KEY_ENV=OPENROUTER_API_KEY
 # --- agent model ---
 # Smoke test: dùng hosted API qua AGENT_MODEL_{PROVIDER,NAME,BASE_URL,API_KEY_ENV} global.
 # Tune/bench: KHÔNG viết tay. Chạy 3_sync_runpod_pods_env.py → nó append managed block
-# gồm QWEN{08B,2B,4B,9B}_AGENT_MODEL_{PROVIDER,BASE_URLS,NAME,API_KEY_ENVS} + 3 flag bảo hộ.
+# gồm QWEN{08B,2B,4B,9B}_AGENT_MODEL_{PROVIDER,BASE_URLS,NAME,API_KEY_ENVS}.
 
 # --- tuỳ chọn ladder ---
 # RATE_LIMIT=turbo                # conservative|moderate|aggressive|turbo
@@ -188,16 +188,20 @@ vLLM `v0.25.1`, bf16, context **16384** cho cả 4 model, mỗi model một pod,
 --enable-prefix-caching
 ```
 
-### 3.3 Ba flag bảo hộ — bắt buộc, đảm bảo tính công bằng của so sánh
+### 3.3 Hai flag bảo hộ — bắt buộc, đảm bảo tính công bằng của so sánh
 
 ```bash
 AGENT_MODEL_MAX_OUTPUT_TOKENS=8192
 AGENT_MODEL_STREAMING=1
-AGENT_MODEL_DISABLE_THINKING=1
 ```
 
-Cả ba do `isd-exp serve sync-agents` tự ghi vào managed block, áp **đồng loạt mọi agent và mọi size** nên không tạo lợi
-thế riêng — đó là luận điểm fairness.
+Cả hai **viết tay vào `.env`** — `isd-exp serve sync-agents` chỉ ghi managed block endpoint
+(`{PROVIDER,BASE_URLS,NAME,API_KEY_ENVS}`), không ghi flag; đó chính là lý do pre-flight (mục 6.1) phải kiểm chúng. Áp
+**đồng loạt mọi agent và mọi size** nên không tạo lợi thế riêng — đó là luận điểm fairness.
+
+Ladder serve **để nguyên thinking**. `--reasoning-parser qwen3` (mục 3.2) tách phần suy nghĩ sang `reasoning_content`
+nên `content` vẫn sạch cho đường tool-call/JSON; harness ghi lại kênh đó vào transcript nhưng không bao giờ gửi ngược cho
+model, và một lượt chỉ có suy nghĩ bị tính như lượt rỗng.
 
 ### 3.4 Tạo pod + sync env
 
@@ -424,11 +428,11 @@ Cấu trúc results: `results/test_90_benchmark_<model>_r<N>_<ts>/test_90/<scena
 ### 6.1 Pre-flight
 
 ```bash
-./isd-exp audit preflight     # --no-smoke để bỏ smoke call
+./isd-exp audit preflight
 ```
 
-Check: 4 pod alive + auth (401/200), model khớp slot, smoke non-thinking thật sự ăn (response **không có**
-`reasoning_content`, `content` có chữ), 3 flag bảo hộ có mặt, disk trống.
+Check: 4 pod alive + auth (401/200), model khớp slot, smoke completion (pod sinh ra chữ ở `content` **hoặc**
+`reasoning_content` — thinking đang bật nên rỗng `content` chưa phải lỗi), 2 flag bảo hộ có mặt, disk trống.
 
 ### 6.2 In-flight (mỗi 30–60 phút)
 
@@ -472,7 +476,7 @@ activities / evaluation) có rỗng không. Quan trọng: output parse được 
 | `Error code: 524`                | Proxy cắt call >120s          | Dừng, kiểm `AGENT_MODEL_STREAMING`         |
 | `Error code: 400` max context    | Cap không ăn / prompt quá dài | Kiểm `AGENT_MODEL_MAX_OUTPUT_TOKENS`          |
 | `기본 출력 반환` / stub marker         | Baseline ghi default output   | Loại scenario/run, tìm nguyên nhân rỗng    |
-| `응답 길이: 0`                       | Model trả rỗng                | Kiểm non-thinking flag + pod log           |
+| `응답 길이: 0`                       | Model trả rỗng                | Kiểm pod log + cap completion (<think>)    |
 | `token_usage = 0` hàng loạt      | Accounting hỏng               | Sửa trước khi chạy tiếp — số token sai hết |
 | `token_usage = 0` ở **một số** agent | Agent đó dùng `LLMConfig` đã tách khỏi counter của run | Counter đi theo lineage của config: `_get_agent_runner` mở scope bằng `new_token_scope()`, `copy_with()` chia sẻ lại. Chạy `pytest shared/tests/test_token_accounting_reaches_agents.py` |
 | Model name metadata ≠ run dir    | Nhầm URL pod ↔ slot           | Loại run, kiểm managed block               |
@@ -666,7 +670,7 @@ Hình (cả `.pdf` vector lẫn `.png` preview; text trong hình tiếng Anh, ca
 
 `--demo` render bằng dữ liệu synthetic để test layout. Thiếu alignment/token data ⇒ hình tương ứng skip kèm cảnh báo.
 
-Điều kiện serve phải ghi trong paper (bf16, 16k, non-thinking, streaming, cap 8192) — lấy nguyên văn từ mục 3.
+Điều kiện serve phải ghi trong paper (bf16, 16k, streaming, cap 8192) — lấy nguyên văn từ mục 3.
 
 ## 9.1 Cổng cuối: audit artifact
 

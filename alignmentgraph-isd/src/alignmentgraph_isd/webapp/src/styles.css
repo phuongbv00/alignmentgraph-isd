@@ -1032,6 +1032,15 @@ a.btn:hover { background: #f1f5f9; }
   opacity: 0.55;
 }
 
+/* The model's reasoning channel. Dimmed the same way and for the same reason:
+   it is part of what this agent did, and not part of what the model is sent
+   or of the meter above it. No border colour — the blocks are coloured by the
+   budget part they count toward, and this one counts toward none. */
+.ctx-thinking {
+  opacity: 0.55;
+  margin: 4px 0 4px 8px;
+}
+
 .ctx-badge {
   display: inline-block;
   margin: 2px 0 2px 2px;

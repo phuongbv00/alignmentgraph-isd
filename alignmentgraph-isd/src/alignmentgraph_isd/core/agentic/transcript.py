@@ -64,9 +64,21 @@ def serialize_messages(messages: list) -> list[dict]:
     Copies, always. The live list is appended to, trimmed, and — in the single
     arm — rewritten in place by ``_compact``, so a consumer handed the objects
     would be reading something that changes underneath it.
+
+    The model's REASONING channel is read off the object too, when the backend
+    reports one separately (``additional_kwargs["reasoning_content"]`` — what a
+    serving-side reasoning parser splits out of ``content``). It belongs in the
+    record: the transcript answers what this agent did, and thinking that only
+    ever existed in a discarded field answers it for half the turn. It is NOT
+    sent anywhere — the model is given the live message objects, never this
+    copy, and an ``AIMessage``'s ``additional_kwargs`` does not survive the
+    conversion to a request body, so the model is never shown its own
+    reasoning back. It is likewise NOT counted by ``message_size``: that
+    measures what is being sent, and this is not.
     """
     out: list[dict] = []
     for message in messages:
+        reasoning = ""
         if isinstance(message, dict):
             role = str(message.get("role") or "")
             content = message.get("content", "")
@@ -77,9 +89,14 @@ def serialize_messages(messages: list) -> list[dict]:
             content = getattr(message, "content", "")
             calls = getattr(message, "tool_calls", None)
             name = ""
+            extra = getattr(message, "additional_kwargs", None)
+            if isinstance(extra, dict):
+                reasoning = str(extra.get("reasoning_content") or "")
         entry: dict = {"role": role, "content": str(content or "")}
         if name:
             entry["name"] = str(name)
+        if reasoning:
+            entry["reasoning"] = reasoning
         if calls:
             try:
                 entry["tool_calls"] = json.loads(

@@ -359,7 +359,7 @@ def test_neither_arm_reads_its_settings_off_the_other():
     # of one is the shape a drift starts from, so there must not be one.
     root = pathlib.Path(react.__file__).parent
     meter = inspect.getsource(turn_mod.TurnMeter)
-    for allowance in ("REPEAT_ALLOWANCE", "THINKING_ALLOWANCE", "ERROR_ALLOWANCE"):
+    for allowance in ("REPEAT_ALLOWANCE", "ERROR_ALLOWANCE"):
         assert f"budget.{allowance}" in meter, f"TurnMeter does not read {allowance}"
         for module in ("react.py", "loop.py"):
             assert allowance not in (root / module).read_text(), (

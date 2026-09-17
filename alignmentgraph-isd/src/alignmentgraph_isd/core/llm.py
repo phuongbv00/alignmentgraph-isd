@@ -34,7 +34,6 @@ def llm_factory_from_env(
     api_key: str = "",
     temperature: float | None = None,
     max_tokens: int | None = None,
-    disable_thinking: bool = False,
     http_client: Any = None,
     read_env: bool = True,
 ) -> ChatModelFactory | None:
@@ -50,10 +49,6 @@ def llm_factory_from_env(
     the fallback in place, a connection saved with no key silently borrows
     ``AGENT_MODEL_API_KEY`` from the shell, and what the UI shows stops being
     what the run uses.
-
-    ``disable_thinking`` is OpenAI-compatible only and has no environment
-    fallback in either direction: it is a property of the endpoint being
-    served, so the caller that knows the endpoint states it.
 
     Returns ``None`` when no model name can be resolved, so callers can keep
     their existing "llm_factory not configured" error path.
@@ -112,22 +107,6 @@ def llm_factory_from_env(
                 ) from exc
             if resolved_base_url:
                 kwargs["base_url"] = resolved_base_url
-            if disable_thinking:
-                # A CLIENT-side request field, not a server default: vLLM
-                # passes `chat_template_kwargs` into the Jinja chat template,
-                # and Qwen3's template branches on `enable_thinking` to prefill
-                # an empty <think></think> so the model never opens a reasoning
-                # block. Same mechanism as the benchmark's
-                # AGENT_MODEL_DISABLE_THINKING (shared/llm/factory.py).
-                #
-                # Without it a small Qwen3 spends its whole completion budget
-                # inside `reasoning_content`, which arrives with empty
-                # `content`, no tool calls and finish_reason "stop" — measured
-                # on run 24343e4d: 12 of 78 calls, 47-405 billed tokens each,
-                # every one charged a full turn as an invalid turn.
-                kwargs["extra_body"] = {
-                    "chat_template_kwargs": {"enable_thinking": False}
-                }
             if http_client is not None:
                 kwargs["http_client"] = http_client
             return ChatOpenAI(**kwargs)
