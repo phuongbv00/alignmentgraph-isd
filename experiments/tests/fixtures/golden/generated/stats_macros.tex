@@ -1,0 +1,108 @@
+% stats_macros.tex — headline numbers for prose
+
+% number of model sizes in the ladder
+\newcommand{\ladderNumModels}{2}
+% independent runs per model size
+\newcommand{\ladderNumRunsPerModel}{1}
+% scenarios per run (test_90)
+\newcommand{\ladderNumScenarios}{6}
+% agents compared (6 baselines + proposed)
+\newcommand{\ladderNumAgents}{3}
+% alignmentgraph-isd pooled mean ADDIE (lead LLM judge score) at qwen3.5-0.8b
+\newcommand{\rqOneHarnessAddieZeroEightB}{80.90}
+% alignmentgraph-isd pooled mean Trajectory at qwen3.5-0.8b
+\newcommand{\rqOneHarnessTrajZeroEightB}{75.39}
+% alignmentgraph-isd pooled mean Total (benchmark composite) at qwen3.5-0.8b
+\newcommand{\rqOneHarnessTotalZeroEightB}{79.91}
+% alignmentgraph-isd SD across scenarios of ADDIE at qwen3.5-0.8b (ADDIE, matching the lead signal — NOT the Total SD, and NOT a run-to-run SD)
+\newcommand{\rqOneHarnessSDAddieZeroEightB}{1.87}
+% best baseline (react-isd) pooled mean ADDIE at qwen3.5-0.8b
+\newcommand{\rqOneBestBaselineAddieZeroEightB}{70.35}
+% name of the best baseline at qwen3.5-0.8b
+\newcommand{\rqOneBestBaselineNameZeroEightB}{ReAct-ISD}
+% that same baseline (react-isd) pooled mean Total (benchmark composite) at qwen3.5-0.8b
+\newcommand{\rqOneBestBaselineTotalZeroEightB}{69.19}
+% ADDIE mean paired delta alignmentgraph-isd - react-isd at qwen3.5-0.8b (n=5)
+\newcommand{\rqOneDeltaBestAddieZeroEightB}{10.62}
+% bootstrap 95% CI lower bound of that ADDIE delta
+\newcommand{\rqOneDeltaBestAddieCILoZeroEightB}{9.74}
+% bootstrap 95% CI upper bound of that ADDIE delta
+\newcommand{\rqOneDeltaBestAddieCIHiZeroEightB}{11.73}
+% paired scenarios backing that ADDIE delta
+\newcommand{\rqOneDeltaBestAddieNZeroEightB}{5}
+% max Holm-adjusted p over the 6 ADDIE comparisons at qwen3.5-0.8b
+\newcommand{\rqOnePHolmMaxZeroEightB}{0.125}
+% alignmentgraph-isd pooled mean ADDIE (lead LLM judge score) at qwen3.5-4b
+\newcommand{\rqOneHarnessAddieFourB}{83.82}
+% alignmentgraph-isd pooled mean Trajectory at qwen3.5-4b
+\newcommand{\rqOneHarnessTrajFourB}{77.15}
+% alignmentgraph-isd pooled mean Total (benchmark composite) at qwen3.5-4b
+\newcommand{\rqOneHarnessTotalFourB}{81.43}
+% alignmentgraph-isd SD across scenarios of ADDIE at qwen3.5-4b (ADDIE, matching the lead signal — NOT the Total SD, and NOT a run-to-run SD)
+\newcommand{\rqOneHarnessSDAddieFourB}{4.04}
+% best baseline (react-isd) pooled mean ADDIE at qwen3.5-4b
+\newcommand{\rqOneBestBaselineAddieFourB}{70.26}
+% name of the best baseline at qwen3.5-4b
+\newcommand{\rqOneBestBaselineNameFourB}{ReAct-ISD}
+% that same baseline (react-isd) pooled mean Total (benchmark composite) at qwen3.5-4b
+\newcommand{\rqOneBestBaselineTotalFourB}{68.74}
+% ADDIE mean paired delta alignmentgraph-isd - react-isd at qwen3.5-4b (n=5)
+\newcommand{\rqOneDeltaBestAddieFourB}{12.04}
+% bootstrap 95% CI lower bound of that ADDIE delta
+\newcommand{\rqOneDeltaBestAddieCILoFourB}{9.26}
+% bootstrap 95% CI upper bound of that ADDIE delta
+\newcommand{\rqOneDeltaBestAddieCIHiFourB}{14.82}
+% paired scenarios backing that ADDIE delta
+\newcommand{\rqOneDeltaBestAddieNFourB}{5}
+% max Holm-adjusted p over the 6 ADDIE comparisons at qwen3.5-4b
+\newcommand{\rqOnePHolmMaxFourB}{0.125}
+% max Holm-adjusted p across ALL sizes x baselines (complete-case)
+\newcommand{\rqOnePHolmMaxAll}{0.125}
+% alignmentgraph-isd mean TOTAL (benchmark composite, not the lead signal) at qwen3.5-4b minus qwen3.5-0.8b; positive = the larger model scores higher
+\newcommand{\rqOneHarnessTotalGainLargestOverSmallest}{1.51}
+% baseline the DiD is taken against: strongest baseline by ADDIE at the largest size
+\newcommand{\rqOneDiDBaselineName}{ReAct-ISD}
+% DiD of delta(proposed - react-isd) on ADDIE: largest minus smallest size (n=5 paired scenarios)
+\newcommand{\rqOneDiDVsBestBaseline}{1.42}
+% bootstrap 95% CI lower bound of that DiD
+\newcommand{\rqOneDiDVsBestBaselineCILo}{-1.93}
+% bootstrap 95% CI upper bound of that DiD
+\newcommand{\rqOneDiDVsBestBaselineCIHi}{4.75}
+% Wilcoxon p of the per-scenario DiD values vs 0
+\newcommand{\rqOneDiDVsBestBaselineP}{0.812}
+% paired scenarios backing that DiD
+\newcommand{\rqOneDiDVsBestBaselineN}{5}
+% OLS slope of delta(proposed - react-isd) per size step over 2 sizes (n=5 scenarios common to all sizes)
+\newcommand{\rqOneTrendSlopeVsBaseline}{1.42}
+% scenarios common to all sizes backing that slope
+\newcommand{\rqOneTrendSlopeVsBaselineN}{5}
+% alignmentgraph-isd mean objective_assessment_similarity at qwen3.5-0.8b (1 of the 6 alignment scores; the panel has no primary endpoint, so this is not a summary of the panel — see tab_rq2_panel.tex for all 6)
+\newcommand{\rqTwoHarnessSimZeroEightB}{0.543}
+% bootstrap 95% CI lower bound of that mean
+\newcommand{\rqTwoHarnessSimCILoZeroEightB}{0.517}
+% bootstrap 95% CI upper bound of that mean
+\newcommand{\rqTwoHarnessSimCIHiZeroEightB}{0.573}
+% max Holm-adjusted p over the objective_assessment_similarity comparisons at qwen3.5-0.8b
+\newcommand{\rqTwoSimPHolmMaxZeroEightB}{0.125}
+% alignmentgraph-isd mean objective_assessment_similarity at qwen3.5-4b (1 of the 6 alignment scores; the panel has no primary endpoint, so this is not a summary of the panel — see tab_rq2_panel.tex for all 6)
+\newcommand{\rqTwoHarnessSimFourB}{0.591}
+% bootstrap 95% CI lower bound of that mean
+\newcommand{\rqTwoHarnessSimCILoFourB}{0.571}
+% bootstrap 95% CI upper bound of that mean
+\newcommand{\rqTwoHarnessSimCIHiFourB}{0.614}
+% max Holm-adjusted p over the objective_assessment_similarity comparisons at qwen3.5-4b
+\newcommand{\rqTwoSimPHolmMaxFourB}{0.125}
+% max Holm-adjusted p across ALL sizes for objective_assessment_similarity ONLY — 1 of the 6 alignment scores, corrected within that signal (6 comparisons). For the whole-panel family use rqTwoPanelPHolmMaxAll; prose must not present this as a panel-wide result
+\newcommand{\rqTwoSimPHolmMaxAll}{0.125}
+% max p across ALL sizes and ALL alignment scores under the conservative whole-panel Holm correction
+\newcommand{\rqTwoPanelPHolmMaxAll}{0.562}
+% objective->assessment similarity DiD (largest - smallest size) of delta(proposed - react-isd), n=6 paired scenarios
+\newcommand{\rqTwoSimDiDVsBaseline}{-0.004}
+% bootstrap 95% CI lower bound of that similarity DiD
+\newcommand{\rqTwoSimDiDVsBaselineCILo}{-0.062}
+% bootstrap 95% CI upper bound of that similarity DiD
+\newcommand{\rqTwoSimDiDVsBaselineCIHi}{0.052}
+% Wilcoxon p of the per-scenario similarity DiD values vs 0
+\newcommand{\rqTwoSimDiDVsBaselineP}{0.844}
+% paired scenarios backing that similarity DiD
+\newcommand{\rqTwoSimDiDVsBaselineN}{6}

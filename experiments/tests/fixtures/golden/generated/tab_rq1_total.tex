@@ -1,0 +1,19 @@
+% tab_rq1_ladder_total.tex — LLM judge ladder table on Total
+
+\begin{table*}[t]
+  \caption{LLM judge score (Total) on the Qwen size ladder. Cell: mean per-scenario \texttt{total\_score} ($0.7\,$ADDIE$+0.3\,$Traj), the benchmark's own composite, with the SD across scenarios in parentheses; $n$ = scenarios scored in every run of the cell. \textbf{Bold} = column maximum, not a significance claim.}
+  \label{tab:rq1-ladder-total}
+  \small
+  \begin{tabular}{@{}lr@{\hskip 3pt}rr@{\hskip 3pt}r@{}}
+    \toprule
+    & \multicolumn{2}{c}{Qwen3.5-0.8B} & \multicolumn{2}{c}{Qwen3.5-4B} \\
+    \cmidrule(lr){2-3}\cmidrule(lr){4-5}
+    Agent & Total {\scriptsize(SD)} & $n$ & Total {\scriptsize(SD)} & $n$ \\
+    \midrule
+    Baseline & 59.25~{\scriptsize(3.03)} & 5\textsuperscript{*} & 60.91~{\scriptsize(2.69)} & 5\textsuperscript{*} \\
+    ReAct-ISD & 69.19~{\scriptsize(1.73)} & 5\textsuperscript{*} & 68.74~{\scriptsize(3.00)} & 5\textsuperscript{*} \\
+    \textbf{AlignmentGraph-ISD} & \textbf{79.91}~{\scriptsize(1.68)} & 6 & \textbf{81.43}~{\scriptsize(3.80)} & 6 \\
+    \bottomrule
+  \end{tabular}
+  \par\smallskip\footnotesize\textsuperscript{*}$n<$ total scenarios: the agent failed or produced no output in at least one run (complete-case; see stats\_summary.md).
+\end{table*}

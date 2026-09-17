@@ -1,0 +1,21 @@
+% tab_cost.tex — cost / deployability profile
+% source: 2 ladder run dirs, read from *_trajectory.json metadata.token_usage
+
+\begin{table*}[t]
+  \caption{Cost profile on the Qwen size ladder. Each cell: median per-scenario total tokens (thousands), model calls and wall-clock seconds, with $n$ = (scenario, run) cells that produced a trajectory out of 6.}
+  \label{tab:cost}
+  \footnotesize
+  \setlength{\tabcolsep}{2pt}
+  \begin{tabular}{@{}lr@{\hskip 3pt}r@{\hskip 3pt}r@{\hskip 3pt}rr@{\hskip 3pt}r@{\hskip 3pt}r@{\hskip 3pt}r@{}}
+    \toprule
+    & \multicolumn{4}{c}{Qwen3.5-0.8B} & \multicolumn{4}{c}{Qwen3.5-4B} \\
+    \cmidrule(lr){2-5}\cmidrule(lr){6-9}
+    Agent & Tok.\,k & Calls & Sec. & $n$ & Tok.\,k & Calls & Sec. & $n$ \\
+    \midrule
+    Baseline & 11.5 & -- & 10 & 5\textsuperscript{*} & 11.5 & -- & 20 & 5\textsuperscript{*} \\
+    ReAct-ISD & 22.9 & -- & 20 & 6 & 22.9 & -- & 20 & 6 \\
+    \textbf{AlignmentGraph-ISD} & 697.1 & -- & 356 & 6 & 701.0 & -- & 362 & 6 \\
+    \bottomrule
+  \end{tabular}
+  \par\smallskip\footnotesize\textsuperscript{*}$n$ below 95\% of cells: the agent crashed on the rest and left no artifact, so its cost here is conditional on the scenarios it survived and reads cheaper than it is. \emph{Wall-clock is throughput under load, not latency: the ladder ran ? scenarios $\times$ ? agents concurrently (up to None in-flight designs) against 1 vLLM endpoints per size, so per-scenario seconds include queueing behind the other agents and are not a single-user response time.} Tokens are read from \texttt{metadata.token\_usage}; the top-level \texttt{total\_tokens} and \texttt{cost\_usd} fields are not populated consistently and are not used.
+\end{table*}

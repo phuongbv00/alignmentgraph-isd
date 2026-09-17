@@ -3,11 +3,11 @@
 > **Cập nhật: 2026-07-30.** Nguồn duy nhất: 12 run dir
 > `isd-agent-benchmark/results/test_90_benchmark_Qwen3.5-{0.8B,2B,4B,9B}_r{1.2.3}_20260726_*`
 > (chạy 2026-07-26, **10 agent trong cùng mỗi run**: 6 đối sánh + harness + 3 arm ablation) →
-> `04_audit_postrun.py` → `06_score_alignment.py` (5 arm instrument) → `07_pool_ladder_runs.py` →
-> `results/pooled_ladder.json` + `pooled_ablation.bk.json` → `09`/`10`/`11`/`12` → `docs/generated/`.
+> `04_audit_postrun.py` → `isd-exp score` (5 arm instrument) → `isd-exp comparison pool` →
+> `results/pooled_comparison.json` + `pooled_ablation.json` → `09`/`10`/`11`/`12` → `docs/generated/`.
 > Mọi số dưới đây đọc từ hai file pooled đó; đừng sửa tay file này, hãy sửa nguồn rồi sinh lại.
 >
-> **Bản dump gộp để tra số**: `15_gen_facts_sheet.py` → `results/generated/facts.md` (đủ) và `facts_brief.md`
+> **Bản dump gộp để tra số**: `isd-exp report facts` → `results/generated/facts.md` (đủ) và `facts_brief.md`
 > (mục 0–2). File này là **diễn giải**; facts.md là **số**. Trước khi viết bất kỳ câu nào có "mọi size", "mạnh nhất
 > ở…", "N/M tín hiệu", đọc roll-up đã tính sẵn ở facts §2.3–2.5 thay vì đếm ô bằng mắt — đặc biệt §2.5, bảng liệt kê
 > đúng những chỗ mà trích một họ tín hiệu thôi sẽ xuyên tạc kết quả. Toàn bộ số trong file này đã được đối chiếu với
@@ -36,7 +36,7 @@ correspondence do encoder đo; họ B cognitive demand do Bloom classifier đo).
 họ A là **mean-max cosine đã rectify** `max(0, cos)` trên [0,1] — đây là chọn thang, **không** phải ngưỡng khớp, và
 protocol không có ngưỡng ở bất kỳ đâu; `porter_mean` là **trung bình của ba chỉ số Porter đôi một**
 (mục tiêu↔đánh giá / ↔hoạt động / ↔lượng giá), không phải một chỉ số đơn. Multiplicity báo hai tầng: `p_holm`
-trong từng tín hiệu và `p_holm_panel` trên toàn panel × baseline. Đặc tả: `docs/rq2_protocol.md`.
+trong từng tín hiệu và `p_holm_panel` trên toàn panel × baseline. Đặc tả: `docs/alignment_protocol.md`.
 
 ## 0. Audit + output failure
 

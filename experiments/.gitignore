@@ -1,0 +1,28 @@
+# Model checkpoints. The Bloom BERT head is 419 MB and is validity evidence,
+# not a cache: models/bloom-bert-edm2022/held_out_metrics.json carries the
+# kappa the paper cites. Ignored here, moved (never retrained) between machines.
+models/
+
+# Experiment outputs: run dirs, pooled JSON, generated tables/figures.
+results/
+
+# Embedding caches sit beside the run dirs they were built for.
+.embed_cache_*.sqlite
+
+# Credentials and endpoints, including the managed blocks the serve commands write.
+.env
+
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+
+# The synthetic run tree is BUILT by tests/factory.py, not committed: ~250
+# small JSON files that a 200-line factory reproduces exactly. The frozen
+# pooled JSON and generated artifacts under tests/fixtures/golden/ ARE
+# committed — those are the oracle, produced once by the scripts this package
+# replaced, and they cannot be regenerated.
+tests/fixtures/mini_run/

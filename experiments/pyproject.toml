@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "isd-experiments"
+version = "0.1.0"
+description = "Thesis experiments driving the ISD agent benchmark: run, score, pool, report."
+requires-python = ">=3.11"
+# The core install carries no INFERENCE stack -- no torch, no transformers, no
+# langchain. That is what moving the alignment protocol out of the benchmark's
+# evaluator bought: isd-evaluator is now needed by exactly one command
+# (`audit repair`), so it is an extra, and generating every table and figure in
+# the paper needs matplotlib alone.
+#
+# `openai` is here because the primary encoder arm is served over an
+# OpenAI-compatible embeddings endpoint, and it is a thin HTTP client rather
+# than a model runtime -- a few hundred KB against torch's two gigabytes.
+dependencies = [
+    "matplotlib>=3.8",
+    "openai>=1.0",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+# Local sentence-transformers encoders for the alignment sensitivity arms.
+encoder = ["sentence-transformers>=2.5", "torch>=2.2"]
+# Fine-tuning and local inference of the 6-way Bloom classifier.
+bloom = ["transformers>=4.40", "accelerate>=0.30", "torch>=2.2", "scikit-learn>=1.4"]
+# `audit repair` only: ComparisonReporter plus the isd-evaluator console script.
+# Pulls openai + langchain, which is why it is not in the core.
+repair = ["isd-evaluator"]
+# scipy is a TEST ORACLE for the hand-rolled statistics, never a runtime
+# dependency: stats.py stays stdlib-only so results cannot drift with a
+# library version. See tests/test_stats.py.
+dev = ["pytest>=8", "ruff>=0.4", "scipy>=1.12"]
+all = ["isd-experiments[encoder,bloom,repair]"]
+
+[project.scripts]
+isd-exp = "isd_experiments.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/isd_experiments"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]

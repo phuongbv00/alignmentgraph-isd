@@ -123,7 +123,7 @@ Tổng mức giảm khoảng **60–70% khối lượng generation** so với th
 > độc lập mỗi ô và 2 judge cố định; `Lo_trinh` — viết sau, dành riêng cho lộ trình thực nghiệm —
 > chốt 1 run deterministic mỗi ô, 1 judge full cộng 1 judge corroboration subset, và targeted
 > repeat thay cho nhân 3. **`Lo_trinh` thắng.** Đây là con số đang dùng trong `CLAUDE.md` và
-> trong pipeline `07_pool_ladder_runs.py`. Hệ quả kéo theo: không tồn tại SD giữa các run ở ô
+> trong pipeline `isd-exp comparison pool`. Hệ quả kéo theo: không tồn tại SD giữa các run ở ô
 > chỉ chạy một lần, nên spread mô tả phải là SD **across scenarios**, còn khoảng tin cậy là
 > bootstrap.
 
@@ -321,11 +321,11 @@ Gộp phụ lục của `Nhan_xet` và §5 của `Lo_trinh`.
 | Yêu cầu | Nơi đã ghi nhận |
 |---|---|
 | Luật claim, câu thay thế, mục bắt buộc khai | `docs/paper/claim-rules.md` |
-| Panel 6 tín hiệu, sensitivity star, no primary endpoint | `docs/rq2_protocol.md`, `evaluator/.../metrics/alignment.py` |
-| 1 run/ô, SD across scenarios, failure=0 là layer chính | `CLAUDE.md`, `07_pool_ladder_runs.py`, `09_gen_paper_tables.py` |
-| RQ1 báo 3 tín hiệu song song, ADDIE dẫn narrative | `RQ1_SIGNALS` trong `07_pool_ladder_runs.py` |
-| TN2 là thí nghiệm riêng trên `test_30`, A0 chạy lại trong TN2 | `CLAUDE.md`, `scripts/alignmentgraph-isd-bench/ablation/` |
-| Lệnh tạo `test_30` disjoint seed 42 | `CLAUDE.md` mục Common commands, `2_split_stratified_subset.py` |
+| Panel 6 tín hiệu, sensitivity star, no primary endpoint | `docs/alignment_protocol.md`, `experiments/.../alignment/protocol.py` |
+| 1 run/ô, SD across scenarios, failure=0 là layer chính | `CLAUDE.md`, `isd-exp comparison pool`, `isd-exp report tables` |
+| RQ1 báo 3 tín hiệu song song, ADDIE dẫn narrative | `RQ1_SIGNALS` trong `isd-exp comparison pool` |
+| TN2 là thí nghiệm riêng trên `test_30`, A0 chạy lại trong TN2 | `CLAUDE.md`, `experiments/ (ablation stage)` |
+| Lệnh tạo `test_30` disjoint seed 42 | `CLAUDE.md` mục Common commands, `isd-exp data split` |
 | Quy trình chạy, audit, pooling, sinh bảng | `docs/benchmark_guides.md` |
 
 Các mục còn thiếu, kiểm tại 2026-09-16:
@@ -333,11 +333,11 @@ Các mục còn thiếu, kiểm tại 2026-09-16:
 - **Trajectory hai lớp chưa triển khai.** `evaluator/.../metrics/trajectory.py:258` vẫn cắt cứng
   `tool_calls[:20]`, chưa có lớp diagnostic cap 120 và chưa có cơ chế chấm lại trajectory offline.
   Đây là việc phải chốt trước `test_90`.
-- **Cache/resume theo hash chưa đủ.** `06_score_alignment.py` có resume ở mức chấm và
+- **Cache/resume theo hash chưa đủ.** `isd-exp score` có resume ở mức chấm và
   `02_run_ladder.sh` cho chạy tiếp ladder dở, nhưng chưa có khóa hash theo
   scenario/agent/size cho generation, và chưa có cache judge score theo output hash.
-- **Manifest code freeze chưa có.** Chỉ tồn tại `results/archived/ladder_20260726_142541/ladder_manifest.json`
+- **Manifest code freeze chưa có.** Chỉ tồn tại `results/archived/ladder_20260726_142541/comparison_manifest.json`
   của ladder cũ.
 - **Expert validation chưa có gì.** Chưa có rubric, phiếu chấm, hay thư mục package.
-- **Preflight** mới có `01_audit_preflight.py`; cần đối chiếu xem đã phủ đủ quota, disk, resume và
+- **Preflight** mới có `isd-exp audit preflight`; cần đối chiếu xem đã phủ đủ quota, disk, resume và
   estimate cost như giai đoạn 3 yêu cầu chưa.

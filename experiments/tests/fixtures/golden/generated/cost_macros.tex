@@ -1,0 +1,37 @@
+% cost_macros.tex — cost numbers for prose
+% source: 2 ladder run dirs, read from *_trajectory.json metadata.token_usage
+
+% median per-scenario total tokens (thousands) of the proposed harness at 0.8B
+\newcommand{\costHarnessTokensZeroEightB}{697.1}
+% median per-scenario model calls of the proposed harness at 0.8B
+\newcommand{\costHarnessCallsZeroEightB}{--}
+% median per-scenario wall-clock seconds of the proposed harness at 0.8B — THROUGHPUT UNDER CONCURRENCY, not latency
+\newcommand{\costHarnessSecondsZeroEightB}{356}
+% proposed / cheapest-baseline (baseline) median total tokens at 0.8B; >1 means the harness costs more
+\newcommand{\costTokenRatioVsCheapestZeroEightB}{60.8}
+% proposed / cheapest baseline THAT COMPLETED the benchmark (react-isd, coverage 100%) median total tokens at 0.8B — the honest headline multiplier, since a crashed baseline's median is a survivors-only figure
+\newcommand{\costTokenRatioVsCheapestCompleteZeroEightB}{30.4}
+% proposed / median-across-baselines token multiplier at 0.8B
+\newcommand{\costTokenRatioVsMedianBaselineZeroEightB}{45.6}
+% median per-scenario total tokens (thousands) of the proposed harness at 4B
+\newcommand{\costHarnessTokensFourB}{701.0}
+% median per-scenario model calls of the proposed harness at 4B
+\newcommand{\costHarnessCallsFourB}{--}
+% median per-scenario wall-clock seconds of the proposed harness at 4B — THROUGHPUT UNDER CONCURRENCY, not latency
+\newcommand{\costHarnessSecondsFourB}{362}
+% proposed / cheapest-baseline (baseline) median total tokens at 4B; >1 means the harness costs more
+\newcommand{\costTokenRatioVsCheapestFourB}{61.2}
+% proposed / cheapest baseline THAT COMPLETED the benchmark (react-isd, coverage 100%) median total tokens at 4B — the honest headline multiplier, since a crashed baseline's median is a survivors-only figure
+\newcommand{\costTokenRatioVsCheapestCompleteFourB}{30.6}
+% proposed / median-across-baselines token multiplier at 4B
+\newcommand{\costTokenRatioVsMedianBaselineFourB}{45.9}
+% smallest proposed/baseline median-token multiplier across all sizes and baselines
+\newcommand{\costTokenRatioMinAll}{30.4}
+% largest proposed/baseline median-token multiplier across all sizes and baselines
+\newcommand{\costTokenRatioMaxAll}{61.2}
+% agent x size cell with the lowest artifact coverage in the ladder
+\newcommand{\costWorstCoverageAgent}{Baseline}
+% model size of that lowest-coverage cell
+\newcommand{\costWorstCoverageSize}{0.8B}
+% percent of (scenario, run) cells in which that agent produced an artifact at all
+\newcommand{\costWorstCoveragePct}{83}

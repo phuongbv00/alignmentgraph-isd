@@ -1,0 +1,19 @@
+% tab_rq2_alignment.tex — objective->assessment similarity x model sizes
+
+\begin{table}[t]
+  \caption{Objective$\to$assessment similarity, the \emph{measures} leg of \textit{aligned(o)}. Each cell: mean per-scenario mean-max rectified cosine (SD), pooled mean-of-runs; $n$ = scenarios with at least one scored run. Remaining 5 panel signals: \Cref{tab:rq2-panel}.}
+  \label{tab:rq2-alignment}
+  \small
+  \begin{tabular}{@{}lr@{\hskip 3pt}rr@{\hskip 3pt}r@{}}
+    \toprule
+    & \multicolumn{2}{c}{Qwen3.5-0.8B} & \multicolumn{2}{c}{Qwen3.5-4B} \\
+    \cmidrule(lr){2-3}\cmidrule(lr){4-5}
+    Agent & Sim. (SD) & $n$ & Sim. (SD) & $n$ \\
+    \midrule
+    Baseline & 0.435 (0.05) & 5\textsuperscript{*} & 0.481 (0.04) & 5\textsuperscript{*} \\
+    ReAct-ISD & 0.465 (0.04) & 6 & 0.517 (0.05) & 6 \\
+    \textbf{AlignmentGraph-ISD} & 0.543 (0.04) & 6 & 0.591 (0.03) & 6 \\
+    \bottomrule
+  \end{tabular}
+  \par\smallskip\footnotesize \textsuperscript{*}$n<$ total scenarios: the agent produced no scorable output for the rest, or none on which this signal was defined, so the cell is conditioned on the scenarios it survived and is not comparable to a full-coverage cell. $n$ counts scenarios with \emph{at least one} scored run, a weaker condition than the all-3-runs complete case used in the LLM judge score tables. Instrument: primary arm --- encoder \texttt{tfidf-char}, Bloom classifier \texttt{lexicon}. The other sensitivity-star arms are reported separately.
+\end{table}

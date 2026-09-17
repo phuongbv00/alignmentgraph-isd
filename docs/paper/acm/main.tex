@@ -15,7 +15,7 @@
 \usepackage[capitalise]{cleveref}
 
 % Every experimental number in the prose comes from auto-generated macros in
-% docs/generated/ (synced by docs/scripts/sync_generated.sh); tables and figures are
+% docs/generated/ (synced by isd-exp report sync); tables and figures are
 % \input / \includegraphics from the same directory — never hand-typed.
 %
 % RESULTS PENDING (2026-09-10). TN1 and TN2 have not been run against the current
@@ -23,7 +23,7 @@
 % built 2026-07-30 from the retired LangGraph design, and porter_mean changed
 % definition on 2026-08-30, so even the panel numbers there are incomparable. Every
 % place a number belongs is marked \TBD. When TN1/TN2 are scored, regenerate, run
-% docs/scripts/sync_generated.sh, restore the four \input lines below, and replace
+% isd-exp report sync, restore the four \input lines below, and replace
 % each \TBD with the macro the generator emits for it.
 %   \input{../../generated/stats_macros}
 %   \input{../../generated/cost_macros}
@@ -140,9 +140,9 @@ detailed cost table; the main text reports ADDIE (\Cref{sec:rq1}), the panel
 summary (\Cref{sec:rq2}), and cost via the trade-off figure
 (\Cref{sec:cost}). These tables are generated from the TN1 and TN2 artifacts and
 are pending those runs.
-% \input{../../generated/tab_rq1_traj}
-% \input{../../generated/tab_rq1_total}
-% \input{../../generated/tab_rq2_alignment}
+% \input{../../generated/tab_judge_trajectory}
+% \input{../../generated/tab_judge_total}
+% \input{../../generated/tab_alignment}
 % \input{../../generated/tab_cost}
 
 \end{document}

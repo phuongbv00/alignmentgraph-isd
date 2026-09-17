@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Run the experiment CLI without installing or activating anything.
+#
+# `pip install -e experiments/` puts an `isd-exp` on the PATH of whichever
+# environment you installed into. This wrapper is for not having to: it finds
+# the venv next to itself and execs the CLI there, so `./isd-exp ...` works from
+# a cold shell.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PY="$HERE/.venv/bin/python"
+
+if [ ! -x "$PY" ]; then
+    cat >&2 <<EOF
+No environment at $HERE/.venv
+
+Create it once:
+  python3 -m venv "$HERE/.venv"
+  "$HERE/.venv/bin/pip" install -e "$HERE[dev]"
+
+Then re-run this command. Nothing needs to be activated or put on PATH.
+EOF
+    exit 1
+fi
+
+exec "$PY" -m isd_experiments.cli "$@"

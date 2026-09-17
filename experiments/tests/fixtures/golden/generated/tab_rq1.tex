@@ -1,0 +1,19 @@
+% tab_rq1_ladder.tex — LLM judge ladder table on ADDIE
+
+\begin{table*}[t]
+  \caption{LLM judge score (ADDIE) on the Qwen size ladder. Cell: mean per-scenario ADDIE rubric score (/100), with the SD across scenarios in parentheses; $n$ = scenarios scored in every run of the cell. \textbf{Bold} = column maximum, not a significance claim.}
+  \label{tab:rq1-ladder}
+  \small
+  \begin{tabular}{@{}lr@{\hskip 3pt}rr@{\hskip 3pt}r@{}}
+    \toprule
+    & \multicolumn{2}{c}{Qwen3.5-0.8B} & \multicolumn{2}{c}{Qwen3.5-4B} \\
+    \cmidrule(lr){2-3}\cmidrule(lr){4-5}
+    Agent & ADDIE {\scriptsize(SD)} & $n$ & ADDIE {\scriptsize(SD)} & $n$ \\
+    \midrule
+    Baseline & 60.67~{\scriptsize(3.57)} & 5\textsuperscript{*} & 62.39~{\scriptsize(2.69)} & 5\textsuperscript{*} \\
+    ReAct-ISD & 70.35~{\scriptsize(1.50)} & 5\textsuperscript{*} & 70.26~{\scriptsize(2.58)} & 5\textsuperscript{*} \\
+    \textbf{AlignmentGraph-ISD} & \textbf{80.90}~{\scriptsize(1.87)} & 6 & \textbf{83.82}~{\scriptsize(4.04)} & 6 \\
+    \bottomrule
+  \end{tabular}
+  \par\smallskip\footnotesize\textsuperscript{*}$n<$ total scenarios: the agent failed or produced no output in at least one run (complete-case; see stats\_summary.md).
+\end{table*}

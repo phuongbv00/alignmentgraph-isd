@@ -1,0 +1,233 @@
+# The experiment, declared.
+#
+# This file is the ONLY thing to edit to run a different model ladder, serve
+# from a different host, or change what the two experiments compare. Nothing in
+# src/ names a vendor or a model family; tests/test_no_vendor_names.py enforces
+# that.
+
+[serving]
+# "static" reads endpoints straight from this file or .env and calls nobody's
+# API -- it works with any OpenAI-compatible server (vLLM on a VPS, llama.cpp,
+# a hosted inference provider). "runpod" additionally discovers pod IDs through
+# the RunPod REST API and derives base URLs from them.
+provider = "static"
+# The API contract, not a vendor. shared/llm/factory.py dispatches on this.
+api_spec = "openai_compatible"
+# Name of the env var holding the key every rung authenticates with.
+key_env = "LLM_API_KEY"
+
+[serving.runpod]
+# Only read when provider = "runpod". The URL shape is data, not code, so a
+# different proxy scheme is a config edit.
+rest_base = "https://rest.runpod.io/v1"
+url_template = "https://{pod_id}-{port}.proxy.runpod.net/v1"
+port = 8000
+key_env = "RUNPOD_API_KEY"
+
+[models]
+# Display prefix for the ladder on figure axes, table headers and captions.
+# The generators used to hard-code "Qwen3.5-" in ten places, so swapping the
+# ladder left every figure still labelled with the old family. Empty string =
+# show the rung display alone.
+family = "Qwen3.5"
+
+# --- The ladder -------------------------------------------------------------
+# One table per rung. Add, remove or reorder freely; nothing downstream assumes
+# four rungs or any particular family.
+#   slot     env-quad prefix -> <SLOT>_AGENT_MODEL_{PROVIDER,BASE_URL,NAME,API_KEY_ENVS}
+#   model    what the server serves, passed to --agent-model-name
+#   params_b parameter count in billions: sort key, and the source of the
+#            LaTeX macro word (0.8 -> ZeroEightB), which used to be hard-coded
+#   display  column header in generated tables
+#   base_url optional; with provider="static" this is where the endpoint goes
+[[ladder]]
+slot = "qwen08b"
+model = "Qwen/Qwen3.5-0.8B"
+params_b = 0.8
+display = "0.8B"
+gpu = "RTX 4090"
+vram_gb = 24
+usd_per_hour = 0.69
+
+[[ladder]]
+slot = "qwen2b"
+model = "Qwen/Qwen3.5-2B"
+params_b = 2.0
+display = "2B"
+gpu = "RTX 4090"
+vram_gb = 24
+usd_per_hour = 0.69
+
+[[ladder]]
+slot = "qwen4b"
+model = "Qwen/Qwen3.5-4B"
+params_b = 4.0
+display = "4B"
+gpu = "RTX 4090"
+vram_gb = 24
+usd_per_hour = 0.69
+
+[[ladder]]
+slot = "qwen9b"
+model = "Qwen/Qwen3.5-9B"
+params_b = 9.0
+display = "9B"
+gpu = "RTX PRO 4500 Blackwell"
+vram_gb = 32
+usd_per_hour = 0.74
+
+# --- The two official experiments -------------------------------------------
+
+[experiment.comparison]
+# The proposed system against the benchmark's own agents, across the ladder.
+title = "COMPARISON - proposed system vs baselines across model scale"
+dataset = "test_90"
+rungs = "all"
+tags = ["c1"]
+rate_limit = "turbo"
+session_prefix = "comparison"
+proposed = "alignmentgraph-isd"
+agents = [
+    "alignmentgraph-isd",
+    "eduplanner",
+    "baseline",
+    "react-isd",
+    "addie-agent",
+    "dick-carey-agent",
+    "rpisd-agent",
+]
+
+[experiment.ablation]
+# 2x2: decomposition (agent_mode) x substrate (context_mode). The reference arm
+# is re-run here rather than borrowed from the comparison experiment -- judge
+# session, scenario set and size range all differ, so a delta is only clean
+# when both sides come from the same run.
+title = "ABLATION - decomposition x substrate"
+dataset = "test_30"
+rungs = ["qwen08b", "qwen4b"]          # both ends of the deployment envelope
+tags = ["a1"]
+rate_limit = "turbo"
+session_prefix = "ablation"
+reference = "alignmentgraph-isd"
+
+# Reference arm first: every delta is taken against it, and leading with it
+# makes that visible in the banner and the manifest.
+[[experiment.ablation.arms]]
+id = "alignmentgraph-isd"
+agent_mode = "multi"
+context_mode = "graph"
+[[experiment.ablation.arms]]
+id = "alignmentgraph-isd-multi-prose"
+agent_mode = "multi"
+context_mode = "prose"
+[[experiment.ablation.arms]]
+id = "alignmentgraph-isd-single-graph"
+agent_mode = "single"
+context_mode = "graph"
+[[experiment.ablation.arms]]
+id = "alignmentgraph-isd-single-prose"
+agent_mode = "single"
+context_mode = "prose"
+
+[experiment.tune]
+# Not an official experiment: cost estimation and budget calibration only.
+# Its results never enter the paper, which is why it has its own tag namespace.
+title = "TUNE - cost and budget calibration"
+dataset = "train_30"
+rungs = "all"
+tags = ["tune1"]
+rate_limit = "moderate"
+session_prefix = "tune"
+confirm = false
+agents = ["alignmentgraph-isd", "react-isd"]
+
+[experiment.canary]
+# Three scenarios, NO judge call. Reads gave_up, coverage, the violation
+# ledger, cost and the self-hosted alignment panel only.
+title = "CANARY - smoke the arms before spending on a judge"
+dataset = "train_30"
+rungs = ["qwen08b"]
+tags = ["canary"]
+rate_limit = "conservative"
+session_prefix = "canary"
+confirm = false
+scenario_limit = 3
+judge = false
+agents = ["alignmentgraph-isd", "react-isd"]
+
+# --- The alignment measurement ----------------------------------------------
+# Two instrument families, each with its own sensitivity axis. The sweep is a
+# STAR, not a grid: every arm deviates from the primary on exactly one axis.
+#
+#   kind = "api"    served over an OpenAI-compatible embeddings endpoint
+#          "local"  sentence-transformers in-process (downloads once)
+#          "tfidf"  pure Python, no download, bit-wise deterministic
+# The arm whose suffix is "" owns alignment_scores.json -- the artifact pooling
+# reads -- so exactly one encoder and one classifier may have an empty suffix.
+
+[alignment]
+primary_encoder = "nemotron"
+primary_bloom = "bertbloom"
+# What a cost figure assumes about serving, stated as a quote rather than a
+# measurement: the per-rung gpu/vram_gb/usd_per_hour above are list prices
+# recorded at deploy time, and every number derived from them is labelled
+# "Assumed". Naming the source here keeps that auditable when prices move.
+cost_source = "per-rung GPU and hourly list price recorded at deploy time (2026-07)"
+
+[alignment.encoders.nemotron]
+# LaTeX macro names cannot contain digits, so each arm needs a word form.
+macro = "Nemotron"
+display = "E1 Nemotron-8B"
+short = "Nemotron"
+kind = "api"
+model = "nvidia/llama-embed-nemotron-8b"
+suffix = ""
+
+[alignment.encoders.bgem3]
+# LaTeX macro names cannot contain digits, so each arm needs a word form.
+macro = "BgeMThree"
+display = "E2 bge-m3"
+short = "bge-m3"
+kind = "local"
+model = "BAAI/bge-m3"
+suffix = "bgem3"
+
+[alignment.encoders.granite]
+# LaTeX macro names cannot contain digits, so each arm needs a word form.
+macro = "Granite"
+display = "E3 granite-311m"
+short = "granite"
+kind = "local"
+model = "ibm-granite/granite-embedding-311m-multilingual-r2"
+suffix = "granite"
+
+[alignment.encoders.tfidf]
+# LaTeX macro names cannot contain digits, so each arm needs a word form.
+macro = "Tfidf"
+display = "E4 TF-IDF char-ngram"
+short = "TF-IDF"
+kind = "tfidf"
+model = "tfidf-char-ngram"
+suffix = "tfidf"
+
+# Family B. The primary is a 6-way BERT head fine-tuned on the EDM2022CLO
+# corpus; the lexicon arm is derived from the taxonomy rather than from
+# labelled data, which is what makes it a real independence check rather than
+# a mirror. A missing checkpoint SKIPS its arm -- it never falls back silently,
+# because a silent fallback changes the primary instrument without saying so.
+[alignment.bloom.bertbloom]
+# LaTeX macro names cannot contain digits, so each arm needs a word form.
+macro = "BertBloom"
+display = "B1 BERT 6-way"
+short = "BERT"
+kind = "transformer"
+checkpoint = "bloom-bert-edm2022"
+suffix = ""
+
+[alignment.bloom.lexicon]
+# LaTeX macro names cannot contain digits, so each arm needs a word form.
+macro = "Lexicon"
+display = "B2 Rule lexicon"
+short = "lexicon"
+kind = "lexicon"
+suffix = "lexicon"

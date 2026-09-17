@@ -1,0 +1,175 @@
+"""Formatting and emission for generated LaTeX artifacts.
+
+One copy. ``fmt_num`` existed in three generators and ``size_display`` in four,
+which is three and four chances for the manuscript to disagree with itself
+about how a number is written.
+
+Two rules the artifacts must obey, both checked by ``audit artifacts``:
+
+* **English with a decimal point.** ``87.77``, never ``87{,}77``. Do not
+  reintroduce a locale-dependent decimal mark.
+* **Macro names carry no digits.** LaTeX forbids them in a control sequence,
+  which is why a parameter count becomes a word (``ZeroEightB``) rather than
+  the number. ``config.macro_word`` generates those from the declared ladder.
+
+The macro REGISTRY is new and answers a real gap: four separate ``*_macros.tex``
+files are \\input into one document, and while `audit artifacts` catches a macro
+that is *used but undefined*, nothing caught one *defined twice* -- which is a
+hard pdflatex failure. Sharing this module makes a collision more likely, not
+less, so the registry ships with it.
+"""
+
+from __future__ import annotations
+
+import math
+import re
+from datetime import datetime
+
+#: A value that is absent rather than zero. Printed, not silently skipped: a
+#: blank cell reads as an oversight, "--" reads as a fact about the data.
+MISSING = "--"
+
+
+def fmt_num(x: float | None, nd: int = 2) -> str:
+    """87.77 -> '87.77'. Artifacts are English, so the decimal mark is a point."""
+    if x is None or (isinstance(x, float) and not math.isfinite(x)):
+        return MISSING
+    return f"{x:.{nd}f}"
+
+
+def fmt_p(p: float | None) -> str:
+    """A p-value for MATH MODE: '4.4\\times 10^{-16}', '<10^{-16}' or '0.003'.
+
+    Always wrap the result in $...$ at the call site. The small-p branch emits
+    \\times and a superscript, so it is math-only; the contract is uniform
+    rather than value-dependent only because every call site wraps
+    unconditionally.
+    """
+    if p is None or (isinstance(p, float) and not math.isfinite(p)):
+        return MISSING
+    if p >= 0.001:
+        return fmt_num(p, 3)
+    if p <= 0:
+        return "<10^{-16}"
+    exp = math.floor(math.log10(p))
+    mant = p / 10 ** exp
+    return f"{fmt_num(mant, 1)}\\times 10^{{{exp}}}"
+
+
+def size_of_label(label: str) -> float:
+    """Parameter count parsed out of a run-dir model label.
+
+    Deliberately a regex over '<n>b' rather than a lookup: it reads a ladder
+    this config has never seen, which is what keeps the generators independent
+    of any one model family.
+    """
+    m = re.findall(r"(\d+(?:\.\d+)?)b\b", label.lower())
+    return float(m[-1]) if m else float("nan")
+
+
+def size_display(label: str) -> str:
+    """Bare parameter count for a model label: '0.8B'.
+
+    Used where the family is already stated once -- a caption, a column group --
+    so repeating it in every cell would be noise.
+    """
+    size = size_of_label(label)
+    return label if size != size else f"{size:g}B"      # NaN check
+
+
+def model_display(label: str) -> str:
+    """Family-qualified label for a header or axis tick: '<family>-0.8B'.
+
+    The family comes from experiment.toml. It used to be a literal string in
+    ten places across four generators, so swapping the ladder left every
+    figure and header still announcing the old one.
+    """
+    from .config import current          # deferred: config imports nothing here,
+    return current().display_for(label)  # but this keeps the import graph acyclic
+
+
+#: Macro-name words for a size the ladder does not declare. Positional, so two
+#: undeclared sizes cannot collide into one macro name.
+FALLBACK_WORDS = ["SizeA", "SizeB", "SizeC", "SizeD", "SizeE", "SizeF"]
+
+
+def size_word(label: str, index: int, words: dict[float, str] | None = None) -> str:
+    """LaTeX-safe word for a size, for use inside a \\newcommand name."""
+    size = size_of_label(label)
+    if words and size in words:
+        return words[size]
+    return FALLBACK_WORDS[index % len(FALLBACK_WORDS)]
+
+
+def escape(text: str) -> str:
+    """Escape the characters that break a LaTeX build, leaving markup alone.
+
+    Applied to values that come from data (an agent id, a model label), never
+    to markup this package emits.
+    """
+    for ch, rep in (("\\", r"\textbackslash{}"), ("&", r"\&"), ("%", r"\%"),
+                    ("$", r"\$"), ("#", r"\#"), ("_", r"\_"),
+                    ("{", r"\{"), ("}", r"\}"), ("~", r"\textasciitilde{}"),
+                    ("^", r"\textasciicircum{}")):
+        text = text.replace(ch, rep)
+    return text
+
+
+def header_comment(producer: str, what: str, source: dict | None = None,
+                   source_note: str | None = None) -> str:
+    """Provenance banner. `audit artifacts` parses this for freshness.
+
+    Names the command that writes the file and the pooled generation it was
+    written from, so a stale artifact is visible without comparing mtimes --
+    mtimes change for reasons that have nothing to do with the numbers.
+    """
+    lines = [
+        f"% AUTO-GENERATED by `{producer}` — DO NOT EDIT BY HAND",
+        f"% {what}",
+        f"% generated_at: {datetime.now().isoformat(timespec='seconds')}",
+    ]
+    if source is not None:
+        lines.append(f"% source pooled generated_at: {source.get('generated_at')}")
+    if source_note:
+        lines.append(f"% source: {source_note}")
+    return "\n".join(lines) + "\n"
+
+
+class MacroRegistry:
+    """Collects \\newcommand definitions and refuses to define one twice.
+
+    Four generators write macros into one document. A duplicate definition is
+    a fatal LaTeX error whose message names the macro but not the file, so
+    catching it here -- where both files are known -- is the difference between
+    a clear failure and a hunt.
+    """
+
+    def __init__(self) -> None:
+        self._defs: dict[str, tuple[str, str]] = {}
+
+    def add(self, name: str, value: str, comment: str = "") -> None:
+        if any(ch.isdigit() for ch in name):
+            raise ValueError(
+                f"\\{name}: LaTeX macro names cannot contain digits. "
+                f"Spell the number as a word (see config.macro_word)."
+            )
+        if name in self._defs:
+            raise ValueError(
+                f"\\{name} is already defined as {self._defs[name][0]!r}; "
+                f"a duplicate \\newcommand is a fatal LaTeX error."
+            )
+        self._defs[name] = (value, comment)
+
+    def __len__(self) -> int:
+        return len(self._defs)
+
+    def __contains__(self, name: str) -> bool:
+        return name in self._defs
+
+    def render(self) -> str:
+        out = []
+        for name, (value, comment) in self._defs.items():
+            if comment:
+                out.append(f"% {comment}")
+            out.append(f"\\newcommand{{\\{name}}}{{{value}}}")
+        return "\n".join(out) + "\n"
