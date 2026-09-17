@@ -9,15 +9,15 @@ per-agent summary table (also written as CSV). The output is the flat panel of
 ``PANEL_SIGNALS`` — there is no primary endpoint and no composite.
 
 **Two sensitivity axes, one per instrument family.** Encoders come from
-:data:`ENCODER_PRESETS` (family A), Bloom classifiers from
-:data:`BLOOM_PRESETS` (family B); each preset ties an instrument to its
+the declared encoder arms (family A), Bloom classifiers from the declared
+Bloom arms (family B); each arm ties an instrument to its
 artifact suffix, and to its BACKEND — so an artifact can never end up labelled
 with an instrument that did not produce it.
 
-**Only the 8B primary needs a GPU pod.** the primary encoder arm is served over an
+**Only the served primary needs a GPU pod.** It is reached over an
 OpenAI-compatible ``/v1/embeddings`` endpoint (e.g. a server running
 ``vllm serve <model> --task embed``), resolved from its
-``<SLOT>_EMBED_*`` env quad (written by ``05_sync_embed_pod_env.py``). The
+``<SLOT>_EMBED_*`` env quad (written by ``isd-exp serve sync-embed``). The
 sweep arms run in-process: ``bgem3`` and ``granite`` through
 sentence-transformers on the local GPU (measured on an M4 Pro: 126 and 226
 texts/s, i.e. ~44 and ~25 minutes for the ladder's 335k unique texts),
@@ -33,13 +33,12 @@ ranking depend on this instrument?") needs one deviation at a time.
 
 Examples:
   # primary configuration only (the default when no preset flag is given)
-  python scripts/alignmentgraph-isd-bench/06_score_alignment.py results/test_90_...
-  # the full sensitivity sweep in one invocation (5 arms)
-  python scripts/alignmentgraph-isd-bench/06_score_alignment.py results/test_90_... \
-      --encoder-presets the primary encoder arm,bgem3,granite,tfidf --bloom-presets the primary Bloom arm,lexicon
-  # everything except the primary encoder — no pod involved at all
-  python scripts/alignmentgraph-isd-bench/06_score_alignment.py results/test_90_... \
-      --encoder-presets bgem3,granite,tfidf --bloom-presets lexicon
+  ./isd-exp score results/test_90_...
+  # the whole sensitivity star in one invocation
+  ./isd-exp score results/test_90_... --all-arms
+  # every encoder arm except the served primary — no pod involved at all
+  ./isd-exp score results/test_90_... \
+      --encoder-presets bgem3,granite,tfidf
 
 Re-run the same command after an interruption: complete per-scenario artifacts
 are skipped, while corrupt or incomplete artifacts are repaired. Use
@@ -61,10 +60,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
 from .. import paths
+from .presets import current as declared_arms
 
 
 # The endpoint this script needs (<SLOT>_EMBED_BASE_URLS) is WRITTEN into .env
-# by 05_sync_embed_pod_env.py, so it has to be READ from there too. Without
+# by isd-exp serve sync-embed, so it has to be READ from there too. Without
 # this, 05 would write the value, .env would visibly contain it, and this
 # script would still report "no endpoint" and tell the user to re-run 05 —
 # advice that cannot fix anything. Same guarded import as run_benchmark.py and
@@ -82,67 +82,40 @@ from .protocol import (  # noqa: E402
     reaggregate,
 )
 
-#: The sensitivity design, as (encoder kind, model, artifact suffix). Selecting
-#: a preset ties the model to its suffix so an artifact can never end up
-#: labelled with an encoder that did not produce it — and to its BACKEND, which
-#: matters just as much: the embedding cache key is sha1(model[@revision]+text)
-#: and does NOT record where a vector came from, so a model embedded both on a
-#: pod and locally would mix two numerically different sources under one key,
-#: invisibly. One backend per model, fixed here:
+#: The sensitivity design lives in ``experiment.toml`` and is read through
+#: :mod:`.presets`: ``declared_arms().encoders`` is family A and
+#: ``.bloom`` is family B. Selecting an arm ties the model to its suffix so an
+#: artifact can never end up labelled with an instrument that did not produce
+#: it — and to its BACKEND, which matters just as much: the embedding cache key
+#: is sha1(model[@revision]+text) and does NOT record where a vector came from,
+#: so a model embedded both on a pod and locally would mix two numerically
+#: different sources under one key, invisibly. One backend per model:
 #:
 #:   api    served over an OpenAI-compatible endpoint (needs a pod)
 #:   local  sentence-transformers in-process (no pod; downloads once)
 #:   tfidf  pure Python
 #:
-#: Only the 8B primary is served. The sweep arms are small enough to embed on
-#: a laptop, which removes three quarters of the GPU-rental surface.
-ENCODER_PRESETS = {
-    # no suffix: the primary artifact, the one pooling reads
-    "the primary encoder arm": ("api", "<the declared encoder model>", ""),
-    "bgem3":    ("local", "BAAI/bge-m3", "bgem3"),
-    "granite":  ("local", "ibm-granite/granite-embedding-311m-multilingual-r2", "granite"),
-    # lexical floor: pure CPU, no download, bit-wise deterministic
-    "tfidf":    ("tfidf", "tfidf-char-ngram", "tfidf"),
-}
-
-#: The encoder that owns the empty suffix — i.e. writes ``alignment_scores.json``,
-#: the only file 07_pool_ladder_runs.py reads into ``pooled["alignment"]``.
-#: Also the default arm when no preset flag is given.
-PRIMARY_ENCODER = "the primary encoder arm"
-
-#: The Bloom axis, as (classifier kind, checkpoint path, artifact suffix) —
-#: family B's counterpart of ENCODER_PRESETS. the primary Bloom arm is the primary arm:
-#: a 6-way BERT fine-tuned on the EDM2022CLO corpus of Li et al. (2022), which
-#: agrees with the released expert labels at kappa 0.926 on a held-out split
-#: against the lexicon's 0.650. ``lexicon`` is the sweep arm — deterministic and
-#: traceable to Anderson & Krathwohl, and derived from the taxonomy rather than
-#: from labelled data, which is what makes it a real independence check for the
-#: 3 Bloom-derived panel signals (the two arms agree at only kappa 0.665, so
-#: neither is a mirror of the other).
+#: Only the served primary needs a pod. The sweep arms are small enough to
+#: embed on a laptop, which removes most of the GPU-rental surface.
 #:
-#: Consequence worth knowing before a run: the primary arm needs a checkpoint on
-#: disk, so scoring is no longer zero-setup. Train it with
-#: ``evaluator/scripts/train_bloom_6way_classifier.py``; without it every arm is
-#: SKIPPED rather than silently falling back.
-BLOOM_PRESETS = {
-    "the primary Bloom arm": ("transformer", "models/bloom-bert-edm2022", ""),
-    "lexicon":   ("lexicon", None, "lexicon"),
-}
-
-#: The Bloom arm that owns the empty suffix (pairs with PRIMARY_ENCODER to
-#: form the primary configuration every other arm deviates from by one axis).
-PRIMARY_BLOOM = "the primary Bloom arm"
-
-#: suffix -> preset key, for discovering which arms a results dir already has
-#: on disk (07's --auto-encoders / --auto-bloom). The primary's empty suffix is
-#: excluded: an unsuffixed file is the primary by definition, not a sweep arm.
-SUFFIX_TO_KEY = {
-    suffix: key for key, (_kind, _model, suffix) in ENCODER_PRESETS.items() if suffix
-}
-
-BLOOM_SUFFIX_TO_KEY = {
-    suffix: key for key, (_kind, _path, suffix) in BLOOM_PRESETS.items() if suffix
-}
+#: The arm that owns the EMPTY suffix writes ``alignment_scores.json``, the
+#: only file pooling reads into ``pooled["alignment"]``, and is the default
+#: when no preset flag is given; ``declared_arms().suffix_to_encoder`` and
+#: ``.suffix_to_bloom`` map the other way, for discovering which arms a
+#: results dir already holds on disk.
+#:
+#: Family B's primary is a 6-way BERT fine-tuned on the EDM2022CLO corpus of
+#: Li et al. (2022), which agrees with the released expert labels at kappa
+#: 0.926 on a held-out split against the lexicon's 0.650. The lexicon arm is
+#: deterministic and traceable to Anderson & Krathwohl, and derived from the
+#: taxonomy rather than from labelled data, which is what makes it a real
+#: independence check for the 3 Bloom-derived panel signals (the two agree at
+#: only kappa 0.665, so neither is a mirror of the other).
+#:
+#: Consequence worth knowing before a run: the primary Bloom arm needs a
+#: checkpoint on disk, so scoring is not zero-setup. Train it with
+#: ``isd-exp bloom train``; without it every arm is SKIPPED rather than
+#: silently falling back.
 
 
 def encoder_slot(key: str) -> str:
@@ -179,7 +152,7 @@ class EncoderSpec:
     revision: str | None = None   # weights revision of THIS arm's model
     base_urls: list[str] = field(default_factory=list)
     api_key_env: str = "VLLM_API_KEY"
-    bloom_key: str = PRIMARY_BLOOM
+    bloom_key: str = ""
     bloom_kind: str = "lexicon"
     bloom_path: str | None = None
     bloom_suffix: str = ""    # "" for the primary Bloom arm
@@ -193,7 +166,7 @@ class EncoderSpec:
 
     @property
     def arm_label(self) -> str:
-        """Human-readable arm id for console output, e.g. 'the primary encoder arm+the primary Bloom arm'."""
+        """Human-readable arm id for console output: '<encoder>+<bloom>'."""
         return f"{self.key}+{self.bloom_key}"
 
     @property
@@ -219,7 +192,7 @@ def served_model(base_url: str, api_key: str | None) -> str | None:
     req = urllib.request.Request(
         base_url.rstrip("/") + "/models",
         headers={"Authorization": f"Bearer {api_key or 'EMPTY'}",
-                 # the the serving provider proxy 403s the default urllib UA
+                 # the serving proxy 403s the default urllib UA
                  "User-Agent": "curl/8.4.0 (isd-agent-benchmark)"},
     )
     try:
@@ -249,16 +222,19 @@ def resolve_arms(args) -> list[tuple[str, str]]:
 
     Selection: --all-arms / --encoder-presets / --encoder-preset for family A,
     --bloom-presets / --bloom-preset for family B; with none of them the sweep
-    is the single primary configuration (PRIMARY_ENCODER + PRIMARY_BLOOM).
+    is the single primary configuration (the declared primary of each axis).
 
     Every arm deviates from that configuration on **at most one axis**. A grid
     would double the cost and the surface to audit without answering anything
     the star does not: each axis asks "does the ranking depend on this
     instrument?", and that question needs one deviation at a time.
     """
+    registry = declared_arms()
+    primary_enc, primary_bloom = registry.primary_encoder, registry.primary_bloom
+
     enc_keys: list[str] = []
     if args.all_arms or args.all_encoders:
-        enc_keys += list(ENCODER_PRESETS)
+        enc_keys += list(registry.encoders)
     for raw in (args.encoder_presets or "").split(","):
         if raw.strip():
             enc_keys.append(raw.strip())
@@ -267,7 +243,7 @@ def resolve_arms(args) -> list[tuple[str, str]]:
 
     bloom_keys: list[str] = []
     if args.all_arms:
-        bloom_keys += list(BLOOM_PRESETS)
+        bloom_keys += list(registry.bloom)
     for raw in (args.bloom_presets or "").split(","):
         if raw.strip():
             bloom_keys.append(raw.strip())
@@ -276,26 +252,26 @@ def resolve_arms(args) -> list[tuple[str, str]]:
 
     enc_keys = list(dict.fromkeys(enc_keys))
     bloom_keys = list(dict.fromkeys(bloom_keys))
-    unknown = [k for k in enc_keys if k not in ENCODER_PRESETS]
+    unknown = [k for k in enc_keys if k not in registry.encoders]
     if unknown:
         raise SystemExit(
-            f"unknown encoder preset(s) {unknown}; choose from {sorted(ENCODER_PRESETS)}"
+            f"unknown encoder preset(s) {unknown}; choose from {sorted(registry.encoders)}"
         )
-    unknown = [k for k in bloom_keys if k not in BLOOM_PRESETS]
+    unknown = [k for k in bloom_keys if k not in registry.bloom]
     if unknown:
         raise SystemExit(
-            f"unknown bloom preset(s) {unknown}; choose from {sorted(BLOOM_PRESETS)}"
+            f"unknown bloom preset(s) {unknown}; choose from {sorted(registry.bloom)}"
         )
 
     # The star design deviates from the primary on ONE axis per arm. Asking
     # explicitly for a non-primary encoder AND a non-primary Bloom arm is
-    # therefore not a request this can honour: it used to be rewritten into two
-    # unrelated star arms, so the user got neither the cross they asked for nor
-    # any warning that the label on the resulting artifact meant something else.
+    # therefore not a request this can honour: rewriting it into two unrelated
+    # star arms would give the caller neither the cross they asked for nor any
+    # warning that the label on the resulting artifact meant something else.
     # --all-arms is the sweep itself and is exempt: it means "every star arm".
     if not args.all_arms:
-        off_enc = [k for k in enc_keys if k != PRIMARY_ENCODER]
-        off_bloom = [k for k in bloom_keys if k != PRIMARY_BLOOM]
+        off_enc = [k for k in enc_keys if k != primary_enc]
+        off_bloom = [k for k in bloom_keys if k != primary_bloom]
         if off_enc and off_bloom:
             raise SystemExit(
                 f"cannot deviate on both axes at once: encoder {off_enc} with "
@@ -304,11 +280,11 @@ def resolve_arms(args) -> list[tuple[str, str]]:
             )
 
     if not enc_keys and not bloom_keys:
-        return [(PRIMARY_ENCODER, PRIMARY_BLOOM)]
-    arms = [(key, PRIMARY_BLOOM) for key in enc_keys]
-    if PRIMARY_BLOOM in bloom_keys and not enc_keys:
-        arms.append((PRIMARY_ENCODER, PRIMARY_BLOOM))
-    arms += [(PRIMARY_ENCODER, key) for key in bloom_keys if key != PRIMARY_BLOOM]
+        return [(primary_enc, primary_bloom)]
+    arms = [(key, primary_bloom) for key in enc_keys]
+    if primary_bloom in bloom_keys and not enc_keys:
+        arms.append((primary_enc, primary_bloom))
+    arms += [(primary_enc, key) for key in bloom_keys if key != primary_bloom]
     return list(dict.fromkeys(arms))
 
 
@@ -320,7 +296,7 @@ def resolve_encoder_specs(args) -> list[EncoderSpec]:
 
     Endpoint precedence per arm (slot ``S = encoder_slot(key)``):
       1. --embed-base-urls-for S=<csv>
-      2. <S>_EMBED_BASE_URLS          (written by 05_sync_embed_pod_env.py)
+      2. <S>_EMBED_BASE_URLS          (written by isd-exp serve sync-embed)
       3. --embed-cache-only: a syntactically valid URL that is never called.
 
     There is deliberately no shared/global endpoint variable: one URL cannot be
@@ -343,12 +319,17 @@ def resolve_encoder_specs(args) -> list[EncoderSpec]:
         slot, rev = spec.split("=", 1)
         rev_overrides[slot.strip().upper().replace("-", "_")] = rev.strip()
 
+    registry = declared_arms()
     arms = resolve_arms(args)
 
     specs: list[EncoderSpec] = []
     for key, bloom_key in arms:
-        kind, model, suffix = ENCODER_PRESETS[key]
-        bloom_kind, bloom_default_path, bloom_suffix = BLOOM_PRESETS[bloom_key]
+        encoder_arm = registry.encoder(key)
+        kind, model, suffix = encoder_arm.kind, encoder_arm.model, encoder_arm.suffix
+        bloom_arm = registry.bloom_arm(bloom_key)
+        bloom_kind, bloom_suffix = bloom_arm.kind, bloom_arm.suffix
+        checkpoint = bloom_arm.checkpoint_path
+        bloom_default_path = str(checkpoint) if checkpoint else None
         slot = encoder_slot(key)
         label = _tfidf_label(model, ngram) if kind == "tfidf" else model
         # Revision is PER ARM: one revision string cannot pin the weights of
@@ -373,8 +354,8 @@ def resolve_encoder_specs(args) -> list[EncoderSpec]:
         if env_model and env_model != model:
             raise SystemExit(
                 f"{slot}_EMBED_MODEL is {env_model!r} but preset {key!r} is {model!r}. "
-                "The .env block is stale — re-run "
-                "scripts/alignmentgraph-isd-bench/05_sync_embed_pod_env.py."
+                f"The .env block is stale — re-run "
+                f"`{paths.cli()} serve sync-embed`."
             )
         spec.api_key_env = (
             os.environ.get(f"{slot}_EMBED_API_KEY_ENV")
@@ -395,7 +376,7 @@ def resolve_encoder_specs(args) -> list[EncoderSpec]:
                 spec.available = False
                 spec.skip_reason = (
                     f"no Bloom checkpoint at {resolved} (train one with "
-                    "evaluator/scripts/train_bloom_6way_classifier.py, or point at "
+                    "`isd-exp bloom train`, or point at "
                     "it with --bloom-checkpoint / BLOOM_CHECKPOINT)"
                 )
         if kind != "api":
@@ -410,7 +391,7 @@ def resolve_encoder_specs(args) -> list[EncoderSpec]:
         if not spec.base_urls:
             spec.available = False
             spec.skip_reason = (
-                f"no endpoint (run 05_sync_embed_pod_env.py to set "
+                f"no endpoint (run isd-exp serve sync-embed to set "
                 f"{slot}_EMBED_BASE_URLS, pass --embed-base-urls-for {slot}=..., "
                 f"or use --embed-cache-only)"
             )
@@ -454,7 +435,7 @@ def probe_specs(specs: list[EncoderSpec], api_key_of, cache_only: bool) -> None:
                 raise SystemExit(
                     f"[{spec.key}] endpoint {url} serves {live!r} but the "
                     f"encoder is {spec.model!r}. Re-sync the pod env "
-                    f"(05_sync_embed_pod_env.py) or fix "
+                    f"(`{paths.cli()} serve sync-embed`) or fix "
                     f"{encoder_slot(spec.key)}_EMBED_BASE_URLS."
                 )
 
@@ -878,7 +859,7 @@ def build_encoder(spec: EncoderSpec, run_dir: Path, args):
             slot = encoder_slot(spec.key)
             raise SystemExit(
                 f"encoder [{spec.key}] needs an endpoint: set {slot}_EMBED_BASE_URLS "
-                f"(05_sync_embed_pod_env.py) or pass --embed-base-urls-for {slot}=..., "
+                f"(`{paths.cli()} serve sync-embed`) or pass --embed-base-urls-for {slot}=..., "
                 f"e.g. a server running 'vllm serve {spec.model} --task embed'. "
                 "Pass --embed-cache-only to run purely off the embedding cache."
             )
@@ -1034,8 +1015,9 @@ def run(*, run_dirs=None, encoder_presets: str = '', bloom_presets: str = '',
     specs = resolve_encoder_specs(args)
 
     # Patterns are expanded here as well as by the shell: quoting a glob is the
-    # obvious thing to type (07's --auto-glob requires it), and it used to fail
-    # with a confusing "Not a directory: results/..._r[123]_*".
+    # obvious thing to type (`isd-exp comparison pool --auto-glob` requires
+    # it), and an unexpanded pattern otherwise fails with a confusing
+    # "Not a directory: results/..._r[123]_*".
     run_dirs, unmatched = [], []
     for pattern in run_dirs:
         hits = sorted(globmod.glob(pattern))
