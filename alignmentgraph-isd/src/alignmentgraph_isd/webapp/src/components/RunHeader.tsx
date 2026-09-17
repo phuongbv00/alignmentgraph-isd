@@ -45,7 +45,7 @@ export function RunHeader({ stream, canRun, runDisabledReason, onRun, onCancel, 
           different things. */}
       {arm && (
         <span className="pill arm" title={arm.label}>
-          {arm.agentMode} · {arm.contextMode}
+          {arm.agentMode}·{arm.contextMode}
         </span>
       )}
 
