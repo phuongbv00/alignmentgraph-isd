@@ -58,8 +58,8 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # once
 If you would rather have a real command, `pip install -e .` into any environment puts
 `isd-exp` on that environment's PATH; the wrapper then becomes redundant.
 
-Full workflow: `docs/benchmark_guides.md`. Measurement protocol:
-`docs/alignment_protocol.md`. Experiment design: `docs/feedbacks/sprint1_20260828_0908/`.
+Full workflow: `docs/guides/benchmark_guides.md`. Measurement protocol:
+`docs/guides/alignment_protocol.md`. Experiment design: `docs/supervision/feedbacks/sprint1_20260828_0908/`.
 
 ## Not implemented
 

@@ -3,7 +3,7 @@
 The ladder pods are created MANUALLY in the the serving provider console from the public
 vLLM template (one template for all 4 sizes; only the model -- the first
 positional token of the start command -- differs per pod; see
-../docs/benchmark_guides.md, section 4, for the template link and console steps).
+../docs/guides/benchmark_guides.md, section 4, for the template link and console steps).
 This script does the remaining mechanical part: list the live pods, match
 each one to a ladder slot (by start command / pod name), confirm the served
 model against the pod's own /v1/models, and REWRITE the managed block at the
@@ -194,7 +194,7 @@ def run(*, dry_run: bool = False, ENV_PATH=None, port=8000) -> int:
     missing = [s for s, _ in SLOT_PATTERNS if s not in slots]
     if missing:
         print(f"\nWARNING: no pod matched slot(s): {', '.join(missing)} "
-              f"(deploy them in the console first; see ../docs/benchmark_guides.md, section 4)",
+              f"(deploy them in the console first; see ../docs/guides/benchmark_guides.md, section 4)",
               file=sys.stderr)
     if not slots:
         print("ERROR: no ladder pods found -- nothing to write.", file=sys.stderr)
@@ -222,7 +222,7 @@ def run(*, dry_run: bool = False, ENV_PATH=None, port=8000) -> int:
         [BLOCK_BEGIN,
          f"# synced {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} -- re-run the script to refresh; do not edit by hand"]
         + env_lines
-        + ["# Protective flags (see ../docs/benchmark_guides.md, section 4.4):"]
+        + ["# Protective flags (see ../docs/guides/benchmark_guides.md, section 4.4):"]
         + [BLOCK_END]
     ) + "\n"
 

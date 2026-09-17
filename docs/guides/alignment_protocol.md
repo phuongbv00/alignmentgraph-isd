@@ -1,12 +1,10 @@
 # Alignment evaluation protocol (RQ2) — đặc tả chốt
 
 > **Đây là đặc tả canonical của RQ2 protocol** — paper được cập nhật TỪ file này (methodology §RQ2,
-> results §RQ2, threats/limitations). Trước đây nội dung này nằm trong `docs/summary.md`
-> §"Alignment evaluation protocol"; tách ra 2026-08-03, và từ 2026-09-10 thì summary.md đã xoá hẳn —
-> bản thảo là source of truth cho nội dung, file này cho phép đo.
+> results §RQ2, threats/limitations). Bản thảo là source of truth cho nội dung, file này cho phép đo.
 >
-> - Mức claim + luật viết: [`docs/paper/claim-rules.md`](paper/claim-rules.md); nội dung paper: `docs/paper/acm/`
-> - Lệnh chạy scorer/pooling + metrics reference: [`docs/benchmark_guides.md`](benchmark_guides.md) (§7, Appendix A)
+> - Mức claim + luật viết: [`docs/paper/claim-rules.md`](../paper/claim-rules.md); nội dung paper: `docs/paper/acm/`
+> - Lệnh chạy scorer/pooling + metrics reference: [`docs/guides/benchmark_guides.md`](benchmark_guides.md) (§7, Appendix A)
 > - Code: `isd-agent-benchmark/evaluator/src/isd_evaluator/metrics/alignment.py`, scorer
 >   `experiments/06_score_alignment.py`, pooling `isd-exp comparison pool`
 
@@ -19,7 +17,7 @@
 > "the measurement" thay vì "the/our protocol". Thuật ngữ điểm số trong paper (2026-08-29): giá trị panel =
 > **"alignment score(s)"**, điểm benchmark = **"LLM judge score(s)"**; tên từng score vẫn operation-named.
 > File này vẫn là **spec canonical** cho code + số liệu + mức claim;
-> tên "protocol" giữ trong tài liệu nội bộ. Mức claim: [`docs/paper/claim-rules.md`](paper/claim-rules.md).
+> tên "protocol" giữ trong tài liệu nội bộ. Mức claim: [`docs/paper/claim-rules.md`](../paper/claim-rules.md).
 
 Tên gọi (nội bộ): **automated constructive-alignment evaluation protocol operationalizing established criteria**
 (VN: quy trình đánh giá constructive alignment tự động, operationalize các tiêu chí đã được thiết lập). **Không phải metric mới**;
@@ -150,9 +148,8 @@ phục vụ objective; (iv) cognitive demand tương thích. Map thẳng vào pr
   (`<SLOT>_EMBED_REVISION` / `--embed-revision-for`), được ghi vào score file thành `encoder_revision` **và đưa vào
   key của embedding cache** — nên bump revision là re-embed thật, không phải dán nhãn mới lên vector cũ. Pooling
   hard-fail nếu các run dir trộn nhiều cặp `(encoder, revision)`, và in `revision UNPINNED` khi chưa set. Phiên bản
-  trọng số dùng cho đợt chấm hiện
-  hành được ghi lại ở `docs/results.md` §6 (nemotron `aa3b43a4…`, bge-m3 `5617a9f6…`, granite `44399559…`) như thông
-  tin tái hiện; muốn ràng buộc cứng thì set `<SLOT>_EMBED_REVISION` **trước** khi chấm.
+  trọng số của mỗi đợt chấm nằm trong `encoder_revision` của chính score file, nên thông tin tái hiện đi cùng
+  số chứ không nằm ở tài liệu riêng; muốn ràng buộc cứng thì set `<SLOT>_EMBED_REVISION` **trước** khi chấm.
 
 Câu chuẩn dùng cho paper/slide: *"quy trình chấm không dùng LLM và không có thành phần ngẫu nhiên; kết quả tái lập
 được nhờ pin phiên bản encoder và cache embedding"* — thay cho *"deterministic protocol"*.
@@ -259,8 +256,8 @@ thống đang **THẮNG** (`objective_evaluation_similarity`: +0.072…+0.326, m
 điểm hợp lệ cuối cùng để chốt thước đo.
 
 **`porter_mean` đổi định nghĩa, phải khai.** Nó không còn là trung bình của ba cặp objective-vs-X mà là trung bình
-trên ba cạnh tam giác. Số cũ trong `docs/results.md` và `docs/generated/` **không so sánh được** với số mới; mọi con số
-`porter_*` trong paper phải sinh lại từ đợt re-score sau 2026-08-30.
+trên ba cạnh tam giác. Mọi con số `porter_*` trong paper phải sinh lại từ đợt re-score sau 2026-08-30; số sinh trước mốc đó
+**không so sánh được**.
 
 **Quy tắc đọc panel — pre-specified, phải viết trước khi đọc kết quả.** Không có endpoint chính thì kết luận RQ2 phụ
 thuộc vào việc đọc profile, mà đọc profile không có quy tắc thì mọi hình dạng kết quả đều kể được thành một câu chuyện

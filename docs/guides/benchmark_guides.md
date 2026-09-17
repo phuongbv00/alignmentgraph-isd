@@ -4,7 +4,7 @@
 > hậu xử lý ra số cho paper, kèm định nghĩa metric (Phụ lục A). Mục tiêu: đọc mỗi file này là
 > tái lập được thực nghiệm.
 >
-> Mọi lệnh chạy từ `isd-agent-benchmark/` trừ khi ghi khác. Bối cảnh RQ: bản thảo `docs/paper/acm/` (§Experimental Design) + [`docs/alignment_protocol.md`](rq2_protocol.md).
+> Mọi lệnh chạy từ `isd-agent-benchmark/` trừ khi ghi khác. Bối cảnh RQ: bản thảo `docs/paper/acm/` (§Experimental Design) + [`docs/guides/alignment_protocol.md`](alignment_protocol.md).
 
 **Ba quy tắc không được vi phạm:**
 
@@ -691,7 +691,7 @@ Cộng thêm **operational metadata** (A.4) — log để debug, không vào hea
 
 ## A.1 Judge quality metrics (per-scenario)
 
-Nguồn: [`evaluator/src/isd_evaluator/`](../isd-agent-benchmark/evaluator/src/isd_evaluator/).
+Nguồn: [`evaluator/src/isd_evaluator/`](../../isd-agent-benchmark/evaluator/src/isd_evaluator/).
 
 **ADDIE Rubric Score (0–100)** — `metrics/addie_rubric.py`, rubric ở `rubrics/addie_definitions.py`. Hai bước LLM-judge
 tuần tự cho mỗi sub-item: (1) *status* — phân loại vào `absent/weak/moderate/good/excellent`, mỗi trạng thái ứng một
@@ -726,7 +726,7 @@ Về composite: per-scenario `total_score` trong `comparison_report.json` —
 
 ## A.2 RQ1 statistics
 
-File: [`isd-exp comparison pool`](../isd-agent-benchmark/experiments/07_pool_ladder_runs.py).
+File: [`isd-exp comparison pool`](../../experiments/src/isd_experiments/pool/comparison.py).
 Input: 4 size × 1 run × 90 scenario (TN1), mỗi scenario đã có `Total` cho từng agent.
 
 - **`mean_total`** — trung bình `Total` của một agent tại một size, pool qua run rồi qua scenario (complete-case là
@@ -760,8 +760,8 @@ Input: 4 size × 1 run × 90 scenario (TN1), mỗi scenario đã có `Total` cho
 
 ## A.3 RQ2 — Alignment evaluation protocol
 
-File: [`metrics/alignment.py`](../isd-agent-benchmark/evaluator/src/isd_evaluator/metrics/alignment.py).
-Đặc tả chốt + rationale: [`docs/alignment_protocol.md`](rq2_protocol.md).
+File: [`alignment/protocol.py`](../../experiments/src/isd_experiments/alignment/protocol.py).
+Đặc tả chốt + rationale: [`docs/guides/alignment_protocol.md`](alignment_protocol.md).
 
 Chấm constructive alignment bằng một hàm cố định của văn bản — **zero lời gọi LLM trong đo lường, không sampling**.
 Đọc **chỉ text** (`objective_id`/`aligned_objective`/`level` tự khai **không** dùng để chấm, chỉ làm validation

@@ -1,7 +1,7 @@
 # Authors
 
-Canonical author/supervisor info for the paper (`docs/paper/acm/main.tex`) and thesis
-(`docs/thesis/Cover.tex`, `docs/thesis/Cover2.tex`). Update here first, then propagate.
+Canonical author/supervisor info for the paper (`docs/paper/acm/main.tex`).
+Update here first, then propagate.
 
 ## Paper byline (per supervisor's international-standard instruction, 2026-08-17)
 

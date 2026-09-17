@@ -321,12 +321,12 @@ Gộp phụ lục của `Nhan_xet` và §5 của `Lo_trinh`.
 | Yêu cầu | Nơi đã ghi nhận |
 |---|---|
 | Luật claim, câu thay thế, mục bắt buộc khai | `docs/paper/claim-rules.md` |
-| Panel 6 tín hiệu, sensitivity star, no primary endpoint | `docs/alignment_protocol.md`, `experiments/.../alignment/protocol.py` |
+| Panel 6 tín hiệu, sensitivity star, no primary endpoint | `docs/guides/alignment_protocol.md`, `experiments/.../alignment/protocol.py` |
 | 1 run/ô, SD across scenarios, failure=0 là layer chính | `CLAUDE.md`, `isd-exp comparison pool`, `isd-exp report tables` |
 | RQ1 báo 3 tín hiệu song song, ADDIE dẫn narrative | `RQ1_SIGNALS` trong `isd-exp comparison pool` |
 | TN2 là thí nghiệm riêng trên `test_30`, A0 chạy lại trong TN2 | `CLAUDE.md`, `experiments/ (ablation stage)` |
 | Lệnh tạo `test_30` disjoint seed 42 | `CLAUDE.md` mục Common commands, `isd-exp data split` |
-| Quy trình chạy, audit, pooling, sinh bảng | `docs/benchmark_guides.md` |
+| Quy trình chạy, audit, pooling, sinh bảng | `docs/guides/benchmark_guides.md` |
 
 Các mục còn thiếu, kiểm tại 2026-09-16:
 

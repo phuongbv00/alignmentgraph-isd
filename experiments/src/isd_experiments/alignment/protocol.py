@@ -1512,7 +1512,7 @@ class AlignmentEvaluator:
             # Argmax over CLASSIFIABLE objectives only — the opposite
             # convention to the congruence leg, which argmaxes over everything
             # and then abstains. Both are deliberate; see the comment in
-            # _objective_details and docs/rq2_protocol.md section 4.
+            # _objective_details and docs/guides/alignment_protocol.md section 4.
             target = max(classifiable_objs, key=lambda i: sim[i][j])
             counted += 1
             if item_level >= (objective_levels[target] or 0):
@@ -1560,7 +1560,7 @@ class AlignmentEvaluator:
             # objective is actually assessed by. The cost is that this
             # denominator shrinks with the arm's coverage (never for the
             # transformer, 12.0% of objectives for the lexicon, measured over
-            # the r1 rung). Declared in docs/rq2_protocol.md section 4, same
+            # the r1 rung). Declared in docs/guides/alignment_protocol.md section 4, same
             # as the coverage gap between the two arms.
             congruent = (
                 best_item_level >= obj_level

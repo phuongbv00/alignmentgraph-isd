@@ -77,7 +77,7 @@ class TestDocumentedCommandsExist:
         return out
 
     def test_the_guide_only_names_real_commands(self, known):
-        guide = paths.docs_root() / "benchmark_guides.md"
+        guide = paths.docs_root() / "guides" / "benchmark_guides.md"
         if not guide.exists():
             pytest.skip("guide not present")
         text = guide.read_text(encoding="utf-8")
@@ -178,7 +178,7 @@ class TestRunnableHints:
     def test_doc_command_blocks_use_the_wrapper(self):
         """Inside a fenced block, `isd-exp` is something the reader types."""
         offenders = []
-        for rel in ("benchmark_guides.md",):
+        for rel in ("guides/benchmark_guides.md",):
             doc = paths.docs_root() / rel
             if not doc.exists():
                 continue

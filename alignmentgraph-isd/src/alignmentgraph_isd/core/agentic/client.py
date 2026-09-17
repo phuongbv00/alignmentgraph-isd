@@ -3,7 +3,7 @@
 Transport is NATIVE tool calling: tools are bound with ``bind_tools`` and each
 turn arrives as ``.tool_calls``. The ladder serves this — vLLM with
 ``--enable-auto-tool-choice --tool-call-parser qwen3_coder`` (see
-docs/benchmark_guides.md §3.2) — so the serving-side parser enforces the
+docs/guides/benchmark_guides.md §3.2) — so the serving-side parser enforces the
 argument shape before the text reaches us.
 
 Tool calls are the ONLY way an AGENT reaches the model. The invariant is about

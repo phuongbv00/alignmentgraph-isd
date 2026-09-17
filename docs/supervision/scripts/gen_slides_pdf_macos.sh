@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Xuất slide deck HTML trong docs/slides/ ra PDF bằng headless Chrome (macOS).
+# Xuất slide deck HTML trong docs/supervision/slides/ ra PDF bằng headless Chrome (macOS).
 #
 # Cách dùng:
-#   docs/scripts/gen_slides_pdf_macos.sh                # convert mọi *.html trong docs/slides/
-#   docs/scripts/gen_slides_pdf_macos.sh <file.html>... # chỉ convert các file được chỉ định
+#   docs/supervision/scripts/gen_slides_pdf_macos.sh                # convert mọi *.html trong docs/supervision/slides/
+#   docs/supervision/scripts/gen_slides_pdf_macos.sh <file.html>... # chỉ convert các file được chỉ định
 #
 # PDF được ghi cạnh file HTML, cùng tên (foo.html -> foo.pdf).
 # Deck phải tự khai báo @page/@media print (các deck trong repo này đã có).

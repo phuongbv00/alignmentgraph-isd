@@ -73,7 +73,7 @@ FALLBACK_WORDS = ["SizeA", "SizeB", "SizeC", "SizeD", "SizeE", "SizeF"]
 #: Signature of the crash that the shared per-call token cap produces: the
 #: OpenAI client raises when a structured-output response is cut at the cap.
 #: Counting it separately matters because an agent that dies this way is not
-#: "cheap", it is truncated — see review_q2.md R4.
+#: "cheap", it is truncated — see docs/supervision/backlog.md R4.
 TRUNCATION_MARKER = "LengthFinishReasonError"
 
 

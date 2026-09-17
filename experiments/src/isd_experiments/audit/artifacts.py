@@ -76,7 +76,7 @@ POOLED_ABLATION = paths.results_root() / "pooled_ablation.json"
 DOCS_DIR = paths.docs_generated()
 #: Every manuscript that may consume the generated artifacts. Missing dirs are
 #: skipped, so this stays correct if the submodule is checked out standalone.
-MANUSCRIPT_DIRS = [paths.docs_root() / "paper", paths.docs_root() / "thesis"]
+MANUSCRIPT_DIRS = [paths.docs_root() / "paper"]
 
 
 

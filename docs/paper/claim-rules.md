@@ -1,19 +1,18 @@
 # Claim rules cho manuscript
 
 > Đây là file **luật viết**, không phải giàn ý. Nó không mô tả nội dung paper — nội dung nằm
-> trong chính `docs/paper/acm/`, và bản thảo là source of truth duy nhất cho nội dung
-> (`docs/summary.md` đã xoá 2026-09-10 vì trùng nội dung với paper và luôn lệch khi paper đổi).
+> trong chính `docs/paper/acm/`, và bản thảo là source of truth duy nhất cho nội dung.
 > File này chỉ giữ phần **không thể đặt trong paper**: điều gì cấm viết, viết thay bằng gì,
 > câu nào phải giữ nguyên văn, và điều gì bắt buộc phải khai.
 
 **Nguồn thẩm quyền**, theo thứ tự:
 
 1. Nhận xét sau Sprint 1 của GVHD và lộ trình thực nghiệm, nhận 2026-09-10, lưu ở
-   `docs/feedbacks/sprint1_20260828_0908/` (`Nhan_xet_ĐG_Sprint1_Q2.docx`,
+   `docs/supervision/feedbacks/sprint1_20260828_0908/` (`Nhan_xet_ĐG_Sprint1_Q2.docx`,
    `Lo_trinh_TN.docx`) — hai file này quyết định định vị, mức claim và thiết kế thí nghiệm.
    Khi có nhận xét sprint mới thì thêm thư mục mới cạnh nó và cập nhật mục này.
 2. Master claim rule của GVHD 2026-08-17 (đã gộp vào bảng dưới).
-3. `docs/rq2_protocol.md` — spec canonical của phép đo alignment (mức claim RQ2).
+3. `docs/guides/alignment_protocol.md` — spec canonical của phép đo alignment (mức claim RQ2).
 
 ## 1. Đơn vị so sánh là HỆ TÁC TỬ, không phải model
 

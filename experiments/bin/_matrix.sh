@@ -118,7 +118,7 @@ matrix_resolve_slots() {
     done
     if [[ -n "$_missing_base_url" ]]; then
         echo "ERROR: no serving BASE_URL set for slot(s):${_missing_base_url}" >&2
-        echo "Bring the endpoints up (see docs/benchmark_guides.md), then write them into .env." >&2
+        echo "Bring the endpoints up (see docs/guides/benchmark_guides.md), then write them into .env." >&2
         echo "With provider=\"static\" a base_url in experiment.toml is enough. Or sync them:" >&2
         echo "  ./isd-exp serve sync-agents   (from $EXP_ROOT)" >&2
         exit 1

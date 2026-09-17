@@ -5,7 +5,7 @@ alignment-scoring embedding pod. The pod is created MANUALLY in the the serving 
 console from the template ``isd-agent-bench-embed-the primary encoder arm-8b``
 (https://console.runpod.io/deploy?template=3i3er665bh — vLLM
 ``--task embed --trust-remote-code`` serving ``<the declared encoder model>``;
-see ../docs/benchmark_guides.md, section 8). This script does the remaining
+see ../docs/guides/benchmark_guides.md, section 8). This script does the remaining
 mechanical part: find EVERY live embed pod, confirm each served model against
 the pod's own /v1/models, and REWRITE the managed block at the end of the
 repo's .env file (between the >>>/<<< markers below) — so ``source .env``
