@@ -59,18 +59,29 @@ def profile_env(profile: Profile, *, slots: str | None = None,
         "MANIFEST": "0" if informal else "1",
     }
 
-    # Per-slot defaults, from the declared ladder rather than from blocks
-    # naming one model family, so a different ladder is a config edit and not
-    # a shell edit. A BASE_URL declared inline serves the "static"
-    # provider; the managed .env block overrides it when endpoints are synced.
+    # Per-slot values, from the declared ladder rather than from blocks naming
+    # one model family, so a different ladder is a config edit and not a shell
+    # edit. The ENDPOINT is assigned, not defaulted: the declaration is the one
+    # place a rung's URL is written, so a leftover export of the same name in
+    # the surrounding shell must not decide where a run's requests go.
     cfg = current_config()
-    for rung in profile.rungs:
-        prefix = rung.env_prefix
-        env.setdefault(f"{prefix}_AGENT_MODEL_API_SPEC", cfg.serving.api_spec)
-        env.setdefault(f"{prefix}_AGENT_MODEL_NAME", rung.model)
-        env.setdefault(f"{prefix}_AGENT_MODEL_API_KEY_ENVS", cfg.serving.key_env)
-        if rung.base_url:
-            env.setdefault(f"{prefix}_AGENT_MODEL_BASE_URL", rung.base_url)
+    for model in profile.models:
+        prefix = model.env_prefix
+        # UNDERSCORED, like the serving limits below and for the same reason:
+        # the launcher sources .env in its own shell after this, so anything
+        # published under the name the benchmark reads is taken back by a stale
+        # line in that file. That is not a cosmetic difference here. A leftover
+        # <SLOT>_AGENT_MODEL_NAME sends the run out under a model the
+        # declaration never named, while `freeze write` fingerprints the
+        # declaration -- the manifest would attest to a model that never ran.
+        # A leftover BASE_URL(S), especially an EMPTY one, sends it nowhere.
+        env[f"_{prefix}_AGENT_MODEL_API_SPEC"] = cfg.api_spec_for(model)
+        env[f"_{prefix}_AGENT_MODEL_NAME"] = model.model
+        env[f"_{prefix}_AGENT_MODEL_API_KEY_ENVS"] = cfg.key_env_for(model)
+        if model.base_urls:
+            # Plural even for one endpoint: one shape to read, and a second
+            # endpoint later is then a pure config change.
+            env[f"_{prefix}_AGENT_MODEL_BASE_URLS"] = ",".join(model.base_urls)
 
     # The serving limits and the judge roster travel under UNDERSCORED names.
     # The launcher sources .env in its own shell before it reads any of this, so

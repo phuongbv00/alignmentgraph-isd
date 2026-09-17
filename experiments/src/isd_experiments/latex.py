@@ -88,16 +88,24 @@ def model_display(label: str) -> str:
     return current().display_for(label)  # but this keeps the import graph acyclic
 
 
-#: Macro-name words for a size the ladder does not declare. Positional, so two
-#: undeclared sizes cannot collide into one macro name.
+#: Macro-name words for a model the config does not declare. Positional, so
+#: two undeclared models cannot collide into one macro name.
 FALLBACK_WORDS = ["SizeA", "SizeB", "SizeC", "SizeD", "SizeE", "SizeF"]
 
 
-def size_word(label: str, index: int, words: dict[float, str] | None = None) -> str:
-    """LaTeX-safe word for a size, for use inside a \\newcommand name."""
-    size = size_of_label(label)
-    if words and size in words:
-        return words[size]
+def size_word(label: str, index: int, words: dict[str, str] | None = None) -> str:
+    """LaTeX-safe word for a model, for use inside a \\newcommand name.
+
+    Resolved through the SLOT the label came from, not through a size parsed
+    out of it: a size is not unique across families, and two models sharing one
+    would quietly share a macro name -- LaTeX keeps the last definition and
+    says nothing.
+    """
+    if words:
+        from .config import current          # deferred: config imports nothing here
+        slot = current().slot_of_label(label)
+        if slot and slot in words:
+            return words[slot]
     return FALLBACK_WORDS[index % len(FALLBACK_WORDS)]
 
 

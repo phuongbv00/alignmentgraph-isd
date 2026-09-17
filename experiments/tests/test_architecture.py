@@ -110,26 +110,16 @@ class TestNoPathHacks:
 class TestNoVendorNames:
     """Hosts and model families are configuration, not code.
 
-    experiment.toml declares the ladder and the serving provider; a rung can be
-    any OpenAI-compatible endpoint. A vendor name that creeps back into src/
-    re-establishes the lock-in while looking like a harmless literal in a diff.
+    experiment.toml declares the ladder, the encoder arms and the URL each is
+    reached at; a rung can be any OpenAI-compatible endpoint, on any host or
+    none. Nothing in src/ discovers, names or authenticates against a
+    particular host any more -- so a vendor name here is always the beginning
+    of a lock-in, and it always looks like a harmless literal in a diff.
     """
-
-    #: A provider module is allowed to name the host it implements -- that is
-    #: what it is for. Nothing else may.
-    ALLOWED = {
-        "src/isd_experiments/serve/providers/runpod_agents.py",
-        "src/isd_experiments/serve/providers/runpod_embed.py",
-        "src/isd_experiments/serve/providers/__init__.py",
-        "src/isd_experiments/serve/providers/base.py",
-    }
 
     @pytest.mark.parametrize("vendor", ["runpod", "qwen", "nemotron"])
     def test_vendor_absent_from_code(self, vendor):
-        offenders = [
-            h for h in _grep(rf"(?i){vendor}", SRC, BIN)
-            if not any(h.startswith(a + ":") for a in self.ALLOWED)
-        ]
+        offenders = _grep(rf"(?i){vendor}", SRC, BIN)
         assert offenders == [], (
             f"{vendor!r} belongs in experiment.toml, not in code:\n" + "\n".join(offenders)
         )

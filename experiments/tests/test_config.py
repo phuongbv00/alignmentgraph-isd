@@ -16,30 +16,24 @@ import pytest
 from isd_experiments import config
 
 TWO_RUNG = """
-[models]
-family = ""
-
 [serving]
-provider = "static"
 api_spec = "openai_compatible"
 key_env = "MY_KEY"
 
-[[ladder]]
+[[model]]
 slot = "tiny"
 model = "meta-llama/Llama-3.2-1B-Instruct"
-params_b = 1.0
 display = "1B"
-base_url = "http://localhost:8000/v1"
+base_urls = ["http://localhost:8000/v1"]
 
-[[ladder]]
+[[model]]
 slot = "big"
 model = "google/gemma-2-27b-it"
-params_b = 27.0
 display = "27B"
 
 [experiment.comparison]
 dataset = "test_90"
-rungs = "all"
+slots = "all"
 tags = ["c1"]
 agents = ["alignmentgraph-isd", "react-isd"]
 proposed = "alignmentgraph-isd"
@@ -70,7 +64,7 @@ class TestShippedConfig:
     def test_ablation_is_a_full_two_by_two(self):
         p = config.load().profile("ablation")
         assert p.dataset == "test_30"
-        assert len(p.rungs) == 2, "both ends of the deployment envelope"
+        assert len(p.models) == 2, "both ends of the deployment envelope"
         cells = {(a.agent_mode, a.context_mode) for a in p.arms}
         assert cells == {("multi", "graph"), ("multi", "prose"),
                          ("single", "graph"), ("single", "prose")}
@@ -100,32 +94,68 @@ class TestAnyLadder:
 
     def test_two_rungs_of_a_different_family(self, tmp_path):
         e = config.load(write(tmp_path, TWO_RUNG))
-        assert [r.slot for r in e.ladder] == ["tiny", "big"]
+        assert [r.slot for r in e.models] == ["tiny", "big"]
         assert e.profile("comparison").slots == ("tiny", "big")
 
     def test_macro_words_are_generated_not_tabulated(self, tmp_path):
-        """A size the old hard-coded table never listed still gets a valid
+        """A model the old hard-coded table never listed still gets a valid
         LaTeX macro name -- digits are illegal in one, so this cannot be the
         number itself."""
         e = config.load(write(tmp_path, TWO_RUNG))
-        assert [r.macro for r in e.ladder] == ["OneB", "TwoSevenB"]
-        assert all(not any(ch.isdigit() for ch in r.macro) for r in e.ladder)
+        assert [m.macro for m in e.models] == ["Tiny", "Big"]
+        assert all(not any(ch.isdigit() for ch in m.macro) for m in e.models)
 
-    def test_shipped_macro_words_match_the_retired_hard_coded_table(self):
-        """Generating these must not change any macro name in the manuscript."""
-        assert config.load().macro_words == {
-            0.8: "ZeroEightB", 2.0: "TwoB", 4.0: "FourB", 9.0: "NineB"}
+    def test_macro_words_are_keyed_and_spelled_by_slot(self, tmp_path):
+        """The invariant that replaced "match the old table": two models can
+        share a size, so a macro name derived from size is not a name. Derived
+        from the slot it is unique, because the slots are."""
+        body = TWO_RUNG.replace('display = "27B"', 'display = "1B"')
+        e = config.load(write(tmp_path, body))
+        assert e.macro_words == {"tiny": "Tiny", "big": "Big"}
+        assert len(set(e.macro_words.values())) == len(e.models), (
+            "two models of one size must not collapse to one macro name")
+
+    def test_a_digit_in_the_slot_becomes_a_word(self, tmp_path):
+        body = TWO_RUNG.replace('slot = "tiny"', 'slot = "small08b"')
+        e = config.load(write(tmp_path, body))
+        assert e.by_slot("small08b").macro == "SmallZeroEightB"
 
     def test_family_is_display_only_and_may_be_empty(self, tmp_path):
+        """A model with no family shows its bare display, and nothing looks a
+        family up to decide anything -- so omitting it stays valid."""
         e = config.load(write(tmp_path, TWO_RUNG))
-        assert e.family == ""
-        assert e.size_display == {1.0: "1B", 27.0: "27B"}
+        assert all(m.family == "" for m in e.models)
+        assert [m.full_display() for m in e.models] == ["1B", "27B"]
+
+    def test_family_is_declared_per_model(self, tmp_path):
+        """The point of the flat list: two models, two families, one file, and
+        no global prefix deciding what either of them is called."""
+        body = TWO_RUNG.replace('model = "meta-llama/Llama-3.2-1B-Instruct"',
+                                'model = "meta-llama/Llama-3.2-1B-Instruct"\n'
+                                'family = "Llama-3.2"')
+        body = body.replace('model = "google/gemma-2-27b-it"',
+                            'model = "google/gemma-2-27b-it"\nfamily = "Gemma-2"')
+        e = config.load(write(tmp_path, body))
+        assert [m.full_display() for m in e.models] == ["Llama-3.2-1B", "Gemma-2-27B"]
+
+    def test_two_models_of_one_size_stay_distinct(self, tmp_path):
+        """The case the old schema could not express: same size, two families.
+
+        Under the retired size-keyed tables one of these disappeared without a
+        word -- the dict simply kept the last one written.
+        """
+        body = TWO_RUNG.replace('display = "27B"', 'display = "1B"')
+        e = config.load(write(tmp_path, body))
+        labels = {e.slot_of_label("Llama-3.2-1B-Instruct"),
+                  e.slot_of_label("gemma-2-27b-it")}
+        assert labels == {"tiny", "big"}
+        assert len(e.macro_words) == 2
 
     def test_env_prefix_derives_from_the_slot(self, tmp_path):
         """<SLOT>_AGENT_MODEL_* is the provider-neutral contract shared/llm
         speaks; the slot is a free label, not a vendor name."""
         e = config.load(write(tmp_path, TWO_RUNG))
-        assert [r.env_prefix for r in e.ladder] == ["TINY", "BIG"]
+        assert [r.env_prefix for r in e.models] == ["TINY", "BIG"]
 
     def test_unknown_label_falls_back_to_itself(self, tmp_path):
         e = config.load(write(tmp_path, TWO_RUNG))
@@ -133,14 +163,51 @@ class TestAnyLadder:
 
 
 class TestAnyHost:
-    def test_static_provider_is_the_default(self, tmp_path):
-        body = TWO_RUNG.replace('provider = "static"\n', "")
-        assert config.load(write(tmp_path, body)).serving.provider == "static"
-
-    def test_endpoint_can_be_declared_inline(self, tmp_path):
-        """No pod API, no discovery call -- a self-hosted server is just a URL."""
+    def test_endpoint_is_declared_not_discovered(self, tmp_path):
+        """No host API, no discovery call -- a served rung is just a URL."""
         e = config.load(write(tmp_path, TWO_RUNG))
-        assert e.rung("tiny").base_url == "http://localhost:8000/v1"
+        assert e.by_slot("tiny").base_urls == ("http://localhost:8000/v1",)
+
+    def test_a_rung_with_no_endpoint_is_declarable(self, tmp_path):
+        """Declaring the ladder must not require the servers to exist yet."""
+        assert config.load(write(tmp_path, TWO_RUNG)).by_slot("big").base_urls == ()
+
+    def test_several_endpoints_serve_one_rung(self, tmp_path):
+        """Same model on two servers: the agents round-robin across them."""
+        body = TWO_RUNG.replace('base_urls = ["http://localhost:8000/v1"]',
+                                'base_urls = ["http://a/v1", "http://b/v1"]')
+        assert config.load(write(tmp_path, body)).by_slot("tiny").base_urls == (
+            "http://a/v1", "http://b/v1")
+
+    def test_a_rung_falls_back_to_the_serving_key(self, tmp_path):
+        e = config.load(write(tmp_path, TWO_RUNG))
+        assert e.key_env_for(e.by_slot("tiny")) == "MY_KEY"
+        assert e.api_spec_for(e.by_slot("tiny")) == "openai_compatible"
+
+    def test_a_rung_can_name_its_own_key(self, tmp_path):
+        """A hybrid ladder: a hosted rung authenticates with that provider's
+        credential while the self-hosted rungs share the serving key. One
+        global key would make the mixed ladder undeclarable."""
+        body = TWO_RUNG.replace(
+            'display = "27B"',
+            'display = "27B"\nbase_urls = ["https://hosted.test/v1"]\n'
+            'key_env = "HOSTED_KEY"')
+        e = config.load(write(tmp_path, body))
+        assert e.key_env_for(e.by_slot("big")) == "HOSTED_KEY"
+        assert e.key_env_for(e.by_slot("tiny")) == "MY_KEY", "the others are untouched"
+
+    def test_a_rung_can_name_its_own_api_spec(self, tmp_path):
+        body = TWO_RUNG.replace('display = "27B"',
+                                'display = "27B"\napi_spec = "something_else"')
+        e = config.load(write(tmp_path, body))
+        assert e.api_spec_for(e.by_slot("big")) == "something_else"
+        assert e.api_spec_for(e.by_slot("tiny")) == "openai_compatible"
+
+    def test_a_malformed_endpoint_list_is_named(self, tmp_path):
+        body = TWO_RUNG.replace('base_urls = ["http://localhost:8000/v1"]',
+                                'base_urls = 8000')
+        with pytest.raises(SystemExit, match="base_urls"):
+            config.load(write(tmp_path, body))
 
     def test_key_env_is_named_not_assumed(self, tmp_path):
         assert config.load(write(tmp_path, TWO_RUNG)).serving.key_env == "MY_KEY"
@@ -152,16 +219,16 @@ class TestValidation:
     A misconfigured experiment that starts anyway spends money before failing.
     """
 
-    def test_unknown_rung_is_named(self, tmp_path):
-        body = TWO_RUNG.replace('rungs = "all"', 'rungs = ["nope"]')
+    def test_an_unknown_slot_is_named(self, tmp_path):
+        body = TWO_RUNG.replace('slots = "all"', 'slots = ["nope"]')
         with pytest.raises(SystemExit, match="nope"):
             config.load(write(tmp_path, body))
 
-    def test_empty_ladder_is_rejected(self, tmp_path):
+    def test_an_empty_declaration_is_rejected(self, tmp_path):
         body = "\n".join(l for l in TWO_RUNG.splitlines()
-                         if not l.startswith(("slot", "model", "params_b", "display",
-                                              "base_url", "[[ladder]]")))
-        with pytest.raises(SystemExit, match="ladder"):
+                         if not l.startswith(("slot", "model", "display",
+                                              "base_urls", "[[model]]")))
+        with pytest.raises(SystemExit, match=r"\[\[model\]\]"):
             config.load(write(tmp_path, body))
 
     def test_duplicate_slot_is_rejected(self, tmp_path):

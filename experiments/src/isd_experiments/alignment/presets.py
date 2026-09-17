@@ -39,6 +39,18 @@ class EncoderArm:
     display: str = ""  # table row label
     short: str = ""    # figure axis / inline label
     macro: str = ""    # digit-free token for a LaTeX \newcommand name
+    #: Where a served arm is reached. Several endpoints of the SAME model
+    #: load-balance one embedding space; two different models are two arms.
+    base_urls: tuple[str, ...] = ()
+    #: Name of the env var holding this arm's bearer token. Empty = the
+    #: `[serving].key_env` default. Per arm for the same reason a rung has
+    #: one: the embedding endpoint need not live on the ladder's host.
+    key_env: str = ""
+    #: HF commit pinning the weights. Per arm, because one revision string
+    #: cannot pin the weights of several different models -- and it enters the
+    #: embedding-cache key, so a bump re-embeds rather than serving stale
+    #: vectors under the new name.
+    revision: str | None = None
 
     @property
     def is_primary(self) -> bool:
@@ -145,7 +157,11 @@ def _load(exp_config) -> Arms:
         key: EncoderArm(key=key, kind=body["kind"], model=body["model"],
                         suffix=body.get("suffix", key),
                         display=body.get("display", key), short=body.get("short", key),
-                        macro=body.get("macro", key.title()))
+                        macro=body.get("macro", key.title()),
+                        base_urls=config.urls(body.get("base_urls"),
+                                              f"[alignment.encoders.{key}]"),
+                        key_env=body.get("key_env", ""),
+                        revision=body.get("revision"))
         for key, body in raw.get("encoders", {}).items()
     }
     bloom = {

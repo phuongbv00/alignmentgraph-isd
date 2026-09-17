@@ -12,21 +12,20 @@ from isd_experiments.audit import preflight
 
 DECLARED = """
 [serving]
-provider = "static"
 api_spec = "openai_compatible"
 key_env = "MY_KEY"
 context_window = 16384
 max_output_tokens = 8192
 streaming = true
 
-[[ladder]]
+[[model]]
 slot = "tiny"
 model = "vendor/model-1b"
-params_b = 1.0
+display = "1B"
 
 [experiment.comparison]
 dataset = "test_90"
-rungs = "all"
+slots = "all"
 tags = ["c1"]
 agents = ["alignmentgraph-isd"]
 """
@@ -88,3 +87,57 @@ class TestEnvFileParsing:
 
     def test_a_missing_file_assigns_nothing(self, tmp_path):
         assert preflight.env_file_assignments(tmp_path / "absent") == {}
+
+
+class TestPerSlotOverridesAreNotInTheEnvFile:
+    """The declaration owns the slots; .env owns the keys and nothing else.
+
+    The failure this guards is not hypothetical. An earlier sync command wrote
+    a managed block of `<SLOT>_AGENT_MODEL_BASE_URLS=` lines and, whenever a
+    pod was down, wrote them EMPTY. The launcher sources .env after exporting
+    the declaration, so the empty line won, and the run reached the benchmark
+    with `--agent-model-base-url ''` -- a flag that looks set in the printed
+    command and points nowhere.
+    """
+
+    def test_a_clean_env_file_passes(self, tmp_path):
+        ok, _ = _findings(tmp_path, "MY_KEY=secret\n")["no per-slot override in .env"]
+        assert ok
+
+    def test_an_endpoint_in_the_env_file_fails_and_names_it(self, tmp_path):
+        ok, detail = _findings(
+            tmp_path, "TINY_AGENT_MODEL_BASE_URLS=http://x/v1\n"
+        )["no per-slot override in .env"]
+        assert not ok
+        assert "TINY_AGENT_MODEL_BASE_URLS" in detail
+
+    def test_an_empty_endpoint_line_fails_too(self, tmp_path):
+        """The empty one is the dangerous one -- it is the one that wins."""
+        ok, detail = _findings(tmp_path, "TINY_AGENT_MODEL_BASE_URLS=\n")[
+            "no per-slot override in .env"]
+        assert not ok
+        assert "TINY_AGENT_MODEL_BASE_URLS" in detail
+
+    def test_an_embedding_endpoint_is_caught_as_well(self, tmp_path):
+        ok, detail = _findings(tmp_path, "NEMOTRON_EMBED_BASE_URLS=http://x/v1\n")[
+            "no per-slot override in .env"]
+        assert not ok
+        assert "NEMOTRON_EMBED_BASE_URLS" in detail
+
+    def test_a_stale_model_name_is_caught(self, tmp_path):
+        """The one that corrupts the record rather than just breaking the run.
+
+        `freeze write` hashes experiment.toml. A NAME sitting in .env sends the
+        run out under a different model while the manifest attests to the
+        declared one, and nothing in the printed command looks wrong.
+        """
+        ok, detail = _findings(tmp_path, "TINY_AGENT_MODEL_NAME=vendor/other\n")[
+            "no per-slot override in .env"]
+        assert not ok
+        assert "TINY_AGENT_MODEL_NAME" in detail
+
+    def test_a_key_is_not_mistaken_for_an_override(self, tmp_path):
+        """.env exists for exactly this, so the guard must not fire on it."""
+        ok, _ = _findings(tmp_path, "MY_KEY=secret\nOPENROUTER_API_KEY=sk-x\n")[
+            "no per-slot override in .env"]
+        assert ok

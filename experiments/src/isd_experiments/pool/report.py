@@ -109,8 +109,9 @@ def print_report(pooled: dict, proposed: str, baselines: list[str]) -> None:
                   "dirs are short.")
         if not align.get("encoder_revision_pinned"):
             print("  NOTE: no encoder_revision in the score files — reproducibility "
-                  "rests on the embedding cache only. Set <SLOT>_EMBED_REVISION "
-                  "(or --embed-revision-for SLOT=...) and re-score to pin the weights.")
+                  "rests on the embedding cache only. Set `revision` on the "
+                  "encoder arm (or --embed-revision-for SLOT=...) and re-score "
+                  "to pin the weights.")
         for label, agents_metrics in pooled["alignment"]["models"].items():
             print(f"  {label}:")
             for agent, metrics in agents_metrics.items():

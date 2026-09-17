@@ -247,8 +247,9 @@ def check_protocol_integrity(rep: Report, ctx: dict) -> None:
         rep.add("warn", "J: encoder revision is not pinned "
                         "(encoder_revision null) — the one-pool-one-config "
                         "guard cannot fire, since every run dir collapses to "
-                        "the same key. Set <SLOT>_EMBED_REVISION before scoring "
-                        "to make the guard real and the cache key revision-aware")
+                        "the same key. Set `revision` on the encoder arm in "
+                        "experiment.toml before scoring to make the guard real "
+                        "and the cache key revision-aware")
 
 
 # ── A. inventory drift ───────────────────────────────────────────────────────

@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 """Pre-flight audit before launching the ladder (guide section 7.1).
 
-Checks, per ladder slot found in .env (managed block or manual quads):
-  1. BASE_URL is set and every pod answers /v1/models: 401 without key, 200
-     with the key `[serving].key_env` names, the served model id matches
-     *_AGENT_MODEL_NAME, and the served window matches [serving].context_window
-     where the server reports one.
-     A slot may be served by several pods: *_AGENT_MODEL_BASE_URLS (plural,
-     comma-separated, what `isd-exp serve sync-agents` writes) is read first,
-     falling back to the singular *_AGENT_MODEL_BASE_URL; every URL is checked.
+Checks, per ladder rung declared in experiment.toml:
+  1. base_urls is set and every endpoint answers /v1/models: 200 with the key
+     that rung names (`key_env` on the rung, else [serving].key_env), the
+     served model id matches the rung's `model`, and the served window matches
+     [serving].context_window where the server reports one. Without a key, 401
+     is the expected answer from an endpoint of your own; 200 is a WARN, since
+     a hosted catalogue is public but a self-hosted endpoint should not be.
+     A slot may be served by several endpoints: `base_urls` on the rung takes
+     a list, and every one of them is checked.
   2. The serving limits are declared in experiment.toml, and .env does not also
      set them. Two sources for a limit that has to be uniform across every agent
      and every rung is how a comparison loses its fairness argument quietly, so
-     a duplicate is a FAIL rather than a warning.
+     a duplicate is a FAIL rather than a warning. The per-slot agent-model and
+     embedding variables get the same treatment: .env carries keys, nothing
+     else.
   3. Smoke completion: one tiny chat call per pod; PASS = 200 and a reply that
      carries something, in either channel. Thinking is on, so a model may
      answer entirely inside reasoning_content and leave content empty -- that
@@ -42,11 +45,11 @@ from ..config import current as current_config
 def slots() -> list[str]:
     """Env-quad prefixes for the declared ladder, lower-cased.
 
-    The ladder is configuration, so pre-flight checks whatever rungs the
+    The models are configuration, so pre-flight checks whatever slots the
     experiment actually declares rather than a fixed set of slots naming one
     model family.
     """
-    return [r.slot for r in current_config().ladder]
+    return [m.slot for m in current_config().models]
 
 #: Serving limit -> the variable the benchmark reads it under. The launcher
 #: writes these onto the child command; .env must not carry them at all.
@@ -100,6 +103,19 @@ def load_env_file(path: Path) -> None:
             os.environ[key] = val
 
 
+#: Per-slot variables .env must not carry. Every one of them is declared in
+#: experiment.toml, and none of them is a secret, so a line here is always a
+#: leftover. Two are actively dangerous. An EMPTY *_BASE_URLS reads as "this
+#: rung has no endpoint" and sends the run nowhere. A stale *_NAME runs the
+#: ladder under a model the declaration never named -- and `freeze write`
+#: hashes the declaration, so the manifest would attest to a model that never
+#: ran. Both are silent: the printed command looks entirely well-formed.
+_STRAY_SUFFIXES = ("_AGENT_MODEL_BASE_URL", "_AGENT_MODEL_BASE_URLS",
+                   "_AGENT_MODEL_NAME", "_AGENT_MODEL_API_KEY_ENVS",
+                   "_AGENT_MODEL_API_SPEC",
+                   "_EMBED_BASE_URLS", "_EMBED_MODEL", "_EMBED_REVISION")
+
+
 def check_protection(cfg, env_path: Path) -> list[tuple[bool, str, str]]:
     """(ok, label, detail) per serving limit. Pure: no network, no environment.
 
@@ -108,6 +124,9 @@ def check_protection(cfg, env_path: Path) -> list[tuple[bool, str, str]]:
     back to its own default, which is not the run anyone wrote down. Also in
     .env? -- then the file and the declaration are two answers to one question,
     and only one of them is fingerprinted.
+
+    The same question is then asked of the endpoints, which .env must not carry
+    at all.
     """
     assigned = env_file_assignments(env_path)
     findings: list[tuple[bool, str, str]] = []
@@ -124,21 +143,34 @@ def check_protection(cfg, env_path: Path) -> list[tuple[bool, str, str]]:
             f"{env_path} also sets it -- experiment.toml owns this limit"
             if env_name in assigned else "",
         ))
+
+    stray = sorted(k for k in assigned
+                   if any(k.endswith(s) for s in _STRAY_SUFFIXES))
+    findings.append((
+        not stray,
+        "no per-slot override in .env",
+        f"{env_path} sets {', '.join(stray)} -- every one of these is declared "
+        f"in {cfg.source}; delete these lines. A stale value here wins "
+        f"silently, and the freeze manifest hashes the declaration, not .env"
+        if stray else "",
+    ))
     return findings
 
 
 def slot_base_urls(upper: str) -> list[str]:
-    """Base URLs for a slot, plural first (what the sync script writes).
+    """Base URLs declared for a slot, in experiment.toml.
 
-    A slot may be served by several pods of the same model; the launchers fold
-    <SLOT>_AGENT_MODEL_BASE_URLS into the singular and the agents round-robin
-    across them (shared/llm/config.py::resolve_base_url). Accept both spellings
-    here and audit every pod, not just the first.
+    A slot may be served by several endpoints of the same model; the agents
+    round-robin across them (shared/llm/config.py::resolve_base_url), so audit
+    every one of them rather than just the first. Read from the declaration and
+    not from the environment on purpose: the audit has to check what the run
+    will actually use, and what the run uses is what the launcher exports out
+    of this same declaration.
     """
-    raw = (os.environ.get(f"{upper}_AGENT_MODEL_BASE_URLS")
-           or os.environ.get(f"{upper}_AGENT_MODEL_BASE_URL")
-           or "")
-    return [u.strip() for u in raw.split(",") if u.strip()]
+    for model in current_config().models:
+        if model.env_prefix == upper:
+            return list(model.base_urls)
+    return []
 
 
 # Some hosting proxies 403 the default Python-urllib User-Agent;
@@ -179,9 +211,6 @@ def run(*, skip_smoke: bool = False, min_disk_gb: int = 20) -> int:
     cfg = current_config()
     env_path = paths.env_file()
     load_env_file(env_path)
-    key_env = cfg.serving.key_env
-    serving_key = os.environ.get(key_env)
-
     print("== Pre-flight audit (guide 7.1) ==")
 
     # 1) pods alive + auth + model match
@@ -189,11 +218,18 @@ def run(*, skip_smoke: bool = False, min_disk_gb: int = 20) -> int:
     for slot in slots():
         upper = slot.upper()
         base_urls = slot_base_urls(upper)
-        name = os.environ.get(f"{upper}_AGENT_MODEL_NAME", "")
-        print(f"\n-- {slot} ({name or 'no NAME'})")
+        model = next((m for m in cfg.models if m.env_prefix == upper), None)
+        name = model.model if model else ""
+        # Per rung: a hybrid ladder authenticates against each host with that
+        # host's own key, so checking every rung against one global key would
+        # audit a run that is not the one the launcher will start.
+        key_env = cfg.key_env_for(model) if model else cfg.serving.key_env
+        serving_key = os.environ.get(key_env)
+        print(f"\n-- {slot} ({name or 'no model'}, key {key_env})")
         if not base_urls:
-            report(False, "BASE_URL(S) set",
-                   f"missing — run `{paths.cli()} serve sync-agents`")
+            report(False, "base_urls declared",
+                   f"missing — declare base_urls on the {slot!r} rung in "
+                   f"{cfg.source}")
             continue
         any_slot = True
         for idx, base_url in enumerate(base_urls, 1):
@@ -203,12 +239,22 @@ def run(*, skip_smoke: bool = False, min_disk_gb: int = 20) -> int:
             if tag:
                 print(f"   {base_url}")
             status_nokey, _ = http_get(f"{base_url}/models", None)
-            hint = " (404 = pod stopped/not running?)" if status_nokey == 404 else ""
-            report(status_nokey == 401, f"{tag}auth required (401 without key)",
-                   f"got {status_nokey}{hint}")
+            if status_nokey == 401:
+                report(True, f"{tag}auth required (401 without key)", "")
+            elif status_nokey == 200:
+                # Not a failure and not a pass. A hosted provider's catalogue
+                # is normally public, so 200 is expected there; a self-hosted
+                # endpoint that answers 200 without a key is reachable by
+                # anyone who guesses the URL, and is billed as such.
+                print(f"  [WARN] {tag}{base_url}/models answers without a key "
+                      f"— expected for a hosted catalogue, but it means an "
+                      f"endpoint of your own is open")
+            else:
+                hint = " (404 = endpoint stopped/not running?)" if status_nokey == 404 else ""
+                report(False, f"{tag}reachable", f"got {status_nokey}{hint}")
             if not serving_key:
                 report(False, f"{key_env} present",
-                       f"not set -- [serving].key_env names it")
+                       f"not set -- the {slot!r} rung authenticates with it")
                 break
             status, body = http_get(f"{base_url}/models", serving_key)
             report(status == 200, f"{tag}reachable with key (200)", f"got {status}")

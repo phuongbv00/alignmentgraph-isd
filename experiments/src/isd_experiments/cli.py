@@ -5,7 +5,7 @@ the order they appear in `--help`, and a stage nobody has built yet is visible
 as a gap rather than absent:
 
     setup / doctor            once per machine
-    data / serve / bloom      inputs and serving
+    data / bloom              inputs
     tune                      cheap check before spending
     freeze / audit preflight  lock the version, verify the endpoints
     comparison / ablation     the two official experiments
@@ -54,13 +54,6 @@ def build_parser() -> argparse.ArgumentParser:
                          "the only way to a subset smaller than the 30-cell grid")
     sp.add_argument("--disjoint-from", type=_p, action="append", default=[])
     sp.add_argument("--seed", type=int, default=42)
-
-    serve = sub.add_parser("serve", help="write serving endpoints into .env").add_subparsers(
-        dest="sub", required=True)
-    for name, helptext in (("sync-agents", "agent model endpoints"),
-                           ("sync-embed", "embedding endpoints for the alignment panel")):
-        s = serve.add_parser(name, help=helptext)
-        s.add_argument("--dry-run", action="store_true", help="print the block, write nothing")
 
     bloom = sub.add_parser("bloom", help="the Bloom classifier arm").add_subparsers(
         dest="sub", required=True)
@@ -126,7 +119,7 @@ def build_parser() -> argparse.ArgumentParser:
     sc.add_argument("--embed-cache-only", action="store_true")
     sc.add_argument("--embed-api-key-env", default="",
                     help="fallback name of the token variable for a served arm "
-                         "(default: <SLOT>_EMBED_API_KEY_ENV, then [serving].key_env)")
+                         "(default: [serving].key_env)")
     sc.add_argument("--tfidf-ngram-range", default="2-3", metavar="LO-HI")
     sc.add_argument("--local-device")
     # What to score.
@@ -273,12 +266,6 @@ def _dispatch(args) -> int:
         return split_run(preset=args.preset, source=args.source, target=args.target,
                          per_cell=args.per_cell, disjoint_from=args.disjoint_from,
                          seed=args.seed, max_total=args.max_total)
-
-    if command == "serve":
-        from .serve import agents as serve_agents
-        from .serve import embed as serve_embed
-        mod = serve_agents if sub == "sync-agents" else serve_embed
-        return mod.run(dry_run=args.dry_run)
 
     if command == "bloom":
         from .alignment import bloom

@@ -13,6 +13,7 @@ table column, how to write a panel signal on a figure axis).
 
 from __future__ import annotations
 
+import re
 import tomllib
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -77,29 +78,60 @@ _DIGIT_WORDS = {
 }
 
 
-def macro_word(params_b: float) -> str:
-    """0.8 -> 'ZeroEightB', 9.0 -> 'NineB'. Works for any rung, not a fixed set."""
-    text = f"{params_b:g}".replace(".", "")
-    return "".join(_DIGIT_WORDS[c] for c in text) + "B"
+def macro_word(slot: str) -> str:
+    """Slot -> a LaTeX-safe \\newcommand word: 'small08b' -> 'SmallZeroEightB'.
+
+    From the SLOT, which is the identity, and not from a parameter count. A
+    count is not unique: two families at 9B produced one macro name, LaTeX kept
+    whichever was defined last, and the manuscript quoted one family's number
+    under both labels without a warning anywhere.
+
+    LaTeX forbids digits in a command name, so each digit becomes its word.
+    """
+    out = []
+    for run in re.findall(r"[A-Za-z]+|\d+", slot):
+        if run.isdigit():
+            out.append("".join(_DIGIT_WORDS[c] for c in run))
+        else:
+            out.append(run.capitalize())
+    return "".join(out) or "Slot"
 
 
 # ── the declaration ──────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
-class Rung:
-    """One step of the model ladder."""
+class Model:
+    """One declared model, reachable at an endpoint. Not a step of anything.
+
+    The declaration is a FLAT list: what makes a ladder is which slots an
+    experiment picks and in what order, and that lives on the experiment
+    (`[experiment.*].slots`). Nothing here is a position in a sequence, so a
+    second family, a repeat of one size on another host, or a model that
+    belongs to three experiments at once all declare the same way.
+    """
 
     slot: str
     model: str
-    params_b: float
+    #: Column header and axis tick for this model, e.g. "0.8B". Explicit:
+    #: it used to be derived from a parameter count, and deriving a LABEL from
+    #: a NUMBER is what made two families at one size indistinguishable.
     display: str
-    base_url: str | None = None
-    #: Serving assumptions for the cost profile. A QUOTE, not a measurement:
-    #: list prices recorded at deploy time, which move. Every number derived
-    #: from them is labelled "Assumed" in its macro name and prose.
-    gpu: str | None = None
-    vram_gb: int | None = None
-    usd_per_hour: float | None = None
+    #: Which model family this belongs to. Per model rather than global:
+    #: a global prefix IS the one-family assumption, and it labelled every
+    #: figure with whatever family happened to be declared last.
+    family: str = ""
+    #: Where this model is served. Several endpoints of the SAME model is a
+    #: supported setup, not a mistake: the agents round-robin across them.
+    base_urls: tuple[str, ...] = ()
+    #: Name of the env var holding this model's bearer token. Empty = the
+    #: `[serving].key_env` default. Per model because the declaration does not
+    #: have to live on one host: a model on a hosted API authenticates with
+    #: that provider's key while self-hosted ones share the serving key, and a
+    #: single global key would make the mixed declaration undeclarable.
+    key_env: str = ""
+    #: The API contract this model's endpoint speaks. Empty = `[serving]`'s.
+    #: Same reason: it is a property of the host, and the hosts may differ.
+    api_spec: str = ""
 
     @property
     def env_prefix(self) -> str:
@@ -108,11 +140,11 @@ class Rung:
 
     @property
     def macro(self) -> str:
-        return macro_word(self.params_b)
+        return macro_word(self.slot)
 
-    def full_display(self, family: str = "") -> str:
-        """Axis label / column header: '<family>-4B', or just '4B' with no family."""
-        return f"{family}-{self.display}" if family else self.display
+    def full_display(self) -> str:
+        """Axis label / column header: '<family>-4B', or just '4B' without one."""
+        return f"{self.family}-{self.display}" if self.family else self.display
 
 
 @dataclass(frozen=True)
@@ -140,7 +172,7 @@ class Profile:
     name: str
     title: str
     dataset: str
-    rungs: tuple[Rung, ...]
+    models: tuple[Model, ...]
     tags: tuple[str, ...]
     rate_limit: str
     session_prefix: str
@@ -152,12 +184,12 @@ class Profile:
 
     @property
     def slots(self) -> tuple[str, ...]:
-        return tuple(r.slot for r in self.rungs)
+        return tuple(m.slot for m in self.models)
 
     @property
     def n_generations(self) -> int:
         """For the cost banner. Scenario count is filled in by the launcher."""
-        return len(self.rungs) * len(self.tags) * len(self.agents)
+        return len(self.models) * len(self.tags) * len(self.agents)
 
 
 @dataclass(frozen=True)
@@ -170,7 +202,6 @@ class Serving:
     ladder into a comparison of budgets instead of a comparison of model scale.
     """
 
-    provider: str
     api_spec: str
     key_env: str
     #: The window the endpoints were launched with, in tokens.
@@ -219,24 +250,21 @@ class Judge:
 class Experiment:
     """The whole declaration."""
 
-    ladder: tuple[Rung, ...]
+    models: tuple[Model, ...]
     serving: Serving
     judge: Judge
     profiles: dict[str, Profile]
     source: Path
-    #: Display prefix for the ladder. Presentation only -- never used to look
-    #: anything up, so an empty family is a perfectly good configuration.
-    family: str = ""
     #: The [alignment] table, verbatim. Parsed by alignment.presets rather than
     #: here, so this module stays free of measurement concepts.
     alignment_raw: dict = field(default_factory=dict)
 
-    def rung(self, slot: str) -> Rung:
-        for r in self.ladder:
-            if r.slot == slot:
-                return r
-        known = ", ".join(r.slot for r in self.ladder)
-        raise SystemExit(f"Unknown ladder rung {slot!r} in {self.source}. Known: {known}")
+    def by_slot(self, slot: str) -> Model:
+        for m in self.models:
+            if m.slot == slot:
+                return m
+        known = ", ".join(m.slot for m in self.models)
+        raise SystemExit(f"Unknown slot {slot!r} in {self.source}. Known: {known}")
 
     def profile(self, name: str) -> Profile:
         try:
@@ -248,21 +276,41 @@ class Experiment:
             ) from None
 
     @property
-    def macro_words(self) -> dict[float, str]:
-        """params_b -> LaTeX macro word, for every declared rung."""
-        return {r.params_b: r.macro for r in self.ladder}
+    def macro_words(self) -> dict[str, str]:
+        """slot -> LaTeX macro word, for every declared model.
 
-    @property
-    def size_display(self) -> dict[float, str]:
-        """params_b -> table column header, for every declared rung."""
-        return {r.params_b: r.full_display(self.family) for r in self.ladder}
+        Keyed by slot rather than by size: the key has to tell two models
+        apart, and a parameter count cannot.
+        """
+        return {m.slot: m.macro for m in self.models}
 
-    @property
-    def serving_profile(self) -> dict[float, dict]:
-        """params_b -> {gpu, vram_gb, usd_per_hour}, for the cost profile."""
-        return {r.params_b: {"gpu": r.gpu, "vram_gb": r.vram_gb,
-                             "usd_per_hour": r.usd_per_hour}
-                for r in self.ladder if r.usd_per_hour is not None}
+    def slot_of_label(self, label: str) -> str | None:
+        """Run-dir model label -> the slot that produced it, or None.
+
+        The benchmark names a run directory after the model id with the org
+        prefix dropped and ':' turned into '-' (run_benchmark.py). Matching has
+        to reproduce that spelling exactly: comparing against the raw id is why
+        every hosted model, whose id carries a ':', silently failed to resolve
+        and fell back to printing its own directory name as a header.
+        """
+        low = label.lower()
+        for m in self.models:
+            base = m.model.split("/")[-1]
+            if low in (m.slot.lower(), base.lower(), base.replace(":", "-").lower()):
+                return m.slot
+        return None
+
+    def key_env_for(self, model: Model) -> str:
+        """The model's own key variable, or the serving default.
+
+        One place decides this. Two call sites spelling `model.key_env or
+        cfg.serving.key_env` differently is how a mixed-host selection ends up
+        authenticating one way in the launcher and another in the audit.
+        """
+        return model.key_env or self.serving.key_env
+
+    def api_spec_for(self, model: Model) -> str:
+        return model.api_spec or self.serving.api_spec
 
     def display_for(self, label: str) -> str:
         """Run-dir model label (lowercase, as the dir name spells it) -> header text.
@@ -271,30 +319,57 @@ class Experiment:
         declare must still render, since the alternative is a generator that
         crashes on data it was handed.
         """
-        low = label.lower()
-        for r in self.ladder:
-            if r.slot.lower() == low or r.model.split("/")[-1].lower() == low:
-                return r.full_display(self.family)
-        return label
+        slot = self.slot_of_label(label)
+        return self.by_slot(slot).full_display() if slot else label
 
 
-def _rung(raw: dict) -> Rung:
-    return Rung(
+def urls(raw, where: str) -> tuple[str, ...]:
+    """A `base_urls` declaration: one string, or a list of them.
+
+    Accepting the bare string is not politeness -- the single-endpoint case is
+    the common one, and a declaration that must be written `["..."]` to work
+    invites the list-of-characters bug the other spelling cannot express.
+    """
+    if raw is None:
+        return ()
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list) or not all(isinstance(u, str) for u in raw):
+        raise SystemExit(f"{where}: base_urls must be a URL or a list of URLs, "
+                         f"got {raw!r}.")
+    return tuple(u.strip() for u in raw if u.strip())
+
+
+def _required_display(raw: dict) -> str:
+    """Every model states its own header text.
+
+    There is nothing left to derive it from, and that is the point: a label
+    derived from a size collides the moment two models share one.
+    """
+    value = raw.get("display")
+    if not value or not isinstance(value, str):
+        raise SystemExit(
+            f"[[model]] {raw.get('slot', '?')!r}: display is required -- the column "
+            f"header and axis tick for this model, e.g. \"9B\"."
+        )
+    return value
+
+
+def _model(raw: dict) -> Model:
+    return Model(
         slot=raw["slot"],
         model=raw["model"],
-        params_b=float(raw["params_b"]),
-        display=raw.get("display") or f"{raw['params_b']:g}B",
-        base_url=raw.get("base_url"),
-        gpu=raw.get("gpu"),
-        vram_gb=raw.get("vram_gb"),
-        usd_per_hour=raw.get("usd_per_hour"),
+        display=_required_display(raw),
+        family=raw.get("family", ""),
+        base_urls=urls(raw.get("base_urls"), f'[[model]] {raw["slot"]!r}'),
+        key_env=raw.get("key_env", ""),
+        api_spec=raw.get("api_spec", ""),
     )
 
 
 def _serving(raw: dict, src: Path) -> Serving:
-    """Pop the declared keys; whatever is left is the provider's own table."""
+    """Pop the declared keys; whatever is left is the host's own table."""
     rest = dict(raw)
-    provider = rest.pop("provider", "static")
     api_spec = rest.pop("api_spec", "openai_compatible")
     key_env = rest.pop("key_env", "LLM_API_KEY")
 
@@ -318,7 +393,7 @@ def _serving(raw: dict, src: Path) -> Serving:
             f"prompt inside context_window ({context_window})."
         )
 
-    return Serving(provider=provider, api_spec=api_spec, key_env=key_env,
+    return Serving(api_spec=api_spec, key_env=key_env,
                    context_window=context_window, max_output_tokens=max_output_tokens,
                    streaming=streaming, options=rest)
 
@@ -406,18 +481,23 @@ def _judge(raw: dict, src: Path) -> Judge:
     )
 
 
-def _profile(name: str, raw: dict, ladder: tuple[Rung, ...]) -> Profile:
-    wanted = raw.get("rungs", "all")
+def _profile(name: str, raw: dict, declared: tuple[Model, ...]) -> Profile:
+    # THIS is what makes a ladder: the slots an experiment picks, in the order
+    # it picks them. The declaration above is a flat list with no sequence in
+    # it, so two experiments can carve two different ladders -- or two
+    # families, or one family twice -- out of the same models without the
+    # declaration knowing anything about either.
+    wanted = raw.get("slots", "all")
     if wanted == "all":
-        rungs = ladder
+        chosen = declared
     else:
-        by_slot = {r.slot: r for r in ladder}
+        by_slot = {m.slot: m for m in declared}
         missing = [s for s in wanted if s not in by_slot]
         if missing:
             raise SystemExit(
-                f"experiment.{name}.rungs names undeclared rung(s): {', '.join(missing)}"
+                f"experiment.{name}.slots names undeclared slot(s): {', '.join(missing)}"
             )
-        rungs = tuple(by_slot[s] for s in wanted)
+        chosen = tuple(by_slot[s] for s in wanted)
 
     arms = tuple(
         Arm(id=a["id"], agent_mode=a["agent_mode"], context_mode=a["context_mode"])
@@ -433,7 +513,7 @@ def _profile(name: str, raw: dict, ladder: tuple[Rung, ...]) -> Profile:
         name=name,
         title=raw.get("title", name),
         dataset=raw["dataset"],
-        rungs=rungs,
+        models=chosen,
         tags=tuple(raw.get("tags", [])),
         rate_limit=raw.get("rate_limit", "moderate"),
         session_prefix=raw.get("session_prefix", name),
@@ -455,26 +535,25 @@ def load(path: Path | None = None) -> Experiment:
         )
     raw = tomllib.loads(src.read_text(encoding="utf-8"))
 
-    rungs = tuple(_rung(r) for r in raw.get("ladder", []))
-    if not rungs:
-        raise SystemExit(f"{src} declares no [[ladder]] rungs.")
-    slots = [r.slot for r in rungs]
+    declared = tuple(_model(m) for m in raw.get("model", []))
+    if not declared:
+        raise SystemExit(f"{src} declares no [[model]] tables.")
+    slots = [m.slot for m in declared]
     if len(set(slots)) != len(slots):
-        raise SystemExit(f"{src}: duplicate ladder slot(s) in {slots}.")
+        raise SystemExit(f"{src}: duplicate [[model]] slot(s) in {slots}.")
 
     serving = _serving(raw.get("serving", {}), src)
     judge = _judge(raw.get("judge", {}), src)
 
     profiles = {
-        name: _profile(name, body, rungs)
+        name: _profile(name, body, declared)
         for name, body in raw.get("experiment", {}).items()
     }
     if not profiles:
         raise SystemExit(f"{src} declares no [experiment.*] profiles.")
 
-    return Experiment(ladder=rungs, serving=serving, judge=judge, profiles=profiles, source=src,
-                      family=str(raw.get("models", {}).get("family", "")),
-                      alignment_raw=raw.get("alignment", {}))
+    return Experiment(models=declared, serving=serving, judge=judge, profiles=profiles,
+                      source=src, alignment_raw=raw.get("alignment", {}))
 
 
 @lru_cache(maxsize=None)

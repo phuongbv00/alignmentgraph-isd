@@ -63,8 +63,6 @@ benchmark độc lập.
 |---|---|---|
 | `isd-exp doctor [--fix]` | kiểm checkout, 10 gói editable của benchmark, `.env`, checkpoint Bloom | 1 |
 | `isd-exp data split <tên>` | cắt `train_10` / `test_90` / `test_30` (kèm kiểm disjoint) | 2 |
-| `isd-exp serve sync-agents` | ghi endpoint model agent vào block quản lý trong `.env` | 3.4 |
-| `isd-exp serve sync-embed` | ghi endpoint embedding cho panel alignment | 7 |
 | `isd-exp bloom train` / `validate` | huấn luyện head Bloom 6 lớp / chấm arm vs nhãn chuyên gia | A.3 |
 | `isd-exp tune run` | hiệu chỉnh cost và budget trên `train_10` | 4 |
 | `isd-exp freeze write` / `verify` | ghi / đối chiếu manifest code freeze | 5 GĐ3 |
@@ -130,8 +128,7 @@ Agent model và LLM judge model cấu hình **tách biệt** (tránh self-prefer
 ```bash
 # --- secrets ---
 OPENROUTER_API_KEY=sk-or-...     # LLM judge
-RUNPOD_API_KEY=rpa_...           # chỉ để script list pod (read-only)
-VLLM_API_KEY=...                 # Bearer token của server vLLM (khớp RunPod secret)
+LLM_API_KEY=...                  # Bearer token của server vLLM (khớp RunPod secret)
 
 # --- LLM judge (cố định mọi giai đoạn) ---
 JUDGE_MODEL_PROVIDER=openrouter
@@ -140,17 +137,16 @@ JUDGE_MODEL_BASE_URL=https://openrouter.ai/api/v1
 JUDGE_MODEL_API_KEY_ENV=OPENROUTER_API_KEY
 
 # --- agent model ---
-# Smoke test: dùng hosted API qua AGENT_MODEL_{PROVIDER,NAME,BASE_URL,API_KEY_ENV} global.
-# Tune/bench: KHÔNG viết tay. Chạy 3_sync_runpod_pods_env.py → nó append managed block
-# gồm QWEN{08B,2B,4B,9B}_AGENT_MODEL_{PROVIDER,BASE_URLS,NAME,API_KEY_ENVS}.
+# KHÔNG nằm ở đây. Endpoint của mỗi rung khai bằng `base_urls` trong experiment.toml
+# (mục 3.4); launcher tự export QWEN{08B,2B,4B,9B}_AGENT_MODEL_BASE_URLS từ đó.
 
 # --- tuỳ chọn ladder ---
 # RATE_LIMIT=turbo                # conservative|moderate|aggressive|turbo
 # QWEN08B_RATE_LIMIT=conservative # override per-slot
 ```
 
-Một slot có thể có **nhiều pod**: script gom mọi pod cùng model vào `<SLOT>_AGENT_MODEL_BASE_URLS`
-(comma-separated), agent round-robin qua chúng. Pod trong cùng slot phải serve cùng model — script hard-fail nếu khác.
+Một slot có thể có **nhiều pod**: liệt kê nhiều URL trong `base_urls` của rung đó, agent round-robin qua chúng.
+Mọi URL trong một rung phải serve cùng model — `audit preflight` kiểm từng URL một và fail nếu lệch.
 
 ## 2. Split data
 
@@ -209,15 +205,15 @@ AGENT_MODEL_MAX_OUTPUT_TOKENS=8192
 AGENT_MODEL_STREAMING=1
 ```
 
-Cả hai **viết tay vào `.env`** — `isd-exp serve sync-agents` chỉ ghi managed block endpoint
-(`{PROVIDER,BASE_URLS,NAME,API_KEY_ENVS}`), không ghi flag; đó chính là lý do pre-flight (mục 6.1) phải kiểm chúng. Áp
-**đồng loạt mọi agent và mọi size** nên không tạo lợi thế riêng — đó là luận điểm fairness.
+Cả hai khai trong `experiment.toml` (`[serving].max_output_tokens` / `.streaming`), launcher truyền xuống benchmark
+dưới dạng command prefix. Pre-flight (mục 6.1) **fail** nếu `.env` cũng đặt chúng: hai nguồn cho một giới hạn phải
+đồng nhất trên mọi agent và mọi size chính là cách một so sánh mất luận điểm fairness trong im lặng.
 
 Ladder serve **để nguyên thinking**. `--reasoning-parser qwen3` (mục 3.2) tách phần suy nghĩ sang `reasoning_content`
 nên `content` vẫn sạch cho đường tool-call/JSON; harness ghi lại kênh đó vào transcript nhưng không bao giờ gửi ngược cho
 model, và một lượt chỉ có suy nghĩ bị tính như lượt rỗng.
 
-### 3.4 Tạo pod + sync env
+### 3.4 Tạo pod + khai endpoint
 
 Pod tạo thủ công trên console từ template public dùng chung cho cả 4 size:
 **<https://console.runpod.io/deploy?template=x4cakqmn77>**
@@ -231,14 +227,55 @@ Pod tạo thủ công trên console từ template public dùng chung cho cả 4 
 
 Storage: container 20GB + mỗi pod một network volume mount `/workspace` cho HF cache — weights sống sót qua restart.
 
-```bash
-./isd-exp serve sync-agents    # --dry-run để xem block trước
-source .env
+5. Dán URL vào `[[model]]` tương ứng trong `experiment.toml`:
+
+```toml
+[[model]]
+slot = "qwen9b"
+family = "Qwen3.5"
+model = "Qwen/Qwen3.5-9B"
+display = "9B"
+base_urls = ["https://<pod_id>-8000.proxy.runpod.net/v1"]
+key_env = "VLLM_API_KEY"
 ```
 
-Script **chỉ đọc** RunPod API: list pod, match slot, **verify model thật qua `/v1/models` của chính pod**, rồi ghi đè
-managed block ở cuối `.env` (giữa hai marker). Chạy lại là thay block, không duplicate, không đụng phần còn lại.
-Env-quad nhận bất kỳ provider OpenAI-compatible nào nên có thể thay một slot bằng hosted API.
+Nhiều pod cùng một model thì liệt kê nhiều URL — agent round-robin qua chúng. `.env` **không** chứa endpoint, chỉ chứa
+key. Không có bước sync nào: `experiment.toml` là nơi duy nhất viết endpoint của một rung, và `isd-exp freeze write`
+băm đúng file đó nên một run đã xong luôn trả lời được nó chạy trên endpoint nào.
+
+**Ladder không bắt buộc nằm trên một host.** Một rung chỉ là URL + model id + tên biến key, nên ladder lai — vài rung
+trên GPU của mình, vài rung trên hosted API — khai y hệt, thêm `key_env` cho rung đó:
+
+```toml
+[[model]]
+slot = "qwen9b"
+family = "Qwen3.5"
+model = "qwen/qwen3.5-9b"                  # id mà HOST ĐÓ serve
+display = "9B"
+base_urls = ["https://openrouter.ai/api/v1"]
+key_env = "OPENROUTER_API_KEY"             # thiếu thì dùng [serving].key_env
+```
+
+**Khai báo là danh sách phẳng, không phải ladder.** Cái làm nên một ladder là
+`slots` của từng thí nghiệm — `"all"` lấy mọi model theo thứ tự khai, hoặc liệt kê
+tên slot để cắt ra một ladder cụ thể. Thêm family thứ hai, hay cùng một size trên
+hai host, đều khai y hệt ở đây và chỉ khác nhau ở danh sách `slots`.
+
+**`slot` là định danh duy nhất.** Tên macro LaTeX sinh từ nó (`qwen08b` →
+`QwenZeroEightB`), nhãn cột lấy từ `display` + `family`. Không có gì suy ra từ số
+tham số nữa — một nhãn suy ra từ con số thì hai model cùng size là một.
+
+`api_spec` cũng khai được theo rung nếu host nói contract khác. Chỉ giá trị key nằm trong `.env`, dưới đúng tên rung
+đã đặt.
+
+Cần nói thẳng vì khai báo sẽ không tự nói hộ: **rung hosted không cùng một nhạc cụ với rung tự host.** Provider chọn
+quantisation, backend và sampling default, và có thể route một id qua nhiều backend khác nhau — nên ladder trộn hai
+loại đang so **đồng thời** model scale lẫn serving stack. `freeze write` ghi lại thứ bạn khai, không ghi được thứ
+provider đã làm với nó.
+
+`./isd-exp audit preflight` (mục 6.1) kiểm đúng các URL vừa khai — 401 không key, 200 có key, model `/v1/models` trả
+về khớp `model` của rung — nên sai địa chỉ bị bắt trước khi tốn một đồng GPU nào. Endpoint là OpenAI-compatible nên
+thay một slot bằng hosted API chỉ là đổi URL.
 
 ## 4. Tune trên `train_10`
 
@@ -288,7 +325,7 @@ source .env
 ./isd-exp comparison run    # gõ "yes" ở prompt
 ```
 
-- Env-quad lấy từ managed block; thiếu base URL ⇒ hard-fail kèm hướng dẫn.
+- Endpoint lấy từ `base_urls` trong experiment.toml; rung nào chưa khai ⇒ hard-fail kèm hướng dẫn.
 - Mỗi size một tmux session (`ladder-qwen08b`...), chạy **song song**; trong mỗi session các tag chạy
   **tuần tự** — mặc định một tag `r1` → `results/test_90_benchmark_<model>_r1_<ts>/`.
 - **`.env` không đổi được cái gì được chạy.** Launcher snapshot `DATASET`/`AGENTS`/`RUN_TAGS`/
@@ -493,7 +530,7 @@ activities / evaluation) có rỗng không. Quan trọng: output parse được 
 | `응답 길이: 0`                       | Model trả rỗng                | Kiểm pod log + cap completion (<think>)    |
 | `token_usage = 0` hàng loạt      | Accounting hỏng               | Sửa trước khi chạy tiếp — số token sai hết |
 | `token_usage = 0` ở **một số** agent | Agent đó dùng `LLMConfig` đã tách khỏi counter của run | Counter đi theo lineage của config: `_get_agent_runner` mở scope bằng `new_token_scope()`, `copy_with()` chia sẻ lại. Chạy `pytest shared/tests/test_token_accounting_reaches_agents.py` |
-| Model name metadata ≠ run dir    | Nhầm URL pod ↔ slot           | Loại run, kiểm managed block               |
+| Model name metadata ≠ run dir    | Nhầm URL pod ↔ slot           | Loại run, kiểm `base_urls` trong experiment.toml |
 | `evaluation_error` trong summary | LLM judge chết giữa chừng         | `04_repair_ladder_results.py` (xem dưới)   |
 | Pod EXITED giữa run              | OOM/crash server              | Xem RunPod console log, kiểm VRAM          |
 
@@ -521,12 +558,18 @@ command. Deploy **nhiều pod cùng lúc** thì scorer tự load-balance round-r
 
 Chuẩn bị trước một lần: checkpoint Bloom (arm chính) — xem A.3.
 
+Khai URL của pod vào arm primary trong `experiment.toml`, cùng chỗ với ladder:
+
+```toml
+[alignment.encoders.nemotron]
+base_urls = ["https://<pod_id>-8000.proxy.runpod.net/v1"]
+# revision = "<HF commit>"   # ghim weights; cũng vào khoá cache embedding
+```
+
 ```bash
 RUNS='results/test_90_benchmark_*_r* results/test_30_benchmark_*_a*'
 
 # (1) arm primary — cần pod đang chạy
-./isd-exp serve sync-embed   # --dry-run để xem trước
-source .env    # → EMBED_SLOTS + NEMOTRON_EMBED_{BASE_URLS,MODEL,API_KEY_ENV}
 ./isd-exp score $RUNS
 
 # (2) TẮT POD, rồi chấm 3 arm sensitivity còn lại hoàn toàn local (~70 phút)
@@ -711,7 +754,7 @@ train tay. Exit 0 = không RED (và không WARN nếu `--strict`).
 
 - **Tắt/xoá pod RunPod ngay** (thao tác console, không có script) — tính tiền theo giờ kể cả idle.
 - Giữ nguyên vẹn: mọi `results/test_90_benchmark_*_r*/`, mọi `comparison_manifest.json`, `pooled_comparison.json`,
-  `scenarios/*_metadata.json`, và managed block trong `.env`.
+  `scenarios/*_metadata.json`, và `experiment.toml` (đã được `freeze write` băm).
 - Số và hình trong paper regenerate được bất kỳ lúc nào từ raw results bằng chuỗi mục 7 → 8 → 9.
 
 ---

@@ -13,7 +13,7 @@ What it records, and why each is here rather than assumed:
   not describe what actually ran, so the flag matters as much as the hash.
 * **The experiment declaration**, hashed and embedded. The ladder, the roster
   and the arms are configuration now, so the config IS part of the version.
-* **The resolved profile** -- dataset, agents, rungs, tags -- so a reader does
+* **The resolved profile** -- dataset, agents, slots, tags -- so a reader does
   not have to re-resolve it from the config to know what ran.
 """
 
@@ -28,7 +28,8 @@ from pathlib import Path
 from .. import paths
 from ..config import current as current_config
 
-SCHEMA_VERSION = 1
+#: 2: the flat `models` list (was `ladder`), with `family` per model.
+SCHEMA_VERSION = 2
 
 
 def _git(root: Path, *args: str) -> str:
@@ -61,8 +62,13 @@ def config_fingerprint() -> dict:
     return {
         "path": str(cfg.source),
         "sha256": hashlib.sha256(raw).hexdigest() if raw else None,
-        "ladder": [{"slot": r.slot, "model": r.model, "params_b": r.params_b}
-                   for r in cfg.ladder],
+        # Flat, and keyed by slot: `family` is part of what identifies a model
+        # now that it is declared per model rather than once for the file, and
+        # a manifest that left it out could not tell two same-size models of
+        # different families apart.
+        "models": [{"slot": m.slot, "family": m.family, "model": m.model,
+                    "display": m.display}
+                   for m in cfg.models],
         # Spelled out beside the hash, which already covers them byte-wise: the
         # limits and the judge roster decide what every reported number means,
         # and a reader should not have to re-read a config that has moved on to
@@ -105,7 +111,7 @@ def build(*, experiment: str | None = None, tag: str | None = None) -> dict:
         p = cfg.profile(experiment)
         doc["profile"] = {
             "name": p.name, "dataset": p.dataset, "tags": list(p.tags),
-            "rungs": list(p.slots), "agents": list(p.agents),
+            "slots": list(p.slots), "agents": list(p.agents),
             "arms": [{"id": a.id, **a.expected_flags} for a in p.arms],
         }
     return doc

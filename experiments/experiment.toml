@@ -6,12 +6,7 @@
 # that.
 
 [serving]
-# "static" reads endpoints straight from this file or .env and calls nobody's
-# API -- it works with any OpenAI-compatible server (vLLM on a VPS, llama.cpp,
-# a hosted inference provider). "runpod" additionally discovers pod IDs through
-# the RunPod REST API and derives base URLs from them.
-provider = "static"
-# The API contract, not a vendor. shared/llm/factory.py dispatches on this.
+# The API contract the endpoints speak. shared/llm/factory.py dispatches on it.
 api_spec = "openai_compatible"
 # Name of the env var holding the key every rung authenticates with.
 key_env = "LLM_API_KEY"
@@ -33,65 +28,85 @@ max_output_tokens = 8192
 # long non-streaming read before the largest rung finishes a turn.
 streaming = true
 
-[serving.runpod]
-# Only read when provider = "runpod". The URL shape is data, not code, so a
-# different proxy scheme is a config edit.
-rest_base = "https://rest.runpod.io/v1"
-url_template = "https://{pod_id}-{port}.proxy.runpod.net/v1"
-port = 8000
-key_env = "RUNPOD_API_KEY"
-
-[models]
-# Display prefix for the ladder on figure axes, table headers and captions.
-# The generators used to hard-code "Qwen3.5-" in ten places, so swapping the
-# ladder left every figure still labelled with the old family. Empty string =
-# show the rung display alone.
-family = "Qwen3.5"
-
-# --- The ladder -------------------------------------------------------------
-# One table per rung. Add, remove or reorder freely; nothing downstream assumes
-# four rungs or any particular family.
-#   slot     env-quad prefix -> <SLOT>_AGENT_MODEL_{PROVIDER,BASE_URL,NAME,API_KEY_ENVS}
-#   model    what the server serves, passed to --agent-model-name
-#   params_b parameter count in billions: sort key, and the source of the
-#            LaTeX macro word (0.8 -> ZeroEightB), which used to be hard-coded
-#   display  column header in generated tables
-#   base_url optional; with provider="static" this is where the endpoint goes
-[[ladder]]
+# --- The models -------------------------------------------------------------
+# A FLAT list. One table per model, in no particular order: nothing here is a
+# position in a sequence, and nothing assumes one family or one host.
+#
+# What makes a LADDER is which slots an experiment picks and in what order --
+# `[experiment.*].slots` below. So a second family, the same size twice on
+# different hosts, or a model shared by three experiments all declare the same
+# way here, and a new ladder is a new `slots` list rather than a new section.
+#   slot      IDENTITY, unique, and the env-quad prefix
+#             -> <SLOT>_AGENT_MODEL_{BASE_URLS,NAME,API_KEY_ENVS}
+#   family    display prefix for THIS model on axes, headers and captions.
+#             Per model: one global prefix was the one-family assumption.
+#   model     what the server serves; passed to --agent-model-name, and what
+#             `audit preflight` expects the endpoint's /v1/models to report
+#   display   REQUIRED: the column header and axis tick for this model, e.g.
+#             "0.8B". Stated, never derived: it used to come from a parameter
+#             count, and a label derived from a number cannot tell two models
+#             of the same size apart. The LaTeX macro word comes from `slot`
+#             (qwen08b -> QwenZeroEightB), which is unique by construction.
+#   base_urls where the model is served. One URL, or a list of them when several
+#             servers hold the SAME model -- the agents round-robin across the
+#             list. Set them by hand after the servers are up; this file is the
+#             only place an endpoint is written, and `audit preflight`
+#             checks exactly these URLs before a run.
+#   key_env   the env var holding THIS model's bearer token. Omit it and the
+#             model falls back to [serving].key_env -- but on a declaration
+#             that spans hosts, naming it here is what keeps one provider's
+#             credential from being handed to another provider's endpoint.
+#   api_spec  optional: the API contract THIS endpoint speaks. Omit and it
+#             uses [serving].api_spec.
+#
+# Nothing has to live on one host. A model here is a URL, a model id and a key
+# name, so a ladder mixing your own GPUs with a hosted API needs no new
+# concept -- only a per-model key_env naming that provider's credential:
+#
+#   [[model]]
+#   slot = "qwen9b"
+#   model = "qwen/qwen3.5-9b"              # the id THAT host serves it under
+#   display = "9B"
+#   base_urls = ["https://openrouter.ai/api/v1"]
+#   key_env = "OPENROUTER_API_KEY"
+#
+# Worth saying out loud, because the declaration will not say it for you: a
+# hosted model is not the same instrument as a self-hosted one. The provider
+# chooses the quantisation, the backend and the sampling defaults, and may
+# route one id to several of them -- so a `slots` list mixing the two compares
+# model scale AND serving stack at once. `freeze write` records what you
+# declared, not what the provider did with it.
+[[model]]
 slot = "qwen08b"
 model = "Qwen/Qwen3.5-0.8B"
-params_b = 0.8
+family = "Qwen3.5"
 display = "0.8B"
-gpu = "RTX 4090"
-vram_gb = 24
-usd_per_hour = 0.69
+base_urls = ["https://<POD_ID>-8000.proxy.runpod.net/v1"]
+key_env = "VLLM_API_KEY"
 
-[[ladder]]
+[[model]]
 slot = "qwen2b"
-model = "Qwen/Qwen3.5-2B"
-params_b = 2.0
+model = "Qwen/Qwen3.5-2B:featherless-ai"
+family = "Qwen3.5"
 display = "2B"
-gpu = "RTX 4090"
-vram_gb = 24
-usd_per_hour = 0.69
+base_urls = ["https://router.huggingface.co/v1"]
+key_env = "HF_TOKEN"
 
-[[ladder]]
+[[model]]
 slot = "qwen4b"
 model = "Qwen/Qwen3.5-4B"
-params_b = 4.0
+family = "Qwen3.5"
 display = "4B"
-gpu = "RTX 4090"
-vram_gb = 24
-usd_per_hour = 0.69
+base_urls = ["https://<POD_ID>-8000.proxy.runpod.net/v1"]
+key_env = "VLLM_API_KEY"
 
-[[ladder]]
+[[model]]
 slot = "qwen9b"
-model = "Qwen/Qwen3.5-9B"
-params_b = 9.0
+model = "qwen/qwen3.5-9b:nitro"
+family = "Qwen3.5"
 display = "9B"
-gpu = "RTX PRO 4500 Blackwell"
-vram_gb = 32
-usd_per_hour = 0.74
+base_urls = ["https://openrouter.ai/api/v1"]
+key_env = "OPENROUTER_API_KEY"
 
 # --- The LLM judge ----------------------------------------------------------
 # The roster decides what every reported LLM judge score means, so it is
@@ -120,10 +135,12 @@ name = "openai/gpt-4o-mini"
 # --- The two official experiments -------------------------------------------
 
 [experiment.comparison]
-# The proposed system against the benchmark's own agents, across the ladder.
+# The proposed system against the benchmark's own agents, across model scale.
+# `slots` is what makes this experiment's ladder: "all" takes every declared
+# model in declaration order, or name them to carve a specific one.
 title = "COMPARISON - proposed system vs baselines across model scale"
 dataset = "test_90"
-rungs = "all"
+slots = "all"
 tags = ["c1"]
 rate_limit = "turbo"
 session_prefix = "comparison"
@@ -145,7 +162,7 @@ agents = [
 # when both sides come from the same run.
 title = "ABLATION - decomposition x substrate"
 dataset = "test_30"
-rungs = ["qwen08b", "qwen4b"]          # both ends of the deployment envelope
+slots = ["qwen08b", "qwen4b"]          # both ends of the deployment envelope
 tags = ["a1"]
 rate_limit = "turbo"
 session_prefix = "ablation"
@@ -175,9 +192,9 @@ context_mode = "prose"
 # Its results never enter the paper, which is why it has its own tag namespace.
 title = "TUNE - cost and budget calibration"
 dataset = "train_10"
-rungs = "all"
+slots = ["qwen9b"]
 tags = ["t1"]
-rate_limit = "moderate"
+rate_limit = "turbo"
 session_prefix = "tune"
 confirm = false
 agents = ["alignmentgraph-isd", "react-isd"]
@@ -195,25 +212,26 @@ agents = ["alignmentgraph-isd", "react-isd"]
 [alignment]
 primary_encoder = "nemotron"
 primary_bloom = "bertbloom"
-# What a cost figure assumes about serving, stated as a quote rather than a
-# measurement: the per-rung gpu/vram_gb/usd_per_hour above are list prices
-# recorded at deploy time, and every number derived from them is labelled
-# "Assumed". Naming the source here keeps that auditable when prices move.
-cost_source = "per-rung GPU and hourly list price recorded at deploy time (2026-07)"
 
 [alignment.encoders.nemotron]
 # LaTeX macro names cannot contain digits, so each arm needs a word form.
 macro = "Nemotron"
-display = "E1 Nemotron-8B"
 short = "Nemotron"
 kind = "api"
 model = "nvidia/llama-embed-nemotron-8b"
 suffix = ""
+# The one arm that needs a server (`vllm serve <model> --task embed`); the
+# others run in-process on this machine. Same shape as a rung's: several URLs
+# load-balance ONE embedding space, so every one of them must serve this model.
+# `key_env` is available here too, for an endpoint on a different host.
+base_urls = []
+# HF commit pinning the weights. It also enters the embedding-cache key, so a
+# bump re-embeds rather than serving the old vectors under the new label.
+# revision = "<commit>"
 
 [alignment.encoders.bgem3]
 # LaTeX macro names cannot contain digits, so each arm needs a word form.
 macro = "BgeMThree"
-display = "E2 bge-m3"
 short = "bge-m3"
 kind = "local"
 model = "BAAI/bge-m3"
@@ -222,7 +240,6 @@ suffix = "bgem3"
 [alignment.encoders.granite]
 # LaTeX macro names cannot contain digits, so each arm needs a word form.
 macro = "Granite"
-display = "E3 granite-311m"
 short = "granite"
 kind = "local"
 model = "ibm-granite/granite-embedding-311m-multilingual-r2"
@@ -231,7 +248,6 @@ suffix = "granite"
 [alignment.encoders.tfidf]
 # LaTeX macro names cannot contain digits, so each arm needs a word form.
 macro = "Tfidf"
-display = "E4 TF-IDF char-ngram"
 short = "TF-IDF"
 kind = "tfidf"
 model = "tfidf-char-ngram"
@@ -245,7 +261,6 @@ suffix = "tfidf"
 [alignment.bloom.bertbloom]
 # LaTeX macro names cannot contain digits, so each arm needs a word form.
 macro = "BertBloom"
-display = "B1 BERT 6-way"
 short = "BERT"
 kind = "transformer"
 checkpoint = "bloom-bert-edm2022"
@@ -254,7 +269,6 @@ suffix = ""
 [alignment.bloom.lexicon]
 # LaTeX macro names cannot contain digits, so each arm needs a word form.
 macro = "Lexicon"
-display = "B2 Rule lexicon"
 short = "lexicon"
 kind = "lexicon"
 suffix = "lexicon"

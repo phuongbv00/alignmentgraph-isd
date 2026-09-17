@@ -116,7 +116,7 @@ def models_dir() -> Path:
 
 
 def env_file() -> Path:
-    """Credentials and endpoints, including the serve commands' managed blocks.
+    """Credentials, and nothing else -- endpoints are declared in the config.
 
     Canonically ``experiments/.env`` -- the experiment owns its configuration.
     The benchmark's own entry points (``run_benchmark.py --check``, the smoke

@@ -4,7 +4,8 @@ The artifact NAMES change in this migration -- `tab_rq1*` becomes
 `tab_llm_judge_*` and `tab_rq2*` becomes `tab_alignment*`, because a filename
 should say what is in it rather than index a draft's question numbering -- and
 so do the internal LaTeX labels, and so does the score/signal vocabulary in
-the generated comments. Nothing else may change.
+the generated comments, and the macro suffixes now come from a model's slot
+rather than from its parameter count. Nothing else may change.
 
 So the comparison normalises exactly those renames and nothing more. A
 difference that survives normalisation is a number that moved, which is the
@@ -55,6 +56,13 @@ SUBSTITUTIONS = [
     # which instrument produced it, the same rule the file names follow.
     (r"\brqOne", "llmJudge"),
     (r"\brqTwo", "alignment"),
+    # Macro SUFFIXES were spelled from a parameter count, so two models of the
+    # same size in different families produced one macro name and LaTeX kept
+    # whichever came last. They are spelled from the slot now, which is unique
+    # by construction. Only the name moves -- every number either side of this
+    # substitution still has to match, which is what the rest of the file
+    # checks.
+    (r"(ZeroEightB|TwoB|FourB|NineB)([}\)])", r"Qwen\1\2"),
 ]
 
 #: Provenance lines: a timestamp and the producing command, different by design.
@@ -105,7 +113,7 @@ class TestArtifactNaming:
         """The family comes from config now; a caller that also hard-codes it
         produces 'Family-Family-4B'. That happened once during the move."""
         from isd_experiments.config import current
-        family = current().family
+        family = next((m.family for m in current().models if m.family), "")
         if not family:
             pytest.skip("no display family configured")
         for p in sorted(generated.glob("*.tex")):

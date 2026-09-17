@@ -16,8 +16,8 @@ with an instrument that did not produce it.
 
 **Only the served primary needs a GPU pod.** It is reached over an
 OpenAI-compatible ``/v1/embeddings`` endpoint (e.g. a server running
-``vllm serve <model> --task embed``), resolved from its
-``<SLOT>_EMBED_*`` env quad (written by ``isd-exp serve sync-embed``). The
+``vllm serve <model> --task embed``), declared as ``base_urls`` on that arm in
+experiment.toml. The
 sweep arms run in-process: ``bgem3`` and ``granite`` through
 sentence-transformers on the local GPU (measured on an M4 Pro: 126 and 226
 texts/s, i.e. ~44 and ~25 minutes for the ladder's 335k unique texts),
@@ -64,12 +64,10 @@ from ..config import current as current_config
 from .presets import current as declared_arms
 
 
-# The endpoint this script needs (<SLOT>_EMBED_BASE_URLS) is WRITTEN into .env
-# by isd-exp serve sync-embed, so it has to be READ from there too. Without
-# this, 05 would write the value, .env would visibly contain it, and this
-# script would still report "no endpoint" and tell the user to re-run 05 —
-# advice that cannot fix anything. Same guarded import as run_benchmark.py and
-# 05 itself; load_dotenv does not override variables already exported in the
+# Endpoints are declared in experiment.toml, but the KEY they authenticate
+# with is a secret and lives in .env -- so read .env here rather than requiring
+# `source .env` first, which would make the first run of a cold shell the one
+# that fails. load_dotenv does not override a variable already exported in the
 # shell, so an explicit export still wins.
 
 from .protocol import (  # noqa: E402
@@ -123,8 +121,8 @@ def encoder_slot(key: str) -> str:
     """Preset key -> env-var slot prefix, e.g. 'bgem3' -> 'BGEM3'.
 
     Same rule as the ladder's ``slot_upper`` (scripts/4_run_benchmark.sh), so
-    the embed env-quad reads exactly like the agent one:
-    ``<SLOT>_EMBED_BASE_URLS`` next to ``<SLOT>_AGENT_MODEL_BASE_URLS``.
+    an arm names itself the same way a rung does. It is what --embed-*-for
+    flags and the run artifacts key on.
     """
     return key.upper().replace("-", "_")
 
@@ -299,14 +297,14 @@ def resolve_encoder_specs(args) -> list[EncoderSpec]:
 
     Endpoint precedence per arm (slot ``S = encoder_slot(key)``):
       1. --embed-base-urls-for S=<csv>
-      2. <S>_EMBED_BASE_URLS          (written by isd-exp serve sync-embed)
+      2. ``base_urls`` declared on that arm in experiment.toml
       3. --embed-cache-only: a syntactically valid URL that is never called.
 
-    There is deliberately no shared/global endpoint variable: one URL cannot be
-    the right endpoint for several arms, and silently scoring bge-m3 against the
+    There is deliberately no shared/global endpoint: one URL cannot be the
+    right endpoint for several arms, and silently scoring bge-m3 against the
     served model is exactly the cache-poisoning served_model() exists to catch.
-    Weights revisions are per arm for the same reason (--embed-revision-for /
-    <S>_EMBED_REVISION).
+    Weights revisions are per arm for the same reason (--embed-revision-for,
+    or ``revision`` on the arm).
     """
     ngram = parse_ngram_range(args.tfidf_ngram_range)
     overrides: dict[str, str] = {}
@@ -340,8 +338,7 @@ def resolve_encoder_specs(args) -> list[EncoderSpec]:
         # pure code in this repo — an HF weights revision would be a lie in the
         # artifact. Precedence mirrors the endpoint one.
         revision = (
-            rev_overrides.get(slot)
-            or os.environ.get(f"{slot}_EMBED_REVISION")
+            rev_overrides.get(slot) or encoder_arm.revision
         ) if kind != "tfidf" else None
         bloom_path = (
             args.bloom_checkpoint
@@ -353,18 +350,8 @@ def resolve_encoder_specs(args) -> list[EncoderSpec]:
                            bloom_key=bloom_key, bloom_kind=bloom_kind,
                            bloom_path=bloom_path, bloom_suffix=bloom_suffix)
 
-        env_model = os.environ.get(f"{slot}_EMBED_MODEL")
-        if env_model and env_model != model:
-            raise SystemExit(
-                f"{slot}_EMBED_MODEL is {env_model!r} but preset {key!r} is {model!r}. "
-                f"The .env block is stale — re-run "
-                f"`{paths.cli()} serve sync-embed`."
-            )
-        spec.api_key_env = (
-            os.environ.get(f"{slot}_EMBED_API_KEY_ENV")
-            or args.embed_api_key_env
-            or current_config().serving.key_env
-        )
+        spec.api_key_env = (args.embed_api_key_env or encoder_arm.key_env
+                            or current_config().serving.key_env)
         if spec.bloom_kind != "lexicon":
             # Same availability semantics as an encoder endpoint: a missing
             # checkpoint skips the whole arm rather than silently falling back
@@ -386,16 +373,18 @@ def resolve_encoder_specs(args) -> list[EncoderSpec]:
             specs.append(spec)          # local/tfidf need no endpoint
             continue
 
-        raw = overrides.get(slot) or os.environ.get(f"{slot}_EMBED_BASE_URLS")
-        if not raw and args.embed_cache_only:
-            raw = "http://embed-cache-only.invalid/v1"
+        raw = overrides.get(slot)
         if raw:
             spec.base_urls = [u.strip() for u in raw.split(",") if u.strip()]
+        else:
+            spec.base_urls = list(encoder_arm.base_urls)
+        if not spec.base_urls and args.embed_cache_only:
+            spec.base_urls = ["http://embed-cache-only.invalid/v1"]
         if not spec.base_urls:
             spec.available = False
             spec.skip_reason = (
-                f"no endpoint (run isd-exp serve sync-embed to set "
-                f"{slot}_EMBED_BASE_URLS, pass --embed-base-urls-for {slot}=..., "
+                f"no endpoint (declare base_urls on [alignment.encoders.{key}] in "
+                f"{current_config().source}, pass --embed-base-urls-for {slot}=..., "
                 f"or use --embed-cache-only)"
             )
         specs.append(spec)
@@ -437,9 +426,9 @@ def probe_specs(specs: list[EncoderSpec], api_key_of, cache_only: bool) -> None:
             if live != spec.model:
                 raise SystemExit(
                     f"[{spec.key}] endpoint {url} serves {live!r} but the "
-                    f"encoder is {spec.model!r}. Re-sync the pod env "
-                    f"(`{paths.cli()} serve sync-embed`) or fix "
-                    f"{encoder_slot(spec.key)}_EMBED_BASE_URLS."
+                    f"encoder is {spec.model!r}. Point base_urls on "
+                    f"[alignment.encoders.{spec.key}] at a server that "
+                    f"serves {spec.model!r}."
                 )
 
 
@@ -861,10 +850,11 @@ def build_encoder(spec: EncoderSpec, run_dir: Path, args):
         if not spec.base_urls and not args.embed_cache_only:
             slot = encoder_slot(spec.key)
             raise SystemExit(
-                f"encoder [{spec.key}] needs an endpoint: set {slot}_EMBED_BASE_URLS "
-                f"(`{paths.cli()} serve sync-embed`) or pass --embed-base-urls-for {slot}=..., "
-                f"e.g. a server running 'vllm serve {spec.model} --task embed'. "
-                "Pass --embed-cache-only to run purely off the embedding cache."
+                f"encoder [{spec.key}] needs an endpoint: declare base_urls on "
+                f"[alignment.encoders.{spec.key}] in {current_config().source}, or "
+                f"pass --embed-base-urls-for {slot}=..., e.g. a server running "
+                f"'vllm serve {spec.model} --task embed'. Pass --embed-cache-only "
+                "to run purely off the embedding cache."
             )
         # cache-only needs a syntactically valid client it will never call
         base_urls = spec.base_urls or ["http://embed-cache-only.invalid/v1"]

@@ -28,23 +28,6 @@ from ..runs import resolve
 PRODUCER = "isd-exp report cost"
 
 
-def serving_profile() -> dict:
-    """params_b -> {gpu, vram_gb, usd_per_hour}, declared per rung in config.
-
-    An ASSUMPTION BLOCK, not a measurement: these are list prices recorded at
-    deploy time and they move, so every number derived from them carries
-    "Assumed" in its macro name and "assumption" in its prose label.
-    """
-    return current_config().serving_profile
-
-
-def serving_source() -> str:
-    return current_config().alignment_raw.get(
-        "cost_source", "per-rung serving assumptions declared in experiment.toml")
-
-
-
-
 
 
 def _size_word(label: str, index: int) -> str:
@@ -319,27 +302,31 @@ def ratios(stats: dict, size_labels: list[str], baselines: list[str]) -> dict:
     return out
 
 
-def serving_cost(collected: dict, stats: dict) -> dict:
-    """ASSUMPTION-DERIVED GPU cost per produced design, per size.
+def serving_effort(collected: dict, stats: dict) -> dict:
+    """Serving effort per size, in endpoint-hours. Measured, never priced.
 
-    Measured inputs: wall-clock of each whole run (benchmark_progress.log), the
-    number of vLLM endpoints the run round-robined over (benchmark_summary.json),
-    and how many trajectories the run produced.
-    Assumed input: the hourly price of the GPU class in serving_profile().
+    Measured inputs, all of them: wall-clock of each whole run
+    (benchmark_progress.log), the number of endpoints the run round-robined
+    over (benchmark_summary.json), and how many trajectories it produced.
 
-    The pod-hours figure is what an operator is BILLED: it includes the judging
-    phase, during which the pods idle. Attribution to a single agent is pro-rata
-    by that agent's share of the size's total tokens — a stated assumption, not a
-    measurement, since every agent of a run shared one set of pods.
+    Endpoint-hours include the judging phase, during which the endpoints idle
+    — that is time they were held, which is the honest denominator. No hourly
+    price is applied: what a GPU-hour costs depends on the host, the region and
+    the day, so a dollar figure here would be a quote dressed as a result.
+    A reader who wants one multiplies by their own rate.
+
+    The per-agent split is pro-rata by that agent's share of the size's total
+    tokens — a stated assumption, not a measurement, since every agent of a run
+    shared one set of endpoints.
     """
     per_size: dict[str, dict] = {}
     for r in collected["runs"]:
         lb = r["label"]
-        d = per_size.setdefault(lb, {"pod_hours": 0.0, "designs": 0, "runs": 0,
+        d = per_size.setdefault(lb, {"endpoint_hours": 0.0, "designs": 0, "runs": 0,
                                      "elapsed_hours": 0.0, "n_endpoints": set()})
         if r["elapsed_seconds"] is None or not r["n_endpoints"]:
             continue
-        d["pod_hours"] += r["elapsed_seconds"] / 3600.0 * r["n_endpoints"]
+        d["endpoint_hours"] += r["elapsed_seconds"] / 3600.0 * r["n_endpoints"]
         d["elapsed_hours"] += r["elapsed_seconds"] / 3600.0
         d["designs"] += r["n_trajectories"]
         d["runs"] += 1
@@ -347,11 +334,8 @@ def serving_cost(collected: dict, stats: dict) -> dict:
 
     out = {}
     for lb, d in per_size.items():
-        size = size_of_label(lb)
-        prof = serving_profile().get(size)
-        if not prof or not d["designs"]:
+        if not d["designs"]:
             continue
-        usd = d["pod_hours"] * prof["usd_per_hour"]
         row = stats.get(lb, {})
         tok_total = sum(s["sum_total_tokens"] for s in row.values())
         per_agent = {}
@@ -360,18 +344,16 @@ def serving_cost(collected: dict, stats: dict) -> dict:
             n = s["n_cells_with_trajectory"]
             per_agent[a] = {
                 "token_share": share,
-                "usd_per_design_assumed": (usd * share / n) if n else float("nan"),
+                "endpoint_hours_per_design": ((d["endpoint_hours"] * share / n)
+                                              if n else float("nan")),
             }
         out[lb] = {
-            "gpu": prof["gpu"], "vram_gb": prof["vram_gb"],
-            "usd_per_hour_assumed": prof["usd_per_hour"],
             "n_endpoints": sorted(d["n_endpoints"]),
             "n_runs": d["runs"],
-            "pod_hours_measured": d["pod_hours"],
+            "endpoint_hours_measured": d["endpoint_hours"],
             "wall_hours_measured": d["elapsed_hours"],
             "designs_produced": d["designs"],
-            "usd_total_assumed": usd,
-            "usd_per_design_all_agents_assumed": usd / d["designs"],
+            "endpoint_hours_per_design_all_agents": d["endpoint_hours"] / d["designs"],
             "per_agent": per_agent,
         }
     return out
@@ -562,22 +544,17 @@ def gen_macros(stats: dict, collected: dict, rat: dict, cost: dict) -> str:
                    f"prose-context arm)")
         c = cost.get(lb)
         if c:
-            newcmd(f"costGpuClass{w}", c["gpu"],
-                   f"GPU class that served {size_display(lb)} (assumption block, "
-                   f"{serving_source()})")
-            newcmd(f"costGpuVram{w}", str(c["vram_gb"]),
-                   f"VRAM in GB of the {size_display(lb)} serving GPU")
-            newcmd(f"costUsdPerHour{w}Assumed",
-                   fmt_num(c["usd_per_hour_assumed"], 2),
-                   "ASSUMED hourly list price of that GPU — a price quote, not a "
-                   "measurement")
+            newcmd(f"costEndpointHours{w}",
+                   fmt_num(c["endpoint_hours_measured"], 1),
+                   f"MEASURED endpoint-hours held at {size_display(lb)}: run "
+                   f"wall-clock x number of endpoints, judging phase included")
             pa = c["per_agent"].get(PROPOSED)
             if pa:
-                newcmd(f"costUsdPerDesign{w}Assumed",
-                       fmt_num(pa["usd_per_design_assumed"], 4),
-                       "ASSUMPTION-DERIVED GPU dollars per design produced by the "
-                       "proposed harness: measured billed pod-hours x assumed "
-                       "hourly price, attributed pro-rata by token share")
+                newcmd(f"costEndpointHoursPerDesign{w}",
+                       fmt_num(pa["endpoint_hours_per_design"], 4),
+                       "endpoint-hours per design produced by the proposed "
+                       "harness: measured hours attributed pro-rata by token "
+                       "share")
 
     all_tok = [r[k]["ratio"] for r in rat.values()
                for k in ("total_tokens_max", "total_tokens_min") if k in r]
@@ -638,8 +615,8 @@ def gen_stats_md(stats: dict, collected: dict, rat: dict, cost: dict) -> str:
         "`metadata.total_tokens` is 0 for most agents and is never read.",
         "- **`metadata.cost_usd` is ignored.** On a self-hosted ladder there is no "
         "per-token price; one agent nonetheless writes a dollar figure from a "
-        "hosted-API price list. Any dollar number below is derived here, from the "
-        "labelled assumption block.",
+        "hosted-API price list. Nothing below is in dollars: cost here is "
+        "tokens, calls and endpoint-hours, all of them measured.",
         f"- **Wall-clock caveat.** {conc}",
         "- **Cost is conditional on survival.** An agent that crashes writes no "
         "trajectory, so its statistics describe only the scenarios it completed. "
@@ -767,38 +744,40 @@ def gen_stats_md(stats: dict, collected: dict, rat: dict, cost: dict) -> str:
                           f"prompt tokens.")
         md.append("")
 
-    md.append("## Serving profile and an ASSUMPTION-DERIVED dollar figure")
+    md.append("## Serving effort (measured)")
     md.append("")
-    md.append(f"GPU class, VRAM and hourly price are **not measured here**. Source: "
-              f"{serving_source()}. Prices move; treat them as a quote.")
+    md.append("Endpoint-hours per size: run wall-clock x the number of endpoints "
+              "the run round-robined over, so it includes the judging phase "
+              "during which the endpoints idle — that is time they were held. "
+              "Alongside it, the number of designs those runs produced across "
+              "all agents.")
     md.append("")
-    md.append("Measured per size: total billed pod-hours over the run(s) "
-              "(run wall-clock x number of endpoints, so it includes the judging "
-              "phase during which the pods idle) and the number of designs those "
-              "runs produced across all agents.")
+    md.append("No hourly price is applied. What an endpoint-hour costs depends "
+              "on the host, the region and the day, so a figure in dollars here "
+              "would be a quote wearing the clothes of a result. Multiply by "
+              "your own rate if you want one.")
     md.append("")
-    md.append("| Size | GPU | VRAM | USD/h (assumed) | endpoints | pod-h (meas.) | "
-              "designs | USD total (assumed) | USD per design, all agents |")
-    md.append("|---|---|---|---|---|---|---|---|---|")
+    md.append("| Size | endpoints | endpoint-h | designs | endpoint-h per design, "
+              "all agents |")
+    md.append("|---|---|---|---|---|")
     for lb in labels:
         c = cost.get(lb)
         if not c:
             continue
         md.append(
-            f"| {size_display(lb)} | {c['gpu']} | {c['vram_gb']} GB "
-            f"| {fmt_num(c['usd_per_hour_assumed'], 2)} "
-            f"| {c['n_endpoints']} | {fmt_num(c['pod_hours_measured'], 2)} "
+            f"| {size_display(lb)} | {c['n_endpoints']} "
+            f"| {fmt_num(c['endpoint_hours_measured'], 2)} "
             f"| {c['designs_produced']} "
-            f"| {fmt_num(c['usd_total_assumed'], 2)} "
-            f"| {fmt_num(c['usd_per_design_all_agents_assumed'], 4)} |")
+            f"| {fmt_num(c['endpoint_hours_per_design_all_agents'], 4)} |")
     md.append("")
-    md.append("Per-agent attribution below splits each size's dollar total "
+    md.append("Per-agent attribution below splits each size's endpoint-hours "
               "pro-rata by the agent's share of that size's total tokens. That is "
-              "an **assumption** (every agent of the run shared the pods; decode time is not "
-              "exactly proportional to tokens), stated so a reader can reject it "
-              "and still keep the token and call columns above.")
+              "an **assumption** (every agent of the run shared the endpoints; "
+              "decode time is not exactly proportional to tokens), stated so a "
+              "reader can reject it and still keep the token and call columns "
+              "above.")
     md.append("")
-    md.append("| Size | Agent | token share | USD per design (assumed) |")
+    md.append("| Size | Agent | token share | endpoint-h per design |")
     md.append("|---|---|---|---|")
     for lb in labels:
         c = cost.get(lb)
@@ -811,7 +790,7 @@ def gen_stats_md(stats: dict, collected: dict, rat: dict, cost: dict) -> str:
             md.append(f"| {size_display(lb)} "
                       f"| {AGENT_DISPLAY.get(a, a)} "
                       f"| {fmt_num(pa['token_share'] * 100, 1)}% "
-                      f"| {fmt_num(pa['usd_per_design_assumed'], 4)} |")
+                      f"| {fmt_num(pa['endpoint_hours_per_design'], 4)} |")
     md.append("")
     md.append("## Run provenance")
     md.append("")
@@ -849,7 +828,7 @@ def run(*, runs_glob: str | None = None, outdir: Path | None = None,
     stats = summarise(collected)
     baselines = [a for a in AGENT_ORDER if a != PROPOSED]
     rat = ratios(stats, collected["size_labels"], baselines)
-    cost = serving_cost(collected, stats)
+    cost = serving_effort(collected, stats)
 
     out = outdir or paths.generated_dir()
     out.mkdir(parents=True, exist_ok=True)

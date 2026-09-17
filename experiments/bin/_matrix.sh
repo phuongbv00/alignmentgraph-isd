@@ -90,28 +90,51 @@ unset _v _pre
 # run` before this file is sourced. Nothing about the ladder is written here:
 # the rungs, their model ids and their API-key env names are configuration, so
 # running a different ladder is a config edit rather than a patch to this file.
-# The managed block in .env (written by `isd-exp serve sync-agents`) then
-# overrides the BASE_URLs with what each endpoint actually serves.
+# That includes the endpoints: `base_urls` on the rung is where a slot's URLs
+# are written, and the launcher exports them under the plural name below.
 
 slot_upper() {
     echo "$1" | tr '[:lower:]-' '[:upper:]_'
 }
 
-# A slot may be served by SEVERAL pods of the same model: set
-# <SLOT>_AGENT_MODEL_BASE_URLS to a comma-separated list and the agents
-# round-robin across them (shared/llm/config.py::resolve_base_url), the same
-# way <SLOT>_EMBED_BASE_URLS works for the encoder. Fold the plural into the
-# singular here so everything downstream stays unchanged, and strip whitespace:
-# the value is interpolated unquoted into the tmux command string below, so a
-# space would split it into two arguments.
+# A slot may be served by SEVERAL endpoints of the same model: `base_urls` on
+# the rung takes a list and the agents round-robin across them
+# (shared/llm/config.py::resolve_base_url).
+#
+# _<SLOT>_AGENT_MODEL_BASE_URLS is what `isd-exp <stage> run` exports out of
+# experiment.toml, and it is read FIRST: the underscore is what puts it out of
+# reach of the `source .env` above. A stale endpoint line in .env -- especially
+# an EMPTY one left behind by an earlier tool -- would otherwise take back the
+# declared URL and send the rung nowhere, with nothing but an empty flag in the
+# printed command to show for it. The plain names are still honoured for a slot
+# the declaration says nothing about.
+#
+# Fold whatever won into the singular so everything downstream stays unchanged,
+# and strip whitespace: the value is interpolated unquoted into the tmux command
+# string below, so a space would split it into two arguments.
 matrix_resolve_slots() {
     for slot in $_SLOTS_LIST; do
         upper=$(slot_upper "$slot")
+
+        # API_SPEC / NAME / API_KEY_ENVS: the declaration wins outright. A
+        # leftover NAME in .env would otherwise run the ladder under a model
+        # experiment.toml never named, and the freeze manifest -- which hashes
+        # experiment.toml -- would attest to a model that never ran.
+        for _suffix in API_SPEC NAME API_KEY_ENVS; do
+            declared_var="_${upper}_AGENT_MODEL_${_suffix}"
+            plain_var="${upper}_AGENT_MODEL_${_suffix}"
+            if [[ -n "${!declared_var:-}" ]]; then
+                printf -v "$plain_var" '%s' "${!declared_var}"
+            fi
+        done
+
+        declared_var="_${upper}_AGENT_MODEL_BASE_URLS"
         plural_var="${upper}_AGENT_MODEL_BASE_URLS"
         single_var="${upper}_AGENT_MODEL_BASE_URL"
-        _urls="${!plural_var:-${!single_var:-}}"
+        _urls="${!declared_var:-${!plural_var:-${!single_var:-}}}"
         printf -v "$single_var" '%s' "${_urls//[[:space:]]/}"
     done
+    unset _suffix
 
     # Fail fast: an empty *_BASE_URL would otherwise vanish from the unquoted
     # run_benchmark.py invocation below (bash drops empty unquoted expansions),
@@ -133,9 +156,8 @@ matrix_resolve_slots() {
             return 0
         fi
         echo "ERROR: no serving BASE_URL set for slot(s):${_missing_base_url}" >&2
-        echo "Bring the endpoints up (see docs/guides/benchmark_guides.md), then write them into .env." >&2
-        echo "With provider=\"static\" a base_url in experiment.toml is enough. Or sync them:" >&2
-        echo "  ./isd-exp serve sync-agents   (from $EXP_ROOT)" >&2
+        echo "Bring the endpoints up (see docs/guides/benchmark_guides.md), then declare them" >&2
+        echo "as base_urls on the matching [[model]] table in experiment.toml." >&2
         exit 1
     fi
 }

@@ -9,7 +9,7 @@ results/
 # Embedding caches sit beside the run dirs they were built for.
 .embed_cache_*.sqlite
 
-# Credentials and endpoints, including the managed blocks the serve commands write.
+# Credentials, and nothing else: endpoints are declared in experiment.toml.
 .env
 
 .venv/

@@ -74,12 +74,55 @@ class TestInformalRuns:
 class TestLadderIsConfiguration:
     def test_slot_env_quads_are_exported_from_the_declaration(self, envs):
         """The launcher carried four hard-coded blocks naming one model family;
-        a different ladder meant editing shell."""
+        a different ladder meant editing shell.
+
+        The names are UNDERSCORED: the launcher sources .env after reading
+        these, so a quad published under the name the benchmark reads is taken
+        back by any stale line in that file.
+        """
         e = envs["comparison"]
         for slot in e["_SLOTS_LIST"].split():
             prefix = slot.upper()
-            assert e[f"{prefix}_AGENT_MODEL_NAME"]
-            assert e[f"{prefix}_AGENT_MODEL_API_KEY_ENVS"]
+            assert e[f"_{prefix}_AGENT_MODEL_NAME"]
+            assert e[f"_{prefix}_AGENT_MODEL_API_KEY_ENVS"]
+
+    def test_a_hybrid_ladder_reaches_the_benchmark_with_each_key(self, tmp_path):
+        """Not every rung lives on the same host, so not every rung
+        authenticates with the same credential.
+
+        End to end through the launcher rather than through profile_env alone:
+        the value has to survive experiment.toml -> the underscored export ->
+        `source .env` -> the flag string, and it is the middle step that used
+        to lose it.
+        """
+        import os
+        src = (paths.exp_root() / "tests" / "fixtures" / "two_rung.toml").read_text()
+        cfg = tmp_path / "experiment.toml"
+        # On the FIRST rung: a dry run prints the first slot's command, and it
+        # is the printed command this test is about.
+        cfg.write_text(
+            src.replace('base_urls = ["http://localhost:8000/v1"]',
+                        'base_urls = ["https://hosted.test/v1"]\n'
+                        'key_env = "HOSTED_KEY"'),
+            encoding="utf-8")
+        out = subprocess.run(
+            [str(paths.exp_root() / ".venv" / "bin" / "python"),
+             "-m", "isd_experiments.cli", "comparison", "run", "--dry-run"],
+            capture_output=True, text=True, cwd=str(paths.exp_root()),
+            env=dict(os.environ, ISD_EXPERIMENT_CONFIG=str(cfg)))
+        assert out.returncode == 0, out.stderr
+        assert "--agent-model-api-key-envs 'HOSTED_KEY'" in out.stdout, (
+            "the hosted rung lost its own key on the way to the benchmark")
+        assert "--agent-model-base-url 'https://hosted.test/v1'" in out.stdout
+
+    def test_no_slot_quad_is_published_under_a_shadowable_name(self, envs):
+        """A plain name here is one `source .env` away from being overridden."""
+        e = envs["comparison"]
+        for slot in e["_SLOTS_LIST"].split():
+            prefix = slot.upper()
+            for suffix in ("NAME", "API_KEY_ENVS", "API_SPEC", "BASE_URLS"):
+                assert f"{prefix}_AGENT_MODEL_{suffix}" not in e, (
+                    f"{prefix}_AGENT_MODEL_{suffix} is published unprotected")
 
     def test_a_foreign_ladder_produces_a_valid_launch_plan(self, tmp_path):
         cfg = tmp_path / "experiment.toml"
@@ -217,7 +260,7 @@ class TestNoDeclaredFieldIsInert:
     PYTHON_ONLY = {
         "name": "used to build EXPERIMENT and the pool hint",
         "title": "exported as EXPERIMENT_TITLE, under a different key",
-        "rungs": "expanded into per-slot env quads and _SLOTS_LIST",
+        "models": "expanded into per-slot env quads and _SLOTS_LIST",
         "arms": "read by the ablation pooling, never launched directly",
         "proposed": "read by comparison pooling to name the reference column",
         "reference": "read by ablation pooling to name the reference arm",
@@ -261,8 +304,6 @@ class TestNoDeclaredFieldIsInert:
 
     #: Serving fields consumed in Python, never handed to the shell.
     SERVING_PYTHON_ONLY = {
-        "provider": "names the endpoint-discovery module (serve/providers/resolve); "
-                    "it never reaches an agent",
         "key_env": "emitted as `<SLOT>_AGENT_MODEL_API_KEY_ENVS`, the plural name "
                    "the agents read",
         "options": "the un-popped remainder of [serving] -- a bag for a provider, "

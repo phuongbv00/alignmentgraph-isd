@@ -95,7 +95,7 @@ def run(*, fix: bool = False) -> int:
     try:
         from .config import current
         cfg = current()
-        c.ok("experiment.toml", f"{len(cfg.ladder)} rungs, "
+        c.ok("experiment.toml", f"{len(cfg.models)} models, "
                                 f"{len(cfg.profiles)} experiments")
     except SystemExit as exc:
         c.bad("experiment.toml", str(exc).splitlines()[0])
