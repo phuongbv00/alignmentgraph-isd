@@ -41,13 +41,21 @@
 EXP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BENCH_ROOT="${ISD_BENCH_ROOT:-$(cd "$EXP_ROOT/../isd-agent-benchmark" && pwd)}"
 RESULTS_ROOT="${RESULTS_DIR:-$EXP_ROOT/results}"
-# The interpreter that can import the seven agents. `isd-exp` runs in a lighter
-# venv with no inference stack, so a bare `python run_benchmark.py` would
-# inherit the wrong one and fail deep inside an agent registry -- which reads
-# like an agent bug rather than a venv bug.
-BENCH_PYTHON="${ISD_BENCH_PYTHON:-$BENCH_ROOT/venv/bin/python}"
-[ -x "$BENCH_PYTHON" ] || BENCH_PYTHON="$BENCH_ROOT/.venv/bin/python"
-[ -x "$BENCH_PYTHON" ] || { echo "No benchmark interpreter at $BENCH_PYTHON" >&2; exit 1; }
+# The interpreter that runs run_benchmark.py. ONE environment holds both sides
+# -- isd-exp and the seven agents -- so this is the same one `isd-exp` itself
+# runs in, and `bench.bench_python()` resolves to the same place. A bare
+# `python run_benchmark.py` would instead inherit whichever interpreter happens
+# to be active, and when that is the wrong one the failure is an ImportError
+# deep inside an agent registry, which reads like an agent bug rather than an
+# install one.
+BENCH_PYTHON="${ISD_BENCH_PYTHON:-$EXP_ROOT/.venv/bin/python}"
+[ -x "$BENCH_PYTHON" ] || {
+    echo "No interpreter at $BENCH_PYTHON" >&2
+    echo "  Create it:  python3 -m venv $EXP_ROOT/.venv" >&2
+    echo "              $EXP_ROOT/.venv/bin/pip install -e '$EXP_ROOT[dev]'" >&2
+    echo "              $EXP_ROOT/isd-exp doctor --fix" >&2
+    exit 1
+}
 cd "$EXP_ROOT" || exit 1
 
 # .env is the right place for CREDENTIALS and pod endpoints, and the wrong place

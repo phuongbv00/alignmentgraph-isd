@@ -9,13 +9,20 @@ description = "Thesis experiments driving the ISD agent benchmark: run, score, p
 requires-python = ">=3.11"
 # The core install carries no INFERENCE stack -- no torch, no transformers, no
 # langchain. That is what moving the alignment protocol out of the benchmark's
-# evaluator bought: isd-evaluator is now needed by exactly one command
-# (`audit repair`), so it is an extra, and generating every table and figure in
-# the paper needs matplotlib alone.
+# evaluator bought: scoring a finished run, pooling it, and generating every
+# table and figure in the paper needs matplotlib alone.
 #
 # `openai` is here because the primary encoder arm is served over an
 # OpenAI-compatible embeddings endpoint, and it is a thin HTTP client rather
 # than a model runtime -- a few hundred KB against torch's two gigabytes.
+#
+# LAUNCHING a run is the other half, and it is not declared here. This
+# environment is also the one run_benchmark.py executes in, so a machine that
+# launches runs additionally carries the benchmark, the seven agents,
+# alignmentgraph-isd and isd-evaluator -- ten editable installs off paths in
+# this checkout, which no dependency list can name. `isd-exp doctor --fix`
+# puts them there and `isd-exp doctor` reports which are missing. A machine
+# that only scores and reports never needs them.
 dependencies = [
     "matplotlib>=3.8",
     "openai>=1.0",
@@ -27,8 +34,9 @@ dependencies = [
 encoder = ["sentence-transformers>=2.5", "torch>=2.2"]
 # Fine-tuning and local inference of the 6-way Bloom classifier.
 bloom = ["transformers>=4.40", "accelerate>=0.30", "torch>=2.2", "scikit-learn>=1.4"]
-# `audit repair` only: ComparisonReporter plus the isd-evaluator console script.
-# Pulls openai + langchain, which is why it is not in the core.
+# `audit repair` needs isd-evaluator, which is not on any index -- it is one of
+# the editable installs `isd-exp doctor --fix` makes. Named here so the
+# dependency is declared rather than merely true.
 repair = ["isd-evaluator"]
 # scipy is a TEST ORACLE for the hand-rolled statistics, never a runtime
 # dependency: stats.py stays stdlib-only so results cannot drift with a

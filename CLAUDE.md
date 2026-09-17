@@ -105,12 +105,27 @@ the CLI there, so nothing needs activating and nothing goes on `PATH`. Run it as
 from inside `experiments/`. (`pip install -e experiments/` also works and puts a real
 `isd-exp` on that environment's PATH.)
 
+**The repo holds exactly two environments**, and they answer two different questions.
+`experiments/.venv` runs EVERYTHING experimental: `isd-exp`, and `run_benchmark.py` too,
+which is launched as a subprocess under the very same interpreter (`bench.bench_python()`
+and `bin/_matrix.sh` resolve to it, both overridable with `ISD_BENCH_PYTHON`). So the
+benchmark, the seven agents, `alignmentgraph-isd` and `isd-evaluator` are ten editable
+installs in it — no dependency list can name a path in this checkout, so `isd-exp doctor`
+reports which are missing and `--fix` installs them. `alignmentgraph-isd/.venv` is the
+demo web app's, and is unrelated: the `[server]` extra must never reach the other one.
+A machine that only scores and reports needs neither set — `pip install -e ".[dev]"`
+alone still carries no inference stack.
+
+`isd-agent-benchmark/` has NO checked-out venv, and that is not a loss of its
+independence: `./scripts/1_setup.sh` still builds one on demand, so the submodule stays
+standalone-runnable. The one-way dependency rule is about imports, not about environments.
+
 ```bash
 # One-time
 cd experiments
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 ./isd-exp help                  # `help <stage> [<sub>]` for anything below
-./isd-exp doctor --fix          # checkout, benchmark venv, .env symlink, Bloom checkpoint
+./isd-exp doctor --fix          # checkout, agent installs, .env symlink, Bloom checkpoint
 
 # Data. `scenarios/train` and `scenarios/test` are committed; every DERIVED subset is
 # gitignored and reproduced from them with seed 42, so rebuild rather than hunt in git.
@@ -152,10 +167,12 @@ Running a **different ladder or a different host** is an `experiment.toml` edit,
 change: add or remove `[[ladder]]` rungs, set `[serving].provider`. Point at an alternative
 declaration with `--config` or `ISD_EXPERIMENT_CONFIG`.
 
-Inside `isd-agent-benchmark/`, for running the benchmark alone:
+Inside `isd-agent-benchmark/`, for running the benchmark alone — `1_setup.sh` builds the
+submodule its own `venv/`, which this monorepo does not keep checked out. From here, use
+`experiments/.venv/bin/python` instead and skip it:
 
 ```bash
-./scripts/1_setup.sh                # venv + deps + agents + evaluator (editable)
+./scripts/1_setup.sh                # standalone only: venv + deps + agents + evaluator
 python run_benchmark.py --check     # verify all agent modules import cleanly
 ./scripts/3_run_benchmark_test.sh   # smoke run, 1 scenario
 python run_benchmark.py --dataset test_90 --agents baseline,alignmentgraph-isd
@@ -172,15 +189,19 @@ Rate-limit presets (`-r conservative|moderate|aggressive|turbo`) set worker coun
 
 ### Tests
 
-Each package is independently installable/testable with pytest (`requires-python >=3.11`). Run from the package directory:
+Each package is independently installable/testable with pytest (`requires-python >=3.11`). Run
+from the package directory. The benchmark's suites have no environment of their own here, so
+name `experiments/.venv`'s interpreter (`$EXP` below) rather than a bare `pytest`, which would
+resolve to whatever the shell has:
 
 ```bash
+EXP=<repo>/experiments/.venv/bin/python
 cd experiments && python -m pytest tests/                # experiment tests (offline; scipy is a dev-only oracle)
 cd alignmentgraph-isd && python -m pytest tests/         # package tests (network-free; fake llm_factory)
-cd isd-agent-benchmark/evaluator && pytest tests/        # evaluator tests (asyncio_mode=auto)
-cd isd-agent-benchmark/shared && pytest tests/           # shared model/util tests
-cd isd-agent-benchmark/agents/<agent> && pytest tests/   # per-agent tests (where present)
-pytest tests/test_addie_rubric_parsing.py::<name>        # single test
+cd isd-agent-benchmark/evaluator && $EXP -m pytest tests/  # evaluator tests (asyncio_mode=auto)
+cd isd-agent-benchmark/shared && $EXP -m pytest tests/     # shared model/util tests
+cd isd-agent-benchmark/agents/<agent> && $EXP -m pytest tests/  # per-agent tests (where present)
+python -m pytest tests/test_addie_rubric_parsing.py::<name>    # single test
 ```
 
 `experiments/tests/` carries four guards worth knowing before editing, because each one

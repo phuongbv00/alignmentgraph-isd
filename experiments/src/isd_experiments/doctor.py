@@ -1,9 +1,9 @@
 """Check that this checkout can actually run an experiment.
 
 Every failure here is one that otherwise surfaces much later and much less
-clearly: a missing benchmark venv becomes an ImportError inside an agent
-registry, a missing `.env` becomes an authentication error against a pod, a
-missing symlink becomes a benchmark that silently has no configuration.
+clearly: an uninstalled agent becomes an ImportError inside an agent registry,
+a missing `.env` becomes an authentication error against a pod, a missing
+symlink becomes a benchmark that silently has no configuration.
 """
 
 from __future__ import annotations
@@ -52,13 +52,23 @@ def run(*, fix: bool = False) -> int:
                        ("Bloom corpus", paths.edm_root())):
         (c.ok if path.exists() else c.warn)(name, str(path))
 
-    # 2. The interpreter that can import the seven agents. `isd-exp` runs in a
-    #    lighter venv, so a bare `python run_benchmark.py` would inherit the
-    #    wrong one and fail deep inside an agent registry.
-    try:
-        c.ok("benchmark interpreter", str(bench.bench_python()))
-    except SystemExit as exc:
-        c.bad("benchmark interpreter", str(exc).splitlines()[0])
+    # 2. The packages run_benchmark.py imports. It is launched as a subprocess
+    #    under THIS interpreter, so the seven agents, the harness and the
+    #    evaluator have to be installed here; absent, the failure is an
+    #    ImportError deep inside an agent registry, which reads like an agent
+    #    bug rather than an install one.
+    absent = bench.missing_packages()
+    if absent and fix:
+        bench.install_packages(absent)
+        absent = bench.missing_packages()
+    if absent:
+        c.bad("benchmark packages",
+              f"{len(absent)} not installed ("
+              f"{', '.join(bench.dist_name(p) for p in absent)}) — run "
+              f"`{paths.cli()} doctor --fix`")
+    else:
+        c.ok("benchmark packages",
+             f"{len(bench.bench_packages())} editable in {bench.bench_python()}")
 
     # 3. Configuration, credentials, and the symlink that keeps the benchmark's
     #    own entry points configured after `.env` moved here.
@@ -89,14 +99,6 @@ def run(*, fix: bool = False) -> int:
                                 f"{len(cfg.profiles)} experiments")
     except SystemExit as exc:
         c.bad("experiment.toml", str(exc).splitlines()[0])
-
-    try:
-        import isd_evaluator  # noqa: F401
-        c.ok("isd-evaluator", "installed")
-    except ImportError:
-        c.warn("isd-evaluator",
-               f"not installed — only `audit repair` needs it: "
-               f"{paths.pip()} install -e {paths.bench_root() / 'evaluator'}")
 
     # 5. Where results go. RESULTS_DIR is a deliberately plain name -- it is the
     #    same variable run_benchmark.py reads, so there is only one -- but a

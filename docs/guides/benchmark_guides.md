@@ -61,7 +61,7 @@ benchmark độc lập.
 
 | Lệnh | Vai trò | Mục |
 |---|---|---|
-| `isd-exp doctor [--fix]` | kiểm checkout, venv benchmark, `.env`, checkpoint Bloom | 1 |
+| `isd-exp doctor [--fix]` | kiểm checkout, 10 gói editable của benchmark, `.env`, checkpoint Bloom | 1 |
 | `isd-exp data split <tên>` | cắt `train_10` / `test_90` / `test_30` (kèm kiểm disjoint) | 2 |
 | `isd-exp serve sync-agents` | ghi endpoint model agent vào block quản lý trong `.env` | 3.4 |
 | `isd-exp serve sync-embed` | ghi endpoint embedding cho panel alignment | 7 |
@@ -90,8 +90,9 @@ benchmark độc lập.
 | `isd-exp expert sample` / `aggregate` | gói expert validation *(chưa hiện thực)* | 5 GĐ6 |
 
 Còn lại bên benchmark, chỉ dùng khi chạy benchmark một mình:
-`./scripts/1_setup.sh` (venv + cài editable), `./scripts/2_split_data.sh` (split gốc 95/5),
-`./scripts/3_run_benchmark_test.sh` (smoke 1 scenario).
+`./scripts/1_setup.sh` (dựng venv riêng cho submodule — repo này **không** giữ sẵn nó),
+`./scripts/2_split_data.sh` (split gốc 95/5), `./scripts/3_run_benchmark_test.sh`
+(smoke 1 scenario).
 
 **Cấu hình thí nghiệm nằm ở `experiments/experiment.toml`** — thang model, nơi host, dataset,
 roster agent, các arm ablation, preset encoder/Bloom. Đổi thang model hay đổi nhà cung cấp
@@ -102,12 +103,25 @@ lọt trở lại vào `src/`.
 
 ## 1. Setup
 
+**Cả repo chỉ có hai môi trường.** `experiments/.venv` chạy mọi thứ thuộc thí nghiệm — cả
+`isd-exp` lẫn `run_benchmark.py`, vì `run_benchmark.py` được gọi như subprocess dưới đúng
+interpreter đó. Nên benchmark, bảy agent, `alignmentgraph-isd` và `isd-evaluator` là mười
+bản cài editable nằm trong nó; không danh sách dependency nào đặt tên được cho một đường
+dẫn trong checkout này, nên `isd-exp doctor` báo cái nào thiếu và `--fix` cài.
+`alignmentgraph-isd/.venv` là của web app demo, tách biệt hoàn toàn.
+
 ```bash
-cd isd-agent-benchmark
-./scripts/1_setup.sh              # venv + deps + agents + evaluator (editable)
-python run_benchmark.py --check   # mọi agent module import sạch
+cd experiments
+python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+./isd-exp doctor --fix            # cài mười gói editable + symlink .env
+
+cd ../isd-agent-benchmark
+../experiments/.venv/bin/python run_benchmark.py --check   # mọi agent module import sạch
 ./scripts/3_run_benchmark_test.sh # smoke 1 scenario
 ```
+
+`./scripts/1_setup.sh` vẫn còn và vẫn dựng được venv riêng cho submodule — nó là cái giữ
+cho benchmark chạy độc lập được. Từ monorepo thì không cần: dùng `experiments/.venv`.
 
 ### `.env`
 
