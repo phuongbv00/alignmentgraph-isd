@@ -8,7 +8,7 @@ profile comes from experiment.toml, so what an official run consists of is
 declared once rather than re-typed at a prompt.
 
 That also closes a hazard that needs guarding wherever `.env` can override an
-experiment's own identity: a leftover `DATASET=train_30` from a tuning session
+experiment's own identity: a leftover `DATASET=train_10` from a tuning session
 would silently run an official experiment on the wrong split. With the profile
 authoritative, the override cannot happen.
 """
@@ -27,7 +27,7 @@ LAUNCHER = paths.exp_root() / "bin" / "launch.sh"
 #: Profiles that are not official experiments: no cost prompt, no manifest.
 #: Their results never enter the paper, which is also why they have their own
 #: tag namespace.
-INFORMAL = {"tune", "canary"}
+INFORMAL = {"tune"}
 
 
 def profile_env(profile: Profile, *, slots: str | None = None,

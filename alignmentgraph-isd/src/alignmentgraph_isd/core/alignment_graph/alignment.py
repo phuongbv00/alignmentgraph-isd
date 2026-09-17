@@ -645,7 +645,7 @@ def format_valid_for_capability(capability: int, objective_level: int | None) ->
 
     Both this rule and that metric derive independently from Anderson &
     Krathwohl, so this is enforcing the theory rather than fitting the
-    instrument — but it was calibrated on train_30, and test_90 is untouched.
+    instrument — but it was calibrated on the tuning split, and test_90 is untouched.
     """
     if objective_level is None:
         return True

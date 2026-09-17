@@ -10,7 +10,7 @@
 # What differs between profiles is exported by `isd-exp <stage> run` from
 # experiment.toml, which is also what removed a real hazard: this file used to
 # source .env and let it override an experiment's own identity, so a stray
-# DATASET=train_30 from a tuning session would silently run an official
+# DATASET=train_10 from a tuning session would silently run an official
 # experiment on the wrong split.
 #
 # Caller contract — set these before calling, then call the functions in order:
@@ -52,7 +52,7 @@ cd "$EXP_ROOT" || exit 1
 
 # .env is the right place for CREDENTIALS and pod endpoints, and the wrong place
 # to decide WHAT an official experiment runs. A tuning session leaves
-# DATASET=train_30, AGENTS=<two agents>, RUN_TAGS=tune1 sitting in .env, and
+# DATASET=train_10, AGENTS=<two agents>, RUN_TAGS=tune1 sitting in .env, and
 # with a plain `source .env` those silently win over the experiment's own
 # defaults -- the ablation would launch on the tuning split with its arms
 # missing, and nothing would say so except a banner line nobody re-reads.
@@ -189,7 +189,7 @@ matrix_confirm() {
     done
     echo ""
     echo "  !! WARNING: this launches ~$((NUM_SLOTS * NUM_RUNS)) full benchmark runs"
-    echo "  !! (~$((NUM_SLOTS * NUM_RUNS * NUM_AGENTS * NUM_SCENARIOS)) agent generations, plus judge calls)."
+    echo "  !! (~$((NUM_SLOTS * NUM_RUNS * NUM_AGENTS * NUM_SCENARIOS)) agent generations, plus LLM judge calls)."
     echo "  !! This costs REAL MONEY and takes MANY HOURS."
     echo "  !! Also billing GPU time per endpoint on top of this."
     echo "=============================================================="

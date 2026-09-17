@@ -8,7 +8,7 @@
 
 **Ba quy tắc không được vi phạm:**
 
-1. Mọi quyết định tuning chỉ dựa trên `train_30`. `test_90` chỉ chạy sau khi freeze code. Sửa code sau đó ⇒ chạy lại
+1. Mọi quyết định tuning chỉ dựa trên `train_10`. `test_90` chỉ chạy sau khi freeze code. Sửa code sau đó ⇒ chạy lại
    ladder.
 2. Số trong paper **chỉ** đến từ `results/generated/` (mục 9). Không gõ tay.
 3. Cấu hình LLM judge và 3 flag bảo hộ (mục 3.3) phải **đồng nhất** giữa mọi run và mọi agent — đó là điều kiện công bằng
@@ -19,7 +19,7 @@
 ## Pipeline
 
 ```
-[1] setup ─► [2] split data ─► [3] serving ─► [4] TUNE (train_30) ─► CODE FREEZE ─┐
+[1] setup ─► [2] split data ─► [3] serving ─► [4] TUNE (train_10) ─► CODE FREEZE ─┐
                                                  loop đến khi chốt                │
                                                                                   ▼
 [8] pool ◄── [7] score alignment ◄── [6] audit ◄── [5] TN1 test_90  4 size × 1 run × 7 agent
@@ -62,12 +62,11 @@ benchmark độc lập.
 | Lệnh | Vai trò | Mục |
 |---|---|---|
 | `isd-exp doctor [--fix]` | kiểm checkout, venv benchmark, `.env`, checkpoint Bloom | 1 |
-| `isd-exp data split <tên>` | cắt `train_30` / `test_90` / `test_30` (kèm kiểm disjoint) | 2 |
+| `isd-exp data split <tên>` | cắt `train_10` / `test_90` / `test_30` (kèm kiểm disjoint) | 2 |
 | `isd-exp serve sync-agents` | ghi endpoint model agent vào block quản lý trong `.env` | 3.4 |
 | `isd-exp serve sync-embed` | ghi endpoint embedding cho panel alignment | 7 |
 | `isd-exp bloom train` / `validate` | huấn luyện head Bloom 6 lớp / chấm arm vs nhãn chuyên gia | A.3 |
-| `isd-exp canary run` | 3 scenario, **không gọi LLM judge** — đọc `gave_up`, coverage, ledger, cost | 5 GĐ2 |
-| `isd-exp tune run` | hiệu chỉnh cost và budget trên `train_30` | 4 |
+| `isd-exp tune run` | hiệu chỉnh cost và budget trên `train_10` | 4 |
 | `isd-exp freeze write` / `verify` | ghi / đối chiếu manifest code freeze | 5 GĐ3 |
 | `isd-exp audit preflight` | trước launch: endpoint, auth, model, flag, disk | 6.1 |
 | `isd-exp comparison run [--dry-run]` | **so sánh**: hệ đề xuất vs baseline theo thang model | 5 |
@@ -145,12 +144,19 @@ Một slot có thể có **nhiều pod**: script gom mọi pod cùng model vào 
 
 ```bash
 ./scripts/2_split_data.sh    # → scenarios/train/ (~24.6k), scenarios/test/ (~1.2k), stratified
-./isd-exp data split --source scenarios/train --target scenarios/train_30              # 30, để TUNE
-./isd-exp data split --source scenarios/test  --target scenarios/test_90 --per-cell 3  # 90, để BENCH
+./isd-exp data split tune-10        # train -> train_10, 10 scenario, để TUNE
+./isd-exp data split test-90        # test  -> test_90,  90 scenario, để BENCH
 ```
 
-Lưới stratify: 10 domain × 3 difficulty. Metadata (`scenarios/*_metadata.json`) ghi seed/nguồn/số lượng — giữ cho phần
-reproducibility. `train_30` lấy từ train split nên tune thoải mái không đụng test.
+Lưới stratify: 10 domain × 3 difficulty = **30 ô**. Metadata (`scenarios/*_metadata.json`) ghi seed/nguồn/số lượng —
+giữ cho phần reproducibility. `train_10` lấy từ train split nên tune thoải mái không đụng test.
+
+`per_cell` một mình không cho ra tập nhỏ hơn 30. `train_10` vì vậy dùng thêm `--max-total`: đổ đầy 1/ô rồi hạ mẫu
+round-robin theo thứ tự ô đã shuffle bằng seed, nên 10 scenario nằm trên 10 ô khác nhau thay vì dồn vào ba domain đầu
+danh sách. Hệ quả phải khai thẳng: **`train_10` phủ 10/30 ô nên KHÔNG phải mẫu stratified của corpus** — nó là tập hiệu
+chỉnh chi phí, kết quả không bao giờ vào paper. Ở n=10, `EXACT_WILCOXON_N_MAX = 25` cộng family Holm 36 của panel làm p
+điều chỉnh nhỏ nhất đạt được là 0.070, tức không kết luận suy diễn nào tồn tại được. Sidecar `train_10_metadata.json`
+ghi rõ điều đó ở `source_note`, `max_total` và `cells_covered`.
 
 ## 3. Serving (RunPod + vLLM)
 
@@ -216,20 +222,35 @@ Script **chỉ đọc** RunPod API: list pod, match slot, **verify model thật 
 managed block ở cuối `.env` (giữa hai marker). Chạy lại là thay block, không duplicate, không đụng phần còn lại.
 Env-quad nhận bất kỳ provider OpenAI-compatible nào nên có thể thay một slot bằng hosted API.
 
-## 4. Tune trên `train_30`
+## 4. Tune trên `train_10`
 
 Chỉnh prompt/config của `alignmentgraph-isd` trên tập tách biệt với tập báo cáo.
 
 ```bash
-DATASET=train_30 AGENT_MODEL_SLOTS=qwen2b AGENTS=baseline,react-isd,alignmentgraph-isd \
+DATASET=train_10 AGENT_MODEL_SLOTS=qwen2b AGENTS=baseline,react-isd,alignmentgraph-isd \
 RUN_TAGS=tune1 ./isd-exp tune run
 ```
 
 - `AGENT_MODEL_SLOTS` nhiều slot = chạy **song song** (mỗi slot một tmux session). `RUN_TAGS` nhiều tag = chạy **tuần
   tự** trong mỗi session (`tune1,tune2,tune3` để đo độ ổn định cùng code).
-- Kết quả vào `results/train_30_benchmark_<model>_tune<N>_<ts>/`. Tag `tuneN` để không lẫn với run báo cáo `r1/r2/r3`.
+- Kết quả vào `results/train_10_benchmark_<model>_tune<N>_<ts>/`. Tag `tuneN` để không lẫn với run báo cáo `r1/r2/r3`.
 - Thu hẹp `--agents` cho rẻ khi debug, nhưng **vòng chốt cuối chạy đủ 7 agent** để chắc thay đổi không phá agent khác.
 - Kết thúc tune = **commit đóng băng code** (manifest ladder sẽ ghi commit hash).
+
+### 4.1 Smoke rẻ trước khi tiêu tiền
+
+Không có profile riêng cho việc này. Thu hẹp chính `tune` lại:
+
+```bash
+./isd-exp tune run --slots qwen08b --agents alignmentgraph-isd,react-isd
+```
+
+Một rung nhỏ nhất trên `train_10` = 20 generation. **Vẫn gọi LLM judge** — `run_benchmark.py` spawn
+`isd-evaluator` vô điều kiện khi có từ 2 agent thành công, không có flag nào tắt, nên không tồn tại chế độ chạy
+harness mà không tốn judge call. Muốn có thì phải thêm flag ở `run_benchmark.py`.
+
+Đọc gì: `gave_up`, coverage P10/P11, violation ledger, cost, và panel alignment (chạy local). Nếu bất thường thì sửa
+trước khi mở rộng ra đủ 4 rung.
 
 ## 5. Bench — TN1 (`test_90`) và TN2 (`test_30`)
 
@@ -319,8 +340,7 @@ held-out duy nhất và A0 hai bên đọc được cạnh nhau; vẫn không ph
 sampling. Kiểm disjoint với tập tune:
 
 ```bash
-./isd-exp data split --source scenarios/test_90 --target scenarios/test_30 \
-    --per-cell 1 --disjoint-from scenarios/train_30 --disjoint-from scenarios/train
+./isd-exp data split ablation-30    # test_90 -> test_30, disjoint với train_10 và train
 ```
 
 **Trần số ILO có ở CẢ BỐN arm và không có ở sáu baseline (2026-09-16).** `rulebook.MAX_OBJECTIVES = 6` được nội suy

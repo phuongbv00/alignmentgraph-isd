@@ -252,7 +252,7 @@ sinh filler. Đây là dịch chuyển thật, phải khai: panel không còn *�
 **Thời điểm thay đổi.** Đổi panel sau khi đã thấy kết quả là đúng dạng selective reporting mà panel phẳng sinh ra để
 chặn. Ba điều giữ cho thay đổi này hợp lệ, và phải nêu cả ba khi viết: (1) căn cứ là **lý thuyết** — hoàn tất tam giác
 CA ở cả hai họ và buộc mọi tín hiệu ứng với một quan hệ core — không phải kết quả; (2) tín hiệu bị bỏ là tín hiệu hệ
-thống đang **THẮNG** (`objective_evaluation_similarity`: +0.072…+0.326, mọi so sánh đều có ý nghĩa trên train_30), nên
+thống đang **THẮNG** (`objective_evaluation_similarity`: +0.072…+0.326, mọi so sánh đều có ý nghĩa trên tập tune khi đó), nên
 đây là bỏ tín hiệu có lợi, ngược với cherry-pick; (3) `test_90` **chưa** được score với kiến trúc mới, nên đây là thời
 điểm hợp lệ cuối cùng để chốt thước đo.
 

@@ -6,7 +6,7 @@ as a gap rather than absent:
 
     setup / doctor            once per machine
     data / serve / bloom      inputs and serving
-    canary / tune             cheap checks before spending
+    tune                      cheap check before spending
     freeze / audit preflight  lock the version, verify the endpoints
     comparison / ablation     the two official experiments
     score / trajectory        offline scoring, no regeneration
@@ -49,6 +49,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="named split from the config, or omit and pass --source/--target")
     sp.add_argument("--source", type=_p), sp.add_argument("--target", type=_p)
     sp.add_argument("--per-cell", type=int, default=3)
+    sp.add_argument("--max-total", type=int, default=None,
+                    help="cap the total, down-sampling the filled cells round-robin; "
+                         "the only way to a subset smaller than the 30-cell grid")
     sp.add_argument("--disjoint-from", type=_p, action="append", default=[])
     sp.add_argument("--seed", type=int, default=42)
 
@@ -67,14 +70,14 @@ def build_parser() -> argparse.ArgumentParser:
     bv.add_argument("labels", type=_p, nargs="?")
     bv.add_argument("--bloom-checkpoint", type=_p), bv.add_argument("--out", type=_p)
 
-    # ── cheap checks ─────────────────────────────────────────────────────
-    for name, helptext in (("canary", "3 scenarios, no LLM judge call"),
-                           ("tune", "cost and budget calibration on the training split")):
-        g = sub.add_parser(name, help=helptext).add_subparsers(dest="sub", required=True)
-        r = g.add_parser("run", help="launch")
-        r.add_argument("--dry-run", action="store_true",
-                       help="print the launch plan and exit")
-        r.add_argument("--slots"), r.add_argument("--tags"), r.add_argument("--agents")
+    # ── cheap check ──────────────────────────────────────────────────────
+    g = sub.add_parser(
+        "tune", help="cost and budget calibration on the training split",
+    ).add_subparsers(dest="sub", required=True)
+    r = g.add_parser("run", help="launch")
+    r.add_argument("--dry-run", action="store_true",
+                   help="print the launch plan and exit")
+    r.add_argument("--slots"), r.add_argument("--tags"), r.add_argument("--agents")
 
     # ── freeze ───────────────────────────────────────────────────────────
     fr = sub.add_parser("freeze", help="record the version an experiment ran on").add_subparsers(
@@ -233,7 +236,7 @@ def _dispatch(args) -> int:
         from .data.sample import run as split_run
         return split_run(preset=args.preset, source=args.source, target=args.target,
                          per_cell=args.per_cell, disjoint_from=args.disjoint_from,
-                         seed=args.seed)
+                         seed=args.seed, max_total=args.max_total)
 
     if command == "serve":
         from .serve import agents as serve_agents
@@ -248,7 +251,7 @@ def _dispatch(args) -> int:
         return bloom.validate(labels=args.labels, checkpoint=args.bloom_checkpoint,
                               out=args.out)
 
-    if command in {"canary", "tune", "comparison", "ablation"} and sub == "run":
+    if command in {"tune", "comparison", "ablation"} and sub == "run":
         from .launch import launch
         return launch(command, dry_run=args.dry_run, slots=args.slots,
                       tags=args.tags, agents=args.agents)

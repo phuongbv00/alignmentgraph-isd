@@ -87,16 +87,11 @@ class TestShippedConfig:
         e = config.load()
         assert not set(e.profile("comparison").tags) & set(e.profile("ablation").tags)
 
-    def test_canary_does_not_call_a_judge(self):
-        """Its whole point is reading harness behaviour before spending money."""
-        p = config.load().profile("canary")
-        assert p.llm_judge is False and p.confirm is False
-
     def test_tune_is_on_the_training_split(self):
         """Tuning results never enter the paper, so they must never touch the
         splits the paper reports on."""
         e = config.load()
-        assert e.profile("tune").dataset == "train_30"
+        assert e.profile("tune").dataset == "train_10"
         assert e.profile("tune").dataset != e.profile("comparison").dataset
 
 

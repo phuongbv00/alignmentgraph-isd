@@ -133,26 +133,12 @@ context_mode = "prose"
 # Not an official experiment: cost estimation and budget calibration only.
 # Its results never enter the paper, which is why it has its own tag namespace.
 title = "TUNE - cost and budget calibration"
-dataset = "train_30"
+dataset = "train_10"
 rungs = "all"
 tags = ["tune1"]
 rate_limit = "moderate"
 session_prefix = "tune"
 confirm = false
-agents = ["alignmentgraph-isd", "react-isd"]
-
-[experiment.canary]
-# Three scenarios, NO LLM judge call. Reads gave_up, coverage, the violation
-# ledger, cost and the self-hosted alignment panel only.
-title = "CANARY - smoke the arms before spending on an LLM judge"
-dataset = "train_30"
-rungs = ["qwen08b"]
-tags = ["canary"]
-rate_limit = "conservative"
-session_prefix = "canary"
-confirm = false
-scenario_limit = 3
-llm_judge = false
 agents = ["alignmentgraph-isd", "react-isd"]
 
 # --- The alignment measurement ----------------------------------------------

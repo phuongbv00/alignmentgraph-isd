@@ -6,7 +6,7 @@ here is cheap, and it is the difference between a launcher that is configured
 correctly and one that merely runs.
 
 The hazard this replaces: the launcher sourced `.env` and let it override the
-experiment's own identity, so a `DATASET=train_30` left behind by a tuning
+experiment's own identity, so a `DATASET=train_10` left behind by a tuning
 session would silently run an official experiment on the tuning split with the
 wrong agent list, and nothing would say so except a banner nobody re-reads.
 With the profile authoritative, that cannot happen -- these tests pin it.
@@ -27,7 +27,7 @@ from isd_experiments.launch import INFORMAL, profile_env
 @pytest.fixture(scope="module")
 def envs():
     return {name: profile_env(current().profile(name))
-            for name in ("comparison", "ablation", "tune", "canary")}
+            for name in ("comparison", "ablation", "tune")}
 
 
 class TestOfficialExperiments:
@@ -58,23 +58,16 @@ class TestOfficialExperiments:
 
 
 class TestInformalRuns:
-    def test_tune_and_canary_neither_confirm_nor_record(self, envs):
-        """Their results never enter the paper, so a manifest would assert a
-        provenance that means nothing -- and a cost prompt on a 3-scenario
-        canary is friction without a purpose."""
+    def test_tune_neither_confirms_nor_records(self, envs):
+        """Its results never enter the paper, so a manifest would assert a
+        provenance that means nothing."""
         for name in INFORMAL:
             assert envs[name]["CONFIRM"] == "0"
             assert envs[name]["MANIFEST"] == "0"
 
     def test_they_run_on_the_training_split(self, envs):
         for name in INFORMAL:
-            assert envs[name]["DATASET"] == "train_30"
-
-    def test_canary_is_small_and_judge_free(self):
-        p = current().profile("canary")
-        assert p.llm_judge is False
-        assert p.scenario_limit == 3
-        assert len(p.rungs) == 1
+            assert envs[name]["DATASET"] == "train_10"
 
 
 class TestLadderIsConfiguration:
@@ -108,3 +101,64 @@ class TestShellIsValid:
     def test_launcher_parses(self, script):
         path = paths.exp_root() / "bin" / script
         assert subprocess.run(["bash", "-n", str(path)]).returncode == 0
+
+
+class TestNoDeclaredFieldIsInert:
+    """A field the TOML declares must reach the launcher, or it is decoration.
+
+    The defect this guards: `scenario_limit` and `llm_judge` were both parsed
+    into `Profile` and read by nobody. `profile_env` never emitted them and
+    run_benchmark.py had no flag to receive them, so a profile declaring a
+    three-scenario judge-free smoke run in fact launched the whole tuning split
+    with the LLM judge attached. Config that describes a run nobody makes is
+    worse than no config, because it is read as documentation.
+
+    Fields that deliberately stay on the Python side are listed with the reason,
+    so adding one is a decision rather than an omission.
+    """
+
+    #: Consumed in Python, never handed to the shell.
+    PYTHON_ONLY = {
+        "name": "used to build EXPERIMENT and the pool hint",
+        "title": "exported as EXPERIMENT_TITLE, under a different key",
+        "rungs": "expanded into per-slot env quads and _SLOTS_LIST",
+        "arms": "read by the ablation pooling, never launched directly",
+        "proposed": "read by comparison pooling to name the reference column",
+        "reference": "read by ablation pooling to name the reference arm",
+        "confirm": "folded into CONFIRM together with the INFORMAL set",
+        "dataset": "exported as DATASET and CANONICAL_DATASET",
+        "tags": "exported as _RUN_TAGS_LIST",
+        "agents": "exported as AGENTS",
+        "rate_limit": "exported as RATE_LIMIT",
+        "session_prefix": "exported as SESSION_PREFIX",
+    }
+
+    def test_every_profile_field_is_read_by_someone(self, envs):
+        import dataclasses
+
+        from isd_experiments.config import Profile
+        from isd_experiments.launch import profile_env
+
+        emitted = set(profile_env(current().profile("tune")))
+        for field in dataclasses.fields(Profile):
+            name = field.name
+            if name in self.PYTHON_ONLY:
+                continue
+            assert name.upper() in emitted, (
+                f"Profile.{name!r} is declared in experiment.toml but never "
+                f"reaches the launcher. Either wire it through profile_env "
+                f"and the child command, or delete it -- do not leave it as a "
+                f"claim about a run nobody makes. If it is read only in "
+                f"Python, say where in PYTHON_ONLY."
+            )
+
+    def test_the_python_only_list_has_no_stale_entries(self):
+        import dataclasses
+
+        from isd_experiments.config import Profile
+
+        declared = {f.name for f in dataclasses.fields(Profile)}
+        assert set(self.PYTHON_ONLY) <= declared, (
+            f"PYTHON_ONLY names fields that no longer exist: "
+            f"{sorted(set(self.PYTHON_ONLY) - declared)}"
+        )

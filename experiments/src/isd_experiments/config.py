@@ -149,8 +149,6 @@ class Profile:
     proposed: str | None = None
     reference: str | None = None
     confirm: bool = True
-    llm_judge: bool = True
-    scenario_limit: int | None = None
 
     @property
     def slots(self) -> tuple[str, ...]:
@@ -281,8 +279,6 @@ def _profile(name: str, raw: dict, ladder: tuple[Rung, ...]) -> Profile:
         proposed=raw.get("proposed"),
         reference=raw.get("reference"),
         confirm=bool(raw.get("confirm", True)),
-        llm_judge=bool(raw.get("llm_judge", True)),
-        scenario_limit=raw.get("scenario_limit"),
     )
 
 
