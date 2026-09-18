@@ -354,13 +354,16 @@ function summarise(stream: RunStreamState): string {
   if (stats.objective_count) {
     parts.push(`${stats.aligned_objective_count ?? 0}/${stats.objective_count} objectives aligned`)
   }
-  if (stats.duration_seconds) parts.push(`${Math.round(stats.duration_seconds)}s`)
+  // The same clock the running header shows, so the two read as one number
+  // observed twice rather than two measurements.
+  if (stats.duration_seconds) parts.push(formatElapsed(Math.round(stats.duration_seconds)))
   if (stats.llm_calls) parts.push(`${stats.llm_calls} model calls`)
   return parts.join(' · ')
 }
 
-/** Seconds under a minute, `m:ss` above it: a run is minutes long, and four
- *  digits of seconds is a number the reader has to divide. */
+/** How long a run has taken, wherever the header says so: seconds under a
+ *  minute, `m:ss` above it. A run is minutes long and three digits of seconds
+ *  is a number the reader has to divide. */
 function formatElapsed(seconds: number): string {
   if (seconds < 60) return `${seconds}s`
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
