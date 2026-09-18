@@ -412,12 +412,25 @@ SPECS: dict[str, FanoutSpec] = {
 #: calls were reads, 11 of the 67 judge-visible calls were exact duplicates, and
 #: the arm scored 18/25 on the judge's redundancy dimension against react-isd's
 #: 25 with everything visible to it.
-_ASSIGNMENT_IS_COMPLETE = (
+_ASSIGNMENT_WRITTEN_OUT = (
     "Everything your assignment names is written out below — in full where you have to work "
     "from the artifact itself (the objectives, the items, the modules), and as one line per "
     "item where your job is to name ids (the activities and materials a session block "
-    "schedules). You do not need to look them up. Use the read tools only for something your "
-    "assignment does NOT name, or when one line is not enough.")
+    "schedules).")
+#: A Developer whose assignment fits is bound NO read tool: what it needs is
+#: in front of it, and a read is a turn. MEASURED (run 53a9cd1a): 31 of the 80
+#: Developer calls were `read_node` for ids the assignment had already written
+#: out (`read_of_assignment_id`) — a quarter of the run's model time, all of
+#: it sequential, spent re-reading the prompt. Telling the Developer not to
+#: ("You do not need to look them up") had been in this text throughout; under
+#: a forced tool call a 2B model reaches for whatever is bound.
+_ASSIGNMENT_IS_COMPLETE = (
+    _ASSIGNMENT_WRITTEN_OUT + " It is all you need: write your artifacts from it and submit.")
+#: Only an assignment that had to be CUT keeps the read tools, to reach what
+#: the cut took.
+_ASSIGNMENT_IS_TRUNCATED = (
+    _ASSIGNMENT_WRITTEN_OUT + " It was too long to show whole: use the read tools for an "
+    "artifact the cut took, and never for one that is written out.")
 
 #: Cap on the rendered assignment a Developer is handed: an uncapped slice
 #: over a family that committed many items can exceed the serving context on
@@ -532,13 +545,18 @@ def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
     tools stay whatever the family's stage allows — a Developer still needs to
     see the objectives it is writing for."""
     primary = spec.outputs[0].schema_key
-    assignment = _capped(spec.render(work_set) + _resolved_references(work_set, state))
+    whole = spec.render(work_set) + _resolved_references(work_set, state)
+    assignment = _capped(whole)
+    truncated = assignment != whole
 
     def validate(parsed: dict) -> list[str]:
         items = (parsed or {}).get(primary)
         if not isinstance(items, list) or not items:
             return [f"{primary} must be a non-empty list"]
-        return (output_errors(spec, parsed)
+        # Judged as it will be committed: a membership id the set itself
+        # settles is filled in (``dev_plans.with_membership``), never refused.
+        filled = {**parsed, primary: dev_plans.with_membership(work_set, primary, items)}
+        return (output_errors(spec, filled)
                 or dev_plans.short_of_quota(work_set, primary, items))
 
     return replace(
@@ -546,15 +564,17 @@ def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
         name=f"{spec.stage}:{work_set.set_id}",
         identity=spec.developer_identity,
         persona=spec.developer_persona,
-        intro=(f"{spec.set_intro}\n\n{_ASSIGNMENT_IS_COMPLETE}\n\n{spec.set_header}\n"
-               f"{assignment}"),
+        intro=(f"{spec.set_intro}\n\n"
+               f"{_ASSIGNMENT_IS_TRUNCATED if truncated else _ASSIGNMENT_IS_COMPLETE}"
+               f"\n\n{spec.set_header}\n{assignment}"),
         rules="\n".join(o.rules for o in spec.outputs),
         submit_fields=tuple((o.schema_key, "array", i == 0)
                             for i, o in enumerate(spec.outputs)),
         # No docket and a narrowed read scope: coverage gaps belong to whoever
         # plans the sets, not to one Developer inside a set it did not choose.
         docket={},
-        readable_types=spec.developer_reads,
+        readable_types=spec.developer_reads if truncated else (),
+        readable_docs=base.readable_docs if truncated else (),
         resolved_labels=resolved_labels(work_set),
         assignment_ids=assignment_ids(assignment),
         relations=(),
@@ -678,6 +698,7 @@ def _deposit_sets(spec: FanoutSpec, state, trajectory, work_sets: list,
             items = payload.get(output.schema_key) or []
             work_set = set_of.get(payload.get("set_id", ""))
             if work_set is not None and isinstance(items, list):
+                items = dev_plans.with_membership(work_set, output.schema_key, items)
                 items, dropped = dev_plans.trim_to_quota(work_set, output.schema_key, items)
                 if dropped:
                     trajectory.log_recovery_event(

@@ -998,12 +998,20 @@ def test_a_tool_call_written_as_json_in_the_content_is_recovered():
     assert not any(e["action"] == "agentic_gave_up" for e in trajectory.recovery_events)
 
 
+def _cut(developer, spec):
+    """``developer`` as it is bound when its assignment had to be CUT: the one
+    case a Developer keeps its read tools (``fanout.set_step``). Everything the
+    read machinery does for a Developer is exercised on this shape."""
+    from dataclasses import replace
+
+    return replace(developer, readable_types=spec.developer_reads)
+
+
 def test_a_developer_is_told_its_assignment_is_already_complete():
-    """The read tools stay — a Developer is an agent and may look at whatever it
-    judges it needs. But the assignment now resolves every artifact it names, and
-    a Developer that does not know that reads them anyway: MEASURED (run
-    single_20260901_171408) 22 of 33 Developer calls were reads and 11 of the 67
-    judge-visible calls were exact duplicates."""
+    """The assignment resolves every artifact it names, says so, and — when it
+    fits — is bound NO read tool. MEASURED: 22 of 33 Developer calls were reads
+    (run single_20260901_171408), and 31 of 80 were reads of ids the assignment
+    had written out (run 53a9cd1a), while the text said not to."""
     from alignmentgraph_isd.core import dev_plans
     from alignmentgraph_isd.core.agentic import fanout
 
@@ -1027,7 +1035,7 @@ def test_a_developer_is_told_its_assignment_is_already_complete():
         payload={"assessment_items": [committed]})
     intro = fanout.set_step(fanout.SPECS["activities"], work_set, step, graph).intro
 
-    assert "do not need to look them up" in intro
+    assert "It is all you need" in intro
     # An activity set names the items its activities prepare for, BY ID. Told to
     # prepare learners for AT-01 and not told what AT-01 asks, a Developer has
     # no choice but to go and read it.
@@ -1249,7 +1257,8 @@ def test_a_developer_reading_its_own_assignment_gets_a_pointer_not_a_second_copy
         "id": "ILO-01", "statement": "List the four pillars.", "level": "remember"})
     step = STEP_BY_NAME["assessment"]
     work_set = dev_plans.WorkSet(set_id="AS-01", objectives=("ILO-01",))
-    developer = fanout.set_step(fanout.SPECS["assessment"], work_set, step, graph)
+    developer = _cut(fanout.set_step(fanout.SPECS["assessment"], work_set, step, graph),
+                     fanout.SPECS["assessment"])
 
     # The label the pointer names must be the heading the assignment really
     # carries — a pointer to a section that is not there is worse than none.
@@ -2068,14 +2077,16 @@ def test_a_developer_is_told_its_assignment_is_the_design_state():
 
     assert "you have not seen them yet" in stage_msg
     assert "you have not seen them yet" not in dev_msg
-    assert "IS the design state for this set" in dev_msg
-    assert "You do not need to look them up" in dev_msg
-    # Every step that commits to the state keeps the stage grounding; every
-    # fan-out set gets the assignment one — no third wording anywhere.
+    assert "It is all you need" in dev_msg
+    assert "read tool" not in dev_msg, "a tool that is not bound is not mentioned"
+    # A set whose assignment had to be cut keeps its reads and the grounding
+    # that goes with them; every other set has neither — no third wording.
     for name, spec in fanout.SPECS.items():
         s = fanout.set_step(spec, dev_plans.WorkSet(set_id="S1"), STEP_BY_NAME[spec.stage])
-        assert "IS the design state for this set" in _loop(
+        assert "IS the design state for this set" not in _loop(
             config, graph, trajectory, brief, s)._stage_message(False), name
+        assert "IS the design state for this set" in _loop(
+            config, graph, trajectory, brief, _cut(s, spec))._stage_message(False), name
 
 
 # ── the binding follows the stage ───────────────────────────────────────────
@@ -2230,7 +2241,8 @@ def test_a_mixed_read_serves_the_readable_ids_and_points_for_the_rest():
     graph.add_element_node(NodeType.ACTIVITY, "TLA-0101",
                            {"id": "TLA-0101", "activity_name": "Risk workshop",
                             "description": "Learners rank risks.", "duration": "60 minutes"})
-    developer = fanout.set_step(fanout.SPECS["content"], _content_unit(), step, graph)
+    developer = _cut(fanout.set_step(fanout.SPECS["content"], _content_unit(), step, graph),
+                     fanout.SPECS["content"])
     loop = _loop(config, graph, trajectory, brief, developer)
 
     answer = loop._execute("read_node", {"ids": ["TLA-0101", "MS-01"]})

@@ -297,3 +297,28 @@ def test_a_reference_spelled_the_way_a_listing_row_invites_still_resolves():
         {"id": "MOD-01", "title": "M", "objectives": ["ILO-01"], "covers_topics": ["TOPIC-001"],
          "minutes": 60}]})
     assert alignment.relation_coverage(fresh, "P7") == (1.0, [])
+
+
+def test_a_membership_id_the_set_settles_is_filled_in_and_one_the_model_wrote_is_left():
+    """MEASURED (run 53a9cd1a): five refusals and a give-up-and-regen over a
+    missing `instrument_id` on sets that each listed a single instrument."""
+    one = dev_plans.WorkSet(set_id="AS-01", payload={
+        "instruments": [_instrument("INS-01", "summative", ["ILO-01"])]})
+    items = [{"question": "q", "aligned_objective": "ILO-01", "plan_category": "summative"},
+             {"question": "r", "instrument_id": "INS-77"}]
+    filled = dev_plans.with_membership(one, "assessment_tools", items)
+    assert [i["instrument_id"] for i in filled] == ["INS-01", "INS-77"], "only a MISSING id"
+    assert "instrument_id" not in items[0], "the submitted arguments are not rewritten"
+
+    two = dev_plans.WorkSet(set_id="AS-02", payload={"instruments": [
+        _instrument("INS-01", "formative", ["ILO-01"]), _instrument("INS-02", "summative", ["ILO-01"]),
+        _instrument("INS-03", "summative", ["ILO-01"])]})
+    formative, summative = dev_plans.with_membership(two, "assessment_tools", [
+        {"aligned_objective": "ILO-01", "plan_category": "formative"},
+        {"aligned_objective": "ILO-01", "plan_category": "summative"}])
+    assert formative["instrument_id"] == "INS-01", "one instrument of its objective and category"
+    assert "instrument_id" not in summative, "two candidates is the writer's to say"
+
+    block = dev_plans.WorkSet(set_id="AB-01", payload={"module": {"id": "MOD-02"}})
+    assert dev_plans.with_membership(block, "learning_activities", [{"activity_name": "a"}]) == [
+        {"activity_name": "a", "module_id": "MOD-02"}]

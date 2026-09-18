@@ -197,18 +197,24 @@ def test_an_agent_that_never_rechecks_leaves_its_findings_unshown():
     assert any(e["action"] == "budget_exhausted" for e in trajectory.recovery_events)
 
 
-def test_a_developer_and_a_replan_round_bind_the_read_by_id_only():
+def test_a_developer_binds_no_read_unless_its_assignment_was_cut():
     """A work set's assignment IS its state, written into its turn, and the
     family's gaps belong to whoever planned the sets. MEASURED: Developer reads
     were 139 of 184 (run 14a6b4c7) and 42 of 78 (run 9efc3cfa) with a list
-    tool bound that the assignment had already made redundant."""
+    tool bound, and still 31 of 80 (run 53a9cd1a) with only `read_node` —
+    every one of them for an id the assignment had written out."""
     from alignmentgraph_isd.core import dev_plans
     from alignmentgraph_isd.core.agentic import fanout, replan
 
     for name, spec in fanout.SPECS.items():
         developer = fanout.set_step(spec, dev_plans.WorkSet(set_id="S1"), STEP[spec.stage])
         reads = [n for n in tools.tool_names(tools.tool_specs(developer)) if n.startswith("read")]
-        assert reads == ["read_node"], (name, reads)
+        assert reads == [], (name, reads)
+    long_set = dev_plans.WorkSet(set_id="MU-01", payload={"modules": [
+        {"id": "MOD-01", "title": "t", "description": "x" * fanout.ASSIGNMENT_CHAR_CAP}]})
+    cut = fanout.set_step(fanout.SPECS["content"], long_set, STEP["content"])
+    assert "read_node" in tools.tool_names(tools.tool_specs(cut)), "what the cut took is readable"
+    assert "too long to show whole" in cut.intro
     round_step = replan.step_for(STEP["assessment"], "assessment", [], 1)
     assert tools.STATE_TOOL not in tools.tool_names(tools.tool_specs(round_step))
 
@@ -355,9 +361,14 @@ def test_a_developer_guessing_ids_is_moved_to_its_submit():
 
     config = HarnessRunConfig(llm_factory=lambda: model)
     graph, trajectory = _designed_up_to_outcomes()
-    developer = fanout.set_step(fanout.SPECS["assessment"],
-                                dev_plans.WorkSet(set_id="AS-03", objectives=("ILO-01",)),
-                                STEP["assessment"], graph)
+    from dataclasses import replace
+
+    # As bound when its assignment had to be cut — the one case with reads.
+    developer = replace(
+        fanout.set_step(fanout.SPECS["assessment"],
+                        dev_plans.WorkSet(set_id="AS-03", objectives=("ILO-01",)),
+                        STEP["assessment"], graph),
+        readable_types=fanout.SPECS["assessment"].developer_reads)
     ToolLoop(config, graph, trajectory, BRIEF, developer,
              AgenticLLM(config, trajectory, developer.identity),
              max_turns=budget.DEVELOPER_MAX_TURNS).run()

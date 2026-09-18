@@ -1344,6 +1344,41 @@ _SAME_AS = {"assessment_tools": "question", "learning_activities": "activity_nam
             "learner_materials": "title"}
 
 
+def with_membership(work_set: WorkSet, schema_key: str, items: list) -> list:
+    """``items`` with the membership id each one LEFT OUT, where the set it
+    was written in settles it — new dicts, the submitted ones untouched.
+
+    An activity written in a module's block belongs to that module; an item
+    written in a set that lists one instrument, or exactly one instrument of
+    the item's own objective and category, belongs to that instrument. Those
+    are lookups, and refusing the submit over them costs what a lookup does
+    not: MEASURED (run 53a9cd1a), five refusals and a give-up-and-regen for
+    `instrument_id` on sets that each listed a single instrument. Only a
+    MISSING id is filled. One the model wrote is left as written, right or
+    wrong — that is what P13 and ``instrument_alignment`` measure — and an
+    item with several candidates is left without one for the validator."""
+    if schema_key == "learning_activities" and work_set.module_id:
+        return [{**item, "module_id": work_set.module_id}
+                if isinstance(item, dict) and not str(item.get("module_id") or "").strip()
+                else item for item in items]
+    instruments = [i for i in (work_set.payload.get("instruments") or []) if isinstance(i, dict)]
+    if schema_key != "assessment_tools" or not instruments:
+        return items
+    out = []
+    for item in items:
+        if isinstance(item, dict) and not str(item.get("instrument_id") or "").strip():
+            lo = _bare(item.get("aligned_objective"))
+            category = str(item.get("plan_category") or "").strip().lower()
+            fits = [i for i in instruments
+                    if str(i.get("timing") or "").strip().lower() == category
+                    and lo in {_bare(o) for o in i.get("covers_objectives") or []}]
+            pick = fits if len(fits) == 1 else instruments if len(instruments) == 1 else []
+            if pick:
+                item = {**item, "instrument_id": _bare(pick[0].get("id"))}
+        out.append(item)
+    return out
+
+
 def quota_of(work_set: WorkSet, schema_key: str) -> int:
     """The count a set's assignment states for ``schema_key``; 0 for none."""
     try:
