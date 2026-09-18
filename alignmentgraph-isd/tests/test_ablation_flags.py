@@ -491,35 +491,34 @@ def _scaffold_graph():
 
 
 def _state_block(graph, mode):
-    """The alignment docket, as the graph arm's prompts carry it.
-
-    Was ``BaseISDAgent._alignment_state_context`` while the scripted
-    specialists existed; ``tools.alignment_docket`` is the same block from the
-    same graph — what it asserts is the CONTENT of the docket, which did not
-    move with the executor."""
-    from alignmentgraph_isd.core.agentic import tools
+    """The alignment state the AssessmentDesigner PULLS with
+    ``read_alignment_state`` — the instantiated docket the prompts used to
+    carry, now the agent's to read. What is asserted is its CONTENT."""
+    from alignmentgraph_isd.core.agentic import alignment_state
+    from alignmentgraph_isd.core.agentic.specialists import STEPS
 
     if mode != "graph":
         return ""
-    return tools.alignment_docket(graph, edges=("C2",), gaps=("C2",), plan_pairs=True)
+    step = {s.name: s for s in STEPS}["assessment"]
+    return alignment_state.read(graph, load_brief("minimal_brief.json"), step).text
 
 
 def test_alignment_state_is_instantiated_not_quantified():
-    """The block carries the docket, not the law: which SPECIFIC targets are
+    """The state carries the docket, not the law: which SPECIFIC targets are
     uncovered and which SPECIFIC plan pairs are unrealised. Motivating
     measurement: with only the quantified rule in the prompt ("one item for
     every pair the plan names"), a 9B model produced 16 diagnostic / 1
     summative items against a plan promising 1 / 5."""
     block = _state_block(_scaffold_graph(), "graph")
-    # BARE ids only: namespaced ids in prompts leak into model reference
+    # BARE ids only: namespaced ids shown to a model leak into its reference
     # fields and break the bare-id matchers (the measured single-graph bug).
-    assert "ILO-01 --C2-assessed_by--> AT-01" in block
-    assert "objective:" not in block and "assessment:" not in block
-    assert "ILO-02" in block                    # the uncovered LO is NAMED
-    assert "ILO-02 x summative" in block        # the unrealised pair is NAMED
+    assert "objective:ILO" not in block and "assessment:AT" not in block
+    assert "[OBJECTIVE:ILO-01]" in block, "what exists is listed WITH its id, never as a count"
+    missing = block.split("[MISSING", 1)[1].split("[OPEN ISSUES", 1)[0]
+    assert "ILO-02" in missing                  # the uncovered LO is NAMED
+    assert "ILO-02 x summative" in missing      # the unrealised pair is NAMED
     # covered artifacts are not listed as gaps
-    gap_section = block.split("[GAPS", 1)[1]
-    assert "ILO-01" not in gap_section.split("[PLAN-PROMISED", 1)[0]
+    assert "missing for: ILO-02" in missing and "ILO-01," not in missing
 
 
 def test_prose_repairs_operate_on_the_blackboard(fake_llm_factory):
@@ -548,16 +547,13 @@ def test_prose_repairs_operate_on_the_blackboard(fake_llm_factory):
     assert repaired["bloom_verb"] != "understand", "prose repair did not touch the blackboard"
 
 
-def test_alignment_state_empty_graph_renders_nothing():
+def test_alignment_state_of_an_empty_graph_says_so_plainly():
+    """Nothing built on and nothing to close is ANSWERED — the agent asked —
+    in words, never as an empty string a small model cannot read."""
     from alignmentgraph_isd.core.alignment_graph import AlignmentGraph
 
-    from alignmentgraph_isd.core.agentic import tools
-
-    # Nothing established and nothing uncovered: the block is omitted rather
-    # than shown empty, so an early stage is not handed a header with no facts
-    # under it.
-    assert tools.alignment_docket(AlignmentGraph(), edges=("C2",), gaps=("C2",),
-                                  plan_pairs=True) == ""
+    block = _state_block(AlignmentGraph(), "graph")
+    assert "(nothing yet)" in block and "NEXT:" in block
 
 
 def test_scaffolding_reaches_generation_prompts_in_both_arms(fake_llm_factory):
@@ -569,7 +565,7 @@ def test_scaffolding_reaches_generation_prompts_in_both_arms(fake_llm_factory):
     carrying the items that assess it) went with the scripted specialists — the
     agentic arms read nodes and edges through separate tools and ask
     ``coverage_gaps`` what is still open. What both arms still carry into the
-    prompt is the docket: instantiated gaps, named, not a quantified rule. A
+    conversation is the state read: instantiated gaps, named, not a quantified rule. A
     fanned-out Developer additionally gets its own slice rendered explicitly,
     which is the stronger version of the same guarantee — a produced item can
     only be for THIS set's pairs, rather than "the model saw all the promised
@@ -593,7 +589,9 @@ def test_scaffolding_reaches_generation_prompts_in_both_arms(fake_llm_factory):
 
     for tag in ("multi", "single"):
         prompts = captured[tag]
-        assert any("=== ALIGNMENT STATE ===" in u for u in prompts), f"{tag}: no docket"
+        # PULLED: it is in the conversation because the agent called for it,
+        # as a tool result — instantiated gaps, named, not a quantified rule.
+        assert any("=== ALIGNMENT STATE — " in u for u in prompts), f"{tag}: no state read"
         assert any("missing for:" in u for u in prompts), f"{tag}: no instantiated gaps"
 
     # Only the arm that delegates hands a Developer an assignment slice: the
@@ -601,20 +599,22 @@ def test_scaffolding_reaches_generation_prompts_in_both_arms(fake_llm_factory):
     assert any("=== YOUR ASSIGNED SET ===" in u for u in captured["multi"])
     assert not any("=== YOUR ASSIGNED SET ===" in u for u in captured["single"])
 
-def test_the_docket_reaches_the_graph_arm_and_never_the_prose_arm(fake_llm_factory):
-    """Machinery parity for `context_mode`: the alignment docket (instantiated
-    coverage gaps) reaches the graph arm's prompts in BOTH decomposition arms,
-    and never the prose arm, which has no docket to compute. Asserted over the
-    whole prompt rather than a per-stage message, because the single arm has no
-    per-stage message any more."""
+def test_the_alignment_state_is_pulled_in_the_graph_arm_and_absent_from_prose(fake_llm_factory):
+    """Machinery parity for `context_mode`, in BOTH decomposition arms: the
+    graph arm binds `read_alignment_state` and is never PUSHED the state — no
+    opening turn carries it — while the prose arm, which has no alignment
+    state to compute, neither binds the tool nor ever sees such a block."""
+    from alignmentgraph_isd.core.agentic import tools
+    from alignmentgraph_isd.core.agentic.specialists import STEPS
+
     brief = load_brief("minimal_brief.json")
-    captured: dict[str, list[str]] = {}
+    captured: dict[str, list[list]] = {}
 
     def spy(tag):
         class _Spy(FakeChatModel):
             def invoke(self, messages):
-                captured.setdefault(tag, []).append("\n".join(
-                    str(m.get("content", "")) for m in messages if isinstance(m, dict)))
+                captured.setdefault(tag, []).append(
+                    [m for m in messages if isinstance(m, dict)])
                 return super().invoke(messages)
 
         return lambda: _Spy()
@@ -625,11 +625,21 @@ def test_the_docket_reaches_the_graph_arm_and_never_the_prose_arm(fake_llm_facto
             config.llm_factory = spy(f"{mode}-{context_mode}")
             run_brief(brief, config)
 
+    def shown(tag, *, roles):
+        return [str(m.get("content", "")) for call in captured[tag] for m in call
+                if m.get("role") in roles]
+
     for mode in ("multi", "single"):
-        assert any("=== ALIGNMENT STATE ===" in p for p in captured[f"{mode}-graph"]), \
-            f"{mode}: the graph arm never saw the docket"
-        assert not any("=== ALIGNMENT STATE ===" in p for p in captured[f"{mode}-prose"]), \
-            f"{mode}: the prose arm was shown a docket it cannot compute"
+        assert any("=== ALIGNMENT STATE — " in c for c in shown(f"{mode}-graph", roles=("tool",)))
+        assert not any("ALIGNMENT STATE" in c
+                       for c in shown(f"{mode}-graph", roles=("system", "user"))), (
+            f"{mode}: the state was pushed into a turn instead of read by the agent")
+        assert not any("ALIGNMENT STATE" in c
+                       for c in shown(f"{mode}-prose", roles=("system", "user", "tool")))
+    for step in STEPS:
+        assert tools.STATE_TOOL not in tools.tool_names(tools.tool_specs(step, graph_mode=False))
+    assert tools.STATE_TOOL not in tools.tool_names(
+        tools.react_specs(STEPS, frozenset(), graph_mode=False))
 
 def test_agentic_arm_keeps_one_persona_per_stage_or_one_for_the_job(fake_llm_factory):
     """Persona parity. The multi arm carries one

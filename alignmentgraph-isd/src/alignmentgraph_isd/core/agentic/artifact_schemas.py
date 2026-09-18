@@ -62,23 +62,21 @@ def _from_validation(field_key: str, *, exclude: tuple[str, ...] = ()) -> dict:
 
 
 def _obj(properties: dict, required: tuple[str, ...] = ()) -> dict:
-    """``additionalProperties: false`` — the declared keys ARE the artifact.
+    """An artifact's declared fields and which of them are REQUIRED. Extra
+    keys are allowed, and kept.
 
-    MEASURED (run 7ef3ed16): ``submit_assessment_plan`` arrived carrying
-    ``pilot_data_plan`` AND, beside it at the top level, the four fields of a
-    single ``anticipated_difficulty`` (``area``, ``rationale``,
-    ``detected_by``, ``first_revision``) — one element of that list written
-    outside the list. Nothing objected: the schema allowed extra keys and
-    ``validate_section`` only checks the REQUIRED ones. The stray object went
-    into the graph node, through the aggregator, and into
-    ``addie_output.json`` for the judge to read.
-
-    Declared on the shape rather than enforced only at submit so the model is
-    told before it writes; ``tools.undeclared_key_errors`` is the half that
-    makes the refusal real.
-    """
-    return {"type": "object", "properties": properties,
-            "required": list(required), "additionalProperties": False}
+    The ADDIE shape is a floor, not a mould: what an artifact must carry is
+    checked (``required`` here, ``core/validation.py`` for acceptance), and
+    what a model writes beside it travels with the artifact — into the design
+    state and out through the aggregator into ``addie_output.json``. Refusing
+    or dropping undeclared keys was measured to cost the artifact's SUBSTANCE
+    on a small model, which often writes real content under a name of its
+    own: on run 1c0a4e81 ``context_analysis`` shipped ``constraints: []`` and
+    ``task_analysis`` ``topics: []`` with 31 keys of analysis discarded beside
+    them, and on runs 14a6b4c7/9efc3cfa ``prototype_execution`` was rejected
+    three times over two keys and shipped invalid. A missing required field
+    is a fault; an extra one is not."""
+    return {"type": "object", "properties": properties, "required": list(required)}
 
 
 def _arr(items: str = "string") -> dict:
@@ -214,12 +212,17 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
         "support_strategies": _arr(),
     }),
     "activity_dev_plan": _obj({
+        "contact_hours": {"type": "number",
+            "description": "scheduled learner time the whole course has, in hours"},
         "activity_blocks": _arr_of(_obj({
             "set_id": {"type": "string"}, "objectives": _arr(),
-            "block_theme": {"type": "string"}, "expected_activities": {"type": "integer"},
+            "block_theme": {"type": "string"},
+            "block_minutes": {"type": "integer",
+                "description": "this block's share of contact_hours, in minutes"},
+            "expected_activities": {"type": "integer"},
             "rationale": {"type": "string"}},
-            ("set_id", "objectives", "expected_activities"))),
-    }, ("activity_blocks",)),
+            ("set_id", "objectives", "block_minutes", "expected_activities"))),
+    }, ("contact_hours", "activity_blocks")),
     #: Item schema — the fan-out's ``learning_activities``.
     "learning_activities": _obj({
         "activity_name": {"type": "string"}, "duration": {"type": "string"},

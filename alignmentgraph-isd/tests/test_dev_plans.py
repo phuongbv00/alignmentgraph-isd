@@ -593,3 +593,82 @@ def test_material_expected_count_is_the_planners_within_bounds():
     bare = dp.material_work_units([{"id": "MOD-02", "expected_materials": 3}], [], [])[0]
     assert bare.payload["expected_materials"] == 3
     assert "write exactly 3 materials for this module" in dp.render_material_set(bare)
+
+
+# ── the activity plan is bounded by the time the planner says the course has ─
+
+def _blocks(counts, minutes=None):
+    return [{"set_id": f"B{i}", "objectives": [f"ILO-0{i % 5 + 1}"], "block_theme": f"theme {i}",
+             "expected_activities": count,
+             **({"block_minutes": minutes[i]} if minutes else {})}
+            for i, count in enumerate(counts)]
+
+
+def _planned(sets):
+    return sum(ws.payload["expected_activities"] for ws in sets)
+
+
+def test_a_counting_sequence_is_cut_to_the_hours_the_plan_declared():
+    """MEASURED (run 1c0a4e81): the planner wrote `expected_activities` as a
+    running number — 2, 3, 4 … across 33 blocks — and the per-block clamp let
+    94 activities through for 5 objectives: a third of the run's calls, 88
+    open C5 gaps downstream. What bounds an activity plan is the learner time
+    the course has, which the planner states; the harness holds the plan to
+    it and says how much it cut."""
+    from alignmentgraph_isd.core import dev_plans
+
+    los = [f"ILO-0{i}" for i in range(1, 6)]
+    plan = {"contact_hours": 10, "activity_blocks": _blocks(list(range(2, 35)))}
+    sets, stats = dev_plans.normalize_activity_dev_plan(plan, los)
+
+    ceiling = 10 * 60 // dev_plans.MIN_ACTIVITY_MINUTES
+    assert _planned(sets) <= ceiling
+    assert stats["time_budget"]["contact_hours"] == 10
+    assert stats["planned_activities"] > ceiling, "what the planner asked for is on the record"
+    assert stats["time_budget"]["trimmed"] >= stats["planned_activities"] - ceiling > 0
+    assert {lo for ws in sets for lo in ws.objectives} == set(los), "every objective keeps a block"
+
+
+def test_a_block_plans_no_more_than_fits_in_its_own_minutes():
+    from alignmentgraph_isd.core import dev_plans
+
+    plan = {"contact_hours": 40, "activity_blocks": _blocks([8, 8], minutes=[45, 240])}
+    sets, _stats = dev_plans.normalize_activity_dev_plan(plan, ["ILO-01", "ILO-02"])
+    by_theme = {ws.payload["block_theme"]: ws.payload["expected_activities"] for ws in sets}
+    assert by_theme["theme 0"] == 45 // dev_plans.MIN_ACTIVITY_MINUTES
+    assert by_theme["theme 1"] == 8, "a block that fits is left as the planner wrote it"
+
+
+def test_a_plan_that_declares_no_time_is_left_alone_and_says_so():
+    """The harness holds a plan to the PLANNER's number, never to one it made
+    up: the brief states duration as a band, not as hours."""
+    from alignmentgraph_isd.core import dev_plans
+
+    sets, stats = dev_plans.normalize_activity_dev_plan(
+        {"activity_blocks": _blocks([4, 4])}, ["ILO-01", "ILO-02"])
+    assert _planned(sets) == 8 and stats["time_budget"] == "undeclared"
+
+
+def test_the_written_activities_are_checked_against_the_declared_hours():
+    from alignmentgraph_isd.core import checks, repairs
+    from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
+
+    assert checks.duration_minutes("1.5 hours") == 90
+    assert checks.duration_minutes("2 h 30 min") == 150
+    assert checks.duration_minutes("a while") == 0
+
+    graph = AlignmentGraph()
+    graph.add_node(NodeType.ACTIVITY_PLAN, graph.section_id(NodeType.ACTIVITY_PLAN),
+                   {"dev_plan": {"contact_hours": 2}})
+    for i in range(3):
+        graph.add_element_node(NodeType.ACTIVITY, f"TLA-0{i}",
+                               {"id": f"TLA-0{i}", "duration": "60 minutes"})
+    found = checks.time_budget(graph)
+    assert [v.violation_type for v in found] == ["time_budget"]
+    assert "3.0 hours" in found[0].message and "2 contact hours" in found[0].message
+    assert "time_budget" in repairs.REPORT_ONLY, "which activity to cut is a design judgment"
+    assert repairs.OWNER_BY_VIOLATION["time_budget"] == "activity_designer"
+
+    graph.add_node(NodeType.ACTIVITY_PLAN, graph.section_id(NodeType.ACTIVITY_PLAN),
+                   {"dev_plan": {"contact_hours": 3}})
+    assert checks.time_budget(graph) == []

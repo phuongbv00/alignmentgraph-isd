@@ -143,6 +143,12 @@ export interface ContextMessage {
    *  because the tab answers "what was this agent shown", and a transcript
    *  reduced to what is still being sent answers that for the last call only. */
   compacted?: boolean
+  /** An earlier `read_alignment_state` result that a later one replaced: the
+   *  live context — and the window meter — holds a one-line stub in its place,
+   *  which is what `content` is. `original_content` is what the agent was
+   *  actually shown at the time, kept because that is what the tab answers. */
+  superseded?: boolean
+  original_content?: string
   /** The model's reasoning channel, when the endpoint splits one out of the
    *  answer. Shown because the tab answers what this agent did, and thinking
    *  that goes unrecorded answers it for half the turn — but never sent back

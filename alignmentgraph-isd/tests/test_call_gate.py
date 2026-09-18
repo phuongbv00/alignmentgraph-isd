@@ -8,11 +8,12 @@ with HTTP 429 — 9-25 per run on the two multi arms against 0-2 on the
 sequential single arms, a throttling handicap sitting on the ``agent_mode``
 axis itself.
 
-WHAT IS TRUE NOW: the executor is fully sequential, so the gate has nothing to
-cap in practice and the run-level test below measures a peak of 1 whatever it
-is configured to. The gate's own behaviour is covered directly by
-``test_gate_bounds_concurrent_holders``; the run-level one is kept as a
-tripwire for the day a concurrent fan-out comes back.
+WHAT IS TRUE NOW: the executor is sequential by default (``fanout_workers`` =
+1), so the gate has nothing to cap and the run-level test measures a peak of 1
+whatever it is configured to; with workers the Developers of one family run at
+once and the gate is what bounds them. The gate's own behaviour is covered
+directly by ``test_gate_bounds_concurrent_holders``; the run-level ones pin
+that a parallel fan-out never exceeds it.
 """
 from __future__ import annotations
 
@@ -117,17 +118,12 @@ def _run_multi(**settings):
 def test_a_run_never_exceeds_the_configured_concurrency():
     """The gate is what stands between a fan-out and an HTTP 429.
 
-    It no longer has anything to cap in practice: the LangGraph superstep that
-    ran content and rubric together, and the parallel develop nodes under each
-    dev-plan family, went with the scripted pipeline on 2026-09-01. The agentic
-    executor runs its stages and its Developers SEQUENTIALLY on purpose —
-    concurrent stages would race the trajectory's thread-local actor scope, the
-    failure fixed on 2026-08-27.
-
-    So this pins the ceiling rather than the parallelism: whatever a future
-    executor does, a run must not exceed what it was configured for. The gate is
-    per-run and never process-wide, or one arm would queue behind another and
-    inflate its execution_time_seconds."""
+    By default the executor runs its stages and its Developers sequentially
+    (``fanout_workers`` = 1), so the gate has nothing to cap; with workers it
+    is the bound. This pins the ceiling rather than the parallelism: whatever
+    the executor does, a run must not exceed what it was configured for. The
+    gate is per-run and never process-wide, or one arm would queue behind
+    another and inflate its execution_time_seconds."""
     assert _run_multi(llm_max_concurrency=1) == 1
     assert _run_multi(llm_max_concurrency=2) <= 2
     # And an uncapped run is bounded by what the executor actually does.
@@ -152,6 +148,19 @@ def test_a_run_never_exceeds_the_configured_concurrency():
     finally:
         monkey.undo()
     assert held, "no model call went through the run's call gate"
+
+
+def test_a_parallel_fanout_stays_under_the_gate():
+    """``fanout_workers`` may ask for more than the gate allows; the gate
+    wins, because it is what stands between a fan-out and an HTTP 429."""
+    assert _run_multi(llm_max_concurrency=2, fanout_workers=4) <= 2
+    assert _run_multi(llm_max_concurrency=1, fanout_workers=4) == 1
+
+
+def test_workers_overlap_when_uncapped():
+    """The other half: with workers and no cap, the Developers really do run
+    at once — otherwise the setting is a label."""
+    assert _run_multi(fanout_workers=3) >= 2
 
 
 # ── transcript budget derived from the serving window ───────────────────────

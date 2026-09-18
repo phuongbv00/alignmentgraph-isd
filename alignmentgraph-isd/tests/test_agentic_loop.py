@@ -175,8 +175,8 @@ def _loop(config, graph, trajectory, brief, step, **kwargs) -> ToolLoop:
 def test_tool_call_then_submit_commits_and_logs_the_trace():
     step = STEP_BY_NAME["assessment"]
     model, config, graph, trajectory, brief = _harness([
-        call("read_nodes", {"node_type": "objective"}),
-        call("coverage_gaps", {"relation_id": "C2"}),
+        call("read_alignment_state", {}),
+        call("read_node", {"ids": ["ILO-01"]}),
         call("submit", _ASSESSMENT),
         call("submit_dev_plan", _ASSESSMENT_DEV_PLAN),
     ])
@@ -189,10 +189,11 @@ def test_tool_call_then_submit_commits_and_logs_the_trace():
     # the items are produced per work set (fanout.py).
     assert graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))["data"]
     tools_used = [tc["tool"] for tc in trajectory.tool_calls]
-    # Tool labels carry their scoping argument so the judge-visible trace
-    # distinguishes reads of different targets.
-    assert f"{step.identity}.tool_read_nodes_objective" in tools_used
-    assert f"{step.identity}.tool_coverage_gaps_C2" in tools_used
+    # The state read is labelled with its STAGE (and, from the second one on,
+    # its revision), so the judge-visible trace never shows two same-named
+    # reads of two different states.
+    assert f"{step.identity}.tool_read_alignment_state_assessment" in tools_used
+    assert f"{step.identity}.tool_read_node" in tools_used
     # The commit label names the ARTIFACT this call carried: a stage writes one
     # artifact per call, and six identical `design_implementation` entries
     # would read to the trajectory judge as repetition rather than as the
@@ -278,11 +279,11 @@ def test_invalid_commit_on_spent_budget_is_recovery_not_a_judge_visible_step():
 
 
 def test_repeated_identical_tool_call_is_not_reanswered():
-    """Measured 2B failure: six identical read_nodes calls burned the whole
-    turn budget. A repeat gets a nudge instead of a second answer, and never
-    shows up as a judge-visible tool call."""
+    """Measured 2B failure: six identical list reads burned the whole turn
+    budget. A repeat whose result is unchanged gets a nudge instead of a second
+    answer, and never shows up as a judge-visible tool call."""
     step = STEP_BY_NAME["assessment"]
-    read = call("read_nodes", {"node_type": "objective"})
+    read = call("read_alignment_state", {})
     _model, config, graph, trajectory, brief = _harness([
         read, read, read,
         call("submit", _ASSESSMENT),
@@ -292,7 +293,7 @@ def test_repeated_identical_tool_call_is_not_reanswered():
     _loop(config, graph, trajectory, brief, step).run()
 
     assert graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))["data"]
-    reads = [tc for tc in trajectory.tool_calls if "tool_read_nodes" in tc["tool"]]
+    reads = [tc for tc in trajectory.tool_calls if "tool_read_alignment_state" in tc["tool"]]
     assert len(reads) == 1  # answered once, repeats are recovery plumbing
     repeats = [e for e in trajectory.recovery_events if e["action"] == "repeated_tool_call"]
     assert len(repeats) == 2
@@ -409,14 +410,16 @@ def test_the_implementation_stage_is_not_finished_without_the_guides():
 def test_unknown_tool_and_disallowed_type_come_back_as_error_observations():
     step = STEP_BY_NAME["assessment"]
     _model, config, graph, trajectory, brief = _harness([
-        call("read_nodes", {"node_type": "rubric"}),  # not readable here
+        call("read_node", {"ids": ["rubric:R-01"]}),  # not readable here
+        call("read_nodes", {"node_type": "objective"}),  # a tool that is not bound
         call("frobnicate", {}),
         call("submit", _ASSESSMENT),
     ])
     specialists.commit_outcomes(graph, trajectory, _OUTCOMES)
 
     loop = _loop(config, graph, trajectory, brief, step)
-    assert loop._execute("read_nodes", {"node_type": "rubric"}).startswith("ERROR")
+    assert loop._execute("read_node", {"ids": ["rubric:R-01"]}).startswith("ERROR")
+    assert loop._execute("read_nodes", {"node_type": "objective"}).startswith("ERROR: unknown tool")
     assert loop._execute("frobnicate", {}).startswith("ERROR")
     loop.run()
     assert graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))["data"]
@@ -607,8 +610,8 @@ def test_the_model_is_told_how_many_turns_remain():
                 str(m.get("content", "")) for m in messages if isinstance(m, dict)))
             return super().invoke(messages)
 
-    read = call("read_nodes", {"node_type": "objective"})
-    reads = [dict(read, args={"node_type": "objective", "n": i})
+    read = call("read_node", {"ids": ["ILO-01"]})
+    reads = [dict(read, args={"ids": ["ILO-01"], "n": i})
              for i in range(ToolLoop.MAX_TURNS)]
     model = _Watching(reads)
     config = HarnessRunConfig(llm_factory=lambda: model)
@@ -697,8 +700,10 @@ def test_tool_call_left_as_text_by_the_server_is_recovered():
     protocol nudge, and pushes the stage toward its fallback — for a reason
     that has nothing to do with the model."""
     step = STEP_BY_NAME["assessment"]
-    markup = ("<tool_call>\n<function=read_nodes>\n<parameter=node_type>\n"
-              "objective\n</parameter>\n</function>\n</tool_call>")
+    # The measured reply named the list tool of its day; the shape is the
+    # point, so it is replayed with a tool this stage binds.
+    markup = ("<tool_call>\n<function=read_node>\n<parameter=ids>\n"
+              '["ILO-01"]\n</parameter>\n</function>\n</tool_call>')
     _model, config, graph, trajectory, brief = _harness([
         markup, call("submit", _ASSESSMENT), call("submit_dev_plan", _ASSESSMENT_DEV_PLAN)])
     specialists.commit_outcomes(graph, trajectory, _OUTCOMES)
@@ -707,13 +712,13 @@ def test_tool_call_left_as_text_by_the_server_is_recovered():
 
     assert graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))["data"]
     # The recovered call is a real, judge-visible read — not an invalid turn.
-    assert any("tool_read_nodes_objective" in tc["tool"] for tc in trajectory.tool_calls)
+    assert any(tc["tool"].endswith(".tool_read_node") for tc in trajectory.tool_calls)
     assert not any(e["action"] == "invalid_action" for e in trajectory.recovery_events)
     # ...and the recovery is COUNTED, so its rate per model size is visible:
     # it bounds how much of this arm's behaviour is really the serving stack's.
     recovered = [e for e in trajectory.recovery_events
                  if e["action"] == "tool_call_markup_recovered"]
-    assert len(recovered) == 1 and recovered[0]["context"]["input_summary"] == "read_nodes"
+    assert len(recovered) == 1 and recovered[0]["context"]["input_summary"] == "read_node"
 
 
 def test_prose_really_is_prose_and_is_not_mistaken_for_a_call():
@@ -741,7 +746,11 @@ def test_tool_choice_is_sent_explicitly():
 
     Traced 2026-08-31 by diffing the harness's outgoing payload against a probe
     that scored 100% well-formed in all four transport x turn-shape cells:
-    `tool_choice` was the only field that differed."""
+    `tool_choice` was the only field that differed.
+
+    And it is "required", not "auto": MEASURED (run 14a6b4c7), four replies
+    called no tool and wrote 9-15k characters of prose instead, three of them
+    to the completion cap — ~12k completion tokens bought four nudges."""
     seen: dict = {}
 
     class _Recording(ScriptedModel):
@@ -757,7 +766,7 @@ def test_tool_choice_is_sent_explicitly():
     ToolLoop(config, graph, trajectory, load_brief("minimal_brief.json"), step,
              AgenticLLM(config, trajectory, step.identity)).run()
 
-    assert seen.get("tool_choice") == "auto", (
+    assert seen.get("tool_choice") == "required", (
         "tool_choice was not sent; the serving-side parser may not engage")
     assert graph.element_nodes(NodeType.GAP)
 
@@ -784,6 +793,73 @@ def test_a_backend_that_rejects_tool_choice_still_binds():
     assert graph.element_nodes(NodeType.GAP)
     assert not any(e["action"] == "tool_binding_unavailable"
                    for e in trajectory.recovery_events)
+
+
+class _BadRequest(Exception):
+    status_code = 400
+
+
+def _refusing_required(script):
+    """A backend that binds anything but refuses to SERVE a request whose
+    binding asked for ``tool_choice="required"``."""
+    choices: list = []
+
+    class _Refusing(ScriptedModel):
+        _choice = None
+
+        def bind_tools(self, specs, **kwargs):
+            choices.append(kwargs.get("tool_choice"))
+            self._choice = kwargs.get("tool_choice")
+            return super().bind_tools(specs)
+
+        def invoke(self, messages):
+            if self._choice == "required":
+                raise _BadRequest("tool_choice 'required' is not supported by this model")
+            return super().invoke(messages)
+
+    return _Refusing(script), choices
+
+
+def test_a_backend_that_refuses_required_falls_back_to_auto_once_per_run():
+    """The refusal surfaces on the REQUEST, not on bind_tools, and is learned
+    once for the whole run: every later agent — either arm — binds "auto"
+    directly rather than paying a refused request to find out again."""
+    model, choices = _refusing_required([call("submit", _ANALYSIS), call("submit", _OUTCOMES)])
+    config = HarnessRunConfig(llm_factory=lambda: model)
+    graph = AlignmentGraph()
+    trajectory = TrajectoryLogger()
+    for name in ("analysis", "outcomes"):
+        step = STEP_BY_NAME[name]
+        ToolLoop(config, graph, trajectory, load_brief("minimal_brief.json"), step,
+                 AgenticLLM(config, trajectory, step.identity)).run()
+
+    assert choices == ["required", "auto", "auto"], choices
+    actions = [e["action"] for e in trajectory.recovery_events]
+    assert actions.count("tool_choice_downgraded") == 1
+    assert "llm_error" not in actions and "invalid_action" not in actions
+    assert graph.element_nodes(NodeType.GAP) and graph.element_nodes(NodeType.OBJECTIVE)
+    # The refused request left the building and is on the books.
+    assert trajectory.llm_calls == 3
+
+
+def test_an_unrelated_backend_error_is_still_an_llm_error():
+    class _Broken(ScriptedModel):
+        def bind_tools(self, specs, **_kwargs):
+            return super().bind_tools(specs)
+
+        def invoke(self, messages):
+            raise RuntimeError("upstream 500: internal server error")
+
+    step = STEP_BY_NAME["analysis"]
+    model = _Broken([call("submit", _ANALYSIS)])
+    config = HarnessRunConfig(llm_factory=lambda: model)
+    trajectory = TrajectoryLogger()
+    ToolLoop(config, AlignmentGraph(), trajectory, load_brief("minimal_brief.json"), step,
+             AgenticLLM(config, trajectory, step.identity)).run()
+
+    actions = [e["action"] for e in trajectory.recovery_events]
+    assert "llm_error" in actions and "tool_choice_downgraded" not in actions
+    assert config._tool_choice is None, "an unrelated failure must not change the memo"
 
 
 def test_a_developer_reads_less_than_the_stage_that_dispatched_it():
@@ -819,7 +895,7 @@ def test_a_repeated_call_does_not_spend_a_turn_but_is_not_free():
     turns went that way. Refunded, but only up to REPEAT_ALLOWANCE: a model
     that only ever repeats has to reach the fallback."""
     step = STEP_BY_NAME["outcomes"]
-    read = call("read_nodes", {"node_type": "gap"})
+    read = call("read_alignment_state", {})
     # Enough repeats to exhaust the allowance, then a good submit.
     _model, config, graph, trajectory, brief = _harness(
         [read] + [read] * 6 + [call("submit", _OUTCOMES)])
@@ -1118,7 +1194,12 @@ def test_a_restored_contract_says_what_the_stage_already_committed():
     loop.run()
 
     restored = loop._restore_brief("analysis")
-    assert restored is not None and restored.startswith(contract)
+    header, _, body = contract.partition("\n")
+    assert restored is not None and restored.startswith(header + "\nRESUMING, not starting:")
+    assert body in restored, "the contract itself is re-attached whole"
+    assert restored.index("Already committed") < restored.index(body), (
+        "what is left is said BEFORE the contract's own list of artifacts")
+    assert restored.rstrip().endswith("do not resend those."), "and again after it"
     assert "Already committed: needs_analysis" in restored
     assert "still needs" in restored
     assert "do not resend those" in restored
@@ -1169,15 +1250,18 @@ def test_a_developer_reading_its_own_assignment_gets_a_pointer_not_a_second_copy
     _model, config, _g, trajectory, brief = _harness([])
     loop = _loop(config, graph, trajectory, brief, developer)
 
-    answer = loop._execute("read_nodes", {"node_type": "objective"})
+    # A Developer has ONE read tool, by id. Asked for a whole pool its
+    # assignment already spells out, it is pointed at the assignment.
+    assert tools.tool_names(tools.tool_specs(developer))[:1] == ("read_node",)
+    answer = loop._execute("read_node", {"node_type": "objective"})
     assert "already have" in answer
     assert developer.resolved_labels["objective"] in answer
     assert "statement" not in answer, "the pointer must not re-render the data"
 
-    # A pool the assignment does NOT resolve still reads for real: the tool
-    # stays bound and a Developer remains free to look at what it needs.
-    real = loop._execute("read_nodes", {"node_type": "activity"})
-    assert "already have" not in real
+    # A pool the assignment does NOT resolve is not re-pointed — and there is
+    # no list tool to send a work set to: its ids are the ones it was handed.
+    other = loop._execute("read_node", {"node_type": "activity"})
+    assert "already have" not in other and "your assignment names" in other
 
 
 def test_a_stage_agent_reads_for_real():
@@ -1189,7 +1273,8 @@ def test_a_stage_agent_reads_for_real():
     loop = _loop(config, graph, trajectory, brief, STEP_BY_NAME["assessment"])
 
     assert STEP_BY_NAME["assessment"].resolved_labels == {}
-    assert "already have" not in loop._execute("read_nodes", {"node_type": "objective"})
+    state = loop._execute("read_alignment_state", {})
+    assert "already have" not in state and "[OBJECTIVE:ILO-01]" in state
 
 
 def test_a_compacted_turn_is_kept_and_marked_not_dropped_from_the_record():
@@ -1521,8 +1606,8 @@ def test_every_call_in_a_batched_reply_runs_and_each_costs_a_turn():
     now, in order, and each is a turn."""
     step = STEP_BY_NAME["assessment"]
     model, config, graph, trajectory, brief = _harness([
-        batch(call("read_nodes", {"node_type": "objective"}),
-              call("coverage_gaps", {"relation_id": "C2"}),
+        batch(call("read_alignment_state", {}),
+              call("read_node", {"ids": ["ILO-01", "ILO-02"]}),
               call("read_node", {"id": "ILO-01"})),
         batch(call("submit", _ASSESSMENT), call("submit_dev_plan", _ASSESSMENT_DEV_PLAN)),
     ])
@@ -1532,7 +1617,7 @@ def test_every_call_in_a_batched_reply_runs_and_each_costs_a_turn():
     loop.run()
 
     tools_used = [tc["tool"] for tc in trajectory.tool_calls]
-    for label in ("tool_read_nodes_objective", "tool_coverage_gaps_C2", "tool_read_node",
+    for label in ("tool_read_alignment_state_assessment", "tool_read_node",
                   "design_assessment_assessment_plan", "design_assessment_dev_plan"):
         assert any(label in t for t in tools_used), (label, tools_used)
     assert model.invocations == 2, "two model replies carried five calls"
@@ -1815,32 +1900,25 @@ def test_an_unreadable_id_costs_that_id_and_says_what_may_be_read():
         assert readable in out
 
 
-def test_a_read_that_came_through_the_neighbouring_door_is_still_served():
-    """MEASURED (runs 53042a0d, 2559b22d): 50 of 63 ERROR observations were
-    "node_type must be one of …", and most carried a perfectly good `ids`
-    array — the model wanting "read these ids" and reaching for the PLURAL
-    name. `read_nodes` lists a type, `read_node` reads ids; the names differ by
-    one character, and since `read_node` began taking an array they no longer
-    differ much in arguments either.
-
-    Both directions are unambiguous, so both are served. Same rule as
-    `_submit_alias` rescuing a bare `submit`: a call is not wrong because it
-    came through the neighbouring door."""
+def test_there_is_one_list_shaped_read_and_a_read_by_id_says_where_the_ids_are():
+    """MEASURED (runs 53042a0d, 2559b22d): 50 of 63 ERROR observations were a
+    LIST tool and a READ tool — `read_nodes` and `read_node`, one character
+    apart — being reached for through each other's door. There is one
+    list-shaped read now and it takes no arguments, so it has no wrong door;
+    a read by id that names no id is told where the ids are."""
     step = STEP_BY_NAME["assessment"]
     _model, config, graph, trajectory, brief = _harness([])
     specialists.commit_outcomes(graph, trajectory, _OUTCOMES)
     loop = _loop(config, graph, trajectory, brief, step)
 
-    by_ids = loop._execute("read_nodes", {"ids": ["ILO-01"]})
-    assert not by_ids.startswith("ERROR") and "ILO-01" in by_ids
+    names = tools.tool_names(tools.tool_specs(step))
+    assert [n for n in names if n.startswith("read")] == ["read_alignment_state", "read_node"]
+    assert tools.spec_parameters(tools.tool_specs(step), "read_alignment_state")["properties"] == {}
 
     by_type = loop._execute("read_node", {"node_type": "objective"})
-    assert not by_type.startswith("ERROR") and "ILO-01" in by_type
-    assert by_type == loop._execute("read_nodes", {"node_type": "objective"})
-
-    # A call that says neither is still an error, and now names the way out.
-    empty = loop._execute("read_nodes", {})
-    assert empty.startswith("ERROR") and "read_node" in empty
+    assert by_type.startswith("ERROR") and "read_alignment_state" in by_type
+    assert "[OBJECTIVE:ILO-01]" in loop._execute("read_alignment_state", {"node_type": "x"}), (
+        "an argument it does not take is ignored, not punished")
 
 
 def test_a_turn_that_bought_no_observation_is_refunded():
@@ -1876,49 +1954,494 @@ def test_both_arms_refund_a_failed_call_on_the_same_rule():
 
     from alignmentgraph_isd.core.agentic import turn as turn_mod
 
+    # Written ONCE, in the read path both arms go through, and neither arm
+    # keeps a copy of its own to drift.
+    shared = inspect.getsource(turn_mod.answer_read)
+    assert 'startswith("ERROR")' in shared and "tool_error()" in shared
     for owner in (loop_module.ToolLoop._handle_read, react.ReactLoop._handle_read):
         source = inspect.getsource(owner)
-        assert 'startswith("ERROR")' in source, owner
-        assert "tool_error()" in source, f"{owner} does not refund through the meter"
+        assert "turn_mod.answer_read(" in source, owner
+        assert "tool_error()" not in source and "repeated()" not in source, owner
     assert "budget.ERROR_ALLOWANCE" in inspect.getsource(turn_mod.TurnMeter.tool_error)
 
 
 
-def test_a_field_the_artifact_does_not_have_is_rejected_by_name():
-    """MEASURED (run 7ef3ed16): ``submit_assessment_plan`` arrived carrying
-    ``pilot_data_plan`` and, beside it at the TOP level, the four fields of one
-    ``anticipated_difficulties`` entry — ``area``, ``rationale``,
-    ``detected_by``, ``first_revision``. The schema allowed extra keys and
-    ``validate_section`` only checks the required ones, so the stray object
-    went into the graph node, through the aggregator, and into
-    ``addie_output.json`` for the judge.
+def _implementation_script(order: str):
+    """A model that cannot write ``prototype_execution`` and can write the rest.
 
-    Naming the keys is what makes it fixable in one turn: the model wrote the
-    content, it just put it one level too high."""
-    step = STEP_BY_NAME["assessment"]
-    difficulty = {"area": "x", "rationale": "y", "detected_by": "z", "first_revision": "w"}
-    plan = {"lo_coverage_targets": {"ILO-01": ["formative"]},
-            "pilot_data_plan": {"anticipated_difficulties": [difficulty]}}
+    ``order`` is "bad_first" (the failing artifact spends its budget, then the
+    five good ones land) or "good_first" (the reverse). Either way the model
+    keeps resubmitting the failing one afterwards, which is what a model told
+    "still needs: prototype_execution" does."""
+    from conftest import _IMPLEMENTATION, _IMPLEMENTATION_DEV_PLAN
 
-    assert tools.undeclared_key_errors(step, {"assessment_plan": plan}) == []
-
-    errors = tools.undeclared_key_errors(step, {"assessment_plan": {**plan, **difficulty}})
-    assert len(errors) == 1
-    # Every stray key named, and the artifact's real fields listed beside them.
-    for key in difficulty:
-        assert key in errors[0]
-    assert "lo_coverage_targets" in errors[0] and "pilot_data_plan" in errors[0]
+    bad = call("submit_prototype_execution",
+               {"prototype_execution": {"prototype_activities": ["x"]}})
+    good = [call(f"submit_{k}", {k: v}) for k, v in _IMPLEMENTATION.items()
+            if k != "prototype_execution"]
+    good.append(call("submit_dev_plan", _IMPLEMENTATION_DEV_PLAN))
+    spent = [bad] * (ToolLoop.SUBMIT_BUDGET + 1)
+    tail = [bad] * ToolLoop.MAX_TURNS
+    return (spent + good + tail) if order == "bad_first" else (good + spent + tail)
 
 
-def test_the_undeclared_key_gate_judges_objects_only():
-    """An ARRAY field's items are the Developer tier's contract
-    (``fanout.output_errors``), and a stray key inside a nested object is a
-    different, unmeasured failure. A gate is worth its submit budget only where
-    it has been seen to fire."""
-    step = STEP_BY_NAME["assessment"]
-    # An array submit field, and a nested object one level down: neither judged.
-    assert tools.undeclared_key_errors(
-        STEP_BY_NAME["outcomes"], {"learning_objectives": [{"whatever": 1}]}) == []
-    assert tools.undeclared_key_errors(step, {"assessment_plan": {
-        "lo_coverage_targets": {"ILO-01": ["formative"]},
-        "pilot_data_plan": {"anticipated_difficulties": [], "invented": 1}}}) == []
+@pytest.mark.parametrize("order", ["bad_first", "good_first"])
+def test_a_stage_ends_when_only_budget_spent_artifacts_remain(order):
+    """MEASURED (run 14a6b4c7, implementation, both attempts): once
+    ``operator_manual`` had spent its submit budget and was the only artifact
+    left, every answer read "Leave it and write the next one. implementation
+    still needs: operator_manual." The model obeyed the second half — 15
+    resubmits per attempt, until the turn ceiling — at ~5k prompt tokens each.
+    A part the loop will not accept again is CLOSED: never listed as owed, and
+    when nothing else is open the stage ends on the spot."""
+    step = STEP_BY_NAME["implementation"]
+    model, config, graph, trajectory, brief = _harness(_implementation_script(order))
+    loop = _loop(config, graph, trajectory, brief, step)
+    loop.run()
+
+    answers = [m["content"] for m in loop.messages
+               if isinstance(m, dict) and m.get("role") == "tool"]
+    # Once closed, the artifact is never again listed as owed — by the answer
+    # to a resubmit, nor by the answer to a commit beside it.
+    closed_from = next(i for i, a in enumerate(answers) if "rejected 3 times" in a
+                       or "ENDS here" in a)
+    assert not any("still needs: prototype_execution" in a
+                   for a in answers[closed_from:]), answers[closed_from:]
+    assert "ENDS here without prototype_execution" in answers[-1], answers[-1]
+    assert loop.stats["gave_up"]
+    # The stage ended the moment the last open artifact landed (or the budget
+    # was spent, whichever came second) — not at the turn ceiling.
+    expected_calls = 6 + ToolLoop.SUBMIT_BUDGET + 1
+    assert model.invocations == expected_calls, (model.invocations, expected_calls)
+    assert not loop.stats["via_budget_exhaustion"]
+    # The best rejected payload is still committed as the model's own work.
+    data = (graph.get_node(graph.section_id(NodeType.IMPLEMENTATION_PLAN)) or {}).get("data") or {}
+    assert "system_check" in data and "prototype_execution" in data
+
+
+def test_a_re_attached_brief_names_a_closed_artifact_as_closed():
+    """The same sentence that answers a submit also comes back on a re-attached
+    contract, so it must carry the closed list too, or a compaction restores a
+    brief that asks for the artifact the loop just closed."""
+    from conftest import _IMPLEMENTATION
+
+    step = STEP_BY_NAME["implementation"]
+    _model, config, graph, trajectory, brief = _harness([])
+    loop = _loop(config, graph, trajectory, brief, step)
+    # The state after one artifact landed and another spent its budget.
+    specialists.commit_implementation(
+        graph, trajectory, {"system_check": _IMPLEMENTATION["system_check"]})
+    loop._submit_attempts["prototype_execution"] = ToolLoop.SUBMIT_BUDGET
+
+    restored = loop._restore_brief(step.name)
+    assert "Closed, do not submit again: prototype_execution" in restored
+    assert "still needs: prototype_execution" not in restored
+    assert "Already committed: system_check" in restored
+
+
+def test_a_developer_is_told_its_assignment_is_the_design_state():
+    """MEASURED (run 14a6b4c7, content:MU-CM-01): the assignment said "you do
+    not need to look them up" and the protocol tail said "you have not seen
+    them yet"; the model believed the tail, read 18 times for ids the
+    assignment names but no read tool serves (media selections, topics),
+    submitted nothing, and gave up on the turn ceiling — 89 MaterialDeveloper
+    calls for 8 modules, against 2 per set for the AssessmentDeveloper. A work
+    set's assignment IS its design state, and its grounding says so."""
+    from alignmentgraph_isd.core import dev_plans
+    from alignmentgraph_isd.core.agentic import fanout
+
+    _model, config, graph, trajectory, brief = _harness([])
+    stage = STEP_BY_NAME["content"]
+    dev = fanout.set_step(fanout.SPECS["content"], dev_plans.WorkSet(set_id="MU-01"), stage)
+
+    stage_msg = _loop(config, graph, trajectory, brief, stage)._stage_message(False)
+    dev_msg = _loop(config, graph, trajectory, brief, dev)._stage_message(False)
+
+    assert "you have not seen them yet" in stage_msg
+    assert "you have not seen them yet" not in dev_msg
+    assert "IS the design state for this set" in dev_msg
+    assert "You do not need to look them up" in dev_msg
+    # Every step that commits to the state keeps the stage grounding; every
+    # fan-out set gets the assignment one — no third wording anywhere.
+    for name, spec in fanout.SPECS.items():
+        s = fanout.set_step(spec, dev_plans.WorkSet(set_id="S1"), STEP_BY_NAME[spec.stage])
+        assert "IS the design state for this set" in _loop(
+            config, graph, trajectory, brief, s)._stage_message(False), name
+
+
+# ── the binding follows the stage ───────────────────────────────────────────
+
+def _recording_bindings(script):
+    """A model that records the tool NAMES it was bound with on every call."""
+    bindings: list[list[str]] = []
+
+    class _Recording(ScriptedModel):
+        def bind_tools(self, specs, **_kwargs):
+            bindings.append(tools.tool_names(specs))
+            return super().bind_tools(specs)
+
+    return _Recording(script), bindings
+
+
+def test_a_committed_artifact_leaves_the_binding_on_the_next_turn():
+    """MEASURED (run 14a6b4c7): `implementation`'s seven submit tools rode all
+    49 turns of the stage at ~6.4k tokens a turn, while six of the seven had
+    landed by turn 10. The binding is re-derived before every call; the first
+    one is byte-for-byte the full set the golden fixture pins."""
+    from conftest import _IMPLEMENTATION, _IMPLEMENTATION_DEV_PLAN
+
+    step = STEP_BY_NAME["implementation"]
+    script = [call(f"submit_{k}", {k: v}) for k, v in _IMPLEMENTATION.items()]
+    script.append(call("submit_dev_plan", _IMPLEMENTATION_DEV_PLAN))
+    model, bindings = _recording_bindings(script)
+    config = HarnessRunConfig(llm_factory=lambda: model)
+    graph, trajectory = AlignmentGraph(), TrajectoryLogger()
+    loop = ToolLoop(config, graph, trajectory, load_brief("minimal_brief.json"), step,
+                    AgenticLLM(config, trajectory, step.identity))
+    loop.run()
+
+    assert bindings[0] == tools.tool_names(tools.tool_specs(step)), "first binding moved"
+    assert "submit_instructor_orientation" in bindings[0]
+    assert "submit_instructor_orientation" not in bindings[1]
+    assert "read_alignment_state" in bindings[1] and "read_node" in bindings[1]
+    # Each turn offers exactly the artifacts still open.
+    for i, binding in enumerate(bindings[:-1]):
+        offered = [n for n in binding if n.startswith("submit_")]
+        assert len(offered) == 7 - i, (i, offered)
+    # What is PUBLISHED still answers "what tools did this agent ever have".
+    assert {f"submit_{k}" for k, _t, _r in step.submit_fields} <= set(tools.tool_names(loop._specs))
+
+
+def test_a_closed_artifact_is_unbound_too():
+    """The loop has told the model not to submit a closed artifact again; a
+    schema still offered for it says the opposite, and costs a turn's worth of
+    tokens for as long as the stage lasts."""
+    step = STEP_BY_NAME["implementation"]
+    bad = call("submit_prototype_execution",
+               {"prototype_execution": {"prototype_activities": ["x"]}})
+    model, bindings = _recording_bindings([bad] * (ToolLoop.SUBMIT_BUDGET + 1))
+    config = HarnessRunConfig(llm_factory=lambda: model)
+    graph, trajectory = AlignmentGraph(), TrajectoryLogger()
+    ToolLoop(config, graph, trajectory, load_brief("minimal_brief.json"), step,
+             AgenticLLM(config, trajectory, step.identity)).run()
+
+    assert "submit_prototype_execution" in bindings[ToolLoop.SUBMIT_BUDGET - 1]
+    assert "submit_prototype_execution" not in bindings[ToolLoop.SUBMIT_BUDGET]
+    assert "submit_operator_manual" in bindings[ToolLoop.SUBMIT_BUDGET], "the others stay"
+
+
+def test_a_resent_committed_artifact_is_a_duplicate_whatever_door_it_came_through():
+    """Once `submit_X` is unbound, a model re-sending X does so under a bare
+    `submit` or under a neighbour's tool. Either way it is a duplicate of X —
+    not a rejection charged to the neighbour, and not "Y did not land"."""
+    from conftest import _IMPLEMENTATION
+
+    step = STEP_BY_NAME["implementation"]
+    first = {"system_check": _IMPLEMENTATION["system_check"]}
+    _model, config, graph, trajectory, brief = _harness([
+        call("submit_system_check", first),
+        call("submit", first),                       # bare
+        call("submit_monitoring", first),            # neighbour's door
+        call("submit_monitoring", {"monitoring": _IMPLEMENTATION["monitoring"]}),
+    ])
+    loop = _loop(config, graph, trajectory, brief, step)
+    loop.run()
+
+    actions = [e["action"] for e in trajectory.recovery_events]
+    assert actions.count("duplicate_submit") == 2, actions
+    assert "submit_rejected" not in actions and "commit_did_not_land" not in actions
+    assert loop._submit_attempts == {}
+
+
+# ── a read for an id the assignment already shows ───────────────────────────
+
+def _content_unit(set_id: str = "MU-CM-01", **payload):
+    from alignmentgraph_isd.core import dev_plans
+
+    base = {"modules": [{"id": "CM-01", "title": "Risk factors",
+                         "description": "Three core risk factors.",
+                         "supports_activities": ["TLA-0101"], "covers_topics": ["T1"],
+                         "expected_materials": 1}],
+            "media_selections": [{"id": "MS-01", "media_type": "slides",
+                                  "purpose": "Introduce the framework",
+                                  "respects_constraints": ["CON-01"],
+                                  "for_modules": ["CM-01"]}]}
+    base.update(payload)
+    return dev_plans.WorkSet(set_id=set_id, payload=base)
+
+
+def test_a_read_for_an_id_the_assignment_names_but_no_tool_serves_gets_a_pointer():
+    """MEASURED (run 14a6b4c7, content:MU-CM-01): the module's media
+    selections and topics are written INTO the assignment and served by no
+    read tool, so every read for them was answered "no readable artifact ...
+    use read_nodes to list their ids" — 18 reads, 0 submits, a give-up and a
+    regen. The harness knows what it put in the assignment; the read is
+    answered with where it is."""
+    from alignmentgraph_isd.core.agentic import fanout
+
+    step = STEP_BY_NAME["content"]
+    _model, config, graph, trajectory, brief = _harness([])
+    developer = fanout.set_step(fanout.SPECS["content"], _content_unit(), step, graph)
+
+    assert developer.assignment_ids["MS-01"] == "media selections for this module"
+    assert developer.assignment_ids["CM-01"] == "YOUR module(s)"
+    assert "T1" in developer.assignment_ids
+
+    loop = _loop(config, graph, trajectory, brief, developer)
+    answer = loop._execute("read_node", {"ids": ["MS-01", "T1"]})
+    loop._note_assignment_read()      # what `turn.answer_read` does once it ANSWERS the read
+    assert "MS-01 is in your assignment above under 'media selections for this module'" in answer
+    assert "T1 is in your assignment above" in answer
+    assert "ERROR" not in answer and "submit" in answer
+    assert loop.stats.get("assignment_reads") == 1
+    events = [e for e in trajectory.recovery_events if e["action"] == "read_of_assignment_id"]
+    assert len(events) == 1 and "MS-01" in events[0]["context"]["input_summary"]
+    # A stage agent has no assignment and is unchanged.
+    assert STEP_BY_NAME["content"].assignment_ids == {}
+
+
+def test_an_id_neither_in_the_assignment_nor_readable_keeps_the_error():
+    from alignmentgraph_isd.core.agentic import fanout
+
+    step = STEP_BY_NAME["content"]
+    _model, config, graph, trajectory, brief = _harness([])
+    developer = fanout.set_step(fanout.SPECS["content"], _content_unit(), step, graph)
+    loop = _loop(config, graph, trajectory, brief, developer)
+
+    answer = loop._execute("read_node", {"ids": ["ZZ-99"]})
+    assert answer.startswith("ERROR: no readable artifact with id 'ZZ-99'")
+    assert not loop.stats.get("assignment_reads")
+
+
+def test_a_mixed_read_serves_the_readable_ids_and_points_for_the_rest():
+    from alignmentgraph_isd.core.agentic import fanout
+
+    step = STEP_BY_NAME["content"]
+    _model, config, graph, trajectory, brief = _harness([])
+    graph.add_element_node(NodeType.ACTIVITY, "TLA-0101",
+                           {"id": "TLA-0101", "activity_name": "Risk workshop",
+                            "description": "Learners rank risks.", "duration": "60 minutes"})
+    developer = fanout.set_step(fanout.SPECS["content"], _content_unit(), step, graph)
+    loop = _loop(config, graph, trajectory, brief, developer)
+
+    answer = loop._execute("read_node", {"ids": ["TLA-0101", "MS-01"]})
+    assert "Risk workshop" in answer, "the readable id is served in full"
+    assert "MS-01 is in your assignment above" in answer
+    assert answer.index("Risk workshop") < answer.index("MS-01 is in"), (
+        "the served part comes first, so an ERROR there still leads the observation")
+
+
+def test_a_truncated_assignment_does_not_claim_ids_it_cut_off():
+    from alignmentgraph_isd.core.agentic import fanout
+
+    step = STEP_BY_NAME["content"]
+    padding = "x" * fanout.ASSIGNMENT_CHAR_CAP
+    unit = _content_unit(modules=[{"id": "CM-01", "title": "t", "description": padding,
+                                   "covers_topics": ["T1"], "expected_materials": 1}])
+    developer = fanout.set_step(fanout.SPECS["content"], unit, step)
+    assert "CM-01" in developer.assignment_ids
+    assert "MS-01" not in developer.assignment_ids, "it was cut off the model's copy"
+
+
+def test_a_rejected_resend_never_overwrites_the_artifact_that_landed():
+    """MEASURED (run 9efc3cfa, implementation): `system_check` was accepted,
+    then re-sent under invented keys and rejected; the give-up committed every
+    rejected payload as the model's best and replaced the accepted artifact
+    with the refused one, so the run shipped "required field is missing" for
+    an artifact the validator had passed."""
+    from conftest import _IMPLEMENTATION
+
+    step = STEP_BY_NAME["implementation"]
+    good = {"system_check": _IMPLEMENTATION["system_check"]}
+    worse = {"system_check": {"learning_platform": "a browser"}}
+    bad = call("submit_prototype_execution",
+               {"prototype_execution": {"prototype_activities": ["x"]}})
+    _model, config, graph, trajectory, brief = _harness(
+        [call("submit_system_check", good), call("submit_system_check", worse)]
+        + [bad] * ToolLoop.MAX_TURNS)
+    loop = _loop(config, graph, trajectory, brief, step)
+    loop.run()
+
+    assert loop.stats["gave_up"]
+    data = graph.get_node(graph.section_id(NodeType.IMPLEMENTATION_PLAN))["data"]
+    assert data["system_check"] == _IMPLEMENTATION["system_check"]
+    assert "prototype_execution" in data, "what never landed is still kept as the model's best"
+
+
+def test_a_work_set_that_spends_its_budget_is_told_which_artifact_and_that_it_did_not_land():
+    from alignmentgraph_isd.core import dev_plans
+    from alignmentgraph_isd.core.agentic import fanout
+
+    stage = STEP_BY_NAME["content"]
+    dev = fanout.set_step(fanout.SPECS["content"], dev_plans.WorkSet(set_id="MU-01"), stage)
+    _model, config, graph, trajectory, brief = _harness(
+        [call("submit_learner_materials", {"learner_materials": "not an array"})]
+        * (ToolLoop.SUBMIT_BUDGET + 1))
+    loop = _loop(config, graph, trajectory, brief, dev)
+    loop.run()
+
+    closing = [m["content"] for m in loop.messages
+               if isinstance(m, dict) and m.get("role") == "tool"][-1]
+    assert closing.startswith("NOT COMMITTED. This stage ENDS here without learner_materials")
+
+
+# ── keys the schema does not declare ────────────────────────────────────────
+
+def test_an_extra_key_is_kept_and_only_a_missing_required_one_is_a_fault():
+    """The ADDIE shape is a floor, not a mould. MEASURED: refusing or dropping
+    undeclared keys cost a small model the artifact's SUBSTANCE, which it often
+    writes under a name of its own — on run 1c0a4e81 `context_analysis` shipped
+    `constraints: []` with 31 keys of analysis discarded beside it, and on runs
+    14a6b4c7/9efc3cfa `prototype_execution` was rejected three times over two
+    keys. An extra field travels with the artifact; a missing REQUIRED one is
+    still rejected."""
+    from conftest import _IMPLEMENTATION
+
+    step = STEP_BY_NAME["implementation"]
+    rich = {"prototype_execution": {**_IMPLEMENTATION["prototype_execution"],
+                                    "success_criteria": "80% complete the pilot"}}
+    poor = {"prototype_execution": {"success_criteria": "80% complete the pilot"}}
+    _model, config, graph, trajectory, brief = _harness(
+        [call("submit_prototype_execution", poor), call("submit_prototype_execution", rich)])
+    loop = _loop(config, graph, trajectory, brief, step)
+    loop.run()
+
+    answers = [m["content"] for m in loop.messages
+               if isinstance(m, dict) and m.get("role") == "tool"]
+    assert answers[0].startswith("SUBMIT REJECTED") and "required field" in answers[0]
+    assert answers[1].startswith("COMMITTED")
+    data = graph.get_node(graph.section_id(NodeType.IMPLEMENTATION_PLAN))["data"]
+    assert data["prototype_execution"]["success_criteria"] == "80% complete the pilot"
+    assert not any(e["action"] == "dropped_argument" for e in trajectory.recovery_events)
+    for spec in tools.tool_specs(step):
+        assert '"additionalProperties": false' not in json.dumps(spec)
+
+
+def test_an_extra_key_reaches_the_addie_output():
+    """Propagated to the aggregate, not filtered on the way: what the model
+    wrote beside the declared fields is part of the design the judge reads."""
+    from alignmentgraph_isd.core.aggregate import ADDIEOutputAggregator
+
+    graph, trajectory = AlignmentGraph(), TrajectoryLogger()
+    analysis = json.loads(json.dumps(_ANALYSIS))
+    analysis["context_analysis"]["class_size"] = "30+ learners"
+    specialists.commit_analysis(graph, trajectory, analysis)
+
+    output = ADDIEOutputAggregator(graph, trajectory).aggregate()
+    assert "30+ learners" in json.dumps(output, ensure_ascii=False, default=str)
+
+
+# ── reads that named the right thing the wrong way ──────────────────────────
+
+def test_a_listing_never_shows_the_work_set_beside_real_ids():
+    """`plan_set=AB-01` beside `[ACTIVITY:TLA-0101]` reads as an id, and a
+    Developer asks for it: `read_nodes(ids=["AB-01", ...])` in both measured
+    runs, an ERROR and then a repeat of it."""
+    row = tools.render_listing([{"id": "activity:TLA-0101", "type": "activity", "data": {
+        "activity_name": "Workshop", "duration": "60 minutes", "plan_set": "AB-01"}}])
+    assert "plan_set" not in row and "AB-01" not in row
+    assert "duration=60 minutes" in row and "Workshop" in row
+
+
+def test_a_fused_id_is_served_not_refused():
+    """MEASURED (run 9efc3cfa): `GAP-GAP-001`, fused from the row header
+    `[GAP:GAP-001]`, was refused and followed by the same three-read batch four
+    times."""
+    step = STEP_BY_NAME["outcomes"]
+    _model, config, graph, trajectory, brief = _harness([])
+    specialists.commit_analysis(graph, trajectory, _ANALYSIS)
+    loop = _loop(config, graph, trajectory, brief, step)
+
+    for spelled in ("GAP-GAP-01", "GAP:GAP-01", "gap:GAP-01", "GAP-01"):
+        answer = loop._execute("read_node", {"ids": [spelled]})
+        assert "No OOP modeling skill" in answer and "ERROR" not in answer, spelled
+    assert loop._execute("read_node", {"ids": ["GAP-GAP-99"]}).startswith("ERROR")
+
+
+# ── a repeat is refused only when it IS one ─────────────────────────────────
+
+def test_a_repeat_after_a_commit_changed_the_state_is_answered_as_new():
+    """An agent that reads, submits and reads again is doing what it should.
+    The guard used to refuse the second read with "its result has not
+    changed" without looking — false after any commit."""
+    step = STEP_BY_NAME["outcomes"]
+    _model, config, graph, trajectory, brief = _harness([])
+    specialists.commit_analysis(graph, trajectory, _ANALYSIS)
+    loop = _loop(config, graph, trajectory, brief, step)
+    loop._meter = loop_module.turn_mod.TurnMeter(loop.stats, max_turns=loop.MAX_TURNS)
+    loop._seen_calls = {}
+    loop.messages = []
+    read = loop_module.ToolTurn(name="read_node", args={"ids": ["GAP-01"]}, call_id="c1")
+
+    loop._handle_read(read, read.args)
+    graph.add_element_node(NodeType.GAP, "GAP-01",
+                           {"id": "GAP-01", "description": "Rewritten since the first read"})
+    again = loop_module.ToolTurn(name="read_node", args={"ids": ["GAP-01"]}, call_id="c2")
+    loop._handle_read(again, again.args)
+
+    answers = [m["content"] for m in loop.messages if m.get("role") == "tool"]
+    assert "Rewritten since the first read" in answers[1]
+    assert loop.stats["rereads_changed"] == 1 and loop.stats["repeated_calls"] == 0
+    assert loop.stats["reads"] == 2
+
+
+def test_a_repeat_with_an_identical_result_says_so_truthfully():
+    step = STEP_BY_NAME["outcomes"]
+    _model, config, graph, trajectory, brief = _harness([])
+    specialists.commit_analysis(graph, trajectory, _ANALYSIS)
+    loop = _loop(config, graph, trajectory, brief, step)
+    # Near the ceiling, so the countdown appended to the FIRST answer differs
+    # from what a second answer would carry: the digest must ignore it.
+    loop._meter = loop_module.turn_mod.TurnMeter(loop.stats, max_turns=3)
+    loop._meter.spend()
+    loop._seen_calls = {}
+    loop.messages = []
+    for call_id in ("c1", "c2"):
+        loop._meter.spend()
+        one = loop_module.ToolTurn(name="read_node", args={"ids": ["GAP-01"]}, call_id=call_id)
+        loop._handle_read(one, one.args)
+
+    answers = [m["content"] for m in loop.messages if m.get("role") == "tool"]
+    assert answers[1].startswith(protocol.REPEAT_UNCHANGED.format(name="read_node"))
+    assert "Do not read again: call submit_course_goal now." in answers[1], (
+        "the move to make instead is NAMED, not left as 'use what you have'")
+    assert loop.stats["repeated_calls"] == 1 and loop.stats["reads"] == 1
+    assert [e["action"] for e in trajectory.recovery_events] == ["repeated_tool_call"]
+
+
+def test_a_repeated_retrieve_is_not_re_executed():
+    """Retrieval is not a pure read of the design state: it plans, calls out
+    and logs. A repeat is refused on the call alone."""
+    from alignmentgraph_isd.core.agentic import turn as turn_mod
+
+    runs: list[int] = []
+    stats: dict = {}
+    trajectory = TrajectoryLogger()
+    meter = turn_mod.TurnMeter(stats, max_turns=10)
+    seen: dict = {}
+    for call_id in ("c1", "c2"):
+        turn = turn_mod.ToolTurn(name="retrieve", args={"query": "x"}, call_id=call_id)
+        answer, repeat = turn_mod.answer_read(
+            seen, turn, turn.args, lambda: runs.append(1) or "three passages",
+            meter=meter, stats=stats, trajectory=trajectory, identity="A", pure=False)
+    assert runs == [1] and repeat is True
+    assert answer == protocol.REPEAT_UNCHANGED.format(name="retrieve")
+
+
+def test_a_repeated_assignment_pointer_is_counted_once():
+    from alignmentgraph_isd.core.agentic import fanout
+
+    step = STEP_BY_NAME["content"]
+    _model, config, graph, trajectory, brief = _harness([])
+    developer = fanout.set_step(fanout.SPECS["content"], _content_unit(), step, graph)
+    loop = _loop(config, graph, trajectory, brief, developer)
+    loop._meter = loop_module.turn_mod.TurnMeter(loop.stats, max_turns=loop.MAX_TURNS)
+    loop._seen_calls = {}
+    loop.messages = []
+    for call_id in ("c1", "c2"):
+        one = loop_module.ToolTurn(name="read_node", args={"ids": ["MS-01"]}, call_id=call_id)
+        loop._handle_read(one, one.args)
+
+    assert loop.stats["assignment_reads"] == 1
+    assert [e["action"] for e in trajectory.recovery_events] == [
+        "read_of_assignment_id", "repeated_tool_call"]

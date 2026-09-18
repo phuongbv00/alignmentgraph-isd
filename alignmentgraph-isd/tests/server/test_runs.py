@@ -941,3 +941,43 @@ def test_the_arm_is_known_before_the_run_starts(
 
     blocked_run["open"] = True
     wait_for_terminal(run_id)
+
+
+def test_a_cancelled_run_keeps_what_the_page_was_showing(client, ready_program,
+                                                         wait_for_terminal, monkeypatch):
+    """A cancelled run returns no result, and its graph, contexts and ledger
+    lived only in the run's in-memory state — so its Graph, Context and
+    Violations tabs went blank the moment it stopped, which is exactly when
+    someone opens them to see why it was stopped (run 4bb81369). They are kept
+    under the names the readers already use; the event log is kept too, since
+    it is still the only record of what the run DID."""
+    from alignmentgraph_isd.core import runner as core_runner
+    from alignmentgraph_isd.exceptions import HarnessCancelled
+
+    def cancelled_mid_run(self, brief, *, on_event=None):
+        graph = AlignmentGraph()
+        graph.add_element_node("gap", "GAP-01", {"id": "GAP-01", "description": "a gap"})
+        on_event("graph_snapshot", graph.to_full_dict())
+        on_event("context_snapshot", {"id": "ctx1", "agent": "NeedsAnalystAgent",
+                                      "phase": "analysis", "label": "analysis",
+                                      "messages": [{"role": "system", "content": "s"}],
+                                      "tools": []})
+        on_event("violations_snapshot", {"findings": [{"key": "bloom|objective:ILO-01",
+                                                       "outcome": "open", "open_reason": ""}]})
+        raise HarnessCancelled()
+
+    monkeypatch.setattr(core_runner.MetaAgent, "run", cancelled_mid_run)
+    run_id = start(client, ready_program)
+    assert wait_for_terminal(run_id)["run"]["status"] == "cancelled"
+
+    graph = client.get(f"/api/runs/{run_id}/graph").json()
+    assert [n["id"] for n in graph["nodes"]] == ["gap:GAP-01"]
+    contexts = client.get(f"/api/runs/{run_id}/contexts").json()
+    assert [c["agent"] for c in contexts] == ["NeedsAnalystAgent"]
+    findings = client.get(f"/api/runs/{run_id}/violations").json()
+    assert findings[0]["open_reason"] == "", "a partial ledger is never settled"
+    # No result was written, so the wire log is still the record and stays.
+    manager = client.app.state.run_manager
+    directory = artifacts.run_dir(manager.settings, ready_program, run_id)
+    assert not (directory / artifacts.ARTIFACT_FILES["trajectory_deep"]).exists()
+    assert (directory / artifacts.EVENTS_FILE).exists()

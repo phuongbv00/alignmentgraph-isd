@@ -97,8 +97,10 @@ def test_the_submit_menu_shrinks_as_stages_land():
 
     assert "submit_analysis" in before and "submit_analysis" not in after
     assert "submit_content" in before and "submit_content" in after
-    # The read tools are the UNION over every stage: this agent is not scoped.
-    assert {"read_nodes", "read_node", "read_edges", "coverage_gaps"} <= set(before)
+    # One state read (scoped to whichever stage is current) and the full-text
+    # read by id, whose scope is the UNION over every stage.
+    assert {"read_alignment_state", "read_node"} <= set(before)
+    assert not {"read_nodes", "read_edges", "coverage_gaps"} & set(before)
     # Compare the SETS, not a tail slice of the longer list: the all-done
     # binding is strictly smaller, so `[len(before):]` was always empty and the
     # assertion could not fail.
@@ -186,29 +188,31 @@ def test_the_system_turn_leaves_room_for_the_transcript():
     assert "assessment_plan" in spec["function"]["parameters"]["properties"]
 
 
-def test_the_graph_arm_is_pushed_the_docket_and_the_prose_arm_is_not():
-    """`context_mode` has to mean the same thing in both decomposition arms.
-    The multi arm's stage message carries the docket; leaving it out here would
-    make the two axes interact for a reason that is not either axis."""
+def test_the_state_tool_follows_the_current_stage_and_prose_has_none():
+    """`context_mode` has to mean the same thing in both decomposition arms:
+    the graph arm PULLS its alignment state, scoped to the stage it is on (the
+    first not yet complete — the same "current stage" the contract follows),
+    and the prose arm has no such state to read."""
     from test_agentic_loop import _ANALYSIS, _OUTCOMES
     from alignmentgraph_isd.core.agentic import specialists
 
-    # A docket is coverage instantiated against graph state, so an EMPTY graph
-    # has none in EITHER arm — comparing the two there compares "" with "" and
-    # proves nothing. Commit enough for the graph arm to have something to say.
     loop, graph, traj, _m = _loop([], graph_mode=True)
+    loop._done_set = frozenset()
+    assert loop._read("read_alignment_state", {}).startswith("=== ALIGNMENT STATE — analysis ===")
+
     specialists.commit_analysis(graph, traj, _ANALYSIS)
     specialists.commit_outcomes(graph, traj, _OUTCOMES)
+    loop._done_set = loop._done()
+    state = loop._read("read_alignment_state", {})
+    assert state.startswith("=== ALIGNMENT STATE — assessment ===")
+    assert "missing for: ILO-01" in state, "instantiated, from a graph that has objectives"
 
-    prose_loop, store, ptraj, _m2 = _loop([], graph_mode=False)
-    specialists.commit_analysis_prose(store, ptraj, _ANALYSIS)
-    specialists.commit_outcomes_prose(store, ptraj, _OUTCOMES)
+    # While a stage is under repair the tool stays on it.
+    loop._repairing = "outcomes"
+    assert loop._read("read_alignment_state", {}).startswith("=== ALIGNMENT STATE — outcomes ===")
 
-    docket = loop._docket()
-    assert "=== ALIGNMENT STATE ===" in docket, (
-        "the graph arm computed no docket from a graph that has objectives — "
-        "without this the contrast below is vacuous")
-    assert prose_loop._docket() == "", "the prose arm has no docket to compute"
+    prose_loop, _store, _pt, _m2 = _loop([], graph_mode=False)
+    assert prose_loop._read("read_alignment_state", {}).startswith("ERROR: unknown tool")
 
 
 def test_a_stage_that_is_already_done_is_never_offered():
@@ -374,3 +378,18 @@ def test_a_spent_stage_schema_is_released():
     assert STAGE_BRIEF_HEADER.format(stage="analysis") not in joined, (
         "the spent schema is still held")
     assert "that stage has been submitted" in joined, "and nothing says why it went"
+
+
+def test_both_arms_answer_a_repeat_through_the_one_guard():
+    """One wording and one rule: a guard lenient on one side of the
+    decomposition axis would be a ceiling difference inside the treatment."""
+    import inspect
+
+    from alignmentgraph_isd.core.agentic import loop, protocol, react
+
+    for owner in (loop.ToolLoop, react.ReactLoop):
+        source = inspect.getsource(owner)
+        assert "turn_mod.answer_read(" in source
+        assert "You already made" not in source and "You already called" not in source, (
+            f"{owner.__name__} words its own refusal")
+    assert "result has not changed since the last call" in protocol.REPEAT_UNCHANGED

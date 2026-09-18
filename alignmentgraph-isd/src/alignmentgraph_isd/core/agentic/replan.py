@@ -237,6 +237,7 @@ def step_for(step, stage: str, gaps: list, round_index: int):
         done=lambda _state: False,
         # No docket: the gaps ARE the assignment, rendered above in full.
         docket={},
+        state_tool=False,
     )
 
 

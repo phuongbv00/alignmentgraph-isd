@@ -23,6 +23,7 @@ from __future__ import annotations
 # deterministic split uses, imported rather than written twice: a planner told
 # "at most 8" while the harness splits at 6 would have its own grouping taken
 # apart behind it. Cycle-free: dev_plans imports nothing local.
+from .dev_plans import MIN_ACTIVITY_MINUTES as _MIN_ACTIVITY_MINUTES
 from .dev_plans import max_units as _max_units
 
 #: Enum vocabularies shared between the deep tool-call schema
@@ -186,8 +187,13 @@ block, and no two blocks may cover the same ground: a separate developer writes 
 without seeing the others, so two blocks whose scopes overlap produce duplicate activities.
 Never invent an objective the plan did not name.
 
-``expected_activities`` is how many activities that block actually needs — you are the only step
-that knows whether a block is one exercise or a six-step progression.
+What bounds the plan is TIME. ``contact_hours`` is the scheduled learner time this course has —
+your reading of the scenario's duration and delivery mode, as one number of hours. Each block's
+``block_minutes`` is its share of that time, and the shares must add up to no more than the
+course. ``expected_activities`` is how many activities fit in that block's minutes — you are the
+only step that knows whether a block is one exercise or a six-step progression — and an activity
+a learner can actually do takes at least %(min_minutes)d minutes. It is a count of what fits,
+never a running number: a plan that overruns its own hours is cut to fit them.
 
 Keep every block small enough to write in ONE response: at most %(max_activities)d activities. An
 objective that needs more than that gets SEVERAL blocks, and each one must carry a
@@ -199,7 +205,8 @@ from being written twice.
 Only group several objectives into one block when their activities genuinely form one theme or
 progression, never merely to produce fewer blocks."""
 
-RULES_ACTIVITY_DEV_PLAN = RULES_ACTIVITY_DEV_PLAN % {"max_activities": _max_units("activity")}
+RULES_ACTIVITY_DEV_PLAN = RULES_ACTIVITY_DEV_PLAN % {
+    "max_activities": _max_units("activity"), "min_minutes": _MIN_ACTIVITY_MINUTES}
 RULES_ASSESSMENT_DEV_PLAN = RULES_ASSESSMENT_DEV_PLAN % {"max_items": _max_units("assessment")}
 
 #: Per-set rewrite of RULES_ACTIVITIES: a Developer sees only its own block.
@@ -232,13 +239,13 @@ MEDIA_TYPES = ("video", "slides", "simulation", "document", "audio")
 RULES_CONTENT_MODULES = """\
 Every content module must set ``supports_activities`` to existing activity ids whose
 ``materials_needed`` hint it is addressing — do not invent a module nothing needs, and between
-them the modules should cover every activity. ``read_nodes`` already lists every activity with
-its name and cognitive process, which is what this decision needs; read one in full only when
-its listing line leaves you unsure. Every module
+them the modules should cover every activity. Your read of the design state already lists
+every activity with its name and cognitive process, which is what this decision needs; read
+one in full only when its listing line leaves you unsure. Every module
 should set ``covers_topics`` to existing topic ids. Every media selection should set
 ``respects_constraints`` to the ids of the constraints it was chosen in light of, copied from
-``read_nodes``, which lists every constraint of this brief with its description — a constraint
-you did not read there does not exist, and a name you invent links to nothing.
+your read of the design state, which lists every constraint of this brief with its description
+— a constraint you did not read there does not exist, and a name you invent links to nothing.
 media_type must be one of: %(media_types)s. Every media selection should also set ``for_modules`` to
 the content module id(s) it serves — a later step develops materials one module at a time and
 needs to know which media belong to which module.

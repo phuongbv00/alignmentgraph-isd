@@ -118,8 +118,26 @@ class HarnessRunConfig(BaseModel):
     llm_max_concurrency: int = 0
     llm_min_interval_seconds: float = 0.0
 
+    # How many of a family's work sets the multi arm's fan-out runs AT ONCE.
+    # 1 (the default, and the ladder's) is the sequential fan-out. Above 1,
+    # ``core/runner.py::_run_fanout`` runs the Developers on worker threads,
+    # bounded by ``llm_max_concurrency`` where that is set, and still commits
+    # every set in PLAN order so the design state — and every listing read
+    # off it — is the same whatever the worker count. Wall time only: the
+    # calls, the tokens and the artifacts do not change. Opt-in because the
+    # single arm has no fan-out to speed up, so a parallel multi arm is a
+    # timing difference to declare, and because a shared endpoint answers an
+    # unbounded burst with HTTP 429 (see ``llm_max_concurrency`` above).
+    fanout_workers: int = 1
+
     #: Lazily built by ``core.ratelimit.gate_for`` and shared by every agent in
     #: the run (they all receive this same config instance).
     _call_gate: Any = PrivateAttr(default=None)
+    #: The ``tool_choice`` this run's backend accepts, learned once by
+    #: ``core.agentic.client.AgenticLLM`` and shared by every agent after:
+    #: None until known (the client then sends ``"required"``), ``"auto"``
+    #: once a request under ``"required"`` was refused, ``""`` when
+    #: ``bind_tools`` takes no such keyword at all.
+    _tool_choice: Any = PrivateAttr(default=None)
 
     model_config = {"arbitrary_types_allowed": True}

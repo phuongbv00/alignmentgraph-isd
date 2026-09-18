@@ -41,6 +41,7 @@ returns it unchanged, and the benchmark adapter reads it.
 from __future__ import annotations
 
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 
 from . import dev_plans, repairs
@@ -65,12 +66,12 @@ from .run_report import (
     _safe_emit,
     _token_usage_metadata,
 )
-from .trajectory import WORKFLOW_ORCHESTRATOR, TrajectoryLogger
+from .trajectory import ORCHESTRATOR, TrajectoryLogger
 from .validation import validate_addie
 from .agentic import budget, fanout, react, replan
 from .agentic.client import AgenticLLM
 from .agentic.loop import ToolLoop
-from .agentic.protocol import empty_stage_stats
+from .agentic.protocol import PROTOCOL_REV, empty_stage_stats
 from .agentic.transcript import history_budget
 from .agentic.specialists import SINGLE_IDENTITY, STEPS, step_done
 
@@ -81,14 +82,14 @@ def _phase(trajectory: TrajectoryLogger, phase: str, index: int, total: int):
     trajectory.emit("phase_started", {"phase": phase, "index": index, "total": total})
     started = time.time()
     with trajectory.acting_as("", phase=phase):
-        trajectory.log_action("phase_started", agent=WORKFLOW_ORCHESTRATOR,
+        trajectory.log_action("phase_started", agent=ORCHESTRATOR,
                               phase=phase, index=index, total=total)
         try:
             yield
         finally:
             duration_ms = (time.time() - started) * 1000
             trajectory.log_action(
-                "phase_finished", agent=WORKFLOW_ORCHESTRATOR,
+                "phase_finished", agent=ORCHESTRATOR,
                 phase=phase, index=index, total=total, duration_ms=duration_ms)
             trajectory.emit("phase_finished", {
                 "phase": phase, "index": index, "total": total, "duration_ms": duration_ms})
@@ -177,27 +178,27 @@ def _verify_family(family: str, *, state, design_brief, graph_mode: bool, memory
         it is not even allowed to attempt.
         """
         round_no = trajectory.log_violations_result(
-            serialize_violations(found + unowned, identity), agent=WORKFLOW_ORCHESTRATOR)
+            serialize_violations(found + unowned, identity), agent=ORCHESTRATOR)
         keys = memory.observe_violations(found, round=round_no, phase=phase, family=family)
         memory.observe_violations(unowned, round=round_no, phase=phase, family=family)
         return round_no, keys
 
     found: list = []
-    with trajectory.acting_as(WORKFLOW_ORCHESTRATOR):
+    with trajectory.acting_as(ORCHESTRATOR):
         for _ in range(budget.SELF_VALIDATION_BUDGET):
             found, unowned = collect()
             round_no, keys = observe(found, unowned)
             if not found:
                 break
             if route:
-                trajectory.log_reconcile_result(family, found, agent=WORKFLOW_ORCHESTRATOR)
+                trajectory.log_reconcile_result(family, found, agent=ORCHESTRATOR)
             before = len(trajectory.repair_events)
             repairs.repair(family, found, ctx)
             if len(trajectory.repair_events) == before:
                 memory.mark_open_reason(keys, reason="converged", round=round_no)
                 trajectory.log_convergence(
                     family, sorted(keys), [v.violation_type for v in found],
-                    round_number=round_no, agent=WORKFLOW_ORCHESTRATOR)
+                    round_number=round_no, agent=ORCHESTRATOR)
                 break
             memory.credit_repair(keys - {v.key for v in collect()[0]},
                                  by=identity, round=round_no, harness=True)
@@ -243,7 +244,7 @@ def _reconcile(state, trajectory, design_brief, *, graph_mode: bool,
     ctx = repairs.RepairContext(
         graph=state if graph_mode else None,
         store=None if graph_mode else state,
-        trajectory=trajectory, actor=WORKFLOW_ORCHESTRATOR)
+        trajectory=trajectory, actor=ORCHESTRATOR)
     residual: list[dict] = []
     # PER FAMILY, not one loop over all six: a family clean in round 1 must
     # not be re-collected because another still has work (measured: 12
@@ -293,7 +294,7 @@ def _run_fanout(config, memory, trajectory, design_brief, step, spec, *,
     # event is stamped with whoever is currently acting — outside a scope they
     # land with an EMPTY agent. They belong to the orchestrator: neither is any
     # one Developer's work.
-    orchestrator = WORKFLOW_ORCHESTRATOR
+    orchestrator = ORCHESTRATOR
     state = memory.state
     with trajectory.acting_as(orchestrator):
         if work_sets is None:
@@ -342,50 +343,19 @@ def _run_fanout(config, memory, trajectory, design_brief, step, spec, *,
     # gave up", which cannot be read: the Developer tier is the axis at its
     # second scale, so its outcomes have to be countable on their own.
     stats: dict = {"n_sets": len(pending)}
-    for work_set in pending:
-        identity = spec.developer_identity
-        llm = AgenticLLM(config, trajectory, identity)
-        captured: dict = {}
-        with trajectory.acting_as(identity):
-            # Inside the scope: building the assignment now READS the state
-            # (the objectives the set names), and a read outside a scope lands
-            # with an empty agent.
-            set_step = fanout.set_step(spec, work_set, step, state)
-            for attempt in range(regen_budget + 1):
-                if attempt > 0 and backoff:
-                    time.sleep(backoff * attempt)
-                loop = ToolLoop(
-                    config, memory, trajectory, design_brief, set_step, llm,
-                    identity=identity, capture=captured,
-                    max_turns=budget.DEVELOPER_MAX_TURNS, attempt=attempt + 1)
-                try:
-                    loop.run()
-                except Exception as exc:  # noqa: BLE001 - one bad set must not lose the family
-                    trajectory.log_recovery_event(
-                        identity, "agent_error", "", str(exc)[:400])
-                finally:
-                    for key, value in (("set_turns", loop.stats["turns_used"]),
-                                       ("set_submits_rejected",
-                                        loop.stats["submits_rejected"]),
-                                       ("sets_gave_up",
-                                        int(loop.stats["gave_up"])),
-                                       ("history_dropped",
-                                        loop.stats["history_dropped"]),
-                                       # Developer compactions count toward the
-                                       # stage, or `compaction_summaries` would
-                                       # be booked against a population that
-                                       # does not contain them.
-                                       ("compactions",
-                                        loop.stats["compactions"]),
-                                       ("compaction_summaries",
-                                        loop.stats["compaction_summaries"])):
-                        stats[key] = stats.get(key, 0) + value
-                    stats["context_len"] = max(stats.get("context_len", 0),
-                                               loop.stats["context_len"])
-                if captured.get("section"):
-                    break
-                trajectory.log_recovery_event(
-                    identity, "regen_empty_section", f"attempt {attempt + 1}", set_step.name)
+    phase = trajectory._phase
+
+    def run_one(work_set) -> tuple[dict, dict]:
+        return _run_one_set(config, memory, trajectory, design_brief, step, spec,
+                            work_set, phase=phase, regen_budget=regen_budget,
+                            backoff=backoff)
+
+    def commit(work_set, captured: dict, set_stats: dict) -> None:
+        for key, value in set_stats.items():
+            if key == "context_len":
+                stats[key] = max(stats.get(key, 0), value)
+            else:
+                stats[key] = stats.get(key, 0) + value
         # COMMIT THIS SET NOW, not once the whole family has run: with the
         # work in the graph, the checks can see it while the family's DESIGNER
         # still has its loop open, so a gap can go back to the agent whose job
@@ -394,7 +364,99 @@ def _run_fanout(config, memory, trajectory, design_brief, step, spec, *,
         payload = {"set_id": work_set.set_id, **(captured.get("section") or {})}
         with trajectory.acting_as(orchestrator):
             fanout.commit_sets(spec, state, trajectory, [work_set], [payload])
+
+    workers = _fanout_workers(config, len(pending))
+    if workers <= 1:
+        for work_set in pending:
+            commit(work_set, *run_one(work_set))
+        return stats
+    # The Developers run at once; the COMMITS run in plan order, one at a
+    # time, on this thread. Ids are order-independent already (the ordinal is
+    # fixed when the plan is numbered), but the graph's INSERTION order is
+    # not: it is the order every later `read_nodes` listing and the
+    # aggregate's lists come out in, so committing as each worker finished
+    # would make the deliverable depend on the worker count. Nothing waits
+    # on any one set — the checks and the replan run after this returns.
+    executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="agisd-fanout")
+    try:
+        futures = [executor.submit(run_one, work_set) for work_set in pending]
+        for work_set, future in zip(pending, futures):
+            commit(work_set, *future.result())
+    finally:
+        # Never `with`: on the error path that would wait for a worker in the
+        # middle of a model call.
+        executor.shutdown(wait=False, cancel_futures=True)
     return stats
+
+
+def _fanout_workers(config, pending: int) -> int:
+    """How many of ``pending`` sets to run at once: the configured count,
+    capped by the sets there are and by the call gate where one is set."""
+    workers = max(1, int(getattr(config, "fanout_workers", 1) or 1))
+    cap = int(getattr(config, "llm_max_concurrency", 0) or 0)
+    if cap > 0:
+        workers = min(workers, cap)
+    return max(1, min(workers, pending))
+
+
+def _run_one_set(config, memory, trajectory, design_brief, step, spec, work_set, *,
+                 phase: str, regen_budget: int, backoff: float) -> tuple[dict, dict]:
+    """One Developer's work on one set: the loop, its regen attempts, and the
+    counters — WITHOUT the commit, which is the driver's and is ordered.
+
+    Runs on the calling thread or on a fan-out worker; either way it opens
+    the Developer's own attribution scope, with the stage's phase carried in
+    explicitly because a worker thread has no scope of its own to inherit
+    one from."""
+    identity = spec.developer_identity
+    llm = AgenticLLM(config, trajectory, identity)
+    captured: dict = {}
+    set_stats: dict = {}
+    with trajectory.acting_as(identity, phase=phase):
+        # Inside the scope: building the assignment now READS the state
+        # (the objectives the set names), and a read outside a scope lands
+        # with an empty agent.
+        set_step = fanout.set_step(spec, work_set, step, memory.state)
+        for attempt in range(regen_budget + 1):
+            if attempt > 0 and backoff:
+                time.sleep(backoff * attempt)
+            loop = ToolLoop(
+                config, memory, trajectory, design_brief, set_step, llm,
+                identity=identity, capture=captured,
+                max_turns=budget.DEVELOPER_MAX_TURNS, attempt=attempt + 1)
+            try:
+                loop.run()
+            except Exception as exc:  # noqa: BLE001 - one bad set must not lose the family
+                trajectory.log_recovery_event(
+                    identity, "agent_error", "", str(exc)[:400])
+            finally:
+                for key, value in (("set_turns", loop.stats["turns_used"]),
+                                   ("set_submits_rejected",
+                                    loop.stats["submits_rejected"]),
+                                   ("sets_gave_up",
+                                    int(loop.stats["gave_up"])),
+                                   ("history_dropped",
+                                    loop.stats["history_dropped"]),
+                                   # Developer compactions count toward the
+                                   # stage, or `compaction_summaries` would
+                                   # be booked against a population that
+                                   # does not contain them.
+                                   ("compactions",
+                                    loop.stats["compactions"]),
+                                   ("compaction_summaries",
+                                    loop.stats["compaction_summaries"]),
+                                   ("args_reshaped",
+                                    loop.stats["args_reshaped"]),
+                                   ("assignment_reads",
+                                    loop.stats["assignment_reads"])):
+                    set_stats[key] = set_stats.get(key, 0) + value
+                set_stats["context_len"] = max(set_stats.get("context_len", 0),
+                                               loop.stats["context_len"])
+            if captured.get("section"):
+                break
+            trajectory.log_recovery_event(
+                identity, "regen_empty_section", f"attempt {attempt + 1}", set_step.name)
+    return captured, set_stats
 
 
 def _replan_rounds(config, memory, trajectory, design_brief, step, spec, loop, *,
@@ -414,14 +476,14 @@ def _replan_rounds(config, memory, trajectory, design_brief, step, spec, loop, *
     state = memory.state
     for round_index in range(1, budget.REPLAN_ROUNDS + 1):
         # The CHECK is the orchestrator's: it runs outside every agent's loop.
-        with trajectory.acting_as(WORKFLOW_ORCHESTRATOR):
+        with trajectory.acting_as(ORCHESTRATOR):
             violations = (_collect_violations(step.family, state, design_brief)
                           if graph_mode else _collect_violations_prose(step.family, state))
             gaps = replan.gaps_for(step.name, violations)
             if not gaps:
                 return stats
             trajectory.log_reconcile_result(
-                step.family, gaps, agent=WORKFLOW_ORCHESTRATOR)
+                step.family, gaps, agent=ORCHESTRATOR)
 
         with trajectory.acting_as(identity):
             replan_loop = ToolLoop(
@@ -459,7 +521,7 @@ def _replan_rounds(config, memory, trajectory, design_brief, step, spec, loop, *
         # Deriving the round's sets reads the plan the Designer just committed
         # — the orchestrator's read, like the check above: an event outside an
         # `acting_as` scope lands with an empty agent.
-        with trajectory.acting_as(WORKFLOW_ORCHESTRATOR):
+        with trajectory.acting_as(ORCHESTRATOR):
             work_sets = _replan_sets(state, spec, step, gaps, round_index)
         if not work_sets:
             # The Designer had nothing to add, or named work the gaps do not
@@ -551,7 +613,7 @@ def _repair_all(memory, trajectory, design_brief, *, graph_mode: bool,
     differs is only WHEN, which is a consequence of the axis, not a second
     treatment: an agent that decides its own order has no per-stage moment."""
     ctx = repairs.RepairContext(graph=memory.graph, store=memory.store,
-                                trajectory=trajectory, actor=WORKFLOW_ORCHESTRATOR)
+                                trajectory=trajectory, actor=ORCHESTRATOR)
     for family in repairs.OWNED_BY_FAMILY:
         _verify_family(family, state=memory.state, design_brief=design_brief,
                        graph_mode=graph_mode, memory=memory, trajectory=trajectory,
@@ -659,7 +721,7 @@ def _run_multi(config, memory, graph, store, trajectory, design_brief, *,
             # kept from here: `_reconcile` re-derives it over every family
             # after the last stage.
             ctx = repairs.RepairContext(graph=graph, store=store, trajectory=trajectory,
-                                        actor=WORKFLOW_ORCHESTRATOR)
+                                        actor=ORCHESTRATOR)
             for family in (step.family, *step.also_repairs):
                 if family not in repairs.OWNED_BY_FAMILY:
                     continue
@@ -695,6 +757,10 @@ def _metadata(config, trajectory, design_brief, *, single: bool, graph_mode: boo
             # difference between a 429-throttled arm and a clean one.
             "llm_max_concurrency": config.llm_max_concurrency,
             "llm_min_interval_seconds": config.llm_min_interval_seconds,
+            # 1 = the sequential fan-out. Above 1 the multi arm's Developers
+            # ran at once, which changes wall time and nothing else.
+            "fanout_workers": config.fanout_workers,
+            "protocol_rev": PROTOCOL_REV,
         },
         "design_brief_id": design_brief.id,
         "errors": errors,
@@ -836,7 +902,7 @@ class MetaAgent:
         # close last — a live viewer then reads the implementation stage as having
         # re-checked artifacts it never touched.
         with _phase(trajectory, "reconcile", phase_total - 1, phase_total), \
-                trajectory.acting_as(WORKFLOW_ORCHESTRATOR):
+                trajectory.acting_as(ORCHESTRATOR):
             # The reconciliation's final look IS the run's residual, empty included.
             residual = _reconcile(state, trajectory, design_brief,
                                   graph_mode=graph_mode, memory=memory)
@@ -864,9 +930,9 @@ class MetaAgent:
             # contrast, not an omission.
             audit: dict = {}
             if graph_mode:
-                with trajectory.acting_as(WORKFLOW_ORCHESTRATOR):
+                with trajectory.acting_as(ORCHESTRATOR):
                     audit_result = GraphAuditor(graph).audit(residual)
-                    trajectory.log_audit_result(audit_result, agent=WORKFLOW_ORCHESTRATOR)
+                    trajectory.log_audit_result(audit_result, agent=ORCHESTRATOR)
                     audit = audit_result.to_dict()
 
         metadata = _metadata(

@@ -87,7 +87,7 @@ OWNED_BY_FAMILY: dict[str, frozenset[str]] = {
         {"C2", "P3", "bloom_mismatch_assessment", "evaluation_quality", "plan_coverage",
          "item_completeness"}),
     "activity_designer": frozenset(
-        {"C3", "C4", "P4", "activity_engagement", "bloom_mismatch_activity"}),
+        {"C3", "C4", "P4", "activity_engagement", "bloom_mismatch_activity", "time_budget"}),
     # P8 must have an owner. Unowned, a media selection whose
     # `respects_constraints` names nothing real produces no finding at all:
     # `record_provenance` no-ops on an id that does not exist, and the gap
@@ -129,7 +129,7 @@ REPORT_ONLY: frozenset[str] = frozenset({
     # The net could only pick a constraint at random and make the check pass by
     # existing — the objection that has always kept P6 audit-only.
     "C3", "C5", "P4", "P6", "P8", "P10", "P11",
-    "activity_engagement", "bloom_mismatch_activity",
+    "activity_engagement", "bloom_mismatch_activity", "time_budget",
     "rubric_consistency", "feasibility", "actionability",
 })
 

@@ -1,11 +1,13 @@
 """Outbound-call gate: bounds how many LLM requests one run keeps in flight.
 
-Why this exists. The harness is fully sequential, so the gate does not
-currently bind. It answers a MEASURED failure of a concurrent pipeline that ran
-two Designers in one superstep, each issuing a Developer call per work set:
-N+M requests leaving the process at once from a SINGLE agent, which the
-benchmark's rate posture (``-r``) counts as one unit, so the in-agent fan-out
-was bounded by nothing. Any concurrent fan-out brings that back.
+Why this exists. The harness is sequential by default (``fanout_workers``
+= 1), so the gate binds only when a run opts into a parallel fan-out — and
+then it is what bounds it. It answers a MEASURED failure of a concurrent
+pipeline that ran two Designers in one superstep, each issuing a Developer
+call per work set: N+M requests leaving the process at once from a SINGLE
+agent, which the benchmark's rate posture (``-r``) counts as one unit, so the
+in-agent fan-out was bounded by nothing. ``fanout_workers`` is capped by this
+gate for exactly that reason.
 
 Measured against a shared endpoint capping concurrent requests per user, the
 two multi arms took 9-25 HTTP 429s per run across three runs against 0-2 for

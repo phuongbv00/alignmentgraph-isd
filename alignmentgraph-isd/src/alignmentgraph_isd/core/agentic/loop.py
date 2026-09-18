@@ -15,9 +15,10 @@ a second variable.
 
 Deterministic scaffolding this loop keeps (the SLM-fit half of the design):
 
-- the alignment docket is injected up front (``tools.alignment_docket``) —
-  an enumerated checklist, which small models follow far more reliably than
-  the quantified rules alone;
+- the alignment state is one read away (``alignment_state.read``, the
+  ``read_alignment_state`` tool) and the stage turn names it as the first
+  move — an enumerated checklist of what exists and what is missing, which
+  small models follow far more reliably than the quantified rules alone;
 - every observation is a deterministic render of graph state with fixed caps;
 - ``submit`` is validated deterministically; a rejected submit returns the
   exact errors as the next observation;
@@ -37,8 +38,9 @@ from ..brief import _format_design_brief
 from ..llm_io import parse_json_response
 from ..memory import Memory, new_agent_run_id
 from ..rag.planner import RetrievalPlanner
-from ..trajectory import WORKFLOW_ORCHESTRATOR
-from . import budget, repair_turn, tools
+from ..trajectory import ORCHESTRATOR
+from ..checks import serialize_violations
+from . import alignment_state, budget, repair_turn, tools
 from . import turn as turn_mod
 from .client import AgenticLLM
 from .compaction import compact
@@ -46,17 +48,17 @@ from .protocol import (
     WORKFLOW_OVERVIEW,
     empty_stage_stats,
     landed_parts,
+    open_issues_pointer,
     protocol_leak_errors,
     respec,
     stage_brief_block,
     still_needed,
     with_progress,
 )
-from .specialists import AgenticStep, missing_parts, parts_of, step_done
+from .specialists import AgenticStep, commit_as_harness, missing_parts, parts_of, step_done
 from .tools import (
     merge_specs,
     spec_parameters,
-    undeclared_key_errors,
     unwrap_section,
 )
 from .transcript import (
@@ -66,6 +68,7 @@ from .transcript import (
     forget_compacted_calls,
     history_budget,
     prompt_chars,
+    supersede_earlier,
     trim_history,
 )
 from .turn import ToolTurn
@@ -92,6 +95,27 @@ _GROUNDING = """
 The scenario below is NOT the design state. Every id your artifact references must
 match an artifact that already exists there, and the read tools are the only place
 to see those artifacts' real ids and content — you have not seen them yet.
+{first_move}"""
+
+#: Named in the graph arm only, where the tool exists. An instruction and not
+#: a push: the state is the agent's to read, but under a forced tool call a
+#: small model's first move is otherwise a blind submit.
+_FIRST_MOVE = ("Call read_alignment_state first: it lists those artifacts with their real "
+               "ids and what your output must close. Call it again after you submit.\n")
+
+# A fan-out work set gets its assignment resolved INTO its turn (`fanout.
+# _ASSIGNMENT_IS_COMPLETE`), so the stage grounding above is false for it:
+# told it had "not seen" the artifacts, a Developer reads them anyway, and
+# reads for ids the assignment names but no read tool serves (a media
+# selection, a topic). MEASURED (run 14a6b4c7, content:MU-CM-01): 18 reads,
+# 0 submits, gave up on the turn ceiling, then a regen; 89 MaterialDeveloper
+# calls for 8 modules against 2 per set for the AssessmentDeveloper, whose
+# assignment names nothing it cannot read.
+_GROUNDING_SET = """
+Your assignment above IS the design state for this set: every artifact it names is
+written out there under its real id, and those are the ids to reference. Use the read
+tools only for an artifact your assignment does NOT name — never to look up one it
+does. An id that is in neither your assignment nor a read result does not exist.
 """
 
 
@@ -150,7 +174,7 @@ class ToolLoop:
         #: to account for it, which is the shape
         #: `test_every_published_context_belongs_to_a_tool_loop` exists to
         #: forbid.
-        self._summariser = AgenticLLM(config, trajectory, WORKFLOW_ORCHESTRATOR)
+        self._summariser = AgenticLLM(config, trajectory, ORCHESTRATOR)
         self.persona = persona or step.persona
         #: Which regen attempt this is. A stage that comes back empty is run
         #: again from a FRESH context, so each attempt is a different context
@@ -210,23 +234,27 @@ class ToolLoop:
         #: renders in full. Empty for a stage agent, which reads real state.
         self._resolved_labels: dict[str, str] = dict(
             getattr(step, "resolved_labels", ()) or {})
+        self._assignment_ids: dict[str, str] = dict(
+            getattr(step, "assignment_ids", ()) or {})
+        self._assignment_hit: tuple | None = None
+        self._state_view = None
+        #: A repair round is open / the agent has read its issues since the
+        #: pointer / that read was this very call / idle calls since.
+        self._repairing = self._read_since_pointer = self._just_read = False
+        self._idle = 0
+        self._submit_attempts: dict[str, int] = {}
 
     @property
     def graph_mode(self) -> bool:
         return hasattr(self.state, "element_nodes")
 
     def _validate(self, section: dict) -> list[str]:
-        """The step's own deterministic checks, plus the two transport gates.
-
-        Composed here rather than inside the step table because both are
-        properties of the TRANSPORT rather than of any one artifact's contract:
-        one catches a model echoing a tool name into the artifact, the other a
-        model writing a field the artifact does not have. Neither is something
-        a step's own checks have a reason to know about, and both are the same
-        for every step."""
-        return (list(self.step.validate(section))
-                + protocol_leak_errors(section)
-                + undeclared_key_errors(self.step, section))
+        """The step's own deterministic checks, plus the transport gate that
+        catches a model echoing a tool name into the artifact — a property of
+        the TRANSPORT rather than of any one artifact's contract, so it is
+        composed here and is the same for every step. A field the artifact
+        does not declare is NOT a fault: it is kept (``artifact_schemas._obj``)."""
+        return list(self.step.validate(section)) + protocol_leak_errors(section)
 
     # ── prompt assembly ─────────────────────────────────────────────────────
     def _retrieval_available(self) -> bool:
@@ -260,11 +288,14 @@ class ToolLoop:
             menu=tools.tool_menu(self.step, retrieval_available=retrieval_available,
                                  graph_mode=self.graph_mode),
             max_turns=self.MAX_TURNS,
-            grounding=_GROUNDING if readable else "",
+            grounding=((_GROUNDING.format(first_move=(
+                            _FIRST_MOVE if self.graph_mode and self.step.state_tool else ""))
+                        if self.step.commits_to_state else _GROUNDING_SET)
+                       if readable else ""),
         )
         # The stage marker deliberately does NOT use the "=== HEADER ===" form:
         # that form means "injected prior-artifact context" everywhere else in
-        # the package (the docket and the scenario use it, and readers — the
+        # the package (the scenario and a Developer's assignment use it, and readers — the
         # test fixture included — strip on it). A stage boundary is neither.
         # The WHOLE task block in the stage turn, PUSHED rather than fetched
         # by a tool: fetched, the contract could be compacted away with
@@ -274,10 +305,6 @@ class ToolLoop:
         resuming = still_needed(self.step, self.state)
         if resuming:
             parts.append(resuming)
-        if self.step.docket and self.graph_mode:
-            docket = tools.alignment_docket(self.state, **self.step.docket)
-            if docket:
-                parts.append(docket)
         return "\n\n".join(parts)
 
     # ── the loop ────────────────────────────────────────────────────────────
@@ -316,34 +343,19 @@ class ToolLoop:
         if not self.messages:
             self.messages = [{"role": "system", "content": self._system_prompt()}]
         self.messages.append({"role": "user", "content": stage_message})
-        # Only the artifacts still open. On a first attempt nothing has landed,
-        # so this is the full set the golden fixture pins; on a regen it stops
-        # the model being offered tools for work already done.
-        open_now = tuple(key for key, _t, _r in self.step.submit_fields
-                         if key not in set(landed_parts(self.step, self.state))) or None
-        specs = tools.tool_specs(self.step, only=open_now, graph_mode=self.graph_mode,
-                                 retrieval_available=retrieval_available)
-        # ACCUMULATED across the conversation, not replaced. A loop that
-        # continues another's messages may bind a narrower set — the replan
-        # round binds only `submit_dev_plan`, because a plan is the one thing
-        # it is asking for — and publishing just the live binding made the
-        # merged row claim the agent never had `submit_assessment_plan`, which
-        # is how it wrote the plan in the first place. The row answers "what
-        # tools did this agent have", and the transcript beside it shows which
-        # were called when.
-        self._specs = merge_specs(self._specs, specs)
-        # Before the first model call: a stage takes minutes, and what the
-        # agent was ASKED is the thing a viewer wants first.
-        self._publish(live=True)
-
-        # Accepted submits, for a step whose artifact arrives in parts.
-        self._accepted = 0
         #: Rejected submits so far, PER ARTIFACT: a rejected artifact costs
         #: THAT artifact (`tools.submit_specs`), never the stage — one counter
         #: for the stage let three bad guesses at one `implementation`
         #: artifact abandon the five beside it and trigger a whole-stage regen
         #: (run 24343e4d: 55.6k prompt / 11.7k completion / 122 s).
         self._submit_attempts: dict[str, int] = {}
+        self._bind(retrieval_available)
+        # Before the first model call: a stage takes minutes, and what the
+        # agent was ASKED is the thing a viewer wants first.
+        self._publish(live=True)
+
+        # Accepted submits, for a step whose artifact arrives in parts.
+        self._accepted = 0
         #: The best REJECTED submit of each artifact, accumulated as ONE
         #: section (each rejected payload is already the `{artifact: {...}}`
         #: envelope, so merging them keeps the shape `_commit` wants).
@@ -355,7 +367,7 @@ class ToolLoop:
         self._best: dict = {}
         # call key -> the tool_call id it was answered under, so a result
         # compaction removes can be forgotten (forget_compacted_calls).
-        self._seen_calls: dict[str, str] = {}
+        self._seen_calls: dict[str, turn_mod.SeenCall] = {}
         #: What this stage has spent and what it has been given back. The
         #: single arm keeps one of these too, and the arithmetic is the
         #: meter's, not either loop's — see :class:`turn.TurnMeter`.
@@ -381,7 +393,11 @@ class ToolLoop:
 
             self.stats["context_len"] = max(
                 self.stats["context_len"], prompt_chars(self.messages))
-            turn = self.llm.call_tools(self.messages, specs)
+            # Re-bound every turn: a committed or closed artifact's schema
+            # leaves the request the turn after it lands.
+            self._bind(retrieval_available)
+            self._live_specs = turn_mod.withhold_reads(self._live_specs, self._meter)
+            turn = self.llm.call_tools(self.messages, self._live_specs)
             if turn.binding_failed:
                 # No tool loop is possible against this endpoint. Going round
                 # the budget would spend MAX_TURNS x 6 stages of requests to
@@ -391,7 +407,7 @@ class ToolLoop:
 
             outcome = turn_mod.spend_queue(
                 turn, meter=self._meter,
-                handle=lambda call: self._handle_call(call, specs, stage_message),
+                handle=lambda call: self._dispatch(call, stage_message),
                 unexecuted=self._answer_unexecuted,
                 ended_why="the stage ended first")
             if outcome == "done":
@@ -403,6 +419,47 @@ class ToolLoop:
         # now the usual way a struggling stage ends. Dropping `_best` here
         # would discard it exactly when it is most likely to be all there is.
         self._give_up("turn budget exhausted", last_resort=self._best or None)
+
+    def _bind(self, retrieval_available: bool) -> None:
+        """The tools this turn is offered: the reads, plus a submit for each
+        artifact still OPEN — not yet landed and not closed by a spent submit
+        budget.
+
+        Recomputed before every model call. Bound once at the start, a stage
+        kept sending the schema of every artifact it had already committed:
+        measured on run 14a6b4c7, `implementation`'s seven submit tools rode
+        every one of 49 turns at ~6.4k tokens a turn while six of the seven
+        artifacts had landed by turn 10. A closed artifact is unbound for the
+        same reason and one more: the loop has told the model not to submit
+        it again, and a schema still offered says the opposite.
+
+        On a first attempt nothing has landed, so `open_now` is the full set
+        and the binding is byte-for-byte the one the golden fixture pins. An
+        empty `open_now` binds NO submit tool — ``submit_specs`` reads `()` as
+        none and `None` as all, and the two must not be conflated here.
+
+        ``_specs`` — what is PUBLISHED — is accumulated across the
+        conversation, never replaced. A loop that continues another's messages
+        may bind a narrower set (the replan round binds only `submit_dev_plan`,
+        because a plan is the one thing it is asking for), and publishing just
+        the live binding made the merged row claim the agent never had
+        `submit_assessment_plan`, which is how it wrote the plan in the first
+        place. The row answers "what tools did this agent have", and the
+        transcript beside it shows which were called when."""
+        landed = set(landed_parts(self.step, self.state))
+        closed = set(self._closed_parts())
+        if not missing_parts(self.step, self.state):
+            # Every required part has landed and the stage is still open:
+            # it is on a repair turn or the optional-artifact nudge, either
+            # of which is answered by RE-SENDING an artifact. Those need
+            # their tools back, closed ones excepted.
+            landed = set()
+        open_now = tuple(key for key, _t, _r in self.step.submit_fields
+                         if key not in landed and key not in closed)
+        self._live_specs = tools.tool_specs(
+            self.step, only=open_now, graph_mode=self.graph_mode,
+            retrieval_available=retrieval_available)
+        self._specs = merge_specs(self._specs, self._live_specs)
 
     def _handle_call(self, turn: ToolTurn, specs: list, stage_message: str) -> str:
         """One tool call, judged and answered. ``"return"`` ends the stage,
@@ -456,7 +513,8 @@ class ToolLoop:
         params = (tools.submit_parameters(self.step)
                   if turn.name.startswith("submit_")
                   else spec_parameters(specs, turn.name))
-        args = turn_mod.coerce(turn, params, stats=self.stats)
+        args = turn_mod.coerce(turn, params, stats=self.stats,
+                               trajectory=self.trajectory, identity=self.identity)
 
         if turn.name.startswith("submit_"):
             return self._handle_submit(turn, args, params, stage_message)
@@ -487,14 +545,20 @@ class ToolLoop:
                        stage_message: str) -> str:
         """One artifact offered to this stage: rejected with its errors, or
         committed and answered with what the stage still owes."""
+        self._meter.acted()
         args = self._wrap_bare_artifact(turn.name, args)
         args = self._fill_single_key_object(args)
         section, errors, unreadable = turn_mod.judge_submit(
             params, args, self._validate)
-        artifact = turn.name[len("submit_"):]
+        artifact = self._artifact_of(turn.name, args)
         spent = self._submit_attempts.get(artifact, 0)
         if errors and spent < self.SUBMIT_BUDGET:
             self._submit_attempts[artifact] = spent = spent + 1
+            # Kept from the FIRST rejection: the give-up commits `_best`, and
+            # a payload rejected under one artifact's name may carry another
+            # artifact that will never be offered again (its tool is unbound
+            # once closed), so waiting for the final rejection loses it.
+            self._best.update(section)
             turn_mod.note_submit_rejected(
                 f"{artifact} attempt {spent}", turn, args, errors,
                 stats=self.stats, trajectory=self.trajectory, identity=self.identity)
@@ -510,7 +574,7 @@ class ToolLoop:
                 self.identity, "submit_invalid_final",
                 "; ".join(errors)[:200], artifact)
             self._best.update(section)
-            left = missing_parts(self.step, self.state)
+            left = self._open_parts()
             if left:
                 # One artifact that will not pass costs THAT artifact, not
                 # the ones beside it. Exactly the single arm's existing
@@ -522,6 +586,13 @@ class ToolLoop:
                     f"still not accepted. Leave it and write the next one. "
                     f"{self.step.name} still needs: {', '.join(left)}."))
                 return "continue"
+            # Nothing open but the closed artifact(s): the stage ENDS, and the
+            # answer says so. Listing the closed artifact as still needed put
+            # "leave it" and "still needs it" in one message; a model that
+            # obeyed the second half resubmitted it until the turn ceiling
+            # (run 14a6b4c7, implementation: 15 resubmits per attempt, both
+            # attempts, ~30 turns at ~5k prompt tokens each).
+            self._append_tool_turn(turn, self._ends_without_closed(rejected=artifact))
             self._give_up("submit budget spent", last_resort=self._best)
             return "return"
         turn_mod.note_dropped_args(
@@ -548,10 +619,27 @@ class ToolLoop:
         before = set(landed_parts(self.step, self.state))
         self._commit(section, stage_message,
                      json.dumps(args, ensure_ascii=False), note=note,
-                     duplicate=bool(self._accepted))
+                     # Re-sending a landed artifact is a duplicate — except on
+                     # a repair round, where re-sending it CHANGED is the fix
+                     # the round exists for, and the judge-visible step it
+                     # earns is `design_<stage>_fix<n>`.
+                     duplicate=bool(self._accepted) and not self.stats["repair_turns"])
         landed = set(landed_parts(self.step, self.state))
         left = missing_parts(self.step, self.state)
         self._accepted += 1
+        if tools.STATE_TOOL in tools.tool_names(self._live_specs) \
+                and not self.stats["state_reads"]:
+            # Written without ever looking at the state: how often a model
+            # does that is what says whether the tool is being used at all.
+            self.stats["blind_submits"] += 1
+        if left and not self._open_parts():
+            # Every part still missing is one whose submit budget is spent.
+            # Continuing would answer "COMMITTED. <stage> still needs: <the
+            # closed one>" and the stage would run to its turn ceiling on
+            # resubmits of an artifact the loop no longer accepts.
+            self._append_tool_turn(turn, self._ends_without_closed())
+            self._give_up("submit budget spent", last_resort=self._best)
+            return "return"
         if artifact in left and artifact not in landed:
             # The validator accepted this payload and the commit ran, yet
             # the artifact is not in the state. The answer must SAY so.
@@ -601,18 +689,32 @@ class ToolLoop:
         if not left:
             # The artifact is complete — now let the agent see what is
             # wrong with it, in the context that wrote it.
-            fixable = self._own_violations()
+            pulls = self.graph_mode and self.step.state_tool
+            if pulls:
+                # The free fixes first, then what is left FOR the agent —
+                # counted here, shown by `read_alignment_state`.
+                repair_turn.fix_structural(
+                    self.state, self.design_brief, self.step, self.trajectory)
+                fixable = repair_turn.collect_own(self.state, self.design_brief, self.step)
+            else:
+                fixable = self._own_violations()
             if fixable and self.stats["repair_turns"] < self.repair_turns:
                 self.stats["repair_turns"] += 1
-                self._append_tool_turn(turn, repair_turn.repair_request(
-                    self.step.name, fixable, self.stats["repair_turns"],
-                    self.repair_turns))
+                self._repairing, self._read_since_pointer, self._idle = True, False, 0
+                self._append_tool_turn(turn, (
+                    open_issues_pointer(
+                        self.step.name, len(fixable), self.stats["repair_turns"],
+                        self.repair_turns)
+                    if pulls else repair_turn.repair_request(
+                        self.step.name, fixable, self.stats["repair_turns"],
+                        self.repair_turns)))
                 return "continue"
             if fixable:
                 # Outstanding violations and no repair turn left: say
                 # so, or "the model could not fix this" and "we did not
                 # give it another turn" are indistinguishable — and the
                 # second is a harness parameter, not a finding.
+                self._observe_open(fixable)
                 self._budget_stopped(fixable, "repair turns")
             self._append_committed(turn, self.step.name)
             return "return"
@@ -640,38 +742,104 @@ class ToolLoop:
                 f"artifact and more. Do not submit for {self.step.name} again."))
             self._give_up(f"parts still missing: {', '.join(left)}")
             return "return"
-        self._append_tool_turn(
-            turn, "COMMITTED. " + still_needed(self.step, self.state))
+        owed = still_needed(self.step, self.state, self._closed_parts())
+        if not (landed - before) and not self.stats["repair_turns"]:
+            # A re-send of what the stage already held. Answering it
+            # "COMMITTED" rewards the re-send — MEASURED (run 4bb81369,
+            # analysis): `needs_analysis` was sent seven more times, each
+            # answered "COMMITTED", until the stage ran out of submit turns
+            # owing four artifacts. So it is called what it is, and the
+            # artifact to write instead is named.
+            move = self._next_submit()
+            self._append_tool_turn(turn, (
+                f"ALREADY COMMITTED: {artifact} was in the design state and nothing changed "
+                f"— do not send it again. {owed}"
+                + (f" Call {move} next." if move else "")))
+            return "continue"
+        self._append_tool_turn(turn, "COMMITTED. " + owed)
         return "continue"
+
+    def _closed_parts(self) -> tuple[str, ...]:
+        """Parts still missing whose submit budget is spent — the loop will
+        not accept them again, so no sentence may list them as owed."""
+        return tuple(p for p in missing_parts(self.step, self.state)
+                     if self._submit_attempts.get(p, 0) >= self.SUBMIT_BUDGET)
+
+    def _open_parts(self) -> tuple[str, ...]:
+        """Parts still missing that a submit can still land."""
+        closed = set(self._closed_parts())
+        return tuple(p for p in missing_parts(self.step, self.state) if p not in closed)
+
+    def _ends_without_closed(self, *, rejected: str = "") -> str:
+        """The answer that ends a stage owing its closed artifacts.
+
+        ``rejected`` names the artifact whose rejection is what ended it —
+        the call being answered was then NOT committed, and a fan-out work
+        set has no parts for `_closed_parts` to name, so the name has to come
+        from the call."""
+        closed = self._closed_parts() or ((rejected,) if rejected else ())
+        lead = "NOT COMMITTED. " if rejected else "COMMITTED. "
+        return (f"{lead}This stage ENDS here without {', '.join(closed)}: "
+                f"rejected {self.SUBMIT_BUDGET} times and still not accepted. "
+                f"Do not submit for {self.step.name} again.")
 
     def _handle_read(self, turn: ToolTurn, args: dict) -> str:
-        """One read of the design state, answered with its observation."""
-        # Anti-loop guard: an identical repeated call gets no second
-        # answer — measured failure: a 2B model burned its whole turn
-        # budget on six identical read_nodes calls, then needed the
-        # fallback. The repeat still costs a turn (the budget is the hard
-        # stop) but is recovery plumbing, not a judge-visible tool call,
-        # and the observation pushes the model toward submitting.
-        call_key = turn_mod.repeat_key(turn.name, args)
-        if call_key in self._seen_calls:
-            self._meter.repeated()
-            self.trajectory.log_recovery_event(
-                self.identity, "repeated_tool_call", turn.name, str(args)[:100])
-            self._append_tool_turn(turn, (
-                f"You already made this exact {turn.name} call and its result has not "
-                "changed. Do not repeat calls — use what you have and submit your "
-                "artifact, or call a different tool."))
-            return "continue"
-        self._seen_calls[call_key] = turn.call_id
-
-        observation = self._execute(turn.name, args)
-        self.stats["reads"] += 1
-        if observation.startswith("ERROR"):
-            self._meter.tool_error()
-        observation += self._meter.hint()
-        turn_mod.log_read(self.trajectory, self.identity, turn.name, args, observation)
+        """One read of the design state, answered with its observation — or
+        refused as a repeat when its result is unchanged (``turn.answer_read``,
+        shared with the single arm)."""
+        self._assignment_hit = None
+        self._state_view = None
+        scope = ""
+        if turn.name == tools.STATE_TOOL:
+            # Named by stage and revision for the judge, which reads a flat
+            # list of tool names and scores repeats as redundancy: every
+            # ANSWERED state read is a different state (the guard refuses the
+            # rest), so the ordinal is the truth and not a disguise.
+            stage = self.label.replace(":", "_")
+            scope = stage if not self.stats["state_reads"] \
+                else f"{stage}_r{self.stats['state_reads'] + 1}"
+        observation, repeat = turn_mod.answer_read(
+            self._seen_calls, turn, args, lambda: self._execute(turn.name, args),
+            meter=self._meter, stats=self.stats, trajectory=self.trajectory,
+            identity=self.identity, pure=turn.name != "retrieve", scope=scope,
+            on_answered=self._note_answered,
+            next_move=(f"call {self._next_submit()} now" if self._next_submit() else ""))
         self._append_tool_turn(turn, observation)
+        if not repeat and turn.name == tools.STATE_TOOL:
+            supersede_earlier(self.messages, tools.STATE_TOOL, turn.call_id)
         return "continue"
+
+    def _next_submit(self) -> str:
+        """The submit tool the agent's next write goes through: the first
+        artifact still open, else (a repair round) none in particular."""
+        open_parts = self._open_parts()
+        if open_parts:
+            return f"submit_{open_parts[0]}"
+        fields = [key for key, _t, _r in self.step.submit_fields]
+        return f"submit_{fields[0]}" if len(fields) == 1 else ""
+
+    def _note_answered(self) -> None:
+        """What an ANSWERED read writes — never a refused repeat."""
+        self._note_assignment_read()
+        view = self._state_view
+        if view is None:
+            return
+        self.stats["state_reads"] += 1
+        self._read_since_pointer = True
+        self._just_read = True
+        repair_turn.stamp_shown(
+            view.shown, view.unshown, trajectory=self.trajectory, memory=self.memory,
+            identity=self.identity, phase=self.label, family=self.step.family)
+
+    def _note_assignment_read(self) -> None:
+        """Count and log a pointer answer — only once the read is ANSWERED, so
+        a refused repeat of the same ids is not counted twice."""
+        if not self._assignment_hit:
+            return
+        pointed, heading = self._assignment_hit
+        self.stats["assignment_reads"] = self.stats.get("assignment_reads", 0) + 1
+        self.trajectory.log_recovery_event(
+            self.identity, "read_of_assignment_id", ", ".join(pointed), heading)
 
     # ── transcript ──────────────────────────────────────────────────────────
     def _append_tool_turn(self, turn: ToolTurn, observation: str) -> None:
@@ -702,6 +870,46 @@ class ToolLoop:
                              trajectory=self.trajectory, identity=self.identity):
             self._publish(live=True)
 
+    def _observe_open(self, outstanding: list) -> None:
+        """Put ``outstanding`` in the ledger before a reason is written on it:
+        ``mark_open_reason`` skips a key it has never seen, and a violation
+        the agent never read has been sighted by no one. NOT shown — nothing
+        here was rendered to an agent."""
+        if not outstanding:
+            return
+        round_no = self.trajectory.log_violations_result(
+            serialize_violations(outstanding, self.identity), agent=ORCHESTRATOR)
+        self.memory.observe_violations(outstanding, round=round_no, phase=self.label,
+                                       family=self.step.family, shown_to_agent=False)
+
+    def _declined(self) -> str:
+        """The agent read its open issues and has not submitted since
+        (``budget.REPAIR_IDLE_TURNS``): the stage closes with them open. Its
+        decision, recorded as one — not a give-up and not a ceiling cut."""
+        outstanding = repair_turn.collect_own(self.state, self.design_brief, self.step)
+        self._observe_open(outstanding)
+        self.memory.mark_open_reason({v.key for v in outstanding}, reason="converged")
+        self.trajectory.log_recovery_event(
+            self.identity, "repair_declined",
+            f"{len(outstanding)} issue(s) left open after the agent read them",
+            ", ".join(sorted({v.violation_type for v in outstanding}))[:200])
+        return "return"
+
+    def _dispatch(self, call: ToolTurn, stage_message: str) -> str:
+        """One call through `_handle_call`, then the idle rule of a repair
+        round: once the agent has READ its issues, a call that is not a submit
+        counts toward closing the stage — the read itself excepted."""
+        outcome = self._handle_call(call, self._live_specs, stage_message)
+        if outcome != "continue" or not (self._repairing and self._read_since_pointer):
+            return outcome
+        if self._just_read:
+            self._just_read = False
+            return outcome
+        if (call.name or "").startswith("submit"):
+            return outcome
+        self._idle += 1
+        return self._declined() if self._idle >= budget.REPAIR_IDLE_TURNS else outcome
+
     def _budget_stopped(self, outstanding: list, budget: str) -> None:
         """Say which violations were still open when a budget ran out."""
         keys = {v.key for v in outstanding}
@@ -729,6 +937,10 @@ class ToolLoop:
     def _execute(self, action: str, args: dict) -> str:
         if action == "retrieve":
             return self._retrieve(args)
+        if action == tools.STATE_TOOL and self.graph_mode and self.step.state_tool:
+            self._state_view = alignment_state.read(
+                self.state, self.design_brief, self.step, submit_tool=self._next_submit())
+            return self._state_view.text
         already = self._already_in_assignment(action, args)
         if already:
             return already
@@ -736,7 +948,39 @@ class ToolLoop:
         if executor is None:
             return ("ERROR: unknown tool " + repr(action)
                     + ". Use one of the listed tools, or submit.")
-        return executor(self.state, self.step, args)
+        pointed, rest = self._ids_in_assignment(action, args)
+        if not pointed:
+            return executor(self.state, self.step, args)
+        # A read for an id the assignment shows and no tool serves — a media
+        # selection, a topic, the module itself. Answered with where it is
+        # rather than "no readable artifact", which sent a Developer listing
+        # and guessing for 18 turns (run 14a6b4c7, content:MU-CM-01). Not an
+        # error, so not refunded: looking costs the turn, as a pool read does.
+        self._assignment_hit = (pointed, self._assignment_ids[pointed[0].upper()])
+        pointers = "\n".join(
+            f"{one} is in your assignment above under '{self._assignment_ids[one.upper()]}'; "
+            "it is not a separate artifact to read." for one in pointed)
+        if not rest:
+            return pointers + "\nUse what the assignment shows and submit."
+        served = executor(self.state, self.step,
+                          {**{k: v for k, v in args.items() if k not in ("id", "ids")},
+                           "ids": rest})
+        return f"{served}\n\n{pointers}"
+
+    def _ids_in_assignment(self, action: str, args: dict) -> tuple[list[str], list[str]]:
+        """Split a read's ids into those the assignment shows and no read tool
+        serves, and the rest — which are served as usual, an unknown one
+        keeping its ERROR (first in the observation, so the refund applies)."""
+        if not self._assignment_ids or not self.graph_mode \
+                or action != "read_node":
+            return [], []
+        wanted = args.get("ids") if args.get("ids") is not None else args.get("id")
+        if wanted is None:
+            return [], []
+        ids = [str(one) for one in (wanted if isinstance(wanted, list) else [wanted])]
+        pointed = [one for one in ids if one.upper() in self._assignment_ids
+                   and tools._resolve_node(self.state, self.step, one) is None]
+        return pointed, [one for one in ids if one not in pointed]
 
     def _own_violations(self) -> list:
         """This stage's outstanding violations, and a note in the ledger that
@@ -817,16 +1061,39 @@ class ToolLoop:
             self.identity, "bare_artifact_wrapped", tool, ", ".join(sorted(args))[:100])
         return {key: args}
 
-    @staticmethod
-    def _submit_alias(specs: list, args) -> str:
-        """Which bound submit tool a bare ``submit`` meant: the one whose
-        artifact the payload actually carries, else the stage's first."""
+    def _artifact_of(self, tool_name: str, args) -> str:
+        """The artifact a submit is FOR: the tool's own, unless the payload
+        carries exactly one of the stage's declared artifacts and it is a
+        different one — then that one.
+
+        The tool name says which door the artifact came through; the payload
+        says what it is. They part ways when a model re-sends an artifact
+        whose own tool is no longer bound (`_bind` drops a landed artifact's
+        tool) under whichever submit is still offered. Charging the door's
+        artifact would answer a duplicate of X with "Y was accepted but did
+        not land" and ask for Y again, forever."""
+        named = tool_name[len("submit_"):]
+        if isinstance(args, dict) and named not in args:
+            carried = [key for key, _t, _r in self.step.submit_fields if key in args]
+            if len(carried) == 1:
+                return carried[0]
+        return named
+
+    def _submit_alias(self, specs: list, args) -> str:
+        """Which submit tool a bare ``submit`` meant: the one whose artifact
+        the payload actually carries — judged against the STAGE's declared
+        artifacts, not only the ones still bound — else the first still bound.
+
+        The binding shrinks as artifacts land (`_bind`), so matching against
+        it alone would alias a re-sent, already-committed artifact to a
+        neighbouring tool and charge that neighbour's submit budget for it."""
+        declared = [key for key, _t, _r in self.step.submit_fields]
+        if isinstance(args, dict):
+            for key in declared:
+                if key in args:
+                    return f"submit_{key}"
         offered = [name for name in tools.tool_names(specs)
                    if name.startswith("submit_")]
-        if isinstance(args, dict):
-            for name in offered:
-                if name[len("submit_"):] in args:
-                    return name
         return offered[0] if offered else "submit"
 
     def _already_in_assignment(self, action: str, args: dict) -> str:
@@ -848,7 +1115,7 @@ class ToolLoop:
         at what it judges it needs — but looking costs the turn and returns no
         second copy.
         """
-        if not self._resolved_labels or action not in ("read_nodes", "read_document"):
+        if not self._resolved_labels or action not in ("read_node", "read_document"):
             return ""
         wanted = str(args.get("node_type") or args.get("key") or "").strip().lower()
         label = self._resolved_labels.get(wanted)
@@ -910,7 +1177,7 @@ class ToolLoop:
         if valid:
             self.capture["section"] = section
         commit = self.step.commit if self.graph_mode else self.step.commit_prose
-        commit(self.state, self.trajectory, section)
+        commit_as_harness(commit, self.state, self.trajectory, section)
         action = f"design_{self.step.name}" + (f"_{note}" if note else "")
         if valid and duplicate and not (set(landed_parts(self.step, self.state)) - landed_before):
             # A re-send of what is already committed. It costs a call and the
@@ -955,7 +1222,8 @@ class ToolLoop:
         like everything else, and it comes back when it goes."""
         if stage != self.step.name:
             return None
-        return with_progress(stage_brief_block(self.step), self.step, self.state)
+        return with_progress(stage_brief_block(self.step), self.step, self.state,
+                             self._closed_parts())
 
     def _respec(self) -> str:
         """The contract, re-attached to a rejection when it is no longer in the
@@ -965,7 +1233,8 @@ class ToolLoop:
         trim did not report (a regen starting a fresh message list, a stage
         turn dropped before this loop's own restore could run)."""
         return respec(self.messages, self.step,
-                      with_progress(stage_brief_block(self.step), self.step, self.state))
+                      with_progress(stage_brief_block(self.step), self.step, self.state,
+                                    self._closed_parts()))
 
     def _give_up(self, reason: str, *, last_resort: dict | None = None) -> None:
         """End a step with whatever the MODEL produced, and record that it did
@@ -981,6 +1250,18 @@ class ToolLoop:
         self.trajectory.log_recovery_event(
             self.identity, "agentic_gave_up", reason, self.step.name)
         if last_resort is None:
+            return
+        # Only what never landed. `_best` holds every REJECTED payload, and a
+        # model re-sends artifacts it has already committed; committing a
+        # rejected re-send here would overwrite the accepted artifact with
+        # the version the validator refused. MEASURED (run 9efc3cfa,
+        # implementation): a valid `system_check` was replaced at give-up by
+        # a rejected one under invented keys, and the run shipped three
+        # "required field is missing" errors for an artifact it had accepted.
+        landed = set(landed_parts(self.step, self.state))
+        last_resort = {key: value for key, value in last_resort.items()
+                       if key not in landed}
+        if not last_resort:
             return
         # The best the MODEL managed, committed as-is rather than discarded: it
         # is the agent's own work, and the repair net can mend it.

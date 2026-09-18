@@ -115,6 +115,27 @@ ERROR_ALLOWANCE = 3
 #: not going to.
 REPAIR_TURNS = 3
 
+#: Turns an agent may spend, AFTER reading its open issues, on anything but a
+#: submit before the stage closes with those issues open. An agent is free to
+#: look and decline — "if a point is wrong or you cannot act on it, submit
+#: nothing" — and declining must END the stage there: left to the turn ceiling
+#: it would read as ``via_budget_exhaustion``, which is the figure the
+#: decomposition claim rests on neither arm having reached. Two, so that one
+#: stray read beside the decision is not mistaken for the decision. The same
+#: number for both arms.
+REPAIR_IDLE_TURNS = 2
+
+#: Consecutive reads that bought nothing — an unchanged repeat, or an ERROR —
+#: after which the read tools are WITHHELD from the binding until the agent
+#: submits. Under a forced tool call a small model that has stopped acting
+#: reaches for the safest call it has, and a refusal in words does not move
+#: it. MEASURED (run 4bb81369): the AssessmentDesigner answered the state read
+#: with the same state read 26 times and gave up on its turn ceiling; an
+#: AssessmentDeveloper guessed ids (``ITEMS``, ``ALL_ITEMS``, …) through 16
+#: reads to the same end. With only submit tools bound, its next call is work.
+#: Two, so that one honest mistake is not punished. The same number for both arms.
+FRUITLESS_READS = 2
+
 #: How many violations one repair request names. A list longer than this is a
 #: wall of text a small model answers by rewriting everything.
 REPAIR_REQUEST_CAP = 6

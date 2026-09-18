@@ -269,8 +269,76 @@ def parse_json_array(raw: str) -> tuple[list, int]:
                 depth = 0
                 block_start = -1
     if block_start != -1:
-        dropped += 1
+        # The LAST element never closed. The common shape is an array ending
+        # `..."]` where `..."}]` was meant — the element's own closing brace
+        # dropped — which the `, {` rule above cannot see because nothing
+        # follows. Closing what is open is the same structural repair, and
+        # the element's text is untouched. MEASURED (run 9efc3cfa,
+        # content:MU-C-01): a one-material array closed that way was rejected
+        # four times as "arrived as text", the set gave up and was regenerated.
+        tail = text[block_start:].rstrip()
+        while tail.endswith("]"):
+            tail = tail[:-1].rstrip()
+        parsed = _loads_object(tail + "}" * max(depth, 1)) if not in_string else None
+        if parsed is None:
+            dropped += 1
+        else:
+            items.append(parsed)
     return items, dropped
+
+
+def close_unclosed_arrays(text: str) -> str:
+    """Insert the ``]`` an array lost before the object's NEXT KEY.
+
+    MEASURED (run 1c0a4e81, ``operator_manual``): ``"operation_procedures":
+    ["1) …", "support_procedures": ["…"], …`` — the first array never closes,
+    so everything after it reads as more of that array, strict parsing fails
+    at the first ``:``, and the tolerant parser keeps only the fields before
+    the break. Three submits lost two of four required fields that way, the
+    artifact spent its budget and shipped empty.
+
+    A string followed by ``:`` is an object KEY. Inside an array of strings
+    that can mean only one thing — the array was meant to end before it — so
+    the ``]`` goes in front of that key's comma. Nothing else is touched: no
+    value is rewritten, and text this does not apply to comes back unchanged.
+    """
+    out: list[str] = []
+    stack: list[str] = []
+    index, length = 0, len(text)
+    last_comma = -1                     # position in `out` of the latest top-level comma
+    while index < length:
+        char = text[index]
+        if char == '"':
+            end = index + 1
+            while end < length and text[end] != '"':
+                end += 2 if text[end] == "\\" else 1
+            token = text[index:end + 1]
+            after = end + 1
+            while after < length and text[after] in " \t\r\n":
+                after += 1
+            if (stack and stack[-1] == "[" and after < length and text[after] == ":"
+                    and last_comma != -1):
+                out.insert(last_comma, "]")
+                stack.pop()
+            out.append(token)
+            index = end + 1
+            continue
+        if char in "[{":
+            stack.append(char)
+        elif char in "]}":
+            if not stack:
+                index += 1
+                continue                # a closer with nothing open: dropped
+            # The closer that MATCHES what is open — `..."]` ending an object
+            # is the same slip as the one above, seen from the other end.
+            char = "]" if stack.pop() == "[" else "}"
+        elif char == ",":
+            last_comma = len(out)
+        out.append(char)
+        index += 1
+    # Whatever is still open is closed, innermost first.
+    out.extend("]" if opener == "[" else "}" for opener in reversed(stack))
+    return "".join(out)
 
 
 def _starts_next_element(text: str, index: int) -> bool:

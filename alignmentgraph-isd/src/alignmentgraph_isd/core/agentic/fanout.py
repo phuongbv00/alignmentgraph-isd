@@ -28,6 +28,8 @@ normalization, the renumbering, the establishers and the per-item rules.
 """
 from __future__ import annotations
 
+import re
+
 import json
 from dataclasses import dataclass, replace
 from typing import Callable
@@ -485,6 +487,7 @@ def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
     tools stay whatever the family's stage allows — a Developer still needs to
     see the objectives it is writing for."""
     primary = spec.outputs[0].schema_key
+    assignment = _capped(spec.render(work_set) + _resolved_references(work_set, state))
 
     def validate(parsed: dict) -> list[str]:
         items = (parsed or {}).get(primary)
@@ -498,7 +501,7 @@ def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
         identity=spec.developer_identity,
         persona=spec.developer_persona,
         intro=(f"{spec.set_intro}\n\n{_ASSIGNMENT_IS_COMPLETE}\n\n{spec.set_header}\n"
-               f"{_capped(spec.render(work_set) + _resolved_references(work_set, state))}"),
+               f"{assignment}"),
         rules="\n".join(o.rules for o in spec.outputs),
         submit_fields=tuple((o.schema_key, "array", i == 0)
                             for i, o in enumerate(spec.outputs)),
@@ -507,7 +510,9 @@ def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
         docket={},
         readable_types=spec.developer_reads,
         resolved_labels=resolved_labels(work_set),
+        assignment_ids=assignment_ids(assignment),
         relations=(),
+        state_tool=False,
         validate=validate,
         commit=lambda *_a, **_k: None,       # committing is the driver's job,
         commit_prose=lambda *_a, **_k: None,  # right after this loop returns
@@ -517,6 +522,43 @@ def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
         # set done before its Developer had spoken.
         done=lambda state, _sid=work_set.set_id: _sid in committed_set_ids(spec, state),
     )
+
+
+_TAGGED_ID = re.compile(r"\[([A-Z_]+):([^\]\s]+)\]")
+_BARE_ID = re.compile(r"(?<![A-Z0-9-])[A-Z]{1,5}-?\d{1,4}\b")
+
+
+def assignment_ids(assignment: str) -> dict[str, str]:
+    """``id -> heading`` for every artifact id the rendered assignment shows.
+
+    MEASURED (run 14a6b4c7, content:MU-CM-01): the module's media selections
+    (``MS-01``, ``MS-02``) and topics (``T1``) are written INTO the assignment
+    and served by no read tool, so the Developer's reads for them were
+    answered "no readable artifact ... use read_nodes to list their ids" —
+    which it did, 18 times, then gave up on the turn ceiling without writing
+    a material. The pointer that replaces that error needs to know which ids
+    the assignment carries and under which heading.
+
+    Ids are the ``[TYPE:ID]`` tags the renderers emit plus every bare token
+    shaped like one (``T1``, ``MS-01``, ``AT-0103``); a heading is the last
+    line above that ended in ``:`` (the renderers' block openers), or the
+    assignment itself. Over-matching a stray token in prose is harmless: the
+    pointer only fires when the model READS that token, and it is then true.
+    Computed on the CAPPED text, so a truncated assignment never claims an
+    id the model cannot see.
+    """
+    found: dict[str, str] = {}
+    heading = "your assignment"
+    for line in assignment.splitlines():
+        text = line.strip()
+        if text.startswith("===") and text.endswith("==="):
+            heading = "your assignment"
+        elif text.endswith(":") and " " in text and not text.startswith("["):
+            heading = text[:-1]
+        ids = [m.group(2) for m in _TAGGED_ID.finditer(text)] + _BARE_ID.findall(text)
+        for one in ids:
+            found.setdefault(one.upper(), heading)
+    return found
 
 
 def _capped(assignment: str) -> str:
@@ -568,8 +610,7 @@ def commit_sets(spec: FanoutSpec, state, trajectory, work_sets: list, payloads: 
 
     The whole deposit runs inside one graph transaction: reading the ids in
     play and then writing nodes chosen from what was read is only correct if
-    nothing lands in between. Sequential today, so nothing does — the lock is
-    what keeps that true if the fan-out ever stops being sequential."""
+    nothing lands in between. Commits run one at a time on the driver's thread in plan order, so nothing does — the lock is what keeps that true while the Developers run on several (``fanout_workers``)."""
     with _deposit(state):
         _deposit_sets(spec, state, trajectory, work_sets, payloads)
 

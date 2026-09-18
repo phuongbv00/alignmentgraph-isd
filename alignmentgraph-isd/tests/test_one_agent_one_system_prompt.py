@@ -21,7 +21,7 @@ consecutive turns of one transcript. These tests hold that shut.
 ONE prose call survives, and it is not what this file forbids: the compaction
 hook (``core/agentic/compaction.py``, 2026-09-08), which folds the turns a trim
 dropped into the note. What makes it a different thing is exactly what was
-wrong with the repairs — it runs under ``WORKFLOW_ORCHESTRATOR`` rather than
+wrong with the repairs — it runs under ``ORCHESTRATOR`` rather than
 under the agent whose window filled, and it publishes no context at all, so no
 agent is given a second boundary and none of the tests below has anything to
 see. That claim needs enforcing rather than asserting, and none of the three

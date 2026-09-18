@@ -613,6 +613,50 @@ def evaluation_quality_data(node_id: str, data: dict) -> list[Violation]:
 
 # ══════════════════════ Activity Designer's own checks ══════════════════════
 
+_DURATION_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(hours?|hrs?|h\b|minutes?|mins?|m\b)", re.I)
+
+
+def duration_minutes(text: object) -> float:
+    """Minutes in a free-text duration ("90 minutes", "1.5 hours", "2 h 30
+    min"); 0 when it states none, which the caller counts rather than guesses."""
+    total = 0.0
+    for amount, unit in _DURATION_RE.findall(str(text or "")):
+        total += float(amount) * (60 if unit.lower().startswith("h") else 1)
+    return total
+
+
+def time_budget(graph) -> list[Violation]:
+    """The activities, added up, against the learner time the plan said the
+    course has (``dev_plan.contact_hours``).
+
+    The fan-out is sized BEFORE any activity is written
+    (``dev_plans.fit_time_budget``); this is the same budget read AFTER, off
+    the durations the Developers actually wrote — the measurement of whether
+    the design fits the course it was planned for. Report-only: which activity
+    to shorten or drop is a design judgment. Silent when the plan declared no
+    hours or no activity states a duration: there is nothing to compare."""
+    plan = graph.get_node(graph.section_id(NodeType.ACTIVITY_PLAN))
+    dev_plan = ((plan or {}).get("data") or {}).get("dev_plan") or {}
+    try:
+        hours = float(dev_plan.get("contact_hours") or 0)
+    except (TypeError, ValueError):
+        hours = 0.0
+    activities = graph.element_nodes(NodeType.ACTIVITY)
+    timed = [duration_minutes(a["data"].get("duration")) for a in activities]
+    total = sum(timed)
+    if hours <= 0 or not total or total <= hours * 60:
+        return []
+    return [Violation(
+        node_id=plan["id"], edge_type="", violation_type="time_budget", severity="warning",
+        message=(f"The {len(activities)} activities add up to {total / 60:.1f} hours of learner "
+                 f"time against the {hours:g} contact hours the plan declared."),
+        repair_hint=("Shorten or merge activities until they fit the course, or state the "
+                     "contact hours the course really has."),
+        metadata={"contact_hours": hours, "activity_minutes": total,
+                  "activities": len(activities),
+                  "untimed": sum(1 for minutes in timed if not minutes)})]
+
+
 def activity_engagement(graph) -> list[Violation]:
     """A higher-order (Apply+) objective practiced only through passive
     formats (lecture, reading, video) gives learners no chance to perform the
@@ -852,8 +896,8 @@ def relation_coverage(graph) -> list[Violation]:
 #: on; naming the field is what closes the gap.
 _COVERAGE_HINTS = {
     "P8": ("This media selection names no constraint that exists. Set "
-           "`respects_constraints` to constraint ids from `read_nodes`, which "
-           "lists every constraint of this brief."),
+           "`respects_constraints` to constraint ids from your read of the design "
+           "state, which lists every constraint of this brief."),
     "P10": ("Nobody scheduled this activity. Put it in a session block of the "
             "implementation dev_plan, so a session guide delivers it."),
     "P11": ("Nobody hands this material out. Put it in a session block of the "

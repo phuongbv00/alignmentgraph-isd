@@ -46,7 +46,9 @@ EVENT_ACTIONS = {
     "tool_binding_unavailable", "tool_call_markup_recovered", "repair_unfilled",
     "duplicate_submit", "bare_artifact_wrapped", "context_compacted",
     "duplicate_element_dropped", "commit_did_not_land", "thinking_only_reply",
-    "dropped_argument", "calls_not_executed", "repair_window_closed",
+    "dropped_argument", "argument_reshaped", "tool_choice_downgraded",
+    "read_of_assignment_id", "repair_declined",
+    "calls_not_executed", "repair_window_closed",
     # structured records
     "repair", "node_add", "node_update", "doc_write", "validate", "check", "audit",
     "retrieval", "dev_plan", "reconcile", "converge",
@@ -89,7 +91,7 @@ RUN_CONFIG_KEYS = {
     # Serving posture: how many requests the run was allowed to keep in flight
     # (core/ratelimit.py). Recorded because a 429-throttled arm and a clean one
     # are otherwise indistinguishable in a results dir.
-    "llm_max_concurrency", "llm_min_interval_seconds",
+    "llm_max_concurrency", "fanout_workers", "protocol_rev", "llm_min_interval_seconds",
 }
 # The audit's VERDICT and what stopped it — not a second copy of the graph.
 # `node_counts`, `relation_coverage`, `unmeasured_objectives`,
@@ -178,7 +180,7 @@ def test_the_deep_trajectory_is_additive(result):
     # Every action has the stable timestamp/agent/action/context envelope,
     # and — 2026-08-27 — a real, non-empty agent: harness-level events (phase
     # boundaries, routing checkpoints, the residual audit) are attributed to
-    # WORKFLOW_ORCHESTRATOR rather than falling back to whoever acted last.
+    # ORCHESTRATOR rather than falling back to whoever acted last.
     for action in deep["actions"]:
         assert list(action) == ["timestamp", "agent", "action", "context"]
         assert action["agent"], action

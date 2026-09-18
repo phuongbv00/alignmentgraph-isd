@@ -16,7 +16,7 @@ function action(name: string, agent: string, phase: string, context: Record<stri
   }
 }
 
-const ORCH = 'WorkflowOrchestrator'
+const ORCH = 'Orchestrator'
 
 /**
  * A miniature agentic run in the shape the harness actually emits
@@ -103,7 +103,7 @@ describe('buildPhaseTimeline', () => {
     // actor would credit the stage to a sub-agent that only wrote one set.
     expect(assessment.agent).toBe('AssessmentDesignerAgent')
     expect(assessment.agents).toEqual([
-      'AssessmentDesignerAgent', 'WorkflowOrchestrator', 'AssessmentDeveloperAgent',
+      'AssessmentDesignerAgent', 'Orchestrator', 'AssessmentDeveloperAgent',
     ])
   })
 
@@ -202,7 +202,7 @@ describe('helpers', () => {
   it('offers a filter chip for every agent that acted, Developers included', () => {
     expect(timelineAgents(buildPhaseTimeline(fixture()))).toEqual([
       'OutcomeDesignerAgent', 'AssessmentDesignerAgent',
-      'WorkflowOrchestrator', 'AssessmentDeveloperAgent',
+      'Orchestrator', 'AssessmentDeveloperAgent',
     ])
   })
 

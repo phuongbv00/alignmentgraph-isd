@@ -207,23 +207,15 @@ function PhaseCard({
     <div className={`pt-item${dimmed ? ' pt-dimmed' : ''}`}>
       <span className="pt-dot" style={{ background: hue.dot }} />
       <header className="pt-head">
-        {block.kind === 'aggregate' && <Layers size={14} className="pt-head-icon" />}
+        {block.kind === 'aggregate' && <Layers size={14} className="pt-head-icon"/>}
         <span className="pt-title">{phaseLabel(block.phase)}</span>
-        {block.agent && (
-          <span className="pt-pill" style={{ background: hue.bg, color: hue.fg }}>
-            {agentShortName(block.agent)}
-          </span>
-        )}
-        {/* The Developers this stage dispatched to, named: the fan-out is the
-            multi-agent claim at its second scale, and a card that showed only
-            the Designer would hide it. */}
-        {block.agents.slice(1).map((agent) => {
-          const developerHue = agentHue(agent)
+        {block.agents.map((agent) => {
+          const h = agentHue(agent)
           return (
             <span
               key={agent}
               className="pt-pill"
-              style={{ background: developerHue.bg, color: developerHue.fg, opacity: 0.75 }}
+              style={{background: h.bg, color: h.fg}}
             >
               {agentShortName(agent)}
             </span>

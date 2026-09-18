@@ -1,7 +1,7 @@
 """2026-08-27: the residual whole-graph audit used to have zero trajectory
 footprint — only its INPUTS (the ~300 graph reads that compute it) were
 recorded, never the finding itself. ``log_audit_result`` closes that gap;
-these tests pin the shape and the WORKFLOW_ORCHESTRATOR attribution.
+these tests pin the shape and the ORCHESTRATOR attribution.
 
 The cross-agent routing mechanism this file also used to cover (a router
 that could send a Designer back for a narrow revision) was removed
@@ -11,7 +11,7 @@ that could send a Designer back for a narrow revision) was removed
 from __future__ import annotations
 
 from alignmentgraph_isd.config import HarnessRunConfig
-from alignmentgraph_isd.core.trajectory import WORKFLOW_ORCHESTRATOR
+from alignmentgraph_isd.core.trajectory import ORCHESTRATOR
 
 from conftest import FakeChatModel, load_brief
 
@@ -25,7 +25,7 @@ def test_the_residual_audit_is_logged_and_agrees_with_the_graph():
     audit_events = [e for e in result["trajectory"]["events"] if e["action"] == "audit"]
     assert len(audit_events) == 1
     event = audit_events[0]
-    assert event["agent"] == WORKFLOW_ORCHESTRATOR
+    assert event["agent"] == ORCHESTRATOR
 
     metadata_audit = result["metadata"]["audit"]
     context = event["context"]

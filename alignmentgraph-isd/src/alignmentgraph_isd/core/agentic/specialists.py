@@ -21,6 +21,7 @@ from typing import Callable
 
 from .. import rulebook as rules
 from ..alignment_graph import NodeType, alignment
+from ..trajectory import ORCHESTRATOR
 from ..validation import validate_section
 
 
@@ -779,9 +780,13 @@ class AgenticStep:
     #: and forces no extra call: an agent that can fit it in one submit still
     #: does, and only one that cannot pays for a second turn.
     submit_parts: tuple[str, ...] = ()
-    readable_types: tuple[str, ...] = ()   #: node types read_nodes/read_node may serve
-    relations: tuple[str, ...] = ()        #: relation ids read_edges/coverage_gaps may serve
-    docket: dict = field(default_factory=dict)  #: alignment_docket kwargs: which
+    readable_types: tuple[str, ...] = ()   #: node types the state read lists and read_node serves
+    relations: tuple[str, ...] = ()        #: relation ids this stage's artifacts take part in
+    #: Whether ``read_alignment_state`` is bound. False for a fan-out work set
+    #: and a replan round: their assignment IS their state, written into the
+    #: turn, and the family's gaps belong to whoever planned the sets.
+    state_tool: bool = True
+    docket: dict = field(default_factory=dict)  #: what the state read reports as MISSING: which
                                                 #: relations this step is shown
     #: TOP-LEVEL keys of the submit artifact, as ``(key, json_type, required)``.
     #: This is what the ``submit`` tool's parameter schema is built from
@@ -810,6 +815,12 @@ class AgenticStep:
     #: ``ToolLoop._already_in_assignment``. Empty for a stage agent, which
     #: reads live state it was not handed.
     resolved_labels: dict = field(default_factory=dict)
+    #: ``id -> heading`` for every artifact id a Developer's assignment shows
+    #: (a module, a media selection, a topic, an item it prepares for). A read
+    #: of one of these that no read tool serves is answered with where it
+    #: already is instead of "no readable artifact" — see
+    #: ``ToolLoop._execute``. Empty for a stage agent.
+    assignment_ids: dict = field(default_factory=dict)
     validate: Callable[[dict], list[str]] = lambda parsed: []
     commit: Callable[[object, object, dict], None] = lambda graph, trajectory, parsed: None
     commit_prose: Callable[[object, object, dict], None] = lambda store, trajectory, parsed: None
@@ -1122,9 +1133,35 @@ def missing_parts(step: AgenticStep, state) -> tuple[str, ...]:
     parts = parts_of(step)
     if not parts:
         return ()
-    landed = (step.view(state) if hasattr(state, "element_nodes")
-              else step.view_prose(state))
+    landed = view_as_harness(step, state)
     return tuple(part for part in parts if not landed.get(part))
+
+
+def commit_as_harness(commit, state, trajectory, section: dict) -> None:
+    """Run a step's commit with its LOOKUPS booked to the orchestrator and its
+    writes to whoever is acting: merging a submit into the section it belongs
+    to reads that section first, and the graph observer would otherwise book
+    the read to the agent whose submit it is — see
+    ``AlignmentGraph.reads_as``."""
+    reads_as = getattr(state, "reads_as", None)
+    if reads_as is None:
+        commit(state, trajectory, section)
+        return
+    with reads_as(ORCHESTRATOR):
+        commit(state, trajectory, section)
+
+
+def view_as_harness(step: AgenticStep, state) -> dict:
+    """``step``'s view of the state, as a HARNESS probe: recorded as the
+    orchestrator's read, not as one by whichever agent happens to be acting
+    (``AlignmentGraph.reads_as``)."""
+    if not hasattr(state, "element_nodes"):
+        return step.view_prose(state)
+    reads_as = getattr(state, "reads_as", None)
+    if reads_as is None:
+        return step.view(state)
+    with reads_as(ORCHESTRATOR):
+        return step.view(state)
 
 
 def step_done(step: AgenticStep, state) -> bool:

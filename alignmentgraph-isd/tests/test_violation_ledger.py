@@ -215,7 +215,7 @@ def test_a_type_no_family_owns_is_recorded_rather_than_dropped():
     """
     from alignmentgraph_isd.core.runner import _verify_family
     from alignmentgraph_isd.core.repairs import OWNED_BY_FAMILY, RepairContext
-    from alignmentgraph_isd.core.trajectory import WORKFLOW_ORCHESTRATOR, TrajectoryLogger
+    from alignmentgraph_isd.core.trajectory import ORCHESTRATOR, TrajectoryLogger
 
     assert "measurability" not in OWNED_BY_FAMILY["outcome_designer"], (
         "this test needs a type its family does not own")
@@ -227,12 +227,12 @@ def test_a_type_no_family_owns_is_recorded_rather_than_dropped():
     memory = Memory(graph=graph)
     trajectory = TrajectoryLogger()
     ctx = RepairContext(graph=graph, store=None, trajectory=trajectory,
-                        actor=WORKFLOW_ORCHESTRATOR)
+                        actor=ORCHESTRATOR)
 
     still_open = _verify_family(
         "outcome_designer", state=graph, design_brief=None, graph_mode=True,
         memory=memory, trajectory=trajectory, ctx=ctx,
-        identity=WORKFLOW_ORCHESTRATOR, phase="outcomes")
+        identity=ORCHESTRATOR, phase="outcomes")
 
     # Not returned — it drives no repair, no routing, no convergence decision.
     assert [v.violation_type for v in still_open] == []
@@ -400,3 +400,27 @@ def test_nobody_watching_never_serializes_the_ledger(monkeypatch):
     assert result["violations"], "the fixture must actually find something"
     assert calls["as_dict"] == len(result["violations"]), (
         "only the run's own result serialized the ledger; nothing published it")
+
+
+def test_only_the_violations_actually_rendered_are_stamped_shown():
+    """`shown_to_agent` is what `settle` reads to credit a vanished finding to
+    the agent. Past `REPAIR_REQUEST_CAP` a violation is only COUNTED ("+N
+    more") — the agent never read it, so it is sighted and not shown."""
+    from alignmentgraph_isd.core.agentic import budget
+    from alignmentgraph_isd.core.agentic.repair_turn import stamp_shown, violation_lines
+    from alignmentgraph_isd.core.trajectory import TrajectoryLogger
+
+    found = [checks.Violation(node_id=f"activity:TLA-{i:02d}", edge_type="",
+                              message=f"m{i}", violation_type="activity_engagement")
+             for i in range(budget.REPAIR_REQUEST_CAP + 2)]
+    memory, trajectory = Memory(graph=AlignmentGraph()), TrajectoryLogger()
+
+    lines, shown, unshown = violation_lines(found)
+    stamp_shown(shown, unshown, trajectory=trajectory, memory=memory,
+                identity="ActivityDesignerAgent", phase="activities",
+                family="activity_designer")
+
+    assert lines[-1] == "- (+2 more of the same kind)"
+    stamped = Counter(f.shown_to_agent for f in memory.findings)
+    assert stamped == {1: budget.REPAIR_REQUEST_CAP, 0: 2}
+    assert len(trajectory.check_events) == 1, "one round, not one per half"

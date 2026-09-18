@@ -114,7 +114,7 @@ function ViolationRow({ finding, open, onToggle, relations }: {
   relations?: Record<string, { label?: string }>
 }) {
   const isOpen = finding.outcome === 'open'
-  const hue = agentHue(finding.target_designer || 'WorkflowOrchestrator')
+  const hue = agentHue(finding.target_designer || 'Orchestrator')
   return (
     <div className={`ctx-row${open ? ' open' : ''}`}>
       <button className="ctx-head" onClick={onToggle}>

@@ -40,11 +40,14 @@ class SubmitWrappingModel(FakeChatModel):
         return self
 
     def invoke(self, messages) -> _Result:
+        if self._wants_state(messages):
+            # The ids a plan refers to reach the fake through this read, so
+            # the one thing this fixture does not wrap as a `submit`.
+            self._calls += 1
+            return _Result(tool_calls=[{"name": "read_alignment_state", "args": {},
+                                        "id": f"c{self._calls}"}])
         answer = super().invoke(messages)
         if answer.tool_calls:
-            # The parent asking for `stage_brief`: the artifact contract is
-            # behind a tool, so a model that never calls it never sees a schema
-            # and answers nothing.
             return answer
         payload = json.loads(answer.content)
         self._calls += 1
@@ -301,7 +304,7 @@ def test_reconcile_routes_a_residual_violation_to_the_family_that_owns_it():
     and the trace records who it went to. The pass takes no arm and no model:
     routing names the owner, and the structural fixes it dispatches are the
     same on either side of both axes."""
-    from alignmentgraph_isd.core.trajectory import WORKFLOW_ORCHESTRATOR
+    from alignmentgraph_isd.core.trajectory import ORCHESTRATOR
 
     _residual, events = _reconcile_once()
 
@@ -310,7 +313,7 @@ def test_reconcile_routes_a_residual_violation_to_the_family_that_owns_it():
     assert any(e["context"]["family"] == "assessment_designer" for e in events)
     # The ACTOR is the orchestrator: routing happens outside every tool loop,
     # so crediting the family would say the agent did something it never saw.
-    assert all(e["agent"] == WORKFLOW_ORCHESTRATOR for e in events)
+    assert all(e["agent"] == ORCHESTRATOR for e in events)
 
 
 def test_reconcile_stamps_the_owner_on_every_violation_it_routes():

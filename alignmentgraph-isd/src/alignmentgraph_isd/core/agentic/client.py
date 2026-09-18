@@ -8,7 +8,7 @@ argument shape before the text reaches us.
 
 Tool calls are the ONLY way an AGENT reaches the model. The invariant is about
 the agent, not about this module: ``call_prose`` is the HARNESS's own call,
-made by the compaction hook under ``WORKFLOW_ORCHESTRATOR``, binding no tools
+made by the compaction hook under ``ORCHESTRATOR``, binding no tools
 and publishing no context. The two paths share ``_begin``/``_account``, which
 is what keeps the hook's tokens on the cost table.
 """
@@ -27,6 +27,23 @@ from .transcript import prompt_chars, ratio_for
 from .turn import ToolTurn
 
 
+#: What every agent turn asks for; see ``AgenticLLM._bind``.
+TOOL_CHOICE_DEFAULT = "required"
+
+
+def _rejects_tool_choice(exc: Exception) -> bool:
+    """Whether a failed request was refused FOR its ``tool_choice`` value —
+    the one failure that is answered by downgrading rather than reported.
+    A truncation is never that, whatever its status code."""
+    if _is_truncation_error(exc):
+        return False
+    msg = str(exc).lower()
+    if "tool_choice" in msg or "tool choice" in msg:
+        return True
+    status = getattr(exc, "status_code", None)
+    return status in (400, 422) and "tool" in msg
+
+
 class AgenticLLM:
     """Model caller for the agentic arm: native tool calling, truncation
     salvage, trajectory accounting.
@@ -34,7 +51,7 @@ class AgenticLLM:
     Tool calls are the ONLY way an AGENT reaches the model. The invariant is
     about the agent, not about this class: the class also carries
     ``call_prose`` — the HARNESS's own call, made by the compaction hook under
-    ``WORKFLOW_ORCHESTRATOR``, binding no tools and publishing no context. An
+    ``ORCHESTRATOR``, binding no tools and publishing no context. An
     agent never chooses to compact, so compaction is not an action in its
     protocol and must not be dressed as one; the accounting both paths share
     (``_begin``/``_account``) is what keeps the hook's price on the books.
@@ -69,26 +86,29 @@ class AgenticLLM:
                 self.identity, "llm_error", "", "llm_factory not set — cannot call LLM")
             return ToolTurn()
         raw_llm = self.config.llm_factory()
-        try:
-            # tool_choice="auto" is sent EXPLICITLY. LangChain's bind_tools
-            # omits it, and vLLM's --enable-auto-tool-choice is what engages
-            # the tool-call parser: without the field the server can hand the
-            # call back as raw markup in `content` instead of parsing it into
-            # `tool_calls`. Traced by diffing the harness's outgoing payload
-            # against a probe that scored 100% well-formed in all four
-            # transport x turn-shape cells — tool_choice was the only field
-            # that differed.
-            bound = raw_llm.bind_tools(tool_specs, tool_choice="auto")
-        except TypeError:
-            # A backend whose bind_tools does not take tool_choice.
-            bound = raw_llm.bind_tools(tool_specs)
-        except Exception as exc:  # noqa: BLE001 - a backend without tool support
-            self.trajectory.log_recovery_event(
-                self.identity, "tool_binding_unavailable", str(exc)[:120], "")
+        choice = self._tool_choice()
+        bound = self._bind(raw_llm, tool_specs, choice)
+        if bound is None:
             return ToolTurn(binding_failed=True)
         try:
             return self._invoke_tools(bound, messages)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - every backend error is recorded below
+            if choice == TOOL_CHOICE_DEFAULT and _rejects_tool_choice(exc):
+                # The backend will not force a call. Learned ONCE per run:
+                # the memo is on the config every agent shares, so no later
+                # turn of either arm pays a refused request to find out
+                # again. The refused request still left, so it is billed.
+                self.trajectory.log_llm_call(0, 0)
+                self.trajectory.log_recovery_event(
+                    self.identity, "tool_choice_downgraded", str(exc)[:120], "auto")
+                self._remember_tool_choice("auto")
+                bound = self._bind(raw_llm, tool_specs, "auto")
+                if bound is None:
+                    return ToolTurn(binding_failed=True)
+                try:
+                    return self._invoke_tools(bound, messages)
+                except Exception as again:  # noqa: BLE001
+                    exc = again
             if _is_truncation_error(exc):
                 self.trajectory.log_recovery_event(
                     self.identity, "salvage_truncated", str(exc)[:80], "")
@@ -96,12 +116,55 @@ class AgenticLLM:
             self.trajectory.log_recovery_event(self.identity, "llm_error", "", str(exc))
             return ToolTurn()
 
+    def _tool_choice(self) -> str:
+        """The ``tool_choice`` this run sends: the memo if one exists, else
+        ``"required"``. ``""`` means the keyword is not passed at all."""
+        memo = getattr(self.config, "_tool_choice", None)
+        if memo is None:
+            memo = getattr(self, "_tool_choice_memo", None)
+        return TOOL_CHOICE_DEFAULT if memo is None else memo
+
+    def _remember_tool_choice(self, value: str) -> None:
+        try:
+            self.config._tool_choice = value
+        except (AttributeError, ValueError):  # pragma: no cover - a bare stub config
+            self._tool_choice_memo = value
+
+    def _bind(self, raw_llm, tool_specs: list[dict], choice: str):
+        """Bind the tools, or None when the backend has no tool support.
+
+        ``tool_choice`` is sent EXPLICITLY. LangChain's bind_tools omits it,
+        and vLLM's --enable-auto-tool-choice is what engages the tool-call
+        parser: without the field the server can hand the call back as raw
+        markup in `content` instead of parsing it into `tool_calls` (traced by
+        diffing the outgoing payload against a probe that scored 100%
+        well-formed in all four transport x turn-shape cells — tool_choice was
+        the only field that differed). It is ``"required"`` rather than
+        ``"auto"`` because a reply that calls nothing is a turn that produces
+        nothing: measured on run 14a6b4c7, four such turns wrote 9-15k
+        characters of prose each, three of them to the completion cap, ~12k
+        completion tokens for four protocol nudges. A backend that refuses
+        ``"required"`` is downgraded to ``"auto"`` once per run
+        (``call_tools``); the nudge stays as the backstop behind both."""
+        try:
+            if choice == "":
+                return raw_llm.bind_tools(tool_specs)
+            return raw_llm.bind_tools(tool_specs, tool_choice=choice)
+        except TypeError:
+            # A backend whose bind_tools does not take tool_choice.
+            self._remember_tool_choice("")
+            return raw_llm.bind_tools(tool_specs)
+        except Exception as exc:  # noqa: BLE001 - a backend without tool support
+            self.trajectory.log_recovery_event(
+                self.identity, "tool_binding_unavailable", str(exc)[:120], "")
+            return None
+
     def call_prose(self, messages: list[dict]) -> str:
         """One model call with NO tools bound and NO ``response_format``.
 
         Not an agent's turn: the ONLY caller is the compaction hook
         (``core/agentic/compaction.py``), which runs under
-        ``WORKFLOW_ORCHESTRATOR`` and whose conversation is never published as
+        ``ORCHESTRATOR`` and whose conversation is never published as
         any agent's context — ``tests/test_compaction.py`` enforces the
         one-caller rule. See the class docstring for why ``response_format``
         must never return on this path.

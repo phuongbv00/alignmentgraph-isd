@@ -98,6 +98,32 @@ class AlignmentGraph:
         # locked methods on the same thread. See ``transaction`` for why the
         # lock stays although the executor is sequential.
         self._lock = threading.RLock()
+        # Per THREAD, so one caller's attribution never reaches another
+        # thread's agent mid-read (``fanout_workers`` > 1).
+        self._reader = threading.local()
+
+    @contextmanager
+    def reads_as(self, actor: str):
+        """READS inside this block are reported under ``actor``; writes are
+        reported as they always are.
+
+        The observer stamps each operation with WHOEVER IS ACTING, because the
+        graph has no idea who is asking. That is right for a read an agent
+        made and wrong for the harness's own, which run inside the agent's
+        scope: asking the state which of a stage's artifacts have landed
+        (``landed_parts``/``missing_parts``, several times a turn), and the
+        lookup a commit makes to merge a submit into what its section already
+        holds. MEASURED (run 4bb81369): "Read graph 90x" under the
+        NeedsAnalyst, an agent bound no read tool at all. The reads happened
+        and stay on the record — under the orchestrator, whose they are; the
+        WRITE a commit makes is the agent's act and keeps the agent's name.
+        What an agent read is a claim the trace has to be able to support."""
+        previous = getattr(self._reader, "actor", "")
+        self._reader.actor = actor
+        try:
+            yield self
+        finally:
+            self._reader.actor = previous
 
     def set_observer(self, observer) -> None:
         """Attach the observer after construction.
@@ -116,6 +142,9 @@ class AlignmentGraph:
         """
         if self._observer is None:
             return
+        reader = getattr(self._reader, "actor", "")
+        if reader and kind.endswith("_read"):
+            fields = {**fields, "agent": reader}
         try:
             self._observer(kind, fields)
         except Exception:  # noqa: BLE001 - observation must not break a run
@@ -129,9 +158,10 @@ class AlignmentGraph:
         Individual writes are already locked, which is not the same thing: a
         commit that READS the ids already present and then adds nodes based on
         what it saw is only correct if nothing lands in between. The fan-out
-        commits one work set at a time and is sequential today, so nothing does
-        — this is what keeps that true if it ever stops being sequential, and
-        it is re-entrant, so a caller already inside one costs nothing."""
+        commits one work set at a time on one thread, so nothing does — this
+        is what keeps that true while its Developers run on several
+        (``fanout_workers``), and it is re-entrant, so a caller already inside
+        one costs nothing."""
         with self._lock:
             yield self
 

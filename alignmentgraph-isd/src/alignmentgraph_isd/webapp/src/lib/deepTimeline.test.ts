@@ -70,10 +70,10 @@ describe('foldChronological', () => {
   it('does not fold across an agent change, and drops phase boundaries', () => {
     tick = 0
     const rows = foldChronological([
-      action('phase_started', 'WorkflowOrchestrator', {}),
+      action('phase_started', 'Orchestrator', {}),
       action('node_read', 'ContentDesignerAgent', { query: 'get_node', result_count: 1 }),
       action('node_read', 'MaterialDeveloperAgent', { query: 'get_node', result_count: 1 }),
-      action('phase_finished', 'WorkflowOrchestrator', {}),
+      action('phase_finished', 'Orchestrator', {}),
     ])
     expect(rows).toHaveLength(2)
     expect(rows.every((row) => row.count === 1)).toBe(true)
@@ -91,7 +91,7 @@ describe('foldChronological', () => {
   it('describes the residual audit as its own beat', () => {
     tick = 0
     const rows = foldChronological([
-      action('audit', 'WorkflowOrchestrator', {
+      action('audit', 'Orchestrator', {
         residual_gap_count: 0, gapped_relations: [], ready_to_aggregate: true,
       }),
     ])
@@ -104,7 +104,7 @@ describe('foldChronological', () => {
   it('describes a fan-out as the dispatch it was, and flags a fallback split', () => {
     tick = 0
     const [chosen] = foldChronological([
-      action('dev_plan', 'WorkflowOrchestrator', {
+      action('dev_plan', 'Orchestrator', {
         family: 'activity_designer', set_count: 2, source: 'llm', dropped_refs: 0,
         appended_sets: 0, sets: [{ set_id: 'AS1' }, { set_id: 'AS2' }],
       }),
@@ -118,7 +118,7 @@ describe('foldChronological', () => {
     expect(chosen.tone).toBe('good')
 
     const [derived] = foldChronological([
-      action('dev_plan', 'WorkflowOrchestrator', {
+      action('dev_plan', 'Orchestrator', {
         family: 'activity_designer', set_count: 1, source: 'fallback',
         dropped_refs: 2, appended_sets: 1, sets: [{ set_id: 'AS1' }],
       }),
@@ -167,7 +167,7 @@ describe('foldChronological', () => {
   })
 
   it('flags a gapped residual audit as a warning', () => {
-    const row = foldChronological([action('audit', 'WorkflowOrchestrator', {
+    const row = foldChronological([action('audit', 'Orchestrator', {
       residual_gap_count: 2, gapped_relations: ['C4', 'P6'], ready_to_aggregate: false,
     })])[0]
     expect(row.detail).toBe('2 gaps (C4, P6)')

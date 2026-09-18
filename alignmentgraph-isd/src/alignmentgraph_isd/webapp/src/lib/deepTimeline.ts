@@ -79,6 +79,10 @@ const KIND_OF: Record<string, WorkKind> = {
   duplicate_submit: 'error',
   bare_artifact_wrapped: 'error',
   dropped_argument: 'error',
+  argument_reshaped: 'error',
+  tool_choice_downgraded: 'error',
+  read_of_assignment_id: 'error',
+  repair_declined: 'error',
   calls_not_executed: 'error',
   repair_window_closed: 'error',
   // Not an error: the loop managing its own window. Its RATE is a measurement
@@ -343,6 +347,10 @@ const RECOVERY_LABEL: Record<string, string> = {
   duplicate_submit: 'Skip duplicate submission',
   bare_artifact_wrapped: 'Wrap bare artifact',
   dropped_argument: 'Drop unreadable argument',
+  argument_reshaped: 'Re-container string as list',
+  tool_choice_downgraded: 'Backend refused forced tool call',
+  read_of_assignment_id: 'Point read back to the assignment',
+  repair_declined: 'Close stage with issues the agent declined',
   agentic_fallback: 'Use fallback',
 }
 

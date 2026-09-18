@@ -94,3 +94,38 @@ def test_the_filter_is_keyed_on_the_pending_tier_not_on_the_violation_type():
     shown = _shown(no_tier, _graph_before_the_developer_tier())
 
     assert {"C2", "plan_coverage"} <= set(shown)
+
+
+def test_collecting_own_violations_never_writes():
+    """`read_alignment_state` calls the pure half. A read that rewrote the
+    design would break the repeat guard (it re-derives a read to compare it)
+    and would book a harness repair under an agent's tool call."""
+    import json
+
+    from alignmentgraph_isd.core.agentic.repair_turn import collect_own
+
+    graph = _graph_before_the_developer_tier()
+    graph.add_element_node(NodeType.OBJECTIVE, "ILO-02", {
+        "id": "ILO-02", "level": "apply", "bloom_verb": "memorize",
+        "statement": "Apply Z."})                       # a STRUCTURAL (bloom) fault
+    before = json.dumps(graph.to_full_dict()["nodes"], sort_keys=True, default=str)
+
+    found = collect_own(graph, load_brief("minimal_brief.json"), _STEP["outcomes"])
+
+    assert json.dumps(graph.to_full_dict()["nodes"], sort_keys=True, default=str) == before
+    assert "bloom" in {v.violation_type for v in found}, (
+        "unfixed, the structural fault is still there to be reported")
+
+
+def test_structural_fixes_run_in_the_writing_half_only():
+    from alignmentgraph_isd.core.agentic.repair_turn import collect_own, fix_structural
+
+    graph = _graph_before_the_developer_tier()
+    graph.add_element_node(NodeType.OBJECTIVE, "ILO-02", {
+        "id": "ILO-02", "level": "apply", "bloom_verb": "memorize", "statement": "Apply Z."})
+    brief, step, trajectory = load_brief("minimal_brief.json"), _STEP["outcomes"], TrajectoryLogger()
+
+    fix_structural(graph, brief, step, trajectory)
+
+    assert trajectory.repair_events, "the lookup fix was applied and recorded"
+    assert "bloom" not in {v.violation_type for v in collect_own(graph, brief, step)}

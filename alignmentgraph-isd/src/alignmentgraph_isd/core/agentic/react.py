@@ -35,8 +35,9 @@ import json
 from .. import dev_plans
 from ..brief import _format_design_brief
 from ..memory import Memory, new_agent_run_id
-from ..trajectory import WORKFLOW_ORCHESTRATOR
-from . import budget, fanout, repair_turn, tools
+from ..checks import serialize_violations
+from ..trajectory import ORCHESTRATOR
+from . import alignment_state, budget, fanout, repair_turn, tools
 from . import turn as turn_mod
 from .client import AgenticLLM
 from .compaction import compact
@@ -45,6 +46,7 @@ from .protocol import (
     WORKFLOW_OVERVIEW,
     brief_stages,
     empty_stage_stats,
+    open_issues_pointer,
     protocol_leak_errors,
     respec,
     stage_brief_block,
@@ -57,6 +59,7 @@ from .specialists import (
     STEPS,
     missing_parts,
     step_done,
+    commit_as_harness,
 )
 from .tools import merge_specs, spec_parameters
 from .transcript import (
@@ -66,6 +69,7 @@ from .transcript import (
     forget_compacted_calls,
     history_budget,
     prompt_chars,
+    supersede_earlier,
     trim_history,
 )
 
@@ -91,7 +95,7 @@ Three rules that matter:
 - A submit ADDS to what that stage already holds; it does not replace it. A
   stage needing many items is meant to be submitted across SEVERAL calls, a
   handful at a time. One call cannot hold them all — it will be cut off.
-
+{state_rule}
 Tool names are protocol, never content: never mention them in what you write.
 
 Tools available:
@@ -99,6 +103,12 @@ Tools available:
 
 You have {max_turns} turns in total; each tool call costs one."""
 
+
+#: Graph arm only, where the tool exists; the prose arm's rules are unchanged.
+_STATE_RULE = ("- Call read_alignment_state when a stage comes up and again after you submit "
+               "to it:\n  it lists the artifacts that stage builds on with their real ids, "
+               "what its output\n  must still close, and the open issues in what you "
+               "committed.\n")
 
 _STEP_BY_NAME = {s.name: s for s in STEPS}
 
@@ -139,7 +149,7 @@ class ReactLoop:
         #: to account for it, which is the shape
         #: `test_every_published_context_belongs_to_a_tool_loop` exists to
         #: forbid.
-        self._summariser = AgenticLLM(config, trajectory, WORKFLOW_ORCHESTRATOR)
+        self._summariser = AgenticLLM(config, trajectory, ORCHESTRATOR)
         self.messages: list = []
         self.stats: dict = {
             **empty_stage_stats(),
@@ -164,6 +174,16 @@ class ReactLoop:
         self._specs: list[dict] = []
         #: Repair rounds spent per stage, so one stage cannot absorb them all.
         self._repairs: dict[str, int] = {}
+        #: The stage whose open issues the agent has been pointed at, while
+        #: that round is open: `read_alignment_state` stays on it rather than
+        #: moving to the next incomplete stage. With it, whether the agent has
+        #: read since the pointer, whether that read was this very call, and
+        #: the idle calls since (``budget.REPAIR_IDLE_TURNS``).
+        self._repairing: str | None = None
+        self._read_since_pointer = self._just_read = False
+        self._idle = 0
+        self._state_view = None
+        self._state_reads: dict[str, int] = {}
 
     def _submit_attempts(self, stage: str) -> int:
         """Turns this stage has spent on submitting, accepted or not."""
@@ -298,20 +318,18 @@ class ReactLoop:
         return respec(self.messages, step,
                       with_progress(self.stage_brief(step.name), step, self.state))
 
-    def _docket(self) -> str:
-        """The alignment docket — which relations the design still leaves
-        uncovered — recomputed where the state changed.
-
-        Pushed, not merely available through ``coverage_gaps``, because the
-        multi arm's stage message carries it: leaving it out here would make
-        `context_mode` mean something different in each decomposition arm and
-        confound the interaction between the two axes. The prose arm has no
-        docket to compute, and gets nothing — that IS the axis."""
-        if not self.graph_mode:
-            return ""
-        edges = tuple(dict.fromkeys(r for s in STEPS for r in s.relations))
-        docket = tools.alignment_docket(self.state, edges=edges, gaps=edges)
-        return f"\n\n{docket}" if docket else ""
+    def _state_step(self):
+        """The stage `read_alignment_state` reports on: the one under repair
+        while a repair round is open, else the first not yet complete in the
+        instructed order — the same "current stage" `_offer_contract` uses, so
+        the contract in the turn and the state in the tool describe one stage.
+        The result's first line names it."""
+        if self._repairing:
+            return _STEP_BY_NAME[self._repairing]
+        for step in STEPS:
+            if step.name not in self._done_set:
+                return step
+        return STEPS[-1]
 
     def _validate(self, step, section: dict) -> list[str]:
         """Permissive by design, because submits are ADDITIVE.
@@ -332,10 +350,6 @@ class ReactLoop:
         dispatch_keys = [k for k, _t, _r in step.submit_fields]
         if any(k in present for k in dispatch_keys):
             errors += list(step.validate(section))
-            # Same transport gate the stage loop applies, on the same terms:
-            # only the dispatch keys that actually arrived are judged, so a
-            # partial submit is not penalised for what it left out.
-            errors += tools.undeclared_key_errors(step, present)
         if spec is not None:
             # The SAME item rules a Developer's submit is held to
             # (`fanout.output_errors`), because this agent is writing exactly
@@ -376,12 +390,13 @@ class ReactLoop:
             {"role": "system", "content": self._system_prompt()},
             {"role": "user", "content": _PROTOCOL.format(
                 menu=_menu(STEPS, done, graph_mode=self.graph_mode),
-                max_turns=self.MAX_TURNS) + self._docket()},
+                max_turns=self.MAX_TURNS,
+                state_rule=_STATE_RULE if self.graph_mode else "")},
         ]
         self._done_set = done
         self._offer_contract()
         self._live_specs = specs
-        self._seen_calls: dict[str, str] = {}   # see transcript.forget_compacted_calls
+        self._seen_calls: dict[str, turn_mod.SeenCall] = {}   # see forget_compacted_calls
         #: What this run has spent and what it has been given back. The stage
         #: loop keeps one of these too, and the arithmetic is the meter's, not
         #: either loop's — see :class:`turn.TurnMeter`.
@@ -426,9 +441,10 @@ class ReactLoop:
             self.stats["context_len"] = max(
                 self.stats["context_len"], prompt_chars(self.messages))
 
-            turn = self.llm.call_tools(self.messages, self._live_specs)
+            turn = self.llm.call_tools(
+                self.messages, turn_mod.withhold_reads(self._live_specs, self._meter))
             outcome = turn_mod.spend_queue(
-                turn, meter=self._meter, handle=self._handle_call,
+                turn, meter=self._meter, handle=self._dispatch,
                 unexecuted=self._answer_unexecuted,
                 ended_why="the run ended first")
             if outcome == "done":
@@ -469,7 +485,8 @@ class ReactLoop:
                                   message=turn.message, truncated=turn.truncated)
 
         params = spec_parameters(self._live_specs, turn.name)
-        args = turn_mod.coerce(turn, params, stats=self.stats)
+        args = turn_mod.coerce(turn, params, stats=self.stats,
+                               trajectory=self.trajectory, identity=self.identity)
 
         if turn.name.startswith("submit_"):
             return self._handle_submit(turn, args, params)
@@ -477,6 +494,7 @@ class ReactLoop:
 
     def _handle_submit(self, turn, args: dict, params: dict) -> str:
         """One artifact offered to whichever stage the agent named."""
+        self._meter.acted()
         step = _STEP_BY_NAME.get(turn.name[len("submit_"):])
         if step is None:
             self._answer(turn, f"ERROR: no such stage in {turn.name!r}.")
@@ -530,6 +548,8 @@ class ReactLoop:
             json.dumps(args, ensure_ascii=False)[:200],
             json.dumps(section, ensure_ascii=False)[:200])
         self._compact(turn, step, section)
+        if self.graph_mode and not self._state_reads.get(step.name):
+            self.stats["blind_submits"] += 1      # see ToolLoop._handle_submit
         self.stats["submits_per_stage"][step.name] = (
             self.stats["submits_per_stage"].get(step.name, 0) + 1)
         if not self.stats["stage_order"] or self.stats["stage_order"][-1] != step.name:
@@ -543,43 +563,127 @@ class ReactLoop:
         # see its own violations and the other would not, and the
         # quality difference would be that rather than the context
         # boundary.
-        fixable = (self._own_violations(step)
-                   if step.name in self._done_set and self._repairs.get(step.name, 0) < budget.REPAIR_TURNS
-                   else [])
-        if fixable:
+        fixable: list = []
+        if step.name in self._done_set:
+            if self.graph_mode:
+                # The free fixes first, then what is left FOR the agent —
+                # counted here, shown by `read_alignment_state`.
+                repair_turn.fix_structural(
+                    self.state, self.design_brief, step, self.trajectory)
+                fixable = repair_turn.collect_own(self.state, self.design_brief, step)
+            elif self._repairs.get(step.name, 0) < budget.REPAIR_TURNS:
+                fixable = self._own_violations(step)
+        if fixable and self._repairs.get(step.name, 0) < budget.REPAIR_TURNS:
             self._repairs[step.name] = self._repairs.get(step.name, 0) + 1
             self.stats["repair_turns"] += 1
-            self._answer(turn, repair_turn.repair_request(
-                step.name, fixable, self._repairs[step.name], budget.REPAIR_TURNS))
+            self._repairing, self._read_since_pointer, self._idle = step.name, False, 0
+            self._answer(turn, (
+                open_issues_pointer(step.name, len(fixable), self._repairs[step.name],
+                                    budget.REPAIR_TURNS)
+                if self.graph_mode else repair_turn.repair_request(
+                    step.name, fixable, self._repairs[step.name], budget.REPAIR_TURNS)))
             return "continue"
-        self._answer(turn, _committed_note(step, self._done_set, self.state) + self._docket())
+        if fixable:
+            # Rounds spent with issues open: a parameter we chose, and said so.
+            self._leave_open(step, fixable, reason="budget")
+            self.trajectory.log_recovery_event(
+                self.identity, "budget_exhausted",
+                f"repair turns spent with {len(fixable)} violation(s) open",
+                ", ".join(sorted({v.violation_type for v in fixable}))[:200])
+        if self._repairing == step.name:
+            self._repairing = None
+        self._answer(turn, _committed_note(step, self._done_set, self.state))
         if len(self._done_set) == len(STEPS):
             return "return"
         return "continue"
 
     def _handle_read(self, turn, args: dict) -> str:
-        """One read of the design state, answered with its observation."""
-        call_key = turn_mod.repeat_key(turn.name, args)
-        if call_key in self._seen_calls:
-            self._meter.repeated()
-            self.trajectory.log_recovery_event(
-                self.identity, "repeated_tool_call", turn.name, str(args)[:100])
-            self._answer(turn, f"You already made this exact {turn.name} call and nothing "
-                               "has changed. Use what you have, or work on another stage.")
-            return "continue"
-        self._seen_calls[call_key] = turn.call_id
-
-        observation = self._read(turn.name, args)
-        self.stats["reads"] += 1
-        if observation.startswith("ERROR"):
-            self._meter.tool_error()
-        observation += self._meter.hint()
-        turn_mod.log_read(self.trajectory, self.identity, turn.name, args, observation)
+        """One read, through the guard both arms share (``turn.answer_read``)."""
+        self._state_view = None
+        scope = ""
+        if turn.name == tools.STATE_TOOL:
+            stage = self._state_step().name
+            seen = self._state_reads.get(stage, 0)
+            scope = stage if not seen else f"{stage}_r{seen + 1}"
+        observation, repeat = turn_mod.answer_read(
+            self._seen_calls, turn, args, lambda: self._read(turn.name, args),
+            meter=self._meter, stats=self.stats, trajectory=self.trajectory,
+            identity=self.identity, pure=turn.name != "retrieve", scope=scope,
+            on_answered=self._note_answered,
+            next_move=f"call submit_{self._state_step().name} now")
         self._answer(turn, observation)
+        if not repeat and turn.name == tools.STATE_TOOL:
+            supersede_earlier(self.messages, tools.STATE_TOOL, turn.call_id)
         return "continue"
+
+    def _note_answered(self) -> None:
+        """What an ANSWERED state read writes — never a refused repeat."""
+        view, self._state_view = self._state_view, None
+        if view is None:
+            return
+        step = self._state_step()
+        self.stats["state_reads"] += 1
+        self._state_reads[step.name] = self._state_reads.get(step.name, 0) + 1
+        self._read_since_pointer = self._just_read = True
+        repair_turn.stamp_shown(
+            view.shown, view.unshown, trajectory=self.trajectory, memory=self.memory,
+            identity=self.identity, phase=step.name, family=step.family)
+
+    def _leave_open(self, step, outstanding: list, *, reason: str) -> None:
+        """Write ``reason`` on violations a stage is left with. Observed first:
+        ``mark_open_reason`` skips a key the ledger has never seen. NOT shown —
+        nothing here was rendered to the agent."""
+        if not outstanding:
+            return
+        round_no = self.trajectory.log_violations_result(
+            serialize_violations(outstanding, self.identity), agent=ORCHESTRATOR)
+        self.memory.observe_violations(outstanding, round=round_no, phase=step.name,
+                                       family=step.family, shown_to_agent=False)
+        self.memory.mark_open_reason({v.key for v in outstanding}, reason=reason)
+
+    def _declined(self, why: str) -> None:
+        """The agent saw a stage's open issues and moved on without a submit
+        (``budget.REPAIR_IDLE_TURNS``, or a submit to another stage). Its
+        decision, recorded as one — the same rule and the same event as the
+        stage loop's, so neither arm turns a declined repair into a ceiling."""
+        step = _STEP_BY_NAME[self._repairing]
+        outstanding = repair_turn.collect_own(self.state, self.design_brief, step)
+        self._leave_open(step, outstanding, reason="converged")
+        self.trajectory.log_recovery_event(
+            self.identity, "repair_declined",
+            f"{len(outstanding)} issue(s) left open on {step.name}: {why}",
+            ", ".join(sorted({v.violation_type for v in outstanding}))[:200])
+        self._repairing = None
+
+    def _dispatch(self, turn) -> str:
+        """One call through `_handle_call`, then the idle rule of a repair
+        round — see ``ToolLoop._dispatch``; one rule, one number."""
+        name = turn.name or ""
+        if self._repairing and name.startswith("submit_") \
+                and name != f"submit_{self._repairing}":
+            self._declined("the agent went on to another stage")
+        outcome = self._handle_call(turn)
+        if outcome != "continue" or not (self._repairing and self._read_since_pointer):
+            return outcome
+        if self._just_read:
+            self._just_read = False
+            return outcome
+        if name.startswith("submit"):
+            return outcome
+        self._idle += 1
+        if self._idle >= budget.REPAIR_IDLE_TURNS:
+            self._declined("no submit after reading them")
+            if len(self._done_set) == len(STEPS):
+                return "return"
+        return outcome
 
     # ── plumbing ────────────────────────────────────────────────────────────
     def _read(self, name: str, args: dict) -> str:
+        if name == tools.STATE_TOOL and self.graph_mode:
+            self._state_view = alignment_state.read(
+                self.state, self.design_brief, self._state_step(),
+                submit_tool=f"submit_{self._state_step().name}")
+            return self._state_view.text
         executors = tools.executors_for(graph_mode=self.graph_mode)
         executor = executors.get(name)
         if executor is None:
@@ -601,7 +705,7 @@ class ReactLoop:
         if self.graph_mode:
             # Element pools are additive by construction (`add_element_node`);
             # section nodes are single documents and a re-submit replaces them.
-            step.commit(self.state, self.trajectory, section)
+            commit_as_harness(step.commit, self.state, self.trajectory, section)
         else:
             before = {key: self.state.get(key) for key in _doc_keys(step)}
             step.commit_prose(self.state, self.trajectory, section)

@@ -22,7 +22,7 @@ import json
 import re
 
 from . import budget
-from .specialists import STEPS, missing_parts
+from .specialists import STEPS, missing_parts, view_as_harness
 
 #: Every tool name the arm can ever bind. Protocol vocabulary, and therefore
 #: words that must never appear in a design artifact.
@@ -33,8 +33,9 @@ from .specialists import STEPS, missing_parts
 #: because it mentions `submit`..."). Every name here is underscored and has no
 #: ordinary-English reading.
 _PROTOCOL_WORDS = (
-    "read_nodes", "read_node", "read_edges", "coverage_gaps",
-    "list_documents", "read_document",
+    "read_alignment_state", "read_node", "list_documents", "read_document",
+    # Names an archived prompt or a model's habit may still carry.
+    "read_nodes", "read_edges", "coverage_gaps",
 )
 
 
@@ -66,17 +67,24 @@ def protocol_leak_errors(section: object) -> list[str]:
 
 def landed_parts(step, state) -> tuple[str, ...]:
     """Which of ``step``'s declared artifacts the state now holds."""
-    view = step.view(state) if hasattr(state, "element_nodes") else step.view_prose(state)
+    view = view_as_harness(step, state)
     return tuple(key for key, _type, _required in step.submit_fields if view.get(key))
 
 
-def still_needed(step, state) -> str:
+def still_needed(step, state, closed: tuple[str, ...] = ()) -> str:
     """What this stage already holds and what it still owes, from the STATE.
 
     ONE renderer, so the sentence cannot drift between the place a stage OPENS
     and the place a submit is answered. Computed from the state and never from
     `attempt` or any loop counter — the rule `missing_parts` already carries,
     because a regen resets a counter and the arms would then disagree.
+
+    ``closed`` names the parts the loop will no longer accept — an artifact
+    that spent its submit budget. They are missing from the state but must
+    not be listed as owed: "leave X" beside "still needs X" is an instruction
+    no model can satisfy, and a model that follows the second half resubmits
+    X until the turn ceiling ends the stage. A closed part is named as
+    closed instead, so the sentence and the loop's own rule agree.
 
     Without it a stage re-run from a fresh context opens byte-identically to
     its first attempt, listing all six of `implementation`'s artifacts however
@@ -85,15 +93,22 @@ def still_needed(step, state) -> str:
     completion tokens / 122 s. Only the multi arm has this hole; the single arm
     never restarts a stage and gets the same sentence from `_committed_note`.
     """
-    landed, left = landed_parts(step, state), missing_parts(step, state)
-    if not landed or not left:
+    landed = landed_parts(step, state)
+    left = tuple(p for p in missing_parts(step, state) if p not in closed)
+    shut = tuple(p for p in closed if p in missing_parts(step, state))
+    if not landed or not (left or shut):
         return ""
-    return (f"{step.name} still needs: {', '.join(left)}. "
-            f"Already committed: {', '.join(landed)} — submit the next part on "
-            "its own and do not resend those.")
+    parts = []
+    if left:
+        parts.append(f"{step.name} still needs: {', '.join(left)}.")
+    if shut:
+        parts.append(f"Closed, do not submit again: {', '.join(shut)}.")
+    parts.append(f"Already committed: {', '.join(landed)} — submit the next part on "
+                 "its own and do not resend those.")
+    return " ".join(parts)
 
 
-def with_progress(brief: str, step, state) -> str:
+def with_progress(brief: str, step, state, closed: tuple[str, ...] = ()) -> str:
     """A stage's contract, RE-attached, plus what the state says it still owes.
 
     On a first issue this is the identity function — nothing is committed,
@@ -114,8 +129,20 @@ def with_progress(brief: str, step, state) -> str:
     The sentence is `still_needed`'s, so a stage OPENING, a submit being
     answered and a contract coming BACK all say the same thing.
     """
-    resuming = still_needed(step, state)
-    return f"{brief}\n\n{resuming}" if resuming else brief
+    resuming = still_needed(step, state, closed)
+    if not resuming:
+        return brief
+    # Said TWICE: straight after the stage marker and again at the end. At
+    # the end alone it was measured not to hold (run 9efc3cfa,
+    # implementation): the contract's own list of seven artifacts came first,
+    # and after each re-attachment the model walked that list from the top —
+    # 8 of the stage's 25 turns re-sent `system_check` and the closed
+    # `prototype_execution`. The marker stays the first line, which is what
+    # `brief_stages` and the fixture read a brief by.
+    header, _, body = brief.partition("\n")
+    return (f"{header}\nRESUMING, not starting: {resuming}\n"
+            f"The contract below is for reference; write ONLY what is still needed."
+            f"\n{body}\n\n{resuming}")
 
 
 
@@ -166,7 +193,7 @@ def stage_brief_block(step) -> str:
 
     The stage marker deliberately does NOT use the "=== HEADER ===" form: that
     form means "injected prior-artifact context" everywhere else in the package
-    (the docket and the scenario use it, and readers — the test fixture
+    (the scenario and a Developer's assignment use it, and readers — the test fixture
     included — strip on it). A stage boundary is neither."""
     return f"{STAGE_BRIEF_HEADER.format(stage=step.name)}\n{step.task_block()}"
 
@@ -213,6 +240,32 @@ def respec(messages: list, step, brief: str) -> str:
     return "\n\nThe contract for this stage, again:\n" + brief
 
 
+#: Which agent-facing protocol a run spoke, recorded in
+#: ``metadata.run_config`` so that runs on either side of a change to the
+#: tools an agent is bound or to how a stage ends are never pooled by mistake.
+#: 2 = one role-scoped ``read_alignment_state`` in the graph arm, open issues
+#: pulled by the agent, a declined repair closing its stage.
+PROTOCOL_REV = 2
+
+#: The answer to a repeated read whose result is unchanged — ONE wording for
+#: both arms, and only ever said when it is true (``turn.answer_read`` has
+#: just re-derived the result and compared it).
+REPEAT_UNCHANGED = ("You already called {name} with these arguments and the result has not "
+                    "changed since the last call. Use what you have.")
+
+
+def open_issues_pointer(stage: str, count: int, round_index: int, rounds: int) -> str:
+    """The answer to a submit that completed a stage whose own checks still
+    fail: THAT they fail, and where to look. Never the details — those are the
+    agent's to read (``read_alignment_state``), so that seeing a problem,
+    fixing it and checking again is one loop the agent drives. The count and
+    the round are here because an agent that does not look must still have
+    been told, once, that there was something to see."""
+    return (f"COMMITTED. {count} open issue(s) on {stage} (round {round_index} of {rounds}) — "
+            "call read_alignment_state to see them, fix them, and submit only what changes. "
+            "If a point is wrong or you cannot act on it, submit nothing.")
+
+
 def empty_stage_stats() -> dict:
     """The per-stage instrumentation record, SAME keys whatever path a stage
     took: both loops start from it and ``run.py`` zero-fills from it, so a
@@ -236,11 +289,13 @@ def empty_stage_stats() -> dict:
     kept separate so "the dispatch OR any one of ten sets gave up" is not one
     number."""
     return {"turns_used": 0, "submits_rejected": 0, "repeated_calls": 0,
-            "history_dropped": 0, "gave_up": False, "reads": 0,
+            "history_dropped": 0, "gave_up": False, "reads": 0, "assignment_reads": 0,
+            "rereads_changed": 0, "state_reads": 0, "blind_submits": 0,
             "via_budget_exhaustion": False,
             "compactions": 0, "compaction_summaries": 0,
             "context_len": 0, "batched_calls": 0, "markup_recovered": 0,
-            "args_salvaged": 0, "truncated_turns": 0, "dropped_args": 0,
+            "args_salvaged": 0,
+        "args_reshaped": 0, "truncated_turns": 0, "dropped_args": 0,
             "repair_turns": 0, "tool_errors": 0,
             "n_sets": 0, "sets_gave_up": 0, "set_turns": 0,
             "set_submits_rejected": 0}

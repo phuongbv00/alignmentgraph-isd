@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 from .. import checks
 from ..alignment_graph import alignment
 from ..alignment_graph.alignment import bare_ref
-from ..llm_io import parse_json_array, parse_json_response
+from ..llm_io import close_unclosed_arrays, parse_json_array, parse_json_response
 from .artifact_schemas import ARTIFACT_SCHEMAS
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -60,10 +60,20 @@ def _node_header(node: dict) -> str:
     return f"{node_type.upper()}:{node_id}"
 
 
+#: Node keys that are the harness's own bookkeeping and never a row facet.
+#: ``plan_set`` names the WORK SET that wrote an element (``AB-01``,
+#: ``MU-C-01``); shown beside real ids it reads as one, and a Developer goes
+#: and asks for it. MEASURED (runs 14a6b4c7, 9efc3cfa): a list read for ``ids=
+#: ["AB-01", "AB-02", "AB-03"])`` on a Material Developer's second or third
+#: turn in both, each an ERROR and then a repeat of it.
+_HARNESS_FACETS = frozenset({"plan_set"})
+
+
 def render_listing(nodes: list[dict], budget: int = READ_CHAR_BUDGET) -> str:
     """One LINE per node: id, its short identifying fields, and a label.
 
-    What ``read_nodes`` answers with, where ``read_node`` keeps the full dump.
+    What ``read_alignment_state`` lists its artifacts with, where ``read_node``
+    keeps the full dump.
     MEASURED (run 2b9e911a, the implementation stage): listing every activity
     and material as full JSON put 3,590–5,607 tokens of tool results against an
     8,192-token prompt budget with only 352–934 tokens of conversation beside
@@ -105,6 +115,7 @@ def render_listing(nodes: list[dict], budget: int = READ_CHAR_BUDGET) -> str:
             f"{key}={value}"
             for key, value in data.items()
             if key != label_field
+            and key not in _HARNESS_FACETS
             and isinstance(value, (str, int, float, bool))
             and str(value).strip()
             and len(str(value)) <= FACET_CHAR_CAP
@@ -162,101 +173,10 @@ def render_nodes(nodes: list[dict], max_chars: int = NODE_CHAR_CAP,
     return "\n\n".join(lines) if lines else "(no nodes yet)"
 
 
-def alignment_docket(graph: "AlignmentGraph", *, edges: tuple[str, ...] = (),
-                     gaps: tuple[str, ...] = (), plan_pairs: bool = False) -> str:
-    """The alignment-state block: established edges, instantiated coverage
-    gaps, and unrealised plan pairs for the named relations.
-
-    Kept in the agentic arm because it is the deterministic scaffolding SLMs
-    measurably need (an enumerated checklist over a universally-quantified
-    rule); the agency this arm adds sits on top of it, not instead of it.
-    """
-    facts: dict = {"edges": [], "gaps": [], "plan_pairs": []}
-    for rid in edges:
-        relation = alignment.REGISTRY[rid]
-        for edge in graph.get_edges(relation_id=rid):
-            # BARE ids: a node id is namespaced ("objective:ILO-01") and the
-            # model echoes back whatever the docket shows it, into fields every
-            # matcher compares bare. Measured on a single-graph run:
-            # `lo_coverage_targets` keyed by namespaced ids made plan_coverage
-            # report every promised pair unrealised.
-            facts["edges"].append({
-                "source": bare_ref(edge["source"]), "target": bare_ref(edge["target"]),
-                "relation": relation.key,
-            })
-    for rid in gaps:
-        relation = alignment.REGISTRY[rid]
-        _, uncovered = alignment.relation_coverage(graph, rid)
-        if uncovered:
-            facts["gaps"].append({
-                "relation": relation.key, "label": relation.label,
-                "nodes": [bare_ref(n) for n in uncovered],
-            })
-    if plan_pairs:
-        for violation in checks.plan_coverage(graph):
-            facts["plan_pairs"].append({
-                "objective": violation.metadata.get("lo_id", ""),
-                "category": violation.metadata.get("plan_category", ""),
-            })
-    if not (facts["edges"] or facts["gaps"] or facts["plan_pairs"]):
-        return ""
-
-    lines: list[str] = ["=== ALIGNMENT STATE ==="]
-    if facts["edges"]:
-        lines.append("[EDGES]")
-        for edge in facts["edges"][:EDGE_LINE_CAP]:
-            lines.append(f"{edge['source']} --{edge['relation']}--> {edge['target']}")
-        extra = len(facts["edges"]) - EDGE_LINE_CAP
-        if extra > 0:
-            lines.append(f"... and {extra} more edges")
-    if facts["gaps"]:
-        lines.append("[GAPS — your output must close these]")
-        for gap in facts["gaps"]:
-            ids = ", ".join(gap["nodes"][:GAP_ID_CAP])
-            extra = len(gap["nodes"]) - GAP_ID_CAP
-            more = f" (+{extra} more)" if extra > 0 else ""
-            lines.append(f"{gap['relation']} missing for: {ids}{more}")
-    if facts["plan_pairs"]:
-        lines.append("[PLAN-PROMISED PAIRS, NOT YET REALISED — produce exactly these]")
-        lines.append("; ".join(f"{p['objective']} x {p['category']}" for p in facts["plan_pairs"]))
-    return "\n".join(lines)
-
-
 # ── tool executors ──────────────────────────────────────────────────────────
 # Uniform contract: (graph, step, args) -> observation string. Errors are
 # returned as "ERROR: ..." observations — the model gets to correct itself
 # inside its turn budget instead of the run failing.
-
-
-def run_read_nodes(graph: "AlignmentGraph", step: "AgenticStep", args: dict) -> str:
-    node_type = str(args.get("node_type", "")).strip().lower()
-    if node_type not in step.readable_types:
-        # ``read_nodes`` LISTS a type; ``read_node`` READS ids. The names
-        # differ by one character and, because ``read_node`` takes an array, so
-        # do their arguments — so a model that wants "read these ids" reaches
-        # for the plural name and is refused.
-        #
-        # MEASURED (runs 53042a0d, 2559b22d): 50 of 63 ERROR observations were
-        # "node_type must be one of …", and the majority carried a perfectly
-        # good ``ids`` array. The intent is unambiguous, so it is served rather
-        # than refused — the same rule as ``_submit_alias`` rescuing a bare
-        # ``submit`` and ``_wrap_bare_artifact`` accepting an artifact without
-        # its envelope: a call is not wrong because it came through the
-        # neighbouring door.
-        if args.get("ids") or (args.get("id") and not args.get("node_type")):
-            return run_read_node(graph, step, args)
-        return ("ERROR: node_type must be one of: "
-                + ", ".join(step.readable_types)
-                + ". To read particular artifacts in full, call read_node with "
-                  "their ids instead.")
-    nodes = graph.element_nodes(node_type)
-    if not nodes:
-        # Section-only artifacts (learner_profile, the plan nodes) have no
-        # element pool; fall back to their section node so the read still
-        # answers — and IN FULL, because a section node is a whole document and
-        # a one-line listing of one is useless.
-        return render_nodes(graph.section_nodes(node_type))
-    return render_listing(nodes)
 
 
 def _resolve_node(graph: "AlignmentGraph", step: "AgenticStep", node_id: str):
@@ -268,7 +188,30 @@ def _resolve_node(graph: "AlignmentGraph", step: "AgenticStep", node_id: str):
             node = graph.get_node(f"{node_type}{graph.ELEMENT_SEP}{node_id}")
             if node is not None:
                 break
+    if node is None:
+        # The row header is ``[GAP:GAP-001]``, and a model asked for ids copies
+        # it back as ``GAP:GAP-001`` or fuses it into ``GAP-GAP-001``. Both
+        # name exactly one artifact, so both are served. MEASURED (run
+        # 9efc3cfa, outcomes): the fused form was refused, and the refusal was
+        # followed by the same three-read batch four times over.
+        for node_type in step.readable_types:
+            for sep in (graph.ELEMENT_SEP, "-"):
+                prefix = f"{node_type}{sep}"
+                if node_id.lower().startswith(prefix) and len(node_id) > len(prefix):
+                    node = graph.get_node(
+                        f"{node_type}{graph.ELEMENT_SEP}{node_id[len(prefix):]}")
+                    if node is not None:
+                        return node
     return node
+
+
+def _where_ids_are(step) -> str:
+    """Where this caller finds the ids that exist: the state read where one is
+    bound, the assignment for a work set, which is handed its ids and has no
+    list tool to be sent to."""
+    if getattr(step, "state_tool", True):
+        return f"Call {STATE_TOOL} for the ids that exist."
+    return "The ids you may read are the ones your assignment names."
 
 
 def run_read_node(graph: "AlignmentGraph", step: "AgenticStep", args: dict) -> str:
@@ -281,7 +224,7 @@ def run_read_node(graph: "AlignmentGraph", step: "AgenticStep", args: dict) -> s
     content stage duly gave up — 41 turns, 35 reads, and a design left with 5
     content modules against 23 activities (C5 coverage 0.13).
 
-    The counterpart of ``read_nodes`` being a one-line-per-node LISTING:
+    The counterpart of the state read being a one-line-per-node LISTING:
     without a batched read, the only way to read what the listing names is one
     call per id, so the listing hands the model a bill it pays a turn at a
     time. Batching changes turns, not scope.
@@ -300,16 +243,11 @@ def run_read_node(graph: "AlignmentGraph", step: "AgenticStep", args: dict) -> s
     The axis measures what state each mode holds, not how many turns the
     harness charges to look at it.
     """
-    # The mirror of `run_read_nodes`' rescue: a model that wants the LISTING
-    # and reaches for the singular name has still said what it wants.
-    if not args.get("ids") and not args.get("id") and args.get("node_type"):
-        return run_read_nodes(graph, step, args)
     raw = args.get("ids", args.get("id", ""))
     ids = [str(one).strip() for one in (raw if isinstance(raw, list) else [raw])]
     ids = [one for one in ids if one]
     if not ids:
-        return ('ERROR: args must carry {"ids": ["<node id>", ...]}. '
-                "To list a type instead, call read_nodes with its node_type.")
+        return ('ERROR: args must carry {"ids": ["<node id>", ...]}. ' + _where_ids_are(step))
 
     found, missing = [], []
     for node_id in dict.fromkeys(ids):          # de-duplicated, order kept
@@ -326,7 +264,7 @@ def run_read_node(graph: "AlignmentGraph", step: "AgenticStep", args: dict) -> s
         note = ("ERROR: no readable artifact with id "
                 + ", ".join(repr(one) for one in missing)
                 + ". Readable types here: " + (", ".join(step.readable_types) or "none")
-                + ". Use read_nodes to list their ids.")
+                + ". " + _where_ids_are(step))
     if not found:
         return note
     # "In full" means in full: at NODE_CHAR_CAP this tool truncated a 1,710-char
@@ -334,35 +272,6 @@ def run_read_node(graph: "AlignmentGraph", step: "AgenticStep", args: dict) -> s
     per_node = max(NODE_CHAR_CAP, READ_CHAR_BUDGET // len(found))
     rendered = render_nodes(found, max_chars=per_node)
     return f"{rendered}\n\n{note}" if note else rendered
-
-
-def run_read_edges(graph: "AlignmentGraph", step: "AgenticStep", args: dict) -> str:
-    rid = str(args.get("relation_id", "")).strip().upper()
-    if rid not in step.relations:
-        return "ERROR: relation_id must be one of: " + ", ".join(step.relations)
-    relation = alignment.REGISTRY[rid]
-    edges = graph.get_edges(relation_id=rid)
-    if not edges:
-        return f"(no {relation.key} edges yet)"
-    lines = [f"{e['source']} --{relation.key}--> {e['target']}" for e in edges[:EDGE_LINE_CAP]]
-    extra = len(edges) - EDGE_LINE_CAP
-    if extra > 0:
-        lines.append(f"... and {extra} more edges")
-    return "\n".join(lines)
-
-
-def run_coverage_gaps(graph: "AlignmentGraph", step: "AgenticStep", args: dict) -> str:
-    rid = str(args.get("relation_id", "")).strip().upper()
-    if rid not in step.relations:
-        return "ERROR: relation_id must be one of: " + ", ".join(step.relations)
-    relation = alignment.REGISTRY[rid]
-    _, uncovered = alignment.relation_coverage(graph, rid)
-    if not uncovered:
-        return f"OK: every node is covered by {relation.key}"
-    ids = ", ".join(uncovered[:GAP_ID_CAP])
-    extra = len(uncovered) - GAP_ID_CAP
-    more = f" (+{extra} more)" if extra > 0 else ""
-    return f"{relation.key} ({relation.label}) missing for: {ids}{more}"
 
 
 def unwrap_section(section: dict, validate) -> tuple[dict, list[str]]:
@@ -425,11 +334,11 @@ def run_read_document(store, step: "AgenticStep", args: dict) -> str:
 
 # No separate "check my artifact" tool: a rejected submit returns the same
 # errors at no re-emission cost, and the retry allowance is ``SUBMIT_BUDGET``.
+#: ``read_alignment_state`` is not here: it needs the design brief and the
+#: ledger, which this ``(graph, step, args)`` contract does not carry, so each
+#: loop serves it itself through ``alignment_state.read``.
 EXECUTORS = {
-    "read_nodes": run_read_nodes,
     "read_node": run_read_node,
-    "read_edges": run_read_edges,
-    "coverage_gaps": run_coverage_gaps,
 }
 
 PROSE_EXECUTORS = {
@@ -469,48 +378,6 @@ def _parameters_from(fields: tuple, schema_keys: dict[str, str] | None = None) -
         if is_required:
             required.append(key)
     return {"type": "object", "properties": properties, "required": required}
-
-
-def undeclared_key_errors(step: "AgenticStep", section: dict) -> list[str]:
-    """Top-level keys an OBJECT artifact does not declare, named back.
-
-    The enforcement half of ``artifact_schemas._obj``'s
-    ``additionalProperties: false``. A property of the CONTRACT rather than of
-    the artifact's pedagogy, which is why it composes into the loops'
-    ``_validate`` beside ``protocol_leak_errors`` instead of living in any
-    step's own validator.
-
-    MEASURED (run 7ef3ed16): ``assessment_plan`` shipped ``area``,
-    ``rationale``, ``detected_by`` and ``first_revision`` at the top level —
-    one ``pilot_data_plan.anticipated_difficulties`` entry written outside its
-    list. It passed the submit, the audit and the aggregate, and reached the
-    judge. Naming the keys is what makes this fixable in one turn: the model
-    wrote the content, it simply put it one level too high.
-
-    Only OBJECT fields are judged, and only their top level. An array field's
-    ITEMS are the Developer tier's contract (``fanout.output_errors``), and a
-    stray key inside a nested object is a different, unmeasured failure — a
-    gate is worth its submit budget only where it has been seen to fire.
-    """
-    errors: list[str] = []
-    for key, json_type, _required in getattr(step, "submit_fields", ()):
-        if json_type != "object":
-            continue
-        value = section.get(key)
-        if not isinstance(value, dict) or not value:
-            continue
-        schema = ARTIFACT_SCHEMAS.get((step.schema_keys or {}).get(key, key))
-        declared = (schema or {}).get("properties")
-        if not declared:
-            continue
-        extra = sorted(k for k in value if k not in declared)
-        if extra:
-            errors.append(
-                f"{key}: {', '.join(extra)} " + ("is" if len(extra) == 1 else "are")
-                + " not part of this artifact. Its fields are: "
-                + ", ".join(sorted(declared))
-                + ". Move that content into the field it belongs to, or drop it.")
-    return errors
 
 
 def submit_parameters(step: "AgenticStep") -> dict:
@@ -728,6 +595,95 @@ def coerce_args(parameters: dict, args: object, *, salvaged: list | None = None)
     return coerced
 
 
+def reshape_args(parameters: dict, args: dict, *, reshaped: list,
+                 salvaged: list | None = None) -> dict:
+    """A scalar string where the schema declares an ARRAY OF STRINGS becomes
+    the one-element list holding it, recursively through the declared shape.
+
+    STRUCTURAL, never authorial: the model's text is kept byte for byte and
+    only its container changes. Splitting the string into items instead —
+    on newlines, on bullets — would decide where one item ends and the next
+    begins, which is writing the artifact. MEASURED (run 14a6b4c7,
+    implementation): ``operator_manual.operation_procedures`` arrived as one
+    paragraph, the validator answered "expected list, got str" three times,
+    the artifact spent its submit budget and the whole stage was regenerated
+    — ~100 of the run's 285 calls for a container mismatch the text itself
+    never had.
+
+    Separate from :func:`coerce_args` because the two answer different
+    questions: that one PARSES a structure the transport flattened to text,
+    this one RESHAPES a value the model wrote in the wrong container. A text
+    that starts with ``[`` is tried as JSON first and, if it is a list, counts
+    as a parse (``salvaged``) rather than a reshape. Every reshaped dotted
+    path is appended to ``reshaped`` so the rate is reported
+    (``autonomy.args_reshaped``) beside ``args_salvaged``.
+
+    Only ``string`` items are wrapped: an array of objects or integers under a
+    scalar string is the model's mistake and stays one. A string where an
+    OBJECT is declared is likewise left for the validator.
+    """
+    def walk(schema: dict, value: object, path: str) -> object:
+        kind = (schema or {}).get("type")
+        if kind == "array":
+            items = (schema or {}).get("items") or {}
+            if isinstance(value, str):
+                if items.get("type") != "string" or not value.strip():
+                    return value
+                if value.lstrip().startswith("["):
+                    try:
+                        parsed = json.loads(value)
+                    except (TypeError, ValueError):
+                        parsed = None
+                    if isinstance(parsed, list):
+                        if salvaged is not None:
+                            salvaged.append(path)
+                        return parsed
+                reshaped.append(path)
+                return [value]
+            if isinstance(value, list) and items.get("type") == "object":
+                return [walk(items, one, f"{path}[{i}]") for i, one in enumerate(value)]
+            return value
+        if kind == "object" and isinstance(value, dict):
+            props = (schema or {}).get("properties") or {}
+            extra = (schema or {}).get("additionalProperties")
+            out = {}
+            for key, one in value.items():
+                sub = props.get(key) or (extra if isinstance(extra, dict) else None)
+                out[key] = walk(sub, one, f"{path}.{key}" if path else key) if sub else one
+            return out
+        return value
+
+    if not isinstance(args, dict):
+        return args
+    args = _unwrap_self_named(parameters, args, salvaged)
+    return walk({"type": "object", **(parameters or {})}, args, "")
+
+
+def _unwrap_self_named(parameters: dict, args: dict, salvaged: list | None) -> dict:
+    """``{"operator_manual": {"operator_manual": {...}}}`` means
+    ``{"operator_manual": {...}}``.
+
+    A model told to send the artifact under its own name sometimes names it
+    twice. The inner key is not a field of the artifact, so the gate would
+    reject it — or, dropped as undeclared, take the whole artifact with it.
+    MEASURED (run 1c0a4e81): ``operator_manual`` on its third and last submit,
+    and ``improvement_plan``. Unwrapped only when the artifact does not itself
+    declare a field by that name; fields written beside the inner copy win."""
+    declared = (parameters or {}).get("properties") or {}
+    out = dict(args)
+    for key, value in args.items():
+        schema = declared.get(key) or {}
+        if schema.get("type") != "object" or not isinstance(value, dict):
+            continue
+        inner = value.get(key)
+        if not isinstance(inner, dict) or key in (schema.get("properties") or {}):
+            continue
+        out[key] = {**inner, **{k: v for k, v in value.items() if k != key}}
+        if salvaged is not None:
+            salvaged.append(f"{key} (named twice)")
+    return out
+
+
 def _loads(text: str, salvaged: list | None = None, name: str = "",
            *, want_array: bool = False) -> object:
     """Strict JSON first, then the tolerant parser for the DECLARED shape.
@@ -748,6 +704,17 @@ def _loads(text: str, salvaged: list | None = None, name: str = "",
         return json.loads(text)
     except (TypeError, ValueError):
         pass
+    if not want_array:
+        # One structural repair before the tolerant parser, which would keep
+        # only the fields BEFORE the break: an array that lost its `]`.
+        try:
+            repaired = json.loads(close_unclosed_arrays(text))
+        except (TypeError, ValueError):
+            repaired = None
+        if isinstance(repaired, dict) and repaired:
+            if salvaged is not None:
+                salvaged.append(name)
+            return repaired
     if want_array:
         items, dropped = parse_json_array(text)
         if not items:
@@ -789,12 +756,10 @@ def tool_specs(step: "AgenticStep", *, graph_mode: bool = True,
     can only answer "ERROR" costs a small model a turn to discover that."""
     specs: list[dict] = []
     if graph_mode:
+        if getattr(step, "state_tool", True) and (step.readable_types or step.docket):
+            specs.append(_fn(STATE_TOOL, _state_description(step),
+                             {"type": "object", "properties": {}}))
         if step.readable_types:
-            specs.append(_fn(
-                "read_nodes",
-                "List the existing artifacts of one type — id, key fields and a "
-                "short label for each. Call read_node for the ones you need in full.",
-                _enum_param("node_type", step.readable_types, "Which artifact type to list.")))
             specs.append(_fn(
                 "read_node",
                 "Read artifacts from the design graph in full. Ask for every id "
@@ -805,15 +770,6 @@ def tool_specs(step: "AgenticStep", *, graph_mode: bool = True,
                      "items": {"type": "string"},
                      "description": "The node ids, e.g. ['ILO-01', 'ILO-02']."}},
                  "required": ["ids"]}))
-        if step.relations:
-            specs.append(_fn(
-                "read_edges",
-                "The alignment links already established for one relation.",
-                _enum_param("relation_id", step.relations, "Which alignment relation.")))
-            specs.append(_fn(
-                "coverage_gaps",
-                "Which artifacts one alignment relation still leaves uncovered.",
-                _enum_param("relation_id", step.relations, "Which alignment relation.")))
     else:
         if step.readable_docs:
             specs.append(_fn(
@@ -834,6 +790,30 @@ def tool_specs(step: "AgenticStep", *, graph_mode: bool = True,
              "required": ["query"]}))
     specs += submit_specs(step, only)
     return specs
+
+
+#: The one list-shaped read of the graph arm; see ``alignment_state``.
+STATE_TOOL = "read_alignment_state"
+
+
+def _state_description(step) -> str:
+    """What ``read_alignment_state`` covers FOR THIS ROLE — the scope is fixed
+    by the binding and stated here, so the tool takes no arguments and cannot
+    be asked for something out of scope."""
+    if not getattr(step, "name", ""):
+        return ("The alignment state of the stage you are ON — the first one not yet "
+                "complete; the result's first line names it: the artifacts it builds on "
+                "(id, key fields, label), what its output must still close, and the open "
+                "issues in what you have committed to it. Takes no arguments. Call it when "
+                "a stage comes up, and again after each submit.")
+    closes = ", ".join(alignment.REGISTRY[rid].label
+                       for rid in (step.docket or {}).get("gaps", ()))
+    return (f"The alignment state of the {step.name} stage: the "
+            f"{', '.join(step.readable_types) or 'earlier'} artifacts it builds on (id, key "
+            "fields, label), what your output must still close"
+            + (f" ({closes})" if closes else "")
+            + ", and the open issues in what you have committed. Takes no arguments. "
+              "Call it before you write, and again after each submit.")
 
 
 def react_specs(steps: tuple, done: frozenset, *, graph_mode: bool = True,
@@ -900,6 +880,11 @@ class _ReadScope:
     readable_docs: tuple[str, ...]
     submit_fields: tuple = ()
     schema_keys: dict = field(default_factory=dict)
+    #: No stage of its own: the state tool is bound with the stage-agnostic
+    #: description, and the loop serves it for whichever stage is current.
+    name: str = ""
+    docket: dict = field(default_factory=dict)
+    state_tool: bool = True
 
 
 def tool_names(specs: list[dict]) -> tuple[str, ...]:

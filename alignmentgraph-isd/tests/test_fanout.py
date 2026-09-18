@@ -8,7 +8,7 @@ in test_empty_section_regen.py; phase bracketing in test_on_event.py."""
 from __future__ import annotations
 
 from alignmentgraph_isd import HarnessRunConfig
-from alignmentgraph_isd.core.trajectory import WORKFLOW_ORCHESTRATOR
+from alignmentgraph_isd.core.trajectory import ORCHESTRATOR
 
 from conftest import FakeChatModel, load_brief, run_brief
 
@@ -58,7 +58,7 @@ def test_dev_plan_events_fire_once_per_fanout_family_multi_arm():
         # it reads state no single Developer owns, and picking the split is
         # what makes them separable in the first place. (Before the Developer
         # tier moved into core/agentic, the dispatching Designer logged it.)
-        assert event["agent"] == WORKFLOW_ORCHESTRATOR
+        assert event["agent"] == ORCHESTRATOR
 
 
 def test_dev_plan_events_fire_in_prose_arm_too():
@@ -215,3 +215,36 @@ def test_session_guides_are_element_nodes_that_carry_the_delivery_edges():
     assert "session_guides" not in section["data"].get("instructor_guide", {})
     # The harness-only plan never reaches the deliverable.
     assert "dev_plan" not in result["addie_output"]["implementation"]
+
+
+def _shape(result: dict) -> tuple:
+    graph = result["graph"]
+    nodes = [(n["id"], n["type"], n.get("data")) for n in graph["nodes"]]
+    edges = sorted((e["source"], e["target"], e.get("type") or e.get("relation"))
+                   for e in graph["edges"])
+    plans = [(p["stage"], [ws["set_id"] for ws in p["work_sets"]]) for p in result["plans"]]
+    return nodes, edges, plans
+
+
+def test_parallel_workers_produce_the_same_graph_as_sequential():
+    """``fanout_workers`` changes WHEN the Developers run, never what lands:
+    the commits stay in plan order, so the graph's insertion order — which is
+    what every later listing and the aggregate's lists come out in — is the
+    same whatever the worker count. Contexts are compared as a SET: their
+    publication order is the workers' and is allowed to differ."""
+    brief = load_brief("minimal_brief.json")
+    runs = {n: run_brief(brief, HarnessRunConfig(llm_factory=lambda: FakeChatModel(),
+                                                 agent_mode="multi", fanout_workers=n))
+            for n in (1, 3)}
+    assert _shape(runs[1]) == _shape(runs[3])
+    assert runs[1]["addie_output"] == runs[3]["addie_output"]
+    assert ({c["agent"] for c in runs[1]["contexts"]}
+            == {c["agent"] for c in runs[3]["contexts"]})
+    assert runs[1]["metadata"]["run_config"]["fanout_workers"] == 1
+    assert runs[3]["metadata"]["run_config"]["fanout_workers"] == 3
+    assert (runs[1]["metadata"]["token_usage"]["llm_calls"]
+            == runs[3]["metadata"]["token_usage"]["llm_calls"])
+
+
+def test_the_default_is_one_worker():
+    assert HarnessRunConfig().fanout_workers == 1

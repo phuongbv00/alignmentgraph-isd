@@ -23,7 +23,8 @@ def _collect_violations(node_name: str, graph, design_brief) -> list:
     if node_name == "activity_designer":
         coverage = [v for v in checks.relation_coverage(graph) if v.violation_type in ("C3", "C4", "P4")]
         bloom = [v for v in checks.bloom_mismatches(graph) if v.violation_type == "bloom_mismatch_activity"]
-        return coverage + checks.activity_engagement(graph) + bloom
+        return (coverage + checks.activity_engagement(graph) + bloom
+                + checks.time_budget(graph))
     if node_name == "content_designer":
         # P8: a media selection whose `respects_constraints` names no constraint
         # that exists. Report-only for the harness (picking one would be a

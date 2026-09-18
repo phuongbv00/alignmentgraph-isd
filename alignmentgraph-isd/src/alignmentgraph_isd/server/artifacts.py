@@ -96,6 +96,32 @@ def write_result(directory: Path, brief: dict, result: dict) -> None:
     write_json(directory / ARTIFACT_FILES["violations"], result.get("violations", []))
 
 
+def write_partial(directory: Path, brief: dict, *, graph_json: str, contexts: list,
+                  violations: list) -> None:
+    """Persist what a run that ended WITHOUT a result had already shown.
+
+    A cancelled or failed run returns nothing to ``write_result``, but its
+    graph, its agents' contexts and its ledger were live on the page until the
+    moment it stopped — held in the run's in-memory state, which the registry
+    evicts. Without this the Graph, Context and Violations tabs of such a run
+    go blank as soon as it ends, which is exactly when someone opens them to
+    see why it was stopped. They are written under the SAME names the readers
+    already use, so nothing downstream has to know the run was partial; what
+    says so is the run's status, and the ledger's blank ``open_reason``
+    ("not settled yet"), which is the permanent state of a partial one.
+
+    Only these three: there is no result to take an ADDIE output, a trajectory
+    or metadata from, and ``trajectory_deep.json`` staying absent is what keeps
+    ``discard_events`` from deleting the event log — still the only record of
+    what such a run DID."""
+    directory.mkdir(parents=True, exist_ok=True)
+    write_json(directory / ARTIFACT_FILES["brief"], brief)
+    if graph_json:
+        write_text(directory / ARTIFACT_FILES["graph"], graph_json)
+    write_json(directory / ARTIFACT_FILES["contexts"], contexts)
+    write_json(directory / ARTIFACT_FILES["violations"], violations)
+
+
 def discard_events(directory: Path) -> bool:
     """Delete ``events.jsonl`` once the run it belongs to has a result.
 

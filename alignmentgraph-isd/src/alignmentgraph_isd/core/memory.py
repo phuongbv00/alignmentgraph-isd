@@ -35,6 +35,7 @@ is returned beside it, and only to callers that ask.
 """
 from __future__ import annotations
 
+import threading
 import uuid
 from dataclasses import dataclass, field, replace
 
@@ -221,6 +222,11 @@ class Memory:
         self._plans: dict[str, list[Plan]] = {}
         self._findings: dict[str, Finding] = {}
         self._findings_rev = 0
+        # One lock for every mutator and snapshot: a parallel fan-out's
+        # workers publish contexts and the orchestrator writes findings on
+        # the main thread at the same time. Re-entrant, since a mutator may
+        # read a snapshot of its own store.
+        self._lock = threading.RLock()
 
     # ── the substrate ───────────────────────────────────────────────────────
     @classmethod
@@ -248,17 +254,21 @@ class Memory:
         would make ``result["contexts"]`` a pile of prefixes of itself. Held in
         place, the last one wins and the order is when each agent first spoke,
         which is the order a reader wants."""
-        existing = self._transcript_index.get(transcript.id)
-        if existing is None:
-            self._transcript_index[transcript.id] = len(self._transcripts)
-            self._transcripts.append(transcript)
-        else:
-            self._transcripts[existing] = transcript
+        with self._lock:
+            existing = self._transcript_index.get(transcript.id)
+            if existing is None:
+                self._transcript_index[transcript.id] = len(self._transcripts)
+                self._transcripts.append(transcript)
+            else:
+                self._transcripts[existing] = transcript
 
     @property
     def transcripts(self) -> tuple[Transcript, ...]:
-        """Every context published this run, in the order it was published."""
-        return tuple(self._transcripts)
+        """Every context published this run, in the order it was published —
+        which under a parallel fan-out is the order the workers first spoke,
+        not the plan's order."""
+        with self._lock:
+            return tuple(self._transcripts)
 
     @property
     def agents(self) -> tuple[str, ...]:
@@ -272,11 +282,13 @@ class Memory:
 
     # ── plans ───────────────────────────────────────────────────────────────
     def remember_plan(self, plan: Plan) -> None:
-        self._plans.setdefault(plan.stage, []).append(plan)
+        with self._lock:
+            self._plans.setdefault(plan.stage, []).append(plan)
 
     @property
     def plans(self) -> tuple[Plan, ...]:
-        return tuple(plan for rounds in self._plans.values() for plan in rounds)
+        with self._lock:
+            return tuple(plan for rounds in self._plans.values() for plan in rounds)
 
     # ── findings ────────────────────────────────────────────────────────────
     def _write(self, key: str, finding: Finding) -> None:
@@ -287,8 +299,9 @@ class Memory:
         routing all of them through here means a future fifth mutator has to
         touch the private dict directly to bypass the counter, which is a
         review-visible act in a way a forgotten call never is."""
-        self._findings[key] = finding
-        self._findings_rev += 1
+        with self._lock:
+            self._findings[key] = finding
+            self._findings_rev += 1
 
     @property
     def findings_rev(self) -> int:
@@ -411,7 +424,8 @@ class Memory:
 
     @property
     def findings(self) -> tuple[Finding, ...]:
-        return tuple(self._findings.values())
+        with self._lock:
+            return tuple(self._findings.values())
 
     def as_dict(self) -> dict:
         """The inspectable dump. Not part of ``trajectory`` and never sent to

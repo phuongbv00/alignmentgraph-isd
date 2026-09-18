@@ -396,3 +396,188 @@ def test_text_that_is_not_an_array_at_all_stays_a_model_mistake():
         params, {"learning_objectives": "I will write three objectives."})
     assert coerced["learning_objectives"] == "I will write three objectives."
     assert tools.shape_errors(params, coerced)
+
+
+# ── a string in a list's container ──────────────────────────────────────────
+
+def _operator_manual(**over) -> dict:
+    base = {"system_setup": "Log in to the platform.",
+            "operation_procedures": "1. Open the session.\n2. Start the timer.",
+            "support_procedures": "Email the help desk.",
+            "escalation_process": "Call the coordinator."}
+    base.update(over)
+    return {"operator_manual": base}
+
+
+def test_a_scalar_where_a_list_of_strings_is_declared_becomes_a_one_item_list():
+    """MEASURED (run 14a6b4c7, implementation): ``operation_procedures`` came
+    as one paragraph, was answered "expected list, got str" three times, spent
+    its submit budget and cost the whole stage a regen — a container mismatch
+    the text itself never had. Re-containering is structural; the text is
+    kept byte for byte."""
+    from alignmentgraph_isd.core.agentic.specialists import validate_implementation
+
+    params = tools.submit_parameters(STEP_BY_NAME["implementation"])
+    reshaped: list[str] = []
+    args = tools.reshape_args(params, _operator_manual(), reshaped=reshaped)
+
+    manual = args["operator_manual"]
+    assert manual["operation_procedures"] == ["1. Open the session.\n2. Start the timer."]
+    assert manual["support_procedures"] == ["Email the help desk."]
+    assert manual["escalation_process"] == "Call the coordinator.", "a declared str stays"
+    assert sorted(reshaped) == ["operator_manual.operation_procedures",
+                                "operator_manual.support_procedures"]
+    assert not any("expected list, got str" in e for e in validate_implementation(args))
+
+
+def test_reshaping_never_splits_content():
+    params = tools.submit_parameters(STEP_BY_NAME["implementation"])
+    text = "- open\n- start\n- close"
+    args = tools.reshape_args(params, _operator_manual(operation_procedures=text), reshaped=[])
+    assert args["operator_manual"]["operation_procedures"] == [text]
+
+
+def test_reshaping_recurses_through_objects_array_items_and_additional_properties():
+    from alignmentgraph_isd.core.agentic import fanout
+
+    plan = tools.submit_parameters(STEP_BY_NAME["assessment"])
+    reshaped: list[str] = []
+    args = tools.reshape_args(plan, {"assessment_plan": {
+        "lo_coverage_targets": {"ILO-01": "formative"},
+        "formative_methods": "Weekly critique",
+        "pilot_data_plan": {"collection_points": "After lab 1",
+                            "anticipated_difficulties": []}}}, reshaped=reshaped)
+    ap = args["assessment_plan"]
+    assert ap["lo_coverage_targets"] == {"ILO-01": ["formative"]}
+    assert ap["formative_methods"] == ["Weekly critique"]
+    assert ap["pilot_data_plan"]["collection_points"] == ["After lab 1"]
+    assert "assessment_plan.lo_coverage_targets.ILO-01" in reshaped
+
+    items = tools.submit_parameters(fanout.set_step(
+        fanout.SPECS["assessment"], dev_plans.WorkSet(set_id="S1"), STEP_BY_NAME["assessment"]))
+    args = tools.reshape_args(items, {"assessment_tools": [
+        {"type": "multiple_choice", "question": "Q?", "options": "A) x B) y"}]}, reshaped=[])
+    assert args["assessment_tools"][0]["options"] == ["A) x B) y"]
+
+
+def test_a_string_where_an_object_is_declared_is_left_alone():
+    params = tools.submit_parameters(STEP_BY_NAME["implementation"])
+    reshaped: list[str] = []
+    args = tools.reshape_args(params, {"operator_manual": "just prose"}, reshaped=reshaped)
+    assert args == {"operator_manual": "just prose"} and reshaped == []
+
+
+def test_a_list_where_a_list_is_declared_is_untouched_and_a_json_list_is_a_parse():
+    params = tools.submit_parameters(STEP_BY_NAME["implementation"])
+    reshaped: list[str] = []
+    salvaged: list[str] = []
+    already = _operator_manual(operation_procedures=["a", "b"],
+                               support_procedures='["c", "d"]')
+    args = tools.reshape_args(params, already, reshaped=reshaped, salvaged=salvaged)
+    assert args["operator_manual"]["operation_procedures"] == ["a", "b"]
+    assert args["operator_manual"]["support_procedures"] == ["c", "d"]
+    assert reshaped == [] and salvaged == ["operator_manual.support_procedures"]
+
+
+def test_reshaping_is_counted_and_logged_apart_from_salvage():
+    from alignmentgraph_isd.core.agentic import turn as turn_mod
+    from alignmentgraph_isd.core.trajectory import TrajectoryLogger
+
+    params = tools.submit_parameters(STEP_BY_NAME["implementation"])
+    stats: dict = {}
+    trajectory = TrajectoryLogger()
+    turn = turn_mod.ToolTurn(name="submit_operator_manual", args=_operator_manual(),
+                             call_id="c1")
+    turn_mod.coerce(turn, params, stats=stats, trajectory=trajectory, identity="X")
+
+    assert stats["args_reshaped"] == 2 and stats["args_salvaged"] == 0
+    events = [e for e in trajectory.recovery_events if e["action"] == "argument_reshaped"]
+    assert len(events) == 1 and events[0]["agent"] == "X"
+    assert "operator_manual.operation_procedures" in events[0]["context"]["input_summary"]
+
+
+def test_both_arms_reshape_through_the_one_coerce():
+    """One implementation: a reshape granted on one side of the decomposition
+    axis would be a validator difference sitting inside the treatment."""
+    import inspect
+
+    from alignmentgraph_isd.core.agentic import react
+
+    for src in (inspect.getsource(loop.ToolLoop._handle_call),
+                inspect.getsource(react.ReactLoop._handle_call)):
+        assert "turn_mod.coerce(" in src and "reshape_args(" not in src
+
+
+def test_a_last_element_short_its_closing_brace_is_recovered():
+    """MEASURED (run 9efc3cfa, content:MU-C-01): ``[{"title": ..., "content":
+    "..."]`` — the element's own ``}`` dropped before the array's ``]``. Nothing
+    follows it, so the ``, {`` rule cannot end the element; the one material
+    was rejected four times as "arrived as text" and the set was regenerated."""
+    from alignmentgraph_isd.core.llm_io import parse_json_array
+
+    one = '[{"title": "Overview", "type": "slides", "content": "Welcome. [note] done."]'
+    items, dropped = parse_json_array(one)
+    assert dropped == 0 and items == [
+        {"title": "Overview", "type": "slides", "content": "Welcome. [note] done."}]
+
+    two = '[{"title": "A", "content": "x"}, {"title": "B", "content": "y"]'
+    items, dropped = parse_json_array(two)
+    assert [i["title"] for i in items] == ["A", "B"] and dropped == 0
+
+    # Cut off inside a string is truncation, not a dropped brace: still a loss.
+    items, dropped = parse_json_array('[{"title": "A", "content": "unfinished')
+    assert items == [] and dropped == 1
+
+
+# ── an array that lost its bracket, an artifact named twice ─────────────────
+
+_LOST_BRACKET = ('{"system_setup": "Register the platform.", '
+                 '"operation_procedures": ["1) Log in", "2) Start the session", '
+                 '"support_procedures": ["Contact support"], '
+                 '"escalation_process": "Call the director."')
+
+
+@pytest.mark.parametrize("tail", ["}", "]", ""])
+def test_an_array_that_lost_its_closing_bracket_keeps_every_field(tail):
+    """MEASURED (run 1c0a4e81, `operator_manual`): `"operation_procedures":
+    ["…", "support_procedures": [...]` — the first array never closes, strict
+    parsing fails at the next key's colon, and the tolerant parser kept only
+    the fields BEFORE the break. Three submits each lost two of four required
+    fields, the artifact spent its budget and shipped empty. A string followed
+    by `:` inside an array of strings is the object's next key; the array ends
+    in front of it. The same payload arrived ending `}`, `]` and cut short."""
+    from alignmentgraph_isd.core.agentic.specialists import validate_implementation
+
+    params = tools.submit_parameters(STEP_BY_NAME["implementation"])
+    salvaged: list[str] = []
+    args = tools.coerce_args(params, {"operator_manual": _LOST_BRACKET + tail},
+                             salvaged=salvaged)
+
+    manual = args["operator_manual"]
+    assert manual["operation_procedures"] == ["1) Log in", "2) Start the session"]
+    assert manual["support_procedures"] == ["Contact support"]
+    assert manual["escalation_process"] == "Call the director."
+    assert validate_implementation(args) == [] and salvaged == ["operator_manual"]
+
+
+def test_well_formed_json_is_never_touched_by_the_bracket_repair():
+    from alignmentgraph_isd.core.llm_io import close_unclosed_arrays
+
+    for text in ('{"a": ["x", "y"], "b": {"c": ["z"]}, "d": "e: f"}',
+                 '{"a": [{"k": "v"}, {"k": "w"}], "note": "a \\"quoted\\": colon"}'):
+        assert json.loads(close_unclosed_arrays(text)) == json.loads(text)
+
+
+def test_an_artifact_named_twice_is_unwrapped_not_dropped():
+    """MEASURED (run 1c0a4e81): `{"operator_manual": {"operator_manual": {…}}}`
+    on its last submit, and `improvement_plan` the same way. The inner name is
+    not a field of the artifact, so dropping it as undeclared drops the whole
+    artifact; it is the artifact."""
+    params = tools.submit_parameters(STEP_BY_NAME["implementation"])
+    inner = {"system_setup": "s", "operation_procedures": ["a"],
+             "support_procedures": ["b"], "escalation_process": "e"}
+    salvaged: list[str] = []
+    args = tools.reshape_args(params, {"operator_manual": {"operator_manual": inner}},
+                              reshaped=[], salvaged=salvaged)
+    assert args == {"operator_manual": inner}
+    assert salvaged == ["operator_manual (named twice)"]

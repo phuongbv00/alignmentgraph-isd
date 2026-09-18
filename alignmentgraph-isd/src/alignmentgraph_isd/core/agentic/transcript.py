@@ -95,6 +95,11 @@ def serialize_messages(messages: list) -> list[dict]:
         entry: dict = {"role": role, "content": str(content or "")}
         if name:
             entry["name"] = str(name)
+        if isinstance(message, dict) and message.get(SUPERSEDED):
+            # The record keeps what the agent was actually shown; the live
+            # message — and so every size figure — holds the stub.
+            entry[SUPERSEDED] = True
+            entry["original_content"] = str(message.get("original_content") or "")
         if reasoning:
             entry["reasoning"] = reasoning
         if calls:
@@ -405,6 +410,44 @@ COMPACTION_NOTE = "compaction_note"
 TRIM_LOW_WATER = 0.5
 
 
+#: Flag on a live tool-result message whose content was replaced by
+#: ``SUPERSEDED_STUB``; its original rides beside it as ``original_content``.
+SUPERSEDED = "superseded"
+SUPERSEDED_STUB = "[superseded by a later read_alignment_state — use that one]"
+
+
+def supersede_earlier(messages: list, name: str, keep_call_id: str, *,
+                      prefix: str = "=== ALIGNMENT STATE") -> int:
+    """Replace every EARLIER result of tool ``name`` still in the live
+    transcript with a one-line stub, keeping the newest (``keep_call_id``).
+
+    A state read is a snapshot, and an agent that reads, submits and reads
+    again accumulates one per round. The old ones are wrong by then — a small
+    model that re-reads its context acts on the stale one as readily as on the
+    new — and each is up to ``READ_CHAR_BUDGET`` characters of a window that
+    is already short. The message stays where it is with its ``tool_call_id``,
+    so the request remains well-formed. The ORIGINAL is kept on the message
+    (``original_content``) and published flagged by ``serialize_messages``:
+    the record shows what the agent saw, the window holds what it needs.
+    ``message_size`` reads ``content``, so the stub is what is counted —
+    which is what is sent. Returns how many were replaced."""
+    replaced = 0
+    for message in messages:
+        if not isinstance(message, dict) or message.get("role") != "tool":
+            continue
+        if message.get("name") != name or message.get(SUPERSEDED):
+            continue
+        if message.get("tool_call_id") == keep_call_id:
+            continue
+        if not str(message.get("content", "")).startswith(prefix):
+            continue        # a refused repeat or an error: not a snapshot
+        message["original_content"] = message.get("content", "")
+        message["content"] = SUPERSEDED_STUB
+        message[SUPERSEDED] = True
+        replaced += 1
+    return replaced
+
+
 def forget_compacted_calls(seen_calls: dict, dropped: list) -> None:
     """Drop from the repeat guard every call whose RESULT compaction just took
     away. The guard refuses a second answer to a call already answered — but
@@ -415,7 +458,8 @@ def forget_compacted_calls(seen_calls: dict, dropped: list) -> None:
     gone = {m.get("tool_call_id") for m in dropped
             if isinstance(m, dict) and m.get("role") == "tool"}
     gone.discard(None)
-    for key in [k for k, call_id in seen_calls.items() if call_id in gone]:
+    for key in [k for k, seen in seen_calls.items()
+                if getattr(seen, "call_id", seen) in gone]:
         del seen_calls[key]
 
 

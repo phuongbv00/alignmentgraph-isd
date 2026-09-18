@@ -411,6 +411,72 @@ def _expected(raw: object, objective_count: int) -> int:
     return min(value, MAX_EXPECTED_PER_SET)
 
 
+#: The shortest stretch of learner time one activity is planned in. NOT a
+#: pedagogical claim — a declared parameter of the harness, like the turn
+#: ceilings — and the only number the time budget needs: the budget itself is
+#: the PLANNER's (``contact_hours``), because the brief states a course's
+#: length only as a band ("2-4 weeks", "1-6 months") and never its hours.
+MIN_ACTIVITY_MINUTES = 15
+
+
+def _positive(raw: object) -> float:
+    try:
+        value = float(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0.0
+    return value if value > 0 else 0.0
+
+
+def fit_time_budget(sets: list[WorkSet], contact_hours: object, stats: dict) -> None:
+    """Hold the planned activities to the time the planner says the course has.
+
+    What bounds how many activities a course carries is the learner time it
+    has to spend on them, not a count per objective (constructive alignment
+    names none). The planner states that time (``contact_hours``) and each
+    block's share of it (``block_minutes``); a block then plans at most one
+    activity per ``MIN_ACTIVITY_MINUTES`` of its share, and when the shares
+    overrun the course they are scaled to fit it. Counts are lowered, never
+    raised, and never below one a block — every objective keeps its block.
+
+    MEASURED, what an unbounded plan costs: on run 1c0a4e81 the planner wrote
+    ``expected_activities`` as a counting sequence (2, 3, 4 … across 33 blocks),
+    the per-block clamp let 94 activities through for 5 objectives, their
+    Developers were a third of the run's calls, the content stage could not
+    cover them (88 open C5) and the delivery plan fell back to a deterministic
+    split of 96 scheduled artifacts.
+
+    A plan that declares no time is left as it was and says so
+    (``stats["time_budget"] = "undeclared"``) rather than being held to a
+    number the harness made up."""
+    planned = sum(int(ws.payload.get("expected_activities") or 1) for ws in sets)
+    stats["planned_activities"] = planned
+    hours = _positive(contact_hours)
+    if not hours:
+        stats["time_budget"] = "undeclared"
+        return
+    budget = hours * 60
+    minutes = [_positive(ws.payload.get("block_minutes")) for ws in sets]
+    declared = sum(minutes)
+    scale = min(1.0, budget / declared) if declared else 1.0
+    for ws, block in zip(sets, minutes):
+        if block:
+            fits = max(1, int(block * scale) // MIN_ACTIVITY_MINUTES)
+            ws.payload["expected_activities"] = min(
+                int(ws.payload.get("expected_activities") or 1), fits)
+    # Blocks that named no minutes are still inside the course: the whole
+    # plan may not exceed what the declared hours can hold.
+    ceiling = max(len(sets), int(budget // MIN_ACTIVITY_MINUTES))
+    total = sum(int(ws.payload.get("expected_activities") or 1) for ws in sets)
+    if total > ceiling:
+        factor = ceiling / total
+        for ws in sets:
+            ws.payload["expected_activities"] = max(
+                1, int(int(ws.payload.get("expected_activities") or 1) * factor))
+    fitted = sum(int(ws.payload.get("expected_activities") or 1) for ws in sets)
+    stats["time_budget"] = {"contact_hours": hours, "block_minutes": declared,
+                            "trimmed": planned - fitted}
+
+
 def normalize_activity_dev_plan(parsed, lo_ids, items_by_lo: dict | None = None) -> tuple[list[WorkSet], dict]:
     items_by_lo = items_by_lo or {}
     los = [lo for lo in (_bare(x) for x in (lo_ids or [])) if lo]
@@ -445,6 +511,7 @@ def normalize_activity_dev_plan(parsed, lo_ids, items_by_lo: dict | None = None)
                 set_id="", objectives=tuple(valid_objs), pairs=(),
                 payload={"assessment_items": items, "block_theme": str(raw.get("block_theme", "")),
                          "rationale": str(raw.get("rationale", "")),
+                         "block_minutes": raw.get("block_minutes"),
                          "expected_activities": _expected(
                              raw.get("expected_activities"), len(valid_objs))},
                 source="llm",
@@ -524,6 +591,8 @@ def normalize_activity_dev_plan(parsed, lo_ids, items_by_lo: dict | None = None)
     # scoped blocks for ILO-01 were merged back into one and the themes that
     # kept them apart were discarded — the harness undoing exactly the work it
     # had asked for. You never need more blocks than activities.
+    fit_time_budget(sets, (parsed or {}).get("contact_hours") if isinstance(parsed, dict) else None,
+                    stats)
     planned_total = sum(int(ws.payload.get("expected_activities") or 1) for ws in sets)
     numbered = _cap_and_number(sets, max(planned_total, len(los)), "AB", _merge,
                                family="activity", split=_split)

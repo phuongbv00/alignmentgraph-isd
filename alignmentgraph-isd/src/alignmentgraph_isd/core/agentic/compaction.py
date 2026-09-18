@@ -13,7 +13,7 @@ not choose to compact, is not shown this conversation, and has nothing bound
 for it — a ``submit_summary`` tool would dress an intervention made over the
 agent's head as a move in its own protocol. The call goes out through
 ``AgenticLLM.call_prose``: no tools, no ``response_format``, attributed to
-``WORKFLOW_ORCHESTRATOR``, never published as one of that agent's contexts, and
+``ORCHESTRATOR``, never published as one of that agent's contexts, and
 its tokens still on the cost table.
 
 That prose path is the only one in the package. A call under the OWNING AGENT'S
@@ -59,7 +59,7 @@ from __future__ import annotations
 import re
 
 from ..llm_io import parse_json_response
-from ..trajectory import WORKFLOW_ORCHESTRATOR
+from ..trajectory import ORCHESTRATOR
 from .protocol import BRIEF_HEADER_RE, lost_briefs
 from .transcript import COMPACTION_NOTE, prompt_chars, serialize_messages
 
@@ -115,7 +115,7 @@ def summarize(call_llm, previous: str, dropped: list) -> tuple[str, str]:
     """The new running summary and why it is what it is.
 
     ``call_llm`` is an :class:`~client.AgenticLLM` built with the
-    ``WORKFLOW_ORCHESTRATOR`` identity — see the module docstring for why this
+    ``ORCHESTRATOR`` identity — see the module docstring for why this
     is the harness's call and not the agent's.
 
     The outcome is returned rather than inferred. v1 returned the summary
@@ -376,7 +376,7 @@ def compact(messages: list, dropped: list, total: int, *, trajectory,
     and reaches this often, ``multi`` starts each stage fresh and barely does.
 
     ``llm`` is the compaction HOOK's model caller — an ``AgenticLLM`` under the
-    ``WORKFLOW_ORCHESTRATOR`` identity, never the agent's own. Given one, the
+    ``ORCHESTRATOR`` identity, never the agent's own. Given one, the
     dropped turns are folded into a rolling summary riding in the note
     (:func:`summarize`); given ``None``, the note is the count
     alone. Every failure mode of the hook lands on that fallback, so a
@@ -419,7 +419,7 @@ def compact(messages: list, dropped: list, total: int, *, trajectory,
     previous = running_summary(messages)
     summary, outcome = previous, "count only"
     if llm is not None:
-        with trajectory.acting_as(WORKFLOW_ORCHESTRATOR):
+        with trajectory.acting_as(ORCHESTRATOR):
             summary, outcome = summarize(llm, previous, dropped)
         if outcome == "summarised":
             stats["compaction_summaries"] = stats.get("compaction_summaries", 0) + 1
@@ -431,7 +431,7 @@ def compact(messages: list, dropped: list, total: int, *, trajectory,
         kept.append({"role": "user", "content": brief})
 
     trajectory.log_recovery_event(
-        WORKFLOW_ORCHESTRATOR, "context_compacted",
+        ORCHESTRATOR, "context_compacted",
         f"{len(dropped)} turn(s), {total} total"
         + (f", stage brief re-attached: {', '.join(s for s, _ in restored)}" if restored else "")
         + (f", stage brief lost: {', '.join(still_lost)}" if still_lost else ""),

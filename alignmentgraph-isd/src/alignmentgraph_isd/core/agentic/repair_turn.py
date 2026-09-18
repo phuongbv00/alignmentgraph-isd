@@ -16,7 +16,7 @@ from __future__ import annotations
 from .. import repairs
 from ..checks import serialize_violations
 from ..outputs import _collect_violations, _collect_violations_prose
-from ..trajectory import WORKFLOW_ORCHESTRATOR
+from ..trajectory import ORCHESTRATOR
 from . import budget
 from .fanout import SPECS
 
@@ -51,46 +51,86 @@ def own_violations(state, design_brief, step, trajectory) -> list:
     reconciliation pass collect both again, and what nothing can fix is
     counted as residual.
     """
-    if not step.commits_to_state:
-        return []
+    fix_structural(state, design_brief, step, trajectory)
+    return collect_own(state, design_brief, step)
 
+
+def _families(step) -> list[str]:
+    return [f for f in (step.family, *step.also_repairs) if f in repairs.OWNED_BY_FAMILY]
+
+
+def _owned(state, design_brief, families: list[str]) -> list:
     graph_mode = hasattr(state, "element_nodes")
-    families = [f for f in (step.family, *step.also_repairs)
-                if f in repairs.OWNED_BY_FAMILY]
+    found: list = []
+    for family in families:
+        violations = (_collect_violations(family, state, design_brief)
+                      if graph_mode
+                      else _collect_violations_prose(family, state))
+        found += [v for v in violations
+                  if v.violation_type in repairs.OWNED_BY_FAMILY[family]]
+    return found
 
-    def owned() -> list:
-        found: list = []
-        for family in families:
-            violations = (_collect_violations(family, state, design_brief)
-                          if graph_mode
-                          else _collect_violations_prose(family, state))
-            found += [v for v in violations
-                      if v.violation_type in repairs.OWNED_BY_FAMILY[family]]
-        return found
 
+def fix_structural(state, design_brief, step, trajectory) -> None:
+    """The free fixes, applied to the state: a dangling reference or a Bloom
+    verb from the taxonomy is fixed exactly by a lookup, so it is never put to
+    an agent. The ONLY half of :func:`own_violations` that writes, and the
+    orchestrator's act — run after a commit, never inside a read, because a
+    read that rewrote the design would make the read tools impure (the repeat
+    guard re-derives a read to compare it) and would book a harness repair
+    under an agent's tool call."""
+    if not step.commits_to_state:
+        return
+    graph_mode = hasattr(state, "element_nodes")
+    families = _families(step)
     ctx = repairs.RepairContext(
         graph=state if graph_mode else None,
         store=None if graph_mode else state,
-        trajectory=trajectory, actor=WORKFLOW_ORCHESTRATOR)
+        trajectory=trajectory, actor=ORCHESTRATOR)
     for family in families:
-        structural = [v for v in owned()
+        structural = [v for v in _owned(state, design_brief, families)
                       if v.violation_type in repairs.STRUCTURAL
                       and v.violation_type in repairs.OWNED_BY_FAMILY[family]]
         if structural:
             repairs.repair(family, structural, ctx)
 
-    # Everything left after the free fixes, INCLUDING the REPORT_ONLY
-    # types. That set says the deterministic net must not write content —
-    # it never said the agent cannot. These are precisely the violations
-    # only a writer can answer (an activity with no engagement strategy, a
-    # criterion its rubric contradicts), and the agent is the writer.
-    remaining = owned()
-    if graph_mode and step.name in SPECS:
+
+def collect_own(state, design_brief, step) -> list:
+    """What this agent can clear with a submit, as the state stands. PURE: it
+    reads and returns, which is what lets ``read_alignment_state`` call it.
+
+    Everything the family owns, INCLUDING the REPORT_ONLY types. That set
+    says the deterministic net must not write content — it never said the
+    agent cannot. These are precisely the violations only a writer can answer
+    (an activity with no engagement strategy, a criterion its rubric
+    contradicts), and the agent is the writer."""
+    if not step.commits_to_state:
+        return []
+    remaining = _owned(state, design_brief, _families(step))
+    if hasattr(state, "element_nodes") and step.name in SPECS:
         # The tier has not run. A section node is what this Designer wrote;
         # an element node is what its Developers will write.
         sep = type(state).ELEMENT_SEP
         remaining = [v for v in remaining if sep not in str(v.node_id)]
     return remaining
+
+
+def violation_lines(violations: list) -> tuple[list[str], list, list]:
+    """The lines an agent is shown for ``violations``, and which of them that
+    is: ``(lines, shown, unshown)``. Capped at ``REPAIR_REQUEST_CAP`` with the
+    overflow counted, and the split returned because only what was actually
+    RENDERED may be stamped as shown in the ledger."""
+    shown = list(violations[:budget.REPAIR_REQUEST_CAP])
+    unshown = list(violations[budget.REPAIR_REQUEST_CAP:])
+    lines = []
+    for violation in shown:
+        hint = getattr(violation, "repair_hint", "")
+        lines.append(f"- {getattr(violation, 'message', violation)}"
+                     + (f"\n  Fix: {hint}" if hint else ""))
+    if unshown:
+        lines.append(f"- (+{len(unshown)} more of the same kind)")
+    return lines, shown, unshown
+
 
 def repair_request(stage: str, violations: list, round_index: int, rounds: int) -> str:
     """The user turn that hands a stage its own violations back.
@@ -100,14 +140,7 @@ def repair_request(stage: str, violations: list, round_index: int, rounds: int) 
     has twice measured a small model failing to act on. The stage is named and
     the round is counted so the agent knows it is not starting over.
     """
-    lines = []
-    for violation in violations[:budget.REPAIR_REQUEST_CAP]:
-        hint = getattr(violation, "repair_hint", "")
-        lines.append(f"- {getattr(violation, 'message', violation)}"
-                     + (f"\n  Fix: {hint}" if hint else ""))
-    more = len(violations) - budget.REPAIR_REQUEST_CAP
-    if more > 0:
-        lines.append(f"- (+{more} more of the same kind)")
+    lines, _shown, _unshown = violation_lines(violations)
     return (
         f"COMMITTED, but {stage} does not check out yet "
         f"(round {round_index} of {rounds}):\n"
@@ -131,15 +164,36 @@ def violations_for_agent(state, design_brief, step, *, trajectory, memory,
     here — a report-only type like P10/P11, which skips the deterministic net —
     must reach both.
 
-    Attributed to ``WORKFLOW_ORCHESTRATOR`` like every other check round
+    Attributed to ``ORCHESTRATOR`` like every other check round
     (``test_work_done_outside_a_tool_loop_is_the_orchestrator_s``): the agent's
     own act is answering the repair-request turn, not running the check that
     produced it.
     """
     found = own_violations(state, design_brief, step, trajectory)
-    if found:
-        round_no = trajectory.log_violations_result(
-            serialize_violations(found, identity), agent=WORKFLOW_ORCHESTRATOR)
-        memory.observe_violations(found, round=round_no, phase=phase,
-                                  family=step.family, shown_to_agent=True)
+    _lines, shown, unshown = violation_lines(found)
+    stamp_shown(shown, unshown, trajectory=trajectory, memory=memory,
+                identity=identity, phase=phase, family=step.family)
     return found
+
+
+def stamp_shown(shown: list, unshown: list, *, trajectory, memory, identity: str,
+                phase: str, family: str) -> None:
+    """ONE check round in the record for what an agent was just shown.
+
+    ``shown_to_agent`` is what ``Memory.settle`` reads to credit a finding
+    that later disappears to the agent rather than to the harness, so it is
+    stamped on the violations that were RENDERED and on no others: past
+    ``REPAIR_REQUEST_CAP`` a violation is only counted ("+N more"), the agent
+    never read it, and crediting the agent with its repair would be a claim
+    the transcript does not support. The rest are still sighted, in the same
+    round."""
+    if not shown and not unshown:
+        return
+    round_no = trajectory.log_violations_result(
+        serialize_violations(shown + unshown, identity), agent=ORCHESTRATOR)
+    if shown:
+        memory.observe_violations(shown, round=round_no, phase=phase,
+                                  family=family, shown_to_agent=True)
+    if unshown:
+        memory.observe_violations(unshown, round=round_no, phase=phase,
+                                  family=family, shown_to_agent=False)

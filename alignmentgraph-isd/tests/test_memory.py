@@ -160,3 +160,22 @@ def test_the_transcripts_are_not_folded_into_the_trajectory():
         assert not any(e["action"] == "context_snapshot"
                        for e in result[key].get("events", []) or
                        result[key].get("actions", []))
+
+
+def test_concurrent_republishes_of_one_context_leave_exactly_one():
+    """A parallel fan-out's workers publish their contexts from their own
+    threads; the upsert by id must hold under that, or the row list grows a
+    duplicate per race."""
+    import threading
+
+    memory = Memory(graph=AlignmentGraph())
+    run_id = new_agent_run_id()
+    threads = [threading.Thread(target=lambda: [
+        memory.remember_context(_transcript("Dev", "content:MU-01", run_id, [{"n": k}]))
+        for k in range(100)]) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(memory.transcripts) == 1
+    assert memory.transcripts[0].messages == [{"n": 99}]

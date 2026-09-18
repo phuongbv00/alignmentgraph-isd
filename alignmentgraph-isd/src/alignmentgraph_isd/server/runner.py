@@ -257,8 +257,8 @@ class RunManager:
             # inside the harness and its frame goes out on the reconcile phase's
             # exit, so this is the same content again — and it is the only form
             # `write_result` persists. A run that was cancelled or failed
-            # reaches neither: its partial ledger stays in `state` for whoever
-            # is watching and is gone once the registry evicts the run.
+            # reaches neither: its partial ledger — unsettled, every
+            # `open_reason` blank — is what `write_partial` keeps.
             state.set_violations(result.get("violations") or [])
             stats = _stats_from_result(result)
             # The harness is built to survive a failing specialist, so it
@@ -286,6 +286,15 @@ class RunManager:
             except Exception as exc:  # noqa: BLE001
                 logger.warning("could not write artifacts for run %s: %s", run_id, exc)
             state.model_name = (result.get("metadata", {}).get("llm") or {}).get("model_name", "")
+        else:
+            # Cancelled or failed: no result, but the page was showing a graph,
+            # contexts and a ledger until a moment ago. See `write_partial`.
+            try:
+                artifacts.write_partial(
+                    directory, brief, graph_json=state.snapshot_graph("full"),
+                    contexts=list(state.contexts), violations=list(state.violations))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("could not write partial artifacts for run %s: %s", run_id, exc)
 
         finished = datetime.now(timezone.utc)
         stats["duration_seconds"] = (finished - started).total_seconds()

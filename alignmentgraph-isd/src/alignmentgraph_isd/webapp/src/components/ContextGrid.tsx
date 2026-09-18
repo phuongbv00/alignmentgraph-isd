@@ -365,16 +365,24 @@ function Turn({message, index}: { message: ContextMessage; index: number }) {
   const calls = message.tool_calls ?? []
   const isResult = message.role === 'tool'
   const compacted = message.compacted === true
+  const superseded = message.superseded === true
   const thinking = thinkingOf(message)
+  const dimmed = compacted || superseded
+  const title = compacted
+    ? 'COMPACTED - dropped from the live context to stay under the window, the model no longer sees this'
+    : superseded
+      ? 'SUPERSEDED - a later read_alignment_state answered, so the live context holds a one-line stub here. This is what the agent was shown at the time.'
+      : undefined
   return (
-    <div className={compacted ? 'ctx-compacted' : undefined}
-         title={compacted ? 'COMPACTED - dropped from the live context to stay under the window, the model no longer sees this' : undefined}>
+    <div className={dimmed ? 'ctx-compacted' : undefined} title={title}>
       {(message.content || (!calls.length && !isResult)) && (
         <Block
           part={isResult ? 'tools' : 'messages'}
           index={index}
-          label={isResult ? `tool result · ${message.name ?? ''}` : message.role}
-          body={message.content}
+          label={isResult
+            ? `tool result · ${message.name ?? ''}${superseded ? ' · superseded' : ''}`
+            : message.role}
+          body={superseded ? (message.original_content ?? message.content) : message.content}
         />
       )}
       {thinking && (

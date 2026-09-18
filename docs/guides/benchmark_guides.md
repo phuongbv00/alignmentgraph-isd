@@ -364,7 +364,9 @@ Agent nào tự fan-out thì phải tự chặn mình. Adapter `alignmentgraph-i
 của riêng nó (`LLM_CONCURRENCY_BY_RATE_LIMIT`: conservative 2 / moderate 3 / aggressive 4 / turbo 6 — preset lạ hoặc
 không có thì dùng 4), rồi truyền vào `HarnessRunConfig.llm_max_concurrency`. Ghi đè bằng
 `HARNESS_LLM_MAX_CONCURRENCY` (đặt `0` để tắt hẳn); `HARNESS_LLM_MIN_INTERVAL` giãn thời điểm bắt đầu call cho endpoint
-đo theo rate thay vì theo concurrency, mặc định tắt.
+đo theo rate thay vì theo concurrency, mặc định tắt. `HARNESS_FANOUT_WORKERS` (mặc định 1 = fan-out tuần tự, ladder
+không đặt) cho các Developer của một family ở arm multi chạy đồng thời, bị cap bởi chính cap trên; commit vẫn theo thứ tự
+plan nên graph không đổi, chỉ đổi wall time, và được ghi vào `metadata.run_config.fanout_workers`.
 
 Tổng request in-flight = `max_workers × scenario_max_workers × cap`. Gate là **per-run**, không process-wide: gate chung
 sẽ khiến fan-out của arm này xếp hàng trước call của arm kia và thổi phồng `execution_time_seconds` của arm kia.

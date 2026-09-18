@@ -137,8 +137,9 @@ def test_a_within_set_reference_is_a_position_and_resolves():
 
 def test_the_deposit_holds_the_graph_lock():
     """Reading the ids in play and then writing nodes chosen from what was read
-    is only correct if nothing lands in between. Sequential today, so nothing
-    does — the transaction is what keeps that true if it stops being."""
+    is only correct if nothing lands in between. The commits run one at a time
+    on the driver's thread; the transaction is what keeps that true while the
+    Developers run on several (``fanout_workers``)."""
     graph = AlignmentGraph()
     with graph.transaction():
         graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01"})

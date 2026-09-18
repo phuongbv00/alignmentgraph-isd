@@ -186,13 +186,14 @@ _ACTIVITY_PLAN = {
 }
 
 _ACTIVITY_DEV_PLAN = {"dev_plan": {
+    "contact_hours": 12,
     "activity_blocks": [
         {"set_id": "BLOCK-01", "objectives": ["ILO-01", "ILO-02"], "block_theme": "Encapsulation foundations",
-         "rationale": "Both are introduced together in the same module."},
+         "block_minutes": 240, "rationale": "Both are introduced together in the same module."},
         {"set_id": "BLOCK-02", "objectives": ["ILO-03"], "block_theme": "Applied inheritance",
-         "rationale": "Needs its own hands-on lab."},
+         "block_minutes": 240, "rationale": "Needs its own hands-on lab."},
         {"set_id": "BLOCK-03", "objectives": ["ILO-04", "ILO-05"], "block_theme": "Design review",
-         "rationale": "Both are exercised via the same critique session."},
+         "block_minutes": 240, "rationale": "Both are exercised via the same critique session."},
     ],
 }}
 
@@ -676,6 +677,9 @@ _CANNED_SUMMARY = (
     "the assessment plan was read but not yet written.")
 
 
+_STATE_TOOL = "read_alignment_state"
+
+
 class _Result:
     def __init__(self, content: str = "", tool_calls: list | None = None,
                  reasoning: str = "") -> None:
@@ -744,20 +748,29 @@ class FakeChatModel:
         # arm keeps one stable persona in `system` and varies the task and
         # schema in `user`, so a system-only fixture sees no schema at all and
         # returns {} for every one of its steps.
-        raw_prompt = "\n".join(
+        #: Everything, tool results included and untruncated: the ids a plan
+        #: refers to reach this fake through its `read_alignment_state` result.
+        raw_all = "\n".join(
             m.get("content", "") for m in messages
             if isinstance(m, dict) and isinstance(m.get("content"), str)
         )
-        #: Kept untruncated: the schema is matched in the slice from the last
-        #: stage marker, but the ids a plan refers to live in the stage turn's
-        #: docket, which is behind it.
-        raw_all = raw_prompt
+        # What the PAYLOAD is matched on leaves tool results out: a state read
+        # renders earlier artifacts (a section node as its JSON), and their
+        # keys would out-match the schema this step is asking for — the same
+        # leak the header-stripping below exists for.
+        raw_prompt = "\n".join(
+            m.get("content", "") for m in messages
+            if isinstance(m, dict) and isinstance(m.get("content"), str)
+            and m.get("role") != "tool"
+        )
         # The compaction hook: the one caller that binds nothing and wants
         # prose, not an artifact. Matched on its own system turn rather than on
         # the absence of bound tools, so an unbound caller that DOES want the
         # canned JSON still gets it.
         if _COMPACTION_SYSTEM in raw_prompt:
             return _Result(content=_CANNED_SUMMARY)
+        if self._wants_state(messages):
+            return self._respond({}, _STATE_TOOL)
         # ...but only from the CURRENT stage onward when the transcript carries
         # several. The agentic single arm accumulates every stage in one
         # conversation, so matching over the whole thing makes the earliest
@@ -814,6 +827,34 @@ class FakeChatModel:
             prompt, raw_all, json.dumps(getattr(self, "_specs", ()), ensure_ascii=False))
         name, args = self._stage_submit(payload, messages)
         return self._respond(args, name)
+
+    def _wants_state(self, messages: list) -> bool:
+        """Read the alignment state the way the protocol asks an agent to: once
+        when a stage comes up, and once after being told it has open issues.
+
+        The ids a plan refers to (the activities a module supports, the
+        activities and materials a session block schedules) reach this fake
+        through that read and nowhere else, so a fake that only ever submitted
+        would write references to nothing. Never twice in a row: a read is
+        followed by a submit, or the fixture would sit in the guard."""
+        if _STATE_TOOL not in getattr(self, "_bound", ()):
+            return False
+        results = [(i, m) for i, m in enumerate(messages)
+                   if isinstance(m, dict) and m.get("role") == "tool"]
+        if results and results[-1][1].get("name") == _STATE_TOOL:
+            return False
+        reads = [i for i, m in results if m.get("name") == _STATE_TOOL]
+        pointers = [i for i, m in results if "open issue(s)" in str(m.get("content", ""))]
+        if not reads or (pointers and pointers[-1] > reads[-1]):
+            return True
+        stage = self._react_stage()
+        if stage is None:
+            return False
+        # The single arm: one read per stage, told apart by the result's own
+        # first line. A superseded stub carries its original beside it.
+        seen = " ".join(str(m.get("original_content") or m.get("content", ""))
+                        for _i, m in results if m.get("name") == _STATE_TOOL)
+        return f"ALIGNMENT STATE — {stage} ===" not in seen
 
     def _react_stage(self):
         """The first still-open stage, or None when this is a stage loop."""

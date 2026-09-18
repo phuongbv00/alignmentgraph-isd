@@ -42,7 +42,7 @@ from alignmentgraph_isd.core.agentic.compaction import (
 from alignmentgraph_isd.core.agentic.protocol import stage_brief_block
 from alignmentgraph_isd.core.agentic.transcript import COMPACTION_NOTE, trim_history
 from alignmentgraph_isd.core.agentic.specialists import STEPS
-from alignmentgraph_isd.core.trajectory import WORKFLOW_ORCHESTRATOR
+from alignmentgraph_isd.core.trajectory import ORCHESTRATOR
 
 from conftest import FakeChatModel, load_brief, run_brief
 
@@ -123,7 +123,8 @@ def test_no_response_format_is_ever_sent():
     the harness acting over the agent's head, not a move in its protocol."""
     code = _without_docstrings(inspect.getsource(AgenticLLM.call_prose).lstrip())
     code += _without_docstrings(inspect.getsource(compaction))
-    for forbidden in ("response_format", "json_object", "bind_tools", "bind("):
+    for forbidden in ("response_format", "json_object", "bind_tools", "bind(",
+                      "tool_choice"):
         assert forbidden not in code, f"{forbidden} is back on the prose path"
 
     class _Naked:
@@ -147,7 +148,7 @@ def test_no_response_format_is_ever_sent():
     config.llm_factory = lambda: naked
     from alignmentgraph_isd.core.trajectory import TrajectoryLogger
 
-    caller = AgenticLLM(config, TrajectoryLogger(), WORKFLOW_ORCHESTRATOR)
+    caller = AgenticLLM(config, TrajectoryLogger(), ORCHESTRATOR)
     assert caller.call_prose([{"role": "user", "content": "x"}]) == "prose"
     assert not naked.bound, "the hook bound something to the model"
 
@@ -350,13 +351,13 @@ def test_the_hook_never_publishes_a_context():
     result = run_brief(load_brief("java_oop_brief.json"), config)
 
     assert [c for c in result["contexts"]], "no contexts published at all"
-    orchestrator = [c for c in result["contexts"] if c["agent"] == WORKFLOW_ORCHESTRATOR]
+    orchestrator = [c for c in result["contexts"] if c["agent"] == ORCHESTRATOR]
     assert not orchestrator, f"the hook published a context: {orchestrator}"
 
     events = [e for e in result["trajectory"]["events"]
               if e.get("action") == "context_compacted"]
     assert events, "the window never filled, so this proved nothing"
-    assert all(e["agent"] == WORKFLOW_ORCHESTRATOR for e in events), (
+    assert all(e["agent"] == ORCHESTRATOR for e in events), (
         "a compaction was attributed to an agent rather than to the harness")
     assert any("summarised" in e["context"]["output_summary"] for e in events), (
         "the hook was never actually exercised")
@@ -469,3 +470,16 @@ def test_a_directive_is_dropped_even_when_it_arrives_wrapped_in_json():
     wrapped = json.dumps({"summary": "The stage ran. No further calls are needed."})
     assert _clean(wrapped) == "The stage ran."
 
+
+
+def test_a_compacted_result_is_forgotten_whatever_shape_the_guard_keeps():
+    """The repeat guard keeps a call id AND a digest per answered read; a
+    result compaction takes must leave the guard with it, or the model is told
+    to read again and refused for having read."""
+    from alignmentgraph_isd.core.agentic.transcript import forget_compacted_calls
+    from alignmentgraph_isd.core.agentic.turn import SeenCall
+
+    seen = {"a": SeenCall("c1", "d1"), "b": SeenCall("c2", "d2"), "legacy": "c3"}
+    forget_compacted_calls(seen, [{"role": "tool", "tool_call_id": "c1"},
+                                  {"role": "tool", "tool_call_id": "c3"}])
+    assert list(seen) == ["b"]

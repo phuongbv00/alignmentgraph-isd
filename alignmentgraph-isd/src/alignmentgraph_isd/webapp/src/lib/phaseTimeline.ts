@@ -339,6 +339,7 @@ const AGENT_HUES: Record<string, { bg: string; fg: string; dot: string }> = {
   MaterialDeveloperAgent: { bg: '#ffedd5', fg: '#9a3412', dot: '#f97316' },
   ImplementationPlannerAgent: { bg: '#cffafe', fg: '#155e75', dot: '#06b6d4' },
   SingleDesignerAgent: { bg: '#ede9fe', fg: '#5b21b6', dot: '#8b5cf6' },
+  Orchestrator: { bg: '#f1f5f9', fg: '#334155', dot: '#64748b' },
   WorkflowOrchestrator: { bg: '#f1f5f9', fg: '#334155', dot: '#64748b' },
   ADDIEOutputAggregator: { bg: '#f1f5f9', fg: '#334155', dot: '#64748b' },
 }

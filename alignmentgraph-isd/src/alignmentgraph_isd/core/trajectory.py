@@ -114,6 +114,25 @@ class TrajectoryAction(StrEnum):
     #: bounds how much of the agentic arm's behaviour is really the serving
     #: stack's.
     TOOL_CALL_MARKUP_RECOVERED = "tool_call_markup_recovered"
+    #: A scalar string the model wrote in a field declared as a list of
+    #: strings was re-containered as a one-element list before validation
+    #: (``tools.reshape_args``). Structural, never authorial — the text is
+    #: unchanged — and recorded so the RATE is visible per size beside
+    #: ``args_salvaged``.
+    ARGUMENT_RESHAPED = "argument_reshaped"
+    #: The backend refused a request sent with ``tool_choice="required"``;
+    #: the run continues under ``"auto"`` from here (``AgenticLLM._bind``).
+    #: Once per run at most, since the answer is memoised on the config.
+    TOOL_CHOICE_DOWNGRADED = "tool_choice_downgraded"
+    #: A Developer read an id its assignment already shows and no read tool
+    #: serves; answered with a pointer to the assignment instead of an error
+    #: (``ToolLoop._execute``). Its rate per size says how far the "you do not
+    #: need to look them up" instruction carries.
+    READ_OF_ASSIGNMENT_ID = "read_of_assignment_id"
+    #: An agent read its stage's open issues and then made no further submit;
+    #: the stage closed with them open (``budget.REPAIR_IDLE_TURNS``). A
+    #: decision of the agent's, recorded apart from a turn-ceiling cut.
+    REPAIR_DECLINED = "repair_declined"
     #: The single arm's ReAct loop ran out of turns with stages still open.
     #: Reported for BOTH arms (`autonomy.via_budget_exhaustion`) because the
     #: parity claim is not that the budgets are equal — `multi` spends a number
@@ -182,6 +201,10 @@ _RECOVERY_ACTIONS = frozenset({
     TrajectoryAction.BUDGET_EXHAUSTED,
     TrajectoryAction.TOOL_BINDING_UNAVAILABLE,
     TrajectoryAction.TOOL_CALL_MARKUP_RECOVERED,
+    TrajectoryAction.ARGUMENT_RESHAPED,
+    TrajectoryAction.TOOL_CHOICE_DOWNGRADED,
+    TrajectoryAction.READ_OF_ASSIGNMENT_ID,
+    TrajectoryAction.REPAIR_DECLINED,
     TrajectoryAction.REPAIR_UNFILLED,
     TrajectoryAction.DROPPED_ARGUMENT,
     TrajectoryAction.REPAIR,
@@ -193,7 +216,17 @@ _RECOVERY_ACTIONS = frozenset({
 # and phase_finished fires after the stage's trailing self-validation
 # loop has already exited that specialist's `acting_as` block, so the natural
 # fallback is stale or empty, not this phase's owner.
-WORKFLOW_ORCHESTRATOR = "WorkflowOrchestrator"
+ORCHESTRATOR = "Orchestrator"
+
+
+class _Scope:
+    """Who is acting, in which phase, under which forced identity — one per
+    thread (see ``TrajectoryLogger._scope``)."""
+
+    __slots__ = ("actor", "phase", "identity")
+
+    def __init__(self, actor: str = "", phase: str = "", identity: str = "") -> None:
+        self.actor, self.phase, self.identity = actor, phase, identity
 
 
 class TrajectoryLogger:
@@ -222,16 +255,16 @@ class TrajectoryLogger:
         # evaluator) plus structured audit events — and each fact appears in
         # exactly one of them, never in two.
         self.actions: list[dict] = []
-        # Who/what phase is "currently acting". Plain instance state, NOT
-        # thread-local: the executor is sequential — no `ThreadPoolExecutor` in
-        # `core/` outside RAG — so there is no thread to isolate from, and
-        # thread-local state would be actively WRONG for the one place
-        # concurrency remains, where a retrieval worker thread would read an
-        # empty actor instead of the agent that dispatched it. Restore it if
-        # any concurrent fan-out comes back.
-        self._actor: str = ""
-        self._phase: str = ""
-        self._identity: str = ""
+        # Who/what phase is "currently acting". The thread that built the
+        # logger owns the ROOT scope; any other thread (a parallel fan-out
+        # worker, ``HarnessRunConfig.fanout_workers``) gets its own scope,
+        # seeded from the root the first time it logs, so a worker inherits
+        # the stage's phase and then sets its own actor without touching
+        # anyone else's. RAG's retrieval threads never set an actor and only
+        # ever call ``log_llm_call``, so the seed is what they would read.
+        self._owner = threading.get_ident()
+        self._root = _Scope()
+        self._local = threading.local()
         self.tool_calls: list[dict] = []
         self.reasoning_steps: list[str] = []
         self.agent_interactions: list[dict] = []
@@ -244,11 +277,37 @@ class TrajectoryLogger:
         self.llm_calls: int = 0
         self.token_usage: dict = {"prompt_tokens": 0, "completion_tokens": 0}
         self.latency_ms: float = 0.0
-        # Guards the read-modify-write increments in log_llm_call. KEPT even
-        # though the pipeline is sequential: RAG's parallel retrieval plans run
-        # on worker threads (`core/rag/sandbox.py`) and each is handed
-        # ``log_llm_call`` directly.
+        # Guards the read-modify-write increments in log_llm_call: RAG's
+        # parallel retrieval plans run on worker threads (`core/rag/sandbox.py`)
+        # and each is handed ``log_llm_call`` directly.
         self._counter_lock = threading.Lock()
+        # Guards every append to the record and the numbering read off it
+        # (``log_step``'s step index, ``log_violations_result``'s round), so a
+        # parallel fan-out's workers cannot interleave a read with a write.
+        # Re-entrant: ``log_recovery_event`` writes through two of them.
+        self._log_lock = threading.RLock()
+
+    # ── whose turn it is ─────────────────────────────────────────────────────
+    def _scope(self) -> "_Scope":
+        if threading.get_ident() == self._owner:
+            return self._root
+        scope = getattr(self._local, "scope", None)
+        if scope is None:
+            scope = _Scope(self._root.actor, self._root.phase, self._root.identity)
+            self._local.scope = scope
+        return scope
+
+    @property
+    def _actor(self) -> str:
+        return self._scope().actor
+
+    @property
+    def _phase(self) -> str:
+        return self._scope().phase
+
+    @property
+    def _identity(self) -> str:
+        return self._scope().identity
 
     # ── observation hook ────────────────────────────────────────────────────
     def _emit(self, kind: str, payload: dict) -> None:
@@ -301,18 +360,19 @@ class TrajectoryLogger:
         default: in multi mode the actor already equals the name each step
         passes, so forcing would change nothing there.
         """
-        previous_actor, previous_phase = self._actor, self._phase
-        previous_identity = self._identity
-        self._actor = actor or previous_actor
+        scope = self._scope()
+        previous_actor, previous_phase = scope.actor, scope.phase
+        previous_identity = scope.identity
+        scope.actor = actor or previous_actor
         if phase is not None:
-            self._phase = phase
+            scope.phase = phase
         if force_identity:
-            self._identity = actor
+            scope.identity = actor
         try:
             yield
         finally:
-            self._actor, self._phase = previous_actor, previous_phase
-            self._identity = previous_identity
+            scope.actor, scope.phase = previous_actor, previous_phase
+            scope.identity = previous_identity
 
     # ── the unified event log ───────────────────────────────────────────────
 
@@ -333,8 +393,9 @@ class TrajectoryLogger:
                 **context,
             },
         }
-        self.events.append(event)
-        self._emit(emit_kind, event)
+        with self._log_lock:
+            self.events.append(event)
+            self._emit(emit_kind, event)
         return event
 
     def _events_of(self, actions: TrajectoryAction | frozenset[TrajectoryAction]) -> list[dict]:
@@ -373,8 +434,9 @@ class TrajectoryLogger:
                 **context,
             },
         }
-        self.actions.append(entry)
-        self._emit("action", entry)
+        with self._log_lock:
+            self.actions.append(entry)
+            self._emit("action", entry)
         return entry
 
     def graph_observer(self):
@@ -412,6 +474,11 @@ class TrajectoryLogger:
         Qwen3.5-0.8B, 83.85/100) purely because small models need more
         recovery attempts, not because their real tool use was worse.
         """
+        with self._log_lock:
+            self._log_step(agent_name, action, input_summary, output_summary)
+
+    def _log_step(self, agent_name: str, action: str, input_summary: str,
+                  output_summary: str) -> None:
         agent_name = self._identity or agent_name
         timestamp = datetime.now(timezone.utc).isoformat()
         step_index = len(self.tool_calls) + 1
@@ -525,6 +592,10 @@ class TrajectoryLogger:
         the one a reader is sent to.
 
         Returns the round number it recorded."""
+        with self._log_lock:
+            return self._log_violations_result(violations, agent=agent)
+
+    def _log_violations_result(self, violations: list[dict], *, agent: str = "") -> int:
         by_type: dict[str, int] = {}
         for violation in violations:
             vtype = violation.get("type", violation.get("violation_type", "unknown"))
@@ -633,7 +704,7 @@ class TrajectoryLogger:
 
         Without this, nothing in ``trajectory`` records the audit at all: the
         ~300 graph reads that compute it show up in the deep action log under
-        ``WORKFLOW_ORCHESTRATOR``, but none of them says what they found, so a
+        ``ORCHESTRATOR``, but none of them says what they found, so a
         run with 5 uncovered relations reads identical to one with zero. Counts
         and the list of gapped relation ids only: the full per-relation
         coverage detail (labels, mechanism, uncovered node ids) is
@@ -688,7 +759,7 @@ class TrajectoryLogger:
         or ADDIE output section (see ``core/dev_plans.py``) — so the
         trajectory is its only record. ``agent`` is the acting family's own
         identity (a Designer, or ``SingleDesignerAgent``), not
-        ``WORKFLOW_ORCHESTRATOR``: it answers "who fixed the work list", the
+        ``ORCHESTRATOR``: it answers "who fixed the work list", the
         same question every other family action answers. ``sets`` is a
         compact summary (id + objectives/categories per set) the caller
         caps; full WorkSet payloads are not logged here.

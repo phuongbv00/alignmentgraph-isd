@@ -17,11 +17,13 @@ survive — so the arithmetic is written once and both arms call it.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
+from typing import NamedTuple
 
 from . import budget, tools
-from .protocol import INVALID_TURN_NUDGE, turns_left_hint
+from .protocol import INVALID_TURN_NUDGE, REPEAT_UNCHANGED, turns_left_hint
 from .tools import unwrap_section
 
 
@@ -92,6 +94,20 @@ class TurnMeter:
         #: budget the honest unit of work now that every call runs — and what
         #: makes ``turns_used`` comparable across the decomposition axis.
         self.turn_no = 0
+        #: Consecutive reads that bought nothing; see ``budget.FRUITLESS_READS``.
+        self.fruitless = 0
+
+    @property
+    def reads_withheld(self) -> bool:
+        """Whether the next binding should offer submits only."""
+        return self.fruitless >= budget.FRUITLESS_READS
+
+    def read_was(self, *, useful: bool) -> None:
+        self.fruitless = 0 if useful else self.fruitless + 1
+
+    def acted(self) -> None:
+        """A submit arrived — accepted or not, the agent is working again."""
+        self.fruitless = 0
 
     @property
     def ceiling(self) -> int:
@@ -185,17 +201,30 @@ def nudge_for(turn: ToolTurn, *, trajectory, identity: str) -> str:
     return INVALID_TURN_NUDGE
 
 
-def coerce(turn: ToolTurn, params: dict, *, stats: dict) -> dict:
+def coerce(turn: ToolTurn, params: dict, *, stats: dict,
+           trajectory=None, identity: str = "") -> dict:
     """The call's arguments, parsed against the spec the tool was BOUND with.
 
     Before anything reads them: a structured value that arrived as text is a
     transport artifact, not a model mistake, and must not be charged to a
     submit budget — measured, it cost every stage of every arm its whole
-    budget (see ``tools.coerce_args``).
+    budget (see ``tools.coerce_args``). A scalar string in a field declared
+    as a list of strings is then RESHAPED into a one-element list
+    (``tools.reshape_args``); counted apart from salvage and logged as
+    ``argument_reshaped`` so a reader sees what the harness re-containered.
+    ONE implementation for both arms: a reshape granted on one side of the
+    decomposition axis would be a validator difference inside the treatment.
     """
     salvaged: list[str] = []
     args = tools.coerce_args(params, turn.args, salvaged=salvaged)
+    reshaped: list[str] = []
+    args = tools.reshape_args(params, args, reshaped=reshaped, salvaged=salvaged)
     stats["args_salvaged"] = stats.get("args_salvaged", 0) + len(salvaged)
+    stats["args_reshaped"] = stats.get("args_reshaped", 0) + len(reshaped)
+    if reshaped and trajectory is not None:
+        trajectory.log_recovery_event(
+            identity, "argument_reshaped", "; ".join(reshaped)[:200],
+            "str -> [str]; content unchanged")
     if turn.truncated and not turn.sibling:
         stats["truncated_turns"] = stats.get("truncated_turns", 0) + 1
     return args
@@ -267,7 +296,99 @@ def repeat_key(name: str, args: object) -> str:
     return f"{name}:{json.dumps(args, sort_keys=True, ensure_ascii=False, default=str)}"
 
 
-def log_read(trajectory, identity: str, name: str, args: dict, observation: str) -> None:
+class SeenCall(NamedTuple):
+    """One answered read: the tool-call id its result sits under in the
+    transcript (what ``transcript.forget_compacted_calls`` matches on) and a
+    digest of that result (what a repeat is compared against)."""
+    call_id: str
+    digest: str
+
+
+def observation_digest(observation: str) -> str:
+    """Identity of a read's RESULT. Taken before the turns-left countdown is
+    appended, which changes every turn and is not part of the result."""
+    return hashlib.sha1(observation.encode("utf-8", "replace")).hexdigest()
+
+
+def answer_read(seen: dict, turn: ToolTurn, args: dict, execute, *, meter: TurnMeter,
+                stats: dict, trajectory, identity: str, pure: bool = True,
+                scope: str = "", on_answered=None, next_move: str = "") -> tuple[str, bool]:
+    """One read, answered — or refused as a repeat ONLY when that is true.
+
+    A call already made is one of three things. Its earlier result is no
+    longer in the context (compaction took it, and ``forget_compacted_calls``
+    has dropped it from ``seen``): answered as a first call. Its result is
+    still there and the state has MOVED since: answered as a first call,
+    because an agent that reads, submits and reads again is doing exactly
+    what it should. Its result is still there and is IDENTICAL: refused, in
+    ``protocol.REPEAT_UNCHANGED``, refunded up to ``budget.REPEAT_ALLOWANCE``
+    and kept off the judge-visible trace.
+
+    Telling the last two apart means re-deriving the result, which is why
+    the executors are pure and model-free. The guard used to refuse every
+    repeat with "its result has not changed" without looking — false after
+    any commit, and a wall in front of the read → submit → re-read loop.
+    MEASURED for the unchanged case it still answers: a 2B model burned its
+    whole turn budget on six identical reads.
+
+    ``pure=False`` (external retrieval) is never re-run: a repeat is refused
+    on the call alone. ``on_answered`` runs only when the read is answered,
+    so a caller's counters and events never fire for a refused repeat.
+    Returns ``(observation, was_repeat)``. ONE implementation for both arms:
+    a guard lenient on one side of the decomposition axis is a ceiling
+    difference sitting inside the treatment.
+    """
+    key = repeat_key(turn.name, args)
+    prior = seen.get(key)
+    observation = "" if (prior is not None and not pure) else execute()
+    digest = observation_digest(observation)
+    if prior is not None and (not pure or digest == prior.digest):
+        meter.repeated()
+        meter.read_was(useful=False)
+        trajectory.log_recovery_event(
+            identity, "repeated_tool_call", turn.name, str(args)[:100])
+        return _do_next(REPEAT_UNCHANGED.format(name=turn.name), meter, next_move), True
+    if prior is not None:
+        stats["rereads_changed"] = stats.get("rereads_changed", 0) + 1
+    seen[key] = SeenCall(turn.call_id, digest)
+    stats["reads"] = stats.get("reads", 0) + 1
+    failed = observation.startswith("ERROR")
+    if failed:
+        meter.tool_error()
+    meter.read_was(useful=not failed)
+    if on_answered is not None:
+        on_answered()
+    if failed:
+        observation = _do_next(observation, meter, next_move)
+    answered = observation + meter.hint()
+    log_read(trajectory, identity, turn.name, args, answered, scope=scope)
+    return answered, False
+
+
+def _do_next(observation: str, meter: TurnMeter, next_move: str) -> str:
+    """A read that bought nothing, answered with the MOVE to make instead —
+    named, because "use what you have" is the class of instruction a small
+    model has been measured not to act on — and, once the allowance is spent,
+    with the fact that reads are no longer on offer."""
+    if next_move:
+        observation += f" Do not read again: {next_move}."
+    if meter.reads_withheld:
+        observation += " The read tools are withheld until you submit."
+    return observation
+
+
+def withhold_reads(specs: list, meter: TurnMeter) -> list:
+    """The binding with its read tools removed, while ``meter.reads_withheld``
+    and a submit is on offer. ONE rule for both arms (``budget.FRUITLESS_READS``)."""
+    if not meter.reads_withheld:
+        return specs
+    submits = [spec for spec in specs
+               if str(spec.get("function", {}).get("name", "")).startswith("submit")]
+    return submits or specs
+
+
+def log_read(trajectory, identity: str, name: str, args: dict, observation: str, *,
+             scope: str = "") -> None:
     """The judge-visible entry for one read.
 
     The tool name carries its scoping argument so the trace distinguishes
@@ -275,7 +396,7 @@ def log_read(trajectory, identity: str, name: str, args: dict, observation: str)
     entries with different targets otherwise read as redundant repeats to the
     BFCL judge.
     """
-    scope = str(args.get("node_type") or args.get("relation_id")
-                or args.get("key") or "").strip()
+    scope = scope or str(args.get("node_type") or args.get("relation_id")
+                         or args.get("key") or "").strip()
     trajectory.log_step(identity, f"tool_{name}" + (f"_{scope}" if scope else ""),
                         str(args)[:200], observation[:200])
