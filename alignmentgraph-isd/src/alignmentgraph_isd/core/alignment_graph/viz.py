@@ -405,7 +405,8 @@ def node_violations(graph: AlignmentGraph) -> dict[str, list[str]]:
     for check in (checks.bloom_verbs, checks.measurability, checks.rubric_consistency,
                   checks.plan_coverage, checks.item_completeness,
                   checks.evaluation_quality, checks.activity_engagement,
-                  checks.orphan_content, checks.evidence_alignment,
+                  checks.evidence_alignment, checks.blueprint_consistency,
+                  checks.instrument_alignment,
                   checks.actionability, checks.relation_coverage,
                   checks.bloom_mismatches):
         for violation in check(graph):
@@ -546,7 +547,7 @@ def to_dot(payload: dict, *, title: str = "") -> str:
     if payload.get("schema_version") != SCHEMA_VERSION:
         payload = with_display_semantics(payload)
     annotations = payload.get("objective_alignment") or {}
-    # Visualise the 16-relation matrix only: edges that carry a relation_id.
+    # Visualise the 18-relation matrix only: edges that carry a relation_id.
     # Internal scaffolding edges (``precedes``/``narrates``, relation_id="") stay in the JSON
     # dump but are dropped here — they add no matrix information and dominate the
     # picture. A node renders iff it is an objective or takes part in a matrix edge.

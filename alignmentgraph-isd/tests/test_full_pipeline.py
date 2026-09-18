@@ -1,5 +1,5 @@
 """The default config runs the full pipeline end-to-end: stable result
-contract + all 16 alignment relations (5 core + 11 secondary) established
+contract + all 18 alignment relations (4 core + 14 secondary) established
 (and repaired to closure)."""
 from __future__ import annotations
 
@@ -12,9 +12,9 @@ from conftest import FakeChatModel, load_brief, run_brief
 # conditioned on graph nodes the specialist read beforehand) vs. those
 # establishable by id/id-list/type-match alone (post-hoc bookkeeping on a
 # specialist's own output).
-_PROVENANCE_ONLY_RELATIONS = ("C1", "C5", "P1", "P2", "P4", "P5", "P7", "P8", "P9",
-                              "P10", "P11")
-_ID_TYPE_MATCH_RELATIONS = ("C2", "C3", "C4", "P3", "P6")
+_PROVENANCE_ONLY_RELATIONS = ("C1", "P1", "P2", "P4", "P5", "P7", "P8", "P9",
+                              "P10", "P11", "P12")
+_ID_TYPE_MATCH_RELATIONS = ("C2", "C3", "C4", "P3", "P6", "P13", "P14")
 
 
 def _graph_edges(result: dict) -> list[dict]:
@@ -68,7 +68,7 @@ def test_run_establishes_every_relation_and_repairs_gaps():
     # carries the verdict and no longer re-copies the measurement.
     coverage = result["graph"]["relation_coverage"]
 
-    # The run builds the graph: element nodes + edges spanning all 16 relations.
+    # The run builds the graph: element nodes + edges spanning all 18 relations.
     assert _element_nodes(result) and _graph_edges(result)
     established = {e.get("relation_id") for e in _graph_edges(result)}
     assert set(alignment.REGISTRY.keys()) - {"P6"} <= established  # P6 is fuzzy/audit-only
@@ -79,11 +79,10 @@ def test_run_establishes_every_relation_and_repairs_gaps():
     for relation_id in checkable:
         assert coverage[relation_id]["coverage"] > 0.0, relation_id
     # A gap only "survives repair" if some family could have repaired it. Two
-    # kinds cannot. P7, P10 and P11 are secondary provenance relations
-    # ``OWNED_BY_FAMILY`` assigns to nobody. And ``REPORT_ONLY`` relations are
-    # owned but deliberately never repaired: closing C3/C5/C6 meant writing a
-    # templated activity/module/criterion whose only property was existing, so
-    # the gap is now reported instead. Residual coverage on either is what the
+    # kinds cannot: a relation ``OWNED_BY_FAMILY`` assigns to nobody, and a
+    # ``REPORT_ONLY`` relation, owned but deliberately never repaired — closing
+    # C3 or P13 means writing a templated activity whose only property is
+    # existing, so the gap is reported instead. Residual coverage on either is what the
     # audit is FOR, not a failure. Assert on what a repair can actually close.
     from alignmentgraph_isd.core import repairs
 
@@ -242,7 +241,7 @@ def test_expert_review_itemises_findings_and_relation_coverage():
     assert by_criterion["C4"]["issues_found"] == 1
     assert by_criterion["C4"]["repairs_applied"] == 0
     # per-relation core coverage, keyed by relation id with its label
-    assert set(review["alignment_coverage"]) == {f"C{i}" for i in range(1, 6)}
+    assert set(review["alignment_coverage"]) == {f"C{i}" for i in range(1, 5)}
     assert all("label" in row and "coverage" in row for row in review["alignment_coverage"].values())
     assert review["review_process"]
 

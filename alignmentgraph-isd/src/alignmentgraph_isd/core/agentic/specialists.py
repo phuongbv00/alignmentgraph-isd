@@ -193,6 +193,32 @@ def commit_outcomes(graph, trajectory, parsed: dict) -> None:
         if graph.get_node(learner_id):
             alignment.record_provenance(graph, "P2", [learner_id], node_id)
 
+    _decompose(graph, trajectory, NodeType.MODULE, parsed.get("course_modules"),
+               dedup_field="title")
+    _link_modules(graph)
+
+
+def _link_modules(graph) -> None:
+    """P7 and P12, from what every module names, over EVERY module.
+
+    All of them rather than the ones this call added: the three outcomes
+    artifacts arrive in separate submits and in no guaranteed order, so a
+    module may land before the objectives it names. ``record_provenance`` is a
+    no-op on a missing end and ``add_edge`` on a repeated edge, so running it
+    again when the other end arrives is what makes the order not matter. Every
+    reference is model-written and goes through ``alignment.bare_ref`` first
+    (see :func:`commit_content`)."""
+    sep = graph.ELEMENT_SEP
+    for node in graph.element_nodes(NodeType.MODULE):
+        data = node["data"]
+        topics = [f"{NodeType.TOPIC}{sep}{bare}"
+                  for bare in map(alignment.bare_ref, data.get("covers_topics") or []) if bare]
+        alignment.record_provenance(graph, "P7", topics, node["id"])
+        for bare in map(alignment.bare_ref, data.get("objectives") or []):
+            if bare:
+                alignment.record_provenance(
+                    graph, "P12", [node["id"]], f"{NodeType.OBJECTIVE}{sep}{bare}")
+
 
 def _without_dev_plan(plan: object) -> dict:
     """The assessment plan as the deliverable defines it.
@@ -256,36 +282,21 @@ def commit_activities(graph, trajectory, parsed: dict) -> None:
 
 
 def commit_content(graph, trajectory, parsed: dict) -> None:
-    """Commit the content modules and media selections, and record C5/P7/P8.
+    """Commit the media selections, and record P8.
 
     Every reference here is MODEL-WRITTEN and is normalized through
     ``alignment.bare_ref`` before a node id is composed from it. That is the
-    rule everywhere else a model's reference is read — ``alignment.py``'s three
-    id-matched establishers, ``fanout``'s P5, ``dev_plans.plan_category_pairs``
-    — and this was the one provenance path that skipped it.
+    rule everywhere a model's reference is read — ``alignment.py``'s
+    id-matched establishers, ``fanout``'s P5, ``dev_plans.plan_category_pairs``.
 
-    MEASURED (run 2559b22d): the model wrote ``supports_activities:
-    ["activity:TLA-0101"]``, which is the node's own id and unambiguous. Bare
+    MEASURED (run 2559b22d): the model wrote a reference as
+    ``"activity:TLA-0101"``, which is the node's own id and unambiguous. Bare
     composition made that ``activity:activity:TLA-0101``,
-    ``record_provenance`` no-ops on a target that does not exist, and all
-    twelve modules — each naming its own activity correctly — established no
-    C5 edge at all. The design then read as twelve orphaned modules, and C5,
-    a core construct-validity relation, scored 0.08 on a design that was
-    right.
+    ``record_provenance`` no-ops on a target that does not exist, and twelve
+    correct references established no edge at all — a relation scoring 0.08 on
+    a design that was right.
     """
-    module_ids = _decompose(graph, trajectory, NodeType.MODULE, parsed.get("content_modules"))
     media_ids = _decompose(graph, trajectory, NodeType.MEDIA_SELECTION, parsed.get("media_selections"))
-    for node_id in module_ids:
-        data = graph.get_node(node_id)["data"]
-        for ref in data.get("supports_activities") or []:
-            bare = alignment.bare_ref(ref)
-            if bare:
-                alignment.record_provenance(
-                    graph, "C5", [node_id],
-                    f"{NodeType.ACTIVITY}{graph.ELEMENT_SEP}{bare}")
-        topics = [f"{NodeType.TOPIC}{graph.ELEMENT_SEP}{bare}"
-                  for bare in map(alignment.bare_ref, data.get("covers_topics") or []) if bare]
-        alignment.record_provenance(graph, "P7", topics, node_id)
     for node_id in media_ids:
         data = graph.get_node(node_id)["data"]
         constraints = [f"{NodeType.CONSTRAINT}{graph.ELEMENT_SEP}{bare}"
@@ -370,16 +381,21 @@ def commit_outcomes_prose(store, trajectory, parsed: dict) -> None:
     the alignment machinery that axis exists to ablate. Both now append and
     both drop a repeated ``statement`` through :func:`_dedup_new`.
 
-    ``course_goal`` keeps merge-on-key: it is one document, not a list.
+    ``course_modules`` is the same kind of list and gets the same treatment,
+    deduplicated on ``title``. ``course_goal`` keeps merge-on-key: it is one
+    document, not a list.
     """
     updates = {k: v for k, v in (parsed or {}).items() if v}
-    incoming = updates.get("learning_objectives")
-    if isinstance(incoming, list):
-        existing = [i for i in store.items(str(NodeType.OBJECTIVE), "learning_objectives")
+    for list_key, dedup_field in (("learning_objectives", "statement"),
+                                  ("course_modules", "title")):
+        incoming = updates.get(list_key)
+        if not isinstance(incoming, list):
+            continue
+        existing = [i for i in store.items(str(NodeType.OBJECTIVE), list_key)
                     if isinstance(i, dict)]
-        kept, dropped = _dedup_new(existing, incoming, "statement")
-        updates["learning_objectives"] = existing + kept
-        _log_duplicates(trajectory, str(NodeType.OBJECTIVE), dropped, len(kept), "statement")
+        kept, dropped = _dedup_new(existing, incoming, dedup_field)
+        updates[list_key] = existing + kept
+        _log_duplicates(trajectory, str(NodeType.OBJECTIVE), dropped, len(kept), dedup_field)
     _merge_document(store, trajectory, str(NodeType.OBJECTIVE), updates)
 
 
@@ -396,7 +412,7 @@ def commit_activities_prose(store, trajectory, parsed: dict) -> None:
 
 
 def commit_content_prose(store, trajectory, parsed: dict) -> None:
-    updates = {key: parsed[key] for key in ("content_modules", "media_selections")
+    updates = {key: parsed[key] for key in ("media_selections",)
                if isinstance(parsed.get(key), list) and parsed[key]}
     if updates:
         _merge_document(store, trajectory, "content", updates)
@@ -441,7 +457,8 @@ def view_analysis_prose(store) -> dict:
 
 def view_outcomes(graph) -> dict:
     return {"course_goal": _section(graph, NodeType.COURSE_GOAL),
-            "learning_objectives": graph.element_nodes(NodeType.OBJECTIVE)}
+            "learning_objectives": graph.element_nodes(NodeType.OBJECTIVE),
+            "course_modules": graph.element_nodes(NodeType.MODULE)}
 
 
 def view_outcomes_prose(store) -> dict:
@@ -469,8 +486,7 @@ def view_activities_prose(store) -> dict:
 
 
 def view_content(graph) -> dict:
-    return {"content_modules": graph.element_nodes(NodeType.MODULE),
-            "media_selections": graph.element_nodes(NodeType.MEDIA_SELECTION)}
+    return {"media_selections": graph.element_nodes(NodeType.MEDIA_SELECTION)}
 
 
 def view_content_prose(store) -> dict:
@@ -590,9 +606,11 @@ def validate_outcomes(parsed: dict) -> list[str]:
     demanding the whole stage here would reject each correct instalment in
     turn. What is still missing is not an error, it is the reason the stage is
     not finished, and the loop says so in those words."""
-    errors = _nothing_arrived(parsed, ("course_goal", "learning_objectives"))
+    errors = _nothing_arrived(parsed, ("course_goal", "learning_objectives", "course_modules"))
     if errors:
         return errors
+    if parsed.get("course_modules") is not None:
+        errors += _module_errors(parsed["course_modules"])
     if parsed.get("learning_objectives") is not None:
         errors += validate_section("objective", {
             "learning_objectives": parsed.get("learning_objectives")})
@@ -600,6 +618,30 @@ def validate_outcomes(parsed: dict) -> list[str]:
         goal = parsed["course_goal"] if isinstance(parsed["course_goal"], dict) else {}
         if not str(goal.get("statement") or "").strip():
             errors.append("course_goal.statement must be a non-empty string")
+    return errors
+
+
+def _module_errors(modules) -> list[str]:
+    """A module that names no objective or no time is not a unit anything can
+    be divided by: every later family takes its share of the design from
+    ``objectives`` and its ceiling from ``minutes``."""
+    if not isinstance(modules, list) or not modules:
+        return ["course_modules must be a non-empty list"]
+    errors: list[str] = []
+    for index, module in enumerate(modules):
+        where = f"course_modules[{index}]"
+        if not isinstance(module, dict):
+            errors.append(f"{where} must be an object")
+            continue
+        for key in ("id", "title"):
+            if not str(module.get(key) or "").strip():
+                errors.append(f"{where}.{key} must be a non-empty string")
+        if not [o for o in (module.get("objectives") or []) if str(o).strip()] \
+                or not isinstance(module.get("objectives"), list):
+            errors.append(f"{where}.objectives must list at least one objective id")
+        minutes = module.get("minutes")
+        if isinstance(minutes, bool) or not isinstance(minutes, (int, float)) or minutes <= 0:
+            errors.append(f"{where}.minutes must be a positive number")
     return errors
 
 
@@ -639,17 +681,13 @@ def validate_activities(parsed: dict) -> list[str]:
 
 
 def validate_content(parsed: dict) -> list[str]:
-    """Dispatch validation: the modules and media. The materials that realise
-    them are validated per work set by the Developer tier."""
-    empty = _nothing_arrived(parsed, ("content_modules", "media_selections"))
+    """Dispatch validation: the media. The materials that realise them are
+    validated per work set by the Developer tier."""
+    empty = _nothing_arrived(parsed, ("media_selections",))
     if empty:
         return empty
     errors: list[str] = []
-    if parsed.get("media_selections") is not None:
-        _require_list(parsed, ("media_selections",), errors)
-    if parsed.get("content_modules") is None:
-        return errors
-    _require_list(parsed, ("content_modules",), errors)
+    _require_list(parsed, ("media_selections",), errors)
     return errors
 
 
@@ -923,15 +961,22 @@ STEPS: tuple[AgenticStep, ...] = (
         identity="OutcomeDesignerAgent",
         family="outcome_designer",
         persona=("You are an expert instructional designer working on the Design phase of ADDIE, "
-                 "responsible for the course goal and learning objectives."),
-        intro=("State what this course is for and what learners will be able to do, grounded in "
-               "the analysis already in the design graph."),
-        rules=rules.RULES_OUTCOMES,
+                 "responsible for the course goal, the learning objectives and the modules "
+                 "the course is organised into."),
+        intro=("State what this course is for, what learners will be able to do, and how the "
+               "course divides into modules, grounded in the analysis already in the design "
+               "graph. Everything designed after this is divided by your modules."),
+        rules=rules.rules_for("outcomes"),
         primary_type=NodeType.OBJECTIVE,
         readable_types=(NodeType.GAP, NodeType.TOPIC, NodeType.LEARNER_PROFILE, NodeType.CONSTRAINT),
+        docket={"gaps": ("P12",), "module_ceiling": True},
         readable_docs=("analysis",),
         submit_fields=(
             ("course_goal", "object", True), ("learning_objectives", "array", True),
+            # REQUIRED: the modules are the key all four fan-out families
+            # divide their work by, and a run without them stops after this
+            # stage (``core/runner.py``) rather than inventing a division.
+            ("course_modules", "array", True),
         ),
         validate=validate_outcomes,
         commit=commit_outcomes,
@@ -957,9 +1002,9 @@ STEPS: tuple[AgenticStep, ...] = (
         rules=rules.rules_for("assessment"),
         schema_keys={"dev_plan": "assessment_dev_plan"},
         primary_type=NodeType.ASSESSMENT,
-        readable_types=(NodeType.OBJECTIVE,),
+        readable_types=(NodeType.MODULE, NodeType.OBJECTIVE),
         relations=("C2",),
-        docket={"edges": ("C2",), "gaps": ("C2",), "plan_pairs": True},
+        docket={"edges": ("C2",), "gaps": ("C2", "P14"), "plan_pairs": True},
         readable_docs=("analysis", "objective"),
         submit_fields=(
             ("assessment_plan", "object", True),
@@ -995,9 +1040,9 @@ STEPS: tuple[AgenticStep, ...] = (
         rules=rules.rules_for("activities"),
         schema_keys={"dev_plan": "activity_dev_plan"},
         primary_type=NodeType.ACTIVITY,
-        readable_types=(NodeType.OBJECTIVE, NodeType.ASSESSMENT),
+        readable_types=(NodeType.MODULE, NodeType.OBJECTIVE, NodeType.ASSESSMENT),
         relations=("C2", "C3", "C4"),
-        docket={"edges": ("C2",), "gaps": ("C3", "C4")},
+        docket={"edges": ("C2",), "gaps": ("C3", "C4", "P13")},
         readable_docs=("objective", "assessment"),
         submit_fields=(
             ("instructional_strategies", "object", True),
@@ -1014,26 +1059,21 @@ STEPS: tuple[AgenticStep, ...] = (
         name="content",
         identity="ContentDesignerAgent",
         family="content_designer",
-        persona=("You are an expert content designer, responsible for the modules, media and "
-                 "materials the activities need."),
-        intro=("Decide how the content is organised and what form it takes: the modules and the "
-               "media that realise them. The materials themselves are produced one module at a "
-               "time, after this."),
+        persona=("You are an expert content designer, responsible for the media and materials "
+                 "each module's activities need."),
+        intro=("Decide what form each module's content takes: the media that realise it. The "
+               "materials themselves are produced one module at a time, after this."),
         rules=rules.rules_for("content"),
         primary_type=NodeType.MATERIAL,
-        readable_types=(NodeType.ACTIVITY, NodeType.TOPIC, NodeType.CONSTRAINT),
-        relations=("C5",),
-        docket={"gaps": ("C5",)},
-        readable_docs=("analysis", "activity"),
+        readable_types=(NodeType.MODULE, NodeType.ACTIVITY, NodeType.CONSTRAINT),
+        readable_docs=("analysis", "objective", "activity"),
         submit_fields=(
-            ("content_modules", "array", True),
             # REQUIRED, for the reason the two dev plans are (see the
             # assessment step) plus one of its own: an OPTIONAL artifact
             # gets at most ONE nudge, and a nudge is a turn the stage has to
             # REACH. MEASURED (run single_20260908_002508): the content stage
-            # spent 9 of its 24 turns on repeated reads, committed MOD-01..08
-            # and gave up on "turn budget exhausted" with `media_selections`
-            # never asked for. The media list is not decoration —
+            # spent 9 of its 24 turns on repeated reads and gave up on "turn
+            # budget exhausted" with `media_selections` never asked for. The media list is not decoration —
             # `dev_plans.render_material_set` derives BOTH the allowed "type"
             # values line AND the "each material's type is the media_type of
             # the selection it realizes" clause from it, and
@@ -1068,10 +1108,10 @@ STEPS: tuple[AgenticStep, ...] = (
         rules=rules.rules_for("implementation"),
         schema_keys={"dev_plan": "implementation_dev_plan"},
         primary_type=NodeType.SESSION_GUIDE,
-        readable_types=(NodeType.ACTIVITY, NodeType.MATERIAL),
+        readable_types=(NodeType.MODULE, NodeType.ACTIVITY, NodeType.MATERIAL),
         relations=("P10", "P11"),
         docket={"gaps": ("P10", "P11")},
-        readable_docs=("activity", "material"),
+        readable_docs=("objective", "activity", "material"),
         submit_fields=tuple((key, "object", True) for key in _IMPLEMENTATION_ARTIFACTS)
         # REQUIRED, for the reason the assessment one is (see that step): the
         # division IS the decision this stage exists to make, and an optional

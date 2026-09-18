@@ -9,9 +9,9 @@ holds ``graph = None``, so a stray call raises rather than leaking silently.
 
 - ``graph.py`` — ``AlignmentGraph`` + ``NodeType``: the element/section node
   store and its edge list.
-- ``alignment.py`` — the ``REGISTRY`` of every edge kind (C1–C5 core + P1–P11
+- ``alignment.py`` — the ``REGISTRY`` of every edge kind (C1–C4 core + P1–P14
   provenance + S1–S2 structural) and the deterministic establishers. The
-  16-relation alignment matrix is the ``MATRIX`` view of it: everything that
+  18-relation alignment matrix is the ``MATRIX`` view of it: everything that
   MEASURES the construct iterates that, never the registry.
 - ``audit.py`` — ``GraphAuditor``: the residual audit (unmeasured/
   unsupported/unevaluated objectives, relation coverage).

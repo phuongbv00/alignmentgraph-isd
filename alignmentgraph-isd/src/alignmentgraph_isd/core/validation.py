@@ -21,6 +21,7 @@ _SECTION_FIELDS: dict[str, dict[str, tuple[type | tuple[type, ...], bool]]] = {
         "learning_objectives": (list, True),
     },
     "assessment_plan": {
+        "instruments": (list, True),
         "lo_coverage_targets": (dict, True),
         "formative_methods": (list, False),
     },

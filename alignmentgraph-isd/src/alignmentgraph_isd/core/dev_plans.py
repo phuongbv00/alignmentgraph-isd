@@ -442,7 +442,7 @@ def fit_time_budget(sets: list[WorkSet], contact_hours: object, stats: dict) -> 
     ``expected_activities`` as a counting sequence (2, 3, 4 … across 33 blocks),
     the per-block clamp let 94 activities through for 5 objectives, their
     Developers were a third of the run's calls, the content stage could not
-    cover them (88 open C5) and the delivery plan fell back to a deterministic
+    cover them (88 activities no content supported) and the delivery plan fell back to a deterministic
     split of 96 scheduled artifacts.
 
     A plan that declares no time is left as it was and says so
@@ -600,6 +600,38 @@ def normalize_activity_dev_plan(parsed, lo_ids, items_by_lo: dict | None = None)
     stats["oversized_splits"] = (
         numbered[0].payload.pop("_oversized_splits", 0) if numbered else 0)
     return numbered, stats
+
+
+# ── modules: how many a course carries ──────────────────────────────────────
+
+#: Ceiling on modules by course length: three for a course within a week
+#: (30 instructional hours), four up to a month (120), six beyond. A PARAMETER
+#: OF THIS HARNESS, not a finding from the literature — a module is taken to
+#: be about one sitting of an intensive course and about one week of a long
+#: one, and the top value mirrors ``rulebook.MAX_OBJECTIVES``. The other two
+#: bounds of :func:`module_ceiling` do have a warrant: a module must own at
+#: least one objective (module-level objectives map onto course objectives)
+#: and is one cluster of the instructional analysis (Dick & Carey), so there
+#: are never more modules than objectives or than topics. TOLD to the Outcome
+#: Designer — as a rule in ``rulebook.RULES_COURSE_MODULES`` and as this run's
+#: number in its state read — and never enforced, for the reasons
+#: ``MAX_OBJECTIVES`` is not.
+MODULES_BY_COURSE_HOURS = ((30, 3), (120, 4))
+MAX_MODULES = 6
+#: The ceiling for a course whose length cannot be read off the brief.
+MODULES_UNKNOWN_LENGTH = 4
+
+
+def module_ceiling(n_objectives: int, n_topics: int, hours: float) -> int:
+    """``min(objectives, topics, by course length)``, never below 1. A count
+    of zero is "not known yet" (the stage has not written them) and does not
+    bind."""
+    by_length = MODULES_UNKNOWN_LENGTH
+    if hours > 0:
+        by_length = next((n for limit, n in MODULES_BY_COURSE_HOURS if hours <= limit),
+                         MAX_MODULES)
+    bounds = [by_length] + [n for n in (n_objectives, n_topics) if n > 0]
+    return max(1, min(bounds))
 
 
 # ── content: material units, one per committed module (deterministic) ──────

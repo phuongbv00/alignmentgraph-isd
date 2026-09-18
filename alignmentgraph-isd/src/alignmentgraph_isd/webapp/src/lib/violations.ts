@@ -4,7 +4,7 @@
  *  `bloom_mismatch_activity(2)` in the timeline — so the label a reader saw
  *  could not be traced to the check that produced it.
  *
- *  This table names CHECKS, and only checks. A relation (C1-C5, P1-P11) is
+ *  This table names CHECKS, and only checks. A relation (C1-C4, P1-P14) is
  *  named by `alignment.REGISTRY`, which travels in the graph payload as
  *  `relation_coverage[id].label` — so `violationLabel` is given that map and
  *  reads the wording from it.
@@ -30,7 +30,12 @@ const LABELS: Record<string, string> = {
   activity_engagement: 'higher-order objective practiced actively',
   rubric_consistency: 'rubric criterion is observable',
   evidence_alignment: 'criterion asks for evidence its item can give',
+  // Recorded by runs from before the module became the course's structural
+  // unit; a material with no module is reported as P5 coverage since.
   orphan_content: 'content traces to instructional purpose',
+  time_budget: 'activities fit the time the course has',
+  blueprint_consistency: 'assessment blueprint agrees with its coverage targets',
+  instrument_alignment: 'item belongs to an instrument of the plan',
   feasibility: 'plan fits the stated constraints',
   actionability: 'implementation plan is concrete enough to run',
 }

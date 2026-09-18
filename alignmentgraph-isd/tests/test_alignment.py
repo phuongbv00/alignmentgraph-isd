@@ -103,7 +103,7 @@ def test_match_p6_realizes_normalizes_aliases():
     assert graph.get_edges(relation_id="P6")[0]["source"] == "media_selection:MED-01"
 
 
-# ── provenance (C1, C5, P1, P2, P4, P5, P7, P8, P9, P10, P11) ───────────────────
+# ── provenance (C1, P1, P2, P4, P5, P7, P8, P9, P10, P11, P12) ───────────────────
 
 def test_record_provenance_establishes_edge_from_every_source():
     graph = AlignmentGraph()
@@ -126,16 +126,42 @@ def test_record_provenance_is_a_noop_for_missing_target():
 # ── coverage aggregation ──────────────────────────────────────────────────
 
 def test_relation_coverage_target_side_reports_fraction_and_uncovered_ids():
-    """C5 (supports) checks the TARGET side: does every activity have >=1
-    supporting content module."""
+    """P12 (groups) checks the TARGET side: does every objective belong to
+    >=1 module."""
     graph = AlignmentGraph()
-    graph.add_element_node(NodeType.ACTIVITY, "TLA-01", {"id": "TLA-01"})
-    graph.add_element_node(NodeType.ACTIVITY, "TLA-02", {"id": "TLA-02"})
+    graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01"})
+    graph.add_element_node(NodeType.OBJECTIVE, "ILO-02", {"id": "ILO-02"})
     graph.add_element_node(NodeType.MODULE, "MOD-01", {"id": "MOD-01"})
-    alignment.record_provenance(graph, "C5", ["module:MOD-01"], "activity:TLA-01")
-    coverage, uncovered = alignment.relation_coverage(graph, "C5")
+    alignment.record_provenance(graph, "P12", ["module:MOD-01"], "objective:ILO-01")
+    coverage, uncovered = alignment.relation_coverage(graph, "P12")
     assert coverage == 0.5
-    assert uncovered == ["activity:TLA-02"]
+    assert uncovered == ["objective:ILO-02"]
+
+
+def test_a_module_with_no_activity_or_no_item_is_an_uncovered_source():
+    """P13 and P14 check the SOURCE side — the module — and both are made of
+    ids the MODEL wrote, so both can fail: an activity names its module, an
+    item names an instrument and the plan's instrument names the module."""
+    graph = AlignmentGraph()
+    for module in ("MOD-01", "MOD-02"):
+        graph.add_element_node(NodeType.MODULE, module, {"id": module})
+    graph.add_element_node(NodeType.ACTIVITY, "TLA-01", {"id": "TLA-01", "module_id": "MOD-01"})
+    graph.add_element_node(NodeType.ACTIVITY, "TLA-02", {"id": "TLA-02", "module_id": "MOD-09"})
+    dangling = alignment.match_id_reverse(graph, "P13", field="module_id")
+    assert [v["node_id"] for v in dangling] == ["activity:TLA-02"]
+    assert alignment.relation_coverage(graph, "P13") == (0.5, ["module:MOD-02"])
+
+    graph.add_node(NodeType.ASSESSMENT_PLAN, graph.section_id(NodeType.ASSESSMENT_PLAN), {
+        "instruments": [{"id": "INS-01", "module_id": "module:MOD-01"},
+                        {"id": "INS-02", "module_id": "MOD-09"}]})
+    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01", "instrument_id": "INS-01"})
+    graph.add_element_node(NodeType.ASSESSMENT, "AT-02", {"item_id": "AT-02", "instrument_id": "INS-02"})
+    graph.add_element_node(NodeType.ASSESSMENT, "AT-03", {"item_id": "AT-03"})
+    dangling = alignment.match_module_assessed(graph)
+    assert [v["node_id"] for v in dangling] == ["assessment:AT-02", "assessment:AT-03"]
+    assert alignment.relation_coverage(graph, "P14") == (0.5, ["module:MOD-02"])
+    assert [(e["source"], e["target"]) for e in graph.get_edges(relation_id="P14")] == [
+        ("module:MOD-01", "assessment:AT-01")]
 
 
 def test_relation_coverage_source_side_reports_fraction_and_uncovered_ids():
@@ -153,7 +179,7 @@ def test_relation_coverage_source_side_reports_fraction_and_uncovered_ids():
 
 def test_relation_coverage_full_when_no_required_targets_exist():
     graph = AlignmentGraph()
-    coverage, uncovered = alignment.relation_coverage(graph, "C5")
+    coverage, uncovered = alignment.relation_coverage(graph, "P12")
     assert coverage == 1.0 and uncovered == []
 
 
@@ -188,15 +214,19 @@ def test_all_relations_coverage_covers_the_whole_registry():
     result = alignment.all_relations_coverage(graph)
     assert set(result.keys()) == set(alignment.MATRIX.keys())
     assert len(result) == len(alignment.MATRIX)
-    # FIVE core relations since 2026-09-02, not seven. C6/C7 went with the
-    # rubric node type: a criterion is written by the same call as the item it
-    # marks and the rules require it to name that item's objective, so neither
-    # relation could fail — measured coverage 1.0 on both, in all 28 recorded
-    # runs. A relation that cannot fail is not construct-validity evidence, so
-    # the backbone is five that genuinely break rather than seven of which two
-    # are guaranteed.
-    assert sum(1 for r in alignment.REGISTRY.values() if r.tier == "core") == 5
-    assert sum(1 for r in alignment.REGISTRY.values() if r.tier == "secondary") == 11
+    # FOUR core relations: the goal's decomposition (C1) and the three edges
+    # of the constructive-alignment triad (C2-C4). C6/C7 went with the rubric
+    # node type — a criterion is written by the same call as the item it marks,
+    # so neither could fail (measured coverage 1.0 on both, in all 28 recorded
+    # runs), and a relation that cannot fail is not construct-validity
+    # evidence. C5 went when the module became the course's structural unit: a
+    # module ORGANISES the design, so everything it takes part in (P5, P7,
+    # P12-P14) is traceability and sits in the secondary tier.
+    assert sum(1 for r in alignment.REGISTRY.values() if r.tier == "core") == 4
+    assert sum(1 for r in alignment.REGISTRY.values() if r.tier == "secondary") == 14
+    assert not [r.relation_id for r in alignment.REGISTRY.values()
+                if NodeType.MODULE in r.source_node_types + r.target_node_types
+                and r.tier == "core"]
     # The structural pair is registered but deliberately outside the matrix.
     assert sum(1 for r in alignment.REGISTRY.values() if r.tier == "structural") == 2
     assert set(alignment.STRUCTURAL) & set(result) == set()

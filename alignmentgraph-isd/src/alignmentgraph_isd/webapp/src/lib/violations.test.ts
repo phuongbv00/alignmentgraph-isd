@@ -11,7 +11,8 @@ describe('violationLabel', () => {
       'bloom', 'bloom_mismatch_assessment', 'bloom_mismatch_activity',
       'measurability', 'plan_coverage', 'item_completeness', 'evaluation_quality',
       'activity_engagement', 'rubric_consistency', 'evidence_alignment',
-      'orphan_content', 'feasibility', 'actionability',
+      'orphan_content', 'feasibility', 'actionability', 'time_budget',
+      'blueprint_consistency', 'instrument_alignment',
     ]
     for (const type of marked) {
       expect(violationLabel(type), type).not.toBe(type)

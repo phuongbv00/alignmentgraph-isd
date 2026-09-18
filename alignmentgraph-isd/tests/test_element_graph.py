@@ -10,7 +10,7 @@ from conftest import events_of, load_brief
 def test_element_nodes_created_during_run(fake_config):
     """The relation-driven refactor makes every alignment-bearing artifact
     type element-level (not just objective) — the graph itself is the
-    retrieval/traversal structure the 16-relation matrix is established over.
+    retrieval/traversal structure the 18-relation matrix is established over.
     See alignment.py / the specialists' _decompose_elements calls."""
     result = run_brief(load_brief("minimal_brief.json"), fake_config)
     node_edits = events_of(result["trajectory"], "node_edit")

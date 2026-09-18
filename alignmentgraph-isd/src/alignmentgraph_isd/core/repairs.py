@@ -31,7 +31,7 @@ is tuned on; item text built from the objective's own statement reads to a
 text-similarity measure as correspondence no design work produced.
 
 So ``activity_engagement``, ``bloom_mismatch_activity``, ``rubric_consistency``,
-``feasibility``, ``actionability`` and the C3/C5 "nothing exists yet" cases have
+``feasibility``, ``actionability`` and the C3/P13/P14 "nothing exists yet" cases have
 NO repair. They stay in :data:`OWNED_BY_FAMILY` so reconciliation routes them to
 an owner, come back unrepaired, and are counted as residual. A repair that
 changes nothing logs nothing: a repair event reporting no change is what makes
@@ -82,12 +82,16 @@ def _log_repair(ctx: RepairContext, node_id: str, *, violation_type: str = "",
 # Both decomposition arms read this same map by family key: it is the one
 # definition of who answers for what.
 OWNED_BY_FAMILY: dict[str, frozenset[str]] = {
-    "outcome_designer": frozenset({"bloom"}),
+    # P12-P14 are the module's relations, each owned by the family whose
+    # artifacts DECLARE the reference: the modules name their objectives and
+    # topics, an activity names its module, an item names its instrument.
+    "outcome_designer": frozenset({"bloom", "P7", "P12"}),
     "assessment_designer": frozenset(
-        {"C2", "P3", "bloom_mismatch_assessment", "evaluation_quality", "plan_coverage",
-         "item_completeness"}),
+        {"C2", "P3", "P14", "bloom_mismatch_assessment", "evaluation_quality", "plan_coverage",
+         "item_completeness", "blueprint_consistency", "instrument_alignment"}),
     "activity_designer": frozenset(
-        {"C3", "C4", "P4", "activity_engagement", "bloom_mismatch_activity", "time_budget"}),
+        {"C3", "C4", "P4", "P13", "activity_engagement", "bloom_mismatch_activity",
+         "time_budget"}),
     # P8 must have an owner. Unowned, a media selection whose
     # `respects_constraints` names nothing real produces no finding at all:
     # `record_provenance` no-ops on an id that does not exist, and the gap
@@ -96,7 +100,7 @@ OWNED_BY_FAMILY: dict[str, frozenset[str]] = {
     # "high_bandwidth" — copied from the rule's own parenthetical example —
     # against constraint nodes c1..c7; P8 scored 0.0, the ledger held zero P8
     # findings, and the Content Designer was never told.
-    "content_designer": frozenset({"C5", "P5", "P6", "P8", "orphan_content"}),
+    "content_designer": frozenset({"P5", "P6", "P8"}),
     "rubric_designer": frozenset(
         {"rubric_consistency", "evidence_alignment"}),
     "implementation_planner": frozenset({"feasibility", "actionability", "P10", "P11"}),
@@ -106,10 +110,12 @@ OWNED_BY_FAMILY: dict[str, frozenset[str]] = {
 #: Owned, but never repaired: routed to a family so the trace names an owner,
 #: and handed straight back. Two reasons, and neither is an oversight.
 #:
-#: * Nothing exists yet to fix. C3 (no activity practices this objective) and
-#:   C5 (no content supports this activity) are missing ARTIFACTS, and the
-#:   only deterministic answer was a template — "Guided practice for ILO-01",
-#:   "Support module for TLA-01". Each satisfied its own check by existing.
+#: * Nothing exists yet to fix. C3 (no activity practices this objective),
+#:   P13 (no activity belongs to this module) and P14 (no item does) are
+#:   missing ARTIFACTS, and the only deterministic answer is a template —
+#:   "Guided practice for ILO-01" — which satisfies its own check by existing.
+#:   P7 and P12 are the Outcome Designer's grouping decision: which module an
+#:   objective or a topic belongs to is not something a lookup can answer.
 #: * The fix is not mechanical. ``activity_engagement`` /
 #:   ``bloom_mismatch_activity`` need a different activity, ``rubric_consistency``
 #:   a criterion that describes THIS item, ``feasibility`` / ``actionability`` a
@@ -128,7 +134,7 @@ REPORT_ONLY: frozenset[str] = frozenset({
     # design judgment, not a rearrangement of what the design already holds.
     # The net could only pick a constraint at random and make the check pass by
     # existing — the objection that has always kept P6 audit-only.
-    "C3", "C5", "P4", "P6", "P8", "P10", "P11",
+    "C3", "P4", "P6", "P7", "P8", "P10", "P11", "P12", "P13", "P14",
     "activity_engagement", "bloom_mismatch_activity", "time_budget",
     "rubric_consistency", "feasibility", "actionability",
 })
@@ -149,7 +155,12 @@ REPORT_ONLY: frozenset[str] = frozenset({
 #: than the design asked for. The agent gets its repair turns first, and the
 #: salvage runs only in the reconciliation pass, after every loop has closed.
 STRUCTURAL: frozenset[str] = frozenset({
-    "bloom", "C4", "P5", "orphan_content", "evidence_alignment",
+    "bloom", "C4", "P5", "evidence_alignment",
+    # Both are a lookup when they are fixable at all: a pair an instrument
+    # promises is added to `lo_coverage_targets`, an item is pointed at the ONE
+    # instrument its own objective and category identify. What a lookup cannot
+    # settle is handed back and reaches the agent.
+    "blueprint_consistency", "instrument_alignment",
 })
 
 
@@ -175,7 +186,7 @@ def repair(family: str, violations: list, ctx: RepairContext) -> list:
 
     :data:`REPORT_ONLY` types never reach a routine and are returned as-is.
     Filtered HERE rather than inside each family, because a per-family branch
-    that sends C3/C5 to a routine with nothing to do drops them silently: the
+    that sends C3/P13 to a routine with nothing to do drops them silently: the
     violation leaves ``remaining`` with nothing having been done about it,
     which is the exact failure mode a template has.
     """
@@ -306,11 +317,95 @@ def _repair_assessment_family(ctx: RepairContext, violations: list) -> list:
     # Designer as a repair turn in its own loop.
     coverage = [v for v in violations if v.violation_type in ("C2", "P3")]
     completeness = [v for v in violations if v.violation_type == "item_completeness"]
+    blueprint = [v for v in violations if v.violation_type == "blueprint_consistency"]
+    membership = [v for v in violations if v.violation_type == "instrument_alignment"]
     if completeness:
         repair_item_completeness(ctx, completeness)
     if coverage:
         repair_assessment_coverage(ctx, coverage)
-    return [v for v in violations if v not in coverage and v not in completeness]
+    # The blueprint first: an item is matched to an instrument by the pairs
+    # the plan promises, so those have to be complete before the lookup runs.
+    unsettled = repair_blueprint_pairs(ctx, blueprint) if blueprint else []
+    unsettled += repair_instrument_membership(ctx, membership) if membership else []
+    handled = coverage + completeness + blueprint + membership
+    return [v for v in violations if v not in handled] + unsettled
+
+
+def repair_blueprint_pairs(ctx: RepairContext, violations: list) -> list:
+    """``blueprint_consistency``, the half a lookup settles: a pair an
+    instrument promises is ADDED to ``lo_coverage_targets``. Nothing is
+    decided — the plan already says the instrument assesses that objective at
+    that timing, and this writes the same fact where the rest of the harness
+    reads it. An instrument naming a module or an objective that does not
+    exist is returned: which one it meant is the Designer's to say."""
+    fixable = [v for v in violations if v.metadata.get("kind") == "unpromised_pair"]
+    rest = [v for v in violations if v not in fixable]
+    if not fixable:
+        return rest
+    if ctx.graph_mode:
+        node_id = ctx.graph.section_id(NodeType.ASSESSMENT_PLAN)
+        plan = dict((ctx.graph.get_node(node_id) or {}).get("data") or {})
+    else:
+        node_id = "assessment_plan"
+        plan = dict(ctx.store.get("assessment_plan") or {})
+    raw = plan.get("lo_coverage_targets")
+    targets = {k: list(v) if isinstance(v, list) else [v]
+               for k, v in (raw.items() if isinstance(raw, dict) else ())}
+    # Keyed the way the model keyed it (it may have namespaced the id), so the
+    # pair lands in the entry it already wrote for that objective.
+    key_of = {alignment.bare_ref(key): key for key in targets}
+    added: list[str] = []
+    for violation in fixable:
+        lo_id = str(violation.metadata.get("lo_id") or "")
+        category = str(violation.metadata.get("plan_category") or "")
+        entry = targets.setdefault(key_of.setdefault(lo_id, lo_id), [])
+        if category and category not in entry:
+            entry.append(category)
+            added.append(f"{lo_id} x {category}")
+    if not added:
+        return rest
+    if ctx.graph_mode:
+        ctx.graph.update_node(node_id, {"lo_coverage_targets": targets})
+    else:
+        ctx.store.put("assessment_plan", {**plan, "lo_coverage_targets": targets})
+    _log_repair(ctx, node_id, violation_type="blueprint_consistency",
+                repaired_fields=["lo_coverage_targets"], rule="repair_blueprint_pairs",
+                input_summary="; ".join(v.message for v in fixable)[:200],
+                output_summary=f"Promised what the instruments already assess: {', '.join(added)}.")
+    return rest
+
+
+def repair_instrument_membership(ctx: RepairContext, violations: list) -> list:
+    """``instrument_alignment``: point an item at the ONE instrument its own
+    ``aligned_objective`` and ``plan_category`` identify. Zero candidates or
+    several is not a lookup — which quiz a question belongs to is then a
+    design decision — and the violation is returned."""
+    graph = ctx.graph
+    plan = (graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN)) or {}).get("data") or {}
+    instruments = [i for i in (plan.get("instruments") or []) if isinstance(i, dict)]
+    repaired: list[str] = []
+    rest: list = []
+    for violation in violations:
+        node = graph.get_node(violation.node_id)
+        data = (node or {}).get("data") or {}
+        lo_id = alignment.bare_ref(data.get("aligned_objective", ""))
+        category = str(data.get("plan_category") or "").lower()
+        candidates = [
+            alignment.bare_ref(i.get("id", "")) for i in instruments
+            if str(i.get("timing") or "").lower() == category
+            and lo_id in map(alignment.bare_ref, i.get("covers_objectives") or [])]
+        if node is None or len(candidates) != 1 or not candidates[0]:
+            rest.append(violation)
+            continue
+        graph.update_node(violation.node_id, {"instrument_id": candidates[0], "repaired": True})
+        repaired.append(f"{violation.node_id} -> {candidates[0]}")
+    if repaired:
+        alignment.match_module_assessed(graph)
+        _log_repair(ctx, violations[0].node_id, violation_type="instrument_alignment",
+                    repaired_fields=["assessment_tools"], rule="repair_instrument_membership",
+                    input_summary="; ".join(v.message for v in violations)[:200],
+                    output_summary=f"Filed items under their instrument: {', '.join(repaired)}.")
+    return rest
 
 
 def repair_assessment_coverage(ctx: RepairContext, violations: list) -> None:
@@ -504,86 +599,45 @@ def repair_activity_coverage(ctx: RepairContext, violations: list) -> None:
 
 
 def _repair_content_family(ctx: RepairContext, violations: list) -> list:
-    remaining = []
-    coverage_violations = []
-    orphan_violations = []
-    for violation in violations:
-        vtype = getattr(violation, "violation_type", "")
-        # C5 and P6 never arrive: `repair` filters REPORT_ONLY out first.
-        if vtype == "P5":
-            coverage_violations.append(violation)
-        elif vtype == "orphan_content":
-            orphan_violations.append(violation)
-        else:
-            remaining.append(violation)
-    if coverage_violations:
-        repair_content_coverage(ctx, coverage_violations)
-    if orphan_violations:
-        # RETURNED, not dropped: an orphaned MODULE is not repairable (see
-        # `repair_content_orphans`), and a routine that silently swallows
-        # what it cannot fix is the exact failure `repair`'s docstring names.
-        remaining += repair_content_orphans(ctx, orphan_violations)
-    return remaining
+    # P6 and P8 never arrive: `repair` filters REPORT_ONLY out first.
+    coverage = [v for v in violations if getattr(v, "violation_type", "") == "P5"]
+    if coverage:
+        repair_content_coverage(ctx, coverage)
+    return [v for v in violations if getattr(v, "violation_type", "") != "P5"]
 
 
 def repair_content_coverage(ctx: RepairContext, violations: list) -> None:
-    """A material with no ``linked_module`` (``P5``, or ``orphan_content`` on
-    a material) is pointed at a module the design already has. Both callers
-    pre-filter to material violations; the type is not re-checked here, or an
-    ``orphan_content`` material would be silently swallowed.
-
-    C5 — an activity with no supporting content at all — is NOT repaired. The
-    module a repair could add here is one titled "Support module for TLA-01"
-    and described as "Content supporting activity TLA-01": a node that closes
-    the relation and teaches nothing."""
+    """A material with no resolvable ``linked_module`` (``P5``) is pointed at
+    the module it was WRITTEN FOR, which the harness knows exactly: materials
+    are developed one module at a time and every material carries the
+    ``plan_set`` of the work set that produced it (``MU-MOD-02``). A material
+    whose set names no module that exists is left alone and stays a finding —
+    picking a module for it would be authoring the claim the edge records."""
     graph = ctx.graph
-    module_nodes = graph.element_nodes(NodeType.MODULE)
+    modules = {node["id"].split(graph.ELEMENT_SEP, 1)[-1]: node["id"]
+               for node in graph.element_nodes(NodeType.MODULE)}
     repaired_ids: list[str] = []
     for violation in violations:
-        if module_nodes:
-            material_id = str(violation.metadata.get("node_id") or violation.node_id or "")
-            material = graph.get_node(material_id) if material_id else None
-            if material is not None:
-                module_ref = module_nodes[0]["id"].split(graph.ELEMENT_SEP, 1)[-1]
-                material["data"]["linked_module"] = module_ref
-                alignment.record_provenance(graph, "P5", [module_nodes[0]["id"]], material_id)
-                repaired_ids.append(material_id)
+        material_id = str(violation.metadata.get("node_id") or violation.node_id or "")
+        material = graph.get_node(material_id) if material_id else None
+        if material is None:
+            continue
+        plan_set = str(material["data"].get("plan_set") or "")
+        # Longest id first, so MOD-1 never claims a set written for MOD-10.
+        owner = next((ref for ref in sorted(modules, key=len, reverse=True)
+                      if ref and ref in plan_set), "")
+        if not owner:
+            continue
+        material["data"]["linked_module"] = owner
+        alignment.record_provenance(graph, "P5", [modules[owner]], material_id)
+        repaired_ids.append(material_id)
     if not repaired_ids:
         return
     _log_repair(
         ctx, repaired_ids[0],
         violation_type=violations[0].violation_type, repaired_fields=["learner_materials"],
-                rule="repair_coverage", input_summary="; ".join(v.message for v in violations)[:200],
-                output_summary=f"Linked materials to a module: {', '.join(repaired_ids)}.")
-
-
-def repair_content_orphans(ctx: RepairContext, violations: list) -> list:
-    """orphan_content on a MATERIAL is repaired; on a MODULE it is reported.
-
-    The material case is structural — a material with no linked module is
-    re-pointed at one the design already holds, the same shape as
-    :func:`repair_content_coverage`'s P5 branch, which is reused directly
-    because ``violation.node_id`` there is already a material id.
-
-    THE MODULE CASE IS NOT REPAIRABLE: linking an orphaned module to some
-    activity fabricates an ALIGNMENT EDGE (measured on run 2559b22d: twelve
-    modules pointed at ``TLA-0101``, eleven activities still uncovered, and a
-    graph asserting relations the modules' own data contradicts). Deciding
-    which activity a module supports is authoring the alignment claim this
-    package exists to make auditable, not rearranging what the design holds.
-    So an orphaned module is a finding: it stays in the residual count and
-    goes back to the Content Designer as a repair turn.
-    """
-    graph = ctx.graph
-    modules, rest = [], []
-    for violation in violations:
-        node_id = str(violation.metadata.get("node_id") or violation.node_id or "")
-        target = modules if node_id.startswith(
-            f"{NodeType.MODULE}{graph.ELEMENT_SEP}") else rest
-        target.append(violation)
-    if rest:
-        repair_content_coverage(ctx, rest)
-    return modules
+        rule="repair_coverage", input_summary="; ".join(v.message for v in violations)[:200],
+        output_summary=f"Linked materials to their module: {', '.join(repaired_ids)}.")
 
 
 # ── rubric family ───────────────────────────────────────────────────────────

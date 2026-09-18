@@ -24,6 +24,7 @@ from __future__ import annotations
 # "at most 8" while the harness splits at 6 would have its own grouping taken
 # apart behind it. Cycle-free: dev_plans imports nothing local.
 from .dev_plans import MIN_ACTIVITY_MINUTES as _MIN_ACTIVITY_MINUTES
+from .dev_plans import MAX_MODULES, MODULES_BY_COURSE_HOURS
 from .dev_plans import max_units as _max_units
 
 #: Enum vocabularies shared between the deep tool-call schema
@@ -92,8 +93,42 @@ RULES_OUTCOMES = RULES_OUTCOMES % {
     "bloom_levels": ", ".join(BLOOM_LEVELS), "bloom_verbs": ", ".join(BLOOM_VERBS),
     "max_objectives": MAX_OBJECTIVES}
 
+RULES_COURSE_MODULES = """\
+``course_modules`` divides the course into modules: each is a cluster of objectives and topics
+that are learned together, in the order learners meet them — the order of your list IS the
+order of the course. Everything designed after this (assessment, activities, materials,
+delivery) is divided by your modules, one module at a time, so a module must be a unit that
+makes sense on its own.
+
+Every objective must appear in the ``objectives`` of at least one module, by its id; an objective
+that genuinely spans the course may appear in more than one. Set ``covers_topics`` to the ids of
+the topics the module teaches. ``minutes`` is the learner time the module gets, and the modules'
+minutes must add up to the time the scenario gives the course — this is the budget the
+module's activities and assessments have to fit inside, so do not write a round number.
+
+Write no more modules than you have objectives, no more than the analysis has topics, and no
+more than the course length carries: about %(short)d for a course within one week, %(medium)d for
+one of up to a month, %(long)d for a longer one. Fewer is fine — a short course with two objectives
+that belong together is one module."""
+
+RULES_COURSE_MODULES = RULES_COURSE_MODULES % {
+    "short": MODULES_BY_COURSE_HOURS[0][1], "medium": MODULES_BY_COURSE_HOURS[1][1],
+    "long": MAX_MODULES}
+
 RULES_ASSESSMENT_PLAN = """\
-lo_coverage_targets and expected_evidence must have one entry per learning objective given.
+``instruments`` is the assessment blueprint: what learners actually sit, module by module. Give
+each module the instruments it needs at the moments it needs them — ``timing`` is diagnostic
+(before the module), formative (during it) or summative (after it); not every module needs all
+three. For each instrument state its ``format`` (quiz, practical, project, ...), its real scale in
+``item_counts`` (item type -> how many the FULL instrument has, e.g. 20 multiple_choice and 3
+short_answer — the true size, even though only a sample of those items is written out later),
+the ``covers_objectives`` it assesses (ids from that module's objectives), its ``minutes``, and its
+``weight_percent`` of the course grade (0 when ungraded; the graded instruments add up to 100).
+``module_id`` must be the id of an existing module, copied from your read of the design state.
+Every objective must be covered by at least one instrument.
+lo_coverage_targets and expected_evidence must have one entry per learning objective given, and
+lo_coverage_targets must agree with the instruments: an objective is promised a category exactly
+when an instrument with that ``timing`` covers it.
 formative_methods must each name an instrument and a cadence (e.g. "exit tickets after each
 module"), consistent with the formative intent above.
 pilot_data_plan.anticipated_difficulties must name at least two SPECIFIC areas, each anchored to
@@ -103,6 +138,8 @@ with a rationale grounded in the learner profile and a first_revision that is co
 to act on without further analysis."""
 
 RULES_ASSESSMENT_ITEMS = """\
+Every item belongs to ONE instrument of the assessment plan: set ``instrument_id`` to that
+instrument's id, and ``plan_category`` to that instrument's ``timing``.
 Every (objective, plan_category) pair the assessment plan's lo_coverage_targets names needs at
 least one item; the dev plan's expected_items says how many each instrument set writes, and
 there is no filler beyond that. Do not aim for a round number of items -- a plan covering three
@@ -146,6 +183,9 @@ YOUR ASSIGNED SET below states how many items to write: cover every (objective, 
 pair it lists with at least one item, and write no filler beyond the stated count. If the set spans
 more than one objective, its items must share a common stem/scenario (the instrument the set
 describes), but each individual item still carries a SINGLE ``aligned_objective`` — never a list.
+Every item belongs to ONE of the instruments YOUR ASSIGNED SET lists: set ``instrument_id`` to
+that instrument's id and ``plan_category`` to its ``timing``, write the item in one of the item
+types its ``item_counts`` names, and spread your items over those types.
 required_cognitive_process must be one of:
 %(bloom_levels)s — and must be honestly achievable by the
 item's format (a multiple_choice/true_false item cannot honestly claim apply-or-higher; use
@@ -169,6 +209,7 @@ Must include ALL 9 Gagné events. Every part of this plan must serve the learnin
 given — do not introduce content unrelated to them."""
 
 RULES_ACTIVITIES = """\
+Every activity belongs to ONE module: set ``module_id`` to the id of the module it is taught in.
 Every activity must list ``aligned_objectives`` (existing ILO ids it practices, TLA = Teaching/
 Learning Activity) and ``prepares_for_assessment`` (existing assessment item ids it prepares
 learners for). ``materials_needed`` is free text, NOT an id — describe what content/resource
@@ -216,6 +257,8 @@ committed, so that two Developers working at the same time cannot name the same 
 ``prerequisite_activities`` therefore names activities BY POSITION in the list you are
 submitting: [1] is the first activity you wrote, [2] the second. Leave it empty unless one
 of your own activities genuinely has to come first.
+Every activity belongs to the module YOUR ASSIGNED BLOCK names: set ``module_id`` to that
+module's id on every activity.
 Every activity must list ``aligned_objectives`` (existing ILO ids it practices, TLA = Teaching/
 Learning Activity, drawn ONLY from YOUR ASSIGNED BLOCK's objectives) and
 ``prepares_for_assessment`` (existing assessment item ids it prepares learners for).
@@ -236,27 +279,21 @@ RULES_ACTIVITIES_SET = RULES_ACTIVITIES_SET % {"bloom_levels": ", ".join(BLOOM_L
 MEDIA_TYPES = ("video", "slides", "simulation", "document", "audio")
 
 
-RULES_CONTENT_MODULES = """\
-Every content module must set ``supports_activities`` to existing activity ids whose
-``materials_needed`` hint it is addressing — do not invent a module nothing needs, and between
-them the modules should cover every activity. Your read of the design state already lists
-every activity with its name and cognitive process, which is what this decision needs; read
-one in full only when its listing line leaves you unsure. Every module
-should set ``covers_topics`` to existing topic ids. Every media selection should set
-``respects_constraints`` to the ids of the constraints it was chosen in light of, copied from
-your read of the design state, which lists every constraint of this brief with its description
-— a constraint you did not read there does not exist, and a name you invent links to nothing.
-media_type must be one of: %(media_types)s. Every media selection should also set ``for_modules`` to
-the content module id(s) it serves — a later step develops materials one module at a time and
-needs to know which media belong to which module.
+RULES_MEDIA_SELECTIONS = """\
+Choose the media each module's content is delivered through. Every media selection must set
+``for_modules`` to the id(s) of the module(s) it serves, copied from your read of the design
+state — materials are developed one module at a time and each module is handed only its own
+media, so every module needs at least one. Choose in light of what the module's activities
+ask for (their ``materials_needed``): your read of the design state lists every activity with
+its module, name and cognitive process, which is what this decision needs; read one in full
+only when its listing line leaves you unsure.
+Every media selection should set ``respects_constraints`` to the ids of the constraints it was
+chosen in light of, copied from your read of the design state, which lists every constraint of
+this brief with its description — a constraint you did not read there does not exist, and a name
+you invent links to nothing.
+media_type must be one of: %(media_types)s."""
 
-``expected_materials`` is how many learner materials that module actually needs — you are the only
-step that knows whether a module is one handout or a broad topic needing several. At least one
-per media selection the module receives, at most %(max_materials)d; a module that needs more than
-that is really two modules."""
-
-RULES_CONTENT_MODULES = RULES_CONTENT_MODULES % {
-    "max_materials": _max_units("material"), "media_types": ", ".join(MEDIA_TYPES)}
+RULES_MEDIA_SELECTIONS = RULES_MEDIA_SELECTIONS % {"media_types": ", ".join(MEDIA_TYPES)}
 
 #: The whole-family rules. Not composed by any fan-out spec — a grep for the
 #: name finds only this line — but reached by ``rules_for("content")`` through
@@ -264,7 +301,7 @@ RULES_CONTENT_MODULES = RULES_CONTENT_MODULES % {
 #: it is planning will be held to. Deleting it on the grep's word raises
 #: KeyError at import.
 RULES_MATERIALS = """\
-Every material's ``linked_module`` must name an existing content module id it belongs to, and
+Every material's ``linked_module`` must name an existing module id it belongs to, and
 its ``type`` must be the ``media_type`` of the media selection it realizes — one of
 %(media_types)s — with ``format`` a delivery format for that type.
 ``content`` must BE the learner-facing substance of the material, ready to hand to a learner —
@@ -279,7 +316,7 @@ RULES_MATERIALS = RULES_MATERIALS % {"media_types": ", ".join(MEDIA_TYPES)}
 RULES_MATERIALS_UNIT = """\
 Do NOT write an id for the artifacts you produce — ids are assigned when your set is
 committed, so that two Developers working at the same time cannot name the same thing.
-Produce materials ONLY for the ONE content module given — ``linked_module`` must be that
+Produce materials ONLY for the ONE module given — ``linked_module`` must be that
 module's id on every material. YOUR ASSIGNED MODULE below states how many materials to write:
 realize every media selection given for this module with at least one material, and write no
 filler beyond the stated count. Each material's ``type`` must be the ``media_type`` of the
@@ -356,11 +393,12 @@ list of ids."""
 
 
 #: Artifact families each multi-family STAGE covers, in order. (``analysis``
-#: and ``outcomes`` cover one family each and read their ``RULES_*`` directly.)
+#: covers one family and reads its ``RULES_*`` directly.)
 _STATE_FAMILIES: dict[str, tuple[str, ...]] = {
+    "outcomes": ("OUTCOMES", "COURSE_MODULES"),
     "assessment": ("ASSESSMENT_PLAN", "ASSESSMENT_ITEMS"),
     "activities": ("ACTIVITY_PLAN", "ACTIVITIES"),
-    "content": ("CONTENT_MODULES", "MATERIALS"),
+    "content": ("MEDIA_SELECTIONS", "MATERIALS"),
     # The dev plan is part of the implementation DISPATCH artifact (the session
     # guides it divides are written by the Developer tier), so its rules belong
     # in the stage text.

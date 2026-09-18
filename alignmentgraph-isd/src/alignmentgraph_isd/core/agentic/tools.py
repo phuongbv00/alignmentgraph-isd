@@ -222,7 +222,7 @@ def run_read_node(graph: "AlignmentGraph", step: "AgenticStep", args: dict) -> s
     16, both walking a list of activity ids one node per turn. At
     ``STAGE_MAX_TURNS`` 24 that exhausts the stage on reading alone, and the
     content stage duly gave up — 41 turns, 35 reads, and a design left with 5
-    content modules against 23 activities (C5 coverage 0.13).
+    content modules against 23 activities.
 
     The counterpart of the state read being a one-line-per-node LISTING:
     without a batched read, the only way to read what the listing names is one

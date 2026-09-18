@@ -14,14 +14,20 @@ def _collect_violations(node_name: str, graph, design_brief) -> list:
     per family so a repair dispatch does meaningful work rather than every
     agent seeing everything."""
     if node_name == "outcome_designer":
-        return checks.bloom_verbs(graph) + checks.measurability(graph)
+        # P7/P12: a module no topic backs, an objective no module serves.
+        coverage = [v for v in checks.relation_coverage(graph)
+                    if v.violation_type in ("P7", "P12")]
+        return checks.bloom_verbs(graph) + checks.measurability(graph) + coverage
     if node_name == "assessment_designer":
-        coverage = [v for v in checks.relation_coverage(graph) if v.violation_type in ("C2", "P3")]
+        coverage = [v for v in checks.relation_coverage(graph)
+                    if v.violation_type in ("C2", "P3", "P14")]
         bloom = [v for v in checks.bloom_mismatches(graph) if v.violation_type == "bloom_mismatch_assessment"]
         return (coverage + bloom + checks.evaluation_quality(graph) + checks.plan_coverage(graph)
-                + checks.item_completeness(graph))
+                + checks.item_completeness(graph) + checks.blueprint_consistency(graph)
+                + checks.instrument_alignment(graph))
     if node_name == "activity_designer":
-        coverage = [v for v in checks.relation_coverage(graph) if v.violation_type in ("C3", "C4", "P4")]
+        coverage = [v for v in checks.relation_coverage(graph)
+                    if v.violation_type in ("C3", "C4", "P4", "P13")]
         bloom = [v for v in checks.bloom_mismatches(graph) if v.violation_type == "bloom_mismatch_activity"]
         return (coverage + checks.activity_engagement(graph) + bloom
                 + checks.time_budget(graph))
@@ -30,9 +36,8 @@ def _collect_violations(node_name: str, graph, design_brief) -> list:
         # that exists. Report-only for the harness (picking one would be a
         # design judgment), so the Designer is shown it in its own repair turn
         # — which is the only way it is shown at all.
-        coverage = [v for v in checks.relation_coverage(graph)
-                    if v.violation_type in ("C5", "P5", "P6", "P8")]
-        return coverage + checks.orphan_content(graph)
+        return [v for v in checks.relation_coverage(graph)
+                if v.violation_type in ("P5", "P6", "P8")]
     if node_name == "rubric_designer":
         # No relation coverage: a criterion is a FIELD of the item it marks.
         return checks.rubric_consistency(graph) + checks.evidence_alignment(graph)
@@ -61,7 +66,8 @@ def _collect_violations_prose(node_name: str, store) -> list:
         return checks.bloom_verbs_items(objectives) + checks.measurability_items(objectives)
     if node_name == "assessment_designer":
         plan = store.get("assessment_plan")
-        quality = checks.evaluation_quality_data("assessment_plan", plan) if plan else []
+        quality = (checks.evaluation_quality_data("assessment_plan", plan)
+                   + checks.blueprint_consistency_data("assessment_plan", plan)) if plan else []
         tools = [
             (str(t.get("item_id", "")), t)
             for t in store.items("assessment", "assessment_tools")

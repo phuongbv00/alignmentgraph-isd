@@ -41,6 +41,9 @@ def _designed_up_to_outcomes() -> tuple[AlignmentGraph, TrajectoryLogger]:
 def _plan(**over) -> dict:
     plan = copy.deepcopy(_ASSESSMENT["assessment_plan"])
     plan["lo_coverage_targets"] = {"ILO-01": ["formative", "summative"]}
+    plan["instruments"] = [
+        dict(plan["instruments"][0], id=f"INS-0{n}", timing=timing)
+        for n, timing in enumerate(("formative", "summative"), start=1)]
     plan.update(over)
     return {"assessment_plan": plan}
 
@@ -396,5 +399,5 @@ def test_a_large_pool_gets_the_room_the_small_ones_leave():
     # small pools keeping only what they need, the budget itself is the limit.
     assert text.count("[ACTIVITY:") >= 75
     assert "more not shown" in text, "and what still does not fit is announced"
-    assert "[TOPIC:TOP-01]" in text and "[CONSTRAINT:CON-01]" in text
+    assert "[MODULE:MOD-01]" in text and "[CONSTRAINT:CON-01]" in text
     assert len(text) <= alignment_state.STATE_CHAR_BUDGET

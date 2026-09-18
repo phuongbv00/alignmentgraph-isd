@@ -276,7 +276,7 @@ class AlignmentGraph:
         """Add an alignment edge.
 
         ``edge_type`` is the relation key ("C2-assessed_by"); ``relation_id``
-        (C1..C5/P1..P11) and ``established_by`` (id|type|provenance) are resolved by
+        (C1..C4/P1..P14) and ``established_by`` (id|type|provenance) are resolved by
         callers from the (source_type, target_type) pair via ``alignment.py``'s
         registry, not here (avoids a graph<->alignment import cycle).
 

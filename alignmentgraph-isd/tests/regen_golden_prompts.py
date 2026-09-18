@@ -120,7 +120,8 @@ def _check_messages() -> dict[str, str]:
     produced: list = []
     for name in ("bloom_verbs", "measurability", "rubric_consistency", "plan_coverage",
                  "item_completeness", "evaluation_quality", "activity_engagement",
-                 "orphan_content", "evidence_alignment", "actionability",
+                 "evidence_alignment", "actionability", "blueprint_consistency",
+                 "instrument_alignment",
                  "relation_coverage", "bloom_mismatches"):
         produced += getattr(checks, name)(graph)
 

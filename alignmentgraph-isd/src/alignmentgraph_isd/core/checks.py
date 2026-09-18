@@ -201,6 +201,8 @@ IDENTITY_FIELDS: dict[str, tuple[str, ...]] = {
     "actionability": ("section",),            # instructor_orientation vs system_check
     "evidence_alignment": ("rc_id",),         # several criteria on one item
     "bloom": ("rule",),                       # four sub-rules, one node
+    # every finding sits on the plan node: which kind, which instrument, which pair
+    "blueprint_consistency": ("kind", "instrument_id", "lo_id", "plan_category"),
 }
 
 
@@ -219,18 +221,25 @@ def _has_concrete_items(*candidates) -> bool:
     return False
 
 
-def _duration_hours(design_brief: DesignBrief) -> float:
-    text = f"{design_brief.context.duration} {design_brief.duration}".lower()
-    hours = 0.0
-    for value, unit in re.findall(r"(\d+(?:\.\d+)?)\s*(hour|hr|h|day|d|week|w)", text):
-        amount = float(value)
-        if unit.startswith("h"):
-            hours += amount
-        elif unit.startswith("d"):
-            hours += amount * 6  # ~6 instructional hours per day
-        elif unit.startswith("w"):
-            hours += amount * 30
-    return hours
+def duration_hours(design_brief: DesignBrief) -> float:
+    """Instructional hours in the brief's free-text duration, 0.0 when it
+    states none. A range ("2-4 weeks", "1-6 months") reads as its UPPER end:
+    the pattern matches the number next to the unit.
+
+    The brief states its length in two fields that usually say the same thing
+    ("3 days" and "3 days (18 hours)"), and one field may say it twice, so
+    nothing is ADDED across them: a stated number of hours wins, otherwise the
+    longest single reading does."""
+    readings: list[float] = []
+    for text in (design_brief.context.duration, design_brief.duration):
+        found = re.findall(r"(\d+(?:\.\d+)?)\s*(hour|hr|h|day|d|week|w|month)",
+                           str(text or "").lower())
+        stated = [float(value) for value, unit in found if unit.startswith("h")]
+        if stated:
+            return max(stated)
+        per_unit = {"d": 6, "w": 30, "m": 120}   # ~6 instructional hours per day
+        readings += [float(value) * per_unit[unit[0]] for value, unit in found]
+    return max(readings, default=0.0)
 
 
 # ══════════════════════ Outcome Designer's own checks ═══════════════════════
@@ -504,6 +513,122 @@ def plan_coverage(graph) -> list[Violation]:
     return violations
 
 
+def _instruments(plan: dict) -> list[dict]:
+    return [i for i in ((plan or {}).get("instruments") or []) if isinstance(i, dict)]
+
+
+def instrument_pairs(plan: dict) -> list[tuple[str, str]]:
+    """The (objective, category) pairs the plan's INSTRUMENTS promise: every
+    objective an instrument covers, at that instrument's timing. Bare ids and
+    valid categories only, first-seen order, no repeats."""
+    pairs: list[tuple[str, str]] = []
+    for instrument in _instruments(plan):
+        timing = str(instrument.get("timing") or "").lower().strip()
+        if timing not in dev_plans._VALID_CATEGORIES:
+            continue
+        for ref in instrument.get("covers_objectives") or []:
+            pair = (alignment.bare_ref(ref), timing)
+            if pair[0] and pair not in pairs:
+                pairs.append(pair)
+    return pairs
+
+
+def blueprint_consistency(graph) -> list[Violation]:
+    """The assessment plan says WHEN each objective is assessed twice — per
+    instrument (``instruments``) and per objective (``lo_coverage_targets``,
+    which P3, ``plan_coverage`` and the work-set planner read) — and the two
+    must agree, or an instrument exists that no item will ever be asked for.
+    Also: an instrument must name a module and objectives that exist."""
+    plan_node = graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))
+    if plan_node is None:
+        return []
+    sep = graph.ELEMENT_SEP
+    return blueprint_consistency_data(
+        plan_node["id"], plan_node["data"],
+        modules={n["id"].split(sep, 1)[-1] for n in graph.element_nodes(NodeType.MODULE)},
+        objectives={n["id"].split(sep, 1)[-1] for n in graph.element_nodes(NodeType.OBJECTIVE)})
+
+
+def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | None = None,
+                               objectives: set[str] | None = None) -> list[Violation]:
+    """The core of :func:`blueprint_consistency`. The promised-pairs half reads
+    the plan alone, so the prose arm runs it too; the two existence halves
+    need the other artifacts and run only when their id sets are given."""
+    violations: list[Violation] = []
+    promised = set(dev_plans.plan_category_pairs((plan or {}).get("lo_coverage_targets")))
+    for lo_id, timing in instrument_pairs(plan):
+        if objectives is not None and lo_id not in objectives:
+            continue    # reported below; promising it would promise nothing real
+        if (lo_id, timing) not in promised:
+            violations.append(Violation(
+                node_id=node_id, edge_type="", violation_type="blueprint_consistency",
+                severity="warning",
+                message=(f"An instrument assesses {lo_id} at {timing} timing, but "
+                         f"lo_coverage_targets does not promise {lo_id} a {timing} item."),
+                repair_hint=f"Add \"{timing}\" to lo_coverage_targets[\"{lo_id}\"].",
+                metadata={"kind": "unpromised_pair", "lo_id": lo_id, "plan_category": timing},
+            ))
+    for instrument in _instruments(plan):
+        ins_id = str(instrument.get("id") or "?")
+        module = alignment.bare_ref(instrument.get("module_id", ""))
+        if modules is not None and module not in modules:
+            violations.append(Violation(
+                node_id=node_id, edge_type="", violation_type="blueprint_consistency",
+                severity="warning",
+                message=f"Instrument {ins_id} names module {module!r}, which does not exist.",
+                repair_hint="Set module_id to the id of an existing module.",
+                metadata={"kind": "unknown_module", "instrument_id": ins_id},
+            ))
+        unknown = [ref for ref in map(alignment.bare_ref, instrument.get("covers_objectives") or [])
+                   if objectives is not None and ref and ref not in objectives]
+        if unknown:
+            violations.append(Violation(
+                node_id=node_id, edge_type="", violation_type="blueprint_consistency",
+                severity="warning",
+                message=(f"Instrument {ins_id} covers {', '.join(unknown)}, which "
+                         f"{'is' if len(unknown) == 1 else 'are'} not an objective of this design."),
+                repair_hint="List only existing objective ids in covers_objectives.",
+                metadata={"kind": "unknown_objective", "instrument_id": ins_id,
+                          "lo_id": ",".join(unknown)},
+            ))
+    return violations
+
+
+def instrument_alignment(graph) -> list[Violation]:
+    """Every assessment item belongs to one instrument of the plan, at that
+    instrument's timing. An item naming no instrument that exists, or sitting
+    in a formative instrument while calling itself summative, is an item the
+    blueprint cannot account for. Silent when the plan has no instruments:
+    there is nothing to belong to, and that absence is the plan's finding."""
+    plan_node = graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))
+    timing_of = {alignment.bare_ref(i.get("id", "")): str(i.get("timing") or "").lower()
+                 for i in _instruments((plan_node or {}).get("data") or {})}
+    if not timing_of:
+        return []
+    violations: list[Violation] = []
+    for item in graph.element_nodes(NodeType.ASSESSMENT):
+        data = item["data"]
+        item_id = data.get("item_id", item["id"].rsplit(graph.ELEMENT_SEP, 1)[-1])
+        instrument = alignment.bare_ref(data.get("instrument_id", ""))
+        category = str(data.get("plan_category") or "").lower()
+        if instrument not in timing_of:
+            problem = (f"Item '{item_id}' names instrument {instrument!r}, which the "
+                       "assessment plan does not have.")
+        elif category != timing_of[instrument]:
+            problem = (f"Item '{item_id}' is a {category or 'uncategorised'} item in "
+                       f"{instrument}, a {timing_of[instrument]} instrument.")
+        else:
+            continue
+        violations.append(Violation(
+            node_id=item["id"], edge_type="", violation_type="instrument_alignment",
+            severity="warning", message=problem,
+            repair_hint=("Set instrument_id to an instrument of the assessment plan whose "
+                         "timing is this item's plan_category and which covers its objective."),
+            metadata={"item_id": item_id},
+        ))
+    return violations
+
+
 _CHOICE_ITEM_TYPES = frozenset({"multiple_choice", "true_false", "matching"})
 
 
@@ -698,42 +823,6 @@ def activity_engagement(graph) -> list[Violation]:
     return violations
 
 
-# ══════════════════════ Content Designer's own checks ═══════════════════════
-
-def orphan_content(graph) -> list[Violation]:
-    """Every Content module and every Material must trace to >=1 Activity
-    (module-side C5 coverage; P5 coverage for materials) — "no orphan
-    content untraceable to instructional purpose", per the Content
-    Designer's own brief.
-
-    C5's own ``coverage_side`` is ``"target"`` (the core construct-validity
-    claim it backs is "every Activity has supporting content", checked
-    elsewhere via ``relation_coverage()``/the residual audit) — the OPPOSITE
-    side from what an orphan-module check needs, so this can't reuse
-    ``alignment.relation_coverage(graph, "C5")`` (that returns uncovered
-    Activities, not modules, and returns nothing at all when no Activity
-    exists yet). This checks the module side directly instead."""
-    violations: list[Violation] = []
-    for module in graph.element_nodes(NodeType.MODULE):
-        if graph.get_edges(relation_id="C5", source=module["id"]):
-            continue
-        violations.append(Violation(
-            node_id=module["id"], edge_type="", violation_type="orphan_content", severity="warning",
-            message=f"{module['id']} supports no Activity (orphan content module).",
-            repair_hint="Link this module to an existing Activity, or remove it.",
-            metadata={"node_id": module["id"]},
-        ))
-    _, uncovered_materials = alignment.relation_coverage(graph, "P5")
-    for node_id in uncovered_materials:
-        violations.append(Violation(
-            node_id=node_id, edge_type="", violation_type="orphan_content", severity="warning",
-            message=f"{node_id} has no source content module (orphan material).",
-            repair_hint="Set linked_module to an existing content module.",
-            metadata={"node_id": node_id},
-        ))
-    return violations
-
-
 # ══════════════════════ Rubric Designer's own checks ════════════════════════
 
 def evidence_alignment(graph) -> list[Violation]:
@@ -773,7 +862,7 @@ def evidence_alignment(graph) -> list[Violation]:
 def feasibility(graph, design_brief: DesignBrief | None) -> list[Violation]:
     if design_brief is None:
         return []
-    total_hours = _duration_hours(design_brief)
+    total_hours = duration_hours(design_brief)
     if total_hours <= 0:
         return []
     load_units = len(graph.element_nodes(NodeType.MODULE)) + len(graph.element_nodes(NodeType.ACTIVITY))
@@ -840,12 +929,17 @@ def relation_coverage(graph) -> list[Violation]:
     establisher_gaps += alignment.match_list(graph, "C4", field="prepares_for_assessment")
     establisher_gaps += alignment.match_p3_realizes(graph)
     establisher_gaps += alignment.match_p6_realizes(graph)
+    establisher_gaps += alignment.match_id_reverse(graph, "P13", field="module_id")
+    # Re-run for its EDGES only. What is wrong with an item's `instrument_id`
+    # is `instrument_alignment`'s finding, in words that say what to change.
+    alignment.match_module_assessed(graph)
     for gap in establisher_gaps:
         node_id = gap["node_id"]
         bare_id = _bare_id(graph, node_id)
+        tier = alignment.REGISTRY[gap["relation_id"]].tier
         violations.append(Violation(
             node_id=node_id, edge_type="", violation_type=gap["relation_id"],
-            severity="error", message=gap["message"],
+            severity="error" if tier == "core" else "warning", message=gap["message"],
             metadata={"node_id": node_id, "item_id": bare_id},
         ))
 
@@ -895,6 +989,14 @@ def relation_coverage(graph) -> list[Violation]:
 #: "establish a link" is the class of instruction a small model does not act
 #: on; naming the field is what closes the gap.
 _COVERAGE_HINTS = {
+    "P5": ("Set `linked_module` to the id of the module this material belongs to."),
+    "P12": ("No module serves this objective. List its id in the `objectives` of the "
+            "module that teaches it."),
+    "P13": ("No activity belongs to this module. Plan an activity block for it, and have "
+            "every activity in that block set `module_id` to this module's id."),
+    "P14": ("No assessment item belongs to this module. Give the module an instrument in "
+            "the assessment plan, and have its items set `instrument_id` to that "
+            "instrument's id."),
     "P8": ("This media selection names no constraint that exists. Set "
            "`respects_constraints` to constraint ids from your read of the design "
            "state, which lists every constraint of this brief."),

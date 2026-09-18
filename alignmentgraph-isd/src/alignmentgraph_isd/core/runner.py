@@ -575,17 +575,18 @@ def _dispatch_payload(state, spec) -> dict:
     Read back from committed state rather than passed through from the loop:
     the dispatch may have been regenerated or salvaged, so the sets must be
     derived from what actually landed either way."""
+    modules = {"modules": fanout.course_modules(state)}
     if spec.stage == "assessment":
         plan = _section_data(state, "assessment_plan")
-        return {"assessment_plan": plan, "dev_plan": plan.get("dev_plan")}
+        return {**modules, "assessment_plan": plan, "dev_plan": plan.get("dev_plan")}
     if spec.stage == "activities":
-        return {"dev_plan": _section_data(state, "activity_plan").get("dev_plan")}
+        return {**modules, "dev_plan": _section_data(state, "activity_plan").get("dev_plan")}
     if spec.stage == "content":
         content = _section_data(state, "content")
-        return {"content_modules": content.get("content_modules") or [],
-                "media_selections": content.get("media_selections") or []}
+        return {**modules, "media_selections": content.get("media_selections") or []}
     if spec.stage == "implementation":
-        return {"dev_plan": _section_data(state, "implementation_plan").get("dev_plan")}
+        return {**modules,
+                "dev_plan": _section_data(state, "implementation_plan").get("dev_plan")}
     return {}
 
 
@@ -598,9 +599,8 @@ def _section_data(state, key: str) -> dict:
     if key in sections:
         node = state.get_node(state.section_id(sections[key]))
         return (node or {}).get("data") or {}
-    modules = [n["data"] for n in state.element_nodes(NodeType.MODULE)]
     media = [n["data"] for n in state.element_nodes(NodeType.MEDIA_SELECTION)]
-    return {"content_modules": modules, "media_selections": media}
+    return {"media_selections": media}
 
 
 def _repair_all(memory, trajectory, design_brief, *, graph_mode: bool,

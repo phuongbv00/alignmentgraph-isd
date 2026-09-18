@@ -342,11 +342,11 @@ def test_objective_alignment_survives_to_the_api(client, ready_program, wait_for
     assert alignment
     for flags in alignment.values():
         assert set(flags) >= {"assessed_by", "practiced_by", "prepares_for", "bloom_ok", "aligned"}
-    # 16 relations total: 5 core (C1-C5) + 11 secondary (P1-P11) — see
-    # alignment.py::REGISTRY (renamed from the old R1..R13 scheme).
+    # 18 relations: 4 core (C1-C4) + 14 secondary (P1-P14) — see
+    # alignment.py::REGISTRY.
     from alignmentgraph_isd.core.alignment_graph import alignment as alignment_module
     assert set(graph["relation_coverage"]) == set(alignment_module.MATRIX)
-    assert len(alignment_module.MATRIX) == 16   # C6/C7 went with the rubric node type
+    assert len(alignment_module.MATRIX) == 18
 
 
 # ── cancellation and restart ─────────────────────────────────────────────────

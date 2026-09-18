@@ -431,7 +431,7 @@ export interface RelationCoverage {
    *  place a C/P relation is named for a reader. */
   label: string
   mechanism: string
-  /** 'core' (C1-C5) | 'secondary' (P1-P11). Shipped all along and simply not
+  /** 'core' (C1-C4) | 'secondary' (P1-P14). Shipped all along and simply not
    *  declared here, which is why edges used to guess it from the id prefix. */
   tier?: 'core' | 'secondary'
   coverage: number

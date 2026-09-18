@@ -81,12 +81,40 @@ _DESIGN = {
         {"id": "ILO-04", "level": "analyze", "statement": "Analyze a provided class design and identify at least three coupling issues.", "bloom_verb": "analyze"},
         {"id": "ILO-05", "level": "evaluate", "statement": "Evaluate composition versus inheritance for a given scenario, justifying the choice against two criteria.", "bloom_verb": "evaluate"},
     ],
+    # The course's structural units, written right after the objectives: every
+    # later family divides its work by them. 240 + 480 minutes = the 12 contact
+    # hours the activity fixtures add up to.
+    "course_modules": [
+        {"id": "MOD-01", "title": "Encapsulation Concepts", "description": "Covers classes and interfaces.",
+         "objectives": ["ILO-01", "ILO-02"], "covers_topics": ["TOP-01"], "minutes": 240},
+        {"id": "MOD-02", "title": "Inheritance and Design", "description": "Covers hierarchies and SOLID.",
+         "objectives": ["ILO-03", "ILO-04", "ILO-05"], "covers_topics": ["TOP-02"], "minutes": 480},
+    ],
 }
+
+#: Which module each objective of `_DESIGN` belongs to, and the instrument that
+#: assesses a (module, timing) — the two lookups the item and activity
+#: fixtures below are written against.
+_MODULE_OF_LO = {lo: module["id"] for module in _DESIGN["course_modules"]
+                 for lo in module["objectives"]}
+_TIMINGS = ("diagnostic", "formative", "summative")
+_INSTRUMENTS = [
+    {"id": f"INS-{m * 3 + t + 1:02d}", "module_id": module["id"], "timing": timing,
+     "format": "quiz" if timing != "summative" else "practical",
+     "item_counts": {"multiple_choice": 10, "short_answer": 3} if timing != "summative"
+     else {"performance_task": 2},
+     "covers_objectives": list(module["objectives"]),
+     "minutes": 20 if timing != "summative" else 60,
+     "weight_percent": 0 if timing != "summative" else 50}
+    for m, module in enumerate(_DESIGN["course_modules"])
+    for t, timing in enumerate(_TIMINGS)]
+_INSTRUMENT_OF = {(i["module_id"], i["timing"]): i["id"] for i in _INSTRUMENTS}
 
 _ASSESSMENT_PLAN = {
     "assessment_plan": {
         "lo_coverage_targets": {f"ILO-0{i}": ["diagnostic", "formative", "summative"]
                                 for i in range(1, 6)},
+        "instruments": _INSTRUMENTS,
         "expected_evidence": {f"ILO-0{i}": "A working code artifact with justification." for i in range(1, 6)},
         "formative_methods": ["Weekly design critique with rubric", "Exit tickets after each module"],
         "pilot_data_plan": {
@@ -139,6 +167,8 @@ def _assessment_tools() -> list[dict]:
             "question": f"Demonstrate mastery of {los[lo_idx]} in a realistic scenario.",
             "aligned_objective": los[lo_idx],
             "plan_category": categories[i % len(categories)],
+            "instrument_id": _INSTRUMENT_OF[(_MODULE_OF_LO[los[lo_idx]],
+                                             categories[i % len(categories)])],
             "required_cognitive_process": cognitive[lo_idx],
             "scoring_criteria": "Rubric scores correctness, design quality, and explanation against observable criteria (0-4 each).",
             "difficulty": ["easy", "medium", "hard"][i % 3],
@@ -201,29 +231,26 @@ _ACTIVITIES = {
     "learning_activities": [
         {"id": "TLA-01", "activity_name": "Encapsulation lab", "duration": "60m",
          "description": "Build a class with invariants.", "materials_needed": "A starter repo with a class skeleton for encapsulation.",
+         "module_id": "MOD-01",
          "aligned_objectives": ["ILO-01", "ILO-02"], "prepares_for_assessment": ["AT-01", "AT-06"],
          "learner_cognitive_process": "understand", "prerequisite_activities": []},
         {"id": "TLA-02", "activity_name": "Inheritance lab", "duration": "60m",
          "description": "Model a class hierarchy and refactor for reuse.", "materials_needed": "A starter repo with a partial class hierarchy.",
+         "module_id": "MOD-02",
          "aligned_objectives": ["ILO-03"], "prepares_for_assessment": ["AT-03", "AT-08"],
          "learner_cognitive_process": "apply", "prerequisite_activities": [1]},   # by POSITION: the harness names the ids
         {"id": "TLA-03", "activity_name": "Design review", "duration": "60m",
          "description": "Critique a provided design against SOLID principles.", "materials_needed": "A design checklist and a sample design to critique.",
+         "module_id": "MOD-02",
          "aligned_objectives": ["ILO-04", "ILO-05"], "prepares_for_assessment": ["AT-04", "AT-05", "AT-09", "AT-10"],
          "learner_cognitive_process": "evaluate", "prerequisite_activities": [2]},
     ],
 }
 
-_MODULES = {
-    "content_modules": [
-        {"id": "MOD-01", "title": "Encapsulation Concepts", "description": "Covers classes and interfaces.",
-         "supports_activities": ["TLA-01"], "covers_topics": ["TOP-01"]},
-        {"id": "MOD-02", "title": "Inheritance and Design", "description": "Covers hierarchies and SOLID.",
-         "supports_activities": ["TLA-02", "TLA-03"], "covers_topics": ["TOP-02"]},
-    ],
+_MEDIA = {
     "media_selections": [
-        {"id": "MED-01", "media_type": "slides", "purpose": "Explain concepts", "rationale": "Clarity for visual learners", "respects_constraints": ["CON-01"]},
-        {"id": "MED-02", "media_type": "document", "purpose": "Reference checklist", "rationale": "Reusable across sessions", "respects_constraints": ["CON-02"]},
+        {"id": "MED-01", "media_type": "slides", "purpose": "Explain concepts", "rationale": "Clarity for visual learners", "respects_constraints": ["CON-01"], "for_modules": ["MOD-01", "MOD-02"]},
+        {"id": "MED-02", "media_type": "document", "purpose": "Reference checklist", "rationale": "Reusable across sessions", "respects_constraints": ["CON-02"], "for_modules": ["MOD-01", "MOD-02"]},
     ],
 }
 
@@ -329,8 +356,6 @@ _PAYLOAD_BY_SCHEMA_KEY = (
      {**_ASSESSMENT_PLAN, **_ASSESSMENT_DEV_PLAN, **_ASSESSMENT_ITEMS}),
     (('"non_instructional_strategies"', '"activity_blocks"', '"learning_activities"'),
      {**_ACTIVITY_PLAN, **_ACTIVITY_DEV_PLAN, **_ACTIVITIES}),
-    (('"media_selections"', '"learner_materials"', '"content_modules"'),
-     {**_MODULES, **_MATERIALS}),
     (('"instructor_orientation"', '"session_blocks"', '"session_guides"'),
      {**_IMPLEMENTATION, **_IMPLEMENTATION_DEV_PLAN, **_SESSION_GUIDES}),
     (('"pilot_data_plan"', '"instrument_sets"'), {**_ASSESSMENT_PLAN, **_ASSESSMENT_DEV_PLAN}),
@@ -345,7 +370,7 @@ _PAYLOAD_BY_SCHEMA_KEY = (
     # touching its generation logic.
     (('"pilot_data_plan"', '"assessment_tools"'), {**_ASSESSMENT_PLAN, **_ASSESSMENT_ITEMS}),
     (('"non_instructional_strategies"', '"learning_activities"'), {**_ACTIVITY_PLAN, **_ACTIVITIES}),
-    (('"media_selections"', '"learner_materials"'), {**_MODULES, **_MATERIALS}),
+    (('"media_selections"', '"learner_materials"'), {**_MEDIA, **_MATERIALS}),
     # One entry per analysis PART, not just `needs_analysis` (2026-09-08, same
     # reason as the implementation entries below): each of the five is
     # submitted independently (`AgenticStep.submit_parts`) and its own tool
@@ -364,6 +389,7 @@ _PAYLOAD_BY_SCHEMA_KEY = (
     # already carries both fields; each hop reads only the one it asked for.
     (('"course_goal"',), _DESIGN),
     (('"learning_objectives"',), _DESIGN),
+    (('"course_modules"',), _DESIGN),
     (('"pilot_data_plan"',), _ASSESSMENT_PLAN),
     (('"instrument_sets"',), _ASSESSMENT_DEV_PLAN),
     (('"assessment_tools"',), _ASSESSMENT_ITEMS),
@@ -376,11 +402,7 @@ _PAYLOAD_BY_SCHEMA_KEY = (
     (('"non_instructional_strategies"',), _ACTIVITY_PLAN),
     (('"activity_blocks"',), _ACTIVITY_DEV_PLAN),
     (('"learning_activities"',), _ACTIVITIES),
-    # `content_modules` is REQUIRED and `media_selections` optional — same gap:
-    # once media_selections has landed/been dropped, a turn asking only for
-    # content_modules carried no anchor the old table recognised.
-    (('"content_modules"',), _MODULES),
-    (('"media_selections"',), _MODULES),
+    (('"media_selections"',), _MEDIA),
     (('"learner_materials"',), _MATERIALS),
     (('"session_blocks"',), _IMPLEMENTATION_DEV_PLAN),
     (('"session_guides"',), _SESSION_GUIDES),
@@ -434,16 +456,7 @@ def _payload_for_system(system_prompt: str, whole: str = "", specs_json: str = "
 
 #: `*_ids` fields whose values a real model can only get by READING the
 #: artifacts it is referring to, and the prefix those artifacts carry.
-_ID_REFERENCE_FIELDS = {"activity_ids": "TLA", "material_ids": "MAT",
-                        # C5. The Content Designer READS activity, so a real
-                        # one names ids it was shown — the same argument as the
-                        # two above, and it was missing: the canned
-                        # ``supports_activities: ["TLA-01"]`` named an id that
-                        # composite numbering had renamed away, so C5 never
-                        # established in the pipeline test and only appeared
-                        # because `repair_content_orphans` invented it (run
-                        # 2559b22d, where the same masking happened for real).
-                        "supports_activities": "TLA"}
+_ID_REFERENCE_FIELDS = {"activity_ids": "TLA", "material_ids": "MAT"}
 
 
 def _named_from_prompt(payload: dict, prompt: str) -> dict:

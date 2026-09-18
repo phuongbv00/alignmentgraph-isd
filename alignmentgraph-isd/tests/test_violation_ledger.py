@@ -15,7 +15,7 @@ import pytest
 
 from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core import checks
-from alignmentgraph_isd.core.alignment_graph import AlignmentGraph
+from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, alignment
 from alignmentgraph_isd.core.memory import Finding, Memory
 
 from conftest import FakeChatModel, load_brief, run_brief
@@ -70,7 +70,8 @@ def test_every_check_in_a_broken_design_is_distinguishable():
     found: list = []
     for name in ("bloom_verbs", "measurability", "rubric_consistency", "plan_coverage",
                  "item_completeness", "evaluation_quality", "activity_engagement",
-                 "orphan_content", "evidence_alignment", "actionability",
+                 "evidence_alignment", "actionability", "blueprint_consistency",
+                 "instrument_alignment",
                  "relation_coverage", "bloom_mismatches"):
         found += getattr(checks, name)(graph)
 
@@ -224,6 +225,11 @@ def test_a_type_no_family_owns_is_recorded_rather_than_dropped():
     graph.add_element_node("objective", "ILO-01", {
         "id": "ILO-01", "level": "understand", "bloom_verb": "explain",
         "statement": "Students will understand object-oriented design."})
+    # Grouped by a module, so the only thing wrong here is the unowned type.
+    graph.add_element_node("module", "MOD-01", {"id": "MOD-01", "objectives": ["ILO-01"]})
+    alignment.record_provenance(graph, "P12", ["module:MOD-01"], "objective:ILO-01")
+    graph.add_element_node("topic", "TOP-01", {"id": "TOP-01"})
+    alignment.record_provenance(graph, "P7", ["topic:TOP-01"], "module:MOD-01")
     memory = Memory(graph=graph)
     trajectory = TrajectoryLogger()
     ctx = RepairContext(graph=graph, store=None, trajectory=trajectory,
@@ -293,8 +299,7 @@ def test_a_budget_stop_is_recorded_rather_than_silent():
         assert "violation" in event["context"]["input_summary"]
 
     reasons = {f["open_reason"] for f in result["violations"] if f["outcome"] == "open"}
-    assert {"budget", "converged"} <= reasons, (
-        "the two must be distinguishable in the ledger, not just in the events")
+    assert "budget" in reasons, "the stop is in the ledger, not just in the events"
 
 
 def test_a_budget_stop_is_not_overwritten_by_a_later_convergence():

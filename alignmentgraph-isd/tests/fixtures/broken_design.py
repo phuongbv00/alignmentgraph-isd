@@ -55,6 +55,14 @@ def broken_graph() -> AlignmentGraph:
         "pilot_data_plan": {},
         # plan_coverage: two promises, one item
         "lo_coverage_targets": {"ILO-01": ["summative", "diagnostic"]},
+        # blueprint_consistency: a formative quiz the targets never promised,
+        # in a module that does not exist, covering an objective that does not
+        "instruments": [
+            {"id": "INS-01", "module_id": "MOD-01", "timing": "summative", "format": "quiz",
+             "item_counts": {"multiple_choice": 10}, "covers_objectives": ["ILO-01"]},
+            {"id": "INS-02", "module_id": "MOD-07", "timing": "formative", "format": "quiz",
+             "item_counts": {"short_answer": 3}, "covers_objectives": ["ILO-01", "ILO-09"]},
+        ],
     })
     # bloom_mismatch_assessment: an Apply objective measured by an item that
     # only claims Remember. (Note `_item_capability` lets the item's own claim
@@ -65,6 +73,8 @@ def broken_graph() -> AlignmentGraph:
         "item_id": "AT-0101", "type": "multiple_choice",
         "question": "Which of these is inheritance?",
         "aligned_objective": "ILO-01", "plan_category": "summative",
+        # instrument_alignment: a summative item filed under the formative quiz
+        "instrument_id": "INS-02",
         "required_cognitive_process": "remember",
         "scoring_criteria": "One mark for the correct option.",
         # evidence_alignment: a criterion asking for evidence the item cannot give
@@ -83,13 +93,17 @@ def broken_graph() -> AlignmentGraph:
         "id": "TLA-0101", "activity_name": "Lecture on inheritance",
         "description": "The instructor presents inheritance.",
         "aligned_objectives": ["ILO-01"], "learner_cognitive_process": "understand",
+        # P13: an activity naming a module that does not exist
+        "module_id": "MOD-99",
     })
 
-    # ── content: a module supporting nothing, a material linked to nothing ───
+    # ── modules: one that groups a single objective and that nothing is taught
+    # or assessed in (P12 for the other four objectives, P13, P14, P7) ────────
     graph.add_element_node(NodeType.MODULE, "MOD-01", {
-        "id": "MOD-01", "title": "Inheritance", "supports_activities": [],
+        "id": "MOD-01", "title": "Inheritance", "objectives": ["ILO-01"], "minutes": 120,
     })
-    # orphan_content: a material whose module does not exist
+    alignment.record_provenance(graph, "P12", ["module:MOD-01"], "objective:ILO-01")
+    # P5: a material whose module does not exist
     graph.add_element_node(NodeType.MATERIAL, "MAT-0101", {
         "id": "MAT-0101", "title": "Slides", "type": "slides",
         "linked_module": "MOD-99",

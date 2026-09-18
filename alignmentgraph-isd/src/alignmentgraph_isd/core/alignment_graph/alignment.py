@@ -9,14 +9,15 @@ module. Everything here is called by Designers (to establish edges) and by
 
 Two tiers
 ---------
-**Core** (``C1``-``C5``): the construct-validity backbone. Each relation traces
+**Core** (``C1``-``C4``): the construct-validity backbone. Each relation traces
 to a named construct in Constructive Alignment (Biggs), Backward Design /
 Understanding by Design (Wiggins & McTighe), or outcome-based assessment
 theory — see each ``Relation.theory`` string. These are the only relations
 whose coverage is reported as a panel signal.
 
-**Secondary** (``P1``-``P11``): provenance/traceability for supporting artifacts
-(needs-analysis inputs, media/material realization, plan->execute links).
+**Secondary** (``P1``-``P14``): provenance/traceability for supporting artifacts
+(needs-analysis inputs, the modules the course is organised into, media/material
+realization, plan->execute links).
 Kept in the graph dump for full auditability, but not claimed as
 construct-validity evidence — dropping one doesn't argue anything went
 pedagogically wrong, only that a bookkeeping trace is thinner.
@@ -66,8 +67,9 @@ from .graph import AlignmentGraph, NodeType
 #: no relations and importing this would be the ``graph <-> alignment`` cycle
 #: ``add_edge``'s docstring exists to avoid.
 RelationId = Literal[
-    "C1", "C2", "C3", "C4", "C5",
+    "C1", "C2", "C3", "C4",
     "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P11",
+    "P12", "P13", "P14",
     "S1", "S2",
 ]
 
@@ -112,7 +114,7 @@ class Relation:
 REGISTRY: dict[RelationId, Relation] = {
     r.relation_id: r
     for r in (
-        # ── Core (C1-C5): construct-validity backbone ───────────────────────
+        # ── Core (C1-C4): construct-validity backbone ───────────────────────
         Relation("C1", "course goal decomposes to learning outcome", "decomposes_to", "provenance",
                  (NodeType.COURSE_GOAL,), (NodeType.OBJECTIVE,), "target", "core",
                  theory="Outcome-based design / Backward Design (Wiggins & McTighe)"),
@@ -125,10 +127,14 @@ REGISTRY: dict[RelationId, Relation] = {
         Relation("C4", "activity prepares for assessment task", "prepares_for", "id-list",
                  (NodeType.ACTIVITY,), (NodeType.ASSESSMENT,), "target", "core",
                  theory="Backward Design + Constructive Alignment"),
-        Relation("C5", "content module supports activity", "supports", "provenance",
-                 (NodeType.MODULE,), (NodeType.ACTIVITY,), "target", "core",
-                 theory="Backward Design (Wiggins & McTighe)"),
-        # ── Secondary (P1-P11): provenance/traceability, not construct-validity ──
+        # ── Secondary (P1-P14): provenance/traceability, not construct-validity ──
+        #
+        # Every relation a MODULE takes part in is here. A module organises
+        # the design — which objectives are learned together, in what time —
+        # and is not a vertex of constructive alignment, so "this module has
+        # an activity" is traceability and is never offered as evidence that
+        # the design is aligned. Secondary does not mean unfailable: P12-P14
+        # are established from ids the MODEL writes.
         Relation("P1", "gap/topic informs learning outcome", "informs", "provenance",
                  (NodeType.GAP, NodeType.TOPIC), (NodeType.OBJECTIVE,), "target", "secondary"),
         Relation("P2", "learner profile fits learning outcome", "fits", "provenance",
@@ -137,11 +143,11 @@ REGISTRY: dict[RelationId, Relation] = {
                  (NodeType.ASSESSMENT_PLAN,), (NodeType.ASSESSMENT,), "target", "secondary"),
         Relation("P4", "activity plan realized by activity", "realizes", "provenance",
                  (NodeType.ACTIVITY_PLAN,), (NodeType.ACTIVITY,), "target", "secondary"),
-        Relation("P5", "content module covers material", "covers", "provenance",
+        Relation("P5", "module covers material", "covers", "provenance",
                  (NodeType.MODULE,), (NodeType.MATERIAL,), "target", "secondary"),
         Relation("P6", "media selection realized by material", "realizes", "type",
                  (NodeType.MEDIA_SELECTION,), (NodeType.MATERIAL,), "target", "secondary"),
-        Relation("P7", "topic covered by content module", "covers", "provenance",
+        Relation("P7", "topic covered by module", "covers", "provenance",
                  (NodeType.TOPIC,), (NodeType.MODULE,), "target", "secondary"),
         Relation("P8", "constraint constrains media selection", "constrains", "provenance",
                  (NodeType.CONSTRAINT,), (NodeType.MEDIA_SELECTION,), "target", "secondary"),
@@ -151,6 +157,13 @@ REGISTRY: dict[RelationId, Relation] = {
                  (NodeType.SESSION_GUIDE,), (NodeType.ACTIVITY,), "target", "secondary"),
         Relation("P11", "session guide provisions material", "provisions", "provenance",
                  (NodeType.SESSION_GUIDE,), (NodeType.MATERIAL,), "target", "secondary"),
+        Relation("P12", "module groups learning outcome", "groups", "provenance",
+                 (NodeType.MODULE,), (NodeType.OBJECTIVE,), "target", "secondary"),
+        Relation("P13", "module delivered through activity", "delivered_through", "id-reverse",
+                 (NodeType.MODULE,), (NodeType.ACTIVITY,), "source", "secondary"),
+        Relation("P14", "module assessed through assessment task", "assessed_through",
+                 "id-reverse", (NodeType.MODULE,), (NodeType.ASSESSMENT,), "source",
+                 "secondary"),
         # ── Structural (S1-S2): navigation, never alignment evidence ────────
         Relation("S1", "activity precedes activity", "precedes", "id-list-reverse",
                  (NodeType.ACTIVITY,), (NodeType.ACTIVITY,), "target", "structural"),
@@ -163,7 +176,7 @@ REGISTRY: dict[RelationId, Relation] = {
     )
 }
 
-#: The 16-relation ALIGNMENT MATRIX: everything ``REGISTRY`` holds except the
+#: The 18-relation ALIGNMENT MATRIX: everything ``REGISTRY`` holds except the
 #: structural edges. This, not ``REGISTRY``, is what every consumer of the
 #: construct iterates — ``all_relations_coverage``, the coverage sweep in
 #: ``checks``, the aggregator's alignment matrix — and its size is the number
@@ -264,6 +277,42 @@ def match_id_reverse(
             violations.append({
                 "relation_id": relation_id, "node_id": node["id"],
                 "message": f"{node['id']} has no resolvable {field} ({ref!r}).",
+            })
+    return violations
+
+
+def match_module_assessed(graph: AlignmentGraph) -> list[dict]:
+    """P14: the module an assessment item belongs to, through its instrument.
+
+    Two ids the model wrote, joined: the item names its instrument
+    (``instrument_id``) and the assessment plan's instrument names its module
+    (``module_id``). An instrument is a FIELD of the plan rather than a node —
+    nothing but the items that point at it belongs to it — so the join is read
+    off the plan section and the edge runs module -> item. Either half missing
+    or dangling leaves the item without an edge, which is the finding."""
+    relation = REGISTRY["P14"]
+    plan = graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))
+    module_of = {
+        bare_ref(one.get("id", "")): bare_ref(one.get("module_id", ""))
+        for one in ((plan or {}).get("data", {}).get("instruments") or [])
+        if isinstance(one, dict)}
+    violations: list[dict] = []
+    for node in graph.element_nodes(NodeType.ASSESSMENT):
+        instrument = bare_ref(node["data"].get("instrument_id", ""))
+        module = module_of.get(instrument, "")
+        module_id = f"{NodeType.MODULE}{graph.ELEMENT_SEP}{module}" if module else ""
+        if module and graph.get_node(module_id):
+            graph.add_edge(
+                relation.key, module_id, node["id"],
+                evidence=instrument, relation_id="P14", established_by="id",
+                rationale=(f"{node['id']} declares instrument_id={instrument}, whose "
+                           f"module_id is {module}."),
+            )
+        else:
+            violations.append({
+                "relation_id": "P14", "node_id": node["id"],
+                "message": (f"{node['id']} names no instrument of an existing module "
+                            f"(instrument_id={instrument!r})."),
             })
     return violations
 

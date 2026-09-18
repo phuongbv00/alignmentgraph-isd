@@ -367,7 +367,7 @@ def aggregate_prose(store, trajectory) -> dict:
     }
 
     activity_plan = doc("activity_plan")
-    content_modules = [_without_harness_keys(m) for m in items("content", "content_modules")]
+    content_modules = [_without_harness_keys(m) for m in items("objective", "course_modules")]
     instructional_strategies = activity_plan.get("instructional_strategies") or {}
     design = {
         "learning_objectives": items("objective", "learning_objectives"),

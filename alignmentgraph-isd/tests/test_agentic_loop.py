@@ -124,6 +124,10 @@ _OUTCOMES = {
          "statement": "Apply inheritance to a domain model with 80% of tests passing.",
          "bloom_verb": "apply"},
     ],
+    "course_modules": [
+        {"id": "MOD-01", "title": "Inheritance in practice", "objectives": ["ILO-01"],
+         "covers_topics": [], "minutes": 120},
+    ],
 }
 
 _ASSESSMENT_DEV_PLAN = {"dev_plan": {"instrument_sets": [
@@ -132,6 +136,10 @@ _ASSESSMENT_DEV_PLAN = {"dev_plan": {"instrument_sets": [
 
 _ASSESSMENT = {
     "assessment_plan": {
+        "instruments": [
+            {"id": "INS-01", "module_id": "MOD-01", "timing": "summative", "format": "practical",
+             "item_counts": {"performance_task": 1}, "covers_objectives": ["ILO-01"],
+             "minutes": 60, "weight_percent": 100}],
         "lo_coverage_targets": {"ILO-01": ["summative"]},
         "expected_evidence": {"ILO-01": "A working artifact."},
         "formative_methods": ["Weekly critique with rubric"],
@@ -150,6 +158,7 @@ _ASSESSMENT = {
     "assessment_tools": [
         {"item_id": "AT-01", "type": "performance_task", "question": "Build the model.",
          "aligned_objective": "ILO-01", "plan_category": "summative",
+         "instrument_id": "INS-01",
          "required_cognitive_process": "apply",
          "scoring_criteria": "Rubric scores correctness 0-4."},
     ],

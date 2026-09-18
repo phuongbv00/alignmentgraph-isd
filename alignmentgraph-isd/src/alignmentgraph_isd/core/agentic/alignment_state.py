@@ -38,8 +38,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .. import checks
-from ..alignment_graph import alignment
+from .. import checks, dev_plans
+from ..alignment_graph import NodeType, alignment
 from . import repair_turn, tools
 from .protocol import landed_parts
 from .specialists import missing_parts
@@ -68,6 +68,7 @@ def read(state, design_brief, step, *, submit_tool: str = "") -> StateView:
     obeyed to the letter — 26 consecutive state reads, no submit, the stage
     lost to its turn ceiling. So it names the WRITE and nothing after it."""
     missing_lines, named = _missing(state, step)
+    missing_lines += _module_ceiling(state, design_brief, step)
     issues: list = []
     if not missing_parts(step, state):
         # Before every part has landed, a coverage "violation" and the gap
@@ -135,7 +136,7 @@ def _shares(wants: list[int], room: int) -> list[int]:
     1c0a4e81, content): the state read used 3,325 of 8,000 characters and
     still cut 71 of 94 activities, because the topic and constraint pools
     held a row each and kept a third of the budget apiece — and an activity
-    the Content Designer cannot see is one no module will support (C5)."""
+    the Content Designer cannot see is one no media selection will serve."""
     shares = [0] * len(wants)
     open_ = sorted(range(len(wants)), key=lambda i: wants[i])
     while open_:
@@ -144,6 +145,25 @@ def _shares(wants: list[int], room: int) -> list[int]:
         shares[index] = min(wants[index] + 1, even) if wants[index] <= even else even
         room = max(0, room - shares[index])
     return shares
+
+
+def _module_ceiling(state, design_brief, step) -> list[str]:
+    """This run's module ceiling, while the modules are still to be written.
+
+    The RULE is in the stage's prompt; the NUMBER depends on this course — how
+    many objectives and topics it has and how long it runs — so it is stated
+    here, where every per-run fact the agent acts on is. Told, not enforced
+    (``dev_plans.MODULES_BY_COURSE_HOURS``)."""
+    docket = getattr(step, "docket", None) or {}
+    if not docket.get("module_ceiling") or state.element_nodes(NodeType.MODULE):
+        return []
+    objectives = len(state.element_nodes(NodeType.OBJECTIVE))
+    topics = len(state.element_nodes(NodeType.TOPIC))
+    hours = checks.duration_hours(design_brief) if design_brief is not None else 0.0
+    ceiling = dev_plans.module_ceiling(objectives, topics, hours)
+    length = f"about {hours:g} h" if hours else "length not stated"
+    return [f"course_modules: at most {ceiling} for this course "
+            f"({objectives} objectives, {topics} topics, {length})"]
 
 
 def _pool(state, node_type: str) -> tuple[list[dict], bool]:

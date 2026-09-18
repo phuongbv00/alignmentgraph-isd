@@ -42,8 +42,8 @@ from .. import rulebook as rules
 #: family is here only when its gaps map exactly onto work the Developer tier
 #: can be asked for: an uncovered objective is an item or an activity somebody
 #: has to write. ``content`` is absent on purpose — the checks it owns are
-#: structural (``orphan_content``, ``P5``, repaired exactly by a lookup) or
-#: report-only (``C5``), so there is no gap a new module assignment closes.
+#: structural (``P5``, repaired exactly by a lookup) or report-only (``P6``,
+#: ``P8``), so there is no gap a new module assignment closes.
 REPLANNABLE: dict[str, dict] = {
     "assessment": {
         "rules": rules.RULES_ASSESSMENT_DEV_PLAN,

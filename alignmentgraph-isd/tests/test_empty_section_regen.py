@@ -98,7 +98,7 @@ def test_an_empty_answer_is_absorbed_inside_the_stage_and_loses_nothing():
     several turns long absorbs a fumble inside the turn budget it already has.
     What these tests still pin is the posture: an empty answer is retried, the
     retry is recorded, and nothing is lost."""
-    factory, state = _flaky_factory("the course goal and learning objectives",
+    factory, state = _flaky_factory("responsible for the course goal, the learning objectives",
                                     "design_calls", fail_first=_INVOKES_PER_ATTEMPT)
     result = _run(factory)
 
@@ -115,7 +115,7 @@ def test_an_earlier_stage_is_not_re_run_when_a_later_one_fumbles():
     """Stages are committed as they land. A stage that fumbles costs its own
     turns and nobody else's — an earlier artifact is never re-rolled, which is
     what makes the cost of a failure local."""
-    factory, _state = _flaky_factory("the course goal and learning objectives",
+    factory, _state = _flaky_factory("responsible for the course goal, the learning objectives",
                                      "design_calls", fail_first=_INVOKES_PER_ATTEMPT)
     result = _run(factory)
 
@@ -128,7 +128,7 @@ def test_a_stage_that_never_produces_gives_up_within_its_budget():
     """Persistent emptiness must terminate. Since the scripted rescue went
     (2026-09-01) the stage ends with what the model managed and says it did not
     finish; the deterministic repair net is what fills the hole."""
-    factory, _state = _flaky_factory("the course goal and learning objectives",
+    factory, _state = _flaky_factory("responsible for the course goal, the learning objectives",
                                      "design_calls", fail_first=999)
     result = _run(factory)
 
@@ -155,7 +155,7 @@ def test_a_flaky_developer_does_not_lose_its_familys_other_sets():
 def test_regen_budget_is_config_driven():
     """The stage-level retry allowance is configuration, not a constant: the
     benchmark adapter sets it from the environment, and a run must honour it."""
-    factory, _state = _flaky_factory("the course goal and learning objectives",
+    factory, _state = _flaky_factory("responsible for the course goal, the learning objectives",
                                      "design_calls", fail_first=999)
     result = _run(factory, regen_budget=0)
 
@@ -169,7 +169,7 @@ def test_regen_backoff_sleeps_before_each_rerun(monkeypatch):
 
     slept: list[float] = []
     monkeypatch.setattr(runner_module.time, "sleep", lambda s: slept.append(s))
-    factory, _state = _flaky_factory("the course goal and learning objectives",
+    factory, _state = _flaky_factory("responsible for the course goal, the learning objectives",
                                      "design_calls", fail_first=999)
     _run(factory, regen_backoff_seconds=0.5)
 

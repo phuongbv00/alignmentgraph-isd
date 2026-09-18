@@ -200,9 +200,9 @@ export function buildStylesheet(): StylesheetStyle[] {
 }
 
 // Edge colour = HOW the relation was established (the evidence mechanism);
-// the Alignment/Provenance toggles = WHICH relation class (C1–C5 core vs
-// P1–P11 secondary, solid vs dotted). The two axes are independent: C1 and C5
-// are core yet provenance-established, so a grey edge can still be core.
+// the Alignment/Provenance toggles = WHICH relation class (C1–C4 core vs
+// P1–P14 secondary, solid vs dotted). The two axes are independent: C1 is
+// core yet provenance-established, so a grey edge can still be core.
 //
 // The WORDING of every legend row now ships with the graph (`payload.legend`).
 // This is the half that stays here: which colour or fill a row's `key` gets,

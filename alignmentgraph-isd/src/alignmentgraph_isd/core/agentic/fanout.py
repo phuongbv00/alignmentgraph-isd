@@ -160,6 +160,16 @@ def _lo_ids(state) -> list[str]:
             if isinstance(lo, dict) and lo.get("id")]
 
 
+def course_modules(state) -> list[dict]:
+    """The course's modules, in course order, from either substrate. They are
+    written by the outcomes stage and are the key every family here divides
+    its work by; the prose arm keeps them in the objective document, beside
+    the objectives they group."""
+    if hasattr(state, "element_nodes"):
+        return [n["data"] for n in state.element_nodes(NodeType.MODULE)]
+    return [m for m in state.items("objective", "course_modules") if isinstance(m, dict)]
+
+
 #: Every ``plan_sets`` returns ``(work_sets, stats)``. ``stats`` is the
 #: normalization record the ``dev_plan`` trajectory event carries; the
 #: deterministic families report an equivalent one so the event shape does not
@@ -185,7 +195,7 @@ def _activity_sets(state, parsed: dict) -> tuple[list, dict]:
 
 def _material_sets(state, parsed: dict) -> tuple[list, dict]:
     sets = dev_plans.material_work_units(
-        parsed.get("content_modules") or [], parsed.get("media_selections") or [],
+        parsed.get("modules") or [], parsed.get("media_selections") or [],
         _constraints(state))
     return sets, _deterministic_stats(sets)
 
@@ -661,7 +671,9 @@ def _establish(spec: FanoutSpec, state, committed: dict[str, list[str]]) -> None
     if spec.stage == "assessment":
         alignment.match_id_reverse(state, "C2", field="aligned_objective")
         alignment.match_p3_realizes(state)
+        alignment.match_module_assessed(state)
     elif spec.stage == "activities":
+        alignment.match_id_reverse(state, "P13", field="module_id")
         alignment.match_list_reverse(state, "C3", field="aligned_objectives")
         alignment.match_list(state, "C4", field="prepares_for_assessment")
         plan_id = state.section_id(NodeType.ACTIVITY_PLAN)

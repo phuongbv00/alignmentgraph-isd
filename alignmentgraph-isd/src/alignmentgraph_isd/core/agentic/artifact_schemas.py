@@ -150,6 +150,16 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
         "id": {"type": "string"}, "level": _BLOOM,
         "statement": {"type": "string"}, "bloom_verb": _BLOOM_VERB,
     }, ("id", "level", "statement", "bloom_verb")),
+    #: Item schema — ``course_modules`` is an ARRAY field, in course order.
+    "course_modules": _obj({
+        "id": {"type": "string", "description": "MOD-01, MOD-02, ... in course order"},
+        "title": {"type": "string"}, "description": {"type": "string"},
+        "objectives": _arr() | {"description": "ids of the objectives this module serves"},
+        "covers_topics": _arr(),
+        "minutes": {"type": "integer",
+                    "description": "learner time this module gets; the modules' minutes "
+                                   "add up to the course's time"},
+    }, ("id", "title", "objectives", "minutes")),
 
     # ── assessment ───────────────────────────────────────────────────────
     # No "diagnostic"/"formative"/"summative" buckets. Declared here they are
@@ -158,7 +168,28 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
     # `alignment._promised_categories`). The plan states its categories ONCE,
     # in `lo_coverage_targets`, per objective; an optional second place to say
     # the same thing only invites a small model to guess.
+    #
+    # `instruments` is the BLUEPRINT: what a learner actually sits — a quiz
+    # before a module, a practical after it — with its real scale
+    # (`item_counts`), beside the question-level items the Developers write,
+    # each of which names the instrument it belongs to. `timing` is the plan
+    # category vocabulary (diagnostic = before, formative = during, summative =
+    # after): one set of words for when an assessment happens.
     "assessment_plan": _obj({
+        "instruments": _arr_of(_obj({
+            "id": {"type": "string", "description": "INS-01, INS-02, ..."},
+            "module_id": {"type": "string", "description": "the module it assesses"},
+            "timing": _PLAN_CATEGORY,
+            "format": {"type": "string",
+                       "description": "quiz, practical, project, oral, portfolio, ..."},
+            "item_counts": {"type": "object",
+                "description": "item type -> how many the full instrument has",
+                "additionalProperties": {"type": "integer"}},
+            "covers_objectives": _arr(),
+            "minutes": {"type": "integer"},
+            "weight_percent": {"type": "number",
+                "description": "share of the course grade; 0 for ungraded"}},
+            ("id", "module_id", "timing", "format", "item_counts", "covers_objectives"))),
         "lo_coverage_targets": {"type": "object",
             "description": "objective id -> list of plan categories covering it",
             "additionalProperties": {"type": "array", "items": _PLAN_CATEGORY}},
@@ -173,7 +204,7 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
                 "detected_by": {"type": "string"}, "first_revision": {"type": "string"}},
                 ("area", "rationale", "detected_by", "first_revision"))),
         }, ("anticipated_difficulties",)),
-    }, ("lo_coverage_targets", "pilot_data_plan")),
+    }, ("instruments", "lo_coverage_targets", "pilot_data_plan")),
     "assessment_dev_plan": _obj({
         "instrument_sets": _arr_of(_obj({
             "set_id": {"type": "string"}, "objectives": _arr(),
@@ -187,6 +218,8 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
         "type": _EVIDENCE, "question": {"type": "string"},
         "options": _arr(), "correct_answer": {"type": "string"},
         "aligned_objective": {"type": "string"}, "plan_category": _PLAN_CATEGORY,
+        "instrument_id": {"type": "string",
+                          "description": "the instrument of the assessment plan this item is part of"},
         "required_cognitive_process": _BLOOM, "scoring_criteria": {"type": "string"},
         "rubric": _arr_of(_obj({
             "id": {"type": "string"}, "description": {"type": "string"},
@@ -195,7 +228,7 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
                             "satisfactory": {"type": "string"},
                             "needs_improvement": {"type": "string"}})},
             ("id", "description", "evidence_type"))),
-    }, ("type", "question", "aligned_objective", "plan_category",
+    }, ("type", "question", "aligned_objective", "plan_category", "instrument_id",
         "required_cognitive_process", "rubric")),
 
     # ── activities ───────────────────────────────────────────────────────
@@ -227,6 +260,7 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
     "learning_activities": _obj({
         "activity_name": {"type": "string"}, "duration": {"type": "string"},
         "description": {"type": "string"},
+        "module_id": {"type": "string", "description": "the module this activity belongs to"},
         "materials_needed": {"type": "string",
             "description": "free text describing what content/resource this activity "
                            "needs, not an id"},
@@ -234,15 +268,10 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
         "learner_cognitive_process": _BLOOM,
         "prerequisite_activities": {"type": "array", "items": {"type": "integer"},
             "description": "1-based positions of earlier activities in this same submission"},
-    }, ("activity_name", "description", "aligned_objectives", "learner_cognitive_process")),
+    }, ("activity_name", "description", "module_id", "aligned_objectives",
+        "learner_cognitive_process")),
 
     # ── content ──────────────────────────────────────────────────────────
-    #: Item schema — ``content_modules`` is an ARRAY field.
-    "content_modules": _obj({
-        "id": {"type": "string"}, "title": {"type": "string"},
-        "description": {"type": "string"}, "supports_activities": _arr(),
-        "covers_topics": _arr(), "expected_materials": {"type": "integer"},
-    }, ("id", "title", "description")),
     #: Item schema — ``media_selections`` is an ARRAY field.
     "media_selections": _obj({
         "id": {"type": "string"}, "media_type": _MEDIA,

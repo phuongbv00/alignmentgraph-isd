@@ -183,29 +183,82 @@ def test_activity_engagement_silent_when_no_practice_linked():
     assert checks.activity_engagement(graph) == []
 
 
-# ── Content Designer's own check: orphan_content (C5/P5 coverage) ───────────
+# ── modules: a material, an activity and an objective each name theirs ──────
 
-def test_orphan_content_fires_for_module_with_no_activity():
+def test_a_material_with_no_module_is_a_p5_gap_and_is_repaired_from_its_work_set():
+    """Materials are developed one module at a time and every material carries
+    the `plan_set` of the work set that wrote it, so the module a material
+    with a dangling `linked_module` belongs to is known exactly. A material
+    whose set names no module that exists is left a finding: picking one for
+    it would be authoring the claim the edge records."""
+    graph = AlignmentGraph()
+    for module in ("MOD-01", "MOD-02"):
+        graph.add_element_node(NodeType.MODULE, module, {"id": module})
+    graph.add_element_node(NodeType.MATERIAL, "MAT-0201", {
+        "id": "MAT-0201", "linked_module": "Inheritance", "plan_set": "MU-MOD-02"})
+    graph.add_element_node(NodeType.MATERIAL, "MAT-0901", {"id": "MAT-0901", "plan_set": "S0"})
+    trajectory = TrajectoryLogger()
+
+    before = [v for v in checks.relation_coverage(graph) if v.violation_type == "P5"]
+    assert {v.node_id for v in before} == {"material:MAT-0201", "material:MAT-0901"}
+    assert all("linked_module" in v.repair_hint for v in before)
+
+    repairs.repair(
+        "content_designer", before,
+        RepairActor("ContentDesignerAgent", HarnessRunConfig(), graph=graph,
+                    trajectory=trajectory).ctx())
+
+    assert graph.get_node("material:MAT-0201")["data"]["linked_module"] == "MOD-02"
+    assert [(e["source"], e["target"]) for e in graph.get_edges(relation_id="P5")] == [
+        ("module:MOD-02", "material:MAT-0201")]
+    left = [v.node_id for v in checks.relation_coverage(graph) if v.violation_type == "P5"]
+    assert left == ["material:MAT-0901"], "no module was picked for it"
+
+
+def test_a_module_nothing_is_taught_or_assessed_in_is_reported_and_never_filled():
+    """P13 and P14 are report-only for the harness: the only deterministic way
+    to close "this module has no activity" is an activity whose one property is
+    existing."""
     graph = AlignmentGraph()
     graph.add_element_node(NodeType.MODULE, "MOD-01", {"id": "MOD-01"})
-    violations = [v for v in checks.orphan_content(graph) if v.violation_type == "orphan_content"]
-    assert any("module:MOD-01" in v.node_id for v in violations)
+    trajectory = TrajectoryLogger()
+    found = [v for v in checks.relation_coverage(graph) if v.violation_type in ("P13", "P14")]
+    assert {v.violation_type for v in found} == {"P13", "P14"}
+    assert all(v.severity == "warning" for v in found), "a module's relations are secondary"
+    assert "module_id" in next(v for v in found if v.violation_type == "P13").repair_hint
+    assert "instrument_id" in next(v for v in found if v.violation_type == "P14").repair_hint
+
+    for family in ("activity_designer", "assessment_designer"):
+        owned = [v for v in found if v.violation_type in repairs.OWNED_BY_FAMILY[family]]
+        assert owned
+        assert repairs.repair(family, owned, RepairActor(
+            family, HarnessRunConfig(), graph=graph, trajectory=trajectory).ctx()) == owned
+    assert len(graph.to_dict()["nodes"]) == 1 and not trajectory.repair_events
 
 
-def test_orphan_content_silent_when_module_supports_an_activity():
+def test_the_outcomes_commit_links_modules_whatever_order_the_artifacts_arrive_in():
+    """The three outcomes artifacts are separate submits. A module that lands
+    BEFORE the objectives it names must still get its P12 edges when they
+    arrive, and a namespaced reference ("objective:ILO-01" is the node's own
+    id and unambiguous) must resolve exactly as a bare one does."""
+    from alignmentgraph_isd.core.agentic import specialists
+
     graph = AlignmentGraph()
-    graph.add_element_node(NodeType.ACTIVITY, "TLA-01", {"id": "TLA-01"})
-    graph.add_element_node(NodeType.MODULE, "MOD-01", {"id": "MOD-01"})
-    alignment.record_provenance(graph, "C5", ["module:MOD-01"], "activity:TLA-01")
-    node_ids = {v.node_id for v in checks.orphan_content(graph)}
-    assert "module:MOD-01" not in node_ids
+    graph.add_element_node(NodeType.TOPIC, "TOP-01", {"id": "TOP-01"})
+    trajectory = TrajectoryLogger()
+    specialists.commit_outcomes(graph, trajectory, {"course_modules": [
+        {"id": "MOD-01", "title": "M", "objectives": ["objective:ILO-01", "ILO-02"],
+         "covers_topics": ["TOP-01"], "minutes": 60}]})
+    assert graph.get_edges(relation_id="P12") == []
+    assert [e["source"] for e in graph.get_edges(relation_id="P7")] == ["topic:TOP-01"]
 
-
-def test_orphan_content_fires_for_material_with_no_module():
-    graph = AlignmentGraph()
-    graph.add_element_node(NodeType.MATERIAL, "MAT-01", {"id": "MAT-01"})
-    violations = [v for v in checks.orphan_content(graph) if v.violation_type == "orphan_content"]
-    assert any("material:MAT-01" in v.node_id for v in violations)
+    specialists.commit_outcomes(graph, trajectory, {"learning_objectives": [
+        {"id": "ILO-01", "level": "apply", "bloom_verb": "apply", "statement": "Apply a."},
+        {"id": "ILO-02", "level": "apply", "bloom_verb": "apply", "statement": "Apply b."},
+        {"id": "ILO-03", "level": "apply", "bloom_verb": "apply", "statement": "Apply c."}]})
+    assert {(e["source"], e["target"]) for e in graph.get_edges(relation_id="P12")} == {
+        ("module:MOD-01", "objective:ILO-01"), ("module:MOD-01", "objective:ILO-02")}
+    assert alignment.relation_coverage(graph, "P12")[1] == ["objective:ILO-03"]
 
 
 # ── Rubric Designer's own checks: rubric_consistency, evidence_alignment ────
@@ -325,7 +378,7 @@ def test_actionability_silent_with_concrete_orientation_and_checklist():
     assert checks.actionability(graph) == []
 
 
-# ── relation_coverage(): re-runs rerunnable establishers + full 16-relation check ──
+# ── relation_coverage(): re-runs rerunnable establishers + full 18-relation check ──
 
 def test_relation_coverage_flags_uncovered_core_relation():
     graph = AlignmentGraph()
@@ -385,61 +438,6 @@ def test_a_vague_rubric_criterion_is_reported_and_left_alone():
     kept = graph.get_node("assessment:AT-01")["data"]["rubric"][0]
     assert kept["description"] == "good", "the criterion is left exactly as written"
     assert not trajectory.repair_events, "nothing changed, so nothing is logged as a repair"
-
-
-def test_an_orphan_content_module_is_reported_and_no_alignment_is_invented():
-    """The repair that used to close this linked every orphaned module to
-    ``element_nodes(ACTIVITY)[0]`` — the first activity in the graph.
-
-    MEASURED (run 2559b22d): twelve modules, each naming its own activity
-    correctly, lost their C5 edges to a namespacing bug; this then "repaired"
-    all twelve by pointing them at TLA-0101. The check closed, twelve C5 edges
-    appeared, eleven of the twelve activities stayed uncovered, and the graph
-    asserted twelve relations the modules' own data contradicts.
-
-    Same objection as `activity_engagement` below — a repair satisfying its own
-    check by existing — and worse, because what it fabricates is an ALIGNMENT
-    EDGE. Rearranging what the design holds is the net's job; deciding which
-    activity a module supports is authoring the claim this package exists to
-    make auditable."""
-    graph = AlignmentGraph()
-    graph.add_element_node(NodeType.MODULE, "MOD-01", {"id": "MOD-01"})
-    graph.add_element_node(NodeType.ACTIVITY, "TLA-01", {"id": "TLA-01"})
-    config = HarnessRunConfig()
-    trajectory = TrajectoryLogger()
-
-    before = [v for v in checks.orphan_content(graph) if v.violation_type == "orphan_content"]
-    assert before
-
-    remaining = repairs.repair(
-        "content_designer", before,
-        RepairActor("ContentDesignerAgent", config, graph=graph, trajectory=trajectory).ctx())
-
-    assert remaining == before, "it stays a finding"
-    assert graph.get_edges(relation_id="C5") == [], "no alignment edge was invented"
-    assert not trajectory.repair_events, "a repair that changed nothing logs nothing"
-
-
-def test_a_module_that_names_its_activity_needs_no_repair_at_all():
-    """The root cause the removed branch was papering over. A reference the
-    model wrote NAMESPACED — "activity:TLA-01", which is the node's own id and
-    unambiguous — must establish C5 exactly as a bare one does; composing a
-    node id straight from it gives "activity:activity:TLA-01" and the edge is
-    lost in silence."""
-    from alignmentgraph_isd.core.agentic import specialists
-
-    for ref in ("TLA-01", "activity:TLA-01"):
-        graph = AlignmentGraph()
-        graph.add_element_node(NodeType.ACTIVITY, "TLA-01", {"id": "TLA-01"})
-        trajectory = TrajectoryLogger()
-        specialists.commit_content(graph, trajectory, {"content_modules": [
-            {"id": "MOD-01", "title": "M", "supports_activities": [ref]},
-        ]})
-
-        edges = graph.get_edges(relation_id="C5")
-        assert [(e["source"], e["target"]) for e in edges] == [
-            ("module:MOD-01", "activity:TLA-01")], ref
-        assert checks.orphan_content(graph) == [], ref
 
 
 def test_a_passively_practiced_objective_is_reported_and_no_activity_is_invented():

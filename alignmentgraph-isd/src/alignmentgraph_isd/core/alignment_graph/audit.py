@@ -48,7 +48,7 @@ _ELEMENT_NESTED_LIST_KEYS = {
 
 REQUIRED_SECTION_KEYS = {
     NodeType.OBJECTIVE: ("learning_objectives",),
-    NodeType.ASSESSMENT_PLAN: ("lo_coverage_targets",),
+    NodeType.ASSESSMENT_PLAN: ("instruments", "lo_coverage_targets"),
     NodeType.ASSESSMENT: ("assessment_tools",),
     NodeType.ACTIVITY_PLAN: ("instructional_strategies",),
     NodeType.ACTIVITY: ("learning_activities",),
@@ -78,7 +78,7 @@ class GraphAuditResult:
     unsupported_objectives: list[str] = field(default_factory=list)
     violations: list[dict] = field(default_factory=list)
     ready_to_aggregate: bool = False
-    # Per-relation coverage for all 16 relations (C1..C5 core + P1..P11
+    # Per-relation coverage for all 18 relations (C1..C4 core + P1..P14
     # secondary), computed from established edges as data (see alignment.py).
     relation_coverage: dict[str, dict] = field(default_factory=dict)
 
@@ -133,7 +133,7 @@ class GraphAuditResult:
 
     @property
     def residual_gap_count(self) -> int:
-        """Total uncovered elements across all 16 relations — the audit
+        """Total uncovered elements across all 18 relations — the audit
         summary's residual."""
         return sum(len(info["uncovered"]) for info in self.relation_coverage.values())
 

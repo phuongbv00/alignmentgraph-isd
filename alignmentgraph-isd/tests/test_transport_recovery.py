@@ -103,6 +103,7 @@ def test_a_wrong_typed_container_nobody_else_owns_is_still_reported_once():
 
 def test_a_missing_leaf_is_still_reported_when_its_container_is_sound():
     plan = {"lo_coverage_targets": {"ILO-01": ["summative"]},
+            "instruments": [{"id": "INS-01", "module_id": "MOD-01", "timing": "summative"}],
             "expected_evidence": {"ILO-01": "x"},
             "diagnostic": "d", "formative": "f", "summative": "s",
             "formative_methods": ["a"]}
