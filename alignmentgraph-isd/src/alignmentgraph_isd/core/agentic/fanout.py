@@ -741,8 +741,8 @@ def _establish(spec: FanoutSpec, state, committed: dict[str, list[str]]) -> None
     elif spec.stage == "content":
         for node_id in committed.get("learner_materials", []):
             data = state.get_node(node_id)["data"]
-            ref = alignment.bare_ref(data.get("linked_module", ""))
-            module_id = f"{NodeType.MODULE}{state.ELEMENT_SEP}{ref}" if ref else ""
-            if ref and state.get_node(module_id):
+            module_id = alignment.resolve_element(
+                state, NodeType.MODULE, data.get("linked_module", ""))
+            if module_id:
                 alignment.record_provenance(state, "P5", [module_id], node_id)
         alignment.match_p6_realizes(state)

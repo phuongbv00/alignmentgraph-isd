@@ -1367,8 +1367,13 @@ def short_of_quota(work_set: WorkSet, schema_key: str, items: list) -> list[str]
     quota = quota_of(work_set, schema_key)
     if schema_key == "session_guides" or not quota or len(items) >= quota:
         return []
-    return [f"{schema_key}: you wrote {len(items)} of the {quota} this set asks for — "
-            f"resend the whole list with all {quota}"]
+    # Says what to ADD, not only what is wrong: MEASURED (run b8576814), told
+    # "you wrote 1 of the 3 ... resend the whole list with all 3", a 2B model
+    # resent its one item four times and the set gave up.
+    more = quota - len(items)
+    return [f"{schema_key}: your list has {len(items)} and this set asks for {quota} — keep "
+            f"what you wrote, add {more} more DIFFERENT one{'' if more == 1 else 's'} to the "
+            f"same list, and submit all {quota} together"]
 
 
 def trim_to_quota(work_set: WorkSet, schema_key: str, items: list) -> tuple[list, int]:

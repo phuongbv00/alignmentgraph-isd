@@ -120,7 +120,7 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
         "environment": {"type": "string"},
         "duration": {"type": "string"},
         "resources": _arr(),
-    }),
+    }, ("constraints",)),
     "task_analysis": _obj({
         "topics": _arr_of(_obj({
             "id": {"type": "string"}, "topic": {"type": "string"},

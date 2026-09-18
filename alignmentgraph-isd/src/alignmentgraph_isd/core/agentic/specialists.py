@@ -209,16 +209,15 @@ def _link_modules(graph) -> None:
     again when the other end arrives is what makes the order not matter. Every
     reference is model-written and goes through ``alignment.bare_ref`` first
     (see :func:`commit_content`)."""
-    sep = graph.ELEMENT_SEP
     for node in graph.element_nodes(NodeType.MODULE):
         data = node["data"]
-        topics = [f"{NodeType.TOPIC}{sep}{bare}"
-                  for bare in map(alignment.bare_ref, data.get("covers_topics") or []) if bare]
-        alignment.record_provenance(graph, "P7", topics, node["id"])
-        for bare in map(alignment.bare_ref, data.get("objectives") or []):
-            if bare:
-                alignment.record_provenance(
-                    graph, "P12", [node["id"]], f"{NodeType.OBJECTIVE}{sep}{bare}")
+        topics = [alignment.resolve_element(graph, NodeType.TOPIC, ref)
+                  for ref in data.get("covers_topics") or []]
+        alignment.record_provenance(graph, "P7", [t for t in topics if t], node["id"])
+        for ref in data.get("objectives") or []:
+            objective = alignment.resolve_element(graph, NodeType.OBJECTIVE, ref)
+            if objective:
+                alignment.record_provenance(graph, "P12", [node["id"]], objective)
 
 
 def _without_dev_plan(plan: object) -> dict:
@@ -300,10 +299,9 @@ def commit_content(graph, trajectory, parsed: dict) -> None:
     media_ids = _decompose(graph, trajectory, NodeType.MEDIA_SELECTION, parsed.get("media_selections"))
     for node_id in media_ids:
         data = graph.get_node(node_id)["data"]
-        constraints = [f"{NodeType.CONSTRAINT}{graph.ELEMENT_SEP}{bare}"
-                       for bare in map(alignment.bare_ref,
-                                       data.get("respects_constraints") or []) if bare]
-        alignment.record_provenance(graph, "P8", constraints, node_id)
+        constraints = [alignment.resolve_element(graph, NodeType.CONSTRAINT, ref)
+                       for ref in data.get("respects_constraints") or []]
+        alignment.record_provenance(graph, "P8", [c for c in constraints if c], node_id)
 
 
 
@@ -594,6 +592,11 @@ def validate_analysis(parsed: dict) -> list[str]:
         _require_list(parsed, ("needs_analysis", "gaps"), errors)
     if parsed.get("improvement_plan") is not None:
         _require_list(parsed, ("improvement_plan", "improvements"), errors)
+    if parsed.get("context_analysis") is not None:
+        # The constraints are what every media selection is chosen in light of
+        # (P8). MEASURED (run b8576814): a context analysis with no
+        # ``constraints`` at all was accepted and P8 read 0.0.
+        _require_list(parsed, ("context_analysis", "constraints"), errors)
     if parsed.get("task_analysis") is not None:
         # The topics are what the course's modules are clustered from (P7) and
         # one of the bounds on how many modules there are.

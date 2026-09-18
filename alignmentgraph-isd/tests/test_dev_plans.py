@@ -670,8 +670,8 @@ def test_a_set_that_writes_fewer_than_it_was_asked_for_is_not_finished():
     from alignmentgraph_isd.core import dev_plans
 
     ws = dev_plans.WorkSet(set_id="AS-01", payload={"expected_items": 3})
-    assert dev_plans.short_of_quota(ws, "assessment_tools", [{}]) == [
-        "assessment_tools: you wrote 1 of the 3 this set asks for — resend the whole list with all 3"]
+    (error,) = dev_plans.short_of_quota(ws, "assessment_tools", [{}])
+    assert "has 1" in error and "asks for 3" in error and "add 2 more" in error
     assert dev_plans.short_of_quota(ws, "assessment_tools", [{}, {}, {}]) == []
     guides = dev_plans.WorkSet(set_id="SB-01", payload={"expected_sessions": 2})
     assert dev_plans.short_of_quota(guides, "session_guides", [{}]) == [], (

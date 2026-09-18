@@ -202,7 +202,7 @@ IDENTITY_FIELDS: dict[str, tuple[str, ...]] = {
     "evidence_alignment": ("rc_id",),         # several criteria on one item
     "bloom": ("rule",),                       # four sub-rules, one node
     # every finding sits on the plan node: which kind, which instrument, which pair
-    "blueprint_consistency": ("kind", "instrument_id", "lo_id", "plan_category"),
+    "blueprint_consistency": ("kind", "instrument_id", "module_id", "lo_id", "plan_category"),
 }
 
 
@@ -567,6 +567,27 @@ def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | 
                          f"lo_coverage_targets does not promise {lo_id} a {timing} item."),
                 repair_hint=f"Add \"{timing}\" to lo_coverage_targets[\"{lo_id}\"].",
                 metadata={"kind": "unpromised_pair", "lo_id": lo_id, "plan_category": timing},
+            ))
+    # The blueprint has to reach the WHOLE course. P14 and C2 say the same
+    # thing later, on the module and the objective — after the Developers
+    # have run, when it costs a replan round. Said here, on the plan, it
+    # reaches the Designer while the plan is still the only thing written.
+    # MEASURED (run b8576814): three instruments, all for MOD-01 and ILO-001;
+    # two of three modules and two of three objectives had no assessment.
+    assessed = {alignment.bare_ref(i.get("module_id", "")) for i in _instruments(plan)}
+    covered = {lo for lo, _timing in instrument_pairs(plan)}
+    for kind, wanted, have, noun, hint in (
+            ("module_without_instrument", modules, assessed, "module",
+             "Add an instrument whose module_id is this module."),
+            ("objective_without_instrument", objectives, covered, "objective",
+             "List it in covers_objectives of an instrument of the module that serves it.")):
+        for missing in sorted((wanted or set()) - have) if _instruments(plan) else ():
+            violations.append(Violation(
+                node_id=node_id, edge_type="", violation_type="blueprint_consistency",
+                severity="warning",
+                message=f"No instrument of the assessment plan assesses {noun} {missing}.",
+                repair_hint=hint,
+                metadata={"kind": kind, "lo_id" if noun == "objective" else "module_id": missing},
             ))
     for instrument in _instruments(plan):
         ins_id = str(instrument.get("id") or "?")

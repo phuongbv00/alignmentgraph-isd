@@ -114,7 +114,10 @@ def test_an_instrument_naming_nothing_real_is_handed_back_not_guessed():
             "lo_coverage_targets": {"ILO-07": ["summative"]}}
     graph, trajectory = _design(plan, []), TrajectoryLogger()
     found = checks.blueprint_consistency(graph)
-    assert {v.metadata["kind"] for v in found} == {"unknown_module", "unknown_objective"}
+    assert {v.metadata["kind"] for v in found} == {
+        "unknown_module", "unknown_objective",
+        # ...and what that leaves the real course without:
+        "module_without_instrument", "objective_without_instrument"}
     assert repairs.repair("assessment_designer", found, _ctx(graph, trajectory)) == found
     assert not trajectory.repair_events
 
@@ -254,3 +257,43 @@ def test_constraints_written_as_sentences_become_elements_and_topics_are_require
 
     assert specialists.validate_analysis({"task_analysis": {"task_overview": "x"}}) == [
         "task_analysis.topics must be a non-empty list"]
+
+
+def test_the_blueprint_has_to_reach_every_module_and_every_objective():
+    """MEASURED (run b8576814): three instruments, all for one module and one
+    objective. Said on the PLAN, it reaches the Designer before any Developer
+    runs; P14 and C2 only say it afterwards."""
+    plan = {"instruments": [_instrument("INS-01", "summative", ["ILO-01"])],
+            "lo_coverage_targets": {"ILO-01": ["summative"]}}
+    graph = _design(plan, [])
+    graph.add_element_node(NodeType.MODULE, "MOD-02", {"id": "MOD-02"})
+    found = {(v.metadata["kind"], v.metadata.get("module_id") or v.metadata.get("lo_id"))
+             for v in checks.blueprint_consistency(graph)}
+    assert found == {("module_without_instrument", "MOD-02"),
+                     ("objective_without_instrument", "ILO-02")}
+    assert all(":" not in v.node_id for v in checks.blueprint_consistency(graph)), (
+        "on the plan section, so the Designer is shown it before its Developers run")
+    assert len({v.key for v in checks.blueprint_consistency(graph)}) == 2
+
+
+def test_a_reference_spelled_the_way_a_listing_row_invites_still_resolves():
+    """MEASURED (run b8576814): `covers_topics: ["TOPIC-001"]` against topics
+    `topic_001`..`topic_003` — three correct references and P7 at 0.0."""
+    graph = AlignmentGraph()
+    for topic in ("topic_001", "topic_002"):
+        graph.add_element_node(NodeType.TOPIC, topic, {"id": topic})
+    resolve = alignment.resolve_element
+    assert resolve(graph, NodeType.TOPIC, "topic_001") == "topic:topic_001"
+    for spelling in ("TOPIC-001", "topic:topic_001", "Topic 001", "TOPIC-topic_001"):
+        assert resolve(graph, NodeType.TOPIC, spelling) == "topic:topic_001", spelling
+    assert resolve(graph, NodeType.TOPIC, "topic_009") == ""
+    graph.add_element_node(NodeType.TOPIC, "TOPIC-001", {"id": "TOPIC-001"})
+    assert resolve(graph, NodeType.TOPIC, "Topic 001") == "", "two candidates is not a lookup"
+
+    trajectory = TrajectoryLogger()
+    fresh = AlignmentGraph()
+    fresh.add_element_node(NodeType.TOPIC, "topic_001", {"id": "topic_001"})
+    specialists.commit_outcomes(fresh, trajectory, {"course_modules": [
+        {"id": "MOD-01", "title": "M", "objectives": ["ILO-01"], "covers_topics": ["TOPIC-001"],
+         "minutes": 60}]})
+    assert alignment.relation_coverage(fresh, "P7") == (1.0, [])

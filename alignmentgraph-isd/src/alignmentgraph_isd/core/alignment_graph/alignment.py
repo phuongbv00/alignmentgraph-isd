@@ -50,6 +50,8 @@ bare ``relation_id`` (``"C2"``) stays on the edge for coverage indexing (see
 """
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass
 from typing import Literal, get_args
 
@@ -245,6 +247,39 @@ def bare_ref(ref: object) -> str:
     return text
 
 
+def _squash(text: object) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(text or "").lower())
+
+
+def resolve_element(graph: AlignmentGraph, node_type: NodeType | str, ref: object) -> str:
+    """The node id of the ``node_type`` element a model-written ``ref`` names,
+    or ``""``.
+
+    Exact first (after :func:`bare_ref`). Then, only when exactly ONE element
+    fits, the spelling a listing row invites: the row header is
+    ``[TOPIC:topic_001]``, and a small model writes what it read as
+    ``TOPIC-001``, ``Topic_001`` or ``TOPIC-topic_001``. Compared with case and
+    punctuation removed, with and without the type's own name in front.
+    MEASURED (run b8576814): every module wrote ``covers_topics:
+    ["TOPIC-001"]`` against topics ``topic_001``..``topic_003`` — three correct
+    references, P7 at 0.0. Same finding as ``tools._resolve_node`` for reads;
+    an ambiguous spelling resolves to nothing, because choosing between two
+    elements would be authoring the edge."""
+    bare = bare_ref(ref)
+    if not bare:
+        return ""
+    exact = f"{node_type}{graph.ELEMENT_SEP}{bare}"
+    if graph.get_node(exact):
+        return exact
+    type_name = _squash(node_type)
+    wanted = _squash(bare)
+    forms = {wanted, wanted.removeprefix(type_name), type_name + wanted}
+    hits = [node["id"] for node in graph.element_nodes(node_type)
+            if {_squash(node["id"].split(graph.ELEMENT_SEP, 1)[-1])} & forms
+            or _squash(node["id"].split(graph.ELEMENT_SEP, 1)[-1]).removeprefix(type_name) in forms]
+    return hits[0] if len(hits) == 1 else ""
+
+
 # ── id-match, REVERSED direction: source=resolved node, target=referencing ──
 
 def match_id_reverse(
@@ -266,8 +301,8 @@ def match_id_reverse(
     violations: list[dict] = []
     for node in graph.element_nodes(referencing_type):
         ref = bare_ref(node["data"].get(field, ""))
-        resolved_id = f"{resolved_type}{graph.ELEMENT_SEP}{ref}" if ref else ""
-        if ref and graph.get_node(resolved_id):
+        resolved_id = resolve_element(graph, resolved_type, ref)
+        if resolved_id:
             graph.add_edge(
                 relation.key, resolved_id, node["id"],
                 evidence=ref, relation_id=relation_id, established_by="id",
@@ -300,8 +335,8 @@ def match_module_assessed(graph: AlignmentGraph) -> list[dict]:
     for node in graph.element_nodes(NodeType.ASSESSMENT):
         instrument = bare_ref(node["data"].get("instrument_id", ""))
         module = module_of.get(instrument, "")
-        module_id = f"{NodeType.MODULE}{graph.ELEMENT_SEP}{module}" if module else ""
-        if module and graph.get_node(module_id):
+        module_id = resolve_element(graph, NodeType.MODULE, module)
+        if module_id:
             graph.add_edge(
                 relation.key, module_id, node["id"],
                 evidence=instrument, relation_id="P14", established_by="id",
@@ -338,8 +373,8 @@ def match_list(
         resolved = False
         for ref in refs:
             ref = bare_ref(ref)
-            target_id = f"{target_node_type}{graph.ELEMENT_SEP}{ref}"
-            if ref and graph.get_node(target_id):
+            target_id = resolve_element(graph, target_node_type, ref)
+            if target_id:
                 graph.add_edge(
                     relation.key, node["id"], target_id,
                     evidence=str(ref), relation_id=relation_id, established_by="id",
@@ -378,8 +413,8 @@ def match_list_reverse(
         resolved = False
         for ref in refs:
             ref = bare_ref(ref)
-            resolved_id = f"{resolved_type}{graph.ELEMENT_SEP}{ref}"
-            if ref and graph.get_node(resolved_id):
+            resolved_id = resolve_element(graph, resolved_type, ref)
+            if resolved_id:
                 graph.add_edge(
                     relation.key, resolved_id, node["id"],
                     evidence=str(ref), relation_id=relation_id, established_by="id",
@@ -555,9 +590,9 @@ def establish_delivery(graph: AlignmentGraph, session_node_ids: list[str]) -> No
                 ("activity_ids", NodeType.ACTIVITY, "P10"),
                 ("material_ids", NodeType.MATERIAL, "P11"),
         ):
-            referenced = [bare_ref(r) for r in (data.get(field) or []) if r]
-            for ref in dict.fromkeys(referenced):
-                record_provenance(graph, relation_id, [node_id], f"{node_type}{sep}{ref}")
+            referenced = [resolve_element(graph, node_type, r) for r in (data.get(field) or [])]
+            for target in dict.fromkeys(t for t in referenced if t):
+                record_provenance(graph, relation_id, [node_id], target)
 
 
 # ── structural: navigation for the human auditor, no relation id ────────────

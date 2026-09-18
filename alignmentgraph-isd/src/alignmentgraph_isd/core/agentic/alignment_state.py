@@ -162,8 +162,15 @@ def _module_ceiling(state, design_brief, step) -> list[str]:
     hours = checks.duration_hours(design_brief) if design_brief is not None else 0.0
     ceiling = dev_plans.module_ceiling(objectives, topics, hours)
     length = f"about {hours:g} h" if hours else "length not stated"
-    return [f"course_modules: at most {ceiling} for this course "
-            f"({objectives} objectives, {topics} topics, {length})"]
+    lines = [f"course_modules: at most {ceiling} for this course "
+             f"({objectives} objectives, {topics} topics, {length})"]
+    if hours:
+        # MEASURED (run b8576814): a 2-4 week course was given three modules
+        # of 40 minutes. The rule says the minutes add up to the course; this
+        # is the number they add up to.
+        lines.append(f"the modules' minutes together: about {int(hours * 60)} "
+                     f"({hours:g} h of learner time)")
+    return lines
 
 
 def _pool(state, node_type: str) -> tuple[list[dict], bool]:
