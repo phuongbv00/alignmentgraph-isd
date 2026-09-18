@@ -685,7 +685,43 @@ def reshape_args(parameters: dict, args: dict, *, reshaped: list,
     if not isinstance(args, dict):
         return args
     args = _unwrap_self_named(parameters, args, salvaged)
+    args = _fold_siblings(parameters, args, reshaped)
     return walk({"type": "object", **(parameters or {})}, args, "")
+
+
+def _fold_siblings(parameters: dict, args: dict, reshaped: list) -> dict:
+    """``{"system_check": {"checklist": [...]}, "technical_validation": ...,
+    "contingency_plans": ...}`` means one ``system_check`` with three fields.
+
+    A tool that takes ONE object artifact is sometimes called with that object
+    closed after its first field and the rest of its fields written beside it,
+    one level too high. The content is whole and the model's; only the closing
+    brace is early. MEASURED (runs aef73e0a, 40856c96, b8576814, 53a9cd1a):
+    ``system_check`` in three of four and ``operator_manual`` in three of four
+    arrived this way — the first field inside, ``technical_validation`` /
+    ``contingency_plans`` / ``operation_procedures`` / ``escalation_process``
+    outside — and each was refused as "required field is missing or empty" for
+    fields the same call was carrying.
+
+    Folded only when it cannot be anything else: the tool declares exactly one
+    field, that field is an object, and a sibling key is one of ITS declared
+    properties that the object does not already hold. Anything else beside the
+    artifact is left where the model put it."""
+    declared = (parameters or {}).get("properties") or {}
+    if len(declared) != 1 or not isinstance(args, dict):
+        return args
+    (name, schema), = declared.items()
+    inner_fields = (schema or {}).get("properties") or {}
+    artifact = args.get(name)
+    if (schema or {}).get("type") != "object" or not isinstance(artifact, dict):
+        return args
+    stray = [key for key in args if key != name and key in inner_fields
+             and artifact.get(key) in (None, "", [], {})]
+    if not stray:
+        return args
+    reshaped.extend(f"{name}.{key} (written beside {name})" for key in stray)
+    folded = {**artifact, **{key: args[key] for key in stray}}
+    return {name: folded, **{k: v for k, v in args.items() if k != name and k not in stray}}
 
 
 def _unwrap_self_named(parameters: dict, args: dict, salvaged: list | None) -> dict:

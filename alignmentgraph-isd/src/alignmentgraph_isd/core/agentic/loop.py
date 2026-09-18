@@ -365,6 +365,9 @@ class ToolLoop:
         #: satisfy `step_done` and skip the regen — which is how run 24343e4d
         #: shipped an unusable guide.
         self._best: dict = {}
+        #: Fields of rejected object artifacts, carried into the next attempt
+        #: at the same artifact (``turn.carry_over``).
+        self._kept: dict = {}
         # call key -> the tool_call id it was answered under, so a result
         # compaction removes can be forgotten (forget_compacted_calls).
         self._seen_calls: dict[str, turn_mod.SeenCall] = {}
@@ -548,6 +551,8 @@ class ToolLoop:
         self._meter.acted()
         args = self._wrap_bare_artifact(turn.name, args)
         args = self._fill_single_key_object(args)
+        args, carried = turn_mod.carry_over(self._kept, args)
+        turn_mod.note_carried(carried, trajectory=self.trajectory, identity=self.identity)
         section, errors, unreadable = turn_mod.judge_submit(
             params, args, self._validate)
         artifact = self._artifact_of(turn.name, args)
@@ -563,7 +568,8 @@ class ToolLoop:
                 f"{artifact} attempt {spent}", turn, args, errors,
                 stats=self.stats, trajectory=self.trajectory, identity=self.identity)
             self._append_tool_turn(
-                turn, self._reject_message(errors, turn) + self._respec())
+                turn, self._reject_message(errors, turn)
+                + turn_mod.keep_fields(self._kept, section) + self._respec())
             return "continue"
         if errors:
             # Submit budget spent on a still-invalid artifact — measured

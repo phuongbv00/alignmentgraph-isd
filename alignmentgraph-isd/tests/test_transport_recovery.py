@@ -585,3 +585,69 @@ def test_an_artifact_named_twice_is_unwrapped_not_dropped():
                               reshaped=[], salvaged=salvaged)
     assert args == {"operator_manual": inner}
     assert salvaged == ["operator_manual (named twice)"]
+
+
+def test_an_artifact_closed_after_its_first_field_gets_the_rest_of_its_fields_back():
+    """MEASURED (runs aef73e0a, 40856c96, b8576814, 53a9cd1a): `system_check`
+    arrived as `{"checklist": [...]` with `technical_validation` and
+    `contingency_plans` written BESIDE it, and was refused for missing the two
+    fields the same call carried. Same for `operator_manual`."""
+    step = STEP_BY_NAME["implementation"]
+    spec = next(s for s in tools.submit_specs(step)
+                if s["function"]["name"] == "submit_system_check")
+    params = spec["function"]["parameters"]
+    sent = {"system_check": '{"checklist": ["Platform login works", "Network is stable"]',
+            "technical_validation": "All three platforms load on the class computers.",
+            "contingency_plans": ["Switch to the offline copy of the simulation."],
+            "a_note_of_its_own": "kept where the model put it"}
+
+    reshaped: list = []
+    args = tools.reshape_args(params, tools.coerce_args(params, sent), reshaped=reshaped)
+
+    assert set(args["system_check"]) == {"checklist", "technical_validation", "contingency_plans"}
+    assert args["a_note_of_its_own"] == "kept where the model put it"
+    assert len(reshaped) == 2 and all("written beside system_check" in r for r in reshaped)
+    assert specialists.validate_implementation({"system_check": args["system_check"]}) == []
+
+    # A field the artifact already holds is never overwritten from outside.
+    kept = tools.reshape_args(params, {"system_check": {"checklist": ["a"]}, "checklist": ["b"]},
+                              reshaped=[])
+    assert kept["system_check"]["checklist"] == ["a"]
+
+
+def test_a_refused_artifact_keeps_what_it_carried_so_the_next_attempt_sends_only_the_rest():
+    """MEASURED (runs 40856c96, b8576814, 53a9cd1a): `operator_manual` arrived
+    as a 3,000-character `system_setup` and nothing else, and the only way
+    forward was to write those 3,000 characters again under the same cap."""
+    from alignmentgraph_isd.core.agentic import turn as turn_mod
+
+    kept: dict = {}
+    first = {"operator_manual": {"system_setup": "Install the three platforms…",
+                                 "operation_procedures": []}}
+    note = turn_mod.keep_fields(kept, first)
+    assert "operator_manual: system_setup" in note and "ONLY the fields" in note
+    assert kept == {"operator_manual": {"system_setup": "Install the three platforms…"}}
+
+    second = {"operator_manual": {"operation_procedures": ["Open the LMS"],
+                                  "support_procedures": ["Call the help desk"],
+                                  "escalation_process": "Tier 1, then the vendor."}}
+    args, carried = turn_mod.carry_over(kept, second)
+    assert carried == ["operator_manual.system_setup"]
+    assert specialists.validate_implementation(args) == []
+    assert "system_setup" not in second["operator_manual"], "the submitted arguments are untouched"
+
+    rewritten, carried = turn_mod.carry_over(
+        kept, {"operator_manual": {"system_setup": "A shorter setup."}})
+    assert rewritten["operator_manual"]["system_setup"] == "A shorter setup." and not carried
+    assert turn_mod.keep_fields({}, {"assessment_tools": [{"q": 1}]}) == "", "lists are not kept"
+
+
+def test_both_arms_carry_a_refused_artifact_the_same_way():
+    """Transport, not treatment: one implementation, called by both loops."""
+    import inspect
+    from alignmentgraph_isd.core.agentic import loop as loop_mod, react as react_mod
+
+    for module in (loop_mod, react_mod):
+        source = inspect.getsource(module)
+        assert "turn_mod.carry_over(self._kept" in source, module.__name__
+        assert "turn_mod.keep_fields(self._kept" in source, module.__name__

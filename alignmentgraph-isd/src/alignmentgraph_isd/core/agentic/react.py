@@ -166,6 +166,9 @@ class ReactLoop:
         #: and folding failed attempts into it would make a stuck stage look
         #: like a productive one.
         self._rejected: dict[str, int] = {}
+        #: Fields of rejected object artifacts, carried into the next attempt
+        #: at the same artifact (``turn.carry_over``).
+        self._kept: dict = {}
         #: Every tool schema bound during the run, first seen first. ACCUMULATED
         #: because this arm's binding SHRINKS: `react_specs` offers a
         #: `submit_<stage>` only for a stage still open, so by the end there are
@@ -530,6 +533,8 @@ class ReactLoop:
                 "incomplete. Leave it and work on another stage; what is missing will be "
                 "repaired for you."))
             return "continue"
+        args, carried = turn_mod.carry_over(self._kept, args)
+        turn_mod.note_carried(carried, trajectory=self.trajectory, identity=self.identity)
         section, errors, unreadable = turn_mod.judge_submit(
             params, args, lambda parsed, _s=step: self._validate(_s, parsed))
         if errors:
@@ -543,6 +548,7 @@ class ReactLoop:
                    "first.\n" if turn.truncated else "")
             self._answer(turn, cut + "SUBMIT REJECTED — fix these and submit again:\n- "
                                + "\n- ".join(errors)
+                               + turn_mod.keep_fields(self._kept, section)
                                + self._respec(step))
             return "continue"
         turn_mod.note_dropped_args(

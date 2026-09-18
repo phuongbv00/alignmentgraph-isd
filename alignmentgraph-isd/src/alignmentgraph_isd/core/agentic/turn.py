@@ -224,10 +224,63 @@ def coerce(turn: ToolTurn, params: dict, *, stats: dict,
     if reshaped and trajectory is not None:
         trajectory.log_recovery_event(
             identity, "argument_reshaped", "; ".join(reshaped)[:200],
-            "str -> [str]; content unchanged")
+            "container changed; content unchanged")
     if turn.truncated and not turn.sibling:
         stats["truncated_turns"] = stats.get("truncated_turns", 0) + 1
     return args
+
+
+_EMPTY = (None, "", [], {})
+
+
+def carry_over(kept: dict, args: dict) -> tuple[dict, list[str]]:
+    """``args`` with the fields an EARLIER, rejected attempt at the same object
+    artifact already carried and this attempt left out: ``(args, carried)``.
+
+    A rejected artifact used to have to be written again WHOLE. MEASURED (runs
+    40856c96, b8576814, 53a9cd1a): ``operator_manual`` arrived with a
+    3,000-character ``system_setup`` and nothing else, was refused for the three
+    fields it lacked, and the only way forward was to emit the 3,000 characters
+    again plus the rest, under the same completion cap that had most likely
+    ended the first attempt. What the model wrote and the validator did not
+    object to is kept (:func:`keep_fields`), so the next submit may carry ONLY
+    what was missing. The text is the model's own, from this same
+    conversation; a field it sends again replaces the kept one."""
+    out, carried = dict(args), []
+    for name, value in args.items():
+        earlier = kept.get(name)
+        if not isinstance(value, dict) or not isinstance(earlier, dict):
+            continue
+        missing = {k: v for k, v in earlier.items()
+                   if v not in _EMPTY and value.get(k) in _EMPTY}
+        if missing:
+            out[name] = {**value, **missing}
+            carried += [f"{name}.{k}" for k in missing]
+    return out, carried
+
+
+def keep_fields(kept: dict, section: dict) -> str:
+    """Remember a rejected submit's object artifacts, and say so: the sentence
+    appended to the rejection, or ``""`` when there is nothing to keep."""
+    lines = []
+    for name, value in (section or {}).items():
+        fields = [k for k, v in value.items() if v not in _EMPTY] if isinstance(value, dict) else []
+        if not fields:
+            continue
+        kept[name] = {**(kept.get(name) or {}), **{k: value[k] for k in fields}}
+        lines.append(f"{name}: {', '.join(sorted(kept[name]))}")
+    if not lines:
+        return ""
+    return ("\nKEPT from what you sent — do not write these again: " + "; ".join(lines)
+            + ". Your next submit of this artifact may carry ONLY the fields named above as "
+              "missing; they are joined to what is kept.")
+
+
+def note_carried(carried: list[str], *, trajectory, identity: str) -> None:
+    if carried and trajectory is not None:
+        trajectory.log_recovery_event(
+            identity, "argument_reshaped", "; ".join(carried)[:200],
+            "carried from this agent's earlier attempt at the same artifact")
 
 
 def judge_submit(params: dict, args: dict, validate) -> tuple[dict, list[str], list[str]]:
