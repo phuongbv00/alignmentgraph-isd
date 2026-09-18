@@ -604,6 +604,23 @@ class ToolLoop:
         turn_mod.note_dropped_args(
             unreadable, stats=self.stats, trajectory=self.trajectory,
             identity=self.identity)
+        owed = self.step.owes(section) if self.step.owes else ""
+        if owed:
+            # A valid INSTALMENT of a work set that states a count. Kept, and
+            # the next submit is joined to it; refusing it made a model that
+            # writes one item per call resend that one item until the set gave
+            # up. An instalment that adds nothing is the one thing charged.
+            if turn_mod.keep_items(self._kept, section) > 0:
+                self._best.update(section)
+                self._append_tool_turn(turn, owed)
+                return "continue"
+            self._submit_attempts[artifact] = spent + 1
+            self._append_tool_turn(turn, (
+                "NOTHING NEW: what you sent is already kept. " + owed))
+            if spent + 1 >= self.SUBMIT_BUDGET:
+                self._give_up("submit budget spent", last_resort=self._best)
+                return "return"
+            return "continue"
         # Commit FIRST, then answer once. The answer depends on what
         # the commit left missing, and a step declared in parts is not
         # necessarily finished by an accepted submit.

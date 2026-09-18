@@ -670,11 +670,11 @@ def test_a_set_that_writes_fewer_than_it_was_asked_for_is_not_finished():
     from alignmentgraph_isd.core import dev_plans
 
     ws = dev_plans.WorkSet(set_id="AS-01", payload={"expected_items": 3})
-    (error,) = dev_plans.short_of_quota(ws, "assessment_tools", [{}])
-    assert "has 1" in error and "asks for 3" in error and "add 2 more" in error
-    assert dev_plans.short_of_quota(ws, "assessment_tools", [{}, {}, {}]) == []
+    owed = dev_plans.short_of_quota(ws, "assessment_tools", [{}])
+    assert owed.startswith("KEPT: 1 of the 3") and "ONLY 2 more" in owed
+    assert dev_plans.short_of_quota(ws, "assessment_tools", [{}, {}, {}]) == ""
     guides = dev_plans.WorkSet(set_id="SB-01", payload={"expected_sessions": 2})
-    assert dev_plans.short_of_quota(guides, "session_guides", [{}]) == [], (
+    assert dev_plans.short_of_quota(guides, "session_guides", [{}]) == "", (
         "how many sessions a block takes is the writer's to say; what it owes is every id")
 
 
@@ -797,3 +797,40 @@ def test_the_written_activities_are_checked_against_their_module_s_minutes():
 
     graph.update_node("module:MOD-01", {"minutes": 180})
     assert checks.time_budget(graph) == []
+
+
+def test_a_work_set_written_one_item_at_a_time_accumulates_and_a_repeat_adds_nothing():
+    """MEASURED (run ae81359a): with a short submit REFUSED, a 2B model that
+    writes one item per call resent its one item — 14 such refusals, sets
+    giving up after four calls and regenerated up to three times. An
+    instalment is kept and joined to the next; a repeat is not an instalment."""
+    from alignmentgraph_isd.core import dev_plans
+    from alignmentgraph_isd.core.agentic import fanout, turn as turn_mod
+    from alignmentgraph_isd.core.agentic.specialists import STEPS
+
+    def item(question, lo="ILO-01"):
+        return {"question": question, "aligned_objective": lo, "plan_category": "formative",
+                "instrument_id": "INS-01"}
+
+    work_set = dev_plans.WorkSet(set_id="AS-01", pairs=(("ILO-01", "formative"),),
+                                 payload={"expected_items": 3})
+    step = fanout.set_step(fanout.SPECS["assessment"], work_set,
+                           next(s for s in STEPS if s.name == "assessment"))
+    kept: dict = {}
+
+    first = {"assessment_tools": [item("Which tool fits?"), item("which  tool FITS?")]}
+    assert step.validate(first) == [], "a short submit is valid — it is an instalment"
+    assert step.owes(first).startswith("KEPT: 1 of the 3"), "the repeat inside it does not count"
+    assert turn_mod.keep_items(kept, first) == 1
+
+    again, _ = turn_mod.carry_over(kept, {"assessment_tools": [item("Which tool fits?")]})
+    assert len(again["assessment_tools"]) == 1 and turn_mod.keep_items(kept, again) == 0, (
+        "resending what is kept gains nothing, which is the one thing the loop charges")
+
+    more, carried = turn_mod.carry_over(kept, {"assessment_tools": [
+        item("Justify the choice."), item("Which tool fits?", lo="ILO-02")]})
+    assert carried == ["assessment_tools[:1]"]
+    assert [i["question"] for i in more["assessment_tools"]] == [
+        "Which tool fits?", "Justify the choice.", "Which tool fits?"], (
+        "the same words asked of another objective are another item")
+    assert step.owes(more) == ""

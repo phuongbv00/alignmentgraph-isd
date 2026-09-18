@@ -581,8 +581,13 @@ def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
         # Judged as it will be committed: a membership id the set itself
         # settles is filled in (``dev_plans.with_membership``), never refused.
         filled = {**parsed, primary: dev_plans.with_membership(work_set, primary, items)}
-        return (output_errors(spec, filled)
-                or dev_plans.short_of_quota(work_set, primary, items))
+        return output_errors(spec, filled)
+
+    def owes(section: dict) -> str:
+        # Counted without repeats: what the commit's trim would drop as a
+        # repeat must not count towards the quota on the way there.
+        written = dev_plans.without_repeats(primary, (section or {}).get(primary) or [])
+        return dev_plans.short_of_quota(work_set, primary, written)
 
     return replace(
         base,
@@ -605,6 +610,7 @@ def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
         relations=(),
         state_tool=False,
         validate=validate,
+        owes=owes,
         commit=lambda *_a, **_k: None,       # committing is the driver's job,
         commit_prose=lambda *_a, **_k: None,  # right after this loop returns
         commits_to_state=False,

@@ -22,6 +22,7 @@ import json
 from dataclasses import dataclass
 from typing import NamedTuple
 
+from .. import dev_plans
 from . import budget, tools
 from .protocol import INVALID_TURN_NUDGE, REPEAT_UNCHANGED, turns_left_hint
 from .tools import unwrap_section
@@ -249,6 +250,15 @@ def carry_over(kept: dict, args: dict) -> tuple[dict, list[str]]:
     out, carried = dict(args), []
     for name, value in args.items():
         earlier = kept.get(name)
+        if isinstance(value, list) and isinstance(earlier, list) and earlier:
+            # An instalment of a work set's list (``keep_items``): joined AFTER
+            # what is kept. An item that REPEATS a kept one, or another of its
+            # own instalment, adds nothing (``dev_plans.same_artifact_key`` —
+            # the same test the commit's trim drops a repeat by, so a repeat
+            # can never count towards the set's quota on the way there).
+            out[name] = list(earlier) + dev_plans.without_repeats(name, value, beside=earlier)
+            carried.append(f"{name}[:{len(earlier)}]")
+            continue
         if not isinstance(value, dict) or not isinstance(earlier, dict):
             continue
         missing = {k: v for k, v in earlier.items()
@@ -274,6 +284,21 @@ def keep_fields(kept: dict, section: dict) -> str:
     return ("\nKEPT from what you sent — do not write these again: " + "; ".join(lines)
             + ". Your next submit of this artifact may carry ONLY the fields named above as "
               "missing; they are joined to what is kept.")
+
+
+def keep_items(kept: dict, section: dict) -> int:
+    """Remember the LISTS of an accepted-but-unfinished work-set submit, so the
+    next one may carry only what is still owed. Returns how many items the
+    pile gained — zero means the agent resent what was already kept."""
+    gained = 0
+    for name, value in (section or {}).items():
+        if isinstance(value, list):
+            # Repeats INSIDE one instalment go too: a model asked for two more
+            # that sends one item twice has written one.
+            unique = dev_plans.without_repeats(name, value)
+            gained += len(unique) - len(kept.get(name) or [])
+            kept[name] = unique
+    return gained
 
 
 def note_carried(carried: list[str], *, trajectory, identity: str) -> None:

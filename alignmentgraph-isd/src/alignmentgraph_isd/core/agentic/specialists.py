@@ -903,6 +903,12 @@ class AgenticStep:
     #: — while the family was deposited in one batch at the end, the pool was
     #: empty for every set and the default guard happened to be right.)
     done: Callable[[object], bool] | None = None
+    #: What an ACCEPTED submit still owes before the step is finished: the
+    #: sentence that asks for it, or ``""``. Only a fan-out work set declares
+    #: one (its stated count). While it answers, the loop keeps what arrived,
+    #: answers with this, and joins the next submit to it
+    #: (``ToolLoop._handle_submit``) — an instalment, never a rejection.
+    owes: Callable[[dict], str] | None = None
     def task_block(self) -> str:
         """Task + rules for the tool-loop prompt. No schema block: the
         artifact's field-level SHAPE (types, nesting, enums) lives in the

@@ -2466,3 +2466,41 @@ def test_a_repeated_assignment_pointer_is_counted_once():
     assert loop.stats["assignment_reads"] == 1
     assert [e["action"] for e in trajectory.recovery_events] == [
         "read_of_assignment_id", "repeated_tool_call"]
+
+
+def test_a_developer_that_writes_one_item_per_call_finishes_its_set_in_instalments():
+    """MEASURED (run ae81359a): refused for writing 1 of 3, a 2B model resent
+    its one item until the set gave up and was regenerated. Each valid
+    instalment is kept and answered with what is still owed; only an
+    instalment that adds nothing is charged."""
+    from alignmentgraph_isd.core import dev_plans
+    from alignmentgraph_isd.core.agentic import fanout
+
+    def item(question):
+        return {"type": "short_answer", "question": question, "aligned_objective": "ILO-01",
+                "plan_category": "formative", "instrument_id": "INS-01",
+                "required_cognitive_process": "apply", "rubric": []}
+
+    work_set = dev_plans.WorkSet(set_id="AS-01", pairs=(("ILO-01", "formative"),),
+                                 payload={"expected_items": 3})
+    from dataclasses import replace
+
+    captured: dict = {}
+    dev = replace(fanout.set_step(fanout.SPECS["assessment"], work_set, STEP_BY_NAME["assessment"]),
+                  commit=lambda _state, _trajectory, section: captured.update(section))
+    submits = [[item("Q1")], [item("Q1")], [item("Q2"), item("q2 ")], [item("Q3")]]
+    _model, config, graph, trajectory, brief = _harness(
+        [call("submit_assessment_tools", {"assessment_tools": s}) for s in submits])
+    loop = _loop(config, graph, trajectory, brief, dev)
+    loop.run()
+
+    answers = [m["content"] for m in loop.messages
+               if isinstance(m, dict) and m.get("role") == "tool"]
+    assert answers[0].startswith("KEPT: 1 of the 3")
+    assert answers[1].startswith("NOTHING NEW") and "KEPT: 1 of the 3" in answers[1]
+    assert answers[2].startswith("KEPT: 2 of the 3"), "the repeat inside the instalment is not counted"
+    assert answers[3].startswith("COMMITTED")
+    assert loop.stats["submits_rejected"] == 0, "an instalment is not a rejection"
+    assert not loop.stats["gave_up"]
+    assert [i["question"] for i in captured["assessment_tools"]] == ["Q1", "Q2", "Q3"], (
+        "what the driver commits is the whole pile, in the order it was written")

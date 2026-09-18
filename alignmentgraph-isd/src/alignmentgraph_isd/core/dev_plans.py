@@ -1387,28 +1387,62 @@ def quota_of(work_set: WorkSet, schema_key: str) -> int:
         return 0
 
 
-def short_of_quota(work_set: WorkSet, schema_key: str, items: list) -> list[str]:
-    """The error for a submit that wrote FEWER artifacts than its assignment
-    stated, or none.
+def short_of_quota(work_set: WorkSet, schema_key: str, items: list) -> str:
+    """What a work set still owes of the count its assignment stated: the
+    sentence that asks for it, or ``""`` when nothing is owed.
 
-    The other half of :func:`trim_to_quota`. MEASURED (run 40856c96, sample
-    mode): all three assessment sets were told "write exactly 3 items" and
-    each submitted ONE, was answered COMMITTED, and the design shipped five
-    items for three instruments planned at twenty-five. The count is part of
-    the assignment, so a short submit is an unfinished one and its author is
-    still in the conversation to finish it. Session guides are exempt: how
-    many sessions a block takes is the writer's to say, and what it owes is
-    every id, which its own validator holds it to."""
+    The other half of :func:`trim_to_quota`, and an INSTALMENT notice rather
+    than a rejection (``AgenticStep.owes``): what arrived is kept and the next
+    submit is joined to it. MEASURED, both ways of getting this wrong. Run
+    40856c96: three sets told "write exactly 3 items" each submitted ONE, were
+    answered COMMITTED, and the design shipped five items for instruments
+    planned at twenty-five. Run ae81359a, with the short submit REFUSED instead:
+    a 2B model that writes one item per call resent its one item — 14 refusals
+    of this kind, sets giving up after four calls and being regenerated up to
+    three times, because a refusal asks for the whole list again under the
+    same cap that produced one item. Session guides are exempt: how many
+    sessions a block takes is the writer's to say, and what it owes is every
+    id, which its own validator holds it to."""
     quota = quota_of(work_set, schema_key)
     if schema_key == "session_guides" or not quota or len(items) >= quota:
-        return []
-    # Says what to ADD, not only what is wrong: MEASURED (run b8576814), told
-    # "you wrote 1 of the 3 ... resend the whole list with all 3", a 2B model
-    # resent its one item four times and the set gave up.
+        return ""
     more = quota - len(items)
-    return [f"{schema_key}: your list has {len(items)} and this set asks for {quota} — keep "
-            f"what you wrote, add {more} more DIFFERENT one{'' if more == 1 else 's'} to the "
-            f"same list, and submit all {quota} together"]
+    return (f"KEPT: {len(items)} of the {quota} this set asks for are written and saved — do "
+            f"NOT send them again. Send ONLY {more} more DIFFERENT "
+            f"one{'' if more == 1 else 's'} now, in the same tool; "
+            f"{'it is' if more == 1 else 'they are'} added to what is kept.")
+
+
+def same_artifact_key(schema_key: str, item: object) -> str:
+    """What makes two artifacts of one list THE SAME artifact: the field a
+    repeat repeats (``question`` / ``activity_name`` / ``title``), case and
+    spacing aside — and for an assessment item its objective and category too,
+    since the same words asked of another objective are another item. An
+    artifact with no such field is the same only when it is identical. ONE
+    definition, for the trim and for joining instalments: an item that would
+    be dropped as a repeat at commit must not count towards the set's quota
+    on the way there."""
+    name = _SAME_AS.get(schema_key)
+    text = " ".join(str((item or {}).get(name) or "").casefold().split()) \
+        if name and isinstance(item, dict) else ""
+    if not text:
+        return json.dumps(item, sort_keys=True, ensure_ascii=False, default=str)
+    if schema_key == "assessment_tools":
+        text += f"|{_bare(item.get('aligned_objective'))}|{item.get('plan_category', '')}"
+    return text
+
+
+def without_repeats(schema_key: str, items: list, *, beside: list | None = None) -> list:
+    """``items`` minus any that repeats an earlier one of the list or one of
+    ``beside`` (what is already kept), first occurrence winning."""
+    seen = {same_artifact_key(schema_key, item) for item in (beside or [])}
+    out = []
+    for item in items:
+        key = same_artifact_key(schema_key, item)
+        if key not in seen:
+            seen.add(key)
+            out.append(item)
+    return out
 
 
 def trim_to_quota(work_set: WorkSet, schema_key: str, items: list) -> tuple[list, int]:
@@ -1434,19 +1468,7 @@ def trim_to_quota(work_set: WorkSet, schema_key: str, items: list) -> tuple[list
     if quota <= 0 or len(rows) <= quota:
         return items, 0
 
-    same_as = _SAME_AS.get(schema_key)
-    if same_as:
-        seen: set[str] = set()
-        unique = []
-        for item in rows:
-            # The same words for ANOTHER objective are another item.
-            text = " ".join(str(item.get(same_as) or "").casefold().split())
-            text = text and f"{text}|{item.get('aligned_objective', '')}|{item.get('plan_category', '')}"
-            if text and text in seen:
-                continue
-            seen.add(text)
-            unique.append(item)
-        rows = unique
+    rows = without_repeats(schema_key, rows)
 
     if schema_key == "learning_activities":
         kept = rows[:quota]
