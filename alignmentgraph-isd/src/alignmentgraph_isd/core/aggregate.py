@@ -18,9 +18,12 @@ class ADDIEOutputAggregator:
     Gap/Topic/LearnerProfile/Constraint/Improvement elements, the Assessment
     pool, and Content/Media."""
 
-    def __init__(self, graph, trajectory=None) -> None:
+    def __init__(self, graph, trajectory=None, *, development_mode: str = "") -> None:
         self.graph = graph
         self.trajectory = trajectory
+        #: ``HarnessRunConfig.development_mode``; empty for a caller that
+        #: aggregates a graph outside a run, which then states no scope.
+        self.development_mode = development_mode
 
     def aggregate(self) -> dict:
         analysis = self._build_analysis()
@@ -67,15 +70,16 @@ class ADDIEOutputAggregator:
     def _build_design(self) -> dict:
         objectives = [n["data"] for n in self.graph.element_nodes(NodeType.OBJECTIVE)]
         activities = [n["data"] for n in self.graph.element_nodes(NodeType.ACTIVITY)]
-        content_modules = [_without_harness_keys(n["data"])
-                           for n in self.graph.element_nodes(NodeType.MODULE)]
+        content_modules = [n["data"] for n in self.graph.element_nodes(NodeType.MODULE)]
         media = [n["data"] for n in self.graph.element_nodes(NodeType.MEDIA_SELECTION)]
         plan_node = _merge_node_data(self.graph.section_nodes(NodeType.ACTIVITY_PLAN))
 
         design = {
             "learning_objectives": objectives,
             "learning_activities": activities,
-            "assessment_plan": _merge_node_data(self.graph.section_nodes(NodeType.ASSESSMENT_PLAN)),
+            "assessment_plan": _with_items_written(
+                _merge_node_data(self.graph.section_nodes(NodeType.ASSESSMENT_PLAN)),
+                [n["data"] for n in self.graph.element_nodes(NodeType.ASSESSMENT)]),
             "content_structure": {"modules": content_modules},
             "instructional_strategies": plan_node.get("instructional_strategies", {}),
             "non_instructional_strategies": plan_node.get("non_instructional_strategies", {}),
@@ -105,6 +109,13 @@ class ADDIEOutputAggregator:
             "expert_review": expert_review,
             "instructor_guide": impl_data.get("instructor_guide", {}),
             "operator_manual": impl_data.get("operator_manual", {}),
+            **_development_scope(
+                self.development_mode,
+                _merge_node_data(self.graph.section_nodes(NodeType.ASSESSMENT_PLAN)),
+                items=len(assessment_tools),
+                activities=len(self.graph.element_nodes(NodeType.ACTIVITY)),
+                materials=len(materials),
+                modules=len(self.graph.element_nodes(NodeType.MODULE))),
         }
 
     def _expert_review_from_audit(self) -> dict:
@@ -334,7 +345,7 @@ def _review_findings(rounds: list[dict], repairs: list[dict]) -> tuple[int, dict
     return found, by_type, findings, phases
 
 
-def aggregate_prose(store, trajectory) -> dict:
+def aggregate_prose(store, trajectory, *, development_mode: str = "") -> dict:
     """The prose arm's aggregator: assemble ``addie_output`` from the
     blackboard documents alone. Same output schema as the graph aggregator,
     assembled by plain key-mapping — the documents already sit in schema
@@ -367,12 +378,13 @@ def aggregate_prose(store, trajectory) -> dict:
     }
 
     activity_plan = doc("activity_plan")
-    content_modules = [_without_harness_keys(m) for m in items("objective", "course_modules")]
+    content_modules = items("objective", "course_modules")
     instructional_strategies = activity_plan.get("instructional_strategies") or {}
     design = {
         "learning_objectives": items("objective", "learning_objectives"),
         "learning_activities": items("activity", "learning_activities"),
-        "assessment_plan": doc("assessment_plan"),
+        "assessment_plan": _with_items_written(
+            doc("assessment_plan"), items("assessment", "assessment_tools")),
         "content_structure": {"modules": content_modules},
         "instructional_strategies": instructional_strategies,
         "non_instructional_strategies": activity_plan.get("non_instructional_strategies") or {},
@@ -420,6 +432,11 @@ def aggregate_prose(store, trajectory) -> dict:
         "expert_review": expert_review,
         "instructor_guide": impl_doc.get("instructor_guide") or {},
         "operator_manual": impl_doc.get("operator_manual") or {},
+        **_development_scope(
+            development_mode, doc("assessment_plan"), items=len(assessment_tools),
+            activities=len(design["learning_activities"]),
+            materials=len(items("material", "learner_materials")),
+            modules=len(content_modules)),
     }
 
     implementation = {
@@ -540,18 +557,60 @@ def _compute_storyboard(instructional_strategies: dict, content_modules: list[di
 #: which is what the judge scores.
 _HARNESS_ONLY_SECTION_KEYS = ("dev_plan",)
 
-#: Planning fields on an ELEMENT that only the fan-out reads — a content
-#: module's `expected_materials` sizes its Developer's unit and says nothing
-#: to a learner or a judge. Same rule as the section keys above: kept in the
-#: graph so the dump shows how the family was divided, stripped from the
-#: deliverable.
-_HARNESS_ONLY_ELEMENT_KEYS = ("expected_materials",)
+def _instrument_scale(instrument: dict) -> int:
+    counts = instrument.get("item_counts")
+    total = 0
+    for value in (counts.values() if isinstance(counts, dict) else ()):
+        try:
+            total += max(0, int(value))
+        except (TypeError, ValueError):
+            continue
+    return total
 
 
-def _without_harness_keys(element: dict) -> dict:
-    if not isinstance(element, dict):
-        return element
-    return {k: v for k, v in element.items() if k not in _HARNESS_ONLY_ELEMENT_KEYS}
+def _with_items_written(plan: dict, items: list[dict]) -> dict:
+    """The assessment plan with each instrument's ``items_written`` beside its
+    ``item_counts``: the blueprint states the instrument at full scale, and
+    this is how many of its items the design actually carries. A count, read
+    off the ``instrument_id`` the items themselves name — nothing is inferred
+    for an item that names none."""
+    instruments = plan.get("instruments")
+    if not isinstance(instruments, list):
+        return plan
+    written: dict[str, int] = {}
+    for item in items:
+        if isinstance(item, dict) and item.get("instrument_id"):
+            key = str(item["instrument_id"]).rsplit(":", 1)[-1]
+            written[key] = written.get(key, 0) + 1
+    return {**plan, "instruments": [
+        {**instrument, "items_written": written.get(str(instrument.get("id", "")), 0)}
+        if isinstance(instrument, dict) else instrument
+        for instrument in instruments]}
+
+
+def _development_scope(mode: str, plan: dict, *, items: int, activities: int,
+                       materials: int, modules: int) -> dict:
+    """``development.development_scope``: at what scale the design was written
+    out, as counts. The same kind of statement as ``expert_review`` — a fact
+    about the run, reported because a reader of the output would otherwise
+    have to guess why a quiz planned at forty items shows three — and never
+    instructional content. Empty when no mode was given."""
+    if not mode:
+        return {}
+    planned = sum(_instrument_scale(i) for i in (plan.get("instruments") or [])
+                  if isinstance(i, dict))
+    scale = (f"{items} of the {planned} assessment items the blueprint plans"
+             if planned else f"{items} assessment items")
+    how = ("a representative sample of the design" if mode == "sample"
+           else "the design at the scale its plan states")
+    return {"development_scope": {
+        "mode": mode, "items_planned": planned, "items_written": items,
+        "note": (f"Development writes out {how}: {scale}, {activities} learning activities and "
+                 f"{materials} learner materials across {modules} modules, each written in "
+                 "full. The assessment plan's instruments state every instrument's full scale "
+                 "(item_counts) beside how many of its items are written here "
+                 "(items_written)."),
+    }}
 
 
 def _merge_node_data(nodes: list[dict]) -> dict:

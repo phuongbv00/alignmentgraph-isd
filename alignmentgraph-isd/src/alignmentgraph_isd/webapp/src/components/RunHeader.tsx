@@ -8,7 +8,7 @@ interface Props {
   stream: RunStreamState
   canRun: boolean
   runDisabledReason: string
-  onRun: (arm: Arm) => void
+  onRun: (arm: Arm, fullDevelopment?: boolean) => void
   onCancel: () => void
   starting: boolean
 }
@@ -46,6 +46,19 @@ export function RunHeader({ stream, canRun, runDisabledReason, onRun, onCancel, 
       {arm && (
         <span className="pill arm" title={arm.label}>
           {arm.agentMode}·{arm.contextMode}
+        </span>
+      )}
+
+      {/* Only a run that says so: a run recorded before the mode existed
+          reports nothing, and "sample" on it would be a guess. */}
+      {stream.stats.development_mode && (
+        <span
+          className="pill arm"
+          title={stream.stats.development_mode === 'full'
+            ? 'Every artifact the design plans was written out'
+            : 'A representative sample of what the design plans was written out'}
+        >
+          {stream.stats.development_mode}
         </span>
       )}
 
@@ -115,9 +128,13 @@ function RunSplitButton({ canRun, starting, idle, disabledReason, onRun }: {
   starting: boolean
   idle: boolean
   disabledReason: string
-  onRun: (arm: Arm) => void
+  onRun: (arm: Arm, fullDevelopment?: boolean) => void
 }) {
   const [open, setOpen] = useState(false)
+  // Belongs to the OPEN menu and to nothing else: it applies to the arm picked
+  // from this menu and is gone when the menu closes, for the reason the arm is
+  // not remembered either — what a run was is a property of that run.
+  const [fullDevelopment, setFullDevelopment] = useState(false)
   const wrap = useRef<HTMLDivElement>(null)
   const caret = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDivElement>(null)
@@ -150,6 +167,7 @@ function RunSplitButton({ canRun, starting, idle, disabledReason, onRun }: {
   // being possible — a run begun in another window makes `canRun` false under
   // an open menu.
   useEffect(() => { if (disabled) setOpen(false) }, [disabled])
+  useEffect(() => { if (!open) setFullDevelopment(false) }, [open])
 
   // Focus the first item on open, which is also what makes Escape's
   // return-to-caret well defined however the menu was opened.
@@ -216,12 +234,23 @@ function RunSplitButton({ canRun, starting, idle, disabledReason, onRun }: {
                 // Closed first: `onRun` is async and flips `starting`, which
                 // disables the control this menu hangs off.
                 setOpen(false)
-                onRun(arm)
+                onRun(arm, fullDevelopment)
               }}
             >
               {arm.label}
             </button>
           ))}
+          <label
+            className="menu-item"
+            title="Write every artifact the design plans instead of a representative sample. Many more model calls."
+          >
+            <input
+              type="checkbox"
+              checked={fullDevelopment}
+              onChange={(event) => setFullDevelopment(event.target.checked)}
+            />{' '}
+            Full development
+          </label>
         </div>
       )}
     </div>

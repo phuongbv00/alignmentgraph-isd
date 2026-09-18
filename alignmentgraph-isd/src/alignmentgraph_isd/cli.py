@@ -36,6 +36,10 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--api-key", default="", help="API key (env: AGENT_MODEL_API_KEY).")
     run_parser.add_argument("--temperature", type=float, default=None, help="Sampling temperature (env: AGENT_MODEL_TEMPERATURE).")
     run_parser.add_argument("--max-tokens", type=int, default=None, help="Max output tokens (env: AGENT_MODEL_MAX_TOKENS).")
+    run_parser.add_argument(
+        "--development-mode", choices=("sample", "full"), default="sample",
+        help="How much of the planned scale is written out: a representative sample "
+             "(default) or every artifact the design plans.")
 
     dot_parser = subparsers.add_parser(
         "dot",
@@ -131,7 +135,7 @@ def _serve(args: argparse.Namespace) -> int:
 def _run(args: argparse.Namespace) -> int:
     payload = json.loads(Path(args.input).read_text(encoding="utf-8"))
     design_brief = DesignBrief.model_validate(payload)
-    config = HarnessRunConfig()
+    config = HarnessRunConfig(development_mode=args.development_mode)
     config.llm_factory = llm_factory_from_env(
         model_name=args.model_name,
         api_spec=args.api_spec,

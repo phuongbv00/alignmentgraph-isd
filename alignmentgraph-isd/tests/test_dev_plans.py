@@ -696,7 +696,8 @@ def test_assessment_sets_follow_the_instruments_module_by_module():
          "item_counts": {"performance_task": 2}, "covers_objectives": ["ILO-01", "ILO-02"]}]
     targets = {"ILO-01": ["formative", "summative"], "ILO-02": ["summative"]}
     sets, _stats = dev_plans.normalize_assessment_dev_plan(
-        None, ["ILO-01", "ILO-02"], targets, modules=modules, instruments=instruments)
+        None, ["ILO-01", "ILO-02"], targets, modules=modules, instruments=instruments,
+        mode="sample")
 
     assert [(ws.module_id, ws.pairs) for ws in sets] == [
         ("MOD-01", (("ILO-01", "formative"),)),

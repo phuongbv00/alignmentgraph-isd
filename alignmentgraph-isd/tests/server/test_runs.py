@@ -889,6 +889,28 @@ def test_a_run_can_be_started_under_another_arm(
     assert run_config["context_mode"] == "prose"
 
 
+def test_the_development_mode_is_chosen_per_run_and_reported_like_the_arm(
+    client, ready_program, settings, wait_for_terminal
+):
+    """Not an axis, but chosen the same way: absent means the harness default,
+    and what the row reports is what the run recorded."""
+    default = client.post(f"/api/programs/{ready_program}/runs")
+    assert default.json()["development_mode"] == HarnessRunConfig().development_mode
+    wait_for_terminal(default.json()["run_id"])
+
+    run_id = start(client, ready_program, development_mode="full")
+    detail = wait_for_terminal(run_id)
+    assert detail["run"]["status"] == "succeeded", detail["run"]["error"]
+    assert detail["stats"]["development_mode"] == "full"
+    directory = settings.data_root / artifacts.relative_run_dir(ready_program, run_id)
+    run_config = json.loads((directory / "metadata.json").read_text(encoding="utf-8"))["run_config"]
+    assert run_config["development_mode"] == "full"
+
+    refused = client.post(f"/api/programs/{ready_program}/runs",
+                          json={"development_mode": "some"})
+    assert refused.status_code == 422, refused.text
+
+
 def test_a_prose_run_ships_no_graph(client, ready_program, settings, wait_for_terminal):
     """The absent graph IS the treatment — this pins what the app has to explain."""
     run_id = start(client, ready_program, agent_mode="single", context_mode="prose")

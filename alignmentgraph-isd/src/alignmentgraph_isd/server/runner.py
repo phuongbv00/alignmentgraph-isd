@@ -144,7 +144,8 @@ class RunManager:
 
         state = self.registry.create(run.id, run.program_id,
                                      agent_mode=harness_config.agent_mode,
-                                     context_mode=harness_config.context_mode)
+                                     context_mode=harness_config.context_mode,
+                                     development_mode=harness_config.development_mode)
         state.http_client = http_client
         if self._loop is not None:
             state.attach_loop(self._loop, self.wakeup_for(run.id))

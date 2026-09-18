@@ -248,6 +248,12 @@ class ReactLoop:
             for output in spec.outputs:
                 block += (f"\n\nAlso for this stage — {output.schema_key}:\n"
                           f"{output.rules}")
+                # The same sentence a Developer reads in its assignment. This
+                # agent divides its own batches, so the rule is all it is given.
+                note = dev_plans.development_note(
+                    self.config.development_mode, str(output.element_type))
+                if note:
+                    block += f"\n{note}"
         return block
 
     def _own_violations(self, step) -> list:

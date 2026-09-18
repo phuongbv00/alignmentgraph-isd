@@ -263,17 +263,21 @@ export default function App() {
     void refreshPrograms()
   }
 
-  const startRun = async (arm: Arm) => {
+  const startRun = async (arm: Arm, fullDevelopment = false) => {
     if (!activeId) return
     setStarting(true)
     setError('')
     try {
       // The default arm sends no override at all: `HarnessRunConfig` owns those
       // values, and posting a copy of them would be a second place they live.
+      // Same for the development mode: only a run that asks for the whole
+      // design to be written out says so.
+      const options = {
+        ...(arm.isDefault ? {} : { agent_mode: arm.agentMode, context_mode: arm.contextMode }),
+        ...(fullDevelopment ? { development_mode: 'full' as const } : {}),
+      }
       const { run_id } = await api.startRun(
-        activeId,
-        arm.isDefault ? undefined : { agent_mode: arm.agentMode, context_mode: arm.contextMode },
-      )
+        activeId, Object.keys(options).length ? options : undefined)
       setRunId(run_id)
       setTab('trajectory')
       void refreshPrograms()
@@ -363,7 +367,7 @@ export default function App() {
               stream={stream}
               canRun={canRun}
               runDisabledReason={runDisabledReason}
-              onRun={(arm) => void startRun(arm)}
+              onRun={(arm, fullDevelopment) => void startRun(arm, fullDevelopment)}
               onCancel={() => void cancelRun()}
               starting={starting}
             />

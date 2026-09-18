@@ -218,6 +218,93 @@ def _chunks(seq: list, size: int) -> list[list]:
     return [seq[i:i + size] for i in range(0, len(seq), size)]
 
 
+# ── development mode: how much of the planned scale is written out ─────────
+#
+# The PLAN always states the course at full scale — a 40-item quiz, a module's
+# whole run of activities. ``development_mode`` decides how much of that the
+# Developers write: ``"full"`` is all of it, ``"sample"`` a representative
+# sample. It changes NUMBERS in a work set's payload and one sentence of its
+# assignment, never a ``RULES_*`` block, so the pinned prompts do not depend
+# on it. Not an ablation axis: it is recorded in ``metadata.run_config`` and
+# every arm of one experiment runs under the same value.
+
+DEVELOPMENT_MODES = ("sample", "full")
+
+#: What ``"sample"`` writes. PROVISIONAL parameters of this harness, chosen so
+#: that a sampled design is not thinner than the baselines it is scored beside
+#: on the rubric items judged by artifact count (assessment plan and items,
+#: activity structure, learner materials): those agents are asked for at least
+#: ten quiz items plus five others and deliver ten to fifteen. To be calibrated
+#: on the tune slice — the same scenarios in both modes, compared per rubric
+#: item — before the configuration is frozen, and not changed after.
+SAMPLE_ITEMS_PER_INSTRUMENT = 3
+SAMPLE_ACTIVITIES_PER_OBJECTIVE = 2
+#: One module's activities read as a sequence — introduce, practise, apply —
+#: and two do not make one.
+SAMPLE_ACTIVITIES_PER_MODULE_FLOOR = 3
+SAMPLE_MATERIALS_PER_MODULE = 2
+SAMPLE_MINUTES_PER_SESSION_GUIDE = 180
+SAMPLE_SESSION_GUIDES_PER_MODULE = 2
+
+_SAMPLE_NOTES = {
+    "assessment": (
+        f"SAMPLE DEVELOPMENT: each instrument states its full scale in item_counts; write a "
+        f"representative sample of it — about {SAMPLE_ITEMS_PER_INSTRUMENT} items per "
+        "instrument, spread over its item types, and never fewer than one per (objective x "
+        "plan_category) pair. Each item is written in full, as it would be administered."),
+    "activity": (
+        f"SAMPLE DEVELOPMENT: write a representative sample of the module's activities — about "
+        f"{SAMPLE_ACTIVITIES_PER_OBJECTIVE} per objective and at least "
+        f"{SAMPLE_ACTIVITIES_PER_MODULE_FLOOR} per module, a complete introduce, practise, "
+        "apply sequence rather than a catalogue. Each activity is written in full."),
+    "material": (
+        f"SAMPLE DEVELOPMENT: write a representative sample of the module's materials — at most "
+        f"{SAMPLE_MATERIALS_PER_MODULE} per module, each one complete and ready to hand to a "
+        "learner."),
+    "session_guide": (
+        f"SAMPLE DEVELOPMENT: write one session guide per module, or "
+        f"{SAMPLE_SESSION_GUIDES_PER_MODULE} for a module longer than "
+        f"{SAMPLE_MINUTES_PER_SESSION_GUIDE} minutes — and still name EVERY activity and material "
+        "id the block lists, because a guide is where each one is scheduled."),
+}
+
+
+def development_note(mode: str, family: str) -> str:
+    """The one sentence that tells a writer its development is a sample, or
+    ``""`` under ``"full"``. ONE wording for both decomposition arms: a
+    Developer reads it in its assignment and the single agent in its stage
+    turn (it divides its own batches, so the rule is all it is given)."""
+    return _SAMPLE_NOTES.get(family, "") if mode == "sample" else ""
+
+
+def _instrument_total(instrument: dict) -> int:
+    counts = instrument.get("item_counts")
+    total = 0
+    for value in (counts.values() if isinstance(counts, dict) else ()):
+        try:
+            total += max(0, int(value))
+        except (TypeError, ValueError):
+            continue
+    return total
+
+
+def _planned_items(work_set: WorkSet, mode: str) -> int | None:
+    """How many items a set's instruments call for under ``mode``; ``None``
+    when the set lists no instrument and the pair count has to decide."""
+    instruments = [i for i in (work_set.payload.get("instruments") or []) if isinstance(i, dict)]
+    if not instruments:
+        return None
+    totals = [_instrument_total(i) or SAMPLE_ITEMS_PER_INSTRUMENT for i in instruments]
+    if mode == "sample":
+        totals = [min(total, SAMPLE_ITEMS_PER_INSTRUMENT) for total in totals]
+    return max(sum(totals), len(work_set.pairs))
+
+
+def _stamp_mode(sets: list[WorkSet], mode: str, family: str) -> None:
+    for ws in sets:
+        ws.payload["development_note"] = development_note(mode, family)
+
+
 # ── the module is the key every family divides its work by ─────────────────
 #
 # The GROUND TRUTH of each family stays what its checks measure — pairs,
@@ -328,7 +415,8 @@ def _assessment_ground_truth_pairs(lo_ids, coverage_targets) -> list[tuple[str, 
 
 
 def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets, *, modules=None,
-                                  instruments=None) -> tuple[list[WorkSet], dict]:
+                                  instruments=None, mode: str = "full"
+                                  ) -> tuple[list[WorkSet], dict]:
     modules = _modules_in_order(modules)
     pairs = _assessment_ground_truth_pairs(lo_ids, coverage_targets)
     stats = _empty_stats(len(pairs))
@@ -421,6 +509,7 @@ def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets, *, modules=N
             ws.payload["instruments"] = _instruments_for(instruments, module["id"], ws.pairs)
         sets = _in_course_order(pieces, modules)
         stats["appended_sets"] = len(loose)
+        sets = [batch for ws in sets for batch in _item_batches(ws, mode)]
 
     def _merge(tail: list[WorkSet]) -> WorkSet:
         merged_pairs = tuple(dict.fromkeys(p for ws in tail for p in ws.pairs))
@@ -457,7 +546,7 @@ def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets, *, modules=N
             for chunk in pieces if chunk
         ]
 
-    numbered = _cap_and_number(sets, len(pairs), "AS", _merge,
+    numbered = _cap_and_number(sets, max(len(pairs), len(sets)), "AS", _merge,
                                family="assessment", split=_split)
     # A merged or split set carries a payload copied from one of its parts, so
     # its planned count no longer describes its pairs; re-derive it from what
@@ -466,10 +555,43 @@ def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets, *, modules=N
     for ws in numbered:
         ws.payload["expected_items"] = _expected_items(
             ws.payload.get("expected_items"), len(ws.pairs))
+    _stamp_mode(numbered, mode, "assessment")
     stats["set_count"] = len(numbered)
     stats["oversized_splits"] = (
         numbered[0].payload.pop("_oversized_splits", 0) if numbered else 0)
     return numbered, stats
+
+
+def _item_batches(work_set: WorkSet, mode: str) -> list[WorkSet]:
+    """Size a set by what its INSTRUMENTS call for under ``mode``.
+
+    ``"sample"`` writes a few items of each instrument and fits one call.
+    ``"full"`` writes every item the blueprint counts, which for a 40-item
+    quiz is several calls: the set becomes batches, each with its own quota
+    (the total is DIVIDED between them, never repeated) and its own share of
+    the pairs, and each told which part of the whole it is. A set that lists
+    no instrument keeps the planner's count."""
+    planned = _planned_items(work_set, mode)
+    if planned is None:
+        return [work_set]
+    limit = max_units("assessment")
+    if planned <= limit:
+        work_set.payload["expected_items"] = planned
+        return [work_set]
+    batches = -(-planned // limit)
+    base, extra = divmod(planned, batches)
+    out: list[WorkSet] = []
+    for index in range(1, batches + 1):
+        quota = base + (1 if index <= extra else 0)
+        # Every batch covers every pair when it has room to; otherwise the
+        # pairs are dealt out, so between them the batches still cover all.
+        pairs = (work_set.pairs if len(work_set.pairs) <= quota
+                 else work_set.pairs[index - 1::batches])
+        out.append(replace(
+            work_set, pairs=tuple(pairs),
+            objectives=tuple(dict.fromkeys(lo for lo, _ in pairs)),
+            payload={**work_set.payload, "expected_items": quota, "batch": [index, batches]}))
+    return [ws for ws in out if ws.pairs]
 
 
 def _expected_items(raw: object, pair_count: int) -> int:
@@ -584,7 +706,8 @@ def fit_time_budget(sets: list[WorkSet], modules: list[dict], stats: dict) -> No
 
 
 def normalize_activity_dev_plan(parsed, lo_ids, items_by_lo: dict | None = None, *,
-                                modules=None) -> tuple[list[WorkSet], dict]:
+                                modules=None, mode: str = "full"
+                                ) -> tuple[list[WorkSet], dict]:
     modules = _modules_in_order(modules)
     items_by_lo = items_by_lo or {}
     los = [lo for lo in (_bare(x) for x in (lo_ids or [])) if lo]
@@ -642,6 +765,8 @@ def normalize_activity_dev_plan(parsed, lo_ids, items_by_lo: dict | None = None,
     if modules:
         sets = _activity_sets_by_module(sets, modules, items_by_lo, src)
         stats["appended_sets"] = sum(1 for ws in sets if ws.source != "llm")
+    if mode == "sample":
+        _sample_activities(sets)
 
     def _merge(tail: list[WorkSet]) -> WorkSet:
         merged_objs = tuple(dict.fromkeys(o for ws in tail for o in ws.objectives))
@@ -709,10 +834,27 @@ def normalize_activity_dev_plan(parsed, lo_ids, items_by_lo: dict | None = None,
     planned_total = sum(int(ws.payload.get("expected_activities") or 1) for ws in sets)
     numbered = _cap_and_number(sets, max(planned_total, len(los)), "AB", _merge,
                                family="activity", split=_split)
+    _stamp_mode(numbered, mode, "activity")
     stats["set_count"] = len(numbered)
     stats["oversized_splits"] = (
         numbered[0].payload.pop("_oversized_splits", 0) if numbered else 0)
     return numbered, stats
+
+
+def _sample_activities(sets: list[WorkSet]) -> None:
+    """``"sample"``: a block writes ``SAMPLE_ACTIVITIES_PER_OBJECTIVE`` per
+    objective it covers, and a module never fewer than
+    ``SAMPLE_ACTIVITIES_PER_MODULE_FLOOR`` between its blocks. The module's
+    minutes still cap it (``fit_time_budget`` runs after this)."""
+    for ws in sets:
+        ws.payload["expected_activities"] = min(
+            MAX_EXPECTED_PER_SET, SAMPLE_ACTIVITIES_PER_OBJECTIVE * max(1, len(ws.objectives)))
+    for module_id in dict.fromkeys(ws.module_id for ws in sets):
+        mine = [ws for ws in sets if ws.module_id == module_id]
+        short = SAMPLE_ACTIVITIES_PER_MODULE_FLOOR - sum(
+            ws.payload["expected_activities"] for ws in mine)
+        if module_id and short > 0:
+            mine[0].payload["expected_activities"] += short
 
 
 def _activity_sets_by_module(sets: list[WorkSet], modules: list[dict],
@@ -825,7 +967,8 @@ def _expected_materials(raw: object, media_count: int) -> int:
 
 
 def material_work_units(modules: list[dict], media_selections: list[dict],
-                         constraints: list[dict] | None = None) -> list[WorkSet]:
+                         constraints: list[dict] | None = None, *,
+                         mode: str = "full") -> list[WorkSet]:
     modules = [m for m in (modules or []) if isinstance(m, dict) and m.get("id")]
     media_selections = [m for m in (media_selections or []) if isinstance(m, dict) and m.get("id")]
     constraint_by_id = {
@@ -869,6 +1012,10 @@ def material_work_units(modules: list[dict], media_selections: list[dict],
     for module in modules:
         mid = _bare(module["id"])
         media_for_unit = by_module[mid] + unassigned
+        if mode == "sample":
+            # The unit realises what it is handed, one material per selection,
+            # so a sample is the module's first few selections.
+            media_for_unit = media_for_unit[:SAMPLE_MATERIALS_PER_MODULE]
         batches = (_chunks(media_for_unit, limit)
                    if len(media_for_unit) > limit else [media_for_unit])
         for index, media_batch in enumerate(batches, start=1):
@@ -913,6 +1060,7 @@ def material_work_units(modules: list[dict], media_selections: list[dict],
     # Numbered here rather than in `_cap_and_number`: this family does its own
     # module-aware cap above (which recomputes each chunk's media and
     # constraints), and the generic one would rewrite `MU-MOD-03` to `MU-03`.
+    _stamp_mode(sets, mode, "material")
     return number_sets(sets)
 
 
@@ -973,7 +1121,7 @@ def _chunk_scheduled(activities: list[str], materials: list[str], limit: int,
 
 def normalize_implementation_dev_plan(parsed, activity_ids, material_ids,
                                        first_session: int = 1, *, modules=None,
-                                       module_of: dict | None = None
+                                       module_of: dict | None = None, mode: str = "full"
                                        ) -> tuple[list[WorkSet], dict]:
     """Divide the delivery into session blocks, one per Developer call.
 
@@ -1097,7 +1245,25 @@ def normalize_implementation_dev_plan(parsed, activity_ids, material_ids,
     stats["set_count"] = len(numbered)
     stats["oversized_splits"] = (
         numbered[0].payload.pop("_oversized_splits", 0) if numbered else 0)
+    if mode == "sample":
+        _sample_sessions(numbered)
+    _stamp_mode(numbered, mode, "session_guide")
     return _number_sessions(numbered, first_session), stats
+
+
+def _sample_sessions(sets: list[WorkSet]) -> None:
+    """``"sample"``: one guide per block, or up to
+    ``SAMPLE_SESSION_GUIDES_PER_MODULE`` when the block is a whole module
+    longer than ``SAMPLE_MINUTES_PER_SESSION_GUIDE``. The ids a block schedules
+    are untouched — a sampled guide still names every one of them."""
+    per_module: dict[str, int] = {}
+    for ws in sets:
+        per_module[ws.module_id] = per_module.get(ws.module_id, 0) + 1
+    for ws in sets:
+        minutes = _positive((ws.payload.get("module") or {}).get("minutes"))
+        long_module = per_module[ws.module_id] == 1 and minutes > SAMPLE_MINUTES_PER_SESSION_GUIDE
+        ws.payload["expected_sessions"] = (
+            SAMPLE_SESSION_GUIDES_PER_MODULE if long_module else 1)
 
 
 def _number_sessions(sets: list[WorkSet], first_session: int = 1) -> list[WorkSet]:
@@ -1229,6 +1395,19 @@ def _resolve_positions(refs: list, assigned: list[str]) -> list[str]:
 # Pure text formatting, not part of the decomposition axis, so both arms
 # import it from here rather than one borrowing the other's agent module.
 
+def _note_line(work_set: WorkSet) -> list[str]:
+    note = str(work_set.payload.get("development_note") or "")
+    return [note] if note else []
+
+
+def _ordinal(index: int) -> str:
+    return {1: "first", 2: "second", 3: "third"}.get(index, f"{index}th")
+
+
+def _fraction(total: int) -> str:
+    return {2: "half", 3: "third", 4: "quarter"}.get(total, f"of {total} equal parts")
+
+
 def _module_line(work_set: WorkSet, *, time: bool = False) -> list[str]:
     """The module a set is one share of, as the first thing its Developer
     reads after the set id. Every family states it the same way."""
@@ -1285,7 +1464,14 @@ def render_assessment_set(work_set: WorkSet) -> str:
     rationale = work_set.payload.get("rationale")
     if rationale:
         lines.append(f"rationale: {rationale}")
-    return "\n".join(lines)
+    batch = work_set.payload.get("batch")
+    if batch:
+        index, total = batch
+        lines.append(
+            f"this is part {index} of {total} of these instruments' items: another developer "
+            f"writes each other part without seeing yours, so draw yours from the "
+            f"{_ordinal(index)} {_fraction(total)} of the content the instruments cover.")
+    return "\n".join(lines + _note_line(work_set))
 
 
 def render_activity_set(work_set: WorkSet) -> str:
@@ -1324,7 +1510,7 @@ def render_activity_set(work_set: WorkSet) -> str:
             f"{'the opening stage' if index == 1 else f'stage {index}'} of that "
             "progression. The other parts cover the other stages — do not repeat "
             "or restate them.")
-    return "\n".join(lines)
+    return "\n".join(lines + _note_line(work_set))
 
 
 def render_material_set(work_set: WorkSet) -> str:
@@ -1366,7 +1552,7 @@ def render_material_set(work_set: WorkSet) -> str:
         lines.append("constraints these media respect:")
         for constraint in constraints:
             lines.append(f"  [CONSTRAINT:{constraint.get('id', '')}] {json.dumps(constraint, ensure_ascii=False)}")
-    return "\n".join(lines)
+    return "\n".join(lines + _note_line(work_set))
 
 
 def render_session_set(work_set: WorkSet) -> str:
@@ -1393,4 +1579,4 @@ def render_session_set(work_set: WorkSet) -> str:
     rationale = work_set.payload.get("rationale")
     if rationale:
         lines.append(f"rationale: {rationale}")
-    return "\n".join(lines)
+    return "\n".join(lines + _note_line(work_set))

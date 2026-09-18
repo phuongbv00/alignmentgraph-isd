@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from ..config import AgentMode, ContextMode
+from ..config import AgentMode, ContextMode, DevelopmentMode
 
 
 class HealthResponse(BaseModel):
@@ -163,9 +163,13 @@ class BriefResponse(BaseModel):
 
 
 class RunCreate(BaseModel):
-    """Which ablation arm to run under, and nothing else.
+    """Which ablation arm to run under, and how much of the design to write out.
 
-    Both axes are optional and ``None`` means "did not say": the field is left
+    ``development_mode`` is not an axis — it says whether the Developers write
+    a representative sample of what the design plans or all of it — but it is
+    chosen per run exactly as the axes are, so it travels with them.
+
+    Every field is optional and ``None`` means "did not say": the field is left
     out of the harness config entirely, so ``HarnessRunConfig`` supplies it. The
     defaults are deliberately NOT repeated here — a default written in two
     places is a default that drifts — which is also why the browser's default
@@ -174,6 +178,7 @@ class RunCreate(BaseModel):
 
     agent_mode: AgentMode | None = None
     context_mode: ContextMode | None = None
+    development_mode: DevelopmentMode | None = None
 
 
 class RunCreated(BaseModel):
@@ -183,6 +188,7 @@ class RunCreated(BaseModel):
     # which arm it got instead of having to assume.
     agent_mode: str = ""
     context_mode: str = ""
+    development_mode: str = ""
 
 
 class RunDetail(BaseModel):

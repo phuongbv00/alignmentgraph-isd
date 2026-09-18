@@ -92,7 +92,8 @@ def start_run(
         raise HTTPException(code, str(exc)) from exc
 
     return RunCreated(run_id=run.id, status=run.status,
-                      agent_mode=state.agent_mode, context_mode=state.context_mode)
+                      agent_mode=state.agent_mode, context_mode=state.context_mode,
+                      development_mode=state.development_mode)
 
 
 @router.get("/runs/{run_id}", response_model=RunDetail)

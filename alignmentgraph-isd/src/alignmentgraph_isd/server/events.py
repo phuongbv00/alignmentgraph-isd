@@ -102,6 +102,9 @@ class RunState:
     #: so a run that never finished still says which arm it was.
     agent_mode: str = ""
     context_mode: str = ""
+    #: Not an axis, carried beside them for the same reason: how much of the
+    #: planned scale this run writes out (``HarnessRunConfig.development_mode``).
+    development_mode: str = ""
 
     events: list[Event] = field(default_factory=list)
     # Latest graph only, pre-serialized. `light` drops the per-node `data`
@@ -332,6 +335,8 @@ class RunState:
             # under the default.
             arm = ({"agent_mode": self.agent_mode, "context_mode": self.context_mode}
                    if self.agent_mode and self.context_mode else {})
+            if self.development_mode:
+                arm["development_mode"] = self.development_mode
             return {**self.stats, **arm,
                     "event_count": len(self.events), "graph_rev": self.graph_rev}
 
@@ -353,9 +358,11 @@ class RunRegistry:
         self._lock = threading.Lock()
 
     def create(self, run_id: str, program_id: str,
-               agent_mode: str = "", context_mode: str = "") -> RunState:
+               agent_mode: str = "", context_mode: str = "",
+               development_mode: str = "") -> RunState:
         state = RunState(run_id=run_id, program_id=program_id,
-                         agent_mode=agent_mode, context_mode=context_mode)
+                         agent_mode=agent_mode, context_mode=context_mode,
+                         development_mode=development_mode)
         with self._lock:
             self._runs[run_id] = state
             # Insertion order, so the oldest finished runs go first. Live runs

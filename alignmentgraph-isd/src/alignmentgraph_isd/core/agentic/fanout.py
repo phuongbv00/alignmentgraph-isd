@@ -197,17 +197,17 @@ def _deterministic_stats(sets: list) -> dict:
             "source": "deterministic"}
 
 
-def _assessment_sets(state, parsed: dict) -> tuple[list, dict]:
+def _assessment_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dict]:
     plan = parsed.get("assessment_plan") or {}
     return dev_plans.normalize_assessment_dev_plan(
         parsed.get("dev_plan"), _lo_ids(state), plan.get("lo_coverage_targets") or {},
-        modules=parsed.get("modules"), instruments=plan.get("instruments"))
+        modules=parsed.get("modules"), instruments=plan.get("instruments"), mode=mode)
 
 
-def _activity_sets(state, parsed: dict) -> tuple[list, dict]:
+def _activity_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dict]:
     return dev_plans.normalize_activity_dev_plan(
         parsed.get("dev_plan"), _lo_ids(state), items_by_lo(state),
-        modules=parsed.get("modules"))
+        modules=parsed.get("modules"), mode=mode)
 
 
 def module_of_artifacts(state) -> dict[str, str]:
@@ -224,10 +224,10 @@ def module_of_artifacts(state) -> dict[str, str]:
     return out
 
 
-def _material_sets(state, parsed: dict) -> tuple[list, dict]:
+def _material_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dict]:
     sets = dev_plans.material_work_units(
         parsed.get("modules") or [], parsed.get("media_selections") or [],
-        _constraints(state))
+        _constraints(state), mode=mode)
     return sets, _deterministic_stats(sets)
 
 
@@ -279,12 +279,12 @@ def _element_ids(state, node_type: str, doc: tuple[str, str], id_field: str = "i
             if isinstance(i, dict) and i.get(id_field)]
 
 
-def _session_sets(state, parsed: dict) -> tuple[list, dict]:
+def _session_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dict]:
     return dev_plans.normalize_implementation_dev_plan(
         parsed.get("dev_plan"),
         _element_ids(state, NodeType.ACTIVITY, ("activity", "learning_activities")),
         _element_ids(state, NodeType.MATERIAL, ("material", "learner_materials")),
-        modules=parsed.get("modules"), module_of=module_of_artifacts(state))
+        modules=parsed.get("modules"), module_of=module_of_artifacts(state), mode=mode)
 
 
 def _every_part_dispatch_done(stage: str, state) -> bool:

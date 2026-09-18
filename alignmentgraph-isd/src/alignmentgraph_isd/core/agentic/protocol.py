@@ -243,9 +243,10 @@ def respec(messages: list, step, brief: str) -> str:
 #: Which agent-facing protocol a run spoke, recorded in
 #: ``metadata.run_config`` so that runs on either side of a change to the
 #: tools an agent is bound or to how a stage ends are never pooled by mistake.
-#: 2 = one role-scoped ``read_alignment_state`` in the graph arm, open issues
-#: pulled by the agent, a declined repair closing its stage.
-PROTOCOL_REV = 2
+#: 3 = the course's modules written by the outcomes stage and dividing every
+#: family's work, an assessment blueprint of instruments, 18 relations (4 core),
+#: and a run that stops when no module is written.
+PROTOCOL_REV = 3
 
 #: The answer to a repeated read whose result is unchanged — ONE wording for
 #: both arms, and only ever said when it is true (``turn.answer_read`` has

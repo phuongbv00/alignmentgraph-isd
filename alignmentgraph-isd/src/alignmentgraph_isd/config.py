@@ -19,6 +19,7 @@ else:
 #: else.
 AgentMode = Literal["single", "multi"]
 ContextMode = Literal["prose", "graph"]
+DevelopmentMode = Literal["sample", "full"]
 
 
 class HarnessRunConfig(BaseModel):
@@ -129,6 +130,20 @@ class HarnessRunConfig(BaseModel):
     # timing difference to declare, and because a shared endpoint answers an
     # unbounded burst with HTTP 429 (see ``llm_max_concurrency`` above).
     fanout_workers: int = 1
+
+    # How much of the planned scale the Developers write out. The PLAN always
+    # states the course at full scale (a 40-item quiz, a module's whole run of
+    # activities); ``"sample"`` writes a representative sample of it — the
+    # quotas are ``core.dev_plans.SAMPLE_*`` — and ``"full"`` writes all of it,
+    # batching what one call cannot hold. ``"sample"`` is the default because a
+    # full development multiplies Developer calls by the blueprint's scale and
+    # a benchmark ladder is scored per scenario. NOT an ablation axis: every
+    # arm of one experiment runs under the same value, it changes numbers in a
+    # work set and one sentence of its assignment and never a ``RULES_*``
+    # block, and ``metadata.run_config`` records it. The aggregate states the
+    # scope it was written at (``development.development_scope``), so a reader
+    # of the output is never left to infer why a quiz of 40 shows three items.
+    development_mode: DevelopmentMode = "sample"
 
     #: Lazily built by ``core.ratelimit.gate_for`` and shared by every agent in
     #: the run (they all receive this same config instance).

@@ -299,7 +299,7 @@ def _run_fanout(config, memory, trajectory, design_brief, step, spec, *,
     with trajectory.acting_as(orchestrator):
         if work_sets is None:
             parsed = _dispatch_payload(state, spec)
-            work_sets, stats_dev = spec.plan_sets(state, parsed)
+            work_sets, stats_dev = spec.plan_sets(state, parsed, config.development_mode)
         else:
             # A REPLAN round: the sets were derived from the gaps, not from
             # re-normalizing the family (see agentic/replan.py).
@@ -522,7 +522,8 @@ def _replan_rounds(config, memory, trajectory, design_brief, step, spec, loop, *
         # — the orchestrator's read, like the check above: an event outside an
         # `acting_as` scope lands with an empty agent.
         with trajectory.acting_as(ORCHESTRATOR):
-            work_sets = _replan_sets(state, spec, step, gaps, round_index)
+            work_sets = _replan_sets(state, spec, step, gaps, round_index,
+                                     mode=config.development_mode)
         if not work_sets:
             # The Designer had nothing to add, or named work the gaps do not
             # cover. Either way the gap stands and is counted as residual —
@@ -536,7 +537,8 @@ def _replan_rounds(config, memory, trajectory, design_brief, step, spec, loop, *
     return stats
 
 
-def _replan_sets(state, spec, step, gaps: list, round_index: int) -> list:
+def _replan_sets(state, spec, step, gaps: list, round_index: int, *,
+                 mode: str = "full") -> list:
     """The work sets a replan round runs: the Designer's new plan, normalized
     against the GAPS as ground truth and tagged with the round.
 
@@ -554,21 +556,22 @@ def _replan_sets(state, spec, step, gaps: list, round_index: int) -> list:
             return []
         work_sets, _stats = dev_plans.normalize_assessment_dev_plan(
             plan, list(targets), targets, modules=parsed.get("modules"),
-            instruments=(parsed.get("assessment_plan") or {}).get("instruments"))
+            instruments=(parsed.get("assessment_plan") or {}).get("instruments"), mode=mode)
     elif step.name == "implementation":
         activities, materials = replan.unscheduled_of(gaps)
         if not (activities or materials):
             return []
         work_sets, _stats = dev_plans.normalize_implementation_dev_plan(
             plan, activities, materials, first_session=replan.next_session(state),
-            modules=parsed.get("modules"), module_of=fanout.module_of_artifacts(state))
+            modules=parsed.get("modules"), module_of=fanout.module_of_artifacts(state),
+            mode=mode)
     else:
         objectives = replan.objectives_of(gaps)
         if not objectives:
             return []
         work_sets, _stats = dev_plans.normalize_activity_dev_plan(
             plan, list(objectives), fanout.items_by_lo(state),
-            modules=parsed.get("modules"))
+            modules=parsed.get("modules"), mode=mode)
     return replan.tag_round(work_sets, round_index)
 
 
@@ -774,6 +777,9 @@ def _metadata(config, trajectory, design_brief, *, single: bool, graph_mode: boo
         "run_config": {
             "agent_mode": "single" if single else "multi",
             "context_mode": "graph" if graph_mode else "prose",
+            # Not an axis: how much of the planned scale was written out. Every
+            # arm of one experiment runs under the same value.
+            "development_mode": config.development_mode,
             "history_char_budget": history_budget(config),
             "max_turns": react.MAX_TURNS if single else ToolLoop.MAX_TURNS,
             "submit_budget": ToolLoop.SUBMIT_BUDGET,
@@ -948,8 +954,12 @@ class MetaAgent:
             # doesn't fall back to a stale actor once aggregate() returns.
             with trajectory.acting_as(ADDIEOutputAggregator.__name__):
                 try:
-                    addie_output = (ADDIEOutputAggregator(graph, trajectory).aggregate()
-                                    if graph_mode else aggregate_prose(store, trajectory))
+                    mode = config.development_mode
+                    addie_output = (
+                        ADDIEOutputAggregator(graph, trajectory,
+                                              development_mode=mode).aggregate()
+                        if graph_mode else
+                        aggregate_prose(store, trajectory, development_mode=mode))
                 except Exception:  # noqa: BLE001 - aggregation failure must not lose the run
                     addie_output = empty_addie()
                 validation_errors = validate_addie(addie_output)

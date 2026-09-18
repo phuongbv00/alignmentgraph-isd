@@ -93,9 +93,16 @@ async def live_stream(
         if await request.is_disconnected():
             return
 
-        for event in state.events_after(cursor):
-            cursor = event.seq
-            yield frame(event.kind, event.to_dict(), seq=event.seq)
+        # This round's events are CAPTURED first and sent last, with the state
+        # frames in between. State frames are the latest state rather than
+        # history, so going out ahead of the events that led to them loses
+        # nothing; sent after them, a `violations` frame lands behind the
+        # terminal event whenever the run's last ledger write and its finish
+        # arrive in one wakeup, and the terminal event is what a client closes
+        # on. Capturing before reading the state is what makes the order safe
+        # the other way too: every state write that precedes a captured event
+        # is already in the frames below, so the last one is never left unsent.
+        pending = state.events_after(cursor)
 
         if state.graph_rev > sent_graph_rev:
             sent_graph_rev = state.graph_rev
@@ -108,6 +115,10 @@ async def live_stream(
         if state.violations_rev > sent_violations_rev:
             sent_violations_rev = state.violations_rev
             yield _violations_frame(state)
+
+        for event in pending:
+            cursor = event.seq
+            yield frame(event.kind, event.to_dict(), seq=event.seq)
 
         if state.is_terminal and not state.events_after(cursor):
             # The terminal event has already gone out above; closing here is what
