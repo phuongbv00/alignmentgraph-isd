@@ -229,8 +229,9 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
             "evidence_type": _EVIDENCE,
             "levels": _obj({"excellent": {"type": "string"},
                             "satisfactory": {"type": "string"},
-                            "needs_improvement": {"type": "string"}})},
-            ("id", "description", "evidence_type"))),
+                            "needs_improvement": {"type": "string"}},
+                           ("excellent", "satisfactory", "needs_improvement"))},
+            ("id", "description", "evidence_type", "levels"))),
     }, ("type", "question", "aligned_objective", "plan_category", "instrument_id",
         "required_cognitive_process", "rubric")),
 

@@ -287,8 +287,9 @@ MEDIA_TYPES = ("video", "slides", "simulation", "document", "audio")
 RULES_MEDIA_SELECTIONS = """\
 Choose the media each module's content is delivered through. Every media selection must set
 ``for_modules`` to the id(s) of the module(s) it serves, copied from your read of the design
-state — materials are developed one module at a time and each module is handed only its own
-media, so every module needs at least one. Choose in light of what the module's activities
+state — materials are developed one module at a time and each module is handed ONLY its own
+media, so go through the modules one by one and make sure EVERY module id appears in the
+``for_modules`` of at least one selection: a module left out gets materials of no chosen medium. Choose in light of what the module's activities
 ask for (their ``materials_needed``): your read of the design state lists every activity with
 its module, name and cognitive process, which is what this decision needs; read one in full
 only when its listing line leaves you unsure.
@@ -341,8 +342,10 @@ RULES_MATERIALS_UNIT = RULES_MATERIALS_UNIT % {"media_types": ", ".join(MEDIA_TY
 #: items it is writing, so there is no id to point back at.
 RULES_RUBRICS_ITEM = """\
 Give every item you write at least one entry in its own ``rubric`` list — the criterion goes
-INSIDE the item, never in a separate list. ``description`` must be observable and scorable
-(avoid vague words like "good"/"appropriate" without a rubric/score/percent/criteria anchor).
+INSIDE the item, never in a separate list. ``description`` names what is being judged, and
+``levels`` is what makes it scorable: say what an excellent, a satisfactory and a
+needs_improvement answer each SHOW, in a full sentence each, specific to this item — a marker
+must be able to tell the three apart from your words alone.
 ``evidence_type`` must be one of: %(evidence_types)s — and must be achievable by that item's own
 ``type`` (do not require performance_task evidence from a multiple_choice item)."""
 

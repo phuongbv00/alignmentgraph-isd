@@ -37,6 +37,7 @@ from typing import Callable
 from .. import dev_plans
 from .. import rulebook as rules
 from ..alignment_graph import NodeType, alignment
+from ..checks import described_levels
 from ..trajectory import ORCHESTRATOR
 from . import tools
 from .specialists import STEPS, AgenticStep, missing_parts
@@ -105,6 +106,30 @@ def _names_its(field_name: str, list_key: str, what: str) -> Callable[[list], li
                 "by an id your assignment lists"
                 for index, item in enumerate(items)
                 if isinstance(item, dict) and not str(item.get(field_name) or "").strip()]
+    return errors
+
+
+def assessment_item_errors(items: list) -> list[str]:
+    """An item names its instrument, and every criterion it carries says what
+    each grade looks like.
+
+    The second half is ``rubric_consistency`` asked while its author is still
+    in the conversation. After the fan-out nobody is: a Developer's loop has
+    closed and the Designer's next turn, if it gets one, is a plan. MEASURED
+    (runs aef73e0a, 40856c96, b8576814, 53a9cd1a): 11, 2, 6 and 2
+    ``rubric_consistency`` findings, 20 of the 21 with ``shown_to_agent = 0``
+    and every one still open at the end of its run. Only MISSING levels are
+    refused here — whether the words in them are good enough stays the
+    check's."""
+    errors = _names_its("instrument_id", "assessment_tools", "instrument")(items)
+    for index, item in enumerate(items):
+        for position, criterion in enumerate((item or {}).get("rubric") or []
+                                             if isinstance(item, dict) else []):
+            if isinstance(criterion, dict) and len(described_levels(criterion)) < 2:
+                errors.append(
+                    f"assessment_tools[{index}].rubric[{position}].levels: say what an "
+                    "excellent, a satisfactory and a needs_improvement answer each show, "
+                    "one full sentence each")
     return errors
 
 
@@ -334,7 +359,7 @@ SPECS: dict[str, FanoutSpec] = {
                 rules=rules.RULES_ASSESSMENT_ITEMS_SET + "\n" + rules.RULES_RUBRICS_ITEM,
                 element_type=NodeType.ASSESSMENT, id_prefix="AT",
                 doc_key=("assessment", "assessment_tools"),
-                validate_items=_names_its("instrument_id", "assessment_tools", "instrument")),
+                validate_items=assessment_item_errors),
         ),
         developer_reads=(NodeType.OBJECTIVE,),
         render=dev_plans.render_assessment_set, plan_sets=_assessment_sets,

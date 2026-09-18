@@ -100,7 +100,7 @@ OWNED_BY_FAMILY: dict[str, frozenset[str]] = {
     # "high_bandwidth" — copied from the rule's own parenthetical example —
     # against constraint nodes c1..c7; P8 scored 0.0, the ledger held zero P8
     # findings, and the Content Designer was never told.
-    "content_designer": frozenset({"P5", "P6", "P8"}),
+    "content_designer": frozenset({"P5", "P6", "P8", "media_coverage"}),
     "rubric_designer": frozenset(
         {"rubric_consistency", "evidence_alignment"}),
     "implementation_planner": frozenset({"feasibility", "actionability", "P10", "P11"}),
@@ -135,6 +135,9 @@ REPORT_ONLY: frozenset[str] = frozenset({
     # The net could only pick a constraint at random and make the check pass by
     # existing — the objection that has always kept P6 audit-only.
     "C3", "P4", "P6", "P7", "P8", "P10", "P11", "P12", "P13", "P14",
+    # Which medium a module's content is delivered through is the Content
+    # Designer's decision; the net could only copy another module's.
+    "media_coverage",
     "activity_engagement", "bloom_mismatch_activity", "time_budget",
     "rubric_consistency", "feasibility", "actionability",
 })

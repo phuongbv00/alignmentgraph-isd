@@ -109,10 +109,18 @@ def collect_own(state, design_brief, step) -> list:
     remaining = _owned(state, design_brief, _families(step))
     if hasattr(state, "element_nodes") and step.name in SPECS:
         # The tier has not run. A section node is what this Designer wrote;
-        # an element node is what its Developers will write.
+        # an element node is what its Developers will write — except a
+        # finding that sits on an element but is about the Designer's OWN
+        # artifact (a module its media selections leave out).
         sep = type(state).ELEMENT_SEP
-        remaining = [v for v in remaining if sep not in str(v.node_id)]
+        remaining = [v for v in remaining
+                     if sep not in str(v.node_id) or v.violation_type in DESIGNERS_OWN]
     return remaining
+
+
+#: Element-anchored findings that are nonetheless about what the DESIGNER of a
+#: fan-out stage wrote, so they reach it before its Developers run.
+DESIGNERS_OWN = frozenset({"media_coverage"})
 
 
 def violation_lines(violations: list) -> tuple[list[str], list, list]:

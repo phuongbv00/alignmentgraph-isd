@@ -181,8 +181,9 @@ def _assessment_tools() -> list[dict]:
                 "description": ("Full marks require correct application with justification "
                                 "citing concrete evidence, scored 0-3."),
                 "evidence_type": types[i % 3],
-                "levels": {"excellent": "all criteria met", "satisfactory": "most met",
-                           "needs_improvement": "few met"},
+                "levels": {"excellent": "Applies the concept correctly and justifies every design choice.",
+                           "satisfactory": "Applies the concept correctly with a partial justification.",
+                           "needs_improvement": "Misapplies the concept or gives no justification."},
             }],
         }
         if item["type"] == "multiple_choice":
@@ -675,8 +676,9 @@ def _canned_slice_for_set(raw_prompt: str) -> dict | None:
                     "description": ("Full marks require correct application with justification "
                                     "citing concrete evidence, scored 0-3."),
                     "evidence_type": item["type"],
-                    "levels": {"excellent": "0 absent", "satisfactory": "1 partial",
-                               "needs_improvement": "2 full"},
+                    "levels": {"excellent": "Applies the concept correctly and justifies every design choice.",
+                               "satisfactory": "Applies the concept correctly with a partial justification.",
+                               "needs_improvement": "Misapplies the concept or gives no justification."},
                 }]
             return {"assessment_tools": items}
     if "=== YOUR ASSIGNED BLOCK ===" in raw_prompt and '"learning_activities"' in raw_prompt:

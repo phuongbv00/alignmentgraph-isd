@@ -322,3 +322,65 @@ def test_a_membership_id_the_set_settles_is_filled_in_and_one_the_model_wrote_is
     block = dev_plans.WorkSet(set_id="AB-01", payload={"module": {"id": "MOD-02"}})
     assert dev_plans.with_membership(block, "learning_activities", [{"activity_name": "a"}]) == [
         {"activity_name": "a", "module_id": "MOD-02"}]
+
+
+# ── what the last open findings of a clean run were ─────────────────────────
+
+def test_a_criterion_is_scorable_by_its_levels_not_by_the_words_of_its_title():
+    """MEASURED (run 53a9cd1a): "Clear definition and naming of all three
+    phases" was flagged for the word "clear" while its levels said precisely
+    what each grade looks like."""
+    levels = {"excellent": "Clearly names and defines all three phases with precise terminology.",
+              "satisfactory": "Lists three phases but lacks precise definitions.",
+              "needs_improvement": "Lists fewer than three phases."}
+    vague = {"id": "SC-01", "description": "Clear definition and naming of all three phases"}
+    assert checks.rubric_consistency_items([("AT-01/SC-01", {**vague, "levels": levels})]) == []
+    assert checks.rubric_consistency_items([("AT-01/SC-01", {**vague, "levels": {}})])
+    assert checks.rubric_consistency_items(
+        [("AT-01/SC-01", {**vague, "levels": {"excellent": "good", "satisfactory": "ok"}})]), (
+        "a level that describes nothing redeems nothing")
+    assert checks.rubric_consistency_items([("AT-01/X", {"id": "X", "levels": levels})]), (
+        "levels do not excuse a criterion that names nothing")
+
+
+def test_a_criterion_with_no_levels_is_refused_while_its_author_can_still_write_them():
+    from alignmentgraph_isd.core.agentic import fanout
+
+    item = {"instrument_id": "INS-01", "rubric": [
+        {"id": "C1", "description": "Selects the right tool", "levels": {}}]}
+    (error,) = fanout.assessment_item_errors([item])
+    assert error.startswith("assessment_tools[0].rubric[0].levels")
+    item["rubric"][0]["levels"] = {
+        "excellent": "Selects the tool and justifies it against both constraints.",
+        "satisfactory": "Selects the tool with a partial justification.",
+        "needs_improvement": "Selects a tool that cannot meet the task."}
+    assert fanout.assessment_item_errors([item]) == []
+    # Shared by both arms: the single agent's batch goes through the same rules.
+    assert fanout.output_errors(fanout.SPECS["assessment"], {"assessment_tools": [
+        {"instrument_id": "INS-01", "rubric": [{"id": "C1", "description": "x"}]}]})
+
+
+def test_a_module_no_media_selection_serves_reaches_the_content_designer_before_its_developers():
+    """MEASURED (runs b8576814, 53a9cd1a): every media selection named
+    `for_modules: ["MOD-01"]`; MOD-02's Developer was handed no medium, picked
+    one, and that material was the run's P6 violation both times."""
+    from alignmentgraph_isd.core.agentic import repair_turn
+
+    graph = AlignmentGraph()
+    for module in ("MOD-01", "MOD-02"):
+        graph.add_element_node(NodeType.MODULE, module, {"id": module})
+    assert checks.media_coverage(graph) == [], "no media yet is the stage not having run"
+    graph.add_element_node(NodeType.MEDIA_SELECTION, "MED-01", {
+        "id": "MED-01", "media_type": "slides", "for_modules": ["module:MOD-01"]})
+    found = checks.media_coverage(graph)
+    assert [(v.violation_type, v.node_id) for v in found] == [("media_coverage", "module:MOD-02")]
+    assert "for_modules includes MOD-02" in found[0].repair_hint
+
+    own = repair_turn.collect_own(graph, load_brief("minimal_brief.json"), STEP["content"])
+    assert "media_coverage" in {v.violation_type for v in own}, (
+        "anchored on an element, but about what the Designer wrote — not withheld")
+    assert repairs.OWNER_BY_VIOLATION["media_coverage"] == "content_designer"
+    assert "media_coverage" in repairs.REPORT_ONLY
+
+    graph.add_element_node(NodeType.MEDIA_SELECTION, "MED-02", {"id": "MED-02", "media_type": "video"})
+    assert checks.media_coverage(graph) == [], "a selection naming no module serves them all"

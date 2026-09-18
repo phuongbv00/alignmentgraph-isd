@@ -34,6 +34,7 @@ const LABELS: Record<string, string> = {
   // unit; a material with no module is reported as P5 coverage since.
   orphan_content: 'content traces to instructional purpose',
   time_budget: 'activities fit the time the course has',
+  media_coverage: 'every module has a medium chosen for it',
   blueprint_consistency: 'assessment blueprint agrees with its coverage targets',
   instrument_alignment: 'item belongs to an instrument of the plan',
   feasibility: 'plan fits the stated constraints',

@@ -437,12 +437,35 @@ def rubric_consistency(graph) -> list[Violation]:
     return rubric_consistency_items(_criteria_of(graph))
 
 
+#: A level descriptor shorter than this says nothing a marker could apply
+#: ("good", "most met").
+_LEVEL_DESCRIPTOR_CHARS = 15
+
+
+def described_levels(criterion: dict) -> list[str]:
+    """The criterion's ``levels`` that actually describe a performance."""
+    levels = criterion.get("levels")
+    return [str(text).strip() for text in (levels.values() if isinstance(levels, dict) else ())
+            if len(str(text).strip()) >= _LEVEL_DESCRIPTOR_CHARS]
+
+
 def rubric_consistency_items(items: list[tuple[str, dict]]) -> list[Violation]:
+    """A criterion is scorable when a marker can tell one performance from
+    another. Its ``levels`` are exactly that — what an excellent, a
+    satisfactory and a weak answer each show — so a criterion with two or more
+    described levels is scorable whatever words its one-line ``description``
+    uses. MEASURED (run 53a9cd1a): "Clear definition and naming of all three
+    phases" was flagged for the word "clear" while its three levels said
+    precisely what each grade looks like; the check read ``description`` alone.
+    Only a criterion WITHOUT described levels is held to its description."""
     violations: list[Violation] = []
     for node_id, data in items:
         rc_id = data.get("id", node_id.rsplit(":", 1)[-1])
-        criteria = str(data.get("description") or data.get("scoring_criteria") or "").strip()
+        criteria = str(data.get("description") or data.get("criterion")
+                       or data.get("scoring_criteria") or "").strip()
         lowered = criteria.lower()
+        if criteria and len(described_levels(data)) >= 2:
+            continue
         if not criteria or any(marker in lowered for marker in _PLACEHOLDER_MARKERS):
             violations.append(Violation(
                 node_id=node_id, edge_type="", violation_type="rubric_consistency", severity="warning",
@@ -457,7 +480,9 @@ def rubric_consistency_items(items: list[tuple[str, dict]]) -> list[Violation]:
             violations.append(Violation(
                 node_id=node_id, edge_type="", violation_type="rubric_consistency", severity="warning",
                 message=f"Rubric criterion '{rc_id}' lacks an observable scoring description.",
-                repair_hint="Replace vague language with observable, scorable descriptors.",
+                repair_hint=("Give the criterion `levels` — what an excellent, a satisfactory and "
+                             "a needs_improvement answer each show — or state in `description` "
+                             "how it is scored."),
                 metadata={"rc_id": rc_id, "description": criteria},
             ))
     return violations
@@ -769,6 +794,43 @@ def duration_minutes(text: object) -> float:
     for amount, unit in _DURATION_RE.findall(str(text or "")):
         total += float(amount) * (60 if unit.lower().startswith("h") else 1)
     return total
+
+
+def media_coverage(graph) -> list[Violation]:
+    """Every module needs at least one media selection that serves it.
+
+    Materials are written one module at a time and each module's Developer is
+    handed ITS media selections: the allowed material types and the "a
+    material realizes one of these" clause are both derived from that list, and
+    P6 matches a material against it. A module that received none leaves its
+    Developer to pick a type freely, and whatever it picks fails P6. MEASURED
+    (runs b8576814, 53a9cd1a): every media selection named ``for_modules:
+    ["MOD-01"]``, and the first material of MOD-02 was the P6 violation of the
+    run both times. Silent while no media selection exists at all — that is the
+    stage not having run, not a module left out — and for a selection that
+    names no module, which ``material_work_units`` hands to every module."""
+    media = [n["data"] for n in graph.element_nodes(NodeType.MEDIA_SELECTION)]
+    if not media:
+        return []
+    served: set[str] = set()
+    for selection in media:
+        named = {alignment.bare_ref(m) for m in (selection.get("for_modules") or [])
+                 if alignment.bare_ref(m)}
+        if not named:
+            return []
+        served |= named
+    violations: list[Violation] = []
+    for module in graph.element_nodes(NodeType.MODULE):
+        module_id = str(module["data"].get("id") or "")
+        if module_id and module_id not in served:
+            violations.append(Violation(
+                node_id=module["id"], edge_type="", violation_type="media_coverage",
+                severity="warning",
+                message=f"No media selection serves {module_id}.",
+                repair_hint=(f"Add a media selection whose for_modules includes {module_id}, or "
+                             "add it to the for_modules of one that fits."),
+                metadata={"module_id": module_id}))
+    return violations
 
 
 def time_budget(graph) -> list[Violation]:

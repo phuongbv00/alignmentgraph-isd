@@ -37,7 +37,7 @@ def _collect_violations(node_name: str, graph, design_brief) -> list:
         # design judgment), so the Designer is shown it in its own repair turn
         # — which is the only way it is shown at all.
         return [v for v in checks.relation_coverage(graph)
-                if v.violation_type in ("P5", "P6", "P8")]
+                if v.violation_type in ("P5", "P6", "P8")] + checks.media_coverage(graph)
     if node_name == "rubric_designer":
         # No relation coverage: a criterion is a FIELD of the item it marks.
         return checks.rubric_consistency(graph) + checks.evidence_alignment(graph)
