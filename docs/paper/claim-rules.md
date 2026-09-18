@@ -109,7 +109,8 @@ Mức tất định được phép claim: *reproducible up to floating-point noi
   judge không nhạy với alignment, đúng lý do RQ2 tồn tại; (nghịch) instrument duy nhất tách được
   các arm lại chung construct với thiết kế bị ablate — đó là mô tả của thiếu discriminant
   validity. Dự đoán phân biệt phải phát biểu TRƯỚC khi kiểm.
-- **Repair không bao giờ viết nội dung giảng dạy.** Việc gỡ repair sinh cạnh C5 giả làm residual
+- **Repair không bao giờ viết nội dung giảng dạy.** Việc gỡ các repair sinh artifact/cạnh giả
+  (một activity "Guided practice for ILO-01", một module gán bừa vào activity đầu tiên) làm residual
   violation tăng; đó là số trở nên trung thực, không phải regression — và là ví dụ nên đưa vào
   Discussion về ranh giới giữa repair cấu trúc và viết lại nội dung.
 

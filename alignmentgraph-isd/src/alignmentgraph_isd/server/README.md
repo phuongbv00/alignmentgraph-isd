@@ -185,7 +185,13 @@ what is measured.
 work sets, round by round: the stage and family, whether the Designer's own dev
 plan was used or the deterministic split had to carry it, and the whole work set
 each Developer was handed — its obligations, its theme, the count it was asked
-for.
+for, and the course module it is one share of (`module_id`). Every family
+divides its work by the modules the outcomes stage wrote, so reading a plan
+down its `module_id`s is reading the course in order. The count reflects the
+run's development mode: the Run menu's **Full development** box asks for every
+artifact the design plans, and an unticked run writes a representative sample
+(`POST /api/programs/{id}/runs` takes `development_mode` beside the two axes,
+and the run's header shows which it was).
 
 The `dev_plan` trajectory event carries a SUMMARY of the same decision (set ids
 and their objectives, the source, what the harness dropped, duplicated or split)

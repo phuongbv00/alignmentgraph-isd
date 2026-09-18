@@ -55,11 +55,12 @@ carrying one context through all six stages.
     \midrule
     $s_{\mathrm{ana}}$ & Needs Analyst & gap, learner profile, topic,
     constraint, improvement \\
-    $s_{\mathrm{out}}$ & Outcome Designer & course goal, learning objective \\
-    $s_{\mathrm{asm}}$ & Assessment Designer & assessment plan, assessment task \\
+    $s_{\mathrm{out}}$ & Outcome Designer & course goal, learning objective,
+    course module \\
+    $s_{\mathrm{asm}}$ & Assessment Designer & assessment plan with its blueprint
+    of instruments, assessment task \\
     $s_{\mathrm{act}}$ & Activity Designer & activity plan, learning activity \\
-    $s_{\mathrm{con}}$ & Content Designer & content module, media selection,
-    learner material \\
+    $s_{\mathrm{con}}$ & Content Designer & media selection, learner material \\
     $s_{\mathrm{imp}}$ & Implementation Planner & implementation plan, session
     guide, instructor and operator documents \\
     \bottomrule
@@ -97,11 +98,12 @@ design artifacts and whose edges are typed relations (\Cref{tab:graph-spec}).
     $v\in V$ & Node: a design artifact with type $\tau(v)\in\mathcal{T}$, where
     $\mathcal{T}$ is exactly the artifact kinds owned by the stages in
     \Cref{tab:specialists}. \\
-    $\mathcal{R}$ & Sixteen relation types in two tiers. Five \emph{core}
-    relations $C_1$--$C_5$ each carry a theoretical warrant from constructive
-    alignment or backward design and form the construct-validity backbone; eleven
-    \emph{secondary} relations $P_1$--$P_{11}$ record provenance and delivery
-    traceability and are never offered as construct-validity evidence. \\
+    $\mathcal{R}$ & Eighteen relation types in two tiers. Four \emph{core}
+    relations $C_1$--$C_4$ each carry a theoretical warrant from constructive
+    alignment or backward design and form the construct-validity backbone; fourteen
+    \emph{secondary} relations $P_1$--$P_{14}$ record provenance, course
+    organisation and delivery traceability and are never offered as
+    construct-validity evidence. \\
     $(v_s,v_d,r)\in E$ & Edge: $v_s$ relates to $v_d$ through $r\in\mathcal{R}$.
     Each edge records its evidence, its rationale, and the mechanism that
     established it (a resolved identifier, a type match, or provenance). \\
@@ -125,9 +127,16 @@ that is, $o$ is practiced by an activity $t$ that prepares for an assessment tas
 $a$ that measures $o$. The quantifier matters. Taken as three independent
 existentials, the predicate is satisfied by an objective whose activity prepares
 for some unrelated task, which is two spokes rather than a triangle;
-\Cref{eq:aligned} requires the triangle to meet. The remaining two core relations
-place the surrounding artifacts: $C_1$ decomposes a course goal into objectives and
-$C_5$ joins a content module to the activity it supports.
+\Cref{eq:aligned} requires the triangle to meet. The remaining core relation,
+$C_1$, decomposes a course goal into objectives.
+
+The course is organised into \emph{modules}: the Outcome Designer writes them
+right after the objectives, each grouping the objectives and topics learned
+together and stating its share of the course's time. A module organises the design
+and is not a vertex of constructive alignment, so every relation it takes part in
+is secondary---which objectives it groups, which activities and assessment tasks
+belong to it, which materials it covers. A module that nothing is taught or
+assessed in is reported, and is never counted as evidence of alignment either way.
 
 \Cref{eq:aligned} is deliberately structural. Whether an assessment task is pitched
 at the cognitive level its objective declares is a property of the content inside
@@ -163,7 +172,7 @@ comprising a read scope, a generation step, and a write contract:
   \Description{Six stages run left to right in a fixed ADDIE sequence. Each stage
   is an act-observe loop that reads a scoped slice of a shared alignment graph
   through tools and commits typed nodes and edges back to it by calling a submit
-  tool. Three stages divide their work into sets that developer agents write one
+  tool. Four stages divide their work into sets that developer agents write one
   at a time. Deterministic checks run after each commit; structural violations are
   repaired by the harness and the rest are handed back to the owning agent as a
   repair turn. After the sequence, a reconciliation pass runs, an aggregator
@@ -171,7 +180,7 @@ comprising a read scope, a generation step, and a write contract:
   violations; the run returns the program and a graph dump.}
   \caption{Execution architecture, drawn to match \Cref{alg:harness}. The six
   stages run in one fixed order; each reads its scope $C(s)$ through tools (dashed)
-  and commits only the node and edge types in $W(s)$ (solid). Three stages fan work
+  and commits only the node and edge types in $W(s)$ (solid). Four stages fan work
   out to developer agents. Checking and repair are local to the stage that has just
   committed. After the sequence, one reconciliation pass addresses residual
   cross-stage violations, $\mathrm{aggregate}(G)$ assembles the program, and
@@ -205,13 +214,20 @@ whereas a rejected artifact costs only that artifact.
 \subsection{Designers plan, developers write}
 \label{sec:fanout}
 
-Three stages own artifact families whose size grows with the design: assessment
+Four stages own artifact families whose size grows with the design: assessment
 tasks, learning activities, learner materials, and session guides. For these, the
 stage agent does not write the items. It submits a \emph{development plan} that
 divides the family into work sets---which objectives, which instrument, which
 theme---and the harness dispatches each set to a developer agent that writes only
-that set. The division is the design decision the stage is asked to make; the
+that set. The course's modules are the key of that division: a work set never
+spans two modules, and a module's activities are bounded by the time the module
+was given. The division is the design decision the stage is asked to make; the
 writing is delegated.
+
+The assessment plan carries a \emph{blueprint}: the instruments a learner actually
+sits in each module---a quiz before it, a practical after it---with their timing,
+format and full scale. Assessment tasks remain individual, question-level
+artifacts, and each names the instrument it belongs to.
 
 Two properties of this tier are the harness's, not the model's. Identifiers are
 reserved by composition: a work set receives an ordinal when the plan is numbered,
@@ -243,19 +259,21 @@ ownership follows $W(s)$, so no stage is asked about something it cannot write.
     \toprule
     Owner & Checks & Failure class detected \\
     \midrule
-    Outcome Designer & Bloom verb against declared level; measurability &
-    objectives whose stated verb and level disagree, or that state no observable
-    performance \\
-    Assessment Designer & $C_2$, $P_3$ coverage; item completeness; plan
-    coverage; cognitive demand of items &
+    Outcome Designer & Bloom verb against declared level; measurability;
+    $P_{12}$ coverage &
+    objectives whose stated verb and level disagree, that state no observable
+    performance, or that no module groups \\
+    Assessment Designer & $C_2$, $P_3$, $P_{14}$ coverage; item completeness;
+    plan coverage; blueprint consistency; cognitive demand of items &
     objectives nothing measures; items with no scoring criteria; promised items
-    never written \\
-    Activity Designer & $C_3$, $C_4$, $P_4$ coverage; active practice; cognitive
-    demand of activities &
+    never written; modules nothing assesses; items belonging to no instrument \\
+    Activity Designer & $C_3$, $C_4$, $P_4$, $P_{13}$ coverage; active practice;
+    time budget; cognitive demand of activities &
     objectives learners never practice; activities that prepare for nothing;
-    designs in which learners only receive \\
-    Content Designer & $C_5$, $P_5$, $P_6$ coverage; orphan modules &
-    activities no material supports; materials realizing no declared medium \\
+    modules nothing is taught in or whose activities overrun their time; designs
+    in which learners only receive \\
+    Content Designer & $P_5$, $P_6$ coverage &
+    materials belonging to no module; materials realizing no declared medium \\
     Implementation Planner & $P_{10}$, $P_{11}$ coverage; feasibility;
     actionability &
     activities never scheduled and materials never handed out; plans that

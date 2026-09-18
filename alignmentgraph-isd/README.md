@@ -141,7 +141,16 @@ preset system):
   variable.
 
 The resolved axes are recorded in `result["metadata"]["run_config"]`, so every
-run is self-describing. They exist for the thesis ablation study (the
+run is self-describing.
+
+`development_mode` (`"sample"` | `"full"`, default `"sample"`) sits beside them
+and is NOT an axis. A design is always PLANNED at full scale — the assessment
+blueprint says a module's quiz has 40 items — and this setting decides how much
+of it the Developers write out: a representative sample (`core/dev_plans.py`'s
+`SAMPLE_*` quotas) or all of it, batched. It changes numbers in a work set and
+one sentence of its assignment, never a rule block, and the output states the
+scale it was written at (`development.development_scope`, plus `items_written`
+on every instrument). Every arm of one experiment runs under the same value. They exist for the thesis ablation study (the
 benchmark registers one agent id per arm); production use keeps the defaults.
 
 ### Graph dump (explainability / auditability)
@@ -262,7 +271,7 @@ Network-free; a fake `llm_factory` drives the whole pipeline (see
 pip install -e '.[server]'                    # REQUIRED: see below
 python -m pytest tests/                       # all tests
 python -m pytest tests/test_smoke_run.py      # public-API smoke on the fixtures
-python -m pytest tests/test_full_pipeline.py  # end-to-end contract + 16-relation coverage
+python -m pytest tests/test_full_pipeline.py  # end-to-end contract + 18-relation coverage
 ```
 
 **Install the `[server]` extra in every dev and CI environment.** `tests/server/`

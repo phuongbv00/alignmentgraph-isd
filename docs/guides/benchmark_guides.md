@@ -367,6 +367,12 @@ không có thì dùng 4), rồi truyền vào `HarnessRunConfig.llm_max_concurre
 đo theo rate thay vì theo concurrency, mặc định tắt. `HARNESS_FANOUT_WORKERS` (mặc định 1 = fan-out tuần tự, ladder
 không đặt) cho các Developer của một family ở arm multi chạy đồng thời, bị cap bởi chính cap trên; commit vẫn theo thứ tự
 plan nên graph không đổi, chỉ đổi wall time, và được ghi vào `metadata.run_config.fanout_workers`.
+`HARNESS_DEVELOPMENT_MODE` (`sample` | `full`, ladder KHÔNG đặt = `sample`) quyết định Developer viết một mẫu đại diện
+của thiết kế hay toàn bộ: plan luôn nêu quy mô thật (quiz 40 câu), `sample` viết 3 item/instrument, 2 TLA/ILO (sàn
+3/module), 2 material/module, 1–2 session guide/module; `full` viết hết và chia batch. KHÔNG phải trục ablation — mọi arm
+của một thí nghiệm phải chạy cùng một giá trị, ghi ở `metadata.run_config.development_mode`; output tự khai phạm vi ở
+`development.development_scope`. Quota `sample` (`dev_plans.SAMPLE_*`) là tham số tạm: hiệu chỉnh trên `train_10` (cùng
+scenario ở hai mode, so các mục rubric chấm theo item) TRƯỚC `isd-exp freeze`, sau đó không đổi.
 
 Tổng request in-flight = `max_workers × scenario_max_workers × cap`. Gate là **per-run**, không process-wide: gate chung
 sẽ khiến fan-out của arm này xếp hàng trước call của arm kia và thổi phồng `execution_time_seconds` của arm kia.
