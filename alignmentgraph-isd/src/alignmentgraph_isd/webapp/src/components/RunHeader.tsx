@@ -17,96 +17,113 @@ interface Props {
  * Status, progress and the run controls.
  *
  * The elapsed counter matters more than it looks: a real run spends tens of
- * seconds inside a single model call with nothing else to report, and a
- * ticking timer under "waiting for the model" is the difference between
- * looking alive and looking hung.
+ * seconds inside a single model call with nothing else to report, and a timer
+ * ticking beside the phase is the difference between looking alive and looking
+ * hung. It counts the WHOLE run, which is also the number a reader compares
+ * against the one a finished run reports.
  */
 export function RunHeader({ stream, canRun, runDisabledReason, onRun, onCancel, starting }: Props) {
   const active = stream.status === 'running' || stream.status === 'cancelling'
-  const elapsed = useElapsed(stream.llmStartedAt)
+  const elapsed = useElapsed(active ? stream.startedAt : null)
   const arm = armOf(stream.stats.agent_mode, stream.stats.context_mode)
 
   const progress = stream.phase && stream.phase.total
     ? Math.round(((stream.phase.index - 1) / stream.phase.total) * 100)
     : stream.status === 'succeeded' ? 100 : 0
 
+  const note = active
+    ? (stream.status === 'cancelling'
+      // Usually about a second — the model call in flight is aborted — but
+      // it can take longer on a provider whose transport cannot be closed, so
+      // this does not promise a number.
+      ? 'Stopping…'
+      : stream.phase
+        ? `${phaseLabel(stream.phase.name)} (${stream.phase.index}/${stream.phase.total})`
+        : 'Starting…')
+      + (stream.startedAt !== null ? ` · ${formatElapsed(elapsed)}` : '')
+    : stream.status !== 'idle' ? summarise(stream) : ''
+
   return (
     <div className="run-header">
-      {stream.runId && <RunIdChip runId={stream.runId} />}
+      {/* What the run IS, where it has got to, and the one control that acts on
+          it. Everything but the phase line is short and fixed-width, so the
+          control keeps its place whatever the pane is: the phase line takes
+          what is left and is ellipsed, and the badges wrap under it rather than
+          pushing it out of view. */}
+      <div className="run-header-line">
+        <div className="run-meta">
+          {stream.runId && <RunIdChip runId={stream.runId} />}
 
-      <span className={`pill ${stream.status}`}>
-        <StatusIcon status={stream.status} />
-        {statusLabel(stream)}
-      </span>
+          <span className={`pill ${stream.status}`}>
+            <StatusIcon status={stream.status} />
+            {statusLabel(stream)}
+          </span>
 
-      {/* Shown for EVERY run that reports an arm, the default one included: a
-          badge that appeared only on ablation runs would make its absence mean
-          both "the default arm" and "a run recorded before this", which are
-          different things. */}
-      {arm && (
-        <span className="pill arm" title={arm.label}>
-          {arm.agentMode}·{arm.contextMode}
-        </span>
-      )}
+          {/* Shown for EVERY run that reports an arm, the default one included: a
+              badge that appeared only on ablation runs would make its absence mean
+              both "the default arm" and "a run recorded before this", which are
+              different things. */}
+          {arm && (
+            <span className="pill arm" title={arm.label}>
+              {arm.agentMode}·{arm.contextMode}
+            </span>
+          )}
 
-      {/* Only a run that says so: a run recorded before the mode existed
-          reports nothing, and "sample" on it would be a guess. */}
-      {stream.stats.development_mode && (
-        <span
-          className="pill arm"
-          title={stream.stats.development_mode === 'full'
-            ? 'Every artifact the design plans was written out'
-            : 'A representative sample of what the design plans was written out'}
-        >
-          {stream.stats.development_mode}
-        </span>
-      )}
+          {/* Only a run that says so: a run recorded before the mode existed
+              reports nothing, and "sample" on it would be a guess. */}
+          {stream.stats.development_mode && (
+            <span
+              className="pill arm"
+              title={stream.stats.development_mode === 'full'
+                ? 'Every artifact the design plans was written out'
+                : 'A representative sample of what the design plans was written out'}
+            >
+              {stream.stats.development_mode}
+            </span>
+          )}
+
+          {/* Beside the status while the run is going: it changes every few
+              seconds and is the thing being watched. A finished run's summary is
+              a different kind of line — long, read once — and gets its own band
+              below. */}
+          {active && <span className="small muted run-note" title={note}>{note}</span>}
+        </div>
+
+        <div className="run-actions">
+          {active ? (
+            <button
+              className="btn small danger icon-label"
+              onClick={onCancel}
+              disabled={stream.status === 'cancelling'}
+            >
+              <Square size={12} />
+              {stream.status === 'cancelling' ? 'Cancelling…' : 'Cancel'}
+            </button>
+          ) : (
+            <RunSplitButton
+              canRun={canRun}
+              starting={starting}
+              idle={stream.status === 'idle'}
+              disabledReason={runDisabledReason}
+              onRun={onRun}
+            />
+          )}
+        </div>
+      </div>
 
       {active && (
-        <>
-          <div className="progress-track" title={`Step ${stream.phase?.index ?? 0} of ${stream.phase?.total ?? 0}`}>
-            <div className="progress-fill" style={{ width: `${progress}%` }} />
-          </div>
-          <span className="small muted" style={{ whiteSpace: 'nowrap' }}>
-            {/* Usually about a second — the model call in flight is aborted —
-                but it can take longer on a provider whose transport cannot be
-                closed, so this does not promise a number. */}
-            {stream.status === 'cancelling'
-              ? 'Stopping…'
-              : stream.phase
-                ? `${phaseLabel(stream.phase.name)} (${stream.phase.index}/${stream.phase.total})`
-                : 'Starting…'}
-            {stream.llmStartedAt !== null && ` · ${elapsed}s`}
-          </span>
-        </>
+        <div className="progress-track" title={`Step ${stream.phase?.index ?? 0} of ${stream.phase?.total ?? 0}`}>
+          <div className="progress-fill" style={{ width: `${progress}%` }} />
+        </div>
       )}
 
-      {!active && stream.status !== 'idle' && (
-        <span className="small muted">
-          {summarise(stream)}
-        </span>
+      {/* How the run ended, in one line: a list of counts, or an exception
+          message, either of which can run to any length. */}
+      {!active && note && (
+        <div className="run-header-line">
+          <span className="small muted run-note" title={note}>{note}</span>
+        </div>
       )}
-
-      <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-        {active ? (
-          <button
-            className="btn small danger icon-label"
-            onClick={onCancel}
-            disabled={stream.status === 'cancelling'}
-          >
-            <Square size={12} />
-            {stream.status === 'cancelling' ? 'Cancelling…' : 'Cancel'}
-          </button>
-        ) : (
-          <RunSplitButton
-            canRun={canRun}
-            starting={starting}
-            idle={stream.status === 'idle'}
-            disabledReason={runDisabledReason}
-            onRun={onRun}
-          />
-        )}
-      </div>
     </div>
   )
 }
@@ -340,6 +357,13 @@ function summarise(stream: RunStreamState): string {
   if (stats.duration_seconds) parts.push(`${Math.round(stats.duration_seconds)}s`)
   if (stats.llm_calls) parts.push(`${stats.llm_calls} model calls`)
   return parts.join(' · ')
+}
+
+/** Seconds under a minute, `m:ss` above it: a run is minutes long, and four
+ *  digits of seconds is a number the reader has to divide. */
+function formatElapsed(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
 function useElapsed(since: number | null): number {

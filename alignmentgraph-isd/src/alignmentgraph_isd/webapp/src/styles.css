@@ -357,14 +357,51 @@ a.btn:hover { background: #f1f5f9; }
 
 /* ── run header ─────────────────────────────────────────────────────────── */
 
+/* Bands, not one row. Everything here is either a fixed-width badge or a line
+   of text that grows with the design (a phase name, an error, a list of
+   counts), and on one row the second kind pushes the run control off the pane
+   — the pane is a share of the viewport and the inspector takes another. */
 .run-header {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 6px;
   padding: 10px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
   flex: 0 0 auto;
+}
+
+.run-header-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+/* Two columns: everything about the run, then the one control that acts on it.
+   The control is its own column and so cannot be moved by anything the first
+   one does — it neither shifts as the phase name changes length nor drops to
+   another line when the badges wrap. */
+.run-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.run-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+
+/* One line, ellipsed, with the whole text in the tooltip: a run's last words
+   can be an exception message, and wrapping one would resize the header under
+   the graph every time a phase changed. Inside `.run-meta` it keeps the badges'
+   line while there is room for it and takes a line of its own when there is
+   not. */
+.run-note {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .pill {
@@ -494,13 +531,15 @@ a.btn:hover { background: #f1f5f9; }
 
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
+/* A band of its own under the header line: the phase it belongs to is named
+   there, so the bar carries nothing but the fraction and is readable at any
+   width the pane has. */
 .progress-track {
-  flex: 1 1 auto;
   height: 4px;
   background: var(--border);
   border-radius: 2px;
   overflow: hidden;
-  min-width: 60px;
+  flex: 0 0 auto;
 }
 .progress-fill { height: 100%; background: var(--accent); transition: width 0.4s ease; }
 

@@ -37,9 +37,11 @@ export interface RunStreamState {
    *  idempotent. A finding's outcome stays provisional until the run settles. */
   findings: Finding[]
   phase: { name: string; index: number; total: number } | null
-  /** Set while a model call is in flight, so the UI can run an elapsed timer
-   *  through the tens of seconds when nothing else happens. */
-  llmStartedAt: number | null
+  /** When the run began, as the SERVER timed it, so a page opened halfway
+   *  through one reports the run's real age rather than the age of this tab's
+   *  connection to it. Read off `run_started`, which is replayed to every
+   *  connection that opens at the start of the stream. */
+  startedAt: number | null
   connected: boolean
   replay: boolean
 }
@@ -57,7 +59,7 @@ const EMPTY: RunStreamState = {
   contextRows: [],
   findings: [],
   phase: null,
-  llmStartedAt: null,
+  startedAt: null,
   connected: false,
   replay: false,
 }
@@ -126,10 +128,11 @@ function reducer(state: RunStreamState, action: Action): RunStreamState {
               total: Number(event.payload.total ?? 0),
             },
           }
-        case 'llm_started':
-          return { ...next, llmStartedAt: Date.now() }
-        case 'llm_finished':
-          return { ...next, llmStartedAt: null }
+        // The server's clock, not this browser's: they are the same machine in
+        // the single-process app this serves, and a replayed `run_started` is
+        // the only thing that can date a run that began before the page did.
+        case 'run_started':
+          return { ...next, startedAt: Date.parse(event.ts) || Date.now() }
         // Accepted, but not over: the harness stops at its next event, so the
         // run keeps going for the rest of any in-flight model call.
         case 'run_cancelling':
@@ -148,7 +151,6 @@ function reducer(state: RunStreamState, action: Action): RunStreamState {
             // `hello`, so its badge survives a reload too.
             stats: { ...next.stats, ...(event.payload.stats as RunStats ?? {}) },
             phase: null,
-            llmStartedAt: null,
           }
         default:
           return next
