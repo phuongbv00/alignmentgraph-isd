@@ -216,7 +216,6 @@ _ACTIVITY_PLAN = {
 }
 
 _ACTIVITY_DEV_PLAN = {"dev_plan": {
-    "contact_hours": 12,
     "activity_blocks": [
         {"set_id": "BLOCK-01", "objectives": ["ILO-01", "ILO-02"], "block_theme": "Encapsulation foundations",
          "block_minutes": 240, "rationale": "Both are introduced together in the same module."},

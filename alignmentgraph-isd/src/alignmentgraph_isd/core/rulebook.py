@@ -162,11 +162,12 @@ scoring_criteria carry the judgment instead."""
 RULES_ASSESSMENT_ITEMS = RULES_ASSESSMENT_ITEMS % {"bloom_levels": ", ".join(BLOOM_LEVELS)}
 
 RULES_ASSESSMENT_DEV_PLAN = """\
-Group the assessment plan's lo_coverage_targets into instrument sets: every (objective,
-plan_category) pair it names must appear in exactly one set. Most sets should cover a single
-objective and category — only group several objectives into one set when a single instrument
-genuinely assesses them together (e.g. one integrated scenario testing two related skills at
-once), never merely to produce fewer sets. Never invent an objective or category the plan did
+Group the assessment plan's lo_coverage_targets into instrument sets, module by module: every
+(objective, plan_category) pair it names must appear in exactly one set, and a set stays inside
+ONE module — it is the work of writing that module's instruments. Most sets should cover a single
+instrument — only group several into one set when their items genuinely share a scenario (e.g.
+one integrated case behind a module's formative quiz and its summative practical), never merely
+to produce fewer sets. Never invent an objective or category the plan did
 not name.
 
 ``expected_items`` is how many items that instrument actually needs: at least one per (objective,
@@ -223,18 +224,18 @@ first you wrote), if any."""
 RULES_ACTIVITIES = RULES_ACTIVITIES % {"bloom_levels": ", ".join(BLOOM_LEVELS)}
 
 RULES_ACTIVITY_DEV_PLAN = """\
-Group the learning objectives into activity blocks. Every objective must appear in at least one
-block, and no two blocks may cover the same ground: a separate developer writes each block
-without seeing the others, so two blocks whose scopes overlap produce duplicate activities.
-Never invent an objective the plan did not name.
+Plan the activities module by module: group each module's objectives into activity blocks. A
+block belongs to ONE module — its objectives all come from that module's ``objectives`` — every
+objective of every module must appear in at least one block, and no two blocks may cover the same
+ground: a separate developer writes each block without seeing the others, so two blocks whose
+scopes overlap produce duplicate activities. Never invent an objective the plan did not name.
 
-What bounds the plan is TIME. ``contact_hours`` is the scheduled learner time this course has —
-your reading of the scenario's duration and delivery mode, as one number of hours. Each block's
-``block_minutes`` is its share of that time, and the shares must add up to no more than the
-course. ``expected_activities`` is how many activities fit in that block's minutes — you are the
+What bounds the plan is TIME, and the time is the module's: each module states its ``minutes``.
+Each block's ``block_minutes`` is its share of its module's minutes, and the blocks of one module
+must add up to no more than that module has. ``expected_activities`` is how many activities fit in that block's minutes — you are the
 only step that knows whether a block is one exercise or a six-step progression — and an activity
 a learner can actually do takes at least %(min_minutes)d minutes. It is a count of what fits,
-never a running number: a plan that overruns its own hours is cut to fit them.
+never a running number: a plan that overruns a module's minutes is cut to fit them.
 
 Keep every block small enough to write in ONE response: at most %(max_activities)d activities. An
 objective that needs more than that gets SEVERAL blocks, and each one must carry a
@@ -358,8 +359,10 @@ Implementation requirements:
   could follow verbatim."""
 
 RULES_IMPLEMENTATION_DEV_PLAN = """\
-Divide the delivery into session blocks. Every activity id and every material id in the design
-must appear in exactly one block: an activity in no block is an activity nobody scheduled, and
+Divide the delivery into session blocks, module by module and in the order of the modules: a
+block delivers ONE module's activities and materials — your read of the design state lists each
+with the module it belongs to. Every activity id and every material id in
+the design must appear in exactly one block: an activity in no block is an activity nobody scheduled, and
 an id in two blocks is two developers writing the same session. Never invent an id that is not
 in the design.
 
@@ -396,12 +399,11 @@ list of ids."""
 #: covers one family and reads its ``RULES_*`` directly.)
 _STATE_FAMILIES: dict[str, tuple[str, ...]] = {
     "outcomes": ("OUTCOMES", "COURSE_MODULES"),
-    "assessment": ("ASSESSMENT_PLAN", "ASSESSMENT_ITEMS"),
-    "activities": ("ACTIVITY_PLAN", "ACTIVITIES"),
+    # The dev plan is part of every dispatch artifact, and the rule that a
+    # set stays inside one module has to reach the planner when it plans.
+    "assessment": ("ASSESSMENT_PLAN", "ASSESSMENT_DEV_PLAN", "ASSESSMENT_ITEMS"),
+    "activities": ("ACTIVITY_PLAN", "ACTIVITY_DEV_PLAN", "ACTIVITIES"),
     "content": ("MEDIA_SELECTIONS", "MATERIALS"),
-    # The dev plan is part of the implementation DISPATCH artifact (the session
-    # guides it divides are written by the Developer tier), so its rules belong
-    # in the stage text.
     "implementation": ("IMPLEMENTATION", "IMPLEMENTATION_DEV_PLAN"),
 }
 

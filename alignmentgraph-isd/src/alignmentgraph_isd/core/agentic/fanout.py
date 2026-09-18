@@ -92,6 +92,21 @@ def output_errors(spec: "FanoutSpec", section: dict) -> list[str]:
     return errors
 
 
+def _names_its(field_name: str, list_key: str, what: str) -> Callable[[list], list[str]]:
+    """An item validator: every item must say which ``what`` it belongs to.
+
+    Only that it SAYS so. Whether the id exists is a check's question
+    (``instrument_alignment``, P13) — a validator has no state to ask — but an
+    item that names nothing can be refused here, while its author is still in
+    the conversation, instead of becoming a finding nobody can attribute."""
+    def errors(items: list) -> list[str]:
+        return [f"{list_key}[{index}].{field_name}: name the {what} this belongs to, "
+                "by an id your assignment lists"
+                for index, item in enumerate(items)
+                if isinstance(item, dict) and not str(item.get(field_name) or "").strip()]
+    return errors
+
+
 def session_guide_errors(guides: list) -> list[str]:
     """A session guide with prose but no ids schedules nothing.
 
@@ -185,12 +200,28 @@ def _deterministic_stats(sets: list) -> dict:
 def _assessment_sets(state, parsed: dict) -> tuple[list, dict]:
     plan = parsed.get("assessment_plan") or {}
     return dev_plans.normalize_assessment_dev_plan(
-        parsed.get("dev_plan"), _lo_ids(state), plan.get("lo_coverage_targets") or {})
+        parsed.get("dev_plan"), _lo_ids(state), plan.get("lo_coverage_targets") or {},
+        modules=parsed.get("modules"), instruments=plan.get("instruments"))
 
 
 def _activity_sets(state, parsed: dict) -> tuple[list, dict]:
     return dev_plans.normalize_activity_dev_plan(
-        parsed.get("dev_plan"), _lo_ids(state), items_by_lo(state))
+        parsed.get("dev_plan"), _lo_ids(state), items_by_lo(state),
+        modules=parsed.get("modules"))
+
+
+def module_of_artifacts(state) -> dict[str, str]:
+    """Which module each activity and each material was written for, by the
+    field that artifact itself carries (``module_id`` / ``linked_module``).
+    The delivery plan is divided by it."""
+    out: dict[str, str] = {}
+    for node_type, doc, field_name in (
+            (NodeType.ACTIVITY, ("activity", "learning_activities"), "module_id"),
+            (NodeType.MATERIAL, ("material", "learner_materials"), "linked_module")):
+        for data in _element_data(state, node_type, doc):
+            if data.get("id") and data.get(field_name):
+                out[str(data["id"])] = str(data[field_name])
+    return out
 
 
 def _material_sets(state, parsed: dict) -> tuple[list, dict]:
@@ -252,7 +283,8 @@ def _session_sets(state, parsed: dict) -> tuple[list, dict]:
     return dev_plans.normalize_implementation_dev_plan(
         parsed.get("dev_plan"),
         _element_ids(state, NodeType.ACTIVITY, ("activity", "learning_activities")),
-        _element_ids(state, NodeType.MATERIAL, ("material", "learner_materials")))
+        _element_ids(state, NodeType.MATERIAL, ("material", "learner_materials")),
+        modules=parsed.get("modules"), module_of=module_of_artifacts(state))
 
 
 def _every_part_dispatch_done(stage: str, state) -> bool:
@@ -300,7 +332,8 @@ SPECS: dict[str, FanoutSpec] = {
                 schema_key="assessment_tools", id_field="item_id",
                 rules=rules.RULES_ASSESSMENT_ITEMS_SET + "\n" + rules.RULES_RUBRICS_ITEM,
                 element_type=NodeType.ASSESSMENT, id_prefix="AT",
-                doc_key=("assessment", "assessment_tools")),
+                doc_key=("assessment", "assessment_tools"),
+                validate_items=_names_its("instrument_id", "assessment_tools", "instrument")),
         ),
         developer_reads=(NodeType.OBJECTIVE,),
         render=dev_plans.render_assessment_set, plan_sets=_assessment_sets,
@@ -320,7 +353,8 @@ SPECS: dict[str, FanoutSpec] = {
                 rules=rules.RULES_ACTIVITIES_SET,
                 self_ref_fields=("prerequisite_activities",),
                 element_type=NodeType.ACTIVITY, id_prefix="TLA",
-                doc_key=("activity", "learning_activities")),
+                doc_key=("activity", "learning_activities"),
+                validate_items=_names_its("module_id", "learning_activities", "module")),
         ),
         developer_reads=(NodeType.OBJECTIVE, NodeType.ASSESSMENT),
         render=dev_plans.render_activity_set, plan_sets=_activity_sets,

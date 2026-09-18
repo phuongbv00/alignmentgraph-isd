@@ -751,35 +751,40 @@ def duration_minutes(text: object) -> float:
 
 
 def time_budget(graph) -> list[Violation]:
-    """The activities, added up, against the learner time the plan said the
-    course has (``dev_plan.contact_hours``).
+    """Each module's activities, added up, against the learner time the module
+    was given (``minutes``, the Outcome Designer's).
 
     The fan-out is sized BEFORE any activity is written
     (``dev_plans.fit_time_budget``); this is the same budget read AFTER, off
     the durations the Developers actually wrote — the measurement of whether
     the design fits the course it was planned for. Report-only: which activity
-    to shorten or drop is a design judgment. Silent when the plan declared no
-    hours or no activity states a duration: there is nothing to compare."""
-    plan = graph.get_node(graph.section_id(NodeType.ACTIVITY_PLAN))
-    dev_plan = ((plan or {}).get("data") or {}).get("dev_plan") or {}
-    try:
-        hours = float(dev_plan.get("contact_hours") or 0)
-    except (TypeError, ValueError):
-        hours = 0.0
+    to shorten or drop is a design judgment. Silent for a module that states no
+    time or whose activities state no duration: there is nothing to compare."""
+    violations: list[Violation] = []
     activities = graph.element_nodes(NodeType.ACTIVITY)
-    timed = [duration_minutes(a["data"].get("duration")) for a in activities]
-    total = sum(timed)
-    if hours <= 0 or not total or total <= hours * 60:
-        return []
-    return [Violation(
-        node_id=plan["id"], edge_type="", violation_type="time_budget", severity="warning",
-        message=(f"The {len(activities)} activities add up to {total / 60:.1f} hours of learner "
-                 f"time against the {hours:g} contact hours the plan declared."),
-        repair_hint=("Shorten or merge activities until they fit the course, or state the "
-                     "contact hours the course really has."),
-        metadata={"contact_hours": hours, "activity_minutes": total,
-                  "activities": len(activities),
-                  "untimed": sum(1 for minutes in timed if not minutes)})]
+    for module in graph.element_nodes(NodeType.MODULE):
+        data = module["data"]
+        module_id = str(data.get("id") or "")
+        try:
+            budget = float(data.get("minutes") or 0)
+        except (TypeError, ValueError):
+            budget = 0.0
+        mine = [a for a in activities
+                if alignment.bare_ref(a["data"].get("module_id", "")) == module_id]
+        timed = [duration_minutes(a["data"].get("duration")) for a in mine]
+        total = sum(timed)
+        if budget <= 0 or not total or total <= budget:
+            continue
+        violations.append(Violation(
+            node_id=module["id"], edge_type="", violation_type="time_budget", severity="warning",
+            message=(f"The {len(mine)} activities of {module_id} add up to {total:g} minutes of "
+                     f"learner time against the {budget:g} minutes the module has."),
+            repair_hint=("Shorten or merge this module's activities until they fit its "
+                         "minutes."),
+            metadata={"module_minutes": budget, "activity_minutes": total,
+                      "activities": len(mine),
+                      "untimed": sum(1 for minutes in timed if not minutes)}))
+    return violations
 
 
 def activity_engagement(graph) -> list[Violation]:
@@ -973,6 +978,14 @@ def relation_coverage(graph) -> list[Violation]:
             metadata = {"node_id": node_id}
             if node_id.startswith(f"{NodeType.OBJECTIVE}{graph.ELEMENT_SEP}"):
                 metadata["lo_id"] = _bare_id(graph, node_id)
+            if node_id.startswith(f"{NodeType.MODULE}{graph.ELEMENT_SEP}"):
+                # What a replan round needs to turn "this module has nothing"
+                # into work: the module, and the objectives it serves.
+                module = (graph.get_node(node_id) or {}).get("data") or {}
+                metadata["module_id"] = _bare_id(graph, node_id)
+                metadata["lo_ids"] = [alignment.bare_ref(o)
+                                      for o in (module.get("objectives") or [])
+                                      if alignment.bare_ref(o)]
             violations.append(Violation(
                 node_id=node_id, edge_type="", violation_type=relation_id,
                 severity="error" if relation.tier == "core" else "warning",

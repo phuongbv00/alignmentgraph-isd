@@ -139,6 +139,12 @@ class TrajectoryAction(StrEnum):
     #: of turns that is a function of how many work sets it planned — but that
     #: the budget CUT neither arm.
     BUDGET_EXHAUSTED = "budget_exhausted"
+    #: The run ended after the outcomes stage because it left no course
+    #: modules. They are the key every later family divides its work by, and
+    #: the harness does not invent a division in their place: no later stage
+    #: runs, what exists is aggregated, and the count of such runs is a finding
+    #: about the model rather than something a fallback hides.
+    RUN_STOPPED = "run_stopped"
     #: A step ended without the agent producing a valid artifact. Nothing
     #: writes one on its behalf: a scripted single-shot fallback covers 26-35%
     #: of the full pipeline's artifacts and only in the multi arm, which would
@@ -199,6 +205,7 @@ _RECOVERY_ACTIONS = frozenset({
     # one view that answers "what went wrong in this run".
     TrajectoryAction.AGENTIC_GAVE_UP,
     TrajectoryAction.BUDGET_EXHAUSTED,
+    TrajectoryAction.RUN_STOPPED,
     TrajectoryAction.TOOL_BINDING_UNAVAILABLE,
     TrajectoryAction.TOOL_CALL_MARKUP_RECOVERED,
     TrajectoryAction.ARGUMENT_RESHAPED,

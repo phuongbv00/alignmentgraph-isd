@@ -553,19 +553,22 @@ def _replan_sets(state, spec, step, gaps: list, round_index: int) -> list:
         if not targets:
             return []
         work_sets, _stats = dev_plans.normalize_assessment_dev_plan(
-            plan, list(targets), targets)
+            plan, list(targets), targets, modules=parsed.get("modules"),
+            instruments=(parsed.get("assessment_plan") or {}).get("instruments"))
     elif step.name == "implementation":
         activities, materials = replan.unscheduled_of(gaps)
         if not (activities or materials):
             return []
         work_sets, _stats = dev_plans.normalize_implementation_dev_plan(
-            plan, activities, materials, first_session=replan.next_session(state))
+            plan, activities, materials, first_session=replan.next_session(state),
+            modules=parsed.get("modules"), module_of=fanout.module_of_artifacts(state))
     else:
         objectives = replan.objectives_of(gaps)
         if not objectives:
             return []
         work_sets, _stats = dev_plans.normalize_activity_dev_plan(
-            plan, list(objectives), fanout.items_by_lo(state))
+            plan, list(objectives), fanout.items_by_lo(state),
+            modules=parsed.get("modules"))
     return replan.tag_round(work_sets, round_index)
 
 
@@ -648,6 +651,7 @@ def _run_single(config, memory, trajectory, design_brief, *,
         # multi arm's per-stage net.
         _repair_all(memory, trajectory, design_brief,
                     graph_mode=graph_mode, identity=SINGLE_IDENTITY)
+        _stopped_without_modules(memory.state, trajectory, errors, loop.stats)
     return {"design": loop.stats}, errors, {"design": 1}
 
 
@@ -731,8 +735,32 @@ def _run_multi(config, memory, graph, store, trajectory, design_brief, *,
                                phase=step.name)
             autonomy[step.name] = stats
             task_attempts[step.name] = task_attempts.get(step.name, 0) + 1
+        if step.name == "outcomes" and _stopped_without_modules(
+                state, trajectory, errors, autonomy[step.name]):
+            break
 
     return autonomy, errors, task_attempts
+
+
+#: What a run that stopped for want of modules says about itself.
+NO_MODULES = "outcomes produced no course modules; run stopped"
+
+
+def _stopped_without_modules(state, trajectory, errors: list, stats: dict) -> bool:
+    """True, and on the record, when the outcomes stage left no module.
+
+    The modules are the key every later family divides its work by. A run
+    without them STOPS: the harness does not stand one in — deciding how a
+    course divides is the Outcome Designer's — and no later stage runs. What
+    exists is still aggregated and returned, so a benchmark scores the
+    shortfall against the agent instead of losing the scenario."""
+    with trajectory.acting_as(ORCHESTRATOR):
+        if fanout.course_modules(state):
+            return False
+    errors.append(NO_MODULES)
+    stats["run_stopped"] = True
+    trajectory.log_recovery_event(ORCHESTRATOR, "run_stopped", "outcomes", NO_MODULES)
+    return True
 
 
 def _metadata(config, trajectory, design_brief, *, single: bool, graph_mode: bool,
@@ -904,8 +932,11 @@ class MetaAgent:
         with _phase(trajectory, "reconcile", phase_total - 1, phase_total), \
                 trajectory.acting_as(ORCHESTRATOR):
             # The reconciliation's final look IS the run's residual, empty included.
-            residual = _reconcile(state, trajectory, design_brief,
-                                  graph_mode=graph_mode, memory=memory)
+            # A run that stopped for want of modules has no design to reconcile:
+            # routing the absence of four families to their owners would record
+            # as findings what is one fact, already on the record.
+            residual = [] if NO_MODULES in errors else _reconcile(
+                state, trajectory, design_brief, graph_mode=graph_mode, memory=memory)
             # Everything still standing is now explained: whatever nothing marked
             # is `unexplained`, which is a fact worth saying rather than defaulting
             # to "the model could not do it".

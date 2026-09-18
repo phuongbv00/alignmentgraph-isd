@@ -47,12 +47,14 @@ from .. import rulebook as rules
 REPLANNABLE: dict[str, dict] = {
     "assessment": {
         "rules": rules.RULES_ASSESSMENT_DEV_PLAN,
-        "gap_types": ("C2", "P3", "plan_coverage"),
+        # P14: a module with no item at all is its instruments' items unwritten.
+        "gap_types": ("C2", "P3", "P14", "plan_coverage"),
         "noun": "assessment item",
     },
     "activities": {
         "rules": rules.RULES_ACTIVITY_DEV_PLAN,
-        "gap_types": ("C3", "C4"),
+        # P13: a module nothing is taught in is a block nobody was given.
+        "gap_types": ("C3", "C4", "P13"),
         "noun": "learning activity",
     },
     # P10/P11 are the gaps the Developer tier can close by construction: an
@@ -79,6 +81,14 @@ def gaps_for(stage: str, violations: list) -> list:
             if getattr(v, "violation_type", "") in spec["gap_types"]]
 
 
+def _gap_objectives(gap) -> list[str]:
+    """The objectives one gap is about: the one it names, or — for a module
+    nothing was written for (P13/P14) — every objective that module serves."""
+    metadata = getattr(gap, "metadata", None) or {}
+    named = [str(metadata.get("lo_id") or "")] + [str(o) for o in metadata.get("lo_ids") or []]
+    return [objective for objective in named if objective]
+
+
 def gap_targets(gaps: list, plan_targets: dict | None = None) -> dict:
     """Coverage targets naming exactly the gaps: ``{objective: [category…]}``.
 
@@ -92,15 +102,13 @@ def gap_targets(gaps: list, plan_targets: dict | None = None) -> dict:
     targets: dict[str, list[str]] = {}
     for gap in gaps:
         metadata = getattr(gap, "metadata", None) or {}
-        objective = str(metadata.get("lo_id") or "")
-        if not objective:
-            continue
         category = str(metadata.get("plan_category") or "").strip().lower()
-        bucket = targets.setdefault(objective, [])
-        for candidate in ([category] if category else
-                          _promised_for(promised, objective)):
-            if candidate and candidate not in bucket:
-                bucket.append(candidate)
+        for objective in _gap_objectives(gap):
+            bucket = targets.setdefault(objective, [])
+            for candidate in ([category] if category else
+                              _promised_for(promised, objective)):
+                if candidate and candidate not in bucket:
+                    bucket.append(candidate)
     return {objective: cats for objective, cats in targets.items() if cats}
 
 
@@ -120,9 +128,9 @@ def objectives_of(gaps: list) -> tuple[str, ...]:
     """The objectives a replan is about — the activity families' ground truth."""
     seen: list[str] = []
     for gap in gaps:
-        objective = str((getattr(gap, "metadata", None) or {}).get("lo_id") or "")
-        if objective and objective not in seen:
-            seen.append(objective)
+        for objective in _gap_objectives(gap):
+            if objective not in seen:
+                seen.append(objective)
     return tuple(seen)
 
 

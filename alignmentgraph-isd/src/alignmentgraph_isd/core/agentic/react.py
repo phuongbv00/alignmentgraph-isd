@@ -345,6 +345,13 @@ class ReactLoop:
         present = {k: v for k, v in (section or {}).items() if v not in (None, [], {})}
         if not present:
             return errors + ["the submit is empty; send the plan, or a batch of items"]
+        if spec is not None and not fanout.course_modules(self.state):
+            # The multi arm never reaches these stages without modules
+            # (``core/runner.py`` stops the run after outcomes); this is the
+            # same rule for an agent that walks the stages itself.
+            return errors + [
+                f"{step.name} is divided by the course's modules and there are none yet: "
+                "submit course_modules with submit_outcomes first"]
         # Dispatch keys go through the step's own validator, but only once the
         # submit actually claims to carry them.
         dispatch_keys = [k for k, _t, _r in step.submit_fields]

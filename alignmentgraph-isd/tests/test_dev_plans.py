@@ -608,48 +608,127 @@ def _planned(sets):
     return sum(ws.payload["expected_activities"] for ws in sets)
 
 
-def test_a_counting_sequence_is_cut_to_the_hours_the_plan_declared():
+def _one_module(minutes, los):
+    return [{"id": "MOD-01", "title": "All of it", "objectives": list(los), "minutes": minutes}]
+
+
+def test_a_counting_sequence_is_cut_to_the_time_its_module_has():
     """MEASURED (run 1c0a4e81): the planner wrote `expected_activities` as a
     running number — 2, 3, 4 … across 33 blocks — and the per-block clamp let
-    94 activities through for 5 objectives: a third of the run's calls, 88
-    open C5 gaps downstream. What bounds an activity plan is the learner time
-    the course has, which the planner states; the harness holds the plan to
-    it and says how much it cut."""
+    94 activities through for 5 objectives: a third of the run's calls, and 88
+    activities downstream that no content supported. What bounds an activity
+    plan is the learner time its MODULE has, which the Outcome Designer states;
+    the harness holds the plan to it and says how much it cut."""
     from alignmentgraph_isd.core import dev_plans
 
     los = [f"ILO-0{i}" for i in range(1, 6)]
-    plan = {"contact_hours": 10, "activity_blocks": _blocks(list(range(2, 35)))}
-    sets, stats = dev_plans.normalize_activity_dev_plan(plan, los)
+    plan = {"activity_blocks": _blocks(list(range(2, 35)))}
+    sets, stats = dev_plans.normalize_activity_dev_plan(
+        plan, los, modules=_one_module(600, los))
 
-    ceiling = 10 * 60 // dev_plans.MIN_ACTIVITY_MINUTES
+    ceiling = max(len(sets), 600 // dev_plans.MIN_ACTIVITY_MINUTES)
     assert _planned(sets) <= ceiling
-    assert stats["time_budget"]["contact_hours"] == 10
+    assert stats["time_budget"]["module_minutes"] == 600
     assert stats["planned_activities"] > ceiling, "what the planner asked for is on the record"
     assert stats["time_budget"]["trimmed"] >= stats["planned_activities"] - ceiling > 0
     assert {lo for ws in sets for lo in ws.objectives} == set(los), "every objective keeps a block"
+    assert {ws.module_id for ws in sets} == {"MOD-01"}
 
 
 def test_a_block_plans_no_more_than_fits_in_its_own_minutes():
     from alignmentgraph_isd.core import dev_plans
 
-    plan = {"contact_hours": 40, "activity_blocks": _blocks([8, 8], minutes=[45, 240])}
-    sets, _stats = dev_plans.normalize_activity_dev_plan(plan, ["ILO-01", "ILO-02"])
+    plan = {"activity_blocks": _blocks([8, 8], minutes=[45, 240])}
+    sets, _stats = dev_plans.normalize_activity_dev_plan(
+        plan, ["ILO-01", "ILO-02"], modules=_one_module(2400, ["ILO-01", "ILO-02"]))
     by_theme = {ws.payload["block_theme"]: ws.payload["expected_activities"] for ws in sets}
     assert by_theme["theme 0"] == 45 // dev_plans.MIN_ACTIVITY_MINUTES
     assert by_theme["theme 1"] == 8, "a block that fits is left as the planner wrote it"
 
 
-def test_a_plan_that_declares_no_time_is_left_alone_and_says_so():
-    """The harness holds a plan to the PLANNER's number, never to one it made
+def test_a_module_that_states_no_time_is_left_alone_and_the_record_says_so():
+    """The harness holds a plan to the DESIGN's number, never to one it made
     up: the brief states duration as a band, not as hours."""
     from alignmentgraph_isd.core import dev_plans
 
     sets, stats = dev_plans.normalize_activity_dev_plan(
-        {"activity_blocks": _blocks([4, 4])}, ["ILO-01", "ILO-02"])
-    assert _planned(sets) == 8 and stats["time_budget"] == "undeclared"
+        {"activity_blocks": _blocks([4, 4])}, ["ILO-01", "ILO-02"],
+        modules=_one_module(None, ["ILO-01", "ILO-02"]))
+    assert _planned(sets) == 8
+    assert stats["time_budget"]["unbudgeted_sets"] == len(sets)
 
 
-def test_the_written_activities_are_checked_against_the_declared_hours():
+def test_a_block_never_spans_two_modules_and_the_sets_come_out_in_course_order():
+    """The module is the key every family divides by. A block the planner drew
+    across a module boundary is cut there, its count divided between the pieces
+    rather than repeated; an objective two modules serve is practised in both;
+    and one no module serves is written with the course's last module."""
+    from alignmentgraph_isd.core import dev_plans
+
+    modules = [{"id": "MOD-01", "title": "Basics", "objectives": ["ILO-01", "ILO-02"], "minutes": 120},
+               {"id": "MOD-02", "title": "Practice", "objectives": ["ILO-02", "ILO-03"], "minutes": 240}]
+    plan = {"activity_blocks": [
+        {"set_id": "B1", "objectives": ["ILO-03", "ILO-01"], "block_theme": "across",
+         "block_minutes": 120, "expected_activities": 4}]}
+    sets, stats = dev_plans.normalize_activity_dev_plan(
+        plan, ["ILO-01", "ILO-02", "ILO-03", "ILO-04"], modules=modules)
+
+    assert [ws.module_id for ws in sets] == sorted(ws.module_id for ws in sets)
+    by_module = {m: [ws for ws in sets if ws.module_id == m] for m in ("MOD-01", "MOD-02")}
+    assert {lo for ws in by_module["MOD-01"] for lo in ws.objectives} == {"ILO-01", "ILO-02"}
+    assert {lo for ws in by_module["MOD-02"] for lo in ws.objectives} == {"ILO-02", "ILO-03", "ILO-04"}
+    across = [ws for ws in sets if ws.payload.get("block_theme") == "across"]
+    assert sorted(ws.objectives for ws in across) == [("ILO-01",), ("ILO-03",)]
+    assert sum(ws.payload["expected_activities"] for ws in across) == 4, "divided, not repeated"
+    assert all(ws.as_dict()["module_id"] == ws.module_id for ws in sets)
+    assert stats["set_count"] == len(sets)
+
+
+def test_assessment_sets_follow_the_instruments_module_by_module():
+    from alignmentgraph_isd.core import dev_plans
+
+    modules = [{"id": "MOD-01", "objectives": ["ILO-01"], "minutes": 60},
+               {"id": "MOD-02", "objectives": ["ILO-01", "ILO-02"], "minutes": 60}]
+    instruments = [
+        {"id": "INS-01", "module_id": "MOD-01", "timing": "formative", "format": "quiz",
+         "item_counts": {"multiple_choice": 10}, "covers_objectives": ["ILO-01"]},
+        {"id": "INS-02", "module_id": "MOD-02", "timing": "summative", "format": "practical",
+         "item_counts": {"performance_task": 2}, "covers_objectives": ["ILO-01", "ILO-02"]}]
+    targets = {"ILO-01": ["formative", "summative"], "ILO-02": ["summative"]}
+    sets, _stats = dev_plans.normalize_assessment_dev_plan(
+        None, ["ILO-01", "ILO-02"], targets, modules=modules, instruments=instruments)
+
+    assert [(ws.module_id, ws.pairs) for ws in sets] == [
+        ("MOD-01", (("ILO-01", "formative"),)),
+        ("MOD-02", (("ILO-01", "summative"), ("ILO-02", "summative")))]
+    assert [i["id"] for i in sets[1].payload["instruments"]] == ["INS-02"]
+    text = dev_plans.render_assessment_set(sets[1])
+    assert "module: MOD-02" in text and "INS-02: summative practical" in text
+    assert "full scale: 2 performance_task" in text
+
+
+def test_a_session_block_is_delivered_inside_one_module():
+    from alignmentgraph_isd.core import dev_plans
+
+    modules = [{"id": "MOD-01", "objectives": ["ILO-01"], "minutes": 60},
+               {"id": "MOD-02", "objectives": ["ILO-02"], "minutes": 60}]
+    module_of = {"TLA-0101": "MOD-01", "TLA-0201": "MOD-02", "MAT-0101": "module:MOD-01"}
+    plan = {"session_blocks": [{"set_id": "SB", "expected_sessions": 3,
+                                "activity_ids": ["TLA-0201", "TLA-0101"], "material_ids": []}]}
+    sets, _stats = dev_plans.normalize_implementation_dev_plan(
+        plan, ["TLA-0101", "TLA-0201", "TLA-0301"], ["MAT-0101"],
+        modules=modules, module_of=module_of)
+
+    assert [ws.module_id for ws in sets] == sorted(ws.module_id for ws in sets)
+    scheduled = [a for ws in sets for a in ws.payload["activity_ids"] + ws.payload["material_ids"]]
+    assert sorted(scheduled) == ["MAT-0101", "TLA-0101", "TLA-0201", "TLA-0301"], "each exactly once"
+    first = next(ws for ws in sets if "TLA-0101" in ws.payload["activity_ids"])
+    assert first.module_id == "MOD-01"
+    orphan = next(ws for ws in sets if "TLA-0301" in ws.payload["activity_ids"])
+    assert orphan.module_id == "MOD-02", "an activity naming no module goes with the last one"
+
+
+def test_the_written_activities_are_checked_against_their_module_s_minutes():
     from alignmentgraph_isd.core import checks, repairs
     from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
 
@@ -658,17 +737,16 @@ def test_the_written_activities_are_checked_against_the_declared_hours():
     assert checks.duration_minutes("a while") == 0
 
     graph = AlignmentGraph()
-    graph.add_node(NodeType.ACTIVITY_PLAN, graph.section_id(NodeType.ACTIVITY_PLAN),
-                   {"dev_plan": {"contact_hours": 2}})
+    graph.add_element_node(NodeType.MODULE, "MOD-01", {"id": "MOD-01", "minutes": 120})
+    graph.add_element_node(NodeType.MODULE, "MOD-02", {"id": "MOD-02", "minutes": 120})
     for i in range(3):
-        graph.add_element_node(NodeType.ACTIVITY, f"TLA-0{i}",
-                               {"id": f"TLA-0{i}", "duration": "60 minutes"})
+        graph.add_element_node(NodeType.ACTIVITY, f"TLA-0{i}", {
+            "id": f"TLA-0{i}", "duration": "60 minutes", "module_id": "MOD-01"})
     found = checks.time_budget(graph)
-    assert [v.violation_type for v in found] == ["time_budget"]
-    assert "3.0 hours" in found[0].message and "2 contact hours" in found[0].message
+    assert [(v.violation_type, v.node_id) for v in found] == [("time_budget", "module:MOD-01")]
+    assert "180 minutes" in found[0].message and "120 minutes" in found[0].message
     assert "time_budget" in repairs.REPORT_ONLY, "which activity to cut is a design judgment"
     assert repairs.OWNER_BY_VIOLATION["time_budget"] == "activity_designer"
 
-    graph.add_node(NodeType.ACTIVITY_PLAN, graph.section_id(NodeType.ACTIVITY_PLAN),
-                   {"dev_plan": {"contact_hours": 3}})
+    graph.update_node("module:MOD-01", {"minutes": 180})
     assert checks.time_budget(graph) == []

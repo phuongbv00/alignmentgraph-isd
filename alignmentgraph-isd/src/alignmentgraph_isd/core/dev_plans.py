@@ -115,9 +115,19 @@ class WorkSet:
     #: and no id depends on which of them commits first.
     ordinal: int = 1
 
+    @property
+    def module_id(self) -> str:
+        """The course module this set is one share of, ``""`` for a set that
+        belongs to none. Read off the payload, which is what every split and
+        merge below copies, so a set cut in two keeps its module for free."""
+        module = self.payload.get("module") or next(
+            iter(self.payload.get("modules") or []), None)
+        return str((module or {}).get("id") or "") if isinstance(module, dict) else ""
+
     def as_dict(self) -> dict:
         return {
             "set_id": self.set_id,
+            "module_id": self.module_id,
             "objectives": list(self.objectives),
             "pairs": [list(p) for p in self.pairs],
             "payload": self.payload,
@@ -208,6 +218,70 @@ def _chunks(seq: list, size: int) -> list[list]:
     return [seq[i:i + size] for i in range(0, len(seq), size)]
 
 
+# ── the module is the key every family divides its work by ─────────────────
+#
+# The GROUND TRUTH of each family stays what its checks measure — pairs,
+# objectives, scheduled ids — and every obligation still lands in exactly one
+# set. What the modules change is the PARTITION: a set never spans two
+# modules, and the sets come out in course order. A planner's own grouping is
+# kept inside a module and cut where it crosses one.
+
+def _module_brief(module: dict) -> dict:
+    """What a work set carries of its module: enough to name it, to state its
+    time, and to say which objectives it serves."""
+    return {"id": _bare(module.get("id")), "title": str(module.get("title") or ""),
+            "minutes": module.get("minutes"),
+            "objectives": [_bare(o) for o in (module.get("objectives") or []) if _bare(o)]}
+
+
+def _modules_in_order(modules) -> list[dict]:
+    return [_module_brief(m) for m in (modules or [])
+            if isinstance(m, dict) and _bare(m.get("id"))]
+
+
+def _in_course_order(sets: list[WorkSet], modules: list[dict]) -> list[WorkSet]:
+    order = {m["id"]: index for index, m in enumerate(modules)}
+    return sorted(sets, key=lambda ws: order.get(ws.module_id, len(order)))
+
+
+def _modules_of_objective(modules: list[dict]) -> dict[str, list[dict]]:
+    by_lo: dict[str, list[dict]] = {}
+    for module in modules:
+        for lo in module["objectives"]:
+            by_lo.setdefault(lo, []).append(module)
+    return by_lo
+
+
+def _pair_modules(pairs, modules: list[dict], instruments) -> dict[tuple[str, str], dict]:
+    """The module each (objective, category) pair is written in: the module of
+    the first instrument that assesses that objective at that timing, else the
+    first module that serves the objective, else the course's last module —
+    an objective no module serves is a P12 finding already, and its items
+    still have to be written somewhere."""
+    by_id = {m["id"]: m for m in modules}
+    by_lo = _modules_of_objective(modules)
+    from_instrument: dict[tuple[str, str], dict] = {}
+    for instrument in instruments or []:
+        if not isinstance(instrument, dict):
+            continue
+        module = by_id.get(_bare(instrument.get("module_id")))
+        timing = str(instrument.get("timing") or "").strip().lower()
+        for lo in instrument.get("covers_objectives") or []:
+            if module is not None:
+                from_instrument.setdefault((_bare(lo), timing), module)
+    return {pair: from_instrument.get(pair) or next(iter(by_lo.get(pair[0], [])), modules[-1])
+            for pair in pairs}
+
+
+def _instruments_for(instruments, module_id: str, pairs) -> list[dict]:
+    """The module's instruments that assess any of ``pairs``."""
+    wanted = set(pairs)
+    return [dict(i) for i in (instruments or []) if isinstance(i, dict)
+            and _bare(i.get("module_id")) == module_id
+            and any((_bare(lo), str(i.get("timing") or "").strip().lower()) in wanted
+                    for lo in i.get("covers_objectives") or [])]
+
+
 # ── assessment: instrument sets over (objective, plan_category) pairs ──────
 
 def plan_category_pairs(coverage_targets) -> list[tuple[str, str]]:
@@ -253,7 +327,9 @@ def _assessment_ground_truth_pairs(lo_ids, coverage_targets) -> list[tuple[str, 
     return list(dict.fromkeys(pairs))  # de-dup, order-preserving
 
 
-def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets) -> tuple[list[WorkSet], dict]:
+def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets, *, modules=None,
+                                  instruments=None) -> tuple[list[WorkSet], dict]:
+    modules = _modules_in_order(modules)
     pairs = _assessment_ground_truth_pairs(lo_ids, coverage_targets)
     stats = _empty_stats(len(pairs))
     if not pairs:
@@ -313,6 +389,38 @@ def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets) -> tuple[lis
                             payload={}, source=src))
     stats["appended_sets"] = len(by_objective)
     stats["fallback_used"] = not had_llm_sets
+
+    if modules:
+        # Cut every set where it crosses a module, then put one module's
+        # leftovers together: with modules, the unit a Developer writes for is
+        # a module's instruments, not one objective's.
+        where = _pair_modules(pairs, modules, instruments)
+        pieces: list[WorkSet] = []
+        loose: dict[str, list[tuple[str, str]]] = {}
+        for ws in sets:
+            by_module: dict[str, list[tuple[str, str]]] = {}
+            for pair in ws.pairs:
+                by_module.setdefault(where[pair]["id"], []).append(pair)
+            for module_id, module_pairs in by_module.items():
+                if ws.source != "llm":
+                    loose.setdefault(module_id, []).extend(module_pairs)
+                    continue
+                payload = dict(ws.payload)
+                if len(by_module) > 1:
+                    payload.pop("expected_items", None)   # it counted the whole set
+                pieces.append(WorkSet(
+                    set_id="", pairs=tuple(module_pairs), source="llm", payload=payload,
+                    objectives=tuple(dict.fromkeys(lo for lo, _ in module_pairs))))
+        pieces += [WorkSet(set_id="", pairs=tuple(module_pairs), source=src, payload={},
+                           objectives=tuple(dict.fromkeys(lo for lo, _ in module_pairs)))
+                   for module_pairs in loose.values()]
+        by_id = {m["id"]: m for m in modules}
+        for ws in pieces:
+            module = where[ws.pairs[0]]
+            ws.payload["module"] = by_id[module["id"]]
+            ws.payload["instruments"] = _instruments_for(instruments, module["id"], ws.pairs)
+        sets = _in_course_order(pieces, modules)
+        stats["appended_sets"] = len(loose)
 
     def _merge(tail: list[WorkSet]) -> WorkSet:
         merged_pairs = tuple(dict.fromkeys(p for ws in tail for p in ws.pairs))
@@ -414,8 +522,9 @@ def _expected(raw: object, objective_count: int) -> int:
 #: The shortest stretch of learner time one activity is planned in. NOT a
 #: pedagogical claim — a declared parameter of the harness, like the turn
 #: ceilings — and the only number the time budget needs: the budget itself is
-#: the PLANNER's (``contact_hours``), because the brief states a course's
-#: length only as a band ("2-4 weeks", "1-6 months") and never its hours.
+#: the Outcome Designer's (each module's ``minutes``), because the brief states
+#: a course's length only as a band ("2-4 weeks", "1-6 months") and never its
+#: hours.
 MIN_ACTIVITY_MINUTES = 15
 
 
@@ -427,57 +536,56 @@ def _positive(raw: object) -> float:
     return value if value > 0 else 0.0
 
 
-def fit_time_budget(sets: list[WorkSet], contact_hours: object, stats: dict) -> None:
-    """Hold the planned activities to the time the planner says the course has.
+def fit_time_budget(sets: list[WorkSet], modules: list[dict], stats: dict) -> None:
+    """Hold the planned activities to the time their MODULE has.
 
-    What bounds how many activities a course carries is the learner time it
-    has to spend on them, not a count per objective (constructive alignment
-    names none). The planner states that time (``contact_hours``) and each
-    block's share of it (``block_minutes``); a block then plans at most one
-    activity per ``MIN_ACTIVITY_MINUTES`` of its share, and when the shares
-    overrun the course they are scaled to fit it. Counts are lowered, never
-    raised, and never below one a block — every objective keeps its block.
+    Objective count does not bound an activity plan; learner time does, and
+    the time is the Outcome Designer's: each module states its ``minutes``.
+    The blocks of one module share that budget — a block's ``block_minutes``
+    is scaled down when the module's blocks together claim more than it has —
+    and a block may plan at most one activity per ``MIN_ACTIVITY_MINUTES`` of
+    its share, never fewer than one.
 
     MEASURED, what an unbounded plan costs: on run 1c0a4e81 the planner wrote
     ``expected_activities`` as a counting sequence (2, 3, 4 … across 33 blocks),
     the per-block clamp let 94 activities through for 5 objectives, their
     Developers were a third of the run's calls, the content stage could not
-    cover them (88 activities no content supported) and the delivery plan fell back to a deterministic
-    split of 96 scheduled artifacts.
+    cover them (88 activities no content supported) and the delivery plan fell
+    back to a deterministic split of 96 scheduled artifacts.
 
-    A plan that declares no time is left as it was and says so
-    (``stats["time_budget"] = "undeclared"``) rather than being held to a
-    number the harness made up."""
+    A set that belongs to no module, or to one that states no time, is left as
+    it was and the record says so (``stats["time_budget"]["unbudgeted_sets"]``)
+    rather than being held to a number the harness made up."""
     planned = sum(int(ws.payload.get("expected_activities") or 1) for ws in sets)
     stats["planned_activities"] = planned
-    hours = _positive(contact_hours)
-    if not hours:
-        stats["time_budget"] = "undeclared"
-        return
-    budget = hours * 60
-    minutes = [_positive(ws.payload.get("block_minutes")) for ws in sets]
-    declared = sum(minutes)
-    scale = min(1.0, budget / declared) if declared else 1.0
-    for ws, block in zip(sets, minutes):
-        if block:
-            fits = max(1, int(block * scale) // MIN_ACTIVITY_MINUTES)
+    minutes_of = {m["id"]: _positive(m.get("minutes")) for m in modules}
+    unbudgeted = 0
+    for module_id in dict.fromkeys(ws.module_id for ws in sets):
+        mine = [ws for ws in sets if ws.module_id == module_id]
+        budget = minutes_of.get(module_id, 0.0)
+        if not budget:
+            unbudgeted += len(mine)
+            continue
+        declared = [_positive(ws.payload.get("block_minutes")) for ws in mine]
+        # A block that named no minutes gets an even share of what is left.
+        spoken = sum(declared)
+        silent = declared.count(0.0)
+        even = max(0.0, budget - spoken) / silent if silent else 0.0
+        shares = [d or even for d in declared]
+        scale = min(1.0, budget / sum(shares)) if sum(shares) else 1.0
+        for ws, share in zip(mine, shares):
+            fits = max(1, int(share * scale) // MIN_ACTIVITY_MINUTES)
+            ws.payload["block_minutes"] = int(share * scale)
             ws.payload["expected_activities"] = min(
                 int(ws.payload.get("expected_activities") or 1), fits)
-    # Blocks that named no minutes are still inside the course: the whole
-    # plan may not exceed what the declared hours can hold.
-    ceiling = max(len(sets), int(budget // MIN_ACTIVITY_MINUTES))
-    total = sum(int(ws.payload.get("expected_activities") or 1) for ws in sets)
-    if total > ceiling:
-        factor = ceiling / total
-        for ws in sets:
-            ws.payload["expected_activities"] = max(
-                1, int(int(ws.payload.get("expected_activities") or 1) * factor))
     fitted = sum(int(ws.payload.get("expected_activities") or 1) for ws in sets)
-    stats["time_budget"] = {"contact_hours": hours, "block_minutes": declared,
-                            "trimmed": planned - fitted}
+    stats["time_budget"] = {"module_minutes": sum(minutes_of.values()),
+                            "unbudgeted_sets": unbudgeted, "trimmed": planned - fitted}
 
 
-def normalize_activity_dev_plan(parsed, lo_ids, items_by_lo: dict | None = None) -> tuple[list[WorkSet], dict]:
+def normalize_activity_dev_plan(parsed, lo_ids, items_by_lo: dict | None = None, *,
+                                modules=None) -> tuple[list[WorkSet], dict]:
+    modules = _modules_in_order(modules)
     items_by_lo = items_by_lo or {}
     los = [lo for lo in (_bare(x) for x in (lo_ids or [])) if lo]
     stats = _empty_stats(len(los))
@@ -531,11 +639,17 @@ def normalize_activity_dev_plan(parsed, lo_ids, items_by_lo: dict | None = None)
     stats["appended_sets"] = len(missing)
     stats["fallback_used"] = not had_llm_sets
 
+    if modules:
+        sets = _activity_sets_by_module(sets, modules, items_by_lo, src)
+        stats["appended_sets"] = sum(1 for ws in sets if ws.source != "llm")
+
     def _merge(tail: list[WorkSet]) -> WorkSet:
         merged_objs = tuple(dict.fromkeys(o for ws in tail for o in ws.objectives))
         merged_items = sorted({i for ws in tail for i in ws.payload.get("assessment_items", [])})
         return WorkSet(set_id="", objectives=merged_objs, pairs=(),
-                        payload={"assessment_items": merged_items, "block_theme": "", "rationale": ""},
+                        payload={"assessment_items": merged_items, "block_theme": "", "rationale": "",
+                                 **({"module": tail[-1].payload["module"]}
+                                    if tail[-1].payload.get("module") else {})},
                         source=tail[-1].source)
 
     def _split(ws: WorkSet, limit: int) -> list[WorkSet]:
@@ -591,8 +705,7 @@ def normalize_activity_dev_plan(parsed, lo_ids, items_by_lo: dict | None = None)
     # scoped blocks for ILO-01 were merged back into one and the themes that
     # kept them apart were discarded — the harness undoing exactly the work it
     # had asked for. You never need more blocks than activities.
-    fit_time_budget(sets, (parsed or {}).get("contact_hours") if isinstance(parsed, dict) else None,
-                    stats)
+    fit_time_budget(sets, modules, stats)
     planned_total = sum(int(ws.payload.get("expected_activities") or 1) for ws in sets)
     numbered = _cap_and_number(sets, max(planned_total, len(los)), "AB", _merge,
                                family="activity", split=_split)
@@ -600,6 +713,62 @@ def normalize_activity_dev_plan(parsed, lo_ids, items_by_lo: dict | None = None)
     stats["oversized_splits"] = (
         numbered[0].payload.pop("_oversized_splits", 0) if numbered else 0)
     return numbered, stats
+
+
+def _activity_sets_by_module(sets: list[WorkSet], modules: list[dict],
+                             items_by_lo: dict, leftover_source: str) -> list[WorkSet]:
+    """Cut every block where it crosses a module, and gather one module's
+    unplanned objectives into one block.
+
+    An objective that several modules serve is practised in each of them — the
+    module's share of it — so a block's objectives are intersected with each
+    module's own list. Its planned count and minutes are divided between the
+    pieces in proportion to the objectives each keeps, never repeated. An
+    objective no module serves goes to the course's last module: that it has
+    none is a P12 finding already, and its activities still have to be written
+    somewhere."""
+    served = _modules_of_objective(modules)
+
+    def homes(lo: str) -> list[dict]:
+        return served.get(lo) or [modules[-1]]
+
+    pieces: list[WorkSet] = []
+    loose: dict[str, list[str]] = {}
+    for ws in sets:
+        by_module: dict[str, list[str]] = {}
+        for lo in ws.objectives:
+            for module in homes(lo):
+                by_module.setdefault(module["id"], []).append(lo)
+        total = sum(len(objs) for objs in by_module.values()) or 1
+        for module_id, objs in by_module.items():
+            if ws.source != "llm":
+                loose.setdefault(module_id, []).extend(o for o in objs
+                                                       if o not in loose.get(module_id, []))
+                continue
+            payload = dict(ws.payload)
+            if len(by_module) > 1:
+                share = len(objs) / total
+                payload["expected_activities"] = max(
+                    1, round(int(payload.get("expected_activities") or 1) * share))
+                if _positive(payload.get("block_minutes")):
+                    payload["block_minutes"] = int(_positive(payload["block_minutes"]) * share)
+                payload["assessment_items"] = sorted(
+                    {i for lo in objs for i in items_by_lo.get(lo, [])})
+            pieces.append(WorkSet(set_id="", objectives=tuple(objs), pairs=(),
+                                  payload=payload, source="llm"))
+            pieces[-1].payload["module"] = next(m for m in modules if m["id"] == module_id)
+    for module_id, objs in loose.items():
+        covered = {lo for ws in pieces if ws.module_id == module_id for lo in ws.objectives}
+        objs = [lo for lo in objs if lo not in covered]
+        if not objs:
+            continue
+        pieces.append(WorkSet(
+            set_id="", objectives=tuple(objs), pairs=(), source=leftover_source,
+            payload={"assessment_items": sorted({i for lo in objs for i in items_by_lo.get(lo, [])}),
+                     "block_theme": "", "rationale": "",
+                     "expected_activities": _expected(None, len(objs)),
+                     "module": next(m for m in modules if m["id"] == module_id)}))
+    return _in_course_order(pieces, modules)
 
 
 # ── modules: how many a course carries ──────────────────────────────────────
@@ -775,18 +944,21 @@ def _scheduled(work_set: WorkSet) -> tuple[list[str], list[str]]:
 
 
 def _session_block(activities: list[str], materials: list[str], *, source: str,
-                   theme: str = "", rationale: str = "", expected: object = None) -> WorkSet:
+                   theme: str = "", rationale: str = "", expected: object = None,
+                   module: dict | None = None) -> WorkSet:
     return WorkSet(
         set_id="", objectives=(), pairs=(),
         payload={"activity_ids": activities, "material_ids": materials,
                  "block_theme": theme, "rationale": rationale,
                  "expected_sessions": _expected_sessions(
-                     expected, len(activities) + len(materials))},
+                     expected, len(activities) + len(materials)),
+                 **({"module": module} if module else {})},
         source=source)
 
 
 def _chunk_scheduled(activities: list[str], materials: list[str], limit: int,
-                     *, source: str, theme: str = "") -> list[WorkSet]:
+                     *, source: str, theme: str = "",
+                     module: dict | None = None) -> list[WorkSet]:
     """Break a stretch of delivery into blocks of at most ``limit`` scheduled
     artifacts, activities first. One combined list rather than two, so a block
     is bounded by what its Developer must actually name."""
@@ -794,13 +966,14 @@ def _chunk_scheduled(activities: list[str], materials: list[str], limit: int,
     return [
         _session_block([i for kind, i in chunk if kind == "a"],
                        [i for kind, i in chunk if kind == "m"],
-                       source=source, theme=theme)
+                       source=source, theme=theme, module=module)
         for chunk in _chunks(combined, max(1, limit))
     ]
 
 
 def normalize_implementation_dev_plan(parsed, activity_ids, material_ids,
-                                       first_session: int = 1
+                                       first_session: int = 1, *, modules=None,
+                                       module_of: dict | None = None
                                        ) -> tuple[list[WorkSet], dict]:
     """Divide the delivery into session blocks, one per Developer call.
 
@@ -825,6 +998,25 @@ def normalize_implementation_dev_plan(parsed, activity_ids, material_ids,
     round passes one past what the committed guides already use, for the same
     reason ``replan.tag_round`` strides the ordinal.
     """
+    modules = _modules_in_order(modules)
+    module_of = {_bare(k): _bare(v) for k, v in (module_of or {}).items()}
+    by_id = {m["id"]: m for m in modules}
+
+    def home(artifact: str) -> dict | None:
+        """The module an activity or a material was written for (its own
+        ``module_id`` / ``linked_module``); one naming none that exists is
+        delivered with the course's last module."""
+        if not modules:
+            return None
+        return by_id.get(module_of.get(artifact, "")) or modules[-1]
+
+    def by_module(ids: list[str]) -> dict[str, list[str]]:
+        out: dict[str, list[str]] = {}
+        for artifact in ids:
+            module = home(artifact)
+            out.setdefault(module["id"] if module else "", []).append(artifact)
+        return out
+
     acts = [a for a in (_bare(x) for x in (activity_ids or [])) if a]
     mats = [m for m in (_bare(x) for x in (material_ids or [])) if m]
     stats = _empty_stats(len(acts) + len(mats))
@@ -856,26 +1048,40 @@ def normalize_implementation_dev_plan(parsed, activity_ids, material_ids,
             if not (valid["activity_ids"] or valid["material_ids"]):
                 continue
             claimed.update(valid["activity_ids"] + valid["material_ids"])
-            sets.append(_session_block(
-                valid["activity_ids"], valid["material_ids"], source="llm",
-                theme=str(raw.get("block_theme", "")),
-                rationale=str(raw.get("rationale", "")),
-                expected=raw.get("expected_sessions")))
+            # A block is delivered inside ONE module; one that crosses a
+            # module boundary is cut there, and its session count is
+            # re-derived for each piece rather than repeated.
+            acts_in, mats_in = by_module(valid["activity_ids"]), by_module(valid["material_ids"])
+            crossing = len(set(acts_in) | set(mats_in)) > 1
+            for module_id in dict.fromkeys(list(acts_in) + list(mats_in)):
+                sets.append(_session_block(
+                    acts_in.get(module_id, []), mats_in.get(module_id, []), source="llm",
+                    theme=str(raw.get("block_theme", "")),
+                    rationale=str(raw.get("rationale", "")),
+                    expected=None if crossing else raw.get("expected_sessions"),
+                    module=by_id.get(module_id)))
 
     had_llm_sets = bool(sets)
     limit = max_units("session_guide")
     leftover_acts = [a for a in acts if a not in claimed]
     leftover_mats = [m for m in mats if m not in claimed]
-    appended = _chunk_scheduled(leftover_acts, leftover_mats, limit,
-                                source="appended" if had_llm_sets else "fallback")
+    left_acts, left_mats = by_module(leftover_acts), by_module(leftover_mats)
+    appended = [
+        block
+        for module_id in dict.fromkeys(list(left_acts) + list(left_mats))
+        for block in _chunk_scheduled(
+            left_acts.get(module_id, []), left_mats.get(module_id, []), limit,
+            source="appended" if had_llm_sets else "fallback", module=by_id.get(module_id))]
     sets += appended
+    sets = _in_course_order(sets, modules) if modules else sets
     stats["appended_sets"] = len(appended)
     stats["fallback_used"] = not had_llm_sets
 
     def _merge(tail: list[WorkSet]) -> WorkSet:
         merged_acts = list(dict.fromkeys(a for ws in tail for a in _scheduled(ws)[0]))
         merged_mats = list(dict.fromkeys(m for ws in tail for m in _scheduled(ws)[1]))
-        return _session_block(merged_acts, merged_mats, source=tail[-1].source)
+        return _session_block(merged_acts, merged_mats, source=tail[-1].source,
+                              module=tail[-1].payload.get("module"))
 
     def _split(ws: WorkSet, size_limit: int) -> list[WorkSet]:
         activities, materials = _scheduled(ws)
@@ -883,7 +1089,8 @@ def normalize_implementation_dev_plan(parsed, activity_ids, material_ids,
             return [ws]
         return _chunk_scheduled(activities, materials, size_limit,
                                 source=ws.source,
-                                theme=str(ws.payload.get("block_theme", "")))
+                                theme=str(ws.payload.get("block_theme", "")),
+                                module=ws.payload.get("module"))
 
     numbered = _cap_and_number(sets, max(len(acts) + len(mats), 1), "SB", _merge,
                                family="session_guide", split=_split)
@@ -1022,8 +1229,41 @@ def _resolve_positions(refs: list, assigned: list[str]) -> list[str]:
 # Pure text formatting, not part of the decomposition axis, so both arms
 # import it from here rather than one borrowing the other's agent module.
 
+def _module_line(work_set: WorkSet, *, time: bool = False) -> list[str]:
+    """The module a set is one share of, as the first thing its Developer
+    reads after the set id. Every family states it the same way."""
+    module = work_set.payload.get("module")
+    if not isinstance(module, dict) or not module.get("id"):
+        return []
+    title = f" — {module['title']}" if module.get("title") else ""
+    line = f"module: {module['id']}{title}"
+    block = _positive(work_set.payload.get("block_minutes"))
+    if time and block:
+        line += f" (this block has {int(block)} minutes of learner time)"
+    return [line]
+
+
+def _instrument_lines(work_set: WorkSet) -> list[str]:
+    instruments = [i for i in (work_set.payload.get("instruments") or []) if isinstance(i, dict)]
+    if not instruments:
+        return []
+    lines = ["instruments of the assessment plan YOUR items belong to (set each item's "
+             "``instrument_id`` to one of these ids, and its ``plan_category`` to that "
+             "instrument's timing):"]
+    for instrument in instruments:
+        counts = instrument.get("item_counts")
+        scale = (", ".join(f"{n} {kind}" for kind, n in counts.items())
+                 if isinstance(counts, dict) and counts else "")
+        covers = ", ".join(_bare(o) for o in (instrument.get("covers_objectives") or []))
+        lines.append(f"  - {_bare(instrument.get('id'))}: {instrument.get('timing', '')} "
+                     f"{instrument.get('format', '')}".rstrip()
+                     + (f" — full scale: {scale}" if scale else "")
+                     + (f" — covers {covers}" if covers else ""))
+    return lines
+
+
 def render_assessment_set(work_set: WorkSet) -> str:
-    lines = [f"set_id: {work_set.set_id}"]
+    lines = [f"set_id: {work_set.set_id}"] + _module_line(work_set)
     if work_set.pairs:
         # The count is stated as a number, not left to be inferred from the
         # list length: the planner's `expected_items` (floor: one per pair),
@@ -1038,6 +1278,7 @@ def render_assessment_set(work_set: WorkSet) -> str:
                         "covering every (objective x plan_category) pair below at least once:"))
         for lo, category in work_set.pairs:
             lines.append(f"  - {lo} x {category}")
+    lines += _instrument_lines(work_set)
     hint = work_set.payload.get("instrument_hint")
     if hint:
         lines.append(f"instrument_hint: {hint}")
@@ -1048,7 +1289,7 @@ def render_assessment_set(work_set: WorkSet) -> str:
 
 
 def render_activity_set(work_set: WorkSet) -> str:
-    lines = [f"set_id: {work_set.set_id}"]
+    lines = [f"set_id: {work_set.set_id}"] + _module_line(work_set, time=True)
     if work_set.objectives:
         lines.append("objectives YOU must cover:")
         for lo in work_set.objectives:
@@ -1133,7 +1374,7 @@ def render_session_set(work_set: WorkSet) -> str:
     count = int(work_set.payload.get("expected_sessions") or 1)
     last = first + count - 1
     sessions = ", ".join(str(n) for n in range(first, last + 1))
-    lines = [f"set_id: {work_set.set_id}",
+    lines = [f"set_id: {work_set.set_id}", *_module_line(work_set),
              f"write exactly {count} session guide{'' if count == 1 else 's'}, "
              f"numbered {sessions} — those session numbers are yours, and another "
              "developer holds the rest."]

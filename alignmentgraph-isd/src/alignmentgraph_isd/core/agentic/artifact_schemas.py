@@ -245,17 +245,15 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
         "support_strategies": _arr(),
     }),
     "activity_dev_plan": _obj({
-        "contact_hours": {"type": "number",
-            "description": "scheduled learner time the whole course has, in hours"},
         "activity_blocks": _arr_of(_obj({
             "set_id": {"type": "string"}, "objectives": _arr(),
             "block_theme": {"type": "string"},
             "block_minutes": {"type": "integer",
-                "description": "this block's share of contact_hours, in minutes"},
+                "description": "this block's share of its module's minutes"},
             "expected_activities": {"type": "integer"},
             "rationale": {"type": "string"}},
             ("set_id", "objectives", "block_minutes", "expected_activities"))),
-    }, ("contact_hours", "activity_blocks")),
+    }, ("activity_blocks",)),
     #: Item schema — the fan-out's ``learning_activities``.
     "learning_activities": _obj({
         "activity_name": {"type": "string"}, "duration": {"type": "string"},
