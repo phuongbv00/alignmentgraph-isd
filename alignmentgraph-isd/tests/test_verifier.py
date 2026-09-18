@@ -187,18 +187,18 @@ def test_activity_engagement_silent_when_no_practice_linked():
 
 def test_orphan_content_fires_for_module_with_no_activity():
     graph = AlignmentGraph()
-    graph.add_element_node(NodeType.CONTENT, "MOD-01", {"id": "MOD-01"})
+    graph.add_element_node(NodeType.MODULE, "MOD-01", {"id": "MOD-01"})
     violations = [v for v in checks.orphan_content(graph) if v.violation_type == "orphan_content"]
-    assert any("content:MOD-01" in v.node_id for v in violations)
+    assert any("module:MOD-01" in v.node_id for v in violations)
 
 
 def test_orphan_content_silent_when_module_supports_an_activity():
     graph = AlignmentGraph()
     graph.add_element_node(NodeType.ACTIVITY, "TLA-01", {"id": "TLA-01"})
-    graph.add_element_node(NodeType.CONTENT, "MOD-01", {"id": "MOD-01"})
-    alignment.record_provenance(graph, "C5", ["content:MOD-01"], "activity:TLA-01")
+    graph.add_element_node(NodeType.MODULE, "MOD-01", {"id": "MOD-01"})
+    alignment.record_provenance(graph, "C5", ["module:MOD-01"], "activity:TLA-01")
     node_ids = {v.node_id for v in checks.orphan_content(graph)}
-    assert "content:MOD-01" not in node_ids
+    assert "module:MOD-01" not in node_ids
 
 
 def test_orphan_content_fires_for_material_with_no_module():
@@ -403,7 +403,7 @@ def test_an_orphan_content_module_is_reported_and_no_alignment_is_invented():
     activity a module supports is authoring the claim this package exists to
     make auditable."""
     graph = AlignmentGraph()
-    graph.add_element_node(NodeType.CONTENT, "MOD-01", {"id": "MOD-01"})
+    graph.add_element_node(NodeType.MODULE, "MOD-01", {"id": "MOD-01"})
     graph.add_element_node(NodeType.ACTIVITY, "TLA-01", {"id": "TLA-01"})
     config = HarnessRunConfig()
     trajectory = TrajectoryLogger()
@@ -438,7 +438,7 @@ def test_a_module_that_names_its_activity_needs_no_repair_at_all():
 
         edges = graph.get_edges(relation_id="C5")
         assert [(e["source"], e["target"]) for e in edges] == [
-            ("content:MOD-01", "activity:TLA-01")], ref
+            ("module:MOD-01", "activity:TLA-01")], ref
         assert checks.orphan_content(graph) == [], ref
 
 

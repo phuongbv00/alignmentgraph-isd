@@ -331,7 +331,7 @@ SPECS: dict[str, FanoutSpec] = {
                 element_type=NodeType.MATERIAL, id_prefix="MAT",
                 doc_key=("material", "learner_materials")),
         ),
-        developer_reads=(NodeType.CONTENT, NodeType.ACTIVITY),
+        developer_reads=(NodeType.MODULE, NodeType.ACTIVITY),
         render=dev_plans.render_material_set, plan_sets=_material_sets,
         dispatch_done=lambda st: _every_part_dispatch_done("content", st)),
     "implementation": FanoutSpec(
@@ -682,7 +682,7 @@ def _establish(spec: FanoutSpec, state, committed: dict[str, list[str]]) -> None
         for node_id in committed.get("learner_materials", []):
             data = state.get_node(node_id)["data"]
             ref = alignment.bare_ref(data.get("linked_module", ""))
-            module_id = f"{NodeType.CONTENT}{state.ELEMENT_SEP}{ref}" if ref else ""
+            module_id = f"{NodeType.MODULE}{state.ELEMENT_SEP}{ref}" if ref else ""
             if ref and state.get_node(module_id):
                 alignment.record_provenance(state, "P5", [module_id], node_id)
         alignment.match_p6_realizes(state)

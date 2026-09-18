@@ -714,7 +714,7 @@ def orphan_content(graph) -> list[Violation]:
     Activities, not modules, and returns nothing at all when no Activity
     exists yet). This checks the module side directly instead."""
     violations: list[Violation] = []
-    for module in graph.element_nodes(NodeType.CONTENT):
+    for module in graph.element_nodes(NodeType.MODULE):
         if graph.get_edges(relation_id="C5", source=module["id"]):
             continue
         violations.append(Violation(
@@ -776,7 +776,7 @@ def feasibility(graph, design_brief: DesignBrief | None) -> list[Violation]:
     total_hours = _duration_hours(design_brief)
     if total_hours <= 0:
         return []
-    load_units = len(graph.element_nodes(NodeType.CONTENT)) + len(graph.element_nodes(NodeType.ACTIVITY))
+    load_units = len(graph.element_nodes(NodeType.MODULE)) + len(graph.element_nodes(NodeType.ACTIVITY))
     # Heuristic: each module/activity needs ~1.5h. Flag only clear overload.
     if load_units and load_units * 1.5 > total_hours * 2:
         return [Violation(

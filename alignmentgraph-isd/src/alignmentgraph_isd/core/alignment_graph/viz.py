@@ -57,11 +57,15 @@ _NODE_STYLE = {
     NodeType.OBJECTIVE: {"shape": "box", "style": "filled,rounded"},
     NodeType.ASSESSMENT: {"shape": "ellipse", "style": "filled", "fillcolor": "#dbeafe"},
     NodeType.ACTIVITY: {"shape": "ellipse", "style": "filled", "fillcolor": "#dcfce7"},
-    NodeType.CONTENT: {"shape": "folder", "style": "filled", "fillcolor": "#f3f4f6"},
+    NodeType.MODULE: {"shape": "folder", "style": "filled", "fillcolor": "#f3f4f6"},
     NodeType.MATERIAL: {"shape": "folder", "style": "filled", "fillcolor": "#f3f4f6"},
     NodeType.IMPLEMENTATION_PLAN: {"shape": "component", "style": "filled", "fillcolor": "#f3f4f6"},
     NodeType.SESSION_GUIDE: {"shape": "note", "style": "filled", "fillcolor": "#f3f4f6"},
 }
+#: The node type an archived dump wrote for what is now ``NodeType.MODULE``.
+#: Read here and in the webapp's style tables, and nowhere else: a dump is a
+#: record, so its ``type`` values are drawn as written, never rewritten.
+_LEGACY_NODE_TYPES = {"content": NodeType.MODULE}
 _ALIGNED_FILL = "#bbf7d0"      # green
 _UNALIGNED_FILL = "#fde68a"    # amber
 _EDGE_COLOR = {"id": "#16a34a", "type": "#2563eb", "provenance": "#6b7280"}
@@ -474,7 +478,7 @@ def _legend_entries() -> dict[str, list[dict]]:
             {"key": "course_goal", "label": "course goal"},
             {"key": "assessment", "label": "assessment task (AT)"},
             {"key": "activity", "label": "activity (TLA)"},
-            {"key": "content", "label": "content module / material"},
+            {"key": "module", "label": "module / material"},
             {"key": "section", "label": "section node (a whole ADDIE section)"},
             {"key": "has_violation", "label": "a check failed on this node"},
         ],
@@ -566,7 +570,8 @@ def to_dot(payload: dict, *, title: str = "") -> str:
         is_objective = node["type"] == NodeType.OBJECTIVE and node["kind"] == "element"
         if not is_objective and node["id"] not in linked_ids:
             continue
-        style = dict(_NODE_STYLE.get(node["type"], {"shape": "ellipse", "style": "filled", "fillcolor": "#f3f4f6"}))
+        node_type = _LEGACY_NODE_TYPES.get(node["type"], node["type"])
+        style = dict(_NODE_STYLE.get(node_type, {"shape": "ellipse", "style": "filled", "fillcolor": "#f3f4f6"}))
         if is_objective:
             ann = annotations.get(node["id"], {})
             style["fillcolor"] = _ALIGNED_FILL if ann.get("aligned") else _UNALIGNED_FILL

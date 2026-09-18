@@ -598,7 +598,7 @@ def _section_data(state, key: str) -> dict:
     if key in sections:
         node = state.get_node(state.section_id(sections[key]))
         return (node or {}).get("data") or {}
-    modules = [n["data"] for n in state.element_nodes(NodeType.CONTENT)]
+    modules = [n["data"] for n in state.element_nodes(NodeType.MODULE)]
     media = [n["data"] for n in state.element_nodes(NodeType.MEDIA_SELECTION)]
     return {"content_modules": modules, "media_selections": media}
 

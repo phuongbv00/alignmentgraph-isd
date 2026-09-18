@@ -68,7 +68,7 @@ class ADDIEOutputAggregator:
         objectives = [n["data"] for n in self.graph.element_nodes(NodeType.OBJECTIVE)]
         activities = [n["data"] for n in self.graph.element_nodes(NodeType.ACTIVITY)]
         content_modules = [_without_harness_keys(n["data"])
-                           for n in self.graph.element_nodes(NodeType.CONTENT)]
+                           for n in self.graph.element_nodes(NodeType.MODULE)]
         media = [n["data"] for n in self.graph.element_nodes(NodeType.MEDIA_SELECTION)]
         plan_node = _merge_node_data(self.graph.section_nodes(NodeType.ACTIVITY_PLAN))
 

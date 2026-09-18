@@ -273,7 +273,7 @@ def commit_content(graph, trajectory, parsed: dict) -> None:
     a core construct-validity relation, scored 0.08 on a design that was
     right.
     """
-    module_ids = _decompose(graph, trajectory, NodeType.CONTENT, parsed.get("content_modules"))
+    module_ids = _decompose(graph, trajectory, NodeType.MODULE, parsed.get("content_modules"))
     media_ids = _decompose(graph, trajectory, NodeType.MEDIA_SELECTION, parsed.get("media_selections"))
     for node_id in module_ids:
         data = graph.get_node(node_id)["data"]
@@ -469,7 +469,7 @@ def view_activities_prose(store) -> dict:
 
 
 def view_content(graph) -> dict:
-    return {"content_modules": graph.element_nodes(NodeType.CONTENT),
+    return {"content_modules": graph.element_nodes(NodeType.MODULE),
             "media_selections": graph.element_nodes(NodeType.MEDIA_SELECTION)}
 
 

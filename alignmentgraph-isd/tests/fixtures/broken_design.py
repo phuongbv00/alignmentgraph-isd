@@ -86,7 +86,7 @@ def broken_graph() -> AlignmentGraph:
     })
 
     # ── content: a module supporting nothing, a material linked to nothing ───
-    graph.add_element_node(NodeType.CONTENT, "MOD-01", {
+    graph.add_element_node(NodeType.MODULE, "MOD-01", {
         "id": "MOD-01", "title": "Inheritance", "supports_activities": [],
     })
     # orphan_content: a material whose module does not exist

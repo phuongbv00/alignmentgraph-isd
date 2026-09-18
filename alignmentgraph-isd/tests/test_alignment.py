@@ -131,8 +131,8 @@ def test_relation_coverage_target_side_reports_fraction_and_uncovered_ids():
     graph = AlignmentGraph()
     graph.add_element_node(NodeType.ACTIVITY, "TLA-01", {"id": "TLA-01"})
     graph.add_element_node(NodeType.ACTIVITY, "TLA-02", {"id": "TLA-02"})
-    graph.add_element_node(NodeType.CONTENT, "MOD-01", {"id": "MOD-01"})
-    alignment.record_provenance(graph, "C5", ["content:MOD-01"], "activity:TLA-01")
+    graph.add_element_node(NodeType.MODULE, "MOD-01", {"id": "MOD-01"})
+    alignment.record_provenance(graph, "C5", ["module:MOD-01"], "activity:TLA-01")
     coverage, uncovered = alignment.relation_coverage(graph, "C5")
     assert coverage == 0.5
     assert uncovered == ["activity:TLA-02"]

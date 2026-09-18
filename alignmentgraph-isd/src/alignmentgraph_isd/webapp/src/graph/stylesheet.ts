@@ -5,10 +5,10 @@ import type { StylesheetStyle } from 'cytoscape'
  * (`core/alignment_graph/viz.py`) so a screenshot from the app and one from
  * `dot -Tsvg` read as the same picture.
  *
- * The type list mirrors `NodeType` exactly: the five core types (course goal,
- * objective, assessment, activity, content — the C1–C5 participants; the sixth
- * was RUBRIC, retired 2026-09-02)
- * plus the support types the P-relations touch. Cytoscape has no folder/note
+ * The type list mirrors `NodeType` exactly: the four core types (course goal,
+ * objective, assessment, activity), the module that organises them, and the
+ * support types the P-relations touch. `content` is what an archived dump
+ * calls a module, and is drawn as one. Cytoscape has no folder/note
  * shapes, so those map to the closest available polygon.
  */
 
@@ -18,7 +18,8 @@ const SHAPES: Record<string, string> = {
   objective: 'round-rectangle',
   assessment: 'ellipse',
   activity: 'ellipse',
-  content: 'rectangle', // viz: folder
+  module: 'rectangle', // viz: folder
+  content: 'rectangle', // archived dumps: a module
   // Support types (visible mostly with the provenance layer on): analysis
   // inputs are hexagons, evaluation outputs diamonds, plans plain rectangles.
   gap: 'hexagon',
@@ -38,6 +39,7 @@ const FILLS: Record<string, string> = {
   course_goal: '#fef3c7',
   assessment: '#dbeafe',
   activity: '#dcfce7',
+  module: '#f3f4f6',
   content: '#f3f4f6',
   material: '#f3f4f6',
   implementation_plan: '#f3f4f6',
@@ -219,6 +221,7 @@ export const LEGEND_COLOURS: Record<string, string> = {
   course_goal: FILLS.course_goal,
   assessment: FILLS.assessment,
   activity: FILLS.activity,
+  module: FILLS.module,
   content: FILLS.content,
   section: '#e5e7eb',
   has_violation: '#d97706',

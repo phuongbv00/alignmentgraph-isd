@@ -12,12 +12,18 @@ class NodeType(StrEnum):
     and interoperate with the plain strings that output deserialization produces
     (``NodeType.OBJECTIVE == "objective"``).
 
-    Core (participate in the C1-C5 construct-validity relations, see
+    Core (participate in the core construct-validity relations, see
     ``alignment.py::REGISTRY``): ``COURSE_GOAL``, ``OBJECTIVE`` (Intended Learning
     Outcome / ILO), ``ASSESSMENT`` (Assessment Task / AT), ``ACTIVITY``
-    (Teaching/Learning Activity / TLA), ``CONTENT`` (Content Module).
+    (Teaching/Learning Activity / TLA).
 
-    Support (participate in the P1-P11 secondary/provenance relations, or are
+    ``MODULE`` is the course's structural unit: a cluster of objectives and
+    topics learned together, with its share of the course's time. It is
+    written right after the objectives and every later family divides its
+    work by it. A module ORGANISES the design and is not a vertex of
+    constructive alignment, so every relation it takes part in is secondary.
+
+    Support (participate in the secondary/provenance relations, or are
     "plan" artifacts a core type executes against — see ``alignment.py``):
     ``GAP``, ``TOPIC``, ``LEARNER_PROFILE``, ``CONSTRAINT``, ``IMPROVEMENT``,
     ``MEDIA_SELECTION``, ``MATERIAL``, ``ASSESSMENT_PLAN``, ``ACTIVITY_PLAN``.
@@ -48,8 +54,8 @@ class NodeType(StrEnum):
     OBJECTIVE = "objective"
     ASSESSMENT = "assessment"
     ACTIVITY = "activity"
-    CONTENT = "content"
 
+    MODULE = "module"
     GAP = "gap"
     TOPIC = "topic"
     LEARNER_PROFILE = "learner_profile"

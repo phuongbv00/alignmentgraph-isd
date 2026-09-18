@@ -537,7 +537,7 @@ def repair_content_coverage(ctx: RepairContext, violations: list) -> None:
     and described as "Content supporting activity TLA-01": a node that closes
     the relation and teaches nothing."""
     graph = ctx.graph
-    module_nodes = graph.element_nodes(NodeType.CONTENT)
+    module_nodes = graph.element_nodes(NodeType.MODULE)
     repaired_ids: list[str] = []
     for violation in violations:
         if module_nodes:
@@ -579,7 +579,7 @@ def repair_content_orphans(ctx: RepairContext, violations: list) -> list:
     for violation in violations:
         node_id = str(violation.metadata.get("node_id") or violation.node_id or "")
         target = modules if node_id.startswith(
-            f"{NodeType.CONTENT}{graph.ELEMENT_SEP}") else rest
+            f"{NodeType.MODULE}{graph.ELEMENT_SEP}") else rest
         target.append(violation)
     if rest:
         repair_content_coverage(ctx, rest)
