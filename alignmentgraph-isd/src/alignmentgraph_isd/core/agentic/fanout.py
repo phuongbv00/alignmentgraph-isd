@@ -538,7 +538,8 @@ def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
         items = (parsed or {}).get(primary)
         if not isinstance(items, list) or not items:
             return [f"{primary} must be a non-empty list"]
-        return output_errors(spec, parsed)
+        return (output_errors(spec, parsed)
+                or dev_plans.short_of_quota(work_set, primary, items))
 
     return replace(
         base,

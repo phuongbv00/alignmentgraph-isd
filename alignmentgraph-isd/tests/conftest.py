@@ -593,7 +593,48 @@ def _session_guides_for_block(raw_prompt: str) -> list[dict] | None:
     return guides
 
 
+_STATED_COUNT_RE = re.compile(
+    r"write exactly (\d+) (?:item|material)|how many activities to write: (\d+)")
+_NAME_FIELD = {"assessment_tools": "question", "learning_activities": "activity_name",
+               "learner_materials": "title"}
+
+
 def _sliced_payload_for_set(raw_prompt: str) -> dict | None:
+    """A Developer's slice, written to the COUNT its assignment states: a
+    Developer that is told "write exactly 4" and writes 3 is refused
+    (``dev_plans.short_of_quota``), so a fixture that ignored the number would
+    be testing the refusal on every set of every run."""
+    payload = _canned_slice_for_set(raw_prompt)
+    if payload is None and "how many activities to write:" in raw_prompt:
+        # The artifact's shape travels in the bound tool, not in the prompt, so
+        # the slicer above does not recognise an activity block by its schema
+        # key; its assignment line does.
+        payload = {"learning_activities": list(_ACTIVITIES["learning_activities"])}
+    found = _STATED_COUNT_RE.search(raw_prompt)
+    if payload is None or found is None:
+        return payload
+    wanted = int(found.group(1) or found.group(2))
+    module = re.search(r"^module: (\S+)", raw_prompt, re.M)
+    instrument = re.search(r"^  - (INS-\S+):", raw_prompt, re.M)
+    for key, items in payload.items():
+        name = _NAME_FIELD.get(key)
+        if name is None or not items:
+            continue
+        written = [copy.deepcopy(item) for item in items]
+        for extra in range(len(written), wanted):
+            twin = copy.deepcopy(written[extra % len(items)])
+            twin[name] = f"{twin.get(name, '')} (variation {extra + 1})"
+            written.append(twin)
+        for item in written:
+            if module and key == "learning_activities":
+                item["module_id"] = module.group(1)
+            if instrument and key == "assessment_tools":
+                item.setdefault("instrument_id", instrument.group(1))
+        payload[key] = written
+    return payload
+
+
+def _canned_slice_for_set(raw_prompt: str) -> dict | None:
     """A Developer's own slice of the family's canned items, or ``None`` if
     this prompt isn't a Developer's (falls through to schema-key matching)."""
     if "=== YOUR ASSIGNED SET ===" in raw_prompt and '"assessment_tools"' in raw_prompt:

@@ -120,7 +120,8 @@ RULES_ASSESSMENT_PLAN = """\
 ``instruments`` is the assessment blueprint: what learners actually sit, module by module. Give
 each module the instruments it needs at the moments it needs them — ``timing`` is diagnostic
 (before the module), formative (during it) or summative (after it); not every module needs all
-three. For each instrument state its ``format`` (quiz, practical, project, ...), its real scale in
+three, but the course as a whole must have at least one summative instrument — a course that
+never grades what it set out to teach has no evidence that it worked. For each instrument state its ``format`` (quiz, practical, project, ...), its real scale in
 ``item_counts`` (item type -> how many the FULL instrument has, e.g. 20 multiple_choice and 3
 short_answer — the true size, even though only a sample of those items is written out later),
 the ``covers_objectives`` it assesses (ids from that module's objectives), its ``minutes``, and its

@@ -19,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
+from .. import dev_plans
 from .. import rulebook as rules
 from ..alignment_graph import NodeType, alignment
 from ..trajectory import ORCHESTRATOR
@@ -652,6 +653,14 @@ def _module_errors(modules) -> list[str]:
     return errors
 
 
+def _dev_plan_errors(stage: str, parsed: dict) -> list[str]:
+    """Errors for a ``dev_plan`` that ARRIVED; none for one that did not. A
+    section write is a merge on its key, so a hollow plan accepted here would
+    REPLACE the good one a stage already holds (``dev_plans.plan_errors``)."""
+    plan = (parsed or {}).get("dev_plan")
+    return dev_plans.plan_errors(stage, plan) if _arrived(plan) else []
+
+
 def validate_assessment(parsed: dict) -> list[str]:
     """Dispatch validation: the PLAN. Items are validated per work set by the
     Developer tier, so requiring them here would reject a correct dispatch."""
@@ -659,11 +668,12 @@ def validate_assessment(parsed: dict) -> list[str]:
     if empty:
         return empty
     plan = parsed.get("assessment_plan")
+    plan_errors = _dev_plan_errors("assessment", parsed)
     if not _arrived(plan):
-        # A dev_plan-only submit: nothing to judge here. `dev_plans`
-        # normalizes it and reports what it had to drop.
-        return []
-    errors = validate_section("assessment_plan", plan)
+        # A dev_plan-only submit: `dev_plans` normalizes it and reports what
+        # it had to drop; here it only has to BE a plan for this family.
+        return plan_errors
+    errors = plan_errors + validate_section("assessment_plan", plan)
     # pilot_data_plan feeds the whole formative half of ADDIE Evaluation (the
     # aggregator surfaces it as evaluation.formative); a submit without it
     # zeroes two rubric items (measured on a 2B run). The shared
@@ -680,9 +690,10 @@ def validate_activities(parsed: dict) -> list[str]:
         parsed, ("instructional_strategies", "non_instructional_strategies", "dev_plan"))
     if empty:
         return empty
+    errors = _dev_plan_errors("activities", parsed)
     if not _arrived(parsed.get("instructional_strategies")):
-        return []
-    return validate_section("activity_plan", {
+        return errors
+    return errors + validate_section("activity_plan", {
         "instructional_strategies": parsed["instructional_strategies"],
     })
 
@@ -734,7 +745,7 @@ def validate_implementation(parsed: dict) -> list[str]:
         # normalizes it and reports what it had to drop. Judged the same way
         # `validate_assessment` judges its own plan-only submit.
         if (parsed or {}).get("dev_plan"):
-            return []
+            return _dev_plan_errors("implementation", parsed)
         return _nothing_arrived({}, _IMPLEMENTATION_ARTIFACTS + ("dev_plan",))
     # Keep the errors about the artifacts that ARRIVED. Every error path is
     # rooted at the node type — ``implementation_plan.instructor_guide.overview``

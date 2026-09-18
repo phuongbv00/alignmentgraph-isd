@@ -373,7 +373,7 @@ a.btn:hover { background: #f1f5f9; }
 
 .run-header-line {
   display: flex;
-  align-items: center;
+  align-items: start;
   gap: 8px;
   min-width: 0;
 }

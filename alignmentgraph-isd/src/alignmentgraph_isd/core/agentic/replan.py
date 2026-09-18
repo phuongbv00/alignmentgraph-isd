@@ -241,21 +241,9 @@ def step_for(step, stage: str, gaps: list, round_index: int):
         rules=spec["rules"],
         submit_fields=(("dev_plan", "object", True),),
         submit_parts=(),
-        validate=_validate_plan,
+        validate=lambda parsed: dev_plans.plan_errors(stage, (parsed or {}).get("dev_plan")),
         done=lambda _state: False,
         # No docket: the gaps ARE the assignment, rendered above in full.
         docket={},
         state_tool=False,
     )
-
-
-def _validate_plan(parsed: dict) -> list[str]:
-    plan = (parsed or {}).get("dev_plan")
-    if not isinstance(plan, dict) or not plan:
-        return ["dev_plan must be a non-empty object naming the work sets that "
-                "close the gaps listed above"]
-    if not any(isinstance(value, list) and value for value in plan.values()):
-        return ["dev_plan names no work sets; list them under instrument_sets "
-                "(assessment), activity_blocks (activities) or session_blocks "
-                "(implementation)"]
-    return []

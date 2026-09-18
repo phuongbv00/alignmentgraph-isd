@@ -676,8 +676,8 @@ def fit_time_budget(sets: list[WorkSet], modules: list[dict], stats: dict) -> No
 
     Objective count does not bound an activity plan; learner time does, and
     the time is the Outcome Designer's: each module states its ``minutes``.
-    The blocks of one module share that budget — a block's ``block_minutes``
-    is scaled down when the module's blocks together claim more than it has —
+    The blocks of one module share that budget — their ``block_minutes`` are
+    read as PROPORTIONS of it, scaled to add up to what the module has —
     and a block may plan at most one activity per ``MIN_ACTIVITY_MINUTES`` of
     its share, never fewer than one.
 
@@ -707,7 +707,12 @@ def fit_time_budget(sets: list[WorkSet], modules: list[dict], stats: dict) -> No
         silent = declared.count(0.0)
         even = max(0.0, budget - spoken) / silent if silent else 0.0
         shares = [d or even for d in declared]
-        scale = min(1.0, budget / sum(shares)) if sum(shares) else 1.0
+        # The blocks of a module PARTITION its time, so their shares are
+        # normalized to it in both directions: scaled down when together they
+        # overrun it, and up when they leave it unspent. MEASURED (run
+        # 40856c96): each module's only block declared 15 of its module's
+        # 100-120 minutes, which held every module to one activity.
+        scale = budget / sum(shares) if sum(shares) else 1.0
         for ws, share in zip(mine, shares):
             fits = max(1, int(share * scale) // MIN_ACTIVITY_MINUTES)
             ws.payload["block_minutes"] = int(share * scale)
@@ -1303,6 +1308,32 @@ def _number_sessions(sets: list[WorkSet], first_session: int = 1) -> list[WorkSe
     return out
 
 
+# ── a dev plan is a plan for ITS family ─────────────────────────────────────
+
+#: The list a stage's ``dev_plan`` divides its family under.
+PLAN_LIST_KEY = {"assessment": "instrument_sets", "activities": "activity_blocks",
+                 "implementation": "session_blocks"}
+
+
+def plan_errors(stage: str, plan: object) -> list[str]:
+    """A ``dev_plan`` must list work under ITS OWN stage's key.
+
+    MEASURED (run 40856c96): ``{"instrument_sets": [{"set_id": "AT-5101"}],
+    "activity_blocks": [], "session_blocks": []}`` was accepted as the
+    ACTIVITIES plan — some list in it was non-empty — and, a section write
+    being a merge on its key, replaced the good plan the stage had already
+    committed: three themed blocks gone from the record. A plan that names
+    nothing under its own key plans nothing for this family."""
+    key = PLAN_LIST_KEY.get(stage.split(":", 1)[0], "")
+    if not isinstance(plan, dict) or not plan:
+        return ["dev_plan must be a non-empty object"]
+    sets = plan.get(key)
+    if not isinstance(sets, list) or not [one for one in sets if isinstance(one, dict) and one]:
+        return [f"dev_plan.{key} must be a non-empty list: it is how the {stage} stage "
+                "divides its work, one entry per work set"]
+    return []
+
+
 # ── a work set writes what it was commissioned for, and no more ────────────
 
 #: The payload key that states each family's count, by the output it sizes.
@@ -1311,6 +1342,33 @@ _QUOTA_KEY = {"assessment_tools": "expected_items", "learning_activities": "expe
 #: The field a repeated artifact repeats, per output.
 _SAME_AS = {"assessment_tools": "question", "learning_activities": "activity_name",
             "learner_materials": "title"}
+
+
+def quota_of(work_set: WorkSet, schema_key: str) -> int:
+    """The count a set's assignment states for ``schema_key``; 0 for none."""
+    try:
+        return max(0, int(work_set.payload.get(_QUOTA_KEY.get(schema_key, "")) or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def short_of_quota(work_set: WorkSet, schema_key: str, items: list) -> list[str]:
+    """The error for a submit that wrote FEWER artifacts than its assignment
+    stated, or none.
+
+    The other half of :func:`trim_to_quota`. MEASURED (run 40856c96, sample
+    mode): all three assessment sets were told "write exactly 3 items" and
+    each submitted ONE, was answered COMMITTED, and the design shipped five
+    items for three instruments planned at twenty-five. The count is part of
+    the assignment, so a short submit is an unfinished one and its author is
+    still in the conversation to finish it. Session guides are exempt: how
+    many sessions a block takes is the writer's to say, and what it owes is
+    every id, which its own validator holds it to."""
+    quota = quota_of(work_set, schema_key)
+    if schema_key == "session_guides" or not quota or len(items) >= quota:
+        return []
+    return [f"{schema_key}: you wrote {len(items)} of the {quota} this set asks for — "
+            f"resend the whole list with all {quota}"]
 
 
 def trim_to_quota(work_set: WorkSet, schema_key: str, items: list) -> tuple[list, int]:
@@ -1331,10 +1389,7 @@ def trim_to_quota(work_set: WorkSet, schema_key: str, items: list) -> tuple[list
     family with positional references keeps a PREFIX, so ``[2]`` still means
     the second activity. A set that states no count (the single arm's own
     batches) is left as written."""
-    try:
-        quota = int(work_set.payload.get(_QUOTA_KEY.get(schema_key, "")) or 0)
-    except (TypeError, ValueError):
-        quota = 0
+    quota = quota_of(work_set, schema_key)
     rows = [item for item in items if isinstance(item, dict)]
     if quota <= 0 or len(rows) <= quota:
         return items, 0

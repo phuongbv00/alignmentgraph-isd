@@ -250,7 +250,8 @@ def test_an_unreadable_optional_argument_does_not_sink_the_submit():
     params = tools.submit_parameters(step)
 
     args = {"instructional_strategies": {"model": "Gagne", "sequence": []},
-            "dev_plan": {"activity_blocks": []},
+            "dev_plan": {"activity_blocks": [{"set_id": "B1", "module_id": "MOD-01",
+                                              "objectives": ["ILO-01"]}]},
             "non_instructional_strategies": "{not json"}
     unreadable = tools.shape_bad_keys(params, args)
     assert unreadable == ["non_instructional_strategies"]

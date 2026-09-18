@@ -640,10 +640,56 @@ def test_a_block_plans_no_more_than_fits_in_its_own_minutes():
 
     plan = {"activity_blocks": _blocks([8, 8], minutes=[45, 240])}
     sets, _stats = dev_plans.normalize_activity_dev_plan(
-        plan, ["ILO-01", "ILO-02"], modules=_one_module(2400, ["ILO-01", "ILO-02"]))
+        plan, ["ILO-01", "ILO-02"], modules=_one_module(285, ["ILO-01", "ILO-02"]))
     by_theme = {ws.payload["block_theme"]: ws.payload["expected_activities"] for ws in sets}
     assert by_theme["theme 0"] == 45 // dev_plans.MIN_ACTIVITY_MINUTES
     assert by_theme["theme 1"] == 8, "a block that fits is left as the planner wrote it"
+
+
+def test_the_blocks_of_a_module_share_all_of_its_time_not_just_what_they_declared():
+    """MEASURED (run 40856c96): each module's only block declared 15 of its
+    module's 100-120 minutes, the block was held to one activity, and a
+    three-module course shipped three activities. Block minutes are
+    PROPORTIONS of the module's time, scaled up as well as down."""
+    from alignmentgraph_isd.core import dev_plans
+
+    plan = {"activity_blocks": _blocks([6], minutes=[15])}
+    sets, _stats = dev_plans.normalize_activity_dev_plan(
+        plan, ["ILO-01"], modules=_one_module(120, ["ILO-01"]))
+    assert sets[0].payload["block_minutes"] == 120
+    assert sets[0].payload["expected_activities"] == 6
+
+    sampled, _stats = dev_plans.normalize_activity_dev_plan(
+        plan, ["ILO-01"], modules=_one_module(120, ["ILO-01"]), mode="sample")
+    assert sampled[0].payload["expected_activities"] == dev_plans.SAMPLE_ACTIVITIES_PER_MODULE_FLOOR
+
+
+def test_a_set_that_writes_fewer_than_it_was_asked_for_is_not_finished():
+    """MEASURED (run 40856c96): three sets told "write exactly 3 items" each
+    submitted one and were answered COMMITTED."""
+    from alignmentgraph_isd.core import dev_plans
+
+    ws = dev_plans.WorkSet(set_id="AS-01", payload={"expected_items": 3})
+    assert dev_plans.short_of_quota(ws, "assessment_tools", [{}]) == [
+        "assessment_tools: you wrote 1 of the 3 this set asks for — resend the whole list with all 3"]
+    assert dev_plans.short_of_quota(ws, "assessment_tools", [{}, {}, {}]) == []
+    guides = dev_plans.WorkSet(set_id="SB-01", payload={"expected_sessions": 2})
+    assert dev_plans.short_of_quota(guides, "session_guides", [{}]) == [], (
+        "how many sessions a block takes is the writer's to say; what it owes is every id")
+
+
+def test_a_dev_plan_must_plan_its_own_family():
+    """MEASURED (run 40856c96): {"instrument_sets": [...], "activity_blocks": []}
+    was accepted as the ACTIVITIES plan and replaced the good one."""
+    from alignmentgraph_isd.core import dev_plans
+    from alignmentgraph_isd.core.agentic import specialists
+
+    hollow = {"instrument_sets": [{"set_id": "AT-5101"}], "activity_blocks": []}
+    assert dev_plans.plan_errors("activities", hollow)
+    assert dev_plans.plan_errors("activities:replan1", hollow)
+    assert specialists.validate_activities({"dev_plan": hollow})
+    assert specialists.validate_assessment({"dev_plan": hollow}) == []
+    assert specialists.validate_implementation({"dev_plan": hollow})
 
 
 def test_a_module_that_states_no_time_is_left_alone_and_the_record_says_so():
