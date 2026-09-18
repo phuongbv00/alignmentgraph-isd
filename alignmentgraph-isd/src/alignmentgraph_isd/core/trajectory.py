@@ -145,6 +145,10 @@ class TrajectoryAction(StrEnum):
     #: runs, what exists is aggregated, and the count of such runs is a finding
     #: about the model rather than something a fallback hides.
     RUN_STOPPED = "run_stopped"
+    #: A work set submitted more artifacts than its assignment stated and the
+    #: commit kept the stated count (``dev_plans.trim_to_quota``). Dropping,
+    #: never writing: what a check measures is always kept.
+    EXCESS_ARTIFACTS_TRIMMED = "excess_artifacts_trimmed"
     #: A step ended without the agent producing a valid artifact. Nothing
     #: writes one on its behalf: a scripted single-shot fallback covers 26-35%
     #: of the full pipeline's artifacts and only in the multi arm, which would
@@ -206,6 +210,7 @@ _RECOVERY_ACTIONS = frozenset({
     TrajectoryAction.AGENTIC_GAVE_UP,
     TrajectoryAction.BUDGET_EXHAUSTED,
     TrajectoryAction.RUN_STOPPED,
+    TrajectoryAction.EXCESS_ARTIFACTS_TRIMMED,
     TrajectoryAction.TOOL_BINDING_UNAVAILABLE,
     TrajectoryAction.TOOL_CALL_MARKUP_RECOVERED,
     TrajectoryAction.ARGUMENT_RESHAPED,

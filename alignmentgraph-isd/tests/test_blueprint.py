@@ -168,3 +168,89 @@ def test_both_checks_are_owned_and_structural():
         assert kind in repairs.STRUCTURAL and kind not in repairs.REPORT_ONLY
     assert {"P7", "P12", "P13", "P14"} <= repairs.REPORT_ONLY
     assert HarnessRunConfig().agent_mode == "multi"
+
+
+# ── the dev plans speak in modules and instruments ──────────────────────────
+
+def test_every_dev_plan_names_the_module_a_set_belongs_to():
+    from alignmentgraph_isd.core.agentic.artifact_schemas import ARTIFACT_SCHEMAS
+
+    for plan, list_key in (("assessment_dev_plan", "instrument_sets"),
+                           ("activity_dev_plan", "activity_blocks"),
+                           ("implementation_dev_plan", "session_blocks")):
+        item = ARTIFACT_SCHEMAS[plan]["properties"][list_key]["items"]
+        assert "module_id" in item["required"], plan
+    sets = ARTIFACT_SCHEMAS["assessment_dev_plan"]["properties"]["instrument_sets"]["items"]
+    assert "instrument_ids" in sets["required"] and "objectives" not in sets["properties"]
+
+
+def test_an_instrument_set_is_the_pairs_of_the_instruments_it_names():
+    modules = [{"id": "MOD-01", "objectives": ["ILO-01"], "minutes": 60},
+               {"id": "MOD-02", "objectives": ["ILO-02"], "minutes": 60}]
+    instruments = [_instrument("INS-01", "diagnostic", ["ILO-01"]),
+                   _instrument("INS-02", "formative", ["ILO-01"]),
+                   _instrument("INS-03", "summative", ["ILO-02"], module="MOD-02")]
+    targets = {"ILO-01": ["diagnostic", "formative"], "ILO-02": ["summative"]}
+    plan = {"instrument_sets": [
+        {"set_id": "SET-01", "module_id": "MOD-01", "instrument_ids": ["INS-01", "INS-02"],
+         "expected_items": 4},
+        {"set_id": "SET-02", "module_id": "MOD-02", "instrument_ids": ["INS-03", "INS-09"],
+         "expected_items": 2}]}
+    sets, stats = dev_plans.normalize_assessment_dev_plan(
+        plan, ["ILO-01", "ILO-02"], targets, modules=modules, instruments=instruments,
+        mode="sample")
+    assert [(ws.module_id, ws.pairs, ws.source) for ws in sets] == [
+        ("MOD-01", (("ILO-01", "diagnostic"), ("ILO-01", "formative")), "llm"),
+        ("MOD-02", (("ILO-02", "summative"),), "llm")]
+    assert [i["id"] for i in sets[0].payload["instruments"]] == ["INS-01", "INS-02"]
+    assert stats["fallback_used"] is False and stats["dropped_lo_refs"] == 1, "INS-09 is not real"
+
+
+# ── a work set writes what it was commissioned for ──────────────────────────
+
+def test_a_set_that_overruns_its_count_is_cut_to_it_and_loses_nothing_a_check_measures():
+    """MEASURED (run aef73e0a): told 3 items a Developer submitted 17, told 3
+    activities another wrote 15, told one session guide a third wrote eight."""
+    items = [{"question": f"Q{n % 5}", "aligned_objective": "ILO-01" if n < 9 else "ILO-02",
+              "plan_category": "formative"} for n in range(12)]
+    ws = dev_plans.WorkSet(set_id="AS-01", pairs=(("ILO-01", "formative"), ("ILO-02", "formative")),
+                           payload={"expected_items": 3})
+    kept, dropped = dev_plans.trim_to_quota(ws, "assessment_tools", items)
+    assert len(kept) == 3 and dropped == 9
+    assert {i["aligned_objective"] for i in kept} == {"ILO-01", "ILO-02"}, "both pairs survive"
+    assert len({i["question"] for i in kept}) == 3, "a repeat goes before anything else"
+
+    activities = [{"activity_name": f"A{n}", "prerequisite_activities": [n] if n else []}
+                  for n in range(6)]
+    ws = dev_plans.WorkSet(set_id="AB-01", payload={"expected_activities": 3})
+    kept, _ = dev_plans.trim_to_quota(ws, "learning_activities", activities)
+    assert [a["activity_name"] for a in kept] == ["A0", "A1", "A2"], "a prefix: [2] still means A1"
+
+    guides = [{"session": n, "activity_ids": ["TLA-01", "TLA-02"]} for n in range(1, 5)]
+    guides.append({"session": 5, "activity_ids": ["TLA-03"]})
+    ws = dev_plans.WorkSet(set_id="SB-01", payload={"expected_sessions": 1})
+    kept, _ = dev_plans.trim_to_quota(ws, "session_guides", guides)
+    assert [g["session"] for g in kept] == [1, 5], "the guide that schedules a new id is kept"
+
+    ws = dev_plans.WorkSet(set_id="S0", source="agent")
+    assert dev_plans.trim_to_quota(ws, "assessment_tools", items) == (items, 0), (
+        "a batch that states no count is the single agent's own and is left as written")
+
+
+# ── the analysis can be divided by, too ─────────────────────────────────────
+
+def test_constraints_written_as_sentences_become_elements_and_topics_are_required():
+    from alignmentgraph_isd.core.agentic import tools
+
+    spec = next(s for s in tools.submit_specs(STEP["analysis"])
+                if s["function"]["name"] == "submit_context_analysis")
+    reshaped: list = []
+    args = tools.reshape_args(spec["function"]["parameters"], {"context_analysis": {
+        "constraints": ["Budget constraints", {"id": "c2", "description": "Time"}]}},
+        reshaped=reshaped)
+    assert args["context_analysis"]["constraints"] == [
+        {"id": "CON-01", "description": "Budget constraints"}, {"id": "c2", "description": "Time"}]
+    assert reshaped == ["context_analysis.constraints[0]"]
+
+    assert specialists.validate_analysis({"task_analysis": {"task_overview": "x"}}) == [
+        "task_analysis.topics must be a non-empty list"]

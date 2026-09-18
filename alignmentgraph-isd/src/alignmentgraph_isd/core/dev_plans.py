@@ -432,13 +432,26 @@ def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets, *, modules=N
         for raw in raw_sets:
             if not isinstance(raw, dict):
                 continue
+            # A set names the INSTRUMENTS it writes, and its pairs are theirs:
+            # every objective an instrument covers, at that instrument's
+            # timing. ``objectives`` x ``plan_categories`` is the older way of
+            # saying the same thing and is still read, so a plan written either
+            # way divides the same work.
+            named = {_bare(i) for i in (raw.get("instrument_ids") or []) if _bare(i)}
+            candidate = [
+                (_bare(lo), str(instrument.get("timing") or "").strip().lower())
+                for instrument in (instruments or [])
+                if isinstance(instrument, dict) and _bare(instrument.get("id")) in named
+                for lo in instrument.get("covers_objectives") or []]
+            stats["dropped_lo_refs"] += len(
+                named - {_bare(i.get("id")) for i in (instruments or []) if isinstance(i, dict)})
             objs = [_bare(o) for o in (raw.get("objectives") or []) if _bare(o)]
-            if not objs:
-                continue
             stats["dropped_lo_refs"] += sum(1 for o in objs if o not in known_los)
             cats = [str(c or "").strip().lower() for c in (raw.get("plan_categories") or [])]
             cats = [c for c in cats if c in _VALID_CATEGORIES]
-            candidate = [(lo, cat) for lo in objs for cat in cats]
+            candidate += [(lo, cat) for lo in objs for cat in cats]
+            if not candidate:
+                continue
             on_target = list(dict.fromkeys(p for p in candidate if p in pair_set))
             stats["dropped_pairs"] += len(candidate) - len(on_target)
             # Across sets, not only within one: a pair the plan already put in
@@ -740,7 +753,8 @@ def normalize_activity_dev_plan(parsed, lo_ids, items_by_lo: dict | None = None,
             items = sorted({i for lo in valid_objs for i in items_by_lo.get(lo, [])})
             sets.append(WorkSet(
                 set_id="", objectives=tuple(valid_objs), pairs=(),
-                payload={"assessment_items": items, "block_theme": str(raw.get("block_theme", "")),
+                payload={"planned_module": _bare(raw.get("module_id")),
+                         "assessment_items": items, "block_theme": str(raw.get("block_theme", "")),
                          "rationale": str(raw.get("rationale", "")),
                          "block_minutes": raw.get("block_minutes"),
                          "expected_activities": _expected(
@@ -765,6 +779,8 @@ def normalize_activity_dev_plan(parsed, lo_ids, items_by_lo: dict | None = None,
     if modules:
         sets = _activity_sets_by_module(sets, modules, items_by_lo, src)
         stats["appended_sets"] = sum(1 for ws in sets if ws.source != "llm")
+    for ws in sets:
+        ws.payload.pop("planned_module", None)
     if mode == "sample":
         _sample_activities(sets)
 
@@ -871,15 +887,22 @@ def _activity_sets_by_module(sets: list[WorkSet], modules: list[dict],
     somewhere."""
     served = _modules_of_objective(modules)
 
-    def homes(lo: str) -> list[dict]:
-        return served.get(lo) or [modules[-1]]
+    def homes(lo: str, planned: str = "") -> list[dict]:
+        """Where an objective's activities are written. A block that names its
+        module is taken at its word for the objectives that module serves — the
+        planner deciding WHICH module's share of a shared objective this block
+        is — and is cut by membership for the rest."""
+        mine = served.get(lo) or [modules[-1]]
+        chosen = [m for m in mine if m["id"] == planned]
+        return chosen or mine
 
     pieces: list[WorkSet] = []
     loose: dict[str, list[str]] = {}
     for ws in sets:
         by_module: dict[str, list[str]] = {}
+        planned = str(ws.payload.pop("planned_module", "") or "")
         for lo in ws.objectives:
-            for module in homes(lo):
+            for module in homes(lo, planned):
                 by_module.setdefault(module["id"], []).append(lo)
         total = sum(len(objs) for objs in by_module.values()) or 1
         for module_id, objs in by_module.items():
@@ -1278,6 +1301,83 @@ def _number_sessions(sets: list[WorkSet], first_session: int = 1) -> list[WorkSe
                                          "first_session": next_session}))
         next_session += count
     return out
+
+
+# ── a work set writes what it was commissioned for, and no more ────────────
+
+#: The payload key that states each family's count, by the output it sizes.
+_QUOTA_KEY = {"assessment_tools": "expected_items", "learning_activities": "expected_activities",
+              "learner_materials": "expected_materials", "session_guides": "expected_sessions"}
+#: The field a repeated artifact repeats, per output.
+_SAME_AS = {"assessment_tools": "question", "learning_activities": "activity_name",
+            "learner_materials": "title"}
+
+
+def trim_to_quota(work_set: WorkSet, schema_key: str, items: list) -> tuple[list, int]:
+    """Hold a set to the count its assignment stated: ``(kept, dropped)``.
+
+    "Write exactly N" is told to the Developer and was enforced by nobody.
+    MEASURED (run aef73e0a, sample mode): a set told to write 3 items submitted
+    17 — three of them word-for-word repeats — another told 3 activities wrote
+    15, and a block told one session guide wrote eight that each scheduled the
+    same eleven activities. One module then held 15 of the design's 24
+    activities, and the whole point of a stated scale was gone.
+
+    Dropping is not writing: nothing is invented and what is kept is the
+    model's own, in its own order. What is NEVER dropped is what a check
+    measures — the first item of every (objective, category) pair the set
+    owes, and any session guide that schedules an id no kept guide does. A
+    repeat (same ``question`` / ``activity_name`` / ``title``) goes first. A
+    family with positional references keeps a PREFIX, so ``[2]`` still means
+    the second activity. A set that states no count (the single arm's own
+    batches) is left as written."""
+    try:
+        quota = int(work_set.payload.get(_QUOTA_KEY.get(schema_key, "")) or 0)
+    except (TypeError, ValueError):
+        quota = 0
+    rows = [item for item in items if isinstance(item, dict)]
+    if quota <= 0 or len(rows) <= quota:
+        return items, 0
+
+    same_as = _SAME_AS.get(schema_key)
+    if same_as:
+        seen: set[str] = set()
+        unique = []
+        for item in rows:
+            # The same words for ANOTHER objective are another item.
+            text = " ".join(str(item.get(same_as) or "").casefold().split())
+            text = text and f"{text}|{item.get('aligned_objective', '')}|{item.get('plan_category', '')}"
+            if text and text in seen:
+                continue
+            seen.add(text)
+            unique.append(item)
+        rows = unique
+
+    if schema_key == "learning_activities":
+        kept = rows[:quota]
+    elif schema_key == "session_guides":
+        kept, covered = [], set()
+        for index, guide in enumerate(rows):
+            ids = {_bare(i) for field_name in ("activity_ids", "material_ids")
+                   for i in (guide.get(field_name) or []) if _bare(i)}
+            if index < quota or ids - covered:
+                kept.append(guide)
+                covered |= ids
+    else:
+        owed = list(work_set.pairs)
+        first_of: dict[tuple[str, str], int] = {}
+        for index, item in enumerate(rows):
+            pair = (_bare(item.get("aligned_objective")),
+                    str(item.get("plan_category") or "").strip().lower())
+            if pair in owed:
+                first_of.setdefault(pair, index)
+        keep = set(first_of.values())
+        for index in range(len(rows)):
+            if len(keep) >= max(quota, len(first_of)):
+                break
+            keep.add(index)
+        kept = [item for index, item in enumerate(rows) if index in keep]
+    return kept, len(items) - len(kept)
 
 
 # ── fan-in helpers: shared by every family's finalize step ─────────────────

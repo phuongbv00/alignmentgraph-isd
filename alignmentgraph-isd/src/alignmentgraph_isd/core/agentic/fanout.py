@@ -37,6 +37,7 @@ from typing import Callable
 from .. import dev_plans
 from .. import rulebook as rules
 from ..alignment_graph import NodeType, alignment
+from ..trajectory import ORCHESTRATOR
 from . import tools
 from .specialists import STEPS, AgenticStep, missing_parts
 
@@ -669,10 +670,22 @@ def _deposit(state):
 def _deposit_sets(spec: FanoutSpec, state, trajectory, work_sets: list,
                   payloads: list) -> None:
     committed: dict[str, list[str]] = {}
+    set_of = {ws.set_id: ws for ws in work_sets}
     for output in spec.outputs:
+        held: list[dict] = []
+        for payload in payloads:
+            items = payload.get(output.schema_key) or []
+            work_set = set_of.get(payload.get("set_id", ""))
+            if work_set is not None and isinstance(items, list):
+                items, dropped = dev_plans.trim_to_quota(work_set, output.schema_key, items)
+                if dropped:
+                    trajectory.log_recovery_event(
+                        ORCHESTRATOR, "excess_artifacts_trimmed", work_set.set_id,
+                        f"{output.schema_key}: kept {len(items)} of {len(items) + dropped} "
+                        "— the set's assignment stated the count")
+            held.append({"set_id": payload.get("set_id", ""), "items": items})
         merged = dev_plans.remap_and_tag(
-            work_sets, [{"set_id": p.get("set_id", ""),
-                         "items": p.get(output.schema_key) or []} for p in payloads],
+            work_sets, held,
             id_field=output.id_field, self_ref_fields=output.self_ref_fields,
             id_prefix=output.id_prefix, taken=_ids_already_held(state, output))
         if not merged:

@@ -102,7 +102,8 @@ makes sense on its own.
 
 Every objective must appear in the ``objectives`` of at least one module, by its id; an objective
 that genuinely spans the course may appear in more than one. Set ``covers_topics`` to the ids of
-the topics the module teaches. ``minutes`` is the learner time the module gets, and the modules'
+the topics the module teaches, copied from your read of the design state — a topic id you did
+not read there does not exist. ``minutes`` is the learner time the module gets, and the modules'
 minutes must add up to the time the scenario gives the course — this is the budget the
 module's activities and assessments have to fit inside, so do not write a round number.
 
@@ -162,17 +163,18 @@ scoring_criteria carry the judgment instead."""
 RULES_ASSESSMENT_ITEMS = RULES_ASSESSMENT_ITEMS % {"bloom_levels": ", ".join(BLOOM_LEVELS)}
 
 RULES_ASSESSMENT_DEV_PLAN = """\
-Group the assessment plan's lo_coverage_targets into instrument sets, module by module: every
-(objective, plan_category) pair it names must appear in exactly one set, and a set stays inside
-ONE module — it is the work of writing that module's instruments. Most sets should cover a single
-instrument — only group several into one set when their items genuinely share a scenario (e.g.
-one integrated case behind a module's formative quiz and its summative practical), never merely
-to produce fewer sets. Never invent an objective or category the plan did
-not name.
+The dev_plan divides the WRITING of the items into instrument sets, module by module. Each set
+names ``module_id`` — the ONE module it belongs to — and ``instrument_ids`` — the instruments of
+that module (ids from your own ``instruments``) whose items it writes. Every instrument must
+appear in exactly one set, and a set never mixes instruments of two modules. Most sets should
+hold a single instrument — only put several in one set when their items genuinely share a
+scenario (e.g. one integrated case behind a module's formative quiz and its summative practical),
+never merely to produce fewer sets. ``set_id`` is the set's own label (SET-01, SET-02, ...), not
+an instrument id.
 
-``expected_items`` is how many items that instrument actually needs: at least one per (objective,
-plan_category) pair the set lists, at most %(max_items)d, and no filler beyond what the instrument
-genuinely requires."""
+``expected_items`` is how many items that set writes: at least one per (objective, timing) its
+instruments cover, at most %(max_items)d, and no filler beyond what the instruments genuinely
+require."""
 
 #: Per-set rewrite of RULES_ASSESSMENT_ITEMS: a Developer sees only its own
 #: instrument set, not the whole plan, so the count/filler rule is scoped to
@@ -225,7 +227,8 @@ RULES_ACTIVITIES = RULES_ACTIVITIES % {"bloom_levels": ", ".join(BLOOM_LEVELS)}
 
 RULES_ACTIVITY_DEV_PLAN = """\
 Plan the activities module by module: group each module's objectives into activity blocks. A
-block belongs to ONE module — its objectives all come from that module's ``objectives`` — every
+block belongs to ONE module — name it in ``module_id``, and take the block's ``objectives`` from
+that module's own ``objectives`` — every
 objective of every module must appear in at least one block, and no two blocks may cover the same
 ground: a separate developer writes each block without seeing the others, so two blocks whose
 scopes overlap produce duplicate activities. Never invent an objective the plan did not name.
@@ -360,8 +363,8 @@ Implementation requirements:
 
 RULES_IMPLEMENTATION_DEV_PLAN = """\
 Divide the delivery into session blocks, module by module and in the order of the modules: a
-block delivers ONE module's activities and materials — your read of the design state lists each
-with the module it belongs to. Every activity id and every material id in
+block delivers ONE module's activities and materials — name that module in ``module_id``; your
+read of the design state lists each activity and material with the module it belongs to. Every activity id and every material id in
 the design must appear in exactly one block: an activity in no block is an activity nobody scheduled, and
 an id in two blocks is two developers writing the same session. Never invent an id that is not
 in the design.

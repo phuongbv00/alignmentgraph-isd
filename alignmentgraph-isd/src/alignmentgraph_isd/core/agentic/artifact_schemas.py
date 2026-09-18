@@ -131,7 +131,7 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
             "draft": {"type": "string"}, "critique": {"type": "string"},
             "revision": {"type": "string"}})),
         "review_summary": {"type": "string"},
-    }),
+    }, ("topics",)),
     "improvement_plan": _obj({
         "feedback_summary": {"type": "string"},
         "improvements": _arr_of(_obj({
@@ -207,11 +207,14 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
     }, ("instruments", "lo_coverage_targets", "pilot_data_plan")),
     "assessment_dev_plan": _obj({
         "instrument_sets": _arr_of(_obj({
-            "set_id": {"type": "string"}, "objectives": _arr(),
-            "plan_categories": {"type": "array", "items": _PLAN_CATEGORY},
+            "set_id": {"type": "string", "description": "SET-01, SET-02, ..."},
+            "module_id": {"type": "string",
+                          "description": "the ONE module whose instruments this set writes"},
+            "instrument_ids": _arr() | {
+                "description": "ids of that module's instruments whose items this set writes"},
             "expected_items": {"type": "integer"},
-            "instrument_hint": {"type": "string"}, "rationale": {"type": "string"}},
-            ("set_id", "objectives", "plan_categories", "expected_items"))),
+            "rationale": {"type": "string"}},
+            ("set_id", "module_id", "instrument_ids", "expected_items"))),
     }, ("instrument_sets",)),
     #: Item schema — the fan-out's ``assessment_tools`` (assessment items).
     "assessment_tools": _obj({
@@ -246,13 +249,16 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
     }),
     "activity_dev_plan": _obj({
         "activity_blocks": _arr_of(_obj({
-            "set_id": {"type": "string"}, "objectives": _arr(),
+            "set_id": {"type": "string"},
+            "module_id": {"type": "string",
+                          "description": "the ONE module this block's activities belong to"},
+            "objectives": _arr() | {"description": "objectives of that module this block covers"},
             "block_theme": {"type": "string"},
             "block_minutes": {"type": "integer",
                 "description": "this block's share of its module's minutes"},
             "expected_activities": {"type": "integer"},
             "rationale": {"type": "string"}},
-            ("set_id", "objectives", "block_minutes", "expected_activities"))),
+            ("set_id", "module_id", "objectives", "block_minutes", "expected_activities"))),
     }, ("activity_blocks",)),
     #: Item schema — the fan-out's ``learning_activities``.
     "learning_activities": _obj({
@@ -296,10 +302,14 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
     "operator_manual": _from_validation("operator_manual"),
     "implementation_dev_plan": _obj({
         "session_blocks": _arr_of(_obj({
-            "set_id": {"type": "string"}, "expected_sessions": {"type": "integer"},
+            "set_id": {"type": "string"},
+            "module_id": {"type": "string",
+                          "description": "the ONE module whose activities and materials "
+                                         "this block delivers"},
+            "expected_sessions": {"type": "integer"},
             "activity_ids": _arr(), "material_ids": _arr(),
             "block_theme": {"type": "string"}, "rationale": {"type": "string"}},
-            ("set_id", "expected_sessions", "activity_ids"))),
+            ("set_id", "module_id", "expected_sessions", "activity_ids"))),
     }, ("session_blocks",)),
     #: Item schema — the fan-out's ``session_guides``.
     "session_guides": _obj({

@@ -96,7 +96,8 @@ def test_a_wrong_typed_container_nobody_else_owns_is_still_reported_once():
     errors = specialists.validate_analysis({
         "needs_analysis": "a paragraph where an object belongs",
         "improvement_plan": {"improvements": ["a"]},
-        "learner_analysis": {"a": 1}, "context_analysis": {"a": 1}, "task_analysis": {"a": 1},
+        "learner_analysis": {"a": 1}, "context_analysis": {"a": 1},
+        "task_analysis": {"topics": [{"id": "TOP-01", "topic": "t"}]},
     })
     assert errors == ["needs_analysis must be a JSON object, got str"]
 

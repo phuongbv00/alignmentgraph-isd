@@ -595,6 +595,17 @@ def coerce_args(parameters: dict, args: object, *, salvaged: list | None = None)
     return coerced
 
 
+def _only_text_field(item_schema: dict) -> str:
+    """The one required string field beside ``id`` of an ``{id, text}`` item
+    schema, or ``""`` when the item is anything richer than that — a bare
+    string can stand for a labelled sentence and for nothing more."""
+    required = [k for k in (item_schema.get("required") or []) if k != "id"]
+    props = item_schema.get("properties") or {}
+    if "id" not in (item_schema.get("required") or []) or len(required) != 1:
+        return ""
+    return required[0] if (props.get(required[0]) or {}).get("type") == "string" else ""
+
+
 def reshape_args(parameters: dict, args: dict, *, reshaped: list,
                  salvaged: list | None = None) -> dict:
     """A scalar string where the schema declares an ARRAY OF STRINGS becomes
@@ -621,6 +632,16 @@ def reshape_args(parameters: dict, args: dict, *, reshaped: list,
     Only ``string`` items are wrapped: an array of objects or integers under a
     scalar string is the model's mistake and stays one. A string where an
     OBJECT is declared is likewise left for the validator.
+
+    The converse case is reshaped too: a bare STRING inside an array whose
+    items are declared ``{id, <one text field>}`` becomes that object, the
+    string as its text and a positional id (``CON-01`` for ``constraints``).
+    MEASURED (run aef73e0a): ``context_analysis.constraints`` arrived as five
+    plain sentences, the commit keeps only elements that carry an id, and all
+    five were dropped without a word — no constraint nodes, P8 at 0.0 and three
+    media selections naming constraints that did not exist. The text is the
+    model's; only the container and an id the model never needed to invent
+    are the harness's.
     """
     def walk(schema: dict, value: object, path: str) -> object:
         kind = (schema or {}).get("type")
@@ -641,7 +662,15 @@ def reshape_args(parameters: dict, args: dict, *, reshaped: list,
                 reshaped.append(path)
                 return [value]
             if isinstance(value, list) and items.get("type") == "object":
-                return [walk(items, one, f"{path}[{i}]") for i, one in enumerate(value)]
+                text_field = _only_text_field(items)
+                out = []
+                for i, one in enumerate(value):
+                    if isinstance(one, str) and one.strip() and text_field:
+                        reshaped.append(f"{path}[{i}]")
+                        prefix = path.rsplit(".", 1)[-1][:3].upper()
+                        one = {"id": f"{prefix}-{i + 1:02d}", text_field: one}
+                    out.append(walk(items, one, f"{path}[{i}]"))
+                return out
             return value
         if kind == "object" and isinstance(value, dict):
             props = (schema or {}).get("properties") or {}

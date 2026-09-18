@@ -137,13 +137,14 @@ _ASSESSMENT_PLAN = {
 #: optional artifact and the harness never asked for it; required since
 #: 2026-09-05, a fixture that never sends it stalls every stage that needs one.
 _ASSESSMENT_DEV_PLAN = {"dev_plan": {
+    # One set per module, naming that module's instruments: the dev plan
+    # divides the WRITING by the unit everything else is divided by.
     "instrument_sets": [
-        {"set_id": f"SET-0{i}", "objectives": [f"ILO-0{i}"],
-         "plan_categories": ["diagnostic", "formative", "summative"],
-         "expected_items": 2,
-         "instrument_hint": "Combined formative/summative check for this objective.",
-         "rationale": "One instrument per objective keeps scope contained."}
-        for i in range(1, 6)
+        {"set_id": f"SET-0{n}", "module_id": module["id"],
+         "instrument_ids": [i["id"] for i in _INSTRUMENTS if i["module_id"] == module["id"]],
+         "expected_items": 6,
+         "rationale": "The module's three instruments share one running case."}
+        for n, module in enumerate(_DESIGN["course_modules"], start=1)
     ],
 }}
 
@@ -217,11 +218,11 @@ _ACTIVITY_PLAN = {
 
 _ACTIVITY_DEV_PLAN = {"dev_plan": {
     "activity_blocks": [
-        {"set_id": "BLOCK-01", "objectives": ["ILO-01", "ILO-02"], "block_theme": "Encapsulation foundations",
+        {"set_id": "BLOCK-01", "module_id": "MOD-01", "objectives": ["ILO-01", "ILO-02"], "block_theme": "Encapsulation foundations",
          "block_minutes": 240, "rationale": "Both are introduced together in the same module."},
-        {"set_id": "BLOCK-02", "objectives": ["ILO-03"], "block_theme": "Applied inheritance",
+        {"set_id": "BLOCK-02", "module_id": "MOD-02", "objectives": ["ILO-03"], "block_theme": "Applied inheritance",
          "block_minutes": 240, "rationale": "Needs its own hands-on lab."},
-        {"set_id": "BLOCK-03", "objectives": ["ILO-04", "ILO-05"], "block_theme": "Design review",
+        {"set_id": "BLOCK-03", "module_id": "MOD-02", "objectives": ["ILO-04", "ILO-05"], "block_theme": "Design review",
          "block_minutes": 240, "rationale": "Both are exercised via the same critique session."},
     ],
 }}
@@ -310,7 +311,7 @@ _IMPLEMENTATION = {
 
 _IMPLEMENTATION_DEV_PLAN = {"dev_plan": {
     "session_blocks": [
-        {"set_id": "BLOCK-01", "expected_sessions": 2,
+        {"set_id": "BLOCK-01", "module_id": "MOD-01", "expected_sessions": 2,
          "activity_ids": ["TLA-01", "TLA-02", "TLA-03"],
          "material_ids": ["MAT-01", "MAT-02", "MAT-03"],
          "block_theme": "Foundations, then applied design.",

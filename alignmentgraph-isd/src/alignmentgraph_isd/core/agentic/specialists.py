@@ -578,10 +578,13 @@ def validate_analysis(parsed: dict) -> list[str]:
     yet, and the loop says so in those words. What is enforced: something must
     be there, and whatever is there must be well-formed.
 
-    ``improvement_plan.improvements`` and ``needs_analysis.gaps`` are checked
-    when their part is present — the first feeds P9 provenance and is the sole
-    source the aggregator builds ``evaluation.improvement_plan`` from, so a
-    part that arrives hollow zeroes the program-improvement rubric item.
+    ``improvement_plan.improvements``, ``needs_analysis.gaps`` and
+    ``task_analysis.topics`` are checked when their part is present — the
+    first feeds P9 provenance and is the sole source the aggregator builds
+    ``evaluation.improvement_plan`` from, so a part that arrives hollow zeroes
+    the program-improvement rubric item. MEASURED (run aef73e0a): a
+    ``task_analysis`` with seven keys and no ``topics`` was accepted, every
+    module then named topic ids that did not exist, and P7 read 0.0.
     """
     errors: list[str] = []
     if not any(parsed.get(part) for part in _ANALYSIS_PARTS):
@@ -590,6 +593,10 @@ def validate_analysis(parsed: dict) -> list[str]:
         _require_list(parsed, ("needs_analysis", "gaps"), errors)
     if parsed.get("improvement_plan") is not None:
         _require_list(parsed, ("improvement_plan", "improvements"), errors)
+    if parsed.get("task_analysis") is not None:
+        # The topics are what the course's modules are clustered from (P7) and
+        # one of the bounds on how many modules there are.
+        _require_list(parsed, ("task_analysis", "topics"), errors)
     for key in ("learner_analysis", "context_analysis", "task_analysis"):
         value = parsed.get(key)
         if value is None:
