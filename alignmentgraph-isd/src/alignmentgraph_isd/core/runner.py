@@ -324,8 +324,7 @@ def _run_fanout(config, memory, trajectory, design_brief, step, spec, *,
         trajectory.log_work_sets(
             step.family,
             set_count=stats_dev["set_count"], pair_count=stats_dev["pair_count"],
-            sets=[{"set_id": ws.set_id, "objectives": list(ws.objectives)}
-                  for ws in work_sets],
+            sets=[ws.summary() for ws in work_sets],
             source=("fallback" if stats_dev["fallback_used"]
                     else stats_dev.get("source", "llm")),
             fallback_used=stats_dev["fallback_used"],

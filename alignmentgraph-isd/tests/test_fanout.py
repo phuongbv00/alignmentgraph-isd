@@ -237,3 +237,25 @@ def test_parallel_workers_produce_the_same_graph_as_sequential():
 
 def test_the_default_is_one_worker():
     assert HarnessRunConfig().fanout_workers == 1
+
+
+def test_the_event_says_which_artifact_each_set_was_derived_from():
+    """Every family's sets are derived from an artifact of the design, so two
+    sets of one module cover the same objectives and are told apart by
+    nothing else. An event carrying `objectives` alone showed three
+    assessment sets as three identical rows — which is what the LLM judge
+    reads as redundancy."""
+    result = _run("multi")
+    events = {e["context"]["phase"]: e["context"]["sets"]
+              for e in result["trajectory"]["events"] if e["action"] == "work_sets"}
+
+    for phase, sets in events.items():
+        assert all(s["module_id"] for s in sets), phase
+        keys = [(s["module_id"], tuple(s.get("for_sets") or ())) for s in sets]
+        assert len(keys) == len(set(keys)) or phase.endswith("R1"), (
+            f"{phase}: two sets with the same grouping key are indistinguishable")
+
+    assessment = events["assessment"]
+    assert all(s["for_sets"] for s in assessment), (
+        "an assessment set writes for a named set of the blueprint")
+    assert len({tuple(s["for_sets"]) for s in assessment}) == len(assessment)

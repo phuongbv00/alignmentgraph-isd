@@ -124,6 +124,22 @@ class WorkSet:
             iter(self.payload.get("modules") or []), None)
         return str((module or {}).get("id") or "") if isinstance(module, dict) else ""
 
+    def summary(self) -> dict:
+        """What the trajectory event says about this set: its id and the
+        GROUPING KEY it was derived from.
+
+        The key is the point. Every family's sets are derived from an artifact
+        of the design (an assessment set, a module), so two sets of one module
+        cover the same objectives and are told apart by nothing else — an
+        event carrying `objectives` alone showed three assessment sets as
+        three identical rows, which reads to the LLM judge as redundancy.
+        """
+        for_sets = [str(one.get("id")) for one in (self.payload.get("sets") or [])
+                    if isinstance(one, dict) and one.get("id")]
+        return {"set_id": self.set_id, "module_id": self.module_id,
+                "objectives": list(self.objectives),
+                **({"for_sets": for_sets} if for_sets else {})}
+
     def as_dict(self) -> dict:
         return {
             "set_id": self.set_id,
