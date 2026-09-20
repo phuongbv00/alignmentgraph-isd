@@ -16,7 +16,7 @@ from .. import checks
 from ..alignment_graph import alignment
 from ..alignment_graph.alignment import bare_ref
 from ..llm_io import close_unclosed_arrays, parse_json_array, parse_json_response
-from .artifact_schemas import ARTIFACT_SCHEMAS
+from .artifact_schemas import ARTIFACT_SCHEMAS, required_floor
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from ..alignment_graph import AlignmentGraph
@@ -366,13 +366,20 @@ def _parameters_from(fields: tuple) -> dict:
     Each key's shape comes from :data:`artifact_schemas.ARTIFACT_SCHEMAS`,
     under the key itself. Every submit
     field has an entry (``test_every_submit_field_has_an_artifact_schema``),
-    so a missing one fails loudly rather than binding a schema-less tool."""
+    so a missing one fails loudly rather than binding a schema-less tool.
+
+    A REQUIRED artifact carries its floor (``artifact_schemas.required_floor``)
+    for the reason stated there: an ARRAY artifact — the objectives, the
+    modules, the media selections, a Developer's own output — is judged
+    non-empty on arrival, and a schema saying only "present" is a contract
+    weaker than the one the submit is measured against."""
     properties: dict = {}
     required: list[str] = []
     for key, json_type, is_required in fields:
         detailed = ARTIFACT_SCHEMAS[key]
-        properties[key] = ({"type": "array", "items": detailed}
-                           if json_type == "array" else dict(detailed))
+        shape = ({"type": "array", "items": detailed}
+                 if json_type == "array" else dict(detailed))
+        properties[key] = required_floor(shape) if is_required else shape
         if is_required:
             required.append(key)
     return {"type": "object", "properties": properties, "required": required}

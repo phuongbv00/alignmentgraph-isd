@@ -61,6 +61,12 @@ EVIDENCE_TYPES = ("true_false", "matching", "multiple_choice", "quiz",
 PLAN_CATEGORIES = ("diagnostic", "formative", "summative")
 
 RULES_ANALYSIS = """\
+Three lists are what the rest of the design is built from: needs_analysis.gaps (the objectives
+close them), context_analysis.constraints (every media selection is chosen in light of them) and
+task_analysis.topics (the modules cluster them). Each needs at least one entry, and each entry its
+own id — write the finding IN the list, not only in a summary field beside it. A list left empty
+is not a short analysis, it is a design that stops there.
+
 Every improvement in improvement_plan.improvements must set addresses_gap to an existing gap id
 from needs_analysis.gaps."""
 

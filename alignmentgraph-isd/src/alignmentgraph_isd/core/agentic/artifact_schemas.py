@@ -52,10 +52,38 @@ def _from_validation(field_key: str, *, exclude: tuple[str, ...] = ()) -> dict:
         prop: dict = {"type": json_type}
         if json_type == "array":
             prop["items"] = {"type": "string"}
-        properties[name] = prop
+        properties[name] = required_floor(prop) if is_required else prop
         if is_required:
             required.append(name)
     return {"type": "object", "properties": properties, "required": required}
+
+
+def required_floor(prop: dict) -> dict:
+    """A REQUIRED container's floor, stated in the schema the model reads.
+
+    Everywhere in this package an empty list or object is NOT ARRIVED
+    (``specialists._arrived``, ``validation._check_fields``, the fan-out's
+    primary-output validator), so "required" here means non-empty. The JSON
+    Schema keyword alone says only PRESENT, and ``{"gaps": []}`` is a valid
+    instance of a schema declaring ``required: ["gaps"]`` — so a model that
+    submits one is rejected for the one thing the contract it was handed never
+    asked for. MEASURED (run aef73e0a): ``needs_analysis`` arrived with its
+    three gaps written as prose into ``priority_matrix`` and ``gaps: []``, and
+    over the runs recorded beside it "must be a non-empty list" was the largest
+    single class of submit rejection (11 of 51), across ``gaps``,
+    ``constraints``, ``topics`` and ``assessment_tools`` alike.
+
+    Stamped FROM ``required`` rather than written per field, so a field that
+    joins ``required`` cannot arrive without its floor and the declared
+    contract cannot drift below the enforced one again. An open-ended object
+    (one carrying ``additionalProperties``) takes ``minProperties``; an object
+    with declared properties is already floored by its own ``required``.
+    """
+    if prop.get("type") == "array":
+        return prop | {"minItems": 1}
+    if prop.get("type") == "object" and "additionalProperties" in prop:
+        return prop | {"minProperties": 1}
+    return prop
 
 
 def _obj(properties: dict, required: tuple[str, ...] = ()) -> dict:
@@ -72,7 +100,10 @@ def _obj(properties: dict, required: tuple[str, ...] = ()) -> dict:
     ``task_analysis`` ``topics: []`` with 31 keys of analysis discarded beside
     them, and on runs 14a6b4c7/9efc3cfa ``prototype_execution`` was rejected
     three times over two keys and shipped invalid. A missing required field
-    is a fault; an extra one is not."""
+    is a fault; an extra one is not — and a required one that arrives EMPTY is
+    a fault too, which is what :func:`required_floor` states in the schema."""
+    properties = {name: (required_floor(prop) if name in required else prop)
+                  for name, prop in properties.items()}
     return {"type": "object", "properties": properties, "required": list(required)}
 
 
@@ -82,6 +113,10 @@ def _arr(items: str = "string") -> dict:
 
 def _arr_of(item_schema: dict) -> dict:
     return {"type": "array", "items": item_schema}
+
+
+def _ranked_gaps(band: str) -> dict:
+    return _arr() | {"description": f"ids of the gaps to be {band}"}
 
 
 _BLOOM = {"type": "string", "enum": list(rules.BLOOM_LEVELS)}
@@ -99,8 +134,17 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
             "id": {"type": "string"}, "description": {"type": "string"},
             "evidence": {"type": "string"}}, ("id", "description"))),
         "performance_analysis": {"type": "string"},
+        # Gap IDS, one band per list — not a second place to write the gaps
+        # themselves. Untyped, it is the easier of the two shapes to fill
+        # (plain strings against ``gaps``' ``{id, description}`` objects), and
+        # a model that reaches for it has said what it found while leaving the
+        # list the whole design reads empty: MEASURED (run aef73e0a), three
+        # gap statements under ``high`` and ``gaps: []``. Pointing it at the
+        # ids makes it depend on the gaps instead of standing in for them.
         "priority_matrix": _obj({
-            "high": _arr(), "medium": _arr(), "low": _arr()}),
+            "high": _ranked_gaps("addressed first"),
+            "medium": _ranked_gaps("addressed once the high band is covered"),
+            "low": _ranked_gaps("addressed only if time allows")}),
     }, ("gaps",)),
     "learner_analysis": _obj({
         "target_audience": {"type": "string"},
