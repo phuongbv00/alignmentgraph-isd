@@ -130,7 +130,7 @@ def test_graph_parity_with_the_single_arm_commits():
 
     unconverted_types = {
         NodeType.GAP, NodeType.TOPIC, NodeType.CONSTRAINT, NodeType.IMPROVEMENT,
-        NodeType.LEARNER_PROFILE, NodeType.COURSE_GOAL, NodeType.OBJECTIVE,
+        NodeType.LEARNER_PROFILE, NodeType.OBJECTIVE,
         NodeType.IMPLEMENTATION_PLAN,
     }
 
@@ -273,7 +273,6 @@ def _graph_with_an_unassessed_objective():
     graph = AlignmentGraph()
     trajectory = TrajectoryLogger()
     specialists.commit_outcomes(graph, trajectory, {
-        "course_goal": {"statement": "Learners can test software."},
         "learning_objectives": [
             {"id": "ILO-01", "level": "apply", "bloom_verb": "apply",
              "statement": "Apply boundary analysis to a spec with 80% coverage."},

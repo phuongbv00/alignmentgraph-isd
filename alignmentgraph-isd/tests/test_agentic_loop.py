@@ -118,7 +118,6 @@ _ANALYSIS = {
 }
 
 _OUTCOMES = {
-    "course_goal": {"statement": "Learners can design OOP-based solutions."},
     "learning_objectives": [
         {"id": "ILO-01", "level": "apply",
          "statement": "Apply inheritance to a domain model with 80% of tests passing.",
@@ -461,66 +460,29 @@ def test_whole_argument_object_as_one_json_string_is_coerced():
 
 
 def test_a_string_where_a_structure_was_declared_is_dropped_not_swallowed():
-    """Coercion must not paper over a real model mistake — with ONE deliberate
-    exception, added 2026-09-04.
+    """Coercion must not paper over a real model mistake.
 
     A string where an ARRAY was declared is unreadable and stays unreadable:
     it is dropped, reported as `dropped_argument`, and the artifact it was
-    supposed to be does not exist. That is the guard.
-
-    The exception is an artifact whose schema example is an object with exactly
-    ONE key: there, a bare string has only one thing it can mean, and
-    `_fill_single_key_object` reads it as that field. It is a real loss of
-    strictness — "not json at all" now lands as a course goal — and it is worth
-    it: MEASURED (run single_20260904_020259), a 2B model sent a perfectly good
-    goal sentence as a bare string, was rejected three times, spent the submit
-    budget, gave up the stage, and left `design.course_goal` null with C1 at 0
-    of 50 objectives covered. A bad goal the judge can score beats no goal at
-    all."""
+    supposed to be does not exist. Reading it as anything would be the harness
+    writing the artifact."""
     step = STEP_BY_NAME["outcomes"]
     _model, config, graph, trajectory, brief = _harness([
-        call("submit", {"course_goal": "not json at all",
-                        "learning_objectives": "also not json"}),
+        # The modules are well-formed and land; the objectives beside them are
+        # text where an array was declared, so they are dropped and SAID SO
+        # rather than refusing the artifact that did arrive.
+        call("submit", {"course_modules": _OUTCOMES["course_modules"],
+                        "learning_objectives": "not json at all"}),
         call("submit", _OUTCOMES),
     ])
     specialists.commit_analysis(graph, trajectory, _ANALYSIS)
 
     _loop(config, graph, trajectory, brief, step).run()
 
-    actions = [e["action"] for e in trajectory.recovery_events]
-    # The array field: unreadable, dropped, and SAID SO.
     dropped = [e for e in trajectory.recovery_events if e["action"] == "dropped_argument"]
     assert dropped, "a string where an array was declared must not be swallowed"
     assert "learning_objectives" in str(dropped[0]["context"]["input_summary"])
-    # The single-key object: read as its one field, and SAID SO.
-    assert "bare_artifact_wrapped" in actions
     assert graph.element_nodes(NodeType.OBJECTIVE), "and the retry must still land"
-
-
-def test_a_course_goal_sent_as_a_bare_string_still_lands():
-    """MEASURED FAILURE (run single_20260904_020259, Qwen3.5-2B on the pod).
-
-    The model sent ``course_goal`` as a bare sentence instead of
-    ``{"statement": ...}``. Its schema declares an object, so validation
-    answered "course_goal.statement must be a non-empty string" on all three
-    submit attempts, the budget ran out, the stage gave up — and the run
-    shipped `design.course_goal` null with C1, one of the five core relations,
-    covering 0 of 50 objectives. One malformed envelope cost a core relation."""
-    step = STEP_BY_NAME["outcomes"]
-    goal = "Learners build a maths-education website end to end."
-    _model, config, graph, trajectory, brief = _harness([
-        call("submit", {"course_goal": goal,
-                        "learning_objectives": _OUTCOMES["learning_objectives"]}),
-    ])
-    specialists.commit_analysis(graph, trajectory, _ANALYSIS)
-
-    _loop(config, graph, trajectory, brief, step).run()
-
-    committed = (graph.get_node(graph.section_id(NodeType.COURSE_GOAL)) or {}).get("data") or {}
-    assert committed.get("statement") == goal, (
-        "a bare-string course goal was not read as its only field")
-    assert not [e for e in trajectory.recovery_events
-                if e["action"] == "submit_rejected"], "and it cost no submit attempt"
 
 
 def test_the_same_objective_written_many_times_is_committed_once():
@@ -543,8 +505,7 @@ def test_the_same_objective_written_many_times_is_committed_once():
     ] + [{"id": "ILO-33", "level": "understand", "bloom_verb": "explain",
           "statement": "Learners explain software engineering methodologies."}]
     _model, config, graph, trajectory, brief = _harness([
-        call("submit", {"course_goal": {"statement": "Build a website."},
-                        "learning_objectives": padded}),
+        call("submit", {"learning_objectives": padded}),
     ])
     specialists.commit_analysis(graph, trajectory, _ANALYSIS)
 
@@ -1061,7 +1022,10 @@ def test_the_models_best_attempt_is_kept_when_the_submit_budget_runs_out():
     ITS work, and the deterministic repair net can mend it. What is gone is the
     script writing a different artifact and passing it off as the agent's."""
     step = STEP_BY_NAME["outcomes"]
-    partial = {"course_goal": _OUTCOMES["course_goal"], "learning_objectives": []}
+    # The modules are well-formed; the objectives are empty, so the submit is
+    # rejected every time and the stage runs out of budget with one good
+    # artifact in hand.
+    partial = {"course_modules": _OUTCOMES["course_modules"], "learning_objectives": []}
     _model, config, graph, trajectory, brief = _harness(
         [call("submit", partial)] * (ToolLoop.SUBMIT_BUDGET + 1))
     specialists.commit_analysis(graph, trajectory, _ANALYSIS)
@@ -1071,8 +1035,8 @@ def test_the_models_best_attempt_is_kept_when_the_submit_budget_runs_out():
 
     assert loop.stats["gave_up"]
     assert any(e["action"] == "agentic_gave_up" for e in trajectory.to_dict()["events"])
-    # The course goal the model DID write survives; nothing was fabricated for it.
-    assert graph.get_node(graph.section_id(NodeType.COURSE_GOAL))["data"]
+    # The modules the model DID write survive; nothing was fabricated for them.
+    assert graph.element_nodes(NodeType.MODULE)
 
 
 # ── analysis in instalments ─────────────────────────────────────────────────
@@ -2412,7 +2376,7 @@ def test_a_repeat_with_an_identical_result_says_so_truthfully():
 
     answers = [m["content"] for m in loop.messages if m.get("role") == "tool"]
     assert answers[1].startswith(protocol.REPEAT_UNCHANGED.format(name="read_node"))
-    assert "Do not read again: call submit_course_goal now." in answers[1], (
+    assert "Do not read again: call submit_learning_objectives now." in answers[1], (
         "the move to make instead is NAMED, not left as 'use what you have'")
     assert loop.stats["repeated_calls"] == 1 and loop.stats["reads"] == 1
     assert [e["action"] for e in trajectory.recovery_events] == ["repeated_tool_call"]

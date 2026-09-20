@@ -54,7 +54,7 @@ Algorithm 1 in `sections/04_method.tex` and to the package itself:
   objective is the edge SOURCE even though the assessment task and the activity are
   the artifacts that declare the reference;
 - the three heavy edges C2, C3, C4 are the triad of `eq:aligned`, and the note in
-  the band accounts for every relation not drawn (16 total: C1–C5 and P1–P11).
+  the band accounts for every relation not drawn (17 total: C2–C4 and P1–P14).
 
 Check the caption after moving or deleting anything.
 

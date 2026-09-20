@@ -8,11 +8,12 @@ import type { AlignmentGraphPayload, GraphEdge } from '../api/types'
 /**
  * A miniature dump with the same structure as a real one: element and section
  * nodes, all three edge layers, an aligned objective and an unaligned one.
- * Relations follow the current C1–C4 / P1–P14 registry; note that C1 is a
- * core relation established by PROVENANCE — the case a mechanism-based
- * layering would silently hide. The C5 edge is what an ARCHIVED dump carries
- * (its module is typed `content`): it still reads as core alignment, because
- * the layer ships with the edge and is never re-derived here.
+ * Relations follow the current C2–C4 / P1–P14 registry. The C1 and C5 edges
+ * and the `course_goal` node are what an ARCHIVED dump carries (its module is
+ * typed `content`): they still read as core alignment, because the layer ships
+ * with the edge and is never re-derived here. C1 is also the case a
+ * mechanism-based layering would silently hide — core, established by
+ * PROVENANCE.
  */
 function fixture(): AlignmentGraphPayload {
   const edge = (
@@ -46,7 +47,7 @@ function fixture(): AlignmentGraphPayload {
 
   return {
     nodes: [
-      node('course_goal_0', 'course_goal'),
+      node('course_goal_0', 'course_goal'), // archived dumps only
       node('gap:GAP-01', 'gap'),
       node('objective:LO-01', 'objective'),
       node('objective:LO-02', 'objective'),
@@ -60,10 +61,10 @@ function fixture(): AlignmentGraphPayload {
     ],
     edges: [
       // alignment layer = the CORE relations, whatever established them
-      edge('C1', 'C1-decomposes_to', 'course_goal_0', 'objective:LO-01', 'provenance'),
+      edge('C1', 'C1-decomposes_to', 'course_goal_0', 'objective:LO-01', 'provenance'), // archived
       edge('C2', 'C2-assessed_by', 'objective:LO-01', 'assessment:AT-01', 'id'),
       edge('C3', 'C3-practiced_by', 'objective:LO-01', 'activity:ACT-01', 'id'),
-      edge('C5', 'C5-supports', 'content:MOD-01', 'activity:ACT-01', 'provenance'),
+      edge('C5', 'C5-supports', 'content:MOD-01', 'activity:ACT-01', 'provenance'), // archived
       // provenance layer = the secondary relations P1–P14 — including P3,
       // which is TYPE-established but still secondary
       edge('P1', 'P1-informs', 'gap:GAP-01', 'objective:LO-01', 'provenance'),
@@ -108,7 +109,7 @@ describe('node id conventions', () => {
 describe('edge layers', () => {
   it('classifies by relation class (C = core alignment, P = secondary), not by mechanism', () => {
     const graph = fixture()
-    expect(edgeLayer(graph.edges[0])).toBe('alignment') // C1, provenance-established
+    expect(edgeLayer(graph.edges[0])).toBe('alignment') // C1, archived, provenance-established
     expect(edgeLayer(graph.edges[1])).toBe('alignment') // C2, id-established
     expect(edgeLayer(graph.edges[3])).toBe('alignment') // C5, from an archived dump
     expect(edgeLayer(graph.edges[4])).toBe('provenance') // P1

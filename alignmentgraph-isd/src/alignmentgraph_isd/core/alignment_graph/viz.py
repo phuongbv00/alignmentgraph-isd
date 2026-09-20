@@ -30,7 +30,7 @@ and the whole graph its ``legend``. Two rules follow, and both are load-bearing:
 A relation is named by ``alignment.REGISTRY`` — its ``edge_type`` verb
 (``assessed_by``) and its ``label`` sentence — verbatim, everywhere, in both
 renderers. No synonyms and no reversed phrasings: that is how the app came to
-call C1 "derived from" and P10 "scheduled by", words this system does not use.
+call P10 "scheduled by" and P1 "traceable to", words this system does not use.
 
 Colouring is the structural alignment state, not decoration (DOT's table; the
 webapp keeps its own against the same legend keys):
@@ -53,7 +53,6 @@ from . import alignment
 from .graph import AlignmentGraph, NodeType
 
 _NODE_STYLE = {
-    NodeType.COURSE_GOAL: {"shape": "diamond", "style": "filled", "fillcolor": "#fef3c7"},
     NodeType.OBJECTIVE: {"shape": "box", "style": "filled,rounded"},
     NodeType.ASSESSMENT: {"shape": "ellipse", "style": "filled", "fillcolor": "#dbeafe"},
     NodeType.ACTIVITY: {"shape": "ellipse", "style": "filled", "fillcolor": "#dcfce7"},
@@ -66,6 +65,14 @@ _NODE_STYLE = {
 #: Read here and in the webapp's style tables, and nowhere else: a dump is a
 #: record, so its ``type`` values are drawn as written, never rewritten.
 _LEGACY_NODE_TYPES = {"content": NodeType.MODULE}
+#: A node type no current run writes, kept so an archived dump still draws as
+#: it did. ``course_goal`` maps onto nothing current — it is not a vertex of
+#: the alignment triad and has no successor type — so it carries its own style
+#: here rather than a row in ``_LEGACY_NODE_TYPES``. The webapp's style tables
+#: keep the same key for the same reason.
+_LEGACY_NODE_STYLE = {
+    "course_goal": {"shape": "diamond", "style": "filled", "fillcolor": "#fef3c7"},
+}
 _ALIGNED_FILL = "#bbf7d0"      # green
 _UNALIGNED_FILL = "#fde68a"    # amber
 _EDGE_COLOR = {"id": "#16a34a", "type": "#2563eb", "provenance": "#6b7280"}
@@ -476,7 +483,6 @@ def _legend_entries() -> dict[str, list[dict]]:
         "nodes": [
             {"key": "objective_aligned", "label": f"objective aligned ({leg_ids} ok)"},
             {"key": "objective_unaligned", "label": "objective has a gap"},
-            {"key": "course_goal", "label": "course goal"},
             {"key": "assessment", "label": "assessment task (AT)"},
             {"key": "activity", "label": "activity (TLA)"},
             {"key": "module", "label": "module / material"},
@@ -572,7 +578,9 @@ def to_dot(payload: dict, *, title: str = "") -> str:
         if not is_objective and node["id"] not in linked_ids:
             continue
         node_type = _LEGACY_NODE_TYPES.get(node["type"], node["type"])
-        style = dict(_NODE_STYLE.get(node_type, {"shape": "ellipse", "style": "filled", "fillcolor": "#f3f4f6"}))
+        style = dict(_NODE_STYLE.get(node_type)
+                     or _LEGACY_NODE_STYLE.get(node_type)
+                     or {"shape": "ellipse", "style": "filled", "fillcolor": "#f3f4f6"})
         if is_objective:
             ann = annotations.get(node["id"], {})
             style["fillcolor"] = _ALIGNED_FILL if ann.get("aligned") else _UNALIGNED_FILL

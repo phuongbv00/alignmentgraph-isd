@@ -9,11 +9,16 @@ module. Everything here is called by Designers (to establish edges) and by
 
 Two tiers
 ---------
-**Core** (``C1``-``C4``): the construct-validity backbone. Each relation traces
-to a named construct in Constructive Alignment (Biggs), Backward Design /
+**Core** (``C2``-``C4``): the construct-validity backbone, and exactly the
+three edges of the constructive-alignment triad. Each relation traces to a
+named construct in Constructive Alignment (Biggs), Backward Design /
 Understanding by Design (Wiggins & McTighe), or outcome-based assessment
 theory — see each ``Relation.theory`` string. These are the only relations
 whose coverage is reported as a panel signal.
+
+A core relation must be able to FAIL. That is what keeps the tier evidence
+rather than a longer list: an edge recorded by the very commit that writes
+both of its ends certifies nothing about the design, however well it cites.
 
 **Secondary** (``P1``-``P14``): provenance/traceability for supporting artifacts
 (needs-analysis inputs, the modules the course is organised into, media/material
@@ -69,7 +74,7 @@ from .graph import AlignmentGraph, NodeType
 #: no relations and importing this would be the ``graph <-> alignment`` cycle
 #: ``add_edge``'s docstring exists to avoid.
 RelationId = Literal[
-    "C1", "C2", "C3", "C4",
+    "C2", "C3", "C4",
     "P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P11",
     "P12", "P13", "P14",
     "S1", "S2",
@@ -116,10 +121,7 @@ class Relation:
 REGISTRY: dict[RelationId, Relation] = {
     r.relation_id: r
     for r in (
-        # ── Core (C1-C4): construct-validity backbone ───────────────────────
-        Relation("C1", "course goal decomposes to learning outcome", "decomposes_to", "provenance",
-                 (NodeType.COURSE_GOAL,), (NodeType.OBJECTIVE,), "target", "core",
-                 theory="Outcome-based design / Backward Design (Wiggins & McTighe)"),
+        # ── Core (C2-C4): construct-validity backbone ───────────────────────
         Relation("C2", "learning outcome assessed by assessment task", "assessed_by", "id-reverse",
                  (NodeType.OBJECTIVE,), (NodeType.ASSESSMENT,), "source", "core",
                  theory="Constructive Alignment (Biggs) + Understanding by Design Stage 2"),

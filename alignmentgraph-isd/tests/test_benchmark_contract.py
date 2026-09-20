@@ -278,7 +278,7 @@ def test_graph_dump_shape(result):
     # MATRIX, not REGISTRY: the registry also holds the two structural
     # relations, which are navigation and carry no coverage figure.
     assert set(graph["relation_coverage"]) == set(alignment.MATRIX)
-    assert len(alignment.MATRIX) == 18   # 4 core + 14 secondary
+    assert len(alignment.MATRIX) == 17   # 3 core + 14 secondary
 
     for flags in graph["objective_alignment"].values():
         # `bloom_ok` stays the conjunction — `to_dot` and every archived run

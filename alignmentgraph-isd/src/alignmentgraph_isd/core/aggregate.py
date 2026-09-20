@@ -659,7 +659,7 @@ def _add_alignment_views(output: dict, graph) -> dict:
 
 def _build_alignment_matrix(objective_ids: list[str], graph) -> list[dict]:
     """Per-objective alignment record built from **established** edges
-    (relation_id, established_by, evidence) — the real C1/C2/C3 picture."""
+    (relation_id, established_by, evidence) — the real C2/C3/C4 picture."""
     objective_relations = [
         rid for rid, relation in alignment.MATRIX.items()
         if NodeType.OBJECTIVE in relation.target_node_types or (
@@ -672,9 +672,9 @@ def _build_alignment_matrix(objective_ids: list[str], graph) -> list[dict]:
         entry = {"objective_id": lo_id, "relations": {}}
         for relation_id in objective_relations:
             relation = alignment.MATRIX[relation_id]
-            # LO is the edge's target for C1 (id "decomposes_to"
-            # direction), but the edge's SOURCE for C2/C3 (the id-reverse
-            # relations) — read whichever side actually names an objective.
+            # An objective is the edge's SOURCE for C2/C3 (the id-reverse
+            # relations) and its TARGET for the provenance relations that
+            # produced it (P1/P2) — read whichever side actually names one.
             if relation.coverage_side == "source" and NodeType.OBJECTIVE in relation.source_node_types:
                 edges = graph.get_edges(relation_id=relation_id, source=target_id)
             else:

@@ -346,7 +346,7 @@ def test_objective_alignment_survives_to_the_api(client, ready_program, wait_for
     # alignment.py::REGISTRY.
     from alignmentgraph_isd.core.alignment_graph import alignment as alignment_module
     assert set(graph["relation_coverage"]) == set(alignment_module.MATRIX)
-    assert len(alignment_module.MATRIX) == 18
+    assert len(alignment_module.MATRIX) == 17
 
 
 # ── cancellation and restart ─────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 """The default config runs the full pipeline end-to-end: stable result
-contract + all 18 alignment relations (4 core + 14 secondary) established
+contract + all 17 alignment relations (3 core + 14 secondary) established
 (and repaired to closure)."""
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from conftest import FakeChatModel, load_brief, run_brief
 # conditioned on graph nodes the specialist read beforehand) vs. those
 # establishable by id/id-list/type-match alone (post-hoc bookkeeping on a
 # specialist's own output).
-_PROVENANCE_ONLY_RELATIONS = ("C1", "P1", "P2", "P4", "P5", "P7", "P8", "P9",
+_PROVENANCE_ONLY_RELATIONS = ("P1", "P2", "P4", "P5", "P7", "P8", "P9",
                               "P10", "P11", "P12")
 _ID_TYPE_MATCH_RELATIONS = ("C2", "C3", "C4", "P3", "P6", "P13", "P14")
 
@@ -68,7 +68,7 @@ def test_run_establishes_every_relation_and_repairs_gaps():
     # carries the verdict and no longer re-copies the measurement.
     coverage = result["graph"]["relation_coverage"]
 
-    # The run builds the graph: element nodes + edges spanning all 18 relations.
+    # The run builds the graph: element nodes + edges spanning all 17 relations.
     assert _element_nodes(result) and _graph_edges(result)
     established = {e.get("relation_id") for e in _graph_edges(result)}
     assert set(alignment.REGISTRY.keys()) - {"P6"} <= established  # P6 is fuzzy/audit-only
@@ -241,7 +241,7 @@ def test_expert_review_itemises_findings_and_relation_coverage():
     assert by_criterion["C4"]["issues_found"] == 1
     assert by_criterion["C4"]["repairs_applied"] == 0
     # per-relation core coverage, keyed by relation id with its label
-    assert set(review["alignment_coverage"]) == {f"C{i}" for i in range(1, 5)}
+    assert set(review["alignment_coverage"]) == {f"C{i}" for i in range(2, 5)}
     assert all("label" in row and "coverage" in row for row in review["alignment_coverage"].values())
     assert review["review_process"]
 

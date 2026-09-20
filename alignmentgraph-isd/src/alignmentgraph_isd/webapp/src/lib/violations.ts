@@ -4,16 +4,16 @@
  *  `bloom_mismatch_activity(2)` in the timeline — so the label a reader saw
  *  could not be traced to the check that produced it.
  *
- *  This table names CHECKS, and only checks. A relation (C1-C4, P1-P14) is
+ *  This table names CHECKS, and only checks. A relation (C2-C4, P1-P14) is
  *  named by `alignment.REGISTRY`, which travels in the graph payload as
  *  `relation_coverage[id].label` — so `violationLabel` is given that map and
  *  reads the wording from it.
  *
  *  It used to hold all sixteen relations too, under a comment claiming they
  *  took their wording from the registry. None of them did: every one was a
- *  paraphrase and most reversed the direction — C1 "objective derived from the
- *  course goal" for `decomposes_to`, P10 "activity scheduled by a session
- *  guide" for `delivers`, P5 "material traceable to a module" for `covers`.
+ *  paraphrase and most reversed the direction — P10 "activity scheduled by a
+ *  session guide" for `delivers`, P5 "material traceable to a module" for
+ *  `covers`.
  *  A second vocabulary for the thing this system is about is exactly what a
  *  single registry is for.
  */

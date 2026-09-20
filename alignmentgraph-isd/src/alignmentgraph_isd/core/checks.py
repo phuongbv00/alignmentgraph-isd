@@ -1019,7 +1019,7 @@ def actionability_data(node_id: str, data: dict) -> list[Violation]:
 # ══════════════════════ shared: relation coverage + Bloom cross-checks ══════
 
 # Only C2/C3/C4/P3/P6 have a re-runnable establisher (the id / id-list / type
-# mechanisms); the eleven provenance-mechanism relations (C1, C5, P1, P2, P4,
+# mechanisms); the provenance-mechanism relations (P1, P2, P4,
 # P5, P7, P8, P9, P10, P11) can't be re-established generically — they need the
 # specific source ids the producing agent had at generation time. The five are
 # called explicitly below rather than driven off a table: a table nothing else

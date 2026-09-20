@@ -185,7 +185,6 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
     }, ("improvements",)),
 
     # ── outcomes ─────────────────────────────────────────────────────────
-    "course_goal": _obj({"statement": {"type": "string"}}, ("statement",)),
     #: Item schema — ``learning_objectives`` is an ARRAY field.
     "learning_objectives": _obj({
         "id": {"type": "string"}, "level": _BLOOM,

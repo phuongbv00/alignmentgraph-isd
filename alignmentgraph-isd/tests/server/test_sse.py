@@ -236,7 +236,7 @@ def test_contexts_stream_live_and_replace_rather_than_pile_up():
     first = {"id": "aaaaaaaaaaaa",
              "agent": "OutcomeDesignerAgent", "phase": "outcomes", "label": "outcomes",
              "attempt": 1, "messages": [{"role": "system", "content": "x"}],
-             "tools": [{"function": {"name": "submit_course_goal"}}],
+             "tools": [{"function": {"name": "submit_learning_objectives"}}],
              "total_tokens": 300, "token_budget": 8000}
     state.add_context(first)
     state.add_context({**first, "messages": first["messages"] * 4, "total_tokens": 900})

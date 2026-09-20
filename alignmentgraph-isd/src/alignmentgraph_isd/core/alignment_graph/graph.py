@@ -13,9 +13,11 @@ class NodeType(StrEnum):
     (``NodeType.OBJECTIVE == "objective"``).
 
     Core (participate in the core construct-validity relations, see
-    ``alignment.py::REGISTRY``): ``COURSE_GOAL``, ``OBJECTIVE`` (Intended Learning
-    Outcome / ILO), ``ASSESSMENT`` (Assessment Task / AT), ``ACTIVITY``
-    (Teaching/Learning Activity / TLA).
+    ``alignment.py::REGISTRY``): ``OBJECTIVE`` (Intended Learning Outcome / ILO),
+    ``ASSESSMENT`` (Assessment Task / AT), ``ACTIVITY`` (Teaching/Learning
+    Activity / TLA). They are the three vertices of the constructive-alignment
+    triad and there is no fourth: what the course is for is stated by the
+    design brief, which is an input to the run rather than an artifact of it.
 
     ``MODULE`` is the course's structural unit: a cluster of objectives and
     topics learned together, with its share of the course's time. It is
@@ -50,7 +52,6 @@ class NodeType(StrEnum):
     (Gap/Topic/LearnerProfile/Constraint/Improvement/the Assessment pool).
     """
 
-    COURSE_GOAL = "course_goal"
     OBJECTIVE = "objective"
     ASSESSMENT = "assessment"
     ACTIVITY = "activity"
@@ -276,7 +277,7 @@ class AlignmentGraph:
         """Add an alignment edge.
 
         ``edge_type`` is the relation key ("C2-assessed_by"); ``relation_id``
-        (C1..C4/P1..P14) and ``established_by`` (id|type|provenance) are resolved by
+        (C2..C4/P1..P14) and ``established_by`` (id|type|provenance) are resolved by
         callers from the (source_type, target_type) pair via ``alignment.py``'s
         registry, not here (avoids a graph<->alignment import cycle).
 

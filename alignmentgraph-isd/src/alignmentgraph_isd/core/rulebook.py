@@ -71,8 +71,10 @@ Every improvement in improvement_plan.improvements must set addresses_gap to an 
 from needs_analysis.gaps."""
 
 RULES_OUTCOMES = """\
-Each objective (ILO = Intended Learning Outcome) decomposes course_goal and is grounded in the
-gaps/topics/learner profile given.
+Each objective (ILO = Intended Learning Outcome) states what learners will be able to do. Write
+them from the learning goals the brief states, grounded in the gaps/topics/learner profile given.
+Do not restate the brief's goals back as a goal of your own: what the course is for is already
+settled, and your job is the outcomes that deliver it.
 
 A course has a handful of outcomes, not a catalogue: write at least 1 and no more
 than %(max_objectives)d. That is what a course can actually align — past it there are more

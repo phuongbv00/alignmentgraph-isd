@@ -8,18 +8,19 @@ import type { StylesheetStyle } from 'cytoscape'
  * The type list mirrors `NodeType` exactly: the four core types (course goal,
  * objective, assessment, activity), the module that organises them, and the
  * support types the P-relations touch. `content` is what an archived dump
- * calls a module, and is drawn as one. Cytoscape has no folder/note
+ * calls a module, and is drawn as one; `course_goal` is a type no current run
+ * writes, kept so an archived dump still draws as it did. Cytoscape has no folder/note
  * shapes, so those map to the closest available polygon.
  */
 
 const SHAPES: Record<string, string> = {
   // Core types, straight from viz._NODE_STYLE.
-  course_goal: 'diamond',
   objective: 'round-rectangle',
   assessment: 'ellipse',
   activity: 'ellipse',
   module: 'rectangle', // viz: folder
   content: 'rectangle', // archived dumps: a module
+  course_goal: 'diamond', // archived dumps only; viz._LEGACY_NODE_STYLE
   // Support types (visible mostly with the provenance layer on): analysis
   // inputs are hexagons, evaluation outputs diamonds, plans plain rectangles.
   gap: 'hexagon',
@@ -200,9 +201,9 @@ export function buildStylesheet(): StylesheetStyle[] {
 }
 
 // Edge colour = HOW the relation was established (the evidence mechanism);
-// the Alignment/Provenance toggles = WHICH relation class (C1–C4 core vs
-// P1–P14 secondary, solid vs dotted). The two axes are independent: C1 is
-// core yet provenance-established, so a grey edge can still be core.
+// the Alignment/Provenance toggles = WHICH relation class (C2–C4 core vs
+// P1–P14 secondary, solid vs dotted). The two axes are independent: P5 is
+// secondary yet id-established, so a green edge can still be secondary.
 //
 // The WORDING of every legend row now ships with the graph (`payload.legend`).
 // This is the half that stays here: which colour or fill a row's `key` gets,
@@ -218,7 +219,7 @@ export const LEGEND_COLOURS: Record<string, string> = {
   invalid: '#dc2626',
   objective_aligned: '#bbf7d0',
   objective_unaligned: '#fde68a',
-  course_goal: FILLS.course_goal,
+  course_goal: FILLS.course_goal, // archived legends only
   assessment: FILLS.assessment,
   activity: FILLS.activity,
   module: FILLS.module,

@@ -78,7 +78,7 @@ class GraphAuditResult:
     unsupported_objectives: list[str] = field(default_factory=list)
     violations: list[dict] = field(default_factory=list)
     ready_to_aggregate: bool = False
-    # Per-relation coverage for all 18 relations (C1..C4 core + P1..P14
+    # Per-relation coverage for all 17 relations (C2..C4 core + P1..P14
     # secondary), computed from established edges as data (see alignment.py).
     relation_coverage: dict[str, dict] = field(default_factory=dict)
 
@@ -133,7 +133,7 @@ class GraphAuditResult:
 
     @property
     def residual_gap_count(self) -> int:
-        """Total uncovered elements across all 18 relations — the audit
+        """Total uncovered elements across all 17 relations — the audit
         summary's residual."""
         return sum(len(info["uncovered"]) for info in self.relation_coverage.values())
 

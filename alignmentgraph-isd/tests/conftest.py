@@ -73,7 +73,6 @@ _ANALYZE = {
 }
 
 _DESIGN = {
-    "course_goal": {"statement": "Learners can design and justify OOP-based solutions."},
     "learning_objectives": [
         {"id": "ILO-01", "level": "remember", "statement": "List the four pillars of OOP.", "bloom_verb": "recall"},
         {"id": "ILO-02", "level": "understand", "statement": "Explain encapsulation with an example.", "bloom_verb": "explain"},
@@ -335,11 +334,8 @@ _PAYLOAD_BY_SCHEMA_KEY = (
     (('"context_analysis"',), _ANALYZE),
     (('"task_analysis"',), _ANALYZE),
     (('"improvement_plan"',), _ANALYZE),
-    # course_goal alone (single arm's merged outcomes call, and the multi
-    # arm's own Hop B1) vs. learning_objectives alone (the multi arm's Hop
-    # B2, 2026-08-28 split) — both draw from the SAME canned _DESIGN, which
-    # already carries both fields; each hop reads only the one it asked for.
-    (('"course_goal"',), _DESIGN),
+    # The outcomes stage's two artifacts draw from the SAME canned _DESIGN,
+    # which carries both fields; each turn reads only the one it asked for.
     (('"learning_objectives"',), _DESIGN),
     (('"course_modules"',), _DESIGN),
     (('"pilot_data_plan"',), _ASSESSMENT_PLAN),
@@ -366,7 +362,7 @@ _PAYLOAD_BY_SCHEMA_KEY = (
     # its bound tool's `parameters`, and the old single anchor stops matching:
     # `_payload_for_system` returned {} and `monitoring` was submitted empty
     # forever. Each of the five other keys needs its own anchor for exactly
-    # the same reason `course_goal`/`learning_objectives` already have theirs.
+    # the same reason `learning_objectives`/`course_modules` already have theirs.
     (('"instructor_orientation"',), _IMPLEMENTATION),
     (('"system_check"',), _IMPLEMENTATION),
     (('"prototype_execution"',), _IMPLEMENTATION),

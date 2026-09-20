@@ -222,7 +222,7 @@ def test_all_relations_coverage_covers_the_whole_registry():
     # evidence. C5 went when the module became the course's structural unit: a
     # module ORGANISES the design, so everything it takes part in (P5, P7,
     # P12-P14) is traceability and sits in the secondary tier.
-    assert sum(1 for r in alignment.REGISTRY.values() if r.tier == "core") == 4
+    assert sum(1 for r in alignment.REGISTRY.values() if r.tier == "core") == 3
     assert sum(1 for r in alignment.REGISTRY.values() if r.tier == "secondary") == 14
     assert not [r.relation_id for r in alignment.REGISTRY.values()
                 if NodeType.MODULE in r.source_node_types + r.target_node_types

@@ -10,13 +10,13 @@ import type { AlignmentGraphPayload, GraphEdge, GraphNode, ObjectiveAlignment } 
  * So edges come in three layers, switched independently, split exactly the way
  * `alignment.py::REGISTRY` splits its relations:
  *
- *  - `alignment` — the CORE relations C1–C4, the construct-validity backbone:
- *    goal decomposes to LO, LO assessed by AT / practiced by TLA, TLA prepares
- *    for AT. On by default, because it is the thing worth looking at. The
- *    layer is the relation CLASS, not the establishment mechanism — C1 is
- *    provenance-established and is still core alignment. A MODULE organises
- *    the design and is not a vertex of it, so every relation it takes part in
- *    is on the provenance layer.
+ *  - `alignment` — the CORE relations C2–C4, the construct-validity backbone
+ *    and exactly the edges of the constructive-alignment triad: LO assessed by
+ *    AT / practiced by TLA, TLA prepares for AT. On by default, because it is
+ *    the thing worth looking at. The layer is the relation CLASS, not the
+ *    establishment mechanism. A MODULE organises the design and is not a
+ *    vertex of it, so every relation it takes part in is on the provenance
+ *    layer.
  *  - `provenance` — the secondary relations P1–P14: traceability only, never
  *    claimed as construct-validity evidence.
  *  - `scaffolding` — the relation-less structural edges (`narrates` etc.).

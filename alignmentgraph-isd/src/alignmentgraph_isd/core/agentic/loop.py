@@ -550,7 +550,6 @@ class ToolLoop:
         committed and answered with what the stage still owes."""
         self._meter.acted()
         args = self._wrap_bare_artifact(turn.name, args)
-        args = self._fill_single_key_object(args)
         args, carried = turn_mod.carry_over(self._kept, args)
         turn_mod.note_carried(carried, trajectory=self.trajectory, identity=self.identity)
         section, errors, unreadable = turn_mod.judge_submit(
@@ -1012,53 +1011,10 @@ class ToolLoop:
         return repair_turn.violations_for_agent(
             self.state, self.design_brief, self.step, trajectory=self.trajectory,
             memory=self.memory, identity=self.identity, phase=self.label)
-    def _fill_single_key_object(self, args: dict) -> dict:
-        """``course_goal: "Build a website"`` means
-        ``course_goal: {"statement": "Build a website"}``.
-
-        MEASURED FAILURE (run single_20260904_020259, Qwen3.5-2B on the pod):
-        the model sent ``course_goal`` as a bare string. Its schema declares an
-        object, so validation answered "course_goal.statement must be a
-        non-empty string" three times, the submit budget ran out and the stage
-        gave up — leaving ``design.course_goal`` null and C1, one of the five
-        core construct-validity relations, at 0 of 50 objectives covered.
-
-        The target field is DERIVED from the step's own deep tool schema
-        (``artifact_schemas.ARTIFACT_SCHEMAS``), not declared in a table
-        here: an artifact whose schema has exactly ONE property has only one
-        thing a bare string could be. That derivation finds
-        `course_goal -> statement` and, for the fan-out stages,
-        `course_modules -> …`; it finds nothing for
-        the multi-field artifacts, where a string would be a guess."""
-        if not isinstance(args, dict):
-            return args
-        for key, field in self._single_key_fields().items():
-            value = args.get(key)
-            if isinstance(value, str) and value.strip():
-                args = {**args, key: {field: value.strip()}}
-                self.trajectory.log_recovery_event(
-                    self.identity, "bare_artifact_wrapped",
-                    f"{key}:str", f"{key}.{field}")
-        return args
-
-    def _single_key_fields(self) -> dict:
-        """``{artifact key: its only field}`` read off this step's own deep
-        tool schema."""
-        cached = getattr(self.step, "_single_key_cache", None)
-        if cached is None:
-            cached = {}
-            for key, json_type, _required in self.step.submit_fields:
-                if json_type != "object":
-                    continue
-                properties = (tools.ARTIFACT_SCHEMAS.get(key) or {}).get("properties") or {}
-                if len(properties) == 1:
-                    cached[key] = next(iter(properties))
-            object.__setattr__(self.step, "_single_key_cache", cached)
-        return cached
 
     def _wrap_bare_artifact(self, tool: str, args: dict) -> dict:
-        """``submit_course_goal({"statement": …})`` means
-        ``{"course_goal": {"statement": …}}``.
+        """``submit_assessment_plan({"sets": …})`` means
+        ``{"assessment_plan": {"sets": …}}``.
 
         The mirror of ``unwrap_section``, and the same class of near-miss: the
         tool is named after the artifact, so a model that has just been shown

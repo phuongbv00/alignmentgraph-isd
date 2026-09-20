@@ -177,10 +177,6 @@ def commit_analysis(graph, trajectory, parsed: dict) -> None:
 
 
 def commit_outcomes(graph, trajectory, parsed: dict) -> None:
-    goal_id = graph.section_id(NodeType.COURSE_GOAL)
-    if isinstance(parsed.get("course_goal"), dict) and parsed["course_goal"]:
-        _merge_section(graph, trajectory, NodeType.COURSE_GOAL, parsed["course_goal"])
-
     objectives = parsed.get("learning_objectives") or []
     objective_ids = _decompose(graph, trajectory, NodeType.OBJECTIVE, objectives,
                                dedup_field="statement")
@@ -188,7 +184,6 @@ def commit_outcomes(graph, trajectory, parsed: dict) -> None:
     topic_ids = [n["id"] for n in graph.element_nodes(NodeType.TOPIC)]
     learner_id = graph.section_id(NodeType.LEARNER_PROFILE)
     for node_id in objective_ids:
-        alignment.record_provenance(graph, "C1", [goal_id], node_id)
         if gap_ids or topic_ids:
             alignment.record_provenance(graph, "P1", gap_ids + topic_ids, node_id)
         if graph.get_node(learner_id):
@@ -351,8 +346,7 @@ def commit_outcomes_prose(store, trajectory, parsed: dict) -> None:
     both drop a repeated ``statement`` through :func:`_dedup_new`.
 
     ``course_modules`` is the same kind of list and gets the same treatment,
-    deduplicated on ``title``. ``course_goal`` keeps merge-on-key: it is one
-    document, not a list.
+    deduplicated on ``title``.
     """
     updates = {k: v for k, v in (parsed or {}).items() if v}
     for list_key, dedup_field in (("learning_objectives", "statement"),
@@ -425,8 +419,7 @@ def view_analysis_prose(store) -> dict:
 
 
 def view_outcomes(graph) -> dict:
-    return {"course_goal": _section(graph, NodeType.COURSE_GOAL),
-            "learning_objectives": graph.element_nodes(NodeType.OBJECTIVE),
+    return {"learning_objectives": graph.element_nodes(NodeType.OBJECTIVE),
             "course_modules": graph.element_nodes(NodeType.MODULE)}
 
 
@@ -587,7 +580,7 @@ def validate_outcomes(parsed: dict) -> list[str]:
     demanding the whole stage here would reject each correct instalment in
     turn. What is still missing is not an error, it is the reason the stage is
     not finished, and the loop says so in those words."""
-    errors = _nothing_arrived(parsed, ("course_goal", "learning_objectives", "course_modules"))
+    errors = _nothing_arrived(parsed, ("learning_objectives", "course_modules"))
     if errors:
         return errors
     if parsed.get("course_modules") is not None:
@@ -595,10 +588,6 @@ def validate_outcomes(parsed: dict) -> list[str]:
     if parsed.get("learning_objectives") is not None:
         errors += validate_section("objective", {
             "learning_objectives": parsed.get("learning_objectives")})
-    if parsed.get("course_goal") is not None:
-        goal = parsed["course_goal"] if isinstance(parsed["course_goal"], dict) else {}
-        if not str(goal.get("statement") or "").strip():
-            errors.append("course_goal.statement must be a non-empty string")
     return errors
 
 
@@ -930,18 +919,19 @@ STEPS: tuple[AgenticStep, ...] = (
         identity="OutcomeDesignerAgent",
         family="outcome_designer",
         persona=("You are an expert instructional designer working on the Design phase of ADDIE, "
-                 "responsible for the course goal, the learning objectives and the modules "
-                 "the course is organised into."),
-        intro=("State what this course is for, what learners will be able to do, and how the "
-               "course divides into modules, grounded in the analysis already in the design "
-               "graph. Everything designed after this is divided by your modules."),
+                 "responsible for the learning objectives and the modules the course is "
+                 "organised into."),
+        intro=("State what learners will be able to do, and how the course divides into "
+               "modules, grounded in the learning goals the brief states and in the analysis "
+               "already in the design graph. Everything designed after this is divided by "
+               "your modules."),
         rules=rules.rules_for("outcomes"),
         primary_type=NodeType.OBJECTIVE,
         readable_types=(NodeType.GAP, NodeType.TOPIC, NodeType.LEARNER_PROFILE, NodeType.CONSTRAINT),
         docket={"gaps": ("P12",), "module_ceiling": True},
         readable_docs=("analysis",),
         submit_fields=(
-            ("course_goal", "object", True), ("learning_objectives", "array", True),
+            ("learning_objectives", "array", True),
             # REQUIRED: the modules are the key all four fan-out families
             # divide their work by, and a run without them stops after this
             # stage (``core/runner.py``) rather than inventing a division.

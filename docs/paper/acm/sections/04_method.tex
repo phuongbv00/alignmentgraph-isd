@@ -55,8 +55,7 @@ carrying one context through all six stages.
     \midrule
     $s_{\mathrm{ana}}$ & Needs Analyst & gap, learner profile, topic,
     constraint, improvement \\
-    $s_{\mathrm{out}}$ & Outcome Designer & course goal, learning objective,
-    course module \\
+    $s_{\mathrm{out}}$ & Outcome Designer & learning objective, course module \\
     $s_{\mathrm{asm}}$ & Assessment Designer & assessment plan with its blueprint
     of instruments, assessment task \\
     $s_{\mathrm{act}}$ & Activity Designer & activity plan, learning activity \\
@@ -98,8 +97,8 @@ design artifacts and whose edges are typed relations (\Cref{tab:graph-spec}).
     $v\in V$ & Node: a design artifact with type $\tau(v)\in\mathcal{T}$, where
     $\mathcal{T}$ is exactly the artifact kinds owned by the stages in
     \Cref{tab:specialists}. \\
-    $\mathcal{R}$ & Eighteen relation types in two tiers. Four \emph{core}
-    relations $C_1$--$C_4$ each carry a theoretical warrant from constructive
+    $\mathcal{R}$ & Seventeen relation types in two tiers. Three \emph{core}
+    relations $C_2$--$C_4$ each carry a theoretical warrant from constructive
     alignment or backward design and form the construct-validity backbone; fourteen
     \emph{secondary} relations $P_1$--$P_{14}$ record provenance, course
     organisation and delivery traceability and are never offered as
@@ -113,7 +112,7 @@ design artifacts and whose edges are typed relations (\Cref{tab:graph-spec}).
   \end{tabular}
 \end{table}
 
-Three core relations are the edges of the constructive-alignment triad: $C_2$
+The core relations are exactly the edges of the constructive-alignment triad: $C_2$
 (\emph{assessed\_by}) joins an objective to an assessment task, $C_3$
 (\emph{practiced\_by}) joins an objective to a learning activity, and $C_4$
 (\emph{prepares\_for}) joins an activity to the assessment task it prepares
@@ -127,8 +126,15 @@ that is, $o$ is practiced by an activity $t$ that prepares for an assessment tas
 $a$ that measures $o$. The quantifier matters. Taken as three independent
 existentials, the predicate is satisfied by an objective whose activity prepares
 for some unrelated task, which is two spokes rather than a triangle;
-\Cref{eq:aligned} requires the triangle to meet. The remaining core relation,
-$C_1$, decomposes a course goal into objectives.
+\Cref{eq:aligned} requires the triangle to meet.
+
+There is no fourth core relation. What the course is for is stated by the design
+brief, which is an input to the run rather than an artifact of it, so the Outcome
+Designer writes the objectives that deliver those goals and no goal statement of
+its own. An edge from a model-authored restatement of the brief to the objectives
+written beside it in the same turn would be recorded by the very commit that
+writes both of its ends, and a relation that cannot fail is not evidence of
+alignment.
 
 The course is organised into \emph{modules}: the Outcome Designer writes them
 right after the objectives, each grouping the objectives and topics learned

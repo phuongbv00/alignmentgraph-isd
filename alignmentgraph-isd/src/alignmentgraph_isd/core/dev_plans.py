@@ -833,7 +833,7 @@ def activity_work_sets(parsed, lo_ids, items_by_lo: dict | None = None, *,
 
     raw_blocks = (parsed or {}).get("activity_blocks") if isinstance(parsed, dict) else None
     sets: list[WorkSet] = []
-    claimed: set[str] = set()
+    claimed: set[tuple[str, str]] = set()
     if isinstance(raw_blocks, list):
         for raw in raw_blocks:
             if not isinstance(raw, dict):
@@ -841,17 +841,21 @@ def activity_work_sets(parsed, lo_ids, items_by_lo: dict | None = None, *,
             objs = [_bare(o) for o in (raw.get("objectives") or []) if _bare(o)]
             known = list(dict.fromkeys(o for o in objs if o in lo_set))
             stats["dropped_lo_refs"] += len(objs) - len(known)
-            # An objective already in an earlier block stays there — unless
-            # this block carries its own `block_theme`, which is the planner
-            # deliberately splitting one objective across distinct scopes
-            # (RULES_ACTIVITY_DEV_PLAN asks for exactly that when an
-            # objective needs more than one call).
-            themed = bool(str(raw.get("block_theme", "")).strip())
-            valid_objs = [o for o in known if themed or o not in claimed]
+            # Claimed PER MODULE. An objective two modules serve is practised
+            # in both — that is what a shared objective means — so only a
+            # second block of the SAME module is writing the same activities
+            # twice. Keyed on the objective alone it was the module that lost:
+            # a block is one module now, so the second module's block was
+            # dropped whole and the module ended with no activity at all
+            # (P13), its objectives unpractised (C3). The old escape hatch was
+            # a non-empty `block_theme`, which only a model-written plan ever
+            # carried.
+            module = _bare(raw.get("module_id"))
+            valid_objs = [o for o in known if (module, o) not in claimed]
             stats["duplicate_pairs"] += len(known) - len(valid_objs)
             if not valid_objs:
                 continue
-            claimed.update(valid_objs)
+            claimed.update((module, o) for o in valid_objs)
             items = sorted({i for lo in valid_objs for i in items_by_lo.get(lo, [])})
             sets.append(WorkSet(
                 set_id="", objectives=tuple(valid_objs), pairs=(),

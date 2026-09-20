@@ -85,7 +85,7 @@ edge(pt("g_needs", 1.0, 0.5), pt("g_obj", 0.0, 0.5), color=SEC, sw=1.2,
      label="P1 informs", ldy=-5)
 edge(pt("g_con", 0.1, 1.0), pt("g_mat", 0.9, 0.0), color=SEC, sw=1.2,
      label="P5 covers", ldy=-4)
-text(900, 448, ["C1 and nine further provenance relations not shown"],
+text(900, 448, ["Twelve further secondary relations not shown"],
      fs=9, bold=False, fc=SEC, anchor="end")
 
 # ── brief and the six stages ────────────────────────────────────────────────
