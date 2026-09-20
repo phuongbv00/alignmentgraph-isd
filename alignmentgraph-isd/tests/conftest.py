@@ -92,14 +92,14 @@ _DESIGN = {
     ],
 }
 
-#: Which module each objective of `_DESIGN` belongs to, and the instrument that
+#: Which module each objective of `_DESIGN` belongs to, and the set that
 #: assesses a (module, timing) — the two lookups the item and activity
 #: fixtures below are written against.
 _MODULE_OF_LO = {lo: module["id"] for module in _DESIGN["course_modules"]
                  for lo in module["objectives"]}
 _TIMINGS = ("diagnostic", "formative", "summative")
 _INSTRUMENTS = [
-    {"id": f"INS-{m * 3 + t + 1:02d}", "module_id": module["id"], "timing": timing,
+    {"id": f"SET-{m * 3 + t + 1:02d}", "module_id": module["id"], "timing": timing,
      "format": "quiz" if timing != "summative" else "practical",
      "item_counts": {"multiple_choice": 10, "short_answer": 3} if timing != "summative"
      else {"performance_task": 2},
@@ -114,7 +114,7 @@ _ASSESSMENT_PLAN = {
     "assessment_plan": {
         "lo_coverage_targets": {f"ILO-0{i}": ["diagnostic", "formative", "summative"]
                                 for i in range(1, 6)},
-        "instruments": _INSTRUMENTS,
+        "sets": _INSTRUMENTS,
         "expected_evidence": {f"ILO-0{i}": "A working code artifact with justification." for i in range(1, 6)},
         "formative_methods": ["Weekly design critique with rubric", "Exit tickets after each module"],
         "pilot_data_plan": {
@@ -151,7 +151,7 @@ def _assessment_tools() -> list[dict]:
             "question": f"Demonstrate mastery of {los[lo_idx]} in a realistic scenario.",
             "aligned_objective": los[lo_idx],
             "plan_category": categories[i % len(categories)],
-            "instrument_id": _INSTRUMENT_OF[(_MODULE_OF_LO[los[lo_idx]],
+            "set_id": _INSTRUMENT_OF[(_MODULE_OF_LO[los[lo_idx]],
                                              categories[i % len(categories)])],
             "required_cognitive_process": cognitive[lo_idx],
             "scoring_criteria": "Rubric scores correctness, design quality, and explanation against observable criteria (0-4 each).",
@@ -444,7 +444,7 @@ def _named_from_prompt(payload: dict, prompt: str) -> dict:
 
 
 # ── dev-plan fan-out: per-set canned slices ─────────────────────────────────
-# A Developer's prompt carries "=== YOUR ASSIGNED SET/BLOCK ===" naming
+# A Developer's prompt carries "=== YOUR ASSIGNMENT/BLOCK ===" naming
 # exactly the pairs/objectives it must cover. Without set-aware slicing every
 # worker in a fan-out would get the SAME full canned list back (there being
 # only one canned payload per family), inflating item counts and exercising
@@ -564,7 +564,7 @@ def _sliced_payload_for_set(raw_prompt: str) -> dict | None:
         return payload
     wanted = int(found.group(1) or found.group(2))
     module = re.search(r"^module: (\S+)", raw_prompt, re.M)
-    instrument = re.search(r"^  - (INS-\S+):", raw_prompt, re.M)
+    named_set = re.search(r"^  - (SET-\S+):", raw_prompt, re.M)
     for key, items in payload.items():
         name = _NAME_FIELD.get(key)
         if name is None or not items:
@@ -577,8 +577,8 @@ def _sliced_payload_for_set(raw_prompt: str) -> dict | None:
         for item in written:
             if module and key == "learning_activities":
                 item["module_id"] = module.group(1)
-            if instrument and key == "assessment_tools":
-                item.setdefault("instrument_id", instrument.group(1))
+            if named_set and key == "assessment_tools":
+                item.setdefault("set_id", named_set.group(1))
         payload[key] = written
     return payload
 
@@ -586,7 +586,7 @@ def _sliced_payload_for_set(raw_prompt: str) -> dict | None:
 def _canned_slice_for_set(raw_prompt: str) -> dict | None:
     """A Developer's own slice of the family's canned items, or ``None`` if
     this prompt isn't a Developer's (falls through to schema-key matching)."""
-    if "=== YOUR ASSIGNED SET ===" in raw_prompt and '"assessment_tools"' in raw_prompt:
+    if "=== YOUR ASSIGNMENT ===" in raw_prompt and '"assessment_tools"' in raw_prompt:
         pairs = _parse_assigned_pairs(raw_prompt)
         if pairs is not None:
             by_pair = {(t["aligned_objective"], t["plan_category"]): t for t in _assessment_tools()}
@@ -788,7 +788,7 @@ class FakeChatModel:
         if marker != -1:
             raw_prompt = raw_prompt[marker:]
         # A Developer's own work-set slice, read from the RAW prompt (the
-        # generic stripping below would remove "=== YOUR ASSIGNED SET/BLOCK
+        # generic stripping below would remove "=== YOUR ASSIGNMENT/BLOCK
         # ===" along with every other non-SCENARIO header) — checked first so
         # a fan-out worker gets only the items its own set asked for, never
         # the whole family's canned list.

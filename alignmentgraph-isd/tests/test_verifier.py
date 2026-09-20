@@ -226,7 +226,7 @@ def test_a_module_nothing_is_taught_or_assessed_in_is_reported_and_never_filled(
     assert {v.violation_type for v in found} == {"P13", "P14"}
     assert all(v.severity == "warning" for v in found), "a module's relations are secondary"
     assert "module_id" in next(v for v in found if v.violation_type == "P13").repair_hint
-    assert "instrument_id" in next(v for v in found if v.violation_type == "P14").repair_hint
+    assert "set_id" in next(v for v in found if v.violation_type == "P14").repair_hint
 
     for family in ("activity_designer", "assessment_designer"):
         owned = [v for v in found if v.violation_type in repairs.OWNED_BY_FAMILY[family]]

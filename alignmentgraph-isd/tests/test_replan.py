@@ -58,27 +58,27 @@ def test_only_gaps_new_work_can_close_are_sent_back():
 def test_only_a_set_that_owns_a_gap_runs_again():
     """Nothing re-runs a set with no gap of its own, so a round can only ask
     for work that is missing."""
-    mine = WorkSet(set_id="AS-INS-01", ordinal=1,
+    mine = WorkSet(set_id="AS-SET-01", ordinal=1,
                    pairs=(("ILO-01", "diagnostic"),), objectives=("ILO-01",))
-    other = WorkSet(set_id="AS-INS-02", ordinal=2,
+    other = WorkSet(set_id="AS-SET-02", ordinal=2,
                     pairs=(("ILO-02", "summative"),), objectives=("ILO-02",))
     gaps = [_Gap("plan_coverage", lo_id="ILO-01", plan_category="diagnostic")]
 
     redo = replan.redo("assessment", gaps, [mine, other],
-                       {"AS-INS-01", "AS-INS-02"}, 1)
-    assert [ws.set_id for ws in redo] == ["AS-INS-01R1"]
+                       {"AS-SET-01", "AS-SET-02"}, 1)
+    assert [ws.set_id for ws in redo] == ["AS-SET-01R1"]
     assert redo[0].payload["still_missing"] == ["plan_coverage for ILO-01"]
 
 
 def test_a_set_the_state_has_never_seen_runs_because_it_is_new_work():
     """The Designer amended the blueprint during its own repair turns, so an
-    instrument now exists that had no work set in round 0. It is dispatched
+    set now exists that had no work set in round 0. It is dispatched
     without a `still_missing` note: nothing of it has been written."""
-    new = WorkSet(set_id="AS-INS-04", ordinal=4,
+    new = WorkSet(set_id="AS-SET-04", ordinal=4,
                   pairs=(("ILO-09", "diagnostic"),), objectives=("ILO-09",))
     redo = replan.redo("assessment", [_Gap("C2", lo_id="ILO-01")], [new], set(), 1)
 
-    assert [ws.set_id for ws in redo] == ["AS-INS-04R1"]
+    assert [ws.set_id for ws in redo] == ["AS-SET-04R1"]
     assert "still_missing" not in redo[0].payload
 
 
@@ -89,7 +89,7 @@ def test_a_re_run_is_told_what_is_missing_or_it_produces_nothing():
     from alignmentgraph_isd.core import dev_plans
 
     text = dev_plans.render_assessment_set(WorkSet(
-        set_id="AS-INS-01R1", ordinal=51, pairs=(("ILO-01", "diagnostic"),),
+        set_id="AS-SET-01R1", ordinal=51, pairs=(("ILO-01", "diagnostic"),),
         payload={"still_missing": ["ILO-01 has no diagnostic item"]}))
     assert "ALREADY BEEN WRITTEN ONCE" in text
     assert "ILO-01 has no diagnostic item" in text

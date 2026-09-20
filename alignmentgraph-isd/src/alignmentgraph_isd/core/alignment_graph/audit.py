@@ -48,7 +48,7 @@ _ELEMENT_NESTED_LIST_KEYS = {
 
 REQUIRED_SECTION_KEYS = {
     NodeType.OBJECTIVE: ("learning_objectives",),
-    NodeType.ASSESSMENT_PLAN: ("instruments", "lo_coverage_targets"),
+    NodeType.ASSESSMENT_PLAN: ("sets", "lo_coverage_targets"),
     NodeType.ASSESSMENT: ("assessment_tools",),
     NodeType.ACTIVITY_PLAN: ("instructional_strategies",),
     NodeType.ACTIVITY: ("learning_activities",),

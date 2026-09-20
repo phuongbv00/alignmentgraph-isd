@@ -133,8 +133,8 @@ _OUTCOMES = {
 
 _ASSESSMENT = {
     "assessment_plan": {
-        "instruments": [
-            {"id": "INS-01", "module_id": "MOD-01", "timing": "summative", "format": "practical",
+        "sets": [
+            {"id": "SET-01", "module_id": "MOD-01", "timing": "summative", "format": "practical",
              "item_counts": {"performance_task": 1}, "covers_objectives": ["ILO-01"],
              "minutes": 60, "weight_percent": 100}],
         "lo_coverage_targets": {"ILO-01": ["summative"]},
@@ -155,7 +155,7 @@ _ASSESSMENT = {
     "assessment_tools": [
         {"item_id": "AT-01", "type": "performance_task", "question": "Build the model.",
          "aligned_objective": "ILO-01", "plan_category": "summative",
-         "instrument_id": "INS-01",
+         "set_id": "SET-01",
          "required_cognitive_process": "apply",
          "scoring_criteria": "Rubric scores correctness 0-4."},
     ],
@@ -1639,7 +1639,7 @@ def test_every_call_in_a_batched_reply_runs_and_each_costs_a_turn():
     # And the shared assistant message went in once per reply, not per call.
     assistants = [m for m in loop.messages if not isinstance(m, dict)]
     assert len(assistants) == 2
-    assert graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))["data"]["instruments"]
+    assert graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))["data"]["sets"]
 
 
 def test_calls_the_budget_cannot_cover_are_answered_with_a_stub():
@@ -2466,7 +2466,7 @@ def test_a_developer_that_writes_one_item_per_call_finishes_its_set_in_instalmen
 
     def item(question):
         return {"type": "short_answer", "question": question, "aligned_objective": "ILO-01",
-                "plan_category": "formative", "instrument_id": "INS-01",
+                "plan_category": "formative", "set_id": "SET-01",
                 "required_cognitive_process": "apply", "rubric": []}
 
     work_set = dev_plans.WorkSet(set_id="AS-01", pairs=(("ILO-01", "formative"),),

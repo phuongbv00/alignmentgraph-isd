@@ -41,7 +41,7 @@ def test_dev_plan_events_fire_once_per_fanout_family_multi_arm():
 
     by_family = {e["context"]["family"]: e for e in dev_plan_events}
     # No family asks the model how to divide its own work: each grouping is
-    # derived from an artifact of the design (an instrument, a module).
+    # derived from an artifact of the design (a set, a module).
     assert {e["context"]["source"] for e in dev_plan_events} == {"deterministic"}
     assert set(by_family) == families
 

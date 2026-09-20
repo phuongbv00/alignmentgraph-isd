@@ -141,7 +141,7 @@ def test_relation_coverage_target_side_reports_fraction_and_uncovered_ids():
 def test_a_module_with_no_activity_or_no_item_is_an_uncovered_source():
     """P13 and P14 check the SOURCE side — the module — and both are made of
     ids the MODEL wrote, so both can fail: an activity names its module, an
-    item names an instrument and the plan's instrument names the module."""
+    item names a set and the plan's set names the module."""
     graph = AlignmentGraph()
     for module in ("MOD-01", "MOD-02"):
         graph.add_element_node(NodeType.MODULE, module, {"id": module})
@@ -152,10 +152,10 @@ def test_a_module_with_no_activity_or_no_item_is_an_uncovered_source():
     assert alignment.relation_coverage(graph, "P13") == (0.5, ["module:MOD-02"])
 
     graph.add_node(NodeType.ASSESSMENT_PLAN, graph.section_id(NodeType.ASSESSMENT_PLAN), {
-        "instruments": [{"id": "INS-01", "module_id": "module:MOD-01"},
-                        {"id": "INS-02", "module_id": "MOD-09"}]})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01", "instrument_id": "INS-01"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-02", {"item_id": "AT-02", "instrument_id": "INS-02"})
+        "sets": [{"id": "SET-01", "module_id": "module:MOD-01"},
+                        {"id": "SET-02", "module_id": "MOD-09"}]})
+    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01", "set_id": "SET-01"})
+    graph.add_element_node(NodeType.ASSESSMENT, "AT-02", {"item_id": "AT-02", "set_id": "SET-02"})
     graph.add_element_node(NodeType.ASSESSMENT, "AT-03", {"item_id": "AT-03"})
     dangling = alignment.match_module_assessed(graph)
     assert [v["node_id"] for v in dangling] == ["assessment:AT-02", "assessment:AT-03"]

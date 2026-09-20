@@ -1028,7 +1028,7 @@ class ToolLoop:
         here: an artifact whose schema has exactly ONE property has only one
         thing a bare string could be. That derivation finds
         `course_goal -> statement` and, for the fan-out stages,
-        `dev_plan -> instrument_sets` / `activity_blocks`; it finds nothing for
+        `course_modules -> …`; it finds nothing for
         the multi-field artifacts, where a string would be a guess."""
         if not isinstance(args, dict):
             return args
@@ -1057,8 +1057,8 @@ class ToolLoop:
         return cached
 
     def _wrap_bare_artifact(self, tool: str, args: dict) -> dict:
-        """``submit_dev_plan({"instrument_sets": …})`` means
-        ``{"dev_plan": {"instrument_sets": …}}``.
+        """``submit_course_goal({"statement": …})`` means
+        ``{"course_goal": {"statement": …}}``.
 
         The mirror of ``unwrap_section``, and the same class of near-miss: the
         tool is named after the artifact, so a model that has just been shown

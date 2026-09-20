@@ -10,7 +10,7 @@ nobody who can act on it.
 The answer is a second DISPATCH, not a second plan. Two kinds of set run:
 
 * a set that is NEW — the Designer amended the blueprint during its own
-  repair turns (``checks.blueprint_consistency``), so an instrument now
+  repair turns (``checks.blueprint_consistency``), so a set now
   exists that had no work set in round 0;
 * a set that already ran and still OWNS an open gap — its Developer wrote
   less than the set was commissioned for.
@@ -25,8 +25,8 @@ small model:
 
 * **The gaps decide which sets run.** Nothing re-runs a set with no gap of
   its own, so a round can only ask for work that is missing.
-* **Round-tagged set ids.** ``AS-INS-01`` from round 0 is committed; its
-  round-1 re-run is ``AS-INS-01R1``. Without the tag it collides with the
+* **Round-tagged set ids.** ``AS-SET-01`` from round 0 is committed; its
+  round-1 re-run is ``AS-SET-01R1``. Without the tag it collides with the
   committed one and ``fanout.committed_set_ids`` skips it, so the round runs
   and produces nothing.
 * **One round.** ``REPLAN_ROUNDS`` is 1. A gap that survives a fresh
@@ -50,7 +50,7 @@ from .. import dev_plans
 #: structural (``P5``, repaired exactly by a lookup) or report-only (``P6``,
 #: ``P8``), so there is no gap a fresh material call closes.
 REDISPATCHABLE: dict[str, dict] = {
-    # P14: a module with no item at all is its instruments' items unwritten.
+    # P14: a module with no item at all is its sets' items unwritten.
     "assessment": {"gap_types": ("C2", "P3", "P14", "plan_coverage"),
                    "noun": "assessment item"},
     # P13: a module nothing is taught in is a block nobody wrote for.
@@ -115,7 +115,7 @@ def next_session(state) -> int:
 
 
 def tag_round(work_sets: list, round_index: int) -> list:
-    """``AS-INS-01`` -> ``AS-INS-01R1``, and its artifacts' ids out of round
+    """``AS-SET-01`` -> ``AS-SET-01R1``, and its artifacts' ids out of round
     0's way.
 
     Two things, both load-bearing. Round 0's sets are already committed and

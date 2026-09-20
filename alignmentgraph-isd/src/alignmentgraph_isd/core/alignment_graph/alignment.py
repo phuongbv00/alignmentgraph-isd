@@ -317,11 +317,11 @@ def match_id_reverse(
 
 
 def match_module_assessed(graph: AlignmentGraph) -> list[dict]:
-    """P14: the module an assessment item belongs to, through its instrument.
+    """P14: the module an assessment item belongs to, through its set.
 
-    Two ids the model wrote, joined: the item names its instrument
-    (``instrument_id``) and the assessment plan's instrument names its module
-    (``module_id``). An instrument is a FIELD of the plan rather than a node —
+    Two ids the model wrote, joined: the item names its set
+    (``set_id``) and the assessment plan's set names its module
+    (``module_id``). A set is a FIELD of the plan rather than a node —
     nothing but the items that point at it belongs to it — so the join is read
     off the plan section and the edge runs module -> item. Either half missing
     or dangling leaves the item without an edge, which is the finding."""
@@ -329,25 +329,25 @@ def match_module_assessed(graph: AlignmentGraph) -> list[dict]:
     plan = graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))
     module_of = {
         bare_ref(one.get("id", "")): bare_ref(one.get("module_id", ""))
-        for one in ((plan or {}).get("data", {}).get("instruments") or [])
+        for one in ((plan or {}).get("data", {}).get("sets") or [])
         if isinstance(one, dict)}
     violations: list[dict] = []
     for node in graph.element_nodes(NodeType.ASSESSMENT):
-        instrument = bare_ref(node["data"].get("instrument_id", ""))
-        module = module_of.get(instrument, "")
+        one = bare_ref(node["data"].get("set_id", ""))
+        module = module_of.get(one, "")
         module_id = resolve_element(graph, NodeType.MODULE, module)
         if module_id:
             graph.add_edge(
                 relation.key, module_id, node["id"],
-                evidence=instrument, relation_id="P14", established_by="id",
-                rationale=(f"{node['id']} declares instrument_id={instrument}, whose "
+                evidence=one, relation_id="P14", established_by="id",
+                rationale=(f"{node['id']} declares set_id={one}, whose "
                            f"module_id is {module}."),
             )
         else:
             violations.append({
                 "relation_id": "P14", "node_id": node["id"],
-                "message": (f"{node['id']} names no instrument of an existing module "
-                            f"(instrument_id={instrument!r})."),
+                "message": (f"{node['id']} names no set of an existing module "
+                            f"(set_id={one!r})."),
             })
     return violations
 
@@ -729,7 +729,7 @@ def format_valid_for_capability(capability: int, objective_level: int | None) ->
 
     Both this rule and that metric derive independently from Anderson &
     Krathwohl, so this is enforcing the theory rather than fitting the
-    instrument — but it was calibrated on the tuning split, and test_90 is untouched.
+    set — but it was calibrated on the tuning split, and test_90 is untouched.
     """
     if objective_level is None:
         return True

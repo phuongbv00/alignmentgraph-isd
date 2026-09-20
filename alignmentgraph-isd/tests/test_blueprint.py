@@ -1,8 +1,8 @@
 """The course's modules and the assessment blueprint built on them.
 
 A module is the structural unit the Outcome Designer writes right after the
-objectives; the assessment plan's ``instruments`` say what learners sit in each
-module, and every question-level item names the instrument it is part of.
+objectives; the assessment plan's ``sets`` say what learners sit in each
+module, and every question-level item names the set it is part of.
 """
 from __future__ import annotations
 
@@ -18,8 +18,8 @@ from conftest import load_brief
 STEP = {step.name: step for step in specialists.STEPS}
 
 
-def _instrument(ins_id: str, timing: str, covers: list[str], module: str = "MOD-01") -> dict:
-    return {"id": ins_id, "module_id": module, "timing": timing, "format": "quiz",
+def _set(set_id: str, timing: str, covers: list[str], module: str = "MOD-01") -> dict:
+    return {"id": set_id, "module_id": module, "timing": timing, "format": "quiz",
             "item_counts": {"multiple_choice": 10}, "covers_objectives": covers}
 
 
@@ -93,12 +93,12 @@ def test_modules_accumulate_the_same_way_on_both_substrates():
 
 # ── the blueprint agrees with itself ────────────────────────────────────────
 
-def test_a_pair_an_instrument_promises_is_added_to_the_coverage_targets():
-    plan = {"instruments": [_instrument("INS-01", "formative", ["ILO-01", "objective:ILO-02"]),
+def test_a_pair_a_set_promises_is_added_to_the_coverage_targets():
+    plan = {"sets": [_set("SET-01", "formative", ["ILO-01", "objective:ILO-02"]),
                             # keeps the ONE summative promise, so the plan is
                             # inconsistent in the direction this test is about
                             # and in no other.
-                            _instrument("INS-02", "summative", ["ILO-01"])],
+                            _set("SET-02", "summative", ["ILO-01"])],
             "lo_coverage_targets": {"objective:ILO-01": ["summative"]}}
     graph, trajectory = _design(plan, []), TrajectoryLogger()
     found = checks.blueprint_consistency(graph)
@@ -113,24 +113,24 @@ def test_a_pair_an_instrument_promises_is_added_to_the_coverage_targets():
     assert [e["context"]["rule"] for e in trajectory.repair_events] == ["repair_blueprint_pairs"]
 
 
-def test_an_instrument_naming_nothing_real_is_handed_back_not_guessed():
-    plan = {"instruments": [_instrument("INS-01", "summative", ["ILO-07"], module="MOD-05")],
+def test_a_set_naming_nothing_real_is_handed_back_not_guessed():
+    plan = {"sets": [_set("SET-01", "summative", ["ILO-07"], module="MOD-05")],
             "lo_coverage_targets": {"ILO-07": ["summative"]}}
     graph, trajectory = _design(plan, []), TrajectoryLogger()
     found = checks.blueprint_consistency(graph)
     assert {v.metadata["kind"] for v in found} == {
         "unknown_module", "unknown_objective",
         # ...and what that leaves the real course without:
-        "module_without_instrument", "objective_without_instrument"}
+        "module_without_set", "objective_without_set"}
     assert repairs.repair("assessment_designer", found, _ctx(graph, trajectory)) == found
     assert not trajectory.repair_events
 
 
-def test_a_promise_no_instrument_can_keep_is_handed_back_before_the_fanout():
+def test_a_promise_no_set_can_keep_is_handed_back_before_the_fanout():
     """The work-set planner divides the INSTRUMENTS, so this pair would reach
     no Developer. Nothing read it until now: it surfaced only as
     ``plan_coverage`` once the Developers had run and no agent was left."""
-    plan = {"instruments": [_instrument("INS-01", "summative", ["ILO-01", "ILO-02"])],
+    plan = {"sets": [_set("SET-01", "summative", ["ILO-01", "ILO-02"])],
             "lo_coverage_targets": {"ILO-01": ["summative", "diagnostic"],
                                     "ILO-02": ["summative"]}}
     graph, trajectory = _design(plan, []), TrajectoryLogger()
@@ -142,71 +142,71 @@ def test_a_promise_no_instrument_can_keep_is_handed_back_before_the_fanout():
         "anchored on the plan, so the pre-tier element filter does not withhold it")
 
     assert repairs.repair("assessment_designer", found, _ctx(graph, trajectory)) == found, (
-        "no lookup settles it — writing the instrument is the Designer's")
+        "no lookup settles it — writing the set is the Designer's")
     assert not trajectory.repair_events
 
 
 def test_the_prose_arm_checks_both_halves_that_read_the_plan_alone():
-    plan = {"instruments": [_instrument("INS-01", "formative", ["ILO-01"], module="MOD-05")],
+    plan = {"sets": [_set("SET-01", "formative", ["ILO-01"], module="MOD-05")],
             "lo_coverage_targets": {"ILO-01": ["summative"]}}
     found = checks.blueprint_consistency_data("assessment_plan", plan)
     assert [v.metadata["kind"] for v in found] == ["unpromised_pair", "unassessed_pair"]
 
 
-# ── every item belongs to an instrument ─────────────────────────────────────
+# ── every item belongs to a set ─────────────────────────────────────
 
-def _item(item_id: str, lo: str, category: str, instrument: str) -> dict:
+def _item(item_id: str, lo: str, category: str, set_id: str) -> dict:
     return {"item_id": item_id, "aligned_objective": lo, "plan_category": category,
-            "instrument_id": instrument}
+            "set_id": set_id}
 
 
-def test_an_item_is_filed_under_the_one_instrument_its_own_fields_identify():
-    plan = {"instruments": [_instrument("INS-01", "formative", ["ILO-01"]),
-                            _instrument("INS-02", "summative", ["ILO-01", "ILO-02"]),
-                            _instrument("INS-03", "summative", ["ILO-02"])]}
+def test_an_item_is_filed_under_the_one_set_its_own_fields_identify():
+    plan = {"sets": [_set("SET-01", "formative", ["ILO-01"]),
+                            _set("SET-02", "summative", ["ILO-01", "ILO-02"]),
+                            _set("SET-03", "summative", ["ILO-02"])]}
     graph = _design(plan, [
-        _item("AT-01", "ILO-01", "formative", "INS-01"),        # right
+        _item("AT-01", "ILO-01", "formative", "SET-01"),        # right
         _item("AT-02", "ILO-01", "summative", "quiz-2"),        # unknown, one candidate
-        _item("AT-03", "ILO-01", "summative", "INS-01"),        # wrong timing, one candidate
+        _item("AT-03", "ILO-01", "summative", "SET-01"),        # wrong timing, one candidate
         _item("AT-04", "ILO-02", "summative", ""),              # two candidates
     ])
     trajectory = TrajectoryLogger()
-    found = checks.instrument_alignment(graph)
+    found = checks.set_alignment(graph)
     assert [v.node_id for v in found] == ["assessment:AT-02", "assessment:AT-03", "assessment:AT-04"]
 
     left = repairs.repair("assessment_designer", found, _ctx(graph, trajectory))
     assert [v.node_id for v in left] == ["assessment:AT-04"], "two candidates is not a lookup"
-    assert graph.get_node("assessment:AT-02")["data"]["instrument_id"] == "INS-02"
-    assert graph.get_node("assessment:AT-03")["data"]["instrument_id"] == "INS-02"
+    assert graph.get_node("assessment:AT-02")["data"]["set_id"] == "SET-02"
+    assert graph.get_node("assessment:AT-03")["data"]["set_id"] == "SET-02"
     assert {e["target"] for e in graph.get_edges(relation_id="P14")} == {
         "assessment:AT-01", "assessment:AT-02", "assessment:AT-03"}
 
 
-def test_a_plan_with_no_instruments_gives_the_items_nothing_to_belong_to():
+def test_a_plan_with_no_sets_gives_the_items_nothing_to_belong_to():
     graph = _design({"lo_coverage_targets": {"ILO-01": ["summative"]}},
                     [_item("AT-01", "ILO-01", "summative", "")])
-    assert checks.instrument_alignment(graph) == []
+    assert checks.set_alignment(graph) == []
     assert alignment.relation_coverage(graph, "P14") == (0.0, ["module:MOD-01"])
 
 
 def test_both_checks_are_owned_and_structural():
-    for kind in ("blueprint_consistency", "instrument_alignment"):
+    for kind in ("blueprint_consistency", "set_alignment"):
         assert repairs.OWNER_BY_VIOLATION[kind] == "assessment_designer"
         assert kind in repairs.STRUCTURAL and kind not in repairs.REPORT_ONLY
     assert {"P7", "P12", "P13", "P14"} <= repairs.REPORT_ONLY
     assert HarnessRunConfig().agent_mode == "multi"
 
 
-# ── the dev plans speak in modules and instruments ──────────────────────────
+# ── the dev plans speak in modules and sets ──────────────────────────
 
 def test_every_work_set_names_the_module_it_belongs_to():
     """A set never spans two modules — the module is the partition every
     family divides by, and its id is what the assignment names first."""
     from alignmentgraph_isd.core.agentic import fanout
 
-    graph = _design({"instruments": [
-        _instrument("INS-01", "summative", ["ILO-01"]),
-        _instrument("INS-02", "summative", ["ILO-02"], module="MOD-02")],
+    graph = _design({"sets": [
+        _set("SET-01", "summative", ["ILO-01"]),
+        _set("SET-02", "summative", ["ILO-02"], module="MOD-02")],
         "lo_coverage_targets": {"ILO-01": ["summative"], "ILO-02": ["summative"]}}, [])
     graph.add_element_node(NodeType.MODULE, "MOD-02", {"id": "MOD-02"})
     modules = [{"id": "MOD-01", "objectives": ["ILO-01"], "minutes": 60},
@@ -216,31 +216,31 @@ def test_every_work_set_names_the_module_it_belongs_to():
 
     sets, _stats = fanout.SPECS["assessment"].plan_sets(graph, payload, "sample")
     assert [ws.module_id for ws in sets] == ["MOD-01", "MOD-02"]
-    assert [ws.set_id for ws in sets] == ["AS-INS-01", "AS-INS-02"], (
-        "a set id says which instrument it writes, so deriving again names it "
+    assert [ws.set_id for ws in sets] == ["AS-SET-01", "AS-SET-02"], (
+        "a set id says which set it writes, so deriving again names it "
         "the same and only new sets run")
 
 
-def test_an_instrument_set_is_the_pairs_of_the_instruments_it_names():
+def test_a_work_set_is_the_pairs_of_the_assessment_sets_it_names():
     modules = [{"id": "MOD-01", "objectives": ["ILO-01"], "minutes": 60},
                {"id": "MOD-02", "objectives": ["ILO-02"], "minutes": 60}]
-    instruments = [_instrument("INS-01", "diagnostic", ["ILO-01"]),
-                   _instrument("INS-02", "formative", ["ILO-01"]),
-                   _instrument("INS-03", "summative", ["ILO-02"], module="MOD-02")]
+    sets = [_set("SET-01", "diagnostic", ["ILO-01"]),
+                   _set("SET-02", "formative", ["ILO-01"]),
+                   _set("SET-03", "summative", ["ILO-02"], module="MOD-02")]
     targets = {"ILO-01": ["diagnostic", "formative"], "ILO-02": ["summative"]}
-    plan = {"instrument_sets": [
-        {"set_id": "SET-01", "module_id": "MOD-01", "instrument_ids": ["INS-01", "INS-02"],
+    plan = {"sets": [
+        {"set_id": "SET-01", "module_id": "MOD-01", "set_ids": ["SET-01", "SET-02"],
          "expected_items": 4},
-        {"set_id": "SET-02", "module_id": "MOD-02", "instrument_ids": ["INS-03", "INS-09"],
+        {"set_id": "SET-02", "module_id": "MOD-02", "set_ids": ["SET-03", "SET-09"],
          "expected_items": 2}]}
     sets, stats = dev_plans.normalize_assessment_dev_plan(
-        plan, ["ILO-01", "ILO-02"], targets, modules=modules, instruments=instruments,
+        plan, ["ILO-01", "ILO-02"], targets, modules=modules, blueprint=sets,
         mode="sample")
     assert [(ws.module_id, ws.pairs, ws.source) for ws in sets] == [
         ("MOD-01", (("ILO-01", "diagnostic"), ("ILO-01", "formative")), "llm"),
         ("MOD-02", (("ILO-02", "summative"),), "llm")]
-    assert [i["id"] for i in sets[0].payload["instruments"]] == ["INS-01", "INS-02"]
-    assert stats["fallback_used"] is False and stats["dropped_lo_refs"] == 1, "INS-09 is not real"
+    assert [i["id"] for i in sets[0].payload["sets"]] == ["SET-01", "SET-02"]
+    assert stats["fallback_used"] is False and stats["dropped_lo_refs"] == 1, "SET-09 is not real"
 
 
 # ── a work set writes what it was commissioned for ──────────────────────────
@@ -294,17 +294,17 @@ def test_constraints_written_as_sentences_become_elements_and_topics_are_require
 
 
 def test_the_blueprint_has_to_reach_every_module_and_every_objective():
-    """MEASURED (run b8576814): three instruments, all for one module and one
+    """MEASURED (run b8576814): three sets, all for one module and one
     objective. Said on the PLAN, it reaches the Designer before any Developer
     runs; P14 and C2 only say it afterwards."""
-    plan = {"instruments": [_instrument("INS-01", "summative", ["ILO-01"])],
+    plan = {"sets": [_set("SET-01", "summative", ["ILO-01"])],
             "lo_coverage_targets": {"ILO-01": ["summative"]}}
     graph = _design(plan, [])
     graph.add_element_node(NodeType.MODULE, "MOD-02", {"id": "MOD-02"})
     found = {(v.metadata["kind"], v.metadata.get("module_id") or v.metadata.get("lo_id"))
              for v in checks.blueprint_consistency(graph)}
-    assert found == {("module_without_instrument", "MOD-02"),
-                     ("objective_without_instrument", "ILO-02")}
+    assert found == {("module_without_set", "MOD-02"),
+                     ("objective_without_set", "ILO-02")}
     assert all(":" not in v.node_id for v in checks.blueprint_consistency(graph)), (
         "on the plan section, so the Designer is shown it before its Developers run")
     assert len({v.key for v in checks.blueprint_consistency(graph)}) == 2
@@ -335,23 +335,23 @@ def test_a_reference_spelled_the_way_a_listing_row_invites_still_resolves():
 
 def test_a_membership_id_the_set_settles_is_filled_in_and_one_the_model_wrote_is_left():
     """MEASURED (run 53a9cd1a): five refusals and a give-up-and-regen over a
-    missing `instrument_id` on sets that each listed a single instrument."""
+    missing `set_id` on sets that each listed a single set."""
     one = dev_plans.WorkSet(set_id="AS-01", payload={
-        "instruments": [_instrument("INS-01", "summative", ["ILO-01"])]})
+        "sets": [_set("SET-01", "summative", ["ILO-01"])]})
     items = [{"question": "q", "aligned_objective": "ILO-01", "plan_category": "summative"},
-             {"question": "r", "instrument_id": "INS-77"}]
+             {"question": "r", "set_id": "SET-77"}]
     filled = dev_plans.with_membership(one, "assessment_tools", items)
-    assert [i["instrument_id"] for i in filled] == ["INS-01", "INS-77"], "only a MISSING id"
-    assert "instrument_id" not in items[0], "the submitted arguments are not rewritten"
+    assert [i["set_id"] for i in filled] == ["SET-01", "SET-77"], "only a MISSING id"
+    assert "set_id" not in items[0], "the submitted arguments are not rewritten"
 
-    two = dev_plans.WorkSet(set_id="AS-02", payload={"instruments": [
-        _instrument("INS-01", "formative", ["ILO-01"]), _instrument("INS-02", "summative", ["ILO-01"]),
-        _instrument("INS-03", "summative", ["ILO-01"])]})
+    two = dev_plans.WorkSet(set_id="AS-02", payload={"sets": [
+        _set("SET-01", "formative", ["ILO-01"]), _set("SET-02", "summative", ["ILO-01"]),
+        _set("SET-03", "summative", ["ILO-01"])]})
     formative, summative = dev_plans.with_membership(two, "assessment_tools", [
         {"aligned_objective": "ILO-01", "plan_category": "formative"},
         {"aligned_objective": "ILO-01", "plan_category": "summative"}])
-    assert formative["instrument_id"] == "INS-01", "one instrument of its objective and category"
-    assert "instrument_id" not in summative, "two candidates is the writer's to say"
+    assert formative["set_id"] == "SET-01", "one set of its objective and category"
+    assert "set_id" not in summative, "two candidates is the writer's to say"
 
     block = dev_plans.WorkSet(set_id="AB-01", payload={"module": {"id": "MOD-02"}})
     assert dev_plans.with_membership(block, "learning_activities", [{"activity_name": "a"}]) == [
@@ -380,7 +380,7 @@ def test_a_criterion_is_scorable_by_its_levels_not_by_the_words_of_its_title():
 def test_a_criterion_with_no_levels_is_refused_while_its_author_can_still_write_them():
     from alignmentgraph_isd.core.agentic import fanout
 
-    item = {"instrument_id": "INS-01", "rubric": [
+    item = {"set_id": "SET-01", "rubric": [
         {"id": "C1", "description": "Selects the right tool", "levels": {}}]}
     (error,) = fanout.assessment_item_errors([item])
     assert error.startswith("assessment_tools[0].rubric[0].levels")
@@ -391,7 +391,7 @@ def test_a_criterion_with_no_levels_is_refused_while_its_author_can_still_write_
     assert fanout.assessment_item_errors([item]) == []
     # Shared by both arms: the single agent's batch goes through the same rules.
     assert fanout.output_errors(fanout.SPECS["assessment"], {"assessment_tools": [
-        {"instrument_id": "INS-01", "rubric": [{"id": "C1", "description": "x"}]}]})
+        {"set_id": "SET-01", "rubric": [{"id": "C1", "description": "x"}]}]})
 
 
 def test_a_module_no_media_selection_serves_reaches_the_content_designer_before_its_developers():
@@ -420,39 +420,39 @@ def test_a_module_no_media_selection_serves_reaches_the_content_designer_before_
     assert checks.media_coverage(graph) == [], "a selection naming no module serves them all"
 
 
-def test_the_fanout_divides_the_instruments_and_never_the_promise():
-    """A promised pair no instrument covers gets no work set.
+def test_the_fanout_divides_the_sets_and_never_the_promise():
+    """A promised pair no set covers gets no work set.
 
-    It would be a set with no instrument in it, and ``render_assessment_set``
-    drops the whole "set each item's instrument_id to one of these ids" block
-    for such a set — so its Developer is shown no instrument and reaches for
+    It would be a set with no set in it, and ``render_assessment_set``
+    drops the whole "set each item's set_id to one of these ids" block
+    for such a set — so its Developer is shown no set and reaches for
     the set's own header id. ``unassessed_pair`` is what reports the pair,
-    while the Designer can still add the instrument.
+    while the Designer can still add the set.
     """
     modules = [{"id": "MOD-01", "title": "M", "minutes": 60, "objectives": ["ILO-01"]}]
-    plan = {"instruments": [_instrument("INS-01", "summative", ["ILO-01"])],
+    plan = {"sets": [_set("SET-01", "summative", ["ILO-01"])],
             "lo_coverage_targets": {"ILO-01": ["summative", "diagnostic"]}}
     sets, stats = dev_plans.normalize_assessment_dev_plan(
         None, ["ILO-01"], plan["lo_coverage_targets"], modules=modules,
-        instruments=plan["instruments"], mode="sample")
+        blueprint=plan["sets"], mode="sample")
 
     assert [list(ws.pairs) for ws in sets] == [[("ILO-01", "summative")]], (
         "the diagnostic promise is the check's to report, not work to hand out"
     )
-    assert all(ws.payload.get("instruments") for ws in sets), (
-        "an instrument-less set shows its Developer no instrument_id to write"
+    assert all(ws.payload.get("sets") for ws in sets), (
+        "a set-less set shows its Developer no set_id to write"
     )
     assert [v.metadata["kind"] for v in checks.blueprint_consistency_data(
         "assessment_plan", plan, modules={"MOD-01"}, objectives={"ILO-01"})
     ] == ["unassessed_pair"], "and it IS reported, on the plan, to its author"
 
 
-def test_a_plan_with_no_instruments_still_divides_by_the_promise():
+def test_a_plan_with_no_sets_still_divides_by_the_promise():
     """The fallback for an archived design from before the blueprint, and for
-    one whose ``instruments`` never landed: without them there is nothing else
+    one whose ``sets`` never landed: without them there is nothing else
     to divide."""
     sets, _stats = dev_plans.normalize_assessment_dev_plan(
         None, ["ILO-01"], {"ILO-01": ["summative", "diagnostic"]},
-        modules=None, instruments=[], mode="sample")
+        modules=None, blueprint=[], mode="sample")
     assert sorted(p for ws in sets for p in ws.pairs) == [
         ("ILO-01", "diagnostic"), ("ILO-01", "summative")]

@@ -201,8 +201,8 @@ IDENTITY_FIELDS: dict[str, tuple[str, ...]] = {
     "actionability": ("section",),            # instructor_orientation vs system_check
     "evidence_alignment": ("rc_id",),         # several criteria on one item
     "bloom": ("rule",),                       # four sub-rules, one node
-    # every finding sits on the plan node: which kind, which instrument, which pair
-    "blueprint_consistency": ("kind", "instrument_id", "module_id", "lo_id", "plan_category"),
+    # every finding sits on the plan node: which kind, which set, which pair
+    "blueprint_consistency": ("kind", "set_id", "module_id", "lo_id", "plan_category"),
 }
 
 
@@ -521,7 +521,7 @@ def plan_coverage(graph) -> list[Violation]:
     # ONE reader for this field, shared with the fan-out's work-set planner:
     # it strips the namespace off an objective id a model copied from context
     # ("objective:ILO-01"), accepts both the bare-category and the
-    # {plan_category, instrument} shapes, and drops anything that is not one
+    # {plan_category, set} shapes, and drops anything that is not one
     # of the three categories. Reading it here instead meant a dict category
     # became `str(dict)`, which no item could ever realise.
     for lo_id, category in dev_plans.plan_category_pairs(targets):
@@ -538,27 +538,27 @@ def plan_coverage(graph) -> list[Violation]:
     return violations
 
 
-def _instruments(plan: dict) -> list[dict]:
-    return [i for i in ((plan or {}).get("instruments") or []) if isinstance(i, dict)]
+def _sets(plan: dict) -> list[dict]:
+    return [i for i in ((plan or {}).get("sets") or []) if isinstance(i, dict)]
 
 
-def instrument_pairs(plan: dict) -> list[tuple[str, str]]:
+def set_pairs(plan: dict) -> list[tuple[str, str]]:
     """The (objective, category) pairs the plan's INSTRUMENTS promise.
 
     ONE definition, in ``dev_plans``, because the same pairs are what the
     fan-out divides (``_assessment_ground_truth_pairs``). Two readers that
     disagreed would call a pair assessed here and still give it no Developer
     there."""
-    return dev_plans.instrument_pairs(_instruments(plan))
+    return dev_plans.set_pairs(_sets(plan))
 
 
 def blueprint_consistency(graph) -> list[Violation]:
     """The assessment plan says WHEN each objective is assessed twice — per
-    instrument (``instruments``) and per objective (``lo_coverage_targets``,
+    set (``sets``) and per objective (``lo_coverage_targets``,
     which P3, ``plan_coverage`` and the work-set planner read) — and the two
-    must agree in BOTH directions, or an instrument exists that no item will
-    ever be asked for, or a promise exists that no instrument can keep.
-    Also: an instrument must name a module and objectives that exist."""
+    must agree in BOTH directions, or a set exists that no item will
+    ever be asked for, or a promise exists that no set can keep.
+    Also: a set must name a module and objectives that exist."""
     plan_node = graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))
     if plan_node is None:
         return []
@@ -578,29 +578,29 @@ def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | 
     violations: list[Violation] = []
     promised_pairs = dev_plans.plan_category_pairs((plan or {}).get("lo_coverage_targets"))
     promised = set(promised_pairs)
-    for lo_id, timing in instrument_pairs(plan):
+    for lo_id, timing in set_pairs(plan):
         if objectives is not None and lo_id not in objectives:
             continue    # reported below; promising it would promise nothing real
         if (lo_id, timing) not in promised:
             violations.append(Violation(
                 node_id=node_id, edge_type="", violation_type="blueprint_consistency",
                 severity="warning",
-                message=(f"An instrument assesses {lo_id} at {timing} timing, but "
+                message=(f"A set assesses {lo_id} at {timing} timing, but "
                          f"lo_coverage_targets does not promise {lo_id} a {timing} item."),
                 repair_hint=f"Add \"{timing}\" to lo_coverage_targets[\"{lo_id}\"].",
                 metadata={"kind": "unpromised_pair", "lo_id": lo_id, "plan_category": timing},
             ))
     # The other direction, and the one nothing read. The work-set planner
-    # divides the INSTRUMENTS, so a promised pair no instrument covers reaches
+    # divides the INSTRUMENTS, so a promised pair no set covers reaches
     # no Developer at all: it is an item nobody will be asked for. Said here it
     # costs the Designer one turn while the plan is the only thing written;
     # unsaid it surfaces as `plan_coverage` after the Developers have run, when
-    # no agent is left to write the instrument. The two are both reported on
+    # no agent is left to write the set. The two are both reported on
     # purpose — different nodes, different remedies: this one says the
     # blueprint is short, that one says the promise went unrealised, and fixing
     # this one before the fan-out is what stops that one from ever firing.
-    assessed_pairs = set(instrument_pairs(plan))
-    for lo_id, timing in (promised_pairs if _instruments(plan) else ()):
+    assessed_pairs = set(set_pairs(plan))
+    for lo_id, timing in (promised_pairs if _sets(plan) else ()):
         if objectives is not None and lo_id not in objectives:
             continue    # a promise for an objective that does not exist
         if (lo_id, timing) not in assessed_pairs:
@@ -608,8 +608,8 @@ def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | 
                 node_id=node_id, edge_type="", violation_type="blueprint_consistency",
                 severity="warning",
                 message=(f"lo_coverage_targets promises {lo_id} a {timing} item, but no "
-                         f"instrument assesses {lo_id} at {timing} timing."),
-                repair_hint=(f"Add an instrument with timing \"{timing}\" covering {lo_id}, "
+                         f"set assesses {lo_id} at {timing} timing."),
+                repair_hint=(f"Add a set with timing \"{timing}\" covering {lo_id}, "
                              f"or drop \"{timing}\" from lo_coverage_targets[\"{lo_id}\"]."),
                 metadata={"kind": "unassessed_pair", "lo_id": lo_id, "plan_category": timing},
             ))
@@ -617,78 +617,78 @@ def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | 
     # thing later, on the module and the objective — after the Developers
     # have run, when it costs a replan round. Said here, on the plan, it
     # reaches the Designer while the plan is still the only thing written.
-    # MEASURED (run b8576814): three instruments, all for MOD-01 and ILO-001;
+    # MEASURED (run b8576814): three sets, all for MOD-01 and ILO-001;
     # two of three modules and two of three objectives had no assessment.
-    assessed = {alignment.bare_ref(i.get("module_id", "")) for i in _instruments(plan)}
-    covered = {lo for lo, _timing in instrument_pairs(plan)}
+    assessed = {alignment.bare_ref(i.get("module_id", "")) for i in _sets(plan)}
+    covered = {lo for lo, _timing in set_pairs(plan)}
     for kind, wanted, have, noun, hint in (
-            ("module_without_instrument", modules, assessed, "module",
-             "Add an instrument whose module_id is this module."),
-            ("objective_without_instrument", objectives, covered, "objective",
-             "List it in covers_objectives of an instrument of the module that serves it.")):
-        for missing in sorted((wanted or set()) - have) if _instruments(plan) else ():
+            ("module_without_set", modules, assessed, "module",
+             "Add a set whose module_id is this module."),
+            ("objective_without_set", objectives, covered, "objective",
+             "List it in covers_objectives of a set of the module that serves it.")):
+        for missing in sorted((wanted or set()) - have) if _sets(plan) else ():
             violations.append(Violation(
                 node_id=node_id, edge_type="", violation_type="blueprint_consistency",
                 severity="warning",
-                message=f"No instrument of the assessment plan assesses {noun} {missing}.",
+                message=f"No set of the assessment plan assesses {noun} {missing}.",
                 repair_hint=hint,
                 metadata={"kind": kind, "lo_id" if noun == "objective" else "module_id": missing},
             ))
-    for instrument in _instruments(plan):
-        ins_id = str(instrument.get("id") or "?")
-        module = alignment.bare_ref(instrument.get("module_id", ""))
+    for one in _sets(plan):
+        ins_id = str(one.get("id") or "?")
+        module = alignment.bare_ref(one.get("module_id", ""))
         if modules is not None and module not in modules:
             violations.append(Violation(
                 node_id=node_id, edge_type="", violation_type="blueprint_consistency",
                 severity="warning",
-                message=f"Instrument {ins_id} names module {module!r}, which does not exist.",
+                message=f"Set {ins_id} names module {module!r}, which does not exist.",
                 repair_hint="Set module_id to the id of an existing module.",
-                metadata={"kind": "unknown_module", "instrument_id": ins_id},
+                metadata={"kind": "unknown_module", "set_id": ins_id},
             ))
-        unknown = [ref for ref in map(alignment.bare_ref, instrument.get("covers_objectives") or [])
+        unknown = [ref for ref in map(alignment.bare_ref, one.get("covers_objectives") or [])
                    if objectives is not None and ref and ref not in objectives]
         if unknown:
             violations.append(Violation(
                 node_id=node_id, edge_type="", violation_type="blueprint_consistency",
                 severity="warning",
-                message=(f"Instrument {ins_id} covers {', '.join(unknown)}, which "
+                message=(f"Set {ins_id} covers {', '.join(unknown)}, which "
                          f"{'is' if len(unknown) == 1 else 'are'} not an objective of this design."),
                 repair_hint="List only existing objective ids in covers_objectives.",
-                metadata={"kind": "unknown_objective", "instrument_id": ins_id,
+                metadata={"kind": "unknown_objective", "set_id": ins_id,
                           "lo_id": ",".join(unknown)},
             ))
     return violations
 
 
-def instrument_alignment(graph) -> list[Violation]:
-    """Every assessment item belongs to one instrument of the plan, at that
-    instrument's timing. An item naming no instrument that exists, or sitting
-    in a formative instrument while calling itself summative, is an item the
-    blueprint cannot account for. Silent when the plan has no instruments:
+def set_alignment(graph) -> list[Violation]:
+    """Every assessment item belongs to one set of the plan, at that
+    set's timing. An item naming no set that exists, or sitting
+    in a formative set while calling itself summative, is an item the
+    blueprint cannot account for. Silent when the plan has no sets:
     there is nothing to belong to, and that absence is the plan's finding."""
     plan_node = graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))
     timing_of = {alignment.bare_ref(i.get("id", "")): str(i.get("timing") or "").lower()
-                 for i in _instruments((plan_node or {}).get("data") or {})}
+                 for i in _sets((plan_node or {}).get("data") or {})}
     if not timing_of:
         return []
     violations: list[Violation] = []
     for item in graph.element_nodes(NodeType.ASSESSMENT):
         data = item["data"]
         item_id = data.get("item_id", item["id"].rsplit(graph.ELEMENT_SEP, 1)[-1])
-        instrument = alignment.bare_ref(data.get("instrument_id", ""))
+        one = alignment.bare_ref(data.get("set_id", ""))
         category = str(data.get("plan_category") or "").lower()
-        if instrument not in timing_of:
-            problem = (f"Item '{item_id}' names instrument {instrument!r}, which the "
+        if one not in timing_of:
+            problem = (f"Item '{item_id}' names set {one!r}, which the "
                        "assessment plan does not have.")
-        elif category != timing_of[instrument]:
+        elif category != timing_of[one]:
             problem = (f"Item '{item_id}' is a {category or 'uncategorised'} item in "
-                       f"{instrument}, a {timing_of[instrument]} instrument.")
+                       f"{one}, a {timing_of[one]} set.")
         else:
             continue
         violations.append(Violation(
-            node_id=item["id"], edge_type="", violation_type="instrument_alignment",
+            node_id=item["id"], edge_type="", violation_type="set_alignment",
             severity="warning", message=problem,
-            repair_hint=("Set instrument_id to an instrument of the assessment plan whose "
+            repair_hint=("Set set_id to a set of the assessment plan whose "
                          "timing is this item's plan_category and which covers its objective."),
             metadata={"item_id": item_id},
         ))
@@ -700,7 +700,7 @@ _CHOICE_ITEM_TYPES = frozenset({"multiple_choice", "true_false", "matching"})
 
 def item_completeness(graph) -> list[Violation]:
     """A selectable-response assessment item (multiple_choice/true_false/
-    matching) is not an administrable instrument without its response set:
+    matching) is not administrable without its response set:
     options (except true_false, whose options are implicit) and the answer
     key. Measured: every MCQ in a 2B run shipped question-only."""
     return item_completeness_items(
@@ -1038,8 +1038,8 @@ def relation_coverage(graph) -> list[Violation]:
     establisher_gaps += alignment.match_p3_realizes(graph)
     establisher_gaps += alignment.match_p6_realizes(graph)
     establisher_gaps += alignment.match_id_reverse(graph, "P13", field="module_id")
-    # Re-run for its EDGES only. What is wrong with an item's `instrument_id`
-    # is `instrument_alignment`'s finding, in words that say what to change.
+    # Re-run for its EDGES only. What is wrong with an item's `set_id`
+    # is `set_alignment`'s finding, in words that say what to change.
     alignment.match_module_assessed(graph)
     for gap in establisher_gaps:
         node_id = gap["node_id"]
@@ -1110,9 +1110,9 @@ _COVERAGE_HINTS = {
             "module that teaches it."),
     "P13": ("No activity belongs to this module. Plan an activity block for it, and have "
             "every activity in that block set `module_id` to this module's id."),
-    "P14": ("No assessment item belongs to this module. Give the module an instrument in "
-            "the assessment plan, and have its items set `instrument_id` to that "
-            "instrument's id."),
+    "P14": ("No assessment item belongs to this module. Give the module a set in "
+            "the assessment plan, and have its items set `set_id` to that "
+            "set's id."),
     "P8": ("This media selection names no constraint that exists. Set "
            "`respects_constraints` to constraint ids from your read of the design "
            "state, which lists every constraint of this brief."),

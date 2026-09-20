@@ -41,8 +41,8 @@ def _designed_up_to_outcomes() -> tuple[AlignmentGraph, TrajectoryLogger]:
 def _plan(**over) -> dict:
     plan = copy.deepcopy(_ASSESSMENT["assessment_plan"])
     plan["lo_coverage_targets"] = {"ILO-01": ["formative", "summative"]}
-    plan["instruments"] = [
-        dict(plan["instruments"][0], id=f"INS-0{n}", timing=timing)
+    plan["sets"] = [
+        dict(plan["sets"][0], id=f"SET-0{n}", timing=timing)
         for n, timing in enumerate(("formative", "summative"), start=1)]
     plan.update(over)
     return {"assessment_plan": plan}

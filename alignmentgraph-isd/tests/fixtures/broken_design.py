@@ -57,10 +57,10 @@ def broken_graph() -> AlignmentGraph:
         "lo_coverage_targets": {"ILO-01": ["summative", "diagnostic"]},
         # blueprint_consistency: a formative quiz the targets never promised,
         # in a module that does not exist, covering an objective that does not
-        "instruments": [
-            {"id": "INS-01", "module_id": "MOD-01", "timing": "summative", "format": "quiz",
+        "sets": [
+            {"id": "SET-01", "module_id": "MOD-01", "timing": "summative", "format": "quiz",
              "item_counts": {"multiple_choice": 10}, "covers_objectives": ["ILO-01"]},
-            {"id": "INS-02", "module_id": "MOD-07", "timing": "formative", "format": "quiz",
+            {"id": "SET-02", "module_id": "MOD-07", "timing": "formative", "format": "quiz",
              "item_counts": {"short_answer": 3}, "covers_objectives": ["ILO-01", "ILO-09"]},
         ],
     })
@@ -73,8 +73,8 @@ def broken_graph() -> AlignmentGraph:
         "item_id": "AT-0101", "type": "multiple_choice",
         "question": "Which of these is inheritance?",
         "aligned_objective": "ILO-01", "plan_category": "summative",
-        # instrument_alignment: a summative item filed under the formative quiz
-        "instrument_id": "INS-02",
+        # set_alignment: a summative item filed under the formative quiz
+        "set_id": "SET-02",
         "required_cognitive_process": "remember",
         "scoring_criteria": "One mark for the correct option.",
         # evidence_alignment: a criterion asking for evidence the item cannot give

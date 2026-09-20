@@ -24,7 +24,7 @@ def _collect_violations(node_name: str, graph, design_brief) -> list:
         bloom = [v for v in checks.bloom_mismatches(graph) if v.violation_type == "bloom_mismatch_assessment"]
         return (coverage + bloom + checks.evaluation_quality(graph) + checks.plan_coverage(graph)
                 + checks.item_completeness(graph) + checks.blueprint_consistency(graph)
-                + checks.instrument_alignment(graph))
+                + checks.set_alignment(graph))
     if node_name == "activity_designer":
         coverage = [v for v in checks.relation_coverage(graph)
                     if v.violation_type in ("C3", "C4", "P4", "P13")]

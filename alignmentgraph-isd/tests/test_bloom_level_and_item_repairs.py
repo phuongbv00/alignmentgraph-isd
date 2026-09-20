@@ -4,7 +4,7 @@
    verb-vs-level comparison, so an out-of-taxonomy value ("design", "manage")
    passed every round silently — measured on a real run, 4 of 5 arms shipped
    one. The field is also what the evaluator's Bloom sanity check reads, so an
-   unvalidated value there is an unvalidated instrument.
+   unvalidated value there is an unvalidated set.
 2. A coverage repair never WRITES a missing assessment item: a template that
    put the objective's own statement into the item's ``question`` read to any
    text-similarity measure as near-perfect objective-assessment correspondence

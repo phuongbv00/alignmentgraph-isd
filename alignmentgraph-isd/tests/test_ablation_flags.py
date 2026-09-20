@@ -596,8 +596,8 @@ def test_scaffolding_reaches_generation_prompts_in_both_arms(fake_llm_factory):
 
     # Only the arm that delegates hands a Developer an assignment slice: the
     # single agent has no Developer to hand one to, and that is the axis.
-    assert any("=== YOUR ASSIGNED SET ===" in u for u in captured["multi"])
-    assert not any("=== YOUR ASSIGNED SET ===" in u for u in captured["single"])
+    assert any("=== YOUR ASSIGNMENT ===" in u for u in captured["multi"])
+    assert not any("=== YOUR ASSIGNMENT ===" in u for u in captured["single"])
 
 def test_the_alignment_state_is_pulled_in_the_graph_arm_and_absent_from_prose(fake_llm_factory):
     """Machinery parity for `context_mode`, in BOTH decomposition arms: the

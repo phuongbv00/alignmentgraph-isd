@@ -224,7 +224,7 @@ def commit_assessment(graph, trajectory, parsed: dict) -> None:
     """Dispatch commit: the PLAN. The items are produced one work set at a
     time by the Developer tier (see ``fanout.py``) — a single submit cannot
     carry a whole family's item list under the 8192 completion cap, and the
-    grouping is derived from the plan's own instruments rather than stated."""
+    grouping is derived from the plan's own sets rather than stated."""
     updates = _assessment_updates(parsed)
     if updates:
         _merge_section(graph, trajectory, NodeType.ASSESSMENT_PLAN, updates)
@@ -860,7 +860,7 @@ class AgenticStep:
         module's docstring. This block still carries the RULES_* prose:
         cross-field, referential and judgment-call constraints (an
         objective's Bloom level driving what counts as achievable, an id
-        that must exist in a sibling list, how many items an instrument
+        that must exist in a sibling list, how many items a set
         genuinely needs) that no static JSON Schema can express.
 
         Deliberately does NOT end with an "output ONLY the JSON object"
@@ -964,9 +964,9 @@ STEPS: tuple[AgenticStep, ...] = (
         persona=("You are an expert assessment designer, responsible for how mastery of each "
                  "learning objective will be evidenced and measured."),
         intro=("Decide how you will know learners met each objective. You write the "
-               "STRATEGY here — the blueprint of instruments each module's learners sit; "
-               "the items themselves are written afterwards, one instrument at a time, by "
-               "a Developer per instrument."),
+               "STRATEGY here — the blueprint of sets each module's learners sit; "
+               "the items themselves are written afterwards, one set at a time, by "
+               "a Developer per set."),
         rules=rules.rules_for("assessment"),
         primary_type=NodeType.ASSESSMENT,
         readable_types=(NodeType.MODULE, NodeType.OBJECTIVE),

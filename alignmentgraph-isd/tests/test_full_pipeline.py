@@ -120,7 +120,7 @@ def test_analysis_keeps_narrative_fields_alongside_decomposed_elements():
 
 def test_evaluation_carries_formative_findings_and_feedback_summary():
     """E1 of the ADDIE rubric is scored on which areas learners struggle with,
-    why, and the first-round revision — not on a list of instruments. Nothing
+    why, and the first-round revision — not on a list of sets. Nothing
     generates that narrative since EvaluationRevisionAgent was retired, so the
     assessment plan's pilot_data_plan must reach the output."""
     config = HarnessRunConfig()

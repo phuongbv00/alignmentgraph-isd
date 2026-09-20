@@ -244,7 +244,7 @@ def respec(messages: list, step, brief: str) -> str:
 #: ``metadata.run_config`` so that runs on either side of a change to the
 #: tools an agent is bound or to how a stage ends are never pooled by mistake.
 #: 3 = the course's modules written by the outcomes stage and dividing every
-#: family's work, an assessment blueprint of instruments, 18 relations (4 core),
+#: family's work, an assessment blueprint of sets, 18 relations (4 core),
 #: and a run that stops when no module is written.
 PROTOCOL_REV = 3
 

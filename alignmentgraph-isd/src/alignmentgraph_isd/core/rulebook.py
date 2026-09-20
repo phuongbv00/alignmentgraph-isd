@@ -117,21 +117,22 @@ RULES_COURSE_MODULES = RULES_COURSE_MODULES % {
     "long": MAX_MODULES}
 
 RULES_ASSESSMENT_PLAN = """\
-``instruments`` is the assessment blueprint: what learners actually sit, module by module. Give
-each module the instruments it needs at the moments it needs them — ``timing`` is diagnostic
-(before the module), formative (during it) or summative (after it); not every module needs all
-three, but the course as a whole must have at least one summative instrument — a course that
-never grades what it set out to teach has no evidence that it worked. For each instrument state its ``format`` (quiz, practical, project, ...), its real scale in
-``item_counts`` (item type -> how many the FULL instrument has, e.g. 20 multiple_choice and 3
+``sets`` is the assessment blueprint: each set is one thing learners actually sit — a quiz, a
+practical, a project — module by module. Give each module the sets it needs at the moments it
+needs them — ``timing`` is diagnostic (before the module), formative (during it) or summative
+(after it); not every module needs all three, but the course as a whole must have at least one
+summative set — a course that never grades what it set out to teach has no evidence that it
+worked. For each set state its ``format`` (quiz, practical, project, ...), its real scale in
+``item_counts`` (item type -> how many the FULL set has, e.g. 20 multiple_choice and 3
 short_answer — the true size, even though only a sample of those items is written out later),
 the ``covers_objectives`` it assesses (ids from that module's objectives), its ``minutes``, and its
-``weight_percent`` of the course grade (0 when ungraded; the graded instruments add up to 100).
+``weight_percent`` of the course grade (0 when ungraded; the graded sets add up to 100).
 ``module_id`` must be the id of an existing module, copied from your read of the design state.
-Every objective must be covered by at least one instrument.
+Every objective must be covered by at least one set.
 lo_coverage_targets and expected_evidence must have one entry per learning objective given, and
-lo_coverage_targets must agree with the instruments: an objective is promised a category exactly
-when an instrument with that ``timing`` covers it.
-formative_methods must each name an instrument and a cadence (e.g. "exit tickets after each
+lo_coverage_targets must agree with the sets: an objective is promised a category exactly
+when a set with that ``timing`` covers it.
+formative_methods must each name a set and a cadence (e.g. "exit tickets after each
 module"), consistent with the formative intent above.
 pilot_data_plan.anticipated_difficulties must name at least two SPECIFIC areas, each anchored to
 BOTH the content module or session where learners would struggle AND the objective id affected
@@ -140,11 +141,10 @@ with a rationale grounded in the learner profile and a first_revision that is co
 to act on without further analysis."""
 
 RULES_ASSESSMENT_ITEMS = """\
-Every item belongs to ONE instrument of the assessment plan: set ``instrument_id`` to that
-instrument's id, and ``plan_category`` to that instrument's ``timing``.
+Every item belongs to ONE set of the assessment plan: put that set's id in ``set_id``, and
+``plan_category`` must be that set's ``timing``.
 Every (objective, plan_category) pair the assessment plan's lo_coverage_targets names needs at
-least one item; the dev plan's expected_items says how many each instrument set writes, and
-there is no filler beyond that. Do not aim for a round number of items -- a plan covering three
+least one item, and there is no filler beyond what the sets' ``item_counts`` state. Do not aim for a round number of items -- a plan covering three
 objectives in two categories needs six items, not ten. required_cognitive_process must be one of:
 %(bloom_levels)s — and must be honestly achievable by the
 item's format (a multiple_choice/true_false item cannot honestly claim apply-or-higher; use
@@ -164,18 +164,18 @@ scoring_criteria carry the judgment instead."""
 RULES_ASSESSMENT_ITEMS = RULES_ASSESSMENT_ITEMS % {"bloom_levels": ", ".join(BLOOM_LEVELS)}
 
 
-#: Per-set rewrite of RULES_ASSESSMENT_ITEMS: a Developer sees only its own
-#: instrument set, not the whole plan, so the count/filler rule is scoped to
-#: that set instead of the plan's full lo_coverage_targets.
+#: Per-assignment rewrite of RULES_ASSESSMENT_ITEMS: a Developer sees only
+#: the sets it was assigned, not the whole plan, so the count/filler rule is
+#: scoped to its assignment instead of the plan's full lo_coverage_targets.
 RULES_ASSESSMENT_ITEMS_SET = """\
-Do NOT write an id for the artifacts you produce — ids are assigned when your set is
+Do NOT write an id for the artifacts you produce — ids are assigned when your assignment is
 committed, so that two Developers working at the same time cannot name the same thing.
-YOUR ASSIGNED SET below states how many items to write: cover every (objective, plan_category)
-pair it lists with at least one item, and write no filler beyond the stated count. If the set spans
-more than one objective, its items must share a common stem/scenario (the instrument the set
-describes), but each individual item still carries a SINGLE ``aligned_objective`` — never a list.
-Every item belongs to ONE of the instruments YOUR ASSIGNED SET lists: set ``instrument_id`` to
-that instrument's id and ``plan_category`` to its ``timing``, write the item in one of the item
+YOUR ASSIGNMENT below states how many items to write: cover every (objective, plan_category)
+pair it lists with at least one item, and write no filler beyond the stated count. If it spans
+more than one objective, your items must share a common stem/scenario (the assessment set they
+belong to), but each individual item still carries a SINGLE ``aligned_objective`` — never a list.
+Every item belongs to ONE of the assessment sets YOUR ASSIGNMENT lists: put that set's id in
+``set_id`` and its ``timing`` in ``plan_category``, write the item in one of the item
 types its ``item_counts`` names, and spread your items over those types.
 required_cognitive_process must be one of:
 %(bloom_levels)s — and must be honestly achievable by the

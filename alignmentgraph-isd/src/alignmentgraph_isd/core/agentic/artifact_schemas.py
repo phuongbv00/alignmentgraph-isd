@@ -166,21 +166,21 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
     # in `lo_coverage_targets`, per objective; an optional second place to say
     # the same thing only invites a small model to guess.
     #
-    # `instruments` is the BLUEPRINT: what a learner actually sits — a quiz
+    # `sets` is the BLUEPRINT: what a learner actually sits — a quiz
     # before a module, a practical after it — with its real scale
     # (`item_counts`), beside the question-level items the Developers write,
-    # each of which names the instrument it belongs to. `timing` is the plan
+    # each of which names the set it belongs to. `timing` is the plan
     # category vocabulary (diagnostic = before, formative = during, summative =
     # after): one set of words for when an assessment happens.
     "assessment_plan": _obj({
-        "instruments": _arr_of(_obj({
-            "id": {"type": "string", "description": "INS-01, INS-02, ..."},
+        "sets": _arr_of(_obj({
+            "id": {"type": "string", "description": "SET-01, SET-02, ..."},
             "module_id": {"type": "string", "description": "the module it assesses"},
             "timing": _PLAN_CATEGORY,
             "format": {"type": "string",
                        "description": "quiz, practical, project, oral, portfolio, ..."},
             "item_counts": {"type": "object",
-                "description": "item type -> how many the full instrument has",
+                "description": "item type -> how many the full set has",
                 "additionalProperties": {"type": "integer"}},
             "covers_objectives": _arr(),
             "minutes": {"type": "integer"},
@@ -201,14 +201,14 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
                 "detected_by": {"type": "string"}, "first_revision": {"type": "string"}},
                 ("area", "rationale", "detected_by", "first_revision"))),
         }, ("anticipated_difficulties",)),
-    }, ("instruments", "lo_coverage_targets", "pilot_data_plan")),
+    }, ("sets", "lo_coverage_targets", "pilot_data_plan")),
     #: Item schema — the fan-out's ``assessment_tools`` (assessment items).
     "assessment_tools": _obj({
         "type": _EVIDENCE, "question": {"type": "string"},
         "options": _arr(), "correct_answer": {"type": "string"},
         "aligned_objective": {"type": "string"}, "plan_category": _PLAN_CATEGORY,
-        "instrument_id": {"type": "string",
-                          "description": "the instrument of the assessment plan this item is part of"},
+        "set_id": {"type": "string",
+                          "description": "the set of the assessment plan this item is part of"},
         "required_cognitive_process": _BLOOM, "scoring_criteria": {"type": "string"},
         "rubric": _arr_of(_obj({
             "id": {"type": "string"}, "description": {"type": "string"},
@@ -218,7 +218,7 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
                             "needs_improvement": {"type": "string"}},
                            ("excellent", "satisfactory", "needs_improvement"))},
             ("id", "description", "evidence_type", "levels"))),
-    }, ("type", "question", "aligned_objective", "plan_category", "instrument_id",
+    }, ("type", "question", "aligned_objective", "plan_category", "set_id",
         "required_cognitive_process", "rubric")),
 
     # ── activities ───────────────────────────────────────────────────────

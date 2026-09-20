@@ -188,7 +188,7 @@ class ADDIEOutputAggregator:
         summative_items = [t for t in assessment_tools if str(t.get("plan_category", "")).lower() == "summative"]
 
         # The formative half of ADDIE Evaluation is scored on more than a list
-        # of instruments: the rubric asks which areas learners struggled with,
+        # of sets: the rubric asks which areas learners struggled with,
         # why, and what first-round revision follows — the assessment plan's
         # pilot_data_plan, surfaced here.
         pilot = plan_data.get("pilot_data_plan", {})
@@ -557,8 +557,8 @@ def _compute_storyboard(instructional_strategies: dict, content_modules: list[di
 #: which is what the judge scores.
 _HARNESS_ONLY_SECTION_KEYS = ("dev_plan",)
 
-def _instrument_scale(instrument: dict) -> int:
-    counts = instrument.get("item_counts")
+def _set_scale(one: dict) -> int:
+    counts = one.get("item_counts")
     total = 0
     for value in (counts.values() if isinstance(counts, dict) else ()):
         try:
@@ -569,23 +569,23 @@ def _instrument_scale(instrument: dict) -> int:
 
 
 def _with_items_written(plan: dict, items: list[dict]) -> dict:
-    """The assessment plan with each instrument's ``items_written`` beside its
-    ``item_counts``: the blueprint states the instrument at full scale, and
+    """The assessment plan with each set's ``items_written`` beside its
+    ``item_counts``: the blueprint states the set at full scale, and
     this is how many of its items the design actually carries. A count, read
-    off the ``instrument_id`` the items themselves name — nothing is inferred
+    off the ``set_id`` the items themselves name — nothing is inferred
     for an item that names none."""
-    instruments = plan.get("instruments")
-    if not isinstance(instruments, list):
+    sets = plan.get("sets")
+    if not isinstance(sets, list):
         return plan
     written: dict[str, int] = {}
     for item in items:
-        if isinstance(item, dict) and item.get("instrument_id"):
-            key = str(item["instrument_id"]).rsplit(":", 1)[-1]
+        if isinstance(item, dict) and item.get("set_id"):
+            key = str(item["set_id"]).rsplit(":", 1)[-1]
             written[key] = written.get(key, 0) + 1
-    return {**plan, "instruments": [
-        {**instrument, "items_written": written.get(str(instrument.get("id", "")), 0)}
-        if isinstance(instrument, dict) else instrument
-        for instrument in instruments]}
+    return {**plan, "sets": [
+        {**one, "items_written": written.get(str(one.get("id", "")), 0)}
+        if isinstance(one, dict) else one
+        for one in sets]}
 
 
 def _development_scope(mode: str, plan: dict, *, items: int, activities: int,
@@ -597,7 +597,7 @@ def _development_scope(mode: str, plan: dict, *, items: int, activities: int,
     instructional content. Empty when no mode was given."""
     if not mode:
         return {}
-    planned = sum(_instrument_scale(i) for i in (plan.get("instruments") or [])
+    planned = sum(_set_scale(i) for i in (plan.get("sets") or [])
                   if isinstance(i, dict))
     scale = (f"{items} of the {planned} assessment items the blueprint plans"
              if planned else f"{items} assessment items")
@@ -607,7 +607,7 @@ def _development_scope(mode: str, plan: dict, *, items: int, activities: int,
         "mode": mode, "items_planned": planned, "items_written": items,
         "note": (f"Development writes out {how}: {scale}, {activities} learning activities and "
                  f"{materials} learner materials across {modules} modules, each written in "
-                 "full. The assessment plan's instruments state every instrument's full scale "
+                 "full. The assessment plan's sets state every set's full scale "
                  "(item_counts) beside how many of its items are written here "
                  "(items_written)."),
     }}

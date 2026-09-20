@@ -3,7 +3,7 @@
 Measured 2026-08-28 (Qwen3.5-2B single run): every multiple_choice item in the
 main arm's output carried only question + scoring_criteria — no options, no
 correct_answer — because the generation schema never asked for them. Such an
-item cannot be administered, and the judge scores instrument completeness
+item cannot be administered, and the judge scores set completeness
 directly (rubric items 22/30). The check flags it and the deterministic
 salvage reformats a keyless choice item as short_answer — administrable as
 written. No model call is involved: no repair has called the model since

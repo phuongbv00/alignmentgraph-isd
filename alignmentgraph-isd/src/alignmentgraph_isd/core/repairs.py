@@ -84,11 +84,11 @@ def _log_repair(ctx: RepairContext, node_id: str, *, violation_type: str = "",
 OWNED_BY_FAMILY: dict[str, frozenset[str]] = {
     # P12-P14 are the module's relations, each owned by the family whose
     # artifacts DECLARE the reference: the modules name their objectives and
-    # topics, an activity names its module, an item names its instrument.
+    # topics, an activity names its module, an item names its set.
     "outcome_designer": frozenset({"bloom", "P7", "P12"}),
     "assessment_designer": frozenset(
         {"C2", "P3", "P14", "bloom_mismatch_assessment", "evaluation_quality", "plan_coverage",
-         "item_completeness", "blueprint_consistency", "instrument_alignment"}),
+         "item_completeness", "blueprint_consistency", "set_alignment"}),
     "activity_designer": frozenset(
         {"C3", "C4", "P4", "P13", "activity_engagement", "bloom_mismatch_activity",
          "time_budget"}),
@@ -159,11 +159,11 @@ REPORT_ONLY: frozenset[str] = frozenset({
 #: salvage runs only in the reconciliation pass, after every loop has closed.
 STRUCTURAL: frozenset[str] = frozenset({
     "bloom", "C4", "P5", "evidence_alignment",
-    # Both are a lookup when they are fixable at all: a pair an instrument
+    # Both are a lookup when they are fixable at all: a pair a set
     # promises is added to `lo_coverage_targets`, an item is pointed at the ONE
-    # instrument its own objective and category identify. What a lookup cannot
+    # set its own objective and category identify. What a lookup cannot
     # settle is handed back and reaches the agent.
-    "blueprint_consistency", "instrument_alignment",
+    "blueprint_consistency", "set_alignment",
 })
 
 
@@ -321,25 +321,25 @@ def _repair_assessment_family(ctx: RepairContext, violations: list) -> list:
     coverage = [v for v in violations if v.violation_type in ("C2", "P3")]
     completeness = [v for v in violations if v.violation_type == "item_completeness"]
     blueprint = [v for v in violations if v.violation_type == "blueprint_consistency"]
-    membership = [v for v in violations if v.violation_type == "instrument_alignment"]
+    membership = [v for v in violations if v.violation_type == "set_alignment"]
     if completeness:
         repair_item_completeness(ctx, completeness)
     if coverage:
         repair_assessment_coverage(ctx, coverage)
-    # The blueprint first: an item is matched to an instrument by the pairs
+    # The blueprint first: an item is matched to a set by the pairs
     # the plan promises, so those have to be complete before the lookup runs.
     unsettled = repair_blueprint_pairs(ctx, blueprint) if blueprint else []
-    unsettled += repair_instrument_membership(ctx, membership) if membership else []
+    unsettled += repair_set_membership(ctx, membership) if membership else []
     handled = coverage + completeness + blueprint + membership
     return [v for v in violations if v not in handled] + unsettled
 
 
 def repair_blueprint_pairs(ctx: RepairContext, violations: list) -> list:
     """``blueprint_consistency``, the half a lookup settles: a pair an
-    instrument promises is ADDED to ``lo_coverage_targets``. Nothing is
-    decided — the plan already says the instrument assesses that objective at
+    set promises is ADDED to ``lo_coverage_targets``. Nothing is
+    decided — the plan already says the set assesses that objective at
     that timing, and this writes the same fact where the rest of the harness
-    reads it. An instrument naming a module or an objective that does not
+    reads it. A set naming a module or an objective that does not
     exist is returned: which one it meant is the Designer's to say."""
     fixable = [v for v in violations if v.metadata.get("kind") == "unpromised_pair"]
     rest = [v for v in violations if v not in fixable]
@@ -374,18 +374,18 @@ def repair_blueprint_pairs(ctx: RepairContext, violations: list) -> list:
     _log_repair(ctx, node_id, violation_type="blueprint_consistency",
                 repaired_fields=["lo_coverage_targets"], rule="repair_blueprint_pairs",
                 input_summary="; ".join(v.message for v in fixable)[:200],
-                output_summary=f"Promised what the instruments already assess: {', '.join(added)}.")
+                output_summary=f"Promised what the sets already assess: {', '.join(added)}.")
     return rest
 
 
-def repair_instrument_membership(ctx: RepairContext, violations: list) -> list:
-    """``instrument_alignment``: point an item at the ONE instrument its own
+def repair_set_membership(ctx: RepairContext, violations: list) -> list:
+    """``set_alignment``: point an item at the ONE set its own
     ``aligned_objective`` and ``plan_category`` identify. Zero candidates or
     several is not a lookup — which quiz a question belongs to is then a
     design decision — and the violation is returned."""
     graph = ctx.graph
     plan = (graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN)) or {}).get("data") or {}
-    instruments = [i for i in (plan.get("instruments") or []) if isinstance(i, dict)]
+    sets = [i for i in (plan.get("sets") or []) if isinstance(i, dict)]
     repaired: list[str] = []
     rest: list = []
     for violation in violations:
@@ -394,20 +394,20 @@ def repair_instrument_membership(ctx: RepairContext, violations: list) -> list:
         lo_id = alignment.bare_ref(data.get("aligned_objective", ""))
         category = str(data.get("plan_category") or "").lower()
         candidates = [
-            alignment.bare_ref(i.get("id", "")) for i in instruments
+            alignment.bare_ref(i.get("id", "")) for i in sets
             if str(i.get("timing") or "").lower() == category
             and lo_id in map(alignment.bare_ref, i.get("covers_objectives") or [])]
         if node is None or len(candidates) != 1 or not candidates[0]:
             rest.append(violation)
             continue
-        graph.update_node(violation.node_id, {"instrument_id": candidates[0], "repaired": True})
+        graph.update_node(violation.node_id, {"set_id": candidates[0], "repaired": True})
         repaired.append(f"{violation.node_id} -> {candidates[0]}")
     if repaired:
         alignment.match_module_assessed(graph)
-        _log_repair(ctx, violations[0].node_id, violation_type="instrument_alignment",
-                    repaired_fields=["assessment_tools"], rule="repair_instrument_membership",
+        _log_repair(ctx, violations[0].node_id, violation_type="set_alignment",
+                    repaired_fields=["assessment_tools"], rule="repair_set_membership",
                     input_summary="; ".join(v.message for v in violations)[:200],
-                    output_summary=f"Filed items under their instrument: {', '.join(repaired)}.")
+                    output_summary=f"Filed items under their set: {', '.join(repaired)}.")
     return rest
 
 

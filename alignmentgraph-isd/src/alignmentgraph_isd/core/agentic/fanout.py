@@ -98,7 +98,7 @@ def _names_its(field_name: str, list_key: str, what: str) -> Callable[[list], li
     """An item validator: every item must say which ``what`` it belongs to.
 
     Only that it SAYS so. Whether the id exists is a check's question
-    (``instrument_alignment``, P13) — a validator has no state to ask — but an
+    (``set_alignment``, P13) — a validator has no state to ask — but an
     item that names nothing can be refused here, while its author is still in
     the conversation, instead of becoming a finding nobody can attribute."""
     def errors(items: list) -> list[str]:
@@ -110,7 +110,7 @@ def _names_its(field_name: str, list_key: str, what: str) -> Callable[[list], li
 
 
 def assessment_item_errors(items: list) -> list[str]:
-    """An item names its instrument, and every criterion it carries says what
+    """An item names its set, and every criterion it carries says what
     each grade looks like.
 
     The second half is ``rubric_consistency`` asked while its author is still
@@ -121,7 +121,7 @@ def assessment_item_errors(items: list) -> list[str]:
     and every one still open at the end of its run. Only MISSING levels are
     refused here — whether the words in them are good enough stays the
     check's."""
-    errors = _names_its("instrument_id", "assessment_tools", "instrument")(items)
+    errors = _names_its("set_id", "assessment_tools", "set")(items)
     for index, item in enumerate(items):
         for position, criterion in enumerate((item or {}).get("rubric") or []
                                              if isinstance(item, dict) else []):
@@ -166,7 +166,7 @@ class FanoutSpec:
     #: across families — a reader that keys on this header (the test
     #: fixture's per-set slicing) must see the same thing on either side of
     #: both ablation axes.
-    set_header: str = "=== YOUR ASSIGNED SET ==="
+    set_header: str = "=== YOUR ASSIGNMENT ==="
     #: What one Developer call submits. More than one entry = one call
     #: produces several artifact lists at once.
     outputs: tuple[SetOutput, ...] = ()
@@ -236,21 +236,21 @@ def _derived_stats(stats: dict) -> dict:
 def _assessment_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dict]:
     """One work set per INSTRUMENT of the blueprint.
 
-    The instrument is what an assessment designer actually divides by — a
+    The set is what an assessment designer actually divides by — a
     Developer writes the items of one quiz or one practical — and it is a
     real artifact of the design, so the grouping needs no separate plan to
     state it. Its ``item_counts`` already say how many items, and
-    ``_item_batches`` splits an instrument too large for one call."""
+    ``_item_batches`` splits a set too large for one call."""
     plan = parsed.get("assessment_plan") or {}
-    instruments = [i for i in (plan.get("instruments") or [])
-                   if isinstance(i, dict) and i.get("id")]
-    derived = {"instrument_sets": [{"module_id": i.get("module_id"),
-                                    "instrument_ids": [i["id"]]} for i in instruments]}
+    blueprint = [one for one in (plan.get("sets") or [])
+                 if isinstance(one, dict) and one.get("id")]
+    derived = {"sets": [{"module_id": one.get("module_id"), "set_ids": [one["id"]]}
+                        for one in blueprint]}
     sets, stats = dev_plans.normalize_assessment_dev_plan(
         derived, _lo_ids(state), plan.get("lo_coverage_targets") or {},
-        modules=parsed.get("modules"), instruments=instruments, mode=mode)
+        modules=parsed.get("modules"), blueprint=blueprint, mode=mode)
     named = dev_plans.name_sets_after(
-        sets, "AS", lambda ws: next((i["id"] for i in ws.payload.get("instruments") or []
+        sets, "AS", lambda ws: next((i["id"] for i in ws.payload.get("sets") or []
                                      if i.get("id")), ws.module_id))
     return named, _derived_stats(stats)
 
@@ -402,12 +402,12 @@ SPECS: dict[str, FanoutSpec] = {
         stage="assessment",
         developer_identity="AssessmentDeveloperAgent",
         developer_persona=(
-            "You are an expert instructional designer developing ONE assessment instrument set "
+            "You are an expert instructional designer developing ONE assessment assessment set "
             "(ADDIE Development phase) — writing the actual items for exactly the objectives and "
             "plan categories your assigned set names, AND the scoring criteria that mark them. "
             "You are NOT responsible for any other objective or category; another Developer is "
             "handling those."),
-        set_intro=("Write the actual items for YOUR ASSIGNED instrument set below, each with "
+        set_intro=("Write the actual items for the assessment sets in YOUR ASSIGNMENT below, each with "
                    "the scoring criteria that mark it, inside the item's own ``rubric`` list."),
         outputs=(
             SetOutput(

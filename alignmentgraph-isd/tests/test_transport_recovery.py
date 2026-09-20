@@ -105,7 +105,7 @@ def test_a_wrong_typed_container_nobody_else_owns_is_still_reported_once():
 
 def test_a_missing_leaf_is_still_reported_when_its_container_is_sound():
     plan = {"lo_coverage_targets": {"ILO-01": ["summative"]},
-            "instruments": [{"id": "INS-01", "module_id": "MOD-01", "timing": "summative"}],
+            "sets": [{"id": "SET-01", "module_id": "MOD-01", "timing": "summative"}],
             "expected_evidence": {"ILO-01": "x"},
             "diagnostic": "d", "formative": "f", "summative": "s",
             "formative_methods": ["a"]}
@@ -118,12 +118,12 @@ def test_a_missing_leaf_is_still_reported_when_its_container_is_sound():
 
 def test_both_shapes_of_a_coverage_promise_read_the_same():
     """The schema asks for category names; models also write the richer entry
-    that names the instrument too. Two readers disagreed about the second one:
+    that names the set too. Two readers disagreed about the second one:
     the fan-out dropped every pair and fell back to summative-only work sets,
     while the check took `str(dict)` as the category."""
     plain = {"ILO-01": ["diagnostic", "summative"]}
-    rich = {"ILO-01": [{"plan_category": "diagnostic", "instrument": "entry quiz"},
-                       {"plan_category": "summative", "instrument": "final project"}]}
+    rich = {"ILO-01": [{"plan_category": "diagnostic", "set": "entry quiz"},
+                       {"plan_category": "summative", "set": "final project"}]}
     expected = [("ILO-01", "diagnostic"), ("ILO-01", "summative")]
     assert dev_plans.plan_category_pairs(plain) == expected
     assert dev_plans.plan_category_pairs(rich) == expected
@@ -131,7 +131,7 @@ def test_both_shapes_of_a_coverage_promise_read_the_same():
     assert dev_plans.plan_category_pairs({"objective:ILO-01": ["summative"]}) == [
         ("ILO-01", "summative")]
     # Anything that is not one of the three is dropped, never stringified.
-    assert dev_plans.plan_category_pairs({"ILO-01": ["midterm", {"instrument": "x"}]}) == []
+    assert dev_plans.plan_category_pairs({"ILO-01": ["midterm", {"set": "x"}]}) == []
 
 
 def test_a_rich_coverage_promise_is_realised_by_matching_items():
@@ -142,8 +142,8 @@ def test_a_rich_coverage_promise_is_realised_by_matching_items():
     graph = AlignmentGraph()
     graph.add_node(NodeType.ASSESSMENT_PLAN, graph.section_id(NodeType.ASSESSMENT_PLAN), {
         "lo_coverage_targets": {
-            "ILO-01": [{"plan_category": "diagnostic", "instrument": "entry quiz"},
-                       {"plan_category": "summative", "instrument": "final project"}]},
+            "ILO-01": [{"plan_category": "diagnostic", "set": "entry quiz"},
+                       {"plan_category": "summative", "set": "final project"}]},
     })
     graph.add_element_node(NodeType.ASSESSMENT, "AT-D-ILO-01", {
         "item_id": "AT-D-ILO-01", "aligned_objective": "ILO-01",

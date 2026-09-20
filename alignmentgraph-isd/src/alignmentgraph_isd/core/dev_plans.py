@@ -97,7 +97,7 @@ class WorkSet:
 
     ``objectives``/``pairs`` are the assessment/activity grouping keys;
     ``payload`` carries whatever else the family's Developer prompt needs
-    (an instrument hint, a content module, a batch of items…). ``source``
+    (a set hint, a content module, a batch of items…). ``source``
     records how this set came to exist, for the ``dev_plan`` trajectory
     event: ``"llm"`` (proposed and validated), ``"appended"`` (an LLM plan
     ran but left this obligation uncovered), ``"fallback"`` (the LLM plan
@@ -180,21 +180,21 @@ def number_sets(sets: list[WorkSet], *, prefix: str = "") -> list[WorkSet]:
 
 
 def name_sets_after(sets: list[WorkSet], prefix: str, key) -> list[WorkSet]:
-    """Rename each set after the design artifact it writes for — ``AS-INS-02``,
+    """Rename each set after the design artifact it writes for — ``AS-SET-02``,
     ``AB-MOD-01`` — keeping the ordinal ``number_sets`` assigned.
 
     The ordinal is positional and composes every artifact id, so it has to
     stay; the set_id is what is READ — stamped on every element as
     ``plan_set``, matched by ``fanout.committed_set_ids``, and shown as the
     assignment's own header. Derived from the artifact rather than from the
-    position, it says which instrument or module a committed element came
+    position, it says which set or module a committed element came
     from, and it is the same id every time the sets are derived again from
     the same design — which is what lets a second dispatch run only the sets
     that are new. ``material_work_units`` has named its sets this way
     (``MU-MOD-03``) since the modules arrived; this is that, for the three
     families whose plan the model used to write.
 
-    A key several sets share (one instrument batched over several calls) gets
+    A key several sets share (one set batched over several calls) gets
     a ``-01`` suffix on each, so the id stays unique without depending on how
     many batches there turned out to be for any other key."""
     counts: dict[str, int] = {}
@@ -280,9 +280,9 @@ SAMPLE_SESSION_GUIDES_PER_MODULE = 2
 
 _SAMPLE_NOTES = {
     "assessment": (
-        f"SAMPLE DEVELOPMENT: each instrument states its full scale in item_counts; write a "
+        f"SAMPLE DEVELOPMENT: each set states its full scale in item_counts; write a "
         f"representative sample of it — about {SAMPLE_ITEMS_PER_INSTRUMENT} items per "
-        "instrument, spread over its item types, and never fewer than one per (objective x "
+        "set, spread over its item types, and never fewer than one per (objective x "
         "plan_category) pair. Each item is written in full, as it would be administered."),
     "activity": (
         f"SAMPLE DEVELOPMENT: write a representative sample of the module's activities — about "
@@ -309,8 +309,8 @@ def development_note(mode: str, family: str) -> str:
     return _SAMPLE_NOTES.get(family, "") if mode == "sample" else ""
 
 
-def _instrument_total(instrument: dict) -> int:
-    counts = instrument.get("item_counts")
+def _set_total(one: dict) -> int:
+    counts = one.get("item_counts")
     total = 0
     for value in (counts.values() if isinstance(counts, dict) else ()):
         try:
@@ -321,12 +321,12 @@ def _instrument_total(instrument: dict) -> int:
 
 
 def _planned_items(work_set: WorkSet, mode: str) -> int | None:
-    """How many items a set's instruments call for under ``mode``; ``None``
-    when the set lists no instrument and the pair count has to decide."""
-    instruments = [i for i in (work_set.payload.get("instruments") or []) if isinstance(i, dict)]
-    if not instruments:
+    """How many items the assessment sets of one work set call for under
+    ``mode``; ``None`` when it lists none and the pair count has to decide."""
+    sets = [i for i in (work_set.payload.get("sets") or []) if isinstance(i, dict)]
+    if not sets:
         return None
-    totals = [_instrument_total(i) or SAMPLE_ITEMS_PER_INSTRUMENT for i in instruments]
+    totals = [_set_total(i) or SAMPLE_ITEMS_PER_INSTRUMENT for i in sets]
     if mode == "sample":
         totals = [min(total, SAMPLE_ITEMS_PER_INSTRUMENT) for total in totals]
     return max(sum(totals), len(work_set.pairs))
@@ -371,37 +371,37 @@ def _modules_of_objective(modules: list[dict]) -> dict[str, list[dict]]:
     return by_lo
 
 
-def _pair_modules(pairs, modules: list[dict], instruments) -> dict[tuple[str, str], dict]:
+def _pair_modules(pairs, modules: list[dict], blueprint) -> dict[tuple[str, str], dict]:
     """The module each (objective, category) pair is written in: the module of
-    the first instrument that assesses that objective at that timing, else the
+    the first set that assesses that objective at that timing, else the
     first module that serves the objective, else the course's last module —
     an objective no module serves is a P12 finding already, and its items
     still have to be written somewhere."""
     by_id = {m["id"]: m for m in modules}
     by_lo = _modules_of_objective(modules)
-    from_instrument: dict[tuple[str, str], dict] = {}
-    for instrument in instruments or []:
-        if not isinstance(instrument, dict):
+    from_set: dict[tuple[str, str], dict] = {}
+    for one in blueprint or []:
+        if not isinstance(one, dict):
             continue
-        module = by_id.get(_bare(instrument.get("module_id")))
-        timing = str(instrument.get("timing") or "").strip().lower()
-        for lo in instrument.get("covers_objectives") or []:
+        module = by_id.get(_bare(one.get("module_id")))
+        timing = str(one.get("timing") or "").strip().lower()
+        for lo in one.get("covers_objectives") or []:
             if module is not None:
-                from_instrument.setdefault((_bare(lo), timing), module)
-    return {pair: from_instrument.get(pair) or next(iter(by_lo.get(pair[0], [])), modules[-1])
+                from_set.setdefault((_bare(lo), timing), module)
+    return {pair: from_set.get(pair) or next(iter(by_lo.get(pair[0], [])), modules[-1])
             for pair in pairs}
 
 
-def _instruments_for(instruments, module_id: str, pairs) -> list[dict]:
-    """The module's instruments that assess any of ``pairs``."""
+def _sets_for(blueprint, module_id: str, pairs) -> list[dict]:
+    """The module's sets that assess any of ``pairs``."""
     wanted = set(pairs)
-    return [dict(i) for i in (instruments or []) if isinstance(i, dict)
+    return [dict(i) for i in (blueprint or []) if isinstance(i, dict)
             and _bare(i.get("module_id")) == module_id
             and any((_bare(lo), str(i.get("timing") or "").strip().lower()) in wanted
                     for lo in i.get("covers_objectives") or [])]
 
 
-# ── assessment: instrument sets over (objective, plan_category) pairs ──────
+# ── assessment: set sets over (objective, plan_category) pairs ──────
 
 def plan_category_pairs(coverage_targets) -> list[tuple[str, str]]:
     """``lo_coverage_targets`` as (objective, category) pairs, whatever shape
@@ -409,8 +409,8 @@ def plan_category_pairs(coverage_targets) -> list[tuple[str, str]]:
 
     Two shapes are accepted. The schema asks for a list of category names
     (``{"ILO-01": ["diagnostic", "summative"]}``), and models also write the
-    richer entry that names the instrument alongside the category
-    (``[{"plan_category": "formative", "instrument": "concept mapping"}]``) —
+    richer entry that names the set alongside the category
+    (``[{"plan_category": "formative", "set": "concept mapping"}]``) —
     the same promise with more detail, so it is normalized rather than
     refused. Anything whose category is not one of the three is dropped.
 
@@ -439,23 +439,23 @@ def plan_category_pairs(coverage_targets) -> list[tuple[str, str]]:
     return list(dict.fromkeys(pairs))
 
 
-def instrument_pairs(instruments) -> list[tuple[str, str]]:
+def set_pairs(blueprint) -> list[tuple[str, str]]:
     """The (objective, category) pairs the plan's INSTRUMENTS assess: every
-    objective an instrument covers, at that instrument's ``timing``. Bare ids
+    objective a set covers, at that set's ``timing``. Bare ids
     and valid categories only, first-seen order, no repeats.
 
-    ONE reader, shared with ``checks.instrument_pairs``: the check reports a
+    ONE reader, shared with ``checks.set_pairs``: the check reports a
     promised pair these do not cover (``unassessed_pair``) and this decides
     what the fan-out divides, so a pair the two disagreed about would be
     called assessed and still reach no Developer."""
     pairs: list[tuple[str, str]] = []
-    for instrument in (instruments or []):
-        if not isinstance(instrument, dict):
+    for one in (blueprint or []):
+        if not isinstance(one, dict):
             continue
-        timing = str(instrument.get("timing") or "").strip().lower()
+        timing = str(one.get("timing") or "").strip().lower()
         if timing not in _VALID_CATEGORIES:
             continue
-        for ref in instrument.get("covers_objectives") or []:
+        for ref in one.get("covers_objectives") or []:
             pair = (_bare(ref), timing)
             if pair[0] and pair not in pairs:
                 pairs.append(pair)
@@ -463,30 +463,30 @@ def instrument_pairs(instruments) -> list[tuple[str, str]]:
 
 
 def _assessment_ground_truth_pairs(lo_ids, coverage_targets,
-                                   instruments=None) -> list[tuple[str, str]]:
+                                   blueprint=None) -> list[tuple[str, str]]:
     """What the fan-out divides: the pairs the INSTRUMENTS assess.
 
     ``lo_coverage_targets`` is the model's PROMISE, not the work. The two are
     held together by ``checks.blueprint_consistency``, which reports a promise
-    no instrument keeps (``unassessed_pair``) while the plan is still the only
-    thing written and the Designer can add the instrument.
+    no set keeps (``unassessed_pair``) while the plan is still the only
+    thing written and the Designer can add the set.
 
     Reading the promise HERE instead made such a pair a work set of its own
-    with no instrument in it, and ``render_assessment_set`` drops the whole
-    "set each item's ``instrument_id`` to one of these ids" block for a set
-    that lists none — so its Developer was shown no instrument and reached for
+    with no set in it, and ``render_assessment_set`` drops the whole
+    "set each item's ``set_id`` to one of these ids" block for a set
+    that lists none — so its Developer was shown no set and reached for
     the only id-shaped string left in its assignment, the set's own header.
-    MEASURED (run 50932ed8): three summative instruments against nine promised
-    pairs, six pairs appended into three instrument-less sets, items committed
-    with ``instrument_id`` "AS-02", "AS-04" and "MOD-03", and every one of the
-    run's seven residual violations was the ``instrument_alignment`` that
-    followed. Now an appended set is always a slice of some instrument's own
-    pairs, so it can never be instrument-less.
+    MEASURED (run 50932ed8): three summative sets against nine promised
+    pairs, six pairs appended into three set-less sets, items committed
+    with ``set_id`` "AS-02", "AS-04" and "MOD-03", and every one of the
+    run's seven residual violations was the ``set_alignment`` that
+    followed. Now an appended set is always a slice of some set's own
+    pairs, so it can never be set-less.
 
-    The promise is still the fallback for a plan that carries no instrument at
+    The promise is still the fallback for a plan that carries no set at
     all — an archived design from before the blueprint, or one whose
-    ``instruments`` never landed."""
-    pairs = instrument_pairs(instruments)
+    ``sets`` never landed."""
+    pairs = set_pairs(blueprint)
     if not pairs:
         pairs = plan_category_pairs(coverage_targets)
     if not pairs:
@@ -495,17 +495,17 @@ def _assessment_ground_truth_pairs(lo_ids, coverage_targets,
 
 
 def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets, *, modules=None,
-                                  instruments=None, mode: str = "full"
+                                  blueprint=None, mode: str = "full"
                                   ) -> tuple[list[WorkSet], dict]:
     modules = _modules_in_order(modules)
-    pairs = _assessment_ground_truth_pairs(lo_ids, coverage_targets, instruments)
+    pairs = _assessment_ground_truth_pairs(lo_ids, coverage_targets, blueprint)
     stats = _empty_stats(len(pairs))
     if not pairs:
         return [], stats
     pair_set = set(pairs)
     known_los = {lo for lo, _ in pairs}
 
-    raw_sets = (parsed or {}).get("instrument_sets") if isinstance(parsed, dict) else None
+    raw_sets = (parsed or {}).get("sets") if isinstance(parsed, dict) else None
     sets: list[WorkSet] = []
     claimed: set[tuple[str, str]] = set()
     if isinstance(raw_sets, list):
@@ -513,18 +513,19 @@ def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets, *, modules=N
             if not isinstance(raw, dict):
                 continue
             # A set names the INSTRUMENTS it writes, and its pairs are theirs:
-            # every objective an instrument covers, at that instrument's
+            # every objective a set covers, at that set's
             # timing. ``objectives`` x ``plan_categories`` is the older way of
             # saying the same thing and is still read, so a plan written either
             # way divides the same work.
-            named = {_bare(i) for i in (raw.get("instrument_ids") or []) if _bare(i)}
+            named = {_bare(i) for i in (raw.get("set_ids") or []) if _bare(i)}
             candidate = [
-                (_bare(lo), str(instrument.get("timing") or "").strip().lower())
-                for instrument in (instruments or [])
-                if isinstance(instrument, dict) and _bare(instrument.get("id")) in named
-                for lo in instrument.get("covers_objectives") or []]
+                (_bare(lo), str(one.get("timing") or "").strip().lower())
+                for one in (blueprint or [])
+                if isinstance(one, dict) and _bare(one.get("id")) in named
+                for lo in one.get("covers_objectives") or []]
             stats["dropped_lo_refs"] += len(
-                named - {_bare(i.get("id")) for i in (instruments or []) if isinstance(i, dict)})
+                named - {_bare(i.get("id")) for i in (blueprint or [])
+                         if isinstance(i, dict)})
             objs = [_bare(o) for o in (raw.get("objectives") or []) if _bare(o)]
             stats["dropped_lo_refs"] += sum(1 for o in objs if o not in known_los)
             cats = [str(c or "").strip().lower() for c in (raw.get("plan_categories") or [])]
@@ -545,7 +546,7 @@ def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets, *, modules=N
             sets.append(WorkSet(
                 set_id="", objectives=tuple(dict.fromkeys(lo for lo, _ in set_pairs)),
                 pairs=tuple(set_pairs),
-                payload={"instrument_hint": str(raw.get("instrument_hint", "")),
+                payload={"set_hint": str(raw.get("set_hint", "")),
                          "rationale": str(raw.get("rationale", "")),
                          "expected_items": _expected_items(
                              raw.get("expected_items"), len(set_pairs))},
@@ -560,7 +561,7 @@ def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets, *, modules=N
     # the harness deciding the fan-out width, and it decided badly: a 4-objective
     # scenario became 12 Developer calls because each objective carries three
     # plan categories. One call writes the diagnostic, formative and summative
-    # instruments for one objective — which is also how an assessment designer
+    # sets for one objective — which is also how an assessment designer
     # would actually work.
     by_objective: dict[str, list[tuple[str, str]]] = {}
     for lo, cat in missing:
@@ -574,8 +575,8 @@ def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets, *, modules=N
     if modules:
         # Cut every set where it crosses a module, then put one module's
         # leftovers together: with modules, the unit a Developer writes for is
-        # a module's instruments, not one objective's.
-        where = _pair_modules(pairs, modules, instruments)
+        # a module's sets, not one objective's.
+        where = _pair_modules(pairs, modules, blueprint)
         pieces: list[WorkSet] = []
         loose: dict[str, list[tuple[str, str]]] = {}
         for ws in sets:
@@ -599,7 +600,7 @@ def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets, *, modules=N
         for ws in pieces:
             module = where[ws.pairs[0]]
             ws.payload["module"] = by_id[module["id"]]
-            ws.payload["instruments"] = _instruments_for(instruments, module["id"], ws.pairs)
+            ws.payload["sets"] = _sets_for(blueprint, module["id"], ws.pairs)
         sets = _in_course_order(pieces, modules)
         stats["appended_sets"] = len(loose)
         sets = [batch for ws in sets for batch in _item_batches(ws, mode)]
@@ -658,12 +659,12 @@ def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets, *, modules=N
 def _item_batches(work_set: WorkSet, mode: str) -> list[WorkSet]:
     """Size a set by what its INSTRUMENTS call for under ``mode``.
 
-    ``"sample"`` writes a few items of each instrument and fits one call.
+    ``"sample"`` writes a few items of each set and fits one call.
     ``"full"`` writes every item the blueprint counts, which for a 40-item
     quiz is several calls: the set becomes batches, each with its own quota
     (the total is DIVIDED between them, never repeated) and its own share of
     the pairs, and each told which part of the whole it is. A set that lists
-    no instrument keeps the planner's count."""
+    no set keeps the planner's count."""
     planned = _planned_items(work_set, mode)
     if planned is None:
         return [work_set]
@@ -688,10 +689,10 @@ def _item_batches(work_set: WorkSet, mode: str) -> list[WorkSet]:
 
 
 def _expected_items(raw: object, pair_count: int) -> int:
-    """How many items an instrument set writes: the planner's own count,
+    """How many items an assessment set writes: the planner's own count,
     clamped to ``[pairs, max_units]``, or the pair count when it gave none.
 
-    The pair count alone left the planner no way to say an instrument needs
+    The pair count alone left the planner no way to say a set needs
     three items on one objective. The floor is one item per pair (``checks.plan_coverage`` holds every pair to that) and the
     ceiling is the same per-call budget the split uses, so a planned count
     can never make a set unanswerable.
@@ -1403,32 +1404,32 @@ def with_membership(work_set: WorkSet, schema_key: str, items: list) -> list:
     was written in settles it — new dicts, the submitted ones untouched.
 
     An activity written in a module's block belongs to that module; an item
-    written in a set that lists one instrument, or exactly one instrument of
-    the item's own objective and category, belongs to that instrument. Those
+    written in a set that lists one set, or exactly one set of
+    the item's own objective and category, belongs to that set. Those
     are lookups, and refusing the submit over them costs what a lookup does
     not: MEASURED (run 53a9cd1a), five refusals and a give-up-and-regen for
-    `instrument_id` on sets that each listed a single instrument. Only a
+    `set_id` on sets that each listed a single set. Only a
     MISSING id is filled. One the model wrote is left as written, right or
-    wrong — that is what P13 and ``instrument_alignment`` measure — and an
+    wrong — that is what P13 and ``set_alignment`` measure — and an
     item with several candidates is left without one for the validator."""
     if schema_key == "learning_activities" and work_set.module_id:
         return [{**item, "module_id": work_set.module_id}
                 if isinstance(item, dict) and not str(item.get("module_id") or "").strip()
                 else item for item in items]
-    instruments = [i for i in (work_set.payload.get("instruments") or []) if isinstance(i, dict)]
-    if schema_key != "assessment_tools" or not instruments:
+    sets = [i for i in (work_set.payload.get("sets") or []) if isinstance(i, dict)]
+    if schema_key != "assessment_tools" or not sets:
         return items
     out = []
     for item in items:
-        if isinstance(item, dict) and not str(item.get("instrument_id") or "").strip():
+        if isinstance(item, dict) and not str(item.get("set_id") or "").strip():
             lo = _bare(item.get("aligned_objective"))
             category = str(item.get("plan_category") or "").strip().lower()
-            fits = [i for i in instruments
+            fits = [i for i in sets
                     if str(i.get("timing") or "").strip().lower() == category
                     and lo in {_bare(o) for o in i.get("covers_objectives") or []}]
-            pick = fits if len(fits) == 1 else instruments if len(instruments) == 1 else []
+            pick = fits if len(fits) == 1 else sets if len(sets) == 1 else []
             if pick:
-                item = {**item, "instrument_id": _bare(pick[0].get("id"))}
+                item = {**item, "set_id": _bare(pick[0].get("id"))}
         out.append(item)
     return out
 
@@ -1449,7 +1450,7 @@ def short_of_quota(work_set: WorkSet, schema_key: str, items: list) -> str:
     than a rejection (``AgenticStep.owes``): what arrived is kept and the next
     submit is joined to it. MEASURED, both ways of getting this wrong. Run
     40856c96: three sets told "write exactly 3 items" each submitted ONE, were
-    answered COMMITTED, and the design shipped five items for instruments
+    answered COMMITTED, and the design shipped five items for sets
     planned at twenty-five. Run ae81359a, with the short submit REFUSED instead:
     a 2B model that writes one item per call resent its one item — 14 refusals
     of this kind, sets giving up after four calls and being regenerated up to
@@ -1661,7 +1662,7 @@ def _resolve_positions(refs: list, assigned: list[str]) -> list[str]:
     return list(dict.fromkeys(out))
 
 
-# ── work-set rendering: the "=== YOUR ASSIGNED ... ===" user-content block a
+# ── work-set rendering: the "=== YOUR ASSIGNMENT ===" user-content block a
 # Developer (multi arm) or a per-set state (single arm) shows the model.
 # Pure text formatting, not part of the decomposition axis, so both arms
 # import it from here rather than one borrowing the other's agent module.
@@ -1710,27 +1711,27 @@ def _module_line(work_set: WorkSet, *, time: bool = False) -> list[str]:
     return [line]
 
 
-def _instrument_lines(work_set: WorkSet) -> list[str]:
-    instruments = [i for i in (work_set.payload.get("instruments") or []) if isinstance(i, dict)]
-    if not instruments:
+def _set_lines(work_set: WorkSet) -> list[str]:
+    sets = [i for i in (work_set.payload.get("sets") or []) if isinstance(i, dict)]
+    if not sets:
         return []
-    lines = ["instruments of the assessment plan YOUR items belong to (set each item's "
-             "``instrument_id`` to one of these ids, and its ``plan_category`` to that "
-             "instrument's timing):"]
-    for instrument in instruments:
-        counts = instrument.get("item_counts")
+    lines = ["sets of the assessment plan YOUR items belong to (set each item's "
+             "``set_id`` to one of these ids, and its ``plan_category`` to that "
+             "set's timing):"]
+    for one in sets:
+        counts = one.get("item_counts")
         scale = (", ".join(f"{n} {kind}" for kind, n in counts.items())
                  if isinstance(counts, dict) and counts else "")
-        covers = ", ".join(_bare(o) for o in (instrument.get("covers_objectives") or []))
-        lines.append(f"  - {_bare(instrument.get('id'))}: {instrument.get('timing', '')} "
-                     f"{instrument.get('format', '')}".rstrip()
+        covers = ", ".join(_bare(o) for o in (one.get("covers_objectives") or []))
+        lines.append(f"  - {_bare(one.get('id'))}: {one.get('timing', '')} "
+                     f"{one.get('format', '')}".rstrip()
                      + (f" — full scale: {scale}" if scale else "")
                      + (f" — covers {covers}" if covers else ""))
     return lines
 
 
 def render_assessment_set(work_set: WorkSet) -> str:
-    lines = [f"set_id: {work_set.set_id}"] + _module_line(work_set)
+    lines = [f"assignment: {work_set.set_id}"] + _module_line(work_set)
     if work_set.pairs:
         # The count is stated as a number, not left to be inferred from the
         # list length: the planner's `expected_items` (floor: one per pair),
@@ -1745,10 +1746,10 @@ def render_assessment_set(work_set: WorkSet) -> str:
                         "covering every (objective x plan_category) pair below at least once:"))
         for lo, category in work_set.pairs:
             lines.append(f"  - {lo} x {category}")
-    lines += _instrument_lines(work_set)
-    hint = work_set.payload.get("instrument_hint")
+    lines += _set_lines(work_set)
+    hint = work_set.payload.get("set_hint")
     if hint:
-        lines.append(f"instrument_hint: {hint}")
+        lines.append(f"set_hint: {hint}")
     rationale = work_set.payload.get("rationale")
     if rationale:
         lines.append(f"rationale: {rationale}")
@@ -1756,14 +1757,14 @@ def render_assessment_set(work_set: WorkSet) -> str:
     if batch:
         index, total = batch
         lines.append(
-            f"this is part {index} of {total} of these instruments' items: another developer "
+            f"this is part {index} of {total} of these sets' items: another developer "
             f"writes each other part without seeing yours, so draw yours from the "
-            f"{_ordinal(index)} {_fraction(total)} of the content the instruments cover.")
+            f"{_ordinal(index)} {_fraction(total)} of the content the sets cover.")
     return "\n".join(lines + _note_line(work_set))
 
 
 def render_activity_set(work_set: WorkSet) -> str:
-    lines = [f"set_id: {work_set.set_id}"] + _module_line(work_set, time=True)
+    lines = [f"assignment: {work_set.set_id}"] + _module_line(work_set, time=True)
     if work_set.objectives:
         lines.append("objectives YOU must cover:")
         for lo in work_set.objectives:
@@ -1802,7 +1803,7 @@ def render_activity_set(work_set: WorkSet) -> str:
 
 
 def render_material_set(work_set: WorkSet) -> str:
-    lines = [f"set_id: {work_set.set_id}"]
+    lines = [f"assignment: {work_set.set_id}"]
     modules = work_set.payload.get("modules") or []
     if modules:
         lines.append("YOUR module(s):")
@@ -1848,7 +1849,7 @@ def render_session_set(work_set: WorkSet) -> str:
     count = int(work_set.payload.get("expected_sessions") or 1)
     last = first + count - 1
     sessions = ", ".join(str(n) for n in range(first, last + 1))
-    lines = [f"set_id: {work_set.set_id}", *_module_line(work_set),
+    lines = [f"assignment: {work_set.set_id}", *_module_line(work_set),
              f"write exactly {count} session guide{'' if count == 1 else 's'}, "
              f"numbered {sessions} — those session numbers are yours, and another "
              "developer holds the rest."]

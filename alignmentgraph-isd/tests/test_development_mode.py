@@ -18,11 +18,11 @@ from conftest import FakeChatModel, load_brief, run_brief
 
 MODULES = [{"id": "MOD-01", "title": "Basics", "objectives": ["ILO-01", "ILO-02"], "minutes": 600},
            {"id": "MOD-02", "title": "Practice", "objectives": ["ILO-03"], "minutes": 120}]
-INSTRUMENTS = [
-    {"id": "INS-01", "module_id": "MOD-01", "timing": "formative", "format": "quiz",
+SETS = [
+    {"id": "SET-01", "module_id": "MOD-01", "timing": "formative", "format": "quiz",
      "item_counts": {"multiple_choice": 40, "short_answer": 5},
      "covers_objectives": ["ILO-01", "ILO-02"]},
-    {"id": "INS-02", "module_id": "MOD-02", "timing": "summative", "format": "practical",
+    {"id": "SET-02", "module_id": "MOD-02", "timing": "summative", "format": "practical",
      "item_counts": {"performance_task": 2}, "covers_objectives": ["ILO-03"]}]
 TARGETS = {"ILO-01": ["formative"], "ILO-02": ["formative"], "ILO-03": ["summative"]}
 LOS = ["ILO-01", "ILO-02", "ILO-03"]
@@ -30,7 +30,7 @@ LOS = ["ILO-01", "ILO-02", "ILO-03"]
 
 def _assessment(mode):
     return dev_plans.normalize_assessment_dev_plan(
-        None, LOS, TARGETS, modules=MODULES, instruments=INSTRUMENTS, mode=mode)[0]
+        None, LOS, TARGETS, modules=MODULES, blueprint=SETS, mode=mode)[0]
 
 
 def test_the_default_is_sample_and_a_run_records_it():
@@ -43,7 +43,7 @@ def test_the_default_is_sample_and_a_run_records_it():
     assert result["metadata"]["run_config"]["development_mode"] == "full"
 
 
-def test_a_sample_writes_a_few_items_of_each_instrument_and_never_drops_a_pair():
+def test_a_sample_writes_a_few_items_of_each_set_and_never_drops_a_pair():
     sets = _assessment("sample")
     assert [(ws.module_id, ws.payload["expected_items"]) for ws in sets] == [
         ("MOD-01", dev_plans.SAMPLE_ITEMS_PER_INSTRUMENT), ("MOD-02", 2)], (
@@ -54,7 +54,7 @@ def test_a_sample_writes_a_few_items_of_each_instrument_and_never_drops_a_pair()
     assert text.endswith(dev_plans.development_note("sample", "assessment"))
 
 
-def test_full_writes_the_whole_instrument_in_batches_that_divide_it():
+def test_full_writes_the_whole_set_in_batches_that_divide_it():
     sets = _assessment("full")
     quiz = [ws for ws in sets if ws.module_id == "MOD-01"]
     limit = dev_plans.max_units("assessment")
@@ -157,12 +157,12 @@ def test_the_output_says_at_what_scale_it_was_written(context_mode):
     output = run_brief(load_brief("minimal_brief.json"), config)["addie_output"]
 
     items = output["development"]["assessment_tools"]
-    instruments = output["design"]["assessment_plan"]["instruments"]
-    assert sum(i["items_written"] for i in instruments) == len(items) > 0
-    assert all("item_counts" in i for i in instruments), "the full scale is still stated"
+    sets = output["design"]["assessment_plan"]["sets"]
+    assert sum(i["items_written"] for i in sets) == len(items) > 0
+    assert all("item_counts" in i for i in sets), "the full scale is still stated"
 
     scope = output["development"]["development_scope"]
     assert scope["mode"] == "sample" and scope["items_written"] == len(items)
-    assert scope["items_planned"] == sum(sum(i["item_counts"].values()) for i in instruments)
+    assert scope["items_planned"] == sum(sum(i["item_counts"].values()) for i in sets)
     assert f"{len(items)} of the {scope['items_planned']} assessment items" in scope["note"]
     assert "representative sample" in scope["note"]
