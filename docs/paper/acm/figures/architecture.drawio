@@ -150,7 +150,7 @@
                 <mxCell id="g_act" value="Activity" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#8A6A3B;strokeWidth=1.4;fontColor=#1F2328;fontSize=10.5;fontFamily=Helvetica;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
                     <mxGeometry x="365" y="276" width="95" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="g_asm" value="Assessment" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#8A6A3B;strokeWidth=1.4;fontColor=#1F2328;fontSize=10.5;fontFamily=Helvetica;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                <mxCell id="g_asm" value="Assessment task" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#8A6A3B;strokeWidth=1.4;fontColor=#1F2328;fontSize=10.5;fontFamily=Helvetica;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
                     <mxGeometry x="365" y="400" width="95" height="30" as="geometry"/>
                 </mxCell>
                 <mxCell id="g_obj" value="Objective" style="rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3E5F7E;strokeWidth=1.4;fontColor=#1F2328;fontSize=11;fontFamily=Helvetica;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">

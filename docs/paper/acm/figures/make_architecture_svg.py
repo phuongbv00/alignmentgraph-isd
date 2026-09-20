@@ -5,6 +5,8 @@ loop in figures/README.md needs the draw.io app, which is not installed here.
 Both files carry the same geometry, so re-exporting from draw.io later is a
 no-op rather than a conflict.
 """
+from pathlib import Path
+
 SLATE, SLATE_FILL = "#3E5F7E", "#EAEFF4"
 OCHRE, BAND_FILL, SEC = "#8A6A3B", "#F6F2EA", "#B7A88C"
 BRICK, BRICK_FILL = "#8C4B47", "#F4ECEB"
@@ -66,21 +68,24 @@ text(240, 264, ["Alignment graph"], fs=12, bold=True, fc=OCHRE, anchor="start")
 box("g_needs", 260, 336, 104, 30, ["Needs &amp; context"], fill=BAND_FILL,
     stroke=SEC, fs=10)
 box("g_act", 365, 276, 95, 30, ["Activity"], fill="#FFFFFF", stroke=OCHRE)
-box("g_asm", 365, 400, 95, 30, ["Assessment"], fill="#FFFFFF", stroke=OCHRE)
+# The assessment ELEMENT is the TASK — the thing a learner sits. Its
+# questions are a field of it, not vertices of their own, so the triad
+# runs to the task and the figure names it.
+box("g_asm", 365, 400, 95, 30, ["Assessment task"], fill="#FFFFFF", stroke=OCHRE, fs=9.5)
 box("g_obj", 535.5, 334, 84.5, 34, ["Objective"], fill="#FFFFFF", stroke=SLATE, fs=11)
-box("g_con", 711, 336, 89, 30, ["Content module"], fill="#FFFFFF", stroke=OCHRE)
+box("g_con", 711, 336, 89, 30, ["Module"], fill=BAND_FILL, stroke=SEC)
 box("g_mat", 619, 410, 80, 30, ["Material"], fill=BAND_FILL, stroke=SEC, fs=10)
 
-# core relations: the triad plus C5
+# core relations: the triad
 edge(pt("g_obj", 0.05, 0.15), pt("g_act", 0.9, 1.0), color=OCHRE, sw=1.7,
      label="C3 practiced_by", ldy=-5)
 edge(pt("g_obj", 0.05, 0.85), pt("g_asm", 0.95, 0.0), color=OCHRE, sw=1.7,
      label="C2 assessed_by", ldy=12)
 edge(pt("g_act", 0.5, 1.0), pt("g_asm", 0.5, 0.0), color=OCHRE, sw=1.7,
      label="C4 prepares_for", ldx=7, ldy=28, lanchor="start")
-edge(pt("g_con", 0.5, 0.0), pt("g_act", 1.0, 0.5), color=OCHRE, sw=1.7,
-     label="C5 supports", ldy=-5)
 # secondary relations
+edge(pt("g_con", 0.5, 0.0), pt("g_act", 1.0, 0.5), color=SEC, sw=1.2,
+     label="P13 delivered_through", ldy=-5)
 edge(pt("g_needs", 1.0, 0.5), pt("g_obj", 0.0, 0.5), color=SEC, sw=1.2,
      label="P1 informs", ldy=-5)
 edge(pt("g_con", 0.1, 1.0), pt("g_mat", 0.9, 0.0), color=SEC, sw=1.2,
@@ -155,5 +160,9 @@ defs = "".join(
 svg = (f'<svg xmlns="http://www.w3.org/2000/svg" version="1.1" '
        f'width="{X1-X0}px" height="{Y1-Y0}px" viewBox="{X0} {Y0} {X1-X0} {Y1-Y0}">'
        f'<defs>{defs}</defs>' + "".join(out) + '</svg>')
-open("architecture.svg", "w").write(svg)
-print("wrote architecture.svg", len(svg), "bytes")
+# Beside this script, not beside the caller: run from the paper root, a bare
+# relative path drops a stray copy there and `generate_figures.sh` converts the
+# stale one in figures/ instead.
+out_path = Path(__file__).with_name("architecture.svg")
+out_path.write_text(svg)
+print("wrote", out_path, len(svg), "bytes")
