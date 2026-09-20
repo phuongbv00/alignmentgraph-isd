@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+from . import dev_plans
 from .alignment_graph import NodeType, alignment
 
 
@@ -577,12 +578,19 @@ def _with_items_written(plan: dict, items: list[dict]) -> dict:
         return plan
     written: dict[str, int] = {}
     for item in items:
-        if isinstance(item, dict) and item.get("set_id"):
-            key = str(item["set_id"]).rsplit(":", 1)[-1]
+        if isinstance(item, dict) and item.get("task_id"):
+            key = str(item["task_id"]).rsplit(":", 1)[-1]
             written[key] = written.get(key, 0) + 1
+
+    def counted(task: object) -> object:
+        if not isinstance(task, dict):
+            return task
+        return {**task, "items_written": written.get(str(task.get("id", "")), 0)}
+
     return {**plan, "sets": [
-        {**one, "items_written": written.get(str(one.get("id", "")), 0)}
-        if isinstance(one, dict) else one
+        {**one, "assessment_tasks": [counted(t) for t in one["assessment_tasks"]]}
+        if isinstance(one, dict) and isinstance(one.get("assessment_tasks"), list)
+        else counted(one)
         for one in sets]}
 
 
@@ -595,8 +603,7 @@ def _development_scope(mode: str, plan: dict, *, items: int, activities: int,
     instructional content. Empty when no mode was given."""
     if not mode:
         return {}
-    planned = sum(_set_scale(i) for i in (plan.get("sets") or [])
-                  if isinstance(i, dict))
+    planned = sum(_set_scale(t) for t in dev_plans.plan_tasks(plan))
     scale = (f"{items} of the {planned} assessment items the blueprint plans"
              if planned else f"{items} assessment items")
     how = ("a representative sample of the design" if mode == "sample"

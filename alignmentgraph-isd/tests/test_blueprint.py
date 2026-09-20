@@ -157,7 +157,7 @@ def test_the_prose_arm_checks_both_halves_that_read_the_plan_alone():
 
 def _item(item_id: str, lo: str, category: str, set_id: str) -> dict:
     return {"item_id": item_id, "aligned_objective": lo, "plan_category": category,
-            "set_id": set_id}
+            "task_id": set_id}
 
 
 def test_an_item_is_filed_under_the_one_set_its_own_fields_identify():
@@ -176,8 +176,8 @@ def test_an_item_is_filed_under_the_one_set_its_own_fields_identify():
 
     left = repairs.repair("assessment_designer", found, _ctx(graph, trajectory))
     assert [v.node_id for v in left] == ["assessment:AT-04"], "two candidates is not a lookup"
-    assert graph.get_node("assessment:AT-02")["data"]["set_id"] == "SET-02"
-    assert graph.get_node("assessment:AT-03")["data"]["set_id"] == "SET-02"
+    assert graph.get_node("assessment:AT-02")["data"]["task_id"] == "SET-02"
+    assert graph.get_node("assessment:AT-03")["data"]["task_id"] == "SET-02"
     assert {e["target"] for e in graph.get_edges(relation_id="P14")} == {
         "assessment:AT-01", "assessment:AT-02", "assessment:AT-03"}
 
@@ -339,10 +339,10 @@ def test_a_membership_id_the_set_settles_is_filled_in_and_one_the_model_wrote_is
     one = dev_plans.WorkSet(set_id="AS-01", payload={
         "sets": [_set("SET-01", "summative", ["ILO-01"])]})
     items = [{"question": "q", "aligned_objective": "ILO-01", "plan_category": "summative"},
-             {"question": "r", "set_id": "SET-77"}]
+             {"question": "r", "task_id": "SET-77"}]
     filled = dev_plans.with_membership(one, "assessment_tools", items)
-    assert [i["set_id"] for i in filled] == ["SET-01", "SET-77"], "only a MISSING id"
-    assert "set_id" not in items[0], "the submitted arguments are not rewritten"
+    assert [i["task_id"] for i in filled] == ["SET-01", "SET-77"], "only a MISSING id"
+    assert "task_id" not in items[0], "the submitted arguments are not rewritten"
 
     two = dev_plans.WorkSet(set_id="AS-02", payload={"sets": [
         _set("SET-01", "formative", ["ILO-01"]), _set("SET-02", "summative", ["ILO-01"]),
@@ -350,8 +350,8 @@ def test_a_membership_id_the_set_settles_is_filled_in_and_one_the_model_wrote_is
     formative, summative = dev_plans.with_membership(two, "assessment_tools", [
         {"aligned_objective": "ILO-01", "plan_category": "formative"},
         {"aligned_objective": "ILO-01", "plan_category": "summative"}])
-    assert formative["set_id"] == "SET-01", "one set of its objective and category"
-    assert "set_id" not in summative, "two candidates is the writer's to say"
+    assert formative["task_id"] == "SET-01", "one set of its objective and category"
+    assert "task_id" not in summative, "two candidates is the writer's to say"
 
     block = dev_plans.WorkSet(set_id="AB-01", payload={"module": {"id": "MOD-02"}})
     assert dev_plans.with_membership(block, "learning_activities", [{"activity_name": "a"}]) == [
@@ -380,7 +380,7 @@ def test_a_criterion_is_scorable_by_its_levels_not_by_the_words_of_its_title():
 def test_a_criterion_with_no_levels_is_refused_while_its_author_can_still_write_them():
     from alignmentgraph_isd.core.agentic import fanout
 
-    item = {"set_id": "SET-01", "rubric": [
+    item = {"task_id": "SET-01", "rubric": [
         {"id": "C1", "description": "Selects the right tool", "levels": {}}]}
     (error,) = fanout.assessment_item_errors([item])
     assert error.startswith("assessment_tools[0].rubric[0].levels")
@@ -391,7 +391,7 @@ def test_a_criterion_with_no_levels_is_refused_while_its_author_can_still_write_
     assert fanout.assessment_item_errors([item]) == []
     # Shared by both arms: the single agent's batch goes through the same rules.
     assert fanout.output_errors(fanout.SPECS["assessment"], {"assessment_tools": [
-        {"set_id": "SET-01", "rubric": [{"id": "C1", "description": "x"}]}]})
+        {"task_id": "SET-01", "rubric": [{"id": "C1", "description": "x"}]}]})
 
 
 def test_a_module_no_media_selection_serves_reaches_the_content_designer_before_its_developers():

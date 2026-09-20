@@ -149,7 +149,7 @@ with a rationale grounded in the learner profile and a first_revision that is co
 to act on without further analysis."""
 
 RULES_ASSESSMENT_ITEMS = """\
-Every item belongs to ONE set of the assessment plan: put that set's id in ``set_id``, and
+Every item belongs to ONE set of the assessment plan: put that task's id in ``task_id``, and
 ``plan_category`` must be that set's ``timing``.
 Every (objective, plan_category) pair the assessment plan's lo_coverage_targets names needs at
 least one item, and there is no filler beyond what the sets' ``item_counts`` state. Do not aim for a round number of items -- a plan covering three
@@ -183,7 +183,7 @@ pair it lists with at least one item, and write no filler beyond the stated coun
 more than one objective, your items must share a common stem/scenario (the assessment set they
 belong to), but each individual item still carries a SINGLE ``aligned_objective`` — never a list.
 Every item belongs to ONE of the assessment sets YOUR ASSIGNMENT lists: put that set's id in
-``set_id`` and its ``timing`` in ``plan_category``, write the item in one of the item
+``task_id`` and its ``timing`` in ``plan_category``, write the item in one of the item
 types its ``item_counts`` names, and spread your items over those types.
 required_cognitive_process must be one of:
 %(bloom_levels)s — and must be honestly achievable by the

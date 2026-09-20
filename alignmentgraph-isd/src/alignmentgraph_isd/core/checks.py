@@ -202,7 +202,7 @@ IDENTITY_FIELDS: dict[str, tuple[str, ...]] = {
     "evidence_alignment": ("rc_id",),         # several criteria on one item
     "bloom": ("rule",),                       # four sub-rules, one node
     # every finding sits on the plan node: which kind, which set, which pair
-    "blueprint_consistency": ("kind", "set_id", "module_id", "lo_id", "plan_category"),
+    "blueprint_consistency": ("kind", "task_id", "module_id", "lo_id", "plan_category"),
 }
 
 
@@ -539,7 +539,8 @@ def plan_coverage(graph) -> list[Violation]:
 
 
 def _sets(plan: dict) -> list[dict]:
-    return [i for i in ((plan or {}).get("sets") or []) if isinstance(i, dict)]
+    """The plan's assessment TASKS, flat and carrying their module."""
+    return [t for t in dev_plans.plan_tasks(plan) if isinstance(t.get("id"), str)]
 
 
 def set_pairs(plan: dict) -> list[tuple[str, str]]:
@@ -643,7 +644,7 @@ def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | 
                 severity="warning",
                 message=f"Set {ins_id} names module {module!r}, which does not exist.",
                 repair_hint="Set module_id to the id of an existing module.",
-                metadata={"kind": "unknown_module", "set_id": ins_id},
+                metadata={"kind": "unknown_module", "task_id": ins_id},
             ))
         unknown = [ref for ref in map(alignment.bare_ref, one.get("covers_objectives") or [])
                    if objectives is not None and ref and ref not in objectives]
@@ -654,7 +655,7 @@ def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | 
                 message=(f"Set {ins_id} covers {', '.join(unknown)}, which "
                          f"{'is' if len(unknown) == 1 else 'are'} not an objective of this design."),
                 repair_hint="List only existing objective ids in covers_objectives.",
-                metadata={"kind": "unknown_objective", "set_id": ins_id,
+                metadata={"kind": "unknown_objective", "task_id": ins_id,
                           "lo_id": ",".join(unknown)},
             ))
     return violations
@@ -675,7 +676,7 @@ def set_alignment(graph) -> list[Violation]:
     for item in graph.element_nodes(NodeType.ASSESSMENT):
         data = item["data"]
         item_id = data.get("item_id", item["id"].rsplit(graph.ELEMENT_SEP, 1)[-1])
-        one = alignment.bare_ref(data.get("set_id", ""))
+        one = alignment.bare_ref(data.get("task_id", ""))
         category = str(data.get("plan_category") or "").lower()
         if one not in timing_of:
             problem = (f"Item '{item_id}' names set {one!r}, which the "
@@ -688,7 +689,7 @@ def set_alignment(graph) -> list[Violation]:
         violations.append(Violation(
             node_id=item["id"], edge_type="", violation_type="set_alignment",
             severity="warning", message=problem,
-            repair_hint=("Set set_id to a set of the assessment plan whose "
+            repair_hint=("Set task_id to an assessment task of the plan whose "
                          "timing is this item's plan_category and which covers its objective."),
             metadata={"item_id": item_id},
         ))
@@ -1038,7 +1039,7 @@ def relation_coverage(graph) -> list[Violation]:
     establisher_gaps += alignment.match_p3_realizes(graph)
     establisher_gaps += alignment.match_p6_realizes(graph)
     establisher_gaps += alignment.match_id_reverse(graph, "P13", field="module_id")
-    # Re-run for its EDGES only. What is wrong with an item's `set_id`
+    # Re-run for its EDGES only. What is wrong with an item's `task_id`
     # is `set_alignment`'s finding, in words that say what to change.
     alignment.match_module_assessed(graph)
     for gap in establisher_gaps:
@@ -1111,7 +1112,7 @@ _COVERAGE_HINTS = {
     "P13": ("No activity belongs to this module. Every activity written for it must set "
             "`module_id` to this module's id."),
     "P14": ("No assessment item belongs to this module. Give the module a set in "
-            "the assessment plan, and have its items set `set_id` to that "
+            "the assessment plan, and have its items set `task_id` to that "
             "set's id."),
     "P8": ("This media selection names no constraint that exists. Set "
            "`respects_constraints` to constraint ids from your read of the design "

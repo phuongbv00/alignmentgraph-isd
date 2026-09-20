@@ -121,7 +121,7 @@ def assessment_item_errors(items: list) -> list[str]:
     and every one still open at the end of its run. Only MISSING levels are
     refused here — whether the words in them are good enough stays the
     check's."""
-    errors = _names_its("set_id", "assessment_tools", "set")(items)
+    errors = _names_its("task_id", "assessment_tools", "assessment task")(items)
     for index, item in enumerate(items):
         for position, criterion in enumerate((item or {}).get("rubric") or []
                                              if isinstance(item, dict) else []):
@@ -242,8 +242,7 @@ def _assessment_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dic
     state it. Its ``item_counts`` already say how many items, and
     ``_item_batches`` splits a set too large for one call."""
     plan = parsed.get("assessment_plan") or {}
-    blueprint = [one for one in (plan.get("sets") or [])
-                 if isinstance(one, dict) and one.get("id")]
+    blueprint = [one for one in dev_plans.plan_tasks(plan) if one.get("id")]
     derived = {"sets": [{"module_id": one.get("module_id"), "set_ids": [one["id"]]}
                         for one in blueprint]}
     sets, stats = dev_plans.assessment_work_sets(
@@ -413,7 +412,7 @@ SPECS: dict[str, FanoutSpec] = {
             SetOutput(
                 schema_key="assessment_tools", id_field="item_id",
                 rules=rules.RULES_ASSESSMENT_ITEMS_SET + "\n" + rules.RULES_RUBRICS_ITEM,
-                element_type=NodeType.ASSESSMENT, id_prefix="AT",
+                element_type=NodeType.ASSESSMENT, id_prefix="ATI",
                 doc_key=("assessment", "assessment_tools"),
                 validate_items=assessment_item_errors),
         ),

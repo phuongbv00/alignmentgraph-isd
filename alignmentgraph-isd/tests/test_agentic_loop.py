@@ -154,7 +154,7 @@ _ASSESSMENT = {
     "assessment_tools": [
         {"item_id": "AT-01", "type": "performance_task", "question": "Build the model.",
          "aligned_objective": "ILO-01", "plan_category": "summative",
-         "set_id": "SET-01",
+         "task_id": "AT-01",
          "required_cognitive_process": "apply",
          "scoring_criteria": "Rubric scores correctness 0-4."},
     ],
@@ -2430,7 +2430,7 @@ def test_a_developer_that_writes_one_item_per_call_finishes_its_set_in_instalmen
 
     def item(question):
         return {"type": "short_answer", "question": question, "aligned_objective": "ILO-01",
-                "plan_category": "formative", "set_id": "SET-01",
+                "plan_category": "formative", "task_id": "AT-01",
                 "required_cognitive_process": "apply", "rubric": []}
 
     work_set = dev_plans.WorkSet(set_id="AS-01", pairs=(("ILO-01", "formative"),),

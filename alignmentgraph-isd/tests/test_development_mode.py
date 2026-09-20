@@ -157,12 +157,13 @@ def test_the_output_says_at_what_scale_it_was_written(context_mode):
     output = run_brief(load_brief("minimal_brief.json"), config)["addie_output"]
 
     items = output["development"]["assessment_tools"]
-    sets = output["design"]["assessment_plan"]["sets"]
-    assert sum(i["items_written"] for i in sets) == len(items) > 0
-    assert all("item_counts" in i for i in sets), "the full scale is still stated"
+    tasks = [t for one in output["design"]["assessment_plan"]["sets"]
+             for t in one["assessment_tasks"]]
+    assert sum(t["items_written"] for t in tasks) == len(items) > 0
+    assert all("item_counts" in t for t in tasks), "the full scale is still stated"
 
     scope = output["development"]["development_scope"]
     assert scope["mode"] == "sample" and scope["items_written"] == len(items)
-    assert scope["items_planned"] == sum(sum(i["item_counts"].values()) for i in sets)
+    assert scope["items_planned"] == sum(sum(t["item_counts"].values()) for t in tasks)
     assert f"{len(items)} of the {scope['items_planned']} assessment items" in scope["note"]
     assert "representative sample" in scope["note"]

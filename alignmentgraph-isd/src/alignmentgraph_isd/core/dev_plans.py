@@ -455,6 +455,31 @@ def plan_category_pairs(coverage_targets) -> list[tuple[str, str]]:
     return list(dict.fromkeys(pairs))
 
 
+def plan_tasks(plan) -> list[dict]:
+    """The assessment plan's TASKS, flat, each carrying its module.
+
+    The plan nests — one set per module, each set a list of assessment tasks
+    — because the structure is what keeps the count honest and what lets the
+    judge see the items of one task together. Everything that reasons about a
+    task wants them flat and wants to know which module it belongs to, so the
+    flattening happens ONCE, here, and `module_id` is copied down from the set
+    that holds it. A plan written flat (an archived design, a baseline's
+    shape) is read as-is: an entry with no `assessment_tasks` IS a task."""
+    out: list[dict] = []
+    for entry in ((plan or {}).get("sets") or []):
+        if not isinstance(entry, dict):
+            continue
+        tasks = entry.get("assessment_tasks")
+        if not isinstance(tasks, list):
+            out.append(entry)
+            continue
+        module = _bare(entry.get("module_id"))
+        for task in tasks:
+            if isinstance(task, dict):
+                out.append({**task, "module_id": task.get("module_id") or module})
+    return out
+
+
 def set_pairs(blueprint) -> list[tuple[str, str]]:
     """The (objective, category) pairs the plan's INSTRUMENTS assess: every
     objective a set covers, at that set's ``timing``. Bare ids
@@ -1446,7 +1471,7 @@ def with_membership(work_set: WorkSet, schema_key: str, items: list) -> list:
         return items
     out = []
     for item in items:
-        if isinstance(item, dict) and not str(item.get("set_id") or "").strip():
+        if isinstance(item, dict) and not str(item.get("task_id") or "").strip():
             lo = _bare(item.get("aligned_objective"))
             category = str(item.get("plan_category") or "").strip().lower()
             fits = [i for i in sets
@@ -1454,7 +1479,7 @@ def with_membership(work_set: WorkSet, schema_key: str, items: list) -> list:
                     and lo in {_bare(o) for o in i.get("covers_objectives") or []}]
             pick = fits if len(fits) == 1 else sets if len(sets) == 1 else []
             if pick:
-                item = {**item, "set_id": _bare(pick[0].get("id"))}
+                item = {**item, "task_id": _bare(pick[0].get("id"))}
         out.append(item)
     return out
 
@@ -1741,7 +1766,7 @@ def _set_lines(work_set: WorkSet) -> list[str]:
     if not sets:
         return []
     lines = ["sets of the assessment plan YOUR items belong to (set each item's "
-             "``set_id`` to one of these ids, and its ``plan_category`` to that "
+             "``task_id`` to one of these ids, and its ``plan_category`` to that "
              "set's timing):"]
     for one in sets:
         counts = one.get("item_counts")

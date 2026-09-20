@@ -209,27 +209,40 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
     # in `lo_coverage_targets`, per objective; an optional second place to say
     # the same thing only invites a small model to guess.
     #
-    # `sets` is the BLUEPRINT: what a learner actually sits — a quiz
-    # before a module, a practical after it — with its real scale
-    # (`item_counts`), beside the question-level items the Developers write,
-    # each of which names the set it belongs to. `timing` is the plan
-    # category vocabulary (diagnostic = before, formative = during, summative =
-    # after): one set of words for when an assessment happens.
+    # `sets` is the BLUEPRINT, ONE SET PER MODULE: everything a learner sits
+    # for that module, as a list of assessment TASKS — a quiz before it, a
+    # practical after it — each with its real scale (`item_counts`) and the
+    # question-level items a Developer writes for it. Three levels, one name
+    # each: a plan holds SETS, a set holds TASKS, a task holds ITEMS.
+    #
+    # Per module, and nested, for two reasons. It is the structure making the
+    # promise instead of a rule: a flat list let the model enumerate the three
+    # timings across every module (MEASURED, run 209d2cf5: 3 modules, 8 sets,
+    # 25 items in `sample`), and one entry per module cannot. And rubric item
+    # 30 ("총괄 평가 문항 개발") scores `문항 간 일관성` — coherence BETWEEN the
+    # items of one instrument — which a flat item list cannot show the judge.
+    #
+    # `timing` is the plan-category vocabulary (diagnostic = before, formative
+    # = during, summative = after): one set of words for when a task happens.
     "assessment_plan": _obj({
         "sets": _arr_of(_obj({
-            "id": {"type": "string", "description": "SET-01, SET-02, ..."},
-            "module_id": {"type": "string", "description": "the module it assesses"},
-            "timing": _PLAN_CATEGORY,
-            "format": {"type": "string",
-                       "description": "quiz, practical, project, oral, portfolio, ..."},
-            "item_counts": {"type": "object",
-                "description": "item type -> how many the full set has",
-                "additionalProperties": {"type": "integer"}},
-            "covers_objectives": _arr(),
-            "minutes": {"type": "integer"},
-            "weight_percent": {"type": "number",
-                "description": "share of the course grade; 0 for ungraded"}},
-            ("id", "module_id", "timing", "format", "item_counts", "covers_objectives"))),
+            "module_id": {"type": "string",
+                          "description": "the module this set assesses; ONE set per module"},
+            "assessment_tasks": _arr_of(_obj({
+                "id": {"type": "string", "description": "AT-01, AT-02, ..."},
+                "timing": _PLAN_CATEGORY,
+                "format": {"type": "string",
+                           "description": "quiz, practical, project, oral, portfolio, ..."},
+                "item_counts": {"type": "object",
+                    "description": "item type -> how many the full task has",
+                    "additionalProperties": {"type": "integer"}},
+                "covers_objectives": _arr(),
+                "minutes": {"type": "integer"},
+                "weight_percent": {"type": "number",
+                    "description": "share of the course grade; 0 for ungraded"}},
+                ("id", "timing", "format", "item_counts", "covers_objectives"))),
+            },
+            ("module_id", "assessment_tasks"))),
         "lo_coverage_targets": {"type": "object",
             "description": "objective id -> list of plan categories covering it",
             "additionalProperties": {"type": "array", "items": _PLAN_CATEGORY}},
@@ -250,8 +263,8 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
         "type": _EVIDENCE, "question": {"type": "string"},
         "options": _arr(), "correct_answer": {"type": "string"},
         "aligned_objective": {"type": "string"}, "plan_category": _PLAN_CATEGORY,
-        "set_id": {"type": "string",
-                          "description": "the set of the assessment plan this item is part of"},
+        "task_id": {"type": "string",
+                    "description": "the assessment task of the plan this item is part of"},
         "required_cognitive_process": _BLOOM, "scoring_criteria": {"type": "string"},
         "rubric": _arr_of(_obj({
             "id": {"type": "string"}, "description": {"type": "string"},
@@ -261,7 +274,7 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
                             "needs_improvement": {"type": "string"}},
                            ("excellent", "satisfactory", "needs_improvement"))},
             ("id", "description", "evidence_type", "levels"))),
-    }, ("type", "question", "aligned_objective", "plan_category", "set_id",
+    }, ("type", "question", "aligned_objective", "plan_category", "task_id",
         "required_cognitive_process", "rubric")),
 
     # ── activities ───────────────────────────────────────────────────────

@@ -322,7 +322,7 @@ def match_module_assessed(graph: AlignmentGraph) -> list[dict]:
     """P14: the module an assessment item belongs to, through its set.
 
     Two ids the model wrote, joined: the item names its set
-    (``set_id``) and the assessment plan's set names its module
+    (``task_id``) and the assessment plan's task names its module
     (``module_id``). A set is a FIELD of the plan rather than a node —
     nothing but the items that point at it belongs to it — so the join is read
     off the plan section and the edge runs module -> item. Either half missing
@@ -331,25 +331,24 @@ def match_module_assessed(graph: AlignmentGraph) -> list[dict]:
     plan = graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))
     module_of = {
         bare_ref(one.get("id", "")): bare_ref(one.get("module_id", ""))
-        for one in ((plan or {}).get("data", {}).get("sets") or [])
-        if isinstance(one, dict)}
+        for one in dev_plans.plan_tasks((plan or {}).get("data") or {})}
     violations: list[dict] = []
     for node in graph.element_nodes(NodeType.ASSESSMENT):
-        one = bare_ref(node["data"].get("set_id", ""))
+        one = bare_ref(node["data"].get("task_id", ""))
         module = module_of.get(one, "")
         module_id = resolve_element(graph, NodeType.MODULE, module)
         if module_id:
             graph.add_edge(
                 relation.key, module_id, node["id"],
                 evidence=one, relation_id="P14", established_by="id",
-                rationale=(f"{node['id']} declares set_id={one}, whose "
+                rationale=(f"{node['id']} declares task_id={one}, whose "
                            f"module_id is {module}."),
             )
         else:
             violations.append({
                 "relation_id": "P14", "node_id": node["id"],
                 "message": (f"{node['id']} names no set of an existing module "
-                            f"(set_id={one!r})."),
+                            f"(task_id={one!r})."),
             })
     return violations
 

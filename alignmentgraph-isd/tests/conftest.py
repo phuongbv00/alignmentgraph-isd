@@ -97,8 +97,8 @@ _DESIGN = {
 _MODULE_OF_LO = {lo: module["id"] for module in _DESIGN["course_modules"]
                  for lo in module["objectives"]}
 _TIMINGS = ("diagnostic", "formative", "summative")
-_INSTRUMENTS = [
-    {"id": f"SET-{m * 3 + t + 1:02d}", "module_id": module["id"], "timing": timing,
+_TASKS = [
+    {"id": f"AT-{m * 3 + t + 1:02d}", "module_id": module["id"], "timing": timing,
      "format": "quiz" if timing != "summative" else "practical",
      "item_counts": {"multiple_choice": 10, "short_answer": 3} if timing != "summative"
      else {"performance_task": 2},
@@ -107,13 +107,20 @@ _INSTRUMENTS = [
      "weight_percent": 0 if timing != "summative" else 50}
     for m, module in enumerate(_DESIGN["course_modules"])
     for t, timing in enumerate(_TIMINGS)]
-_INSTRUMENT_OF = {(i["module_id"], i["timing"]): i["id"] for i in _INSTRUMENTS}
+_TASK_OF = {(t["module_id"], t["timing"]): t["id"] for t in _TASKS}
+
+#: The blueprint as the plan carries it: ONE SET PER MODULE, each holding
+#: that module's assessment tasks.
+_SETS = [{"module_id": module["id"],
+          "assessment_tasks": [{k: v for k, v in t.items() if k != "module_id"}
+                               for t in _TASKS if t["module_id"] == module["id"]]}
+         for module in _DESIGN["course_modules"]]
 
 _ASSESSMENT_PLAN = {
     "assessment_plan": {
         "lo_coverage_targets": {f"ILO-0{i}": ["diagnostic", "formative", "summative"]
                                 for i in range(1, 6)},
-        "sets": _INSTRUMENTS,
+        "sets": _SETS,
         "expected_evidence": {f"ILO-0{i}": "A working code artifact with justification." for i in range(1, 6)},
         "formative_methods": ["Weekly design critique with rubric", "Exit tickets after each module"],
         "pilot_data_plan": {
@@ -145,12 +152,12 @@ def _assessment_tools() -> list[dict]:
     for i in range(10):
         lo_idx = i % 5
         item = {
-            "item_id": f"AT-{i + 1:02d}",
+            "item_id": f"ATI-{i + 1:02d}",
             "type": types[i % 3],
             "question": f"Demonstrate mastery of {los[lo_idx]} in a realistic scenario.",
             "aligned_objective": los[lo_idx],
             "plan_category": categories[i % len(categories)],
-            "set_id": _INSTRUMENT_OF[(_MODULE_OF_LO[los[lo_idx]],
+            "task_id": _TASK_OF[(_MODULE_OF_LO[los[lo_idx]],
                                              categories[i % len(categories)])],
             "required_cognitive_process": cognitive[lo_idx],
             "scoring_criteria": "Rubric scores correctness, design quality, and explanation against observable criteria (0-4 each).",
@@ -560,7 +567,7 @@ def _sliced_payload_for_set(raw_prompt: str) -> dict | None:
         return payload
     wanted = int(found.group(1) or found.group(2))
     module = re.search(r"^module: (\S+)", raw_prompt, re.M)
-    named_set = re.search(r"^  - (SET-\S+):", raw_prompt, re.M)
+    named_set = re.search(r"^  - (AT-\S+):", raw_prompt, re.M)
     for key, items in payload.items():
         name = _NAME_FIELD.get(key)
         if name is None or not items:
@@ -574,7 +581,7 @@ def _sliced_payload_for_set(raw_prompt: str) -> dict | None:
             if module and key == "learning_activities":
                 item["module_id"] = module.group(1)
             if named_set and key == "assessment_tools":
-                item.setdefault("set_id", named_set.group(1))
+                item.setdefault("task_id", named_set.group(1))
         payload[key] = written
     return payload
 

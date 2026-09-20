@@ -796,7 +796,7 @@ def test_a_work_set_written_one_item_at_a_time_accumulates_and_a_repeat_adds_not
 
     def item(question, lo="ILO-01"):
         return {"question": question, "aligned_objective": lo, "plan_category": "formative",
-                "set_id": "SET-01"}
+                "task_id": "AT-01"}
 
     work_set = dev_plans.WorkSet(set_id="AS-01", pairs=(("ILO-01", "formative"),),
                                  payload={"expected_items": 3})

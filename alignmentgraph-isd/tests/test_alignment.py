@@ -154,8 +154,8 @@ def test_a_module_with_no_activity_or_no_item_is_an_uncovered_source():
     graph.add_node(NodeType.ASSESSMENT_PLAN, graph.section_id(NodeType.ASSESSMENT_PLAN), {
         "sets": [{"id": "SET-01", "module_id": "module:MOD-01"},
                         {"id": "SET-02", "module_id": "MOD-09"}]})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01", "set_id": "SET-01"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-02", {"item_id": "AT-02", "set_id": "SET-02"})
+    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01", "task_id": "SET-01"})
+    graph.add_element_node(NodeType.ASSESSMENT, "AT-02", {"item_id": "AT-02", "task_id": "SET-02"})
     graph.add_element_node(NodeType.ASSESSMENT, "AT-03", {"item_id": "AT-03"})
     dangling = alignment.match_module_assessed(graph)
     assert [v["node_id"] for v in dangling] == ["assessment:AT-02", "assessment:AT-03"]

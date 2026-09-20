@@ -46,6 +46,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from . import dev_plans
 from .alignment_graph import NodeType, alignment
 from .checks import _VERB_LEVELS
 
@@ -385,7 +386,7 @@ def repair_set_membership(ctx: RepairContext, violations: list) -> list:
     design decision — and the violation is returned."""
     graph = ctx.graph
     plan = (graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN)) or {}).get("data") or {}
-    sets = [i for i in (plan.get("sets") or []) if isinstance(i, dict)]
+    sets = dev_plans.plan_tasks(plan)
     repaired: list[str] = []
     rest: list = []
     for violation in violations:
@@ -400,7 +401,7 @@ def repair_set_membership(ctx: RepairContext, violations: list) -> list:
         if node is None or len(candidates) != 1 or not candidates[0]:
             rest.append(violation)
             continue
-        graph.update_node(violation.node_id, {"set_id": candidates[0], "repaired": True})
+        graph.update_node(violation.node_id, {"task_id": candidates[0], "repaired": True})
         repaired.append(f"{violation.node_id} -> {candidates[0]}")
     if repaired:
         alignment.match_module_assessed(graph)
