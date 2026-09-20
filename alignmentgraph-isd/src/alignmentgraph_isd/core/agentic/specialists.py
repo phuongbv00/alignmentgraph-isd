@@ -220,54 +220,24 @@ def _link_modules(graph) -> None:
                 alignment.record_provenance(graph, "P12", [node["id"]], objective)
 
 
-def _without_dev_plan(plan: object) -> dict:
-    """The assessment plan as the deliverable defines it.
-
-    ``dev_plan`` is a SIBLING of ``assessment_plan`` in the submit schema, but
-    a model that sees both in one object nests a copy inside the plan as well
-    (observed on a 2B run: the same ``instrument_sets`` at both levels). Left
-    alone it is committed into the plan node and reaches the judged output —
-    orchestration metadata inside a scored artifact, which ``dev_plans``'s own
-    contract forbids. Dropped here rather than validated away: the top-level
-    copy is the one the fan-out reads, so the nested one costs nothing to lose.
-    """
-    return {k: v for k, v in (plan or {}).items() if k != "dev_plan"} if isinstance(plan, dict) else {}
-
-
 def commit_assessment(graph, trajectory, parsed: dict) -> None:
-    """Dispatch commit: the PLAN and the DEV PLAN. The items are produced one
-    work set at a time by the Developer tier (see ``fanout.py``) — a single
-    submit cannot carry a whole family's item list under the 8192 completion
-    cap.
-
-    The dev plan is STORED on the plan section — ``_dispatch_payload`` reads
-    the fan-out's input back out of the state, so a stripped plan means the
-    deterministic fallback decides every division — and stripped at
-    AGGREGATION (``aggregate._HARNESS_ONLY_SECTION_KEYS``), so the graph dump
-    holds the plan the agent made while the ADDIE output does not.
-    """
+    """Dispatch commit: the PLAN. The items are produced one work set at a
+    time by the Developer tier (see ``fanout.py``) — a single submit cannot
+    carry a whole family's item list under the 8192 completion cap, and the
+    grouping is derived from the plan's own instruments rather than stated."""
     updates = _assessment_updates(parsed)
     if updates:
         _merge_section(graph, trajectory, NodeType.ASSESSMENT_PLAN, updates)
 
 
 def _assessment_updates(parsed: dict) -> dict:
-    """The assessment stage's section fields, from whichever submit shape
-    carried them (the dev plan inside the plan or beside it)."""
-    updates: dict = {}
     plan = parsed.get("assessment_plan")
-    if isinstance(plan, dict):
-        updates.update(_without_dev_plan(plan))
-        if isinstance(plan.get("dev_plan"), dict):
-            updates["dev_plan"] = plan["dev_plan"]
-    if isinstance(parsed.get("dev_plan"), dict):
-        updates["dev_plan"] = parsed["dev_plan"]
-    return updates
+    return dict(plan) if isinstance(plan, dict) else {}
 
 
 def _activities_updates(parsed: dict) -> dict:
     return {key: parsed[key] for key in
-            ("instructional_strategies", "non_instructional_strategies", "dev_plan")
+            ("instructional_strategies", "non_instructional_strategies")
             if isinstance(parsed.get(key), dict) and parsed[key]}
 
 
@@ -465,7 +435,7 @@ def view_outcomes_prose(store) -> dict:
 
 
 def _assessment_view(plan: dict) -> dict:
-    return {"assessment_plan": _without_dev_plan(plan), "dev_plan": plan.get("dev_plan")}
+    return {"assessment_plan": dict(plan or {})}
 
 
 def view_assessment(graph) -> dict:
@@ -656,27 +626,13 @@ def _module_errors(modules) -> list[str]:
     return errors
 
 
-def _dev_plan_errors(stage: str, parsed: dict) -> list[str]:
-    """Errors for a ``dev_plan`` that ARRIVED; none for one that did not. A
-    section write is a merge on its key, so a hollow plan accepted here would
-    REPLACE the good one a stage already holds (``dev_plans.plan_errors``)."""
-    plan = (parsed or {}).get("dev_plan")
-    return dev_plans.plan_errors(stage, plan) if _arrived(plan) else []
-
-
 def validate_assessment(parsed: dict) -> list[str]:
     """Dispatch validation: the PLAN. Items are validated per work set by the
     Developer tier, so requiring them here would reject a correct dispatch."""
-    empty = _nothing_arrived(parsed, ("assessment_plan", "dev_plan"))
+    empty = _nothing_arrived(parsed, ("assessment_plan",))
     if empty:
         return empty
-    plan = parsed.get("assessment_plan")
-    plan_errors = _dev_plan_errors("assessment", parsed)
-    if not _arrived(plan):
-        # A dev_plan-only submit: `dev_plans` normalizes it and reports what
-        # it had to drop; here it only has to BE a plan for this family.
-        return plan_errors
-    errors = plan_errors + validate_section("assessment_plan", plan)
+    errors = validate_section("assessment_plan", parsed["assessment_plan"])
     # pilot_data_plan feeds the whole formative half of ADDIE Evaluation (the
     # aggregator surfaces it as evaluation.formative); a submit without it
     # zeroes two rubric items (measured on a 2B run). The shared
@@ -690,10 +646,10 @@ def validate_activities(parsed: dict) -> list[str]:
     """Dispatch validation: the instructional approach. The activities
     themselves are validated per work set by the Developer tier."""
     empty = _nothing_arrived(
-        parsed, ("instructional_strategies", "non_instructional_strategies", "dev_plan"))
+        parsed, ("instructional_strategies", "non_instructional_strategies"))
     if empty:
         return empty
-    errors = _dev_plan_errors("activities", parsed)
+    errors: list[str] = []
     if not _arrived(parsed.get("instructional_strategies")):
         return errors
     return errors + validate_section("activity_plan", {
@@ -743,13 +699,7 @@ def validate_implementation(parsed: dict) -> list[str]:
     arrived = {k: v for k, v in (parsed or {}).items()
                if k in _IMPLEMENTATION_ARTIFACTS and _arrived(v)}
     if not arrived:
-        # A dev_plan-only submit is a valid instalment of this stage, and the
-        # only one the section schema knows nothing about: `dev_plans`
-        # normalizes it and reports what it had to drop. Judged the same way
-        # `validate_assessment` judges its own plan-only submit.
-        if (parsed or {}).get("dev_plan"):
-            return _dev_plan_errors("implementation", parsed)
-        return _nothing_arrived({}, _IMPLEMENTATION_ARTIFACTS + ("dev_plan",))
+        return _nothing_arrived({}, _IMPLEMENTATION_ARTIFACTS)
     # Keep the errors about the artifacts that ARRIVED. Every error path is
     # rooted at the node type — ``implementation_plan.instructor_guide.overview``
     # — so the artifact is the SECOND dotted token. The first version tested
@@ -774,8 +724,8 @@ def validate_implementation(parsed: dict) -> list[str]:
         errors.append(
             f"{_SESSION_GUIDES_PATH}: the session guides are not part of this artifact. "
             "Submit instructor_guide with its overview, facilitation_tips and "
-            "troubleshooting only; the guides themselves are written per session block "
-            "from the dev_plan.")
+            "troubleshooting only; the guides themselves are written one module at a "
+            "time, by a Developer per module.")
     return errors
 
 
@@ -855,14 +805,6 @@ class AgenticStep:
     #: :attr:`validate`. :attr:`validate` stays the authority on acceptance —
     #: this only rejects earlier what it would reject anyway.
     submit_fields: tuple[tuple[str, str, bool], ...] = ()
-    #: Resolves a :attr:`submit_fields` key to its :mod:`artifact_schemas`
-    #: lookup key, ONLY where they differ. Needed because the field name
-    #: ``dev_plan`` is reused across the assessment/activities/implementation
-    #: stages for three different shapes — this step's own dev plan schema is
-    #: not the field name's, so ``artifact_schemas.ARTIFACT_SCHEMAS`` keys it
-    #: as ``"{family}_dev_plan"`` instead. Empty (every other step) means the
-    #: field name IS the lookup key.
-    schema_keys: dict[str, str] = field(default_factory=dict)
     #: Prose-arm counterpart of :attr:`readable_types`: the blackboard document
     #: keys ``read_document`` may serve this step. Deliberately NOT derived from
     #: ``readable_types`` — prose has no id index and no node-type vocabulary,
@@ -1021,32 +963,21 @@ STEPS: tuple[AgenticStep, ...] = (
         also_repairs=("rubric_designer",),
         persona=("You are an expert assessment designer, responsible for how mastery of each "
                  "learning objective will be evidenced and measured."),
-        intro=("Decide how you will know learners met each objective, and group the plan's "
-               "coverage targets into instrument sets. You write the STRATEGY here; the items "
-               "themselves are written one set at a time, after this. The grouping is YOUR "
-               "call and it decides how many Developer calls follow — group work that one "
-               "instrument genuinely covers together, and do not split for the sake of it."),
+        intro=("Decide how you will know learners met each objective. You write the "
+               "STRATEGY here — the blueprint of instruments each module's learners sit; "
+               "the items themselves are written afterwards, one instrument at a time, by "
+               "a Developer per instrument."),
         rules=rules.rules_for("assessment"),
-        schema_keys={"dev_plan": "assessment_dev_plan"},
         primary_type=NodeType.ASSESSMENT,
         readable_types=(NodeType.MODULE, NodeType.OBJECTIVE),
         relations=("C2",),
         docket={"edges": ("C2",), "gaps": ("C2", "P14"), "plan_pairs": True},
         readable_docs=("analysis", "objective"),
-        submit_fields=(
-            ("assessment_plan", "object", True),
-            # REQUIRED. Optional, it is asked for at most once, and a stage
-            # with two optionals can land only one of them: measured on run
-            # e81b8108, the activities stage never got to ask at all (one
-            # nudge named two optionals, the model sent the other one, the
-            # stage ended) and the deterministic fallback decided the
-            # fan-out. The plan IS the grouping decision the agent_mode axis
-            # is about, so the stage keeps its turn until it lands, like any
-            # other required artifact; `dev_plans.normalize_*` still derives
-            # sets from
-            # `lo_coverage_targets` when a stage gives up without one.
-            ("dev_plan", "object", True),
-        ),
+        # The blueprint alone. How its writing is divided is not a decision
+        # an instructional designer makes: one Developer writes one
+        # INSTRUMENT, which the plan already states, so `fanout._assessment_sets`
+        # derives the grouping and the stage spends no call saying it.
+        submit_fields=(("assessment_plan", "object", True),),
         validate=validate_assessment,
         commit=commit_assessment,
         commit_prose=commit_assessment_prose,
@@ -1059,13 +990,10 @@ STEPS: tuple[AgenticStep, ...] = (
         family="activity_designer",
         persona=("You are an expert learning-activity designer, responsible for how learners "
                  "spend their time practising toward the objectives."),
-        intro=("Design how learners spend their time: the instructional approach, and a grouping "
-               "of the objectives into activity blocks. You write the APPROACH here; the "
-               "activities themselves are written one block at a time, after this. The grouping "
-               "is YOUR call and it decides how many Developer calls follow — group objectives "
-               "a shared progression genuinely serves, and do not split for the sake of it."),
+        intro=("Design how learners spend their time: the instructional approach the "
+               "course takes. You write the APPROACH here; the activities themselves are "
+               "written afterwards, one module at a time, by a Developer per module."),
         rules=rules.rules_for("activities"),
-        schema_keys={"dev_plan": "activity_dev_plan"},
         primary_type=NodeType.ACTIVITY,
         readable_types=(NodeType.MODULE, NodeType.OBJECTIVE, NodeType.ASSESSMENT),
         relations=("C2", "C3", "C4"),
@@ -1074,7 +1002,6 @@ STEPS: tuple[AgenticStep, ...] = (
         submit_fields=(
             ("instructional_strategies", "object", True),
             ("non_instructional_strategies", "object", False),
-            ("dev_plan", "object", True),   # see the assessment step
         ),
         validate=validate_activities,
         commit=commit_activities,
@@ -1126,27 +1053,21 @@ STEPS: tuple[AgenticStep, ...] = (
         family="implementation_planner",
         persona=("You are an expert implementation planner, responsible for how this design is "
                  "actually delivered by instructors and operators."),
-        intro=("Plan how this design is actually delivered: what instructors and operators need, "
-               "and how the delivery divides into session blocks. You write the FRAMING here; "
-               "the session-by-session guides are written one block at a time, after this. The "
-               "division is YOUR call and it decides how many Developer calls follow — put "
-               "activities and materials that are delivered together in one block, and do not "
-               "split for the sake of it."),
+        intro=("Plan how this design is actually delivered: what instructors and operators "
+               "need. You write the FRAMING here; the session-by-session guides are written "
+               "afterwards, one module at a time, by a Developer per module."),
         rules=rules.rules_for("implementation"),
-        schema_keys={"dev_plan": "implementation_dev_plan"},
         primary_type=NodeType.SESSION_GUIDE,
         readable_types=(NodeType.MODULE, NodeType.ACTIVITY, NodeType.MATERIAL),
         relations=("P10", "P11"),
         docket={"gaps": ("P10", "P11")},
         readable_docs=("objective", "activity", "material"),
-        submit_fields=tuple((key, "object", True) for key in _IMPLEMENTATION_ARTIFACTS)
-        # REQUIRED, for the reason the assessment one is (see that step): the
-        # division IS the decision this stage exists to make, and an optional
-        # artifact gets at most one nudge. Without a plan the deterministic
-        # fallback decides the fan-out, and here that costs more than a
-        # grouping — a block nobody scoped is a stretch of delivery no
-        # Developer was told the theme of.
-        + (("dev_plan", "object", True),),
+        # The framing artifacts alone. Which activities and materials a
+        # session block delivers is already written on those artifacts
+        # (`module_id` / `linked_module`), so `fanout._session_sets` derives
+        # the division and every id lands in exactly one block whatever a
+        # planner might have said.
+        submit_fields=tuple((key, "object", True) for key in _IMPLEMENTATION_ARTIFACTS),
         validate=validate_implementation,
         commit=commit_implementation,
         commit_prose=commit_implementation_prose,

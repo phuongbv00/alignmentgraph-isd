@@ -776,8 +776,7 @@ def test_no_rule_demands_a_field_its_schema_example_never_shows():
         outputs = spec.outputs if spec else ()
         field_names: set[str] = set()
         for key, _json_type, _required in step.submit_fields:
-            lookup = step.schema_keys.get(key, key)
-            field_names |= _schema_field_names(artifact_schemas.ARTIFACT_SCHEMAS.get(lookup) or {})
+            field_names |= _schema_field_names(artifact_schemas.ARTIFACT_SCHEMAS.get(key) or {})
         for output in outputs:
             field_names |= _schema_field_names(
                 artifact_schemas.ARTIFACT_SCHEMAS.get(output.schema_key) or {})

@@ -179,6 +179,38 @@ def number_sets(sets: list[WorkSet], *, prefix: str = "") -> list[WorkSet]:
             for i, ws in enumerate(sets, start=1)]
 
 
+def name_sets_after(sets: list[WorkSet], prefix: str, key) -> list[WorkSet]:
+    """Rename each set after the design artifact it writes for — ``AS-INS-02``,
+    ``AB-MOD-01`` — keeping the ordinal ``number_sets`` assigned.
+
+    The ordinal is positional and composes every artifact id, so it has to
+    stay; the set_id is what is READ — stamped on every element as
+    ``plan_set``, matched by ``fanout.committed_set_ids``, and shown as the
+    assignment's own header. Derived from the artifact rather than from the
+    position, it says which instrument or module a committed element came
+    from, and it is the same id every time the sets are derived again from
+    the same design — which is what lets a second dispatch run only the sets
+    that are new. ``material_work_units`` has named its sets this way
+    (``MU-MOD-03``) since the modules arrived; this is that, for the three
+    families whose plan the model used to write.
+
+    A key several sets share (one instrument batched over several calls) gets
+    a ``-01`` suffix on each, so the id stays unique without depending on how
+    many batches there turned out to be for any other key."""
+    counts: dict[str, int] = {}
+    for ws in sets:
+        counts[str(key(ws) or "")] = counts.get(str(key(ws) or ""), 0) + 1
+    seen: dict[str, int] = {}
+    named: list[WorkSet] = []
+    for ws in sets:
+        bare = _bare(key(ws)) or f"{ws.ordinal:02d}"
+        raw = str(key(ws) or "")
+        seen[raw] = seen.get(raw, 0) + 1
+        suffix = f"-{seen[raw]:02d}" if counts[raw] > 1 else ""
+        named.append(replace(ws, set_id=f"{prefix}-{bare}{suffix}"))
+    return named
+
+
 def _cap_and_number(sets: list[WorkSet], obligation_count: int, prefix: str,
                      merge: "callable", *, family: str,
                      split: "callable") -> list[WorkSet]:
@@ -1356,32 +1388,6 @@ def _number_sessions(sets: list[WorkSet], first_session: int = 1) -> list[WorkSe
     return out
 
 
-# ── a dev plan is a plan for ITS family ─────────────────────────────────────
-
-#: The list a stage's ``dev_plan`` divides its family under.
-PLAN_LIST_KEY = {"assessment": "instrument_sets", "activities": "activity_blocks",
-                 "implementation": "session_blocks"}
-
-
-def plan_errors(stage: str, plan: object) -> list[str]:
-    """A ``dev_plan`` must list work under ITS OWN stage's key.
-
-    MEASURED (run 40856c96): ``{"instrument_sets": [{"set_id": "AT-5101"}],
-    "activity_blocks": [], "session_blocks": []}`` was accepted as the
-    ACTIVITIES plan — some list in it was non-empty — and, a section write
-    being a merge on its key, replaced the good plan the stage had already
-    committed: three themed blocks gone from the record. A plan that names
-    nothing under its own key plans nothing for this family."""
-    key = PLAN_LIST_KEY.get(stage.split(":", 1)[0], "")
-    if not isinstance(plan, dict) or not plan:
-        return ["dev_plan must be a non-empty object"]
-    sets = plan.get(key)
-    if not isinstance(sets, list) or not [one for one in sets if isinstance(one, dict) and one]:
-        return [f"dev_plan.{key} must be a non-empty list: it is how the {stage} stage "
-                "divides its work, one entry per work set"]
-    return []
-
-
 # ── a work set writes what it was commissioned for, and no more ────────────
 
 #: The payload key that states each family's count, by the output it sizes.
@@ -1661,8 +1667,25 @@ def _resolve_positions(refs: list, assigned: list[str]) -> list[str]:
 # import it from here rather than one borrowing the other's agent module.
 
 def _note_line(work_set: WorkSet) -> list[str]:
+    """The assignment's footer: what is still missing, then how much to write.
+
+    ``still_missing`` is present only on a SECOND dispatch of a set whose
+    first Developer left a gap (``agentic/replan.py``). It has to be said, and
+    said in every family the same way: a commit drops a repeat
+    (:func:`without_repeats`), so a set told only "write this again" produces
+    nothing at all."""
+    lines: list[str] = []
+    missing = [str(m) for m in (work_set.payload.get("still_missing") or []) if m]
+    if missing:
+        lines.append(
+            "THIS SET HAS ALREADY BEEN WRITTEN ONCE and what it produced is kept. "
+            "Write ONLY what is still missing below — anything you repeat from the "
+            "first round is dropped:")
+        lines += [f"  - {m}" for m in missing[:12]]
+        if len(missing) > 12:
+            lines.append(f"  - (+{len(missing) - 12} more of the same kind)")
     note = str(work_set.payload.get("development_note") or "")
-    return [note] if note else []
+    return lines + ([note] if note else [])
 
 
 def _ordinal(index: int) -> str:

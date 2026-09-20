@@ -163,19 +163,6 @@ scoring_criteria carry the judgment instead."""
 
 RULES_ASSESSMENT_ITEMS = RULES_ASSESSMENT_ITEMS % {"bloom_levels": ", ".join(BLOOM_LEVELS)}
 
-RULES_ASSESSMENT_DEV_PLAN = """\
-The dev_plan divides the WRITING of the items into instrument sets, module by module. Each set
-names ``module_id`` — the ONE module it belongs to — and ``instrument_ids`` — the instruments of
-that module (ids from your own ``instruments``) whose items it writes. Every instrument must
-appear in exactly one set, and a set never mixes instruments of two modules. Most sets should
-hold a single instrument — only put several in one set when their items genuinely share a
-scenario (e.g. one integrated case behind a module's formative quiz and its summative practical),
-never merely to produce fewer sets. ``set_id`` is the set's own label (SET-01, SET-02, ...), not
-an instrument id.
-
-``expected_items`` is how many items that set writes: at least one per (objective, timing) its
-instruments cover, at most %(max_items)d, and no filler beyond what the instruments genuinely
-require."""
 
 #: Per-set rewrite of RULES_ASSESSMENT_ITEMS: a Developer sees only its own
 #: instrument set, not the whole plan, so the count/filler rule is scoped to
@@ -226,34 +213,7 @@ first you wrote), if any."""
 
 RULES_ACTIVITIES = RULES_ACTIVITIES % {"bloom_levels": ", ".join(BLOOM_LEVELS)}
 
-RULES_ACTIVITY_DEV_PLAN = """\
-Plan the activities module by module: group each module's objectives into activity blocks. A
-block belongs to ONE module — name it in ``module_id``, and take the block's ``objectives`` from
-that module's own ``objectives`` — every
-objective of every module must appear in at least one block, and no two blocks may cover the same
-ground: a separate developer writes each block without seeing the others, so two blocks whose
-scopes overlap produce duplicate activities. Never invent an objective the plan did not name.
 
-What bounds the plan is TIME, and the time is the module's: each module states its ``minutes``.
-Each block's ``block_minutes`` is its share of its module's minutes, and the blocks of one module
-must add up to no more than that module has. ``expected_activities`` is how many activities fit in that block's minutes — you are the
-only step that knows whether a block is one exercise or a six-step progression — and an activity
-a learner can actually do takes at least %(min_minutes)d minutes. It is a count of what fits,
-never a running number: a plan that overruns a module's minutes is cut to fit them.
-
-Keep every block small enough to write in ONE response: at most %(max_activities)d activities. An
-objective that needs more than that gets SEVERAL blocks, and each one must carry a
-``block_theme`` that states its own distinct scope — the stage of the progression it covers
-("first contact with the tool", "unaided practice on a real case", "peer critique and revision"),
-not a restatement of the objective. The theme is what keeps two blocks for the same objective
-from being written twice.
-
-Only group several objectives into one block when their activities genuinely form one theme or
-progression, never merely to produce fewer blocks."""
-
-RULES_ACTIVITY_DEV_PLAN = RULES_ACTIVITY_DEV_PLAN % {
-    "max_activities": _max_units("activity"), "min_minutes": _MIN_ACTIVITY_MINUTES}
-RULES_ASSESSMENT_DEV_PLAN = RULES_ASSESSMENT_DEV_PLAN % {"max_items": _max_units("assessment")}
 
 #: Per-set rewrite of RULES_ACTIVITIES: a Developer sees only its own block.
 RULES_ACTIVITIES_SET = """\
@@ -359,32 +319,15 @@ Implementation requirements:
 - monitoring must include operational support, issue resolution, and real-time instructional adjustments.
 - instructor_guide and operator_manual must reference the actual activities/materials given, not generic boilerplate.
 - instructor_guide here is the guide's FRAMING only — its overview, facilitation tips and
-  troubleshooting. The session-by-session guides are written one block at a time, after this,
-  from the dev_plan you produce.
+  troubleshooting. The session-by-session guides are written afterwards, one module at a time,
+  by a developer per module.
 - Make operator_manual.system_setup concrete, stepwise setup instructions for THIS delivery
   environment (platform, accounts, tools, resources named in the scenario) that an operator
   could follow verbatim."""
 
-RULES_IMPLEMENTATION_DEV_PLAN = """\
-Divide the delivery into session blocks, module by module and in the order of the modules: a
-block delivers ONE module's activities and materials — name that module in ``module_id``; your
-read of the design state lists each activity and material with the module it belongs to. Every activity id and every material id in
-the design must appear in exactly one block: an activity in no block is an activity nobody scheduled, and
-an id in two blocks is two developers writing the same session. Never invent an id that is not
-in the design.
-
-``expected_sessions`` is how many delivery sessions that block covers — you are the only step
-that knows whether a block is one long workshop or five short classes.
-
-Keep every block small enough to write in ONE response: at most %(max_scheduled)d activities and
-materials together. A stretch of delivery bigger than that gets SEVERAL blocks, each with its own
-``block_theme`` stating the ground it covers, because a separate developer writes each block
-without seeing the others."""
 
 # Same rule as the other two dev plans: the budget the planner is held to IS
 # the number the deterministic split uses, imported rather than written twice.
-RULES_IMPLEMENTATION_DEV_PLAN = RULES_IMPLEMENTATION_DEV_PLAN % {
-    "max_scheduled": _max_units("session_guide")}
 
 RULES_SESSION_GUIDES_SET = """\
 Do NOT write an id for the artifacts you produce — ids are assigned when your set is
@@ -406,12 +349,10 @@ list of ids."""
 #: covers one family and reads its ``RULES_*`` directly.)
 _STATE_FAMILIES: dict[str, tuple[str, ...]] = {
     "outcomes": ("OUTCOMES", "COURSE_MODULES"),
-    # The dev plan is part of every dispatch artifact, and the rule that a
-    # set stays inside one module has to reach the planner when it plans.
-    "assessment": ("ASSESSMENT_PLAN", "ASSESSMENT_DEV_PLAN", "ASSESSMENT_ITEMS"),
-    "activities": ("ACTIVITY_PLAN", "ACTIVITY_DEV_PLAN", "ACTIVITIES"),
+    "assessment": ("ASSESSMENT_PLAN", "ASSESSMENT_ITEMS"),
+    "activities": ("ACTIVITY_PLAN", "ACTIVITIES"),
     "content": ("MEDIA_SELECTIONS", "MATERIALS"),
-    "implementation": ("IMPLEMENTATION", "IMPLEMENTATION_DEV_PLAN"),
+    "implementation": ("IMPLEMENTATION",),
 }
 
 

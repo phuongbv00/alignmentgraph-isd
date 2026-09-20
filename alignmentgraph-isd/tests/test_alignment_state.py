@@ -24,7 +24,7 @@ from alignmentgraph_isd.core.trajectory import TrajectoryLogger
 
 from conftest import load_brief
 from test_agentic_loop import (
-    _ANALYSIS, _ASSESSMENT, _ASSESSMENT_DEV_PLAN, _OUTCOMES, _harness, _loop, call,
+    _ANALYSIS, _ASSESSMENT, _OUTCOMES, _harness, _loop, call,
 )
 
 STEP = {step.name: step for step in STEPS}
@@ -82,7 +82,6 @@ def test_open_issues_appear_only_once_the_parts_have_landed_and_are_the_roles_ow
     assert not before.shown and "(none)" in before.text
 
     specialists.commit_assessment(graph, trajectory, _plan(formative_methods=[]))
-    specialists.commit_assessment(graph, trajectory, _ASSESSMENT_DEV_PLAN)
     after = alignment_state.read(graph, BRIEF, step)
 
     assert {v.violation_type for v in after.shown} == {"evaluation_quality"}
@@ -142,24 +141,23 @@ def test_read_submit_reread_fix_is_one_loop_in_one_transcript():
     model, loop, trajectory, answers = _assessment_run([
         call("read_alignment_state", {}),
         call("submit_assessment_plan", _plan(formative_methods=[])),
-        call("submit_dev_plan", _ASSESSMENT_DEV_PLAN),
         call("read_alignment_state", {}),
         call("submit_assessment_plan", _plan()),
     ])
 
-    pointer = answers[2]["content"]
+    pointer = answers[1]["content"]
     assert pointer.startswith("COMMITTED. 1 open issue(s) on assessment (round 1 of 3)")
     assert "Fix:" not in pointer, "the details are the agent's to READ, never pushed"
-    assert "Fix:" in answers[3]["content"], "...and the tool is where they are"
+    assert "Fix:" in answers[2]["content"], "...and the tool is where they are"
     assert answers[-1]["content"].startswith("COMMITTED: the assessment artifact")
-    assert model.invocations == 5 and not loop.stats["gave_up"]
+    assert not loop.stats["gave_up"]
     assert loop.stats["state_reads"] == 2 and loop.stats["rereads_changed"] == 1
     # Shown by the tool => the ledger can credit the agent with the fix.
     finding = next(f for f in loop.memory.findings if f.violation_type == "evaluation_quality")
     assert finding.shown_to_agent == 1
     steps = [tc["tool"].split(".", 1)[1] for tc in trajectory.tool_calls]
     assert steps == ["tool_read_alignment_state_assessment",
-                     "design_assessment_assessment_plan", "design_assessment_dev_plan",
+                     "design_assessment_assessment_plan",
                      "tool_read_alignment_state_assessment_r2", "design_assessment_fix1"]
 
 
@@ -170,11 +168,10 @@ def test_an_agent_that_reads_its_issues_and_submits_nothing_closes_the_stage_unc
     idle = [call("read_node", {"ids": ["ILO-01"], "n": i}) for i in range(10)]
     model, loop, trajectory, _answers = _assessment_run([
         call("submit_assessment_plan", _plan(formative_methods=[])),
-        call("submit_dev_plan", _ASSESSMENT_DEV_PLAN),
         call("read_alignment_state", {}),
     ] + idle)
 
-    assert model.invocations == 3 + budget.REPAIR_IDLE_TURNS
+    assert model.invocations == 2 + budget.REPAIR_IDLE_TURNS
     assert not loop.stats["via_budget_exhaustion"] and not loop.stats["gave_up"]
     declined = [e for e in trajectory.recovery_events if e["action"] == "repair_declined"]
     assert len(declined) == 1
@@ -187,7 +184,7 @@ def test_an_agent_that_never_rechecks_leaves_its_findings_unshown():
     without looking spends its rounds, and the ledger says nobody showed it."""
     resubmit = call("submit_assessment_plan", _plan(formative_methods=[]))
     _model, loop, trajectory, answers = _assessment_run(
-        [resubmit, call("submit_dev_plan", _ASSESSMENT_DEV_PLAN)] + [resubmit] * 6)
+        [resubmit] + [resubmit] * 6)
 
     pointers = [a["content"] for a in answers if "open issue(s)" in a["content"]]
     assert len(pointers) == budget.REPAIR_TURNS, "repair rounds are still bounded"
@@ -204,7 +201,7 @@ def test_a_developer_binds_no_read_unless_its_assignment_was_cut():
     tool bound, and still 31 of 80 (run 53a9cd1a) with only `read_node` —
     every one of them for an id the assignment had written out."""
     from alignmentgraph_isd.core import dev_plans
-    from alignmentgraph_isd.core.agentic import fanout, replan
+    from alignmentgraph_isd.core.agentic import fanout
 
     for name, spec in fanout.SPECS.items():
         developer = fanout.set_step(spec, dev_plans.WorkSet(set_id="S1"), STEP[spec.stage])
@@ -215,8 +212,7 @@ def test_a_developer_binds_no_read_unless_its_assignment_was_cut():
     cut = fanout.set_step(fanout.SPECS["content"], long_set, STEP["content"])
     assert "read_node" in tools.tool_names(tools.tool_specs(cut)), "what the cut took is readable"
     assert "too long to show whole" in cut.intro
-    round_step = replan.step_for(STEP["assessment"], "assessment", [], 1)
-    assert tools.STATE_TOOL not in tools.tool_names(tools.tool_specs(round_step))
+
 
 
 # ── an old snapshot does not sit in the window ──────────────────────────────
@@ -248,9 +244,10 @@ def test_the_loop_supersedes_on_a_new_read_and_never_on_a_refused_repeat():
     _model, loop, _t, answers = _assessment_run([
         call("read_alignment_state", {}),
         call("read_alignment_state", {}),                 # unchanged: refused, nothing stubbed
-        call("submit_assessment_plan", _plan()),
+        # Leaves an issue open, so the stage keeps its repair turns and the
+        # read below runs; a clean plan ends the stage on the spot.
+        call("submit_assessment_plan", _plan(formative_methods=[])),
         call("read_alignment_state", {}),                 # changed: answered, the first is stubbed
-        call("submit_dev_plan", _ASSESSMENT_DEV_PLAN),
     ])
     state = [a for a in answers if a["name"] == tools.STATE_TOOL]
 
@@ -319,8 +316,10 @@ def test_reads_that_buy_nothing_are_withheld_until_the_agent_submits():
     from test_agentic_loop import _recording_bindings
 
     read = call("read_alignment_state", {})
-    script = [read] * 4 + [call("submit_assessment_plan", _plan()),
-                           call("submit_dev_plan", _ASSESSMENT_DEV_PLAN)]
+    # A REJECTED submit, so the stage stays open and the binding after it can
+    # be looked at: the completing submit ends the stage and binds nothing.
+    script = [read] * 4 + [call("submit_assessment_plan", {"assessment_plan": {}}),
+                           read, call("submit_assessment_plan", _plan())]
     model, bindings = _recording_bindings(script)
     from alignmentgraph_isd import HarnessRunConfig
     from alignmentgraph_isd.core.agentic.client import AgenticLLM
@@ -342,7 +341,7 @@ def test_reads_that_buy_nothing_are_withheld_until_the_agent_submits():
     assert "call submit_assessment_plan now" in refusals[0]
     assert "read tools are withheld until you submit" in refusals[1]
     # ...and once it has submitted, reading is on offer again.
-    assert any(reads_offered[5:]), reads_offered
+    assert reads_offered[5] is True, bindings[5]
     assert not loop.stats["via_budget_exhaustion"]
 
 

@@ -291,14 +291,34 @@ def test_a_budget_stop_is_recorded_rather_than_silent():
     branch one line below recorded a give-up for running out of part-submits.
     So a run could not tell "the model could not fix this" from "we did not
     give it another turn"."""
-    result = _run(agent_mode="multi")
-    budget = [e for e in result["trajectory"]["events"]
-              if e["action"] == "budget_exhausted"]
-    assert budget, "this fixture must exhaust a repair budget"
+    # Driven directly rather than off the canned run: whether that run happens
+    # to exhaust a budget depends on how good its answers are, and a test whose
+    # subject can vanish because the fixture got better tests nothing.
+    from alignmentgraph_isd.core.agentic import specialists
+    from alignmentgraph_isd.core.agentic.client import AgenticLLM
+    from alignmentgraph_isd.core.agentic.loop import ToolLoop
+    from alignmentgraph_isd.core.trajectory import TrajectoryLogger
+    from test_alignment_state import BRIEF, _OUTCOMES, _plan
+    from test_agentic_loop import ScriptedModel, call
+
+    step = {s.name: s for s in specialists.STEPS}["assessment"]
+    # A plan with no formative method, resubmitted unchanged for ever: the
+    # agent is shown the issue and never closes it.
+    deficient = call("submit_assessment_plan", _plan(formative_methods=[]))
+    model = ScriptedModel([deficient] * 20)
+    cfg = HarnessRunConfig(llm_factory=lambda: model)
+    graph, trajectory = AlignmentGraph(), TrajectoryLogger()
+    specialists.commit_outcomes(graph, trajectory, _OUTCOMES)
+    loop = ToolLoop(cfg, graph, trajectory, BRIEF, step,
+                    AgenticLLM(cfg, trajectory, step.identity))
+    loop.run()
+
+    budget = [e for e in trajectory.recovery_events if e["action"] == "budget_exhausted"]
+    assert budget, "a spent repair budget must be recorded, never returned in silence"
     for event in budget:
         assert "violation" in event["context"]["input_summary"]
 
-    reasons = {f["open_reason"] for f in result["violations"] if f["outcome"] == "open"}
+    reasons = {f.open_reason for f in loop.memory.findings if f.outcome == "open"}
     assert "budget" in reasons, "the stop is in the ledger, not just in the events"
 
 

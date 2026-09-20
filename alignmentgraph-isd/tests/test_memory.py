@@ -134,10 +134,11 @@ def test_a_run_remembers_what_each_designer_asked_its_developers_for():
     assert plans, "the run kept no plan"
     for plan in plans:
         assert plan["stage"] and plan["family"]
-        assert plan["source"] in ("llm", "fallback")
+        assert plan["source"] == "deterministic", (
+            "no family asks the model how to divide its own work")
         assert plan["work_sets"], f"{plan['stage']} planned no work at all"
-        # Round 0 is the Designer's first division; a later round is one it
-        # made in answer to gaps its Developers left (core/agentic/replan.py).
+        # Round 0 is the first division; a later round is the re-dispatch of
+        # the sets that still owe work (core/agentic/replan.py).
         assert plan["round"] >= 0
         assert bool(plan["answers"]) == (plan["round"] > 0), (
             "a replan round names the gaps it answers; round 0 answers none")

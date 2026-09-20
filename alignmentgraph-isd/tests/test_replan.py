@@ -1,15 +1,14 @@
-"""A gap goes back to the DESIGNER, and the Designer answers with a plan.
+"""A gap dispatches the same work again, with what is missing named.
 
-The loop this closes. A Designer divides its family into work sets, its
+The loop this closes. A family's work sets are derived from the design, its
 Developers write them, and the checks then find an objective with no
-assessment item. Until 2026-09-03 that gap reached nobody who could act on it:
-every Developer loop had closed, the Designer's had closed, and the
-deterministic net cannot write instructional content. It was counted as
-residual and shipped.
+assessment item. Without this the gap reaches nobody who can act on it: every
+Developer loop has closed and the deterministic net cannot write
+instructional content, so it is counted as residual and shipped.
 
-It now goes to the Designer, whose answer is a WORK SET rather than an item —
-plan and write stay the two roles the design already has — and the Developer
-tier runs it exactly as it ran the first round.
+The answer is a second DISPATCH. A set that is new runs because it is new
+work; a set that already ran and still owns a gap runs again with the gap
+spelled out, because a commit drops a repeat.
 """
 from __future__ import annotations
 
@@ -56,24 +55,44 @@ def test_only_gaps_new_work_can_close_are_sent_back():
         "content owns no gap a new module assignment closes")
 
 
-def test_the_ground_truth_of_a_replan_is_the_gaps_and_nothing_else():
-    """Normalizing against the FAMILY would re-derive every set it already
-    has, and the round would rewrite work that is already done."""
-    gaps = [_Gap("plan_coverage", lo_id="ILO-01", plan_category="diagnostic"),
-            _Gap("plan_coverage", lo_id="ILO-01", plan_category="summative")]
+def test_only_a_set_that_owns_a_gap_runs_again():
+    """Nothing re-runs a set with no gap of its own, so a round can only ask
+    for work that is missing."""
+    mine = WorkSet(set_id="AS-INS-01", ordinal=1,
+                   pairs=(("ILO-01", "diagnostic"),), objectives=("ILO-01",))
+    other = WorkSet(set_id="AS-INS-02", ordinal=2,
+                    pairs=(("ILO-02", "summative"),), objectives=("ILO-02",))
+    gaps = [_Gap("plan_coverage", lo_id="ILO-01", plan_category="diagnostic")]
 
-    assert replan.gap_targets(gaps) == {"ILO-01": ["diagnostic", "summative"]}
+    redo = replan.redo("assessment", gaps, [mine, other],
+                       {"AS-INS-01", "AS-INS-02"}, 1)
+    assert [ws.set_id for ws in redo] == ["AS-INS-01R1"]
+    assert redo[0].payload["still_missing"] == ["plan_coverage for ILO-01"]
 
 
-def test_a_coverage_gap_with_no_category_falls_back_to_what_the_plan_promised():
-    """`C2` says only "this objective has no item". The categories then come
-    from the plan's own promise for it, so the round asks for the work the
-    design said it wanted."""
-    gaps = [_Gap("C2", lo_id="ILO-02")]
+def test_a_set_the_state_has_never_seen_runs_because_it_is_new_work():
+    """The Designer amended the blueprint during its own repair turns, so an
+    instrument now exists that had no work set in round 0. It is dispatched
+    without a `still_missing` note: nothing of it has been written."""
+    new = WorkSet(set_id="AS-INS-04", ordinal=4,
+                  pairs=(("ILO-09", "diagnostic"),), objectives=("ILO-09",))
+    redo = replan.redo("assessment", [_Gap("C2", lo_id="ILO-01")], [new], set(), 1)
 
-    assert replan.gap_targets(gaps, {"ILO-02": ["formative"]}) == {"ILO-02": ["formative"]}
-    assert replan.gap_targets(gaps, {}) == {"ILO-02": ["summative"]}, (
-        "an objective with no item at all still needs one")
+    assert [ws.set_id for ws in redo] == ["AS-INS-04R1"]
+    assert "still_missing" not in redo[0].payload
+
+
+def test_a_re_run_is_told_what_is_missing_or_it_produces_nothing():
+    """A commit drops a repeat (`dev_plans.without_repeats`), so a set told
+    only "write this again" writes what it already wrote and lands none of
+    it. The note says so in every family the same way."""
+    from alignmentgraph_isd.core import dev_plans
+
+    text = dev_plans.render_assessment_set(WorkSet(
+        set_id="AS-INS-01R1", ordinal=51, pairs=(("ILO-01", "diagnostic"),),
+        payload={"still_missing": ["ILO-01 has no diagnostic item"]}))
+    assert "ALREADY BEEN WRITTEN ONCE" in text
+    assert "ILO-01 has no diagnostic item" in text
 
 
 def test_round_sets_are_tagged_or_they_never_run():
@@ -85,31 +104,14 @@ def test_round_sets_are_tagged_or_they_never_run():
     assert [ws.set_id for ws in tagged] == ["AS-01R1", "AS-02R1"]
 
 
-def test_the_designer_is_told_it_is_planning_not_writing():
-    text = replan.request("assessment", [_Gap("C2", lo_id="ILO-01")], 1)
+def test_a_second_dispatch_costs_no_designer_call():
+    """The grouping is derived from the design, so a second round has nothing
+    to ask a Designer that its own repair turns did not. This module composes
+    no prompt at all."""
+    import inspect
 
-    assert "not writing" in text.lower()
-    assert "dev_plan" in text
-    assert "C2 for ILO-01" in text
-
-
-def test_the_replan_step_keeps_the_agent_and_narrows_the_artifact():
-    """Same identity, same persona: it is the same agent taking another turn
-    in the conversation it is already in. One system prompt per agent is
-    guarded in tests/test_one_agent_one_system_prompt.py."""
-    from alignmentgraph_isd.core.agentic.specialists import STEPS
-
-    step = {s.name: s for s in STEPS}["assessment"]
-    replanned = replan.step_for(step, "assessment", [_Gap("C2", lo_id="ILO-01")], 1)
-
-    assert replanned.identity == step.identity
-    assert replanned.persona == step.persona
-    assert [f[0] for f in replanned.submit_fields] == ["dev_plan"]
-    assert not replanned.done(object()), (
-        "its dev_plan field is filled from round 0, so the default guard would "
-        "call the step finished before it had been asked anything")
-    assert replanned.validate({"dev_plan": {}}), "an empty plan is not an answer"
-    assert replanned.validate({"dev_plan": {"instrument_sets": [{"set_id": "X"}]}}) == []
+    source = inspect.getsource(replan)
+    assert "ToolLoop" not in source and "intro=" not in source
 
 
 # ── through a real run ───────────────────────────────────────────────────────
@@ -146,10 +148,10 @@ def test_a_gap_produces_a_second_planning_round_and_new_work(monkeypatch):
     assert all(ws["set_id"].endswith("R1") for ws in second["work_sets"])
 
 
-def test_the_replan_is_a_turn_in_the_designers_own_transcript(monkeypatch):
-    """Not a second conversation. The gap list, the plan and the work that
-    followed have to read as one exchange, under the one system prompt that
-    agent has."""
+def test_a_second_dispatch_opens_no_conversation_of_its_own(monkeypatch):
+    """The round costs Developer calls and nothing else. The Designer is not
+    asked again — its own repair turns already put the family's open issues in
+    front of it, inside the one conversation it has."""
     result = _run_with_one_round_of_gaps(
         monkeypatch, [_Gap("C2", lo_id="ILO-01")])
 
@@ -158,10 +160,11 @@ def test_the_replan_is_a_turn_in_the_designers_own_transcript(monkeypatch):
     assert designer
     systems = {c["messages"][0]["content"] for c in designer}
     assert len(systems) == 1, "the Designer was given a second system prompt"
-    asked = [c for c in designer
-             if any("not writing" in str(m.get("content", "")).lower()
-                    for m in c["messages"])]
-    assert asked, "the gap request never reached the Designer's transcript"
+    assert all(":replan" not in str(c.get("phase", "")) for c in result["contexts"])
+    redone = [c for c in result["contexts"] if str(c.get("phase", "")).endswith("R1")]
+    assert redone, "the round ran no set at all"
+    assert all("Developer" in c["agent"] for c in redone), (
+        "a second dispatch is Developer calls and nothing else")
 
 
 def test_a_family_with_no_replannable_gap_is_never_replanned():
@@ -213,40 +216,6 @@ def test_the_round_is_bounded(monkeypatch):
 
     rounds = [p["round"] for p in result["plans"] if p["stage"] == "assessment"]
     assert max(rounds) <= budget.REPLAN_ROUNDS
-
-
-def test_the_replan_round_gets_its_own_turn_ceiling(monkeypatch):
-    """``REPLAN_TURNS`` was declared and passed to NOTHING: the replan loop was
-    built with no ``max_turns``, so it silently took the whole stage ceiling —
-    two dozen turns to submit one plan against gaps already rendered in front
-    of it. A constant nothing asserts is a constant that goes dead, so what is
-    asserted here is the WIRING, not the number."""
-    seen: list[tuple[str, int | None]] = []
-    real = run_module.ToolLoop
-
-    class _Recording(real):
-        def __init__(self, *args, **kwargs):
-            step = kwargs.get("step") or args[4]
-            seen.append((step.name, kwargs.get("max_turns")))
-            super().__init__(*args, **kwargs)
-
-    monkeypatch.setattr(run_module, "ToolLoop", _Recording)
-    original = run_module._collect_violations
-
-    def always(family, state, design_brief):
-        found = original(family, state, design_brief)
-        return found + [_Gap("C2", lo_id="ILO-01")] if family == "assessment_designer" else found
-
-    monkeypatch.setattr(run_module, "_collect_violations", always)
-    config = HarnessRunConfig(agent_mode="multi")
-    config.llm_factory = lambda: FakeChatModel()
-    run_brief(load_brief("java_oop_brief.json"), config)
-
-    replans = [turns for name, turns in seen if ":replan" in name]
-    assert replans, "no replan loop was built — the fixture stopped forcing a gap"
-    assert set(replans) == {budget.REPLAN_TURNS}
-    # ...and it is the ROUND's own ceiling: a stage loop takes the default.
-    assert {turns for name, turns in seen if ":replan" not in name} != {budget.REPLAN_TURNS}
 
 
 def test_a_replan_is_not_a_retry():

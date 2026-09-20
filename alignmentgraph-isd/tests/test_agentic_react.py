@@ -147,7 +147,7 @@ def test_every_key_the_submit_offers_appears_in_that_stages_brief():
     spec = [s for s in tools.react_specs(STEPS, frozenset())
             if s["function"]["name"] == "submit_assessment"][0]
     offered = set(spec["function"]["parameters"]["properties"])
-    assert {"assessment_plan", "dev_plan", "assessment_tools"} <= offered, (
+    assert {"assessment_plan", "assessment_tools"} <= offered, (
         f"the assessment submit tool is missing a half of what it should offer: {offered}")
 
 

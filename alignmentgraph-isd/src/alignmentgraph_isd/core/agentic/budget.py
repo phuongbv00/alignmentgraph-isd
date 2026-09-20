@@ -140,21 +140,9 @@ FRUITLESS_READS = 2
 #: wall of text a small model answers by rewriting everything.
 REPAIR_REQUEST_CAP = 6
 
-#: Turns the Designer gets to answer a replan request with a plan. Its whole job
-#: is one artifact: the gaps are in the request in front of it and there is one
-#: ``submit_dev_plan`` bound, so a read or two and a submit is the shape.
-#:
-#: The FLOOR is not a matter of taste — a round has to survive
-#: ``SUBMIT_BUDGET`` rejections and still land the accepted submit, so anything
-#: at or under 4 can lose the round to rejections alone and produce nothing (run
-#: 2b9e911a lost a replan work set to three "arrived as text" rejections on one
-#: malformed array). Floor is SUBMIT_BUDGET + 1 submit + a read; this is that
-#: with one spare, and half the ratio the stage ceiling carries.
-REPLAN_TURNS = 8
-
-#: Replan rounds per family, per run. A gap that survives a Designer re-plan and
-#: a fresh Developer call is a gap the model cannot close, and asking again is
-#: how a stage turns into a hang.
+#: Re-dispatch rounds per family, per run. A gap that survives a fresh
+#: Developer call with the gap spelled out in its assignment is a gap the model
+#: cannot close, and asking again is how a stage turns into a hang.
 REPLAN_ROUNDS = 1
 
 #: Rounds of check -> route -> repair -> re-check, both within a stage and in

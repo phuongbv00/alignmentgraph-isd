@@ -199,16 +199,26 @@ def test_both_checks_are_owned_and_structural():
 
 # ── the dev plans speak in modules and instruments ──────────────────────────
 
-def test_every_dev_plan_names_the_module_a_set_belongs_to():
-    from alignmentgraph_isd.core.agentic.artifact_schemas import ARTIFACT_SCHEMAS
+def test_every_work_set_names_the_module_it_belongs_to():
+    """A set never spans two modules — the module is the partition every
+    family divides by, and its id is what the assignment names first."""
+    from alignmentgraph_isd.core.agentic import fanout
 
-    for plan, list_key in (("assessment_dev_plan", "instrument_sets"),
-                           ("activity_dev_plan", "activity_blocks"),
-                           ("implementation_dev_plan", "session_blocks")):
-        item = ARTIFACT_SCHEMAS[plan]["properties"][list_key]["items"]
-        assert "module_id" in item["required"], plan
-    sets = ARTIFACT_SCHEMAS["assessment_dev_plan"]["properties"]["instrument_sets"]["items"]
-    assert "instrument_ids" in sets["required"] and "objectives" not in sets["properties"]
+    graph = _design({"instruments": [
+        _instrument("INS-01", "summative", ["ILO-01"]),
+        _instrument("INS-02", "summative", ["ILO-02"], module="MOD-02")],
+        "lo_coverage_targets": {"ILO-01": ["summative"], "ILO-02": ["summative"]}}, [])
+    graph.add_element_node(NodeType.MODULE, "MOD-02", {"id": "MOD-02"})
+    modules = [{"id": "MOD-01", "objectives": ["ILO-01"], "minutes": 60},
+               {"id": "MOD-02", "objectives": ["ILO-02"], "minutes": 60}]
+    payload = {"modules": modules,
+               "assessment_plan": graph.get_node("assessment_plan_0")["data"]}
+
+    sets, _stats = fanout.SPECS["assessment"].plan_sets(graph, payload, "sample")
+    assert [ws.module_id for ws in sets] == ["MOD-01", "MOD-02"]
+    assert [ws.set_id for ws in sets] == ["AS-INS-01", "AS-INS-02"], (
+        "a set id says which instrument it writes, so deriving again names it "
+        "the same and only new sets run")
 
 
 def test_an_instrument_set_is_the_pairs_of_the_instruments_it_names():

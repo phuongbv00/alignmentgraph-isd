@@ -132,23 +132,6 @@ _ASSESSMENT_PLAN = {
 }
 
 
-#: Under its `dev_plan` key, the way the submit tool and the schema carry it.
-#: It was bare (`instrument_sets` at the top level) while the plan was an
-#: optional artifact and the harness never asked for it; required since
-#: 2026-09-05, a fixture that never sends it stalls every stage that needs one.
-_ASSESSMENT_DEV_PLAN = {"dev_plan": {
-    # One set per module, naming that module's instruments: the dev plan
-    # divides the WRITING by the unit everything else is divided by.
-    "instrument_sets": [
-        {"set_id": f"SET-0{n}", "module_id": module["id"],
-         "instrument_ids": [i["id"] for i in _INSTRUMENTS if i["module_id"] == module["id"]],
-         "expected_items": 6,
-         "rationale": "The module's three instruments share one running case."}
-        for n, module in enumerate(_DESIGN["course_modules"], start=1)
-    ],
-}}
-
-
 def _assessment_tools() -> list[dict]:
     los = [f"ILO-0{i}" for i in range(1, 6)]
     types = ["multiple_choice", "short_answer", "performance_task"]
@@ -217,16 +200,6 @@ _ACTIVITY_PLAN = {
     },
 }
 
-_ACTIVITY_DEV_PLAN = {"dev_plan": {
-    "activity_blocks": [
-        {"set_id": "BLOCK-01", "module_id": "MOD-01", "objectives": ["ILO-01", "ILO-02"], "block_theme": "Encapsulation foundations",
-         "block_minutes": 240, "rationale": "Both are introduced together in the same module."},
-        {"set_id": "BLOCK-02", "module_id": "MOD-02", "objectives": ["ILO-03"], "block_theme": "Applied inheritance",
-         "block_minutes": 240, "rationale": "Needs its own hands-on lab."},
-        {"set_id": "BLOCK-03", "module_id": "MOD-02", "objectives": ["ILO-04", "ILO-05"], "block_theme": "Design review",
-         "block_minutes": 240, "rationale": "Both are exercised via the same critique session."},
-    ],
-}}
 
 _ACTIVITIES = {
     "learning_activities": [
@@ -310,15 +283,6 @@ _IMPLEMENTATION = {
 }
 
 
-_IMPLEMENTATION_DEV_PLAN = {"dev_plan": {
-    "session_blocks": [
-        {"set_id": "BLOCK-01", "module_id": "MOD-01", "expected_sessions": 2,
-         "activity_ids": ["TLA-01", "TLA-02", "TLA-03"],
-         "material_ids": ["MAT-01", "MAT-02", "MAT-03"],
-         "block_theme": "Foundations, then applied design.",
-         "rationale": "These run back to back in the same week."},
-    ],
-}}
 
 #: The whole-family answer, for the single arm (which has no Developers) and
 #: as the fallback when a prompt asks for guides outside a work set. A real
@@ -353,24 +317,11 @@ _PAYLOAD_BY_SCHEMA_KEY = (
     # so its stage block shows the plan schema AND the item schemas, and the
     # dispatch-only entries below would otherwise out-match and answer with a
     # plan the loop can never close the stage on.
-    (('"pilot_data_plan"', '"instrument_sets"', '"assessment_tools"'),
-     {**_ASSESSMENT_PLAN, **_ASSESSMENT_DEV_PLAN, **_ASSESSMENT_ITEMS}),
-    (('"non_instructional_strategies"', '"activity_blocks"', '"learning_activities"'),
-     {**_ACTIVITY_PLAN, **_ACTIVITY_DEV_PLAN, **_ACTIVITIES}),
-    (('"instructor_orientation"', '"session_blocks"', '"session_guides"'),
-     {**_IMPLEMENTATION, **_IMPLEMENTATION_DEV_PLAN, **_SESSION_GUIDES}),
-    (('"pilot_data_plan"', '"instrument_sets"'), {**_ASSESSMENT_PLAN, **_ASSESSMENT_DEV_PLAN}),
-    (('"instructor_orientation"', '"session_blocks"'),
-     {**_IMPLEMENTATION, **_IMPLEMENTATION_DEV_PLAN}),
-    (('"non_instructional_strategies"', '"activity_blocks"'), {**_ACTIVITY_PLAN, **_ACTIVITY_DEV_PLAN}),
-    # core/agentic/specialists.py's merged schemas are manual copies of the
-    # single arm's PRE-fan-out tasks (plan+items/activities/materials all in
-    # one call each) that the 2026-08-28 dev-plan fan-out deliberately did
-    # not convert (see CLAUDE.md's "Agentic experimental arm" note) — kept
-    # alive here so the agentic arm's own tests stay meaningful without
-    # touching its generation logic.
-    (('"pilot_data_plan"', '"assessment_tools"'), {**_ASSESSMENT_PLAN, **_ASSESSMENT_ITEMS}),
-    (('"non_instructional_strategies"', '"learning_activities"'), {**_ACTIVITY_PLAN, **_ACTIVITIES}),
+    (('"pilot_data_plan"', '"assessment_tools"'),
+     {**_ASSESSMENT_PLAN, **_ASSESSMENT_ITEMS}),
+    (('"non_instructional_strategies"', '"learning_activities"'),
+     {**_ACTIVITY_PLAN, **_ACTIVITIES}),
+    (('"instructor_orientation"', '"session_guides"'), {**_IMPLEMENTATION, **_SESSION_GUIDES}),
     (('"media_selections"', '"learner_materials"'), {**_MEDIA, **_MATERIALS}),
     # One entry per analysis PART, not just `needs_analysis` (2026-09-08, same
     # reason as the implementation entries below): each of the five is
@@ -392,7 +343,6 @@ _PAYLOAD_BY_SCHEMA_KEY = (
     (('"learning_objectives"',), _DESIGN),
     (('"course_modules"',), _DESIGN),
     (('"pilot_data_plan"',), _ASSESSMENT_PLAN),
-    (('"instrument_sets"',), _ASSESSMENT_DEV_PLAN),
     (('"assessment_tools"',), _ASSESSMENT_ITEMS),
     # `instructional_strategies` is REQUIRED and `non_instructional_strategies`
     # optional — once the optional one has landed (or used its one nudge) and
@@ -401,11 +351,9 @@ _PAYLOAD_BY_SCHEMA_KEY = (
     # turn's bound tool. Same class of gap as the analysis/implementation ones.
     (('"instructional_strategies"',), _ACTIVITY_PLAN),
     (('"non_instructional_strategies"',), _ACTIVITY_PLAN),
-    (('"activity_blocks"',), _ACTIVITY_DEV_PLAN),
     (('"learning_activities"',), _ACTIVITIES),
     (('"media_selections"',), _MEDIA),
     (('"learner_materials"',), _MATERIALS),
-    (('"session_blocks"',), _IMPLEMENTATION_DEV_PLAN),
     (('"session_guides"',), _SESSION_GUIDES),
     # One entry per implementation sub-artifact, not just `instructor_orientation`
     # (2026-09-08). Before the schema moved into the tool `parameters`, the
@@ -709,7 +657,10 @@ def _canned_slice_for_set(raw_prompt: str) -> dict | None:
                         "learner_cognitive_process": "apply", "prerequisite_activities": [],
                     })
             return {"learning_activities": items}
-    if "=== YOUR ASSIGNED BLOCK ===" in raw_prompt and '"session_guides"' in raw_prompt:
+    # Recognised by its ASSIGNMENT LINE, not by its schema key: the artifact's
+    # shape travels in the bound tool now, so `"session_guides"` appears
+    # nowhere in the prompt (same gap the activity fallback above closes).
+    if "=== YOUR ASSIGNED BLOCK ===" in raw_prompt and "session guides, numbered" in raw_prompt:
         guides = _session_guides_for_block(raw_prompt)
         if guides is not None:
             return {"session_guides": guides}

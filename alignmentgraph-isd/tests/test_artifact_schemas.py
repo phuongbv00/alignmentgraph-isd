@@ -15,9 +15,8 @@ def test_every_submit_field_has_an_artifact_schema():
     missing = []
     for step in specialists.STEPS:
         for key, _json_type, _required in step.submit_fields:
-            lookup = step.schema_keys.get(key, key)
-            if lookup not in artifact_schemas.ARTIFACT_SCHEMAS:
-                missing.append(f"{step.name}.{key} (-> {lookup!r})")
+            if key not in artifact_schemas.ARTIFACT_SCHEMAS:
+                missing.append(f"{step.name}.{key}")
     for name, spec in fanout.SPECS.items():
         for output in spec.outputs:
             if output.schema_key not in artifact_schemas.ARTIFACT_SCHEMAS:
@@ -25,21 +24,10 @@ def test_every_submit_field_has_an_artifact_schema():
     assert not missing, f"submit fields with no deep schema: {missing}"
 
 
-def test_dev_plan_collision_resolves_per_stage():
-    """``dev_plan`` is the one field name reused across three stages for three
-    different shapes (assessment/activity/implementation dev plans) — the
-    reason ``AgenticStep.schema_keys`` exists at all. Each must resolve to its
-    OWN schema, not to a shared or missing one."""
-    by_name = {step.name: step for step in specialists.STEPS}
-    expected = {
-        "assessment": "assessment_dev_plan",
-        "activities": "activity_dev_plan",
-        "implementation": "implementation_dev_plan",
-    }
-    seen_schemas = set()
-    for stage, lookup in expected.items():
-        step = by_name[stage]
-        assert step.schema_keys.get("dev_plan") == lookup
-        schema = artifact_schemas.ARTIFACT_SCHEMAS[lookup]
-        assert id(schema) not in seen_schemas
-        seen_schemas.add(id(schema))
+def test_a_submit_field_name_is_its_own_schema_key():
+    """One key, one shape, no indirection. The one field name that was reused
+    across stages for three shapes (``dev_plan``) is gone: the three stages
+    whose grouping it stated now derive it from the design instead."""
+    keys = [key for step in specialists.STEPS for key, _t, _r in step.submit_fields]
+    assert len(keys) == len(set(keys)), "a field name means one artifact, everywhere"
+    assert not any("dev_plan" in key for key in keys)

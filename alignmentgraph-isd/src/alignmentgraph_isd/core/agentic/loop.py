@@ -1050,8 +1050,7 @@ class ToolLoop:
             for key, json_type, _required in self.step.submit_fields:
                 if json_type != "object":
                     continue
-                lookup = self.step.schema_keys.get(key, key)
-                properties = (tools.ARTIFACT_SCHEMAS.get(lookup) or {}).get("properties") or {}
+                properties = (tools.ARTIFACT_SCHEMAS.get(key) or {}).get("properties") or {}
                 if len(properties) == 1:
                     cached[key] = next(iter(properties))
             object.__setattr__(self.step, "_single_key_cache", cached)

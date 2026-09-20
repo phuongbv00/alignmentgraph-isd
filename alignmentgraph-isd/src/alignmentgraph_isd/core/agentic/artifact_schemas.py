@@ -26,10 +26,7 @@ outcomes artifacts) has no formal shape declared anywhere else — this is
 filling that gap, not duplicating one.
 
 Keyed by the exact string each artifact uses as its ``AgenticStep.submit_fields``
-/ ``fanout.SetOutput.schema_key`` key. Three keys (``assessment_dev_plan``,
-``activity_dev_plan``, ``implementation_dev_plan``) exist because the raw
-field name ``dev_plan`` is reused across three stages for three different
-shapes — see ``AgenticStep.schema_keys``, which resolves the collision.
+/ ``fanout.SetOutput.schema_key`` key — one key, one shape, no indirection.
 """
 from __future__ import annotations
 
@@ -205,17 +202,6 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
                 ("area", "rationale", "detected_by", "first_revision"))),
         }, ("anticipated_difficulties",)),
     }, ("instruments", "lo_coverage_targets", "pilot_data_plan")),
-    "assessment_dev_plan": _obj({
-        "instrument_sets": _arr_of(_obj({
-            "set_id": {"type": "string", "description": "SET-01, SET-02, ..."},
-            "module_id": {"type": "string",
-                          "description": "the ONE module whose instruments this set writes"},
-            "instrument_ids": _arr() | {
-                "description": "ids of that module's instruments whose items this set writes"},
-            "expected_items": {"type": "integer"},
-            "rationale": {"type": "string"}},
-            ("set_id", "module_id", "instrument_ids", "expected_items"))),
-    }, ("instrument_sets",)),
     #: Item schema — the fan-out's ``assessment_tools`` (assessment items).
     "assessment_tools": _obj({
         "type": _EVIDENCE, "question": {"type": "string"},
@@ -248,19 +234,6 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
         "motivation_strategies": _arr(), "self_directed_learning": _arr(),
         "support_strategies": _arr(),
     }),
-    "activity_dev_plan": _obj({
-        "activity_blocks": _arr_of(_obj({
-            "set_id": {"type": "string"},
-            "module_id": {"type": "string",
-                          "description": "the ONE module this block's activities belong to"},
-            "objectives": _arr() | {"description": "objectives of that module this block covers"},
-            "block_theme": {"type": "string"},
-            "block_minutes": {"type": "integer",
-                "description": "this block's share of its module's minutes"},
-            "expected_activities": {"type": "integer"},
-            "rationale": {"type": "string"}},
-            ("set_id", "module_id", "objectives", "block_minutes", "expected_activities"))),
-    }, ("activity_blocks",)),
     #: Item schema — the fan-out's ``learning_activities``.
     "learning_activities": _obj({
         "activity_name": {"type": "string"}, "duration": {"type": "string"},
@@ -301,17 +274,6 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
     # that carries it (it is written by a separate tool, see below).
     "instructor_guide": _from_validation("instructor_guide", exclude=("session_guides",)),
     "operator_manual": _from_validation("operator_manual"),
-    "implementation_dev_plan": _obj({
-        "session_blocks": _arr_of(_obj({
-            "set_id": {"type": "string"},
-            "module_id": {"type": "string",
-                          "description": "the ONE module whose activities and materials "
-                                         "this block delivers"},
-            "expected_sessions": {"type": "integer"},
-            "activity_ids": _arr(), "material_ids": _arr(),
-            "block_theme": {"type": "string"}, "rationale": {"type": "string"}},
-            ("set_id", "module_id", "expected_sessions", "activity_ids"))),
-    }, ("session_blocks",)),
     #: Item schema — the fan-out's ``session_guides``.
     "session_guides": _obj({
         "session": {"type": "integer"}, "objectives": _arr(),

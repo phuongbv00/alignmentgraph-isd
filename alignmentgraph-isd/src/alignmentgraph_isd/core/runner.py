@@ -306,7 +306,8 @@ def _run_fanout(config, memory, trajectory, design_brief, step, spec, *,
             stats_dev = {"set_count": len(work_sets),
                          "pair_count": sum(len(ws.pairs) or 1 for ws in work_sets),
                          "dropped_lo_refs": 0, "dropped_pairs": 0,
-                         "appended_sets": 0, "fallback_used": False}
+                         "appended_sets": 0, "fallback_used": False,
+                         "source": "deterministic"}
         if not work_sets:
             return {}
         # KEPT, not only logged. The trajectory event carries a summary for the
@@ -316,7 +317,8 @@ def _run_fanout(config, memory, trajectory, design_brief, step, spec, *,
         # against.
         memory.remember_plan(Plan(
             stage=step.name, family=step.family,
-            source="fallback" if stats_dev["fallback_used"] else "llm",
+            source=("fallback" if stats_dev["fallback_used"]
+                    else stats_dev.get("source", "llm")),
             work_sets=tuple(work_sets), stats=dict(stats_dev),
             round=round_index, answers=answers))
         trajectory.log_dev_plan(
@@ -459,120 +461,44 @@ def _run_one_set(config, memory, trajectory, design_brief, step, spec, work_set,
     return captured, set_stats
 
 
-def _replan_rounds(config, memory, trajectory, design_brief, step, spec, loop, *,
-                   llm, identity: str, graph_mode: bool,
-                   regen_budget: int, backoff: float) -> dict:
-    """Gaps -> the Designer -> a plan -> its Developers. Bounded, once.
+def _redispatch_rounds(config, memory, trajectory, design_brief, step, spec, *,
+                       regen_budget: int, backoff: float, graph_mode: bool) -> dict:
+    """Gaps -> the same work sets again, with what is missing named. Bounded, once.
 
-    Runs INSIDE the Designer's own transcript: the replan loop is built over
-    ``loop.messages``, so the gap list, the plan and the work that followed are
-    consecutive turns of one conversation under one system prompt. The stage's
-    first loop has already returned by now, which is exactly why its Developers
-    could run — and why the message list is sitting here to be continued.
-    """
+    No Designer call: the grouping is derived from the design, so a second
+    round has nothing to ask it that its own repair turns did not. What the
+    round decides is WHICH sets run — a set that is new because the Designer
+    amended the blueprint, and a set that already ran and still owns an open
+    gap (see ``core/agentic/replan.py``)."""
     stats: dict = {}
-    if step.name not in replan.REPLANNABLE or loop is None:
+    if step.name not in replan.REDISPATCHABLE or spec is None:
         return stats
     state = memory.state
     for round_index in range(1, budget.REPLAN_ROUNDS + 1):
-        # The CHECK is the orchestrator's: it runs outside every agent's loop.
+        # The CHECK and the derivation are both the orchestrator's: they run
+        # outside every agent's loop.
         with trajectory.acting_as(ORCHESTRATOR):
             violations = (_collect_violations(step.family, state, design_brief)
                           if graph_mode else _collect_violations_prose(step.family, state))
             gaps = replan.gaps_for(step.name, violations)
             if not gaps:
                 return stats
-            trajectory.log_reconcile_result(
-                step.family, gaps, agent=ORCHESTRATOR)
-
-        with trajectory.acting_as(identity):
-            replan_loop = ToolLoop(
-                config, memory, trajectory, design_brief,
-                replan.step_for(step, step.name, gaps, round_index), llm,
-                messages=loop.messages, identity=identity,
-                # The Designer's OWN conversation, continued: everything that
-                # describes the conversation rather than the task comes with the
-                # message list. Its id and label, or the tab shows this agent
-                # twice with the second row containing the first — the
-                # split-block problem the in-loop repair exists to remove. Its
-                # compaction record, or the part already trimmed away is lost.
-                # And its ATTEMPT, which counts REGENS: a stage that came back
-                # empty is run again from a fresh context, and a replan is not
-                # that. Numbered from the round it would have read "retry #2"
-                # on a conversation nothing had retried.
-                agent_run_id=loop.agent_run_id, label=loop.label,
-                compacted=loop.compacted, attempt=loop.attempt,
-                specs=loop._specs,
-                # Its OWN ceiling, not the stage's. The job here is one
-                # artifact against gaps already listed in the request, so a
-                # stage-sized budget is a round that can spend two dozen turns
-                # re-reading a family it has just been handed the gaps for.
-                # Turns are counted per loop, so this starts at zero even
-                # though the message list is the stage's.
-                max_turns=budget.REPLAN_TURNS)
-            try:
-                replan_loop.run()
-            except Exception as exc:  # noqa: BLE001 - one failed replan must not lose the stage
-                trajectory.log_recovery_event(identity, "agent_error", "", str(exc)[:400])
-                return stats
-            finally:
-                stats = _merge_stats(stats, replan_loop.stats)
-
-        # Deriving the round's sets reads the plan the Designer just committed
-        # — the orchestrator's read, like the check above: an event outside an
-        # `acting_as` scope lands with an empty agent.
-        with trajectory.acting_as(ORCHESTRATOR):
-            work_sets = _replan_sets(state, spec, step, gaps, round_index,
-                                     mode=config.development_mode)
-        if not work_sets:
-            # The Designer had nothing to add, or named work the gaps do not
-            # cover. Either way the gap stands and is counted as residual —
-            # asking again is how a stage becomes a hang.
+            trajectory.log_reconcile_result(step.family, gaps, agent=ORCHESTRATOR)
+            work_sets, _stats = spec.plan_sets(
+                state, _dispatch_payload(state, spec), config.development_mode)
+            redo = replan.redo(step.name, gaps, work_sets,
+                               fanout.committed_set_ids(spec, state), round_index)
+        if not redo:
+            # Every gap belongs to a set that does not exist or to none at
+            # all. Either way it stands and is counted as residual — asking
+            # again is how a stage becomes a hang.
             return stats
         stats = _merge_stats(stats, _run_fanout(
             config, memory, trajectory, design_brief, step, spec,
-            regen_budget=regen_budget, backoff=backoff, work_sets=work_sets,
+            regen_budget=regen_budget, backoff=backoff, work_sets=redo,
             round_index=round_index,
             answers=tuple(sorted({v.violation_type for v in gaps}))))
     return stats
-
-
-def _replan_sets(state, spec, step, gaps: list, round_index: int, *,
-                 mode: str = "full") -> list:
-    """The work sets a replan round runs: the Designer's new plan, normalized
-    against the GAPS as ground truth and tagged with the round.
-
-    Both halves are load-bearing. Normalizing against the family would
-    re-derive every set it already has; leaving the ids untagged would make
-    every new set look like one ``committed_set_ids`` has already seen."""
-    parsed = _dispatch_payload(state, spec)
-    plan = parsed.get("dev_plan")
-    if not isinstance(plan, dict) or not plan:
-        return []
-    if step.name == "assessment":
-        promised = _section_data(state, "assessment_plan").get("lo_coverage_targets") or {}
-        targets = replan.gap_targets(gaps, promised)
-        if not targets:
-            return []
-        work_sets, _stats = dev_plans.normalize_assessment_dev_plan(
-            plan, list(targets), targets, modules=parsed.get("modules"),
-            instruments=(parsed.get("assessment_plan") or {}).get("instruments"), mode=mode)
-    elif step.name == "implementation":
-        activities, materials = replan.unscheduled_of(gaps)
-        if not (activities or materials):
-            return []
-        work_sets, _stats = dev_plans.normalize_implementation_dev_plan(
-            plan, activities, materials, first_session=replan.next_session(state),
-            modules=parsed.get("modules"), module_of=fanout.module_of_artifacts(state),
-            mode=mode)
-    else:
-        objectives = replan.objectives_of(gaps)
-        if not objectives:
-            return []
-        work_sets, _stats = dev_plans.normalize_activity_dev_plan(
-            plan, list(objectives), fanout.items_by_lo(state),
-            modules=parsed.get("modules"), mode=mode)
-    return replan.tag_round(work_sets, round_index)
 
 
 def _dispatch_payload(state, spec) -> dict:
@@ -584,15 +510,14 @@ def _dispatch_payload(state, spec) -> dict:
     modules = {"modules": fanout.course_modules(state)}
     if spec.stage == "assessment":
         plan = _section_data(state, "assessment_plan")
-        return {**modules, "assessment_plan": plan, "dev_plan": plan.get("dev_plan")}
+        return {**modules, "assessment_plan": plan}
     if spec.stage == "activities":
-        return {**modules, "dev_plan": _section_data(state, "activity_plan").get("dev_plan")}
+        return modules
     if spec.stage == "content":
         content = _section_data(state, "content")
         return {**modules, "media_selections": content.get("media_selections") or []}
     if spec.stage == "implementation":
-        return {**modules,
-                "dev_plan": _section_data(state, "implementation_plan").get("dev_plan")}
+        return modules
     return {}
 
 
@@ -709,13 +634,13 @@ def _run_multi(config, memory, graph, store, trajectory, design_brief, *,
                     config, memory, trajectory, design_brief, step, spec,
                     regen_budget=regen_budget, backoff=backoff)
                 stats = _merge_stats(stats, set_stats)
-                # ── the gaps go back to the DESIGNER, which answers with a
-                # plan (agentic/replan.py). Its Developers wrote into the graph
-                # as they finished, so the checks can see the family while the
-                # Designer's own loop is still there to be continued.
-                stats = _merge_stats(stats, _replan_rounds(
-                    config, memory, trajectory, design_brief, step, spec, loop,
-                    llm=llm, identity=identity, graph_mode=graph_mode,
+                # ── the gaps go back to the DEVELOPER TIER, which writes
+                # what is missing (agentic/replan.py). Its Developers wrote
+                # into the graph as they finished, so the checks can see the
+                # family as soon as the fan-out returns.
+                stats = _merge_stats(stats, _redispatch_rounds(
+                    config, memory, trajectory, design_brief, step, spec,
+                    graph_mode=graph_mode,
                     regen_budget=regen_budget, backoff=backoff))
 
             # The ORCHESTRATOR's, not the specialist's: this runs after the

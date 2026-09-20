@@ -360,19 +360,17 @@ def executors_for(*, graph_mode: bool) -> dict:
 # turn 1, a truncated object). It removes ONE failure mode and no others: the
 # anti-loop guard and the submit budget are needed exactly as much.
 
-def _parameters_from(fields: tuple, schema_keys: dict[str, str] | None = None) -> dict:
+def _parameters_from(fields: tuple) -> dict:
     """The submit schema for a set of ``(key, json_type, required)`` fields.
 
     Each key's shape comes from :data:`artifact_schemas.ARTIFACT_SCHEMAS`,
-    looked up under ``schema_keys.get(key, key)`` — the indirection only
-    matters for the handful of keys (``dev_plan``) reused across stages for
-    different shapes; every other key IS its own lookup key. Every submit
+    under the key itself. Every submit
     field has an entry (``test_every_submit_field_has_an_artifact_schema``),
     so a missing one fails loudly rather than binding a schema-less tool."""
     properties: dict = {}
     required: list[str] = []
     for key, json_type, is_required in fields:
-        detailed = ARTIFACT_SCHEMAS[(schema_keys or {}).get(key, key)]
+        detailed = ARTIFACT_SCHEMAS[key]
         properties[key] = ({"type": "array", "items": detailed}
                            if json_type == "array" else dict(detailed))
         if is_required:
@@ -387,7 +385,7 @@ def submit_parameters(step: "AgenticStep") -> dict:
     a stage there is one tool per artifact. This is the SINGLE arm's per-stage
     submit, where one agent works the whole brief and picks a stage to advance,
     and it is also the union the transport coercion is defined against."""
-    return _parameters_from(step.submit_fields, step.schema_keys)
+    return _parameters_from(step.submit_fields)
 
 
 def submit_specs(step: "AgenticStep", only: tuple[str, ...] | None = None) -> list[dict]:
@@ -430,7 +428,7 @@ def submit_specs(step: "AgenticStep", only: tuple[str, ...] | None = None) -> li
         _fn(f"submit_{key}",
             f"Submit the {key.replace('_', ' ')} artifact. "
             + ("Required." if is_required else "Optional."),
-            _parameters_from(((key, json_type, True),), step.schema_keys))
+            _parameters_from(((key, json_type, True),)))
         for key, json_type, is_required in step.submit_fields
         if only is None or key in only
     ]
@@ -926,8 +924,7 @@ def react_specs(steps: tuple, done: frozenset, *, graph_mode: bool = True,
         spec = _FANOUT.get(step.name)
         params = (submit_parameters(step) if spec is None else _parameters_from(
             tuple(step.submit_fields)
-            + tuple((o.schema_key, "array", False) for o in spec.outputs),
-            step.schema_keys))
+            + tuple((o.schema_key, "array", False) for o in spec.outputs)))
         specs.append(_fn(
             f"submit_{step.name}",
             f"Submit {step.name} artifacts. You may call this again to add more.",
@@ -944,7 +941,6 @@ class _ReadScope:
     relations: tuple[str, ...]
     readable_docs: tuple[str, ...]
     submit_fields: tuple = ()
-    schema_keys: dict = field(default_factory=dict)
     #: No stage of its own: the state tool is bound with the stage-agnostic
     #: description, and the loop serves it for whichever stage is current.
     name: str = ""

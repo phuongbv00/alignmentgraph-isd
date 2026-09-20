@@ -130,9 +130,6 @@ _OUTCOMES = {
     ],
 }
 
-_ASSESSMENT_DEV_PLAN = {"dev_plan": {"instrument_sets": [
-    {"set_id": "SET-01", "objectives": ["ILO-01"], "plan_categories": ["formative"],
-     "expected_items": 1, "instrument_hint": "one check", "rationale": "one objective"}]}}
 
 _ASSESSMENT = {
     "assessment_plan": {
@@ -187,7 +184,6 @@ def test_tool_call_then_submit_commits_and_logs_the_trace():
         call("read_alignment_state", {}),
         call("read_node", {"ids": ["ILO-01"]}),
         call("submit", _ASSESSMENT),
-        call("submit_dev_plan", _ASSESSMENT_DEV_PLAN),
     ])
     specialists.commit_outcomes(graph, trajectory, _OUTCOMES)
 
@@ -210,7 +206,7 @@ def test_tool_call_then_submit_commits_and_logs_the_trace():
     assert f"{step.identity}.design_assessment_assessment_plan" in tools_used
     # Four: two reads, the plan submit, the dev-plan submit — and nothing
     # more, because the stage has no optional artifact left to ask for.
-    assert model.invocations == 4
+    assert model.invocations == 3
 
 
 def test_rejected_submit_returns_errors_and_second_submit_lands():
@@ -398,17 +394,11 @@ def test_the_implementation_stage_is_not_finished_without_the_guides():
     without_guides = {k: v for k, v in complete.items()
                       if k not in ("instructor_guide", "operator_manual")}
     commit_implementation(graph, trajectory, without_guides)
-    assert set(missing_parts(step, graph)) == {"instructor_guide", "operator_manual",
-                                               "dev_plan"}
+    assert set(missing_parts(step, graph)) == {"instructor_guide", "operator_manual"}
     assert not step_done(step, graph)
 
     commit_implementation(graph, trajectory, {
         k: complete[k] for k in ("instructor_guide", "operator_manual")})
-    assert set(missing_parts(step, graph)) == {"dev_plan"}
-    assert not step_done(step, graph)
-    # The plan is a required artifact of this stage: it is what divides the
-    # delivery into the blocks the guides are written from.
-    commit_implementation(graph, trajectory, {"dev_plan": {"session_blocks": []}})
     assert missing_parts(step, graph) == ()
     assert step_done(step, graph)
     # The second commit did not overwrite the first.
@@ -714,7 +704,7 @@ def test_tool_call_left_as_text_by_the_server_is_recovered():
     markup = ("<tool_call>\n<function=read_node>\n<parameter=ids>\n"
               '["ILO-01"]\n</parameter>\n</function>\n</tool_call>')
     _model, config, graph, trajectory, brief = _harness([
-        markup, call("submit", _ASSESSMENT), call("submit_dev_plan", _ASSESSMENT_DEV_PLAN)])
+        markup, call("submit", _ASSESSMENT)])
     specialists.commit_outcomes(graph, trajectory, _OUTCOMES)
 
     _loop(config, graph, trajectory, brief, step).run()
@@ -1627,7 +1617,7 @@ def test_every_call_in_a_batched_reply_runs_and_each_costs_a_turn():
         batch(call("read_alignment_state", {}),
               call("read_node", {"ids": ["ILO-01", "ILO-02"]}),
               call("read_node", {"id": "ILO-01"})),
-        batch(call("submit", _ASSESSMENT), call("submit_dev_plan", _ASSESSMENT_DEV_PLAN)),
+        batch(call("read_node", {"id": "ILO-02"}), call("submit", _ASSESSMENT)),
     ])
     specialists.commit_outcomes(graph, trajectory, _OUTCOMES)
 
@@ -1636,7 +1626,7 @@ def test_every_call_in_a_batched_reply_runs_and_each_costs_a_turn():
 
     tools_used = [tc["tool"] for tc in trajectory.tool_calls]
     for label in ("tool_read_alignment_state_assessment", "tool_read_node",
-                  "design_assessment_assessment_plan", "design_assessment_dev_plan"):
+                  "design_assessment_assessment_plan"):
         assert any(label in t for t in tools_used), (label, tools_used)
     assert model.invocations == 2, "two model replies carried five calls"
     assert loop.stats["turns_used"] == 5, "one turn per executed call"
@@ -1649,7 +1639,7 @@ def test_every_call_in_a_batched_reply_runs_and_each_costs_a_turn():
     # And the shared assistant message went in once per reply, not per call.
     assistants = [m for m in loop.messages if not isinstance(m, dict)]
     assert len(assistants) == 2
-    assert graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))["data"]["dev_plan"]
+    assert graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))["data"]["instruments"]
 
 
 def test_calls_the_budget_cannot_cover_are_answered_with_a_stub():
@@ -1991,14 +1981,13 @@ def _implementation_script(order: str):
     five good ones land) or "good_first" (the reverse). Either way the model
     keeps resubmitting the failing one afterwards, which is what a model told
     "still needs: prototype_execution" does."""
-    from conftest import _IMPLEMENTATION, _IMPLEMENTATION_DEV_PLAN
+    from conftest import _IMPLEMENTATION
 
     bad = call("submit_prototype_execution",
                {"prototype_execution": {"prototype_activities": ["x"]}})
     good = [call(f"submit_{k}", {k: v}) for k, v in _IMPLEMENTATION.items()
             if k != "prototype_execution"]
-    good.append(call("submit_dev_plan", _IMPLEMENTATION_DEV_PLAN))
-    spent = [bad] * (ToolLoop.SUBMIT_BUDGET + 1)
+    spent = [bad] * (ToolLoop.SUBMIT_BUDGET + 1)   # rejected until the budget is gone
     tail = [bad] * ToolLoop.MAX_TURNS
     return (spent + good + tail) if order == "bad_first" else (good + spent + tail)
 
@@ -2029,7 +2018,7 @@ def test_a_stage_ends_when_only_budget_spent_artifacts_remain(order):
     assert loop.stats["gave_up"]
     # The stage ended the moment the last open artifact landed (or the budget
     # was spent, whichever came second) — not at the turn ceiling.
-    expected_calls = 6 + ToolLoop.SUBMIT_BUDGET + 1
+    expected_calls = 5 + ToolLoop.SUBMIT_BUDGET + 1
     assert model.invocations == expected_calls, (model.invocations, expected_calls)
     assert not loop.stats["via_budget_exhaustion"]
     # The best rejected payload is still committed as the model's own work.
@@ -2108,11 +2097,10 @@ def test_a_committed_artifact_leaves_the_binding_on_the_next_turn():
     49 turns of the stage at ~6.4k tokens a turn, while six of the seven had
     landed by turn 10. The binding is re-derived before every call; the first
     one is byte-for-byte the full set the golden fixture pins."""
-    from conftest import _IMPLEMENTATION, _IMPLEMENTATION_DEV_PLAN
+    from conftest import _IMPLEMENTATION
 
     step = STEP_BY_NAME["implementation"]
     script = [call(f"submit_{k}", {k: v}) for k, v in _IMPLEMENTATION.items()]
-    script.append(call("submit_dev_plan", _IMPLEMENTATION_DEV_PLAN))
     model, bindings = _recording_bindings(script)
     config = HarnessRunConfig(llm_factory=lambda: model)
     graph, trajectory = AlignmentGraph(), TrajectoryLogger()
@@ -2127,7 +2115,7 @@ def test_a_committed_artifact_leaves_the_binding_on_the_next_turn():
     # Each turn offers exactly the artifacts still open.
     for i, binding in enumerate(bindings[:-1]):
         offered = [n for n in binding if n.startswith("submit_")]
-        assert len(offered) == 7 - i, (i, offered)
+        assert len(offered) == 6 - i, (i, offered)
     # What is PUBLISHED still answers "what tools did this agent ever have".
     assert {f"submit_{k}" for k, _t, _r in step.submit_fields} <= set(tools.tool_names(loop._specs))
 

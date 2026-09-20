@@ -24,10 +24,10 @@ def _run(mode: str = "multi", context_mode: str = "graph"):
 
 
 def test_dev_plan_events_fire_once_per_fanout_family_multi_arm():
-    """One per family, plus one per REPLAN round. A family whose Developers
-    leave a gap is planned again by its Designer (core/agentic/replan.py), and
-    that second division of the work is a second dev plan — the event has to
-    say so or the trace under-reports what the Developers were asked for."""
+    """One per family, plus one per RE-DISPATCH round. A family whose
+    Developers leave a gap is dispatched again (core/agentic/replan.py), and
+    that second division of the work is a second event — the trace would
+    otherwise under-report what the Developers were asked for."""
     result = _run("multi")
     dev_plan_events = [e for e in result["trajectory"]["events"] if e["action"] == "dev_plan"]
     families = {e["context"]["family"] for e in dev_plan_events}
@@ -40,14 +40,10 @@ def test_dev_plan_events_fire_once_per_fanout_family_multi_arm():
         "one dev_plan event per family per planning round")
 
     by_family = {e["context"]["family"]: e for e in dev_plan_events}
-    # assessment/activity ask the model for a grouping; content derives one unit
-    # per committed module and needs no decision.
-    assert by_family["assessment_designer"]["context"]["source"] in ("llm", "fallback")
-    assert by_family["activity_designer"]["context"]["source"] in ("llm", "fallback")
-    assert by_family["content_designer"]["context"]["source"] in ("deterministic", "llm")
-    # implementation asks for a grouping too: the session blocks are what
-    # divide the delivery, and the guides are written one block at a time.
-    assert by_family["implementation_planner"]["context"]["source"] in ("llm", "fallback")
+    # No family asks the model how to divide its own work: each grouping is
+    # derived from an artifact of the design (an instrument, a module).
+    assert {e["context"]["source"] for e in dev_plan_events} == {"deterministic"}
+    assert set(by_family) == families
 
     for event in dev_plan_events:
         ctx = event["context"]
@@ -141,9 +137,9 @@ def test_every_scheduled_artifact_lands_in_exactly_one_session_block():
     single submit — which it could neither see (``tools.render_listing`` stops
     at ``READ_CHAR_BUDGET``: a 161-activity design truncates) nor write under
     the completion cap. It is now a property of a deterministic division:
-    every activity and every material lands in exactly one block, whatever the
-    planner proposed, and each block's Developer writes the guides for its own
-    sessions.
+    every activity and every material lands in exactly one block, derived from
+    the module each one was written for, and each block's Developer writes the
+    guides for its own sessions.
 
     Assigning the work is not fabricating the record — the P10/P11 edge still
     comes from the ``activity_ids`` a Developer wrote (the rule
@@ -161,16 +157,11 @@ def test_every_scheduled_artifact_lands_in_exactly_one_session_block():
         graph.add_element_node(NodeType.MATERIAL, f"MAT-{i:04d}", {"id": f"MAT-{i:04d}"})
 
     spec = fanout.SPECS["implementation"]
-    # No plan at all: the deterministic fallback still has to cover everything,
-    # which is what a stage that gave up without a dev_plan leaves behind.
-    for plan in (None, {"session_blocks": [
-        {"set_id": "B1", "activity_ids": ["TLA-0001", "TLA-0002", "TLA-9999"],
-         "material_ids": ["MAT-0001"], "expected_sessions": 2},
-        # The same activity claimed twice: the second naming is dropped, or two
-        # Developers each write "the" session that delivers it.
-        {"set_id": "B2", "activity_ids": ["TLA-0002"], "material_ids": []},
-    ]}):
-        sets, stats = spec.plan_sets(graph, {"dev_plan": plan})
+    # With modules and without: an artifact whose module is unknown still has
+    # to land somewhere, which is what a design that lost its modules leaves.
+    for modules in ([], [{"id": "MOD-01", "title": "M", "minutes": 600,
+                          "objectives": ["ILO-01"]}]):
+        sets, stats = spec.plan_sets(graph, {"modules": modules})
         assert sets
         scheduled = [i for ws in sets
                      for i in ws.payload["activity_ids"] + ws.payload["material_ids"]]
@@ -186,9 +177,7 @@ def test_every_scheduled_artifact_lands_in_exactly_one_session_block():
             assert size <= limit, f"{ws.set_id} carries {size} scheduled artifacts"
             starts.append(ws.payload["first_session"])
         assert starts == sorted(starts) and len(set(starts)) == len(starts)
-    # The plan's own references are policed: an id the design does not hold is
-    # dropped rather than dispatched.
-    assert stats["dropped_lo_refs"] == 1 and stats["duplicate_pairs"] == 1
+        assert stats["source"] == "deterministic", "no model proposed this grouping"
 
 
 

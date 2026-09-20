@@ -678,20 +678,6 @@ def test_a_set_that_writes_fewer_than_it_was_asked_for_is_not_finished():
         "how many sessions a block takes is the writer's to say; what it owes is every id")
 
 
-def test_a_dev_plan_must_plan_its_own_family():
-    """MEASURED (run 40856c96): {"instrument_sets": [...], "activity_blocks": []}
-    was accepted as the ACTIVITIES plan and replaced the good one."""
-    from alignmentgraph_isd.core import dev_plans
-    from alignmentgraph_isd.core.agentic import specialists
-
-    hollow = {"instrument_sets": [{"set_id": "AT-5101"}], "activity_blocks": []}
-    assert dev_plans.plan_errors("activities", hollow)
-    assert dev_plans.plan_errors("activities:replan1", hollow)
-    assert specialists.validate_activities({"dev_plan": hollow})
-    assert specialists.validate_assessment({"dev_plan": hollow}) == []
-    assert specialists.validate_implementation({"dev_plan": hollow})
-
-
 def test_a_module_that_states_no_time_is_left_alone_and_the_record_says_so():
     """The harness holds a plan to the DESIGN's number, never to one it made
     up: the brief states duration as a band, not as hours."""

@@ -223,17 +223,55 @@ def _deterministic_stats(sets: list) -> dict:
             "source": "deterministic"}
 
 
+def _derived_stats(stats: dict) -> dict:
+    """The normalization record for a grouping NO MODEL PROPOSED.
+
+    ``appended_sets`` and ``duplicate_pairs`` still count, because the
+    normalizer still cuts the derived grouping at module boundaries and
+    batches what one call cannot hold — but ``source`` is the honest label
+    and ``fallback_used`` is false: there was no plan to fall back FROM."""
+    return {**stats, "source": "deterministic", "fallback_used": False}
+
+
 def _assessment_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dict]:
+    """One work set per INSTRUMENT of the blueprint.
+
+    The instrument is what an assessment designer actually divides by — a
+    Developer writes the items of one quiz or one practical — and it is a
+    real artifact of the design, so the grouping needs no separate plan to
+    state it. Its ``item_counts`` already say how many items, and
+    ``_item_batches`` splits an instrument too large for one call."""
     plan = parsed.get("assessment_plan") or {}
-    return dev_plans.normalize_assessment_dev_plan(
-        parsed.get("dev_plan"), _lo_ids(state), plan.get("lo_coverage_targets") or {},
-        modules=parsed.get("modules"), instruments=plan.get("instruments"), mode=mode)
+    instruments = [i for i in (plan.get("instruments") or [])
+                   if isinstance(i, dict) and i.get("id")]
+    derived = {"instrument_sets": [{"module_id": i.get("module_id"),
+                                    "instrument_ids": [i["id"]]} for i in instruments]}
+    sets, stats = dev_plans.normalize_assessment_dev_plan(
+        derived, _lo_ids(state), plan.get("lo_coverage_targets") or {},
+        modules=parsed.get("modules"), instruments=instruments, mode=mode)
+    named = dev_plans.name_sets_after(
+        sets, "AS", lambda ws: next((i["id"] for i in ws.payload.get("instruments") or []
+                                     if i.get("id")), ws.module_id))
+    return named, _derived_stats(stats)
 
 
 def _activity_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dict]:
-    return dev_plans.normalize_activity_dev_plan(
-        parsed.get("dev_plan"), _lo_ids(state), items_by_lo(state),
+    """One block per MODULE, holding the objectives that module serves.
+
+    Unlike the other three families nothing in the design states how MANY
+    activities a module needs, so the count comes from the module's own
+    minutes (``fit_time_budget``) and, under ``sample``, from the sample
+    quota."""
+    modules = [m for m in (parsed.get("modules") or [])
+               if isinstance(m, dict) and m.get("id")]
+    derived = {"activity_blocks": [{"module_id": m["id"],
+                                    "objectives": list(m.get("objectives") or []),
+                                    "block_minutes": m.get("minutes")} for m in modules]}
+    sets, stats = dev_plans.normalize_activity_dev_plan(
+        derived, _lo_ids(state), items_by_lo(state),
         modules=parsed.get("modules"), mode=mode)
+    return (dev_plans.name_sets_after(sets, "AB", lambda ws: ws.module_id),
+            _derived_stats(stats))
 
 
 def module_of_artifacts(state) -> dict[str, str]:
@@ -306,11 +344,29 @@ def _element_ids(state, node_type: str, doc: tuple[str, str], id_field: str = "i
 
 
 def _session_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dict]:
-    return dev_plans.normalize_implementation_dev_plan(
-        parsed.get("dev_plan"),
-        _element_ids(state, NodeType.ACTIVITY, ("activity", "learning_activities")),
-        _element_ids(state, NodeType.MATERIAL, ("material", "learner_materials")),
-        modules=parsed.get("modules"), module_of=module_of_artifacts(state), mode=mode)
+    """One block per MODULE, holding what that module is taught with.
+
+    Which activities and materials a module owns is already written on the
+    artifacts themselves (``module_id`` / ``linked_module``), and the
+    normalizer lands every id in exactly one block whatever the blocks are —
+    so P10/P11 coverage is a property of a deterministic division rather than
+    of a small model recalling ids. How many sessions a module takes comes
+    from its minutes."""
+    activity_ids = _element_ids(state, NodeType.ACTIVITY, ("activity", "learning_activities"))
+    material_ids = _element_ids(state, NodeType.MATERIAL, ("material", "learner_materials"))
+    module_of = module_of_artifacts(state)
+    modules = [m for m in (parsed.get("modules") or [])
+               if isinstance(m, dict) and m.get("id")]
+    derived = {"session_blocks": [
+        {"module_id": m["id"],
+         "activity_ids": [a for a in activity_ids if module_of.get(a) == m["id"]],
+         "material_ids": [x for x in material_ids if module_of.get(x) == m["id"]]}
+        for m in modules]}
+    sets, stats = dev_plans.normalize_implementation_dev_plan(
+        derived, activity_ids, material_ids,
+        modules=parsed.get("modules"), module_of=module_of, mode=mode)
+    return (dev_plans.name_sets_after(sets, "SB", lambda ws: ws.module_id),
+            _derived_stats(stats))
 
 
 def _every_part_dispatch_done(stage: str, state) -> bool:
