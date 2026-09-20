@@ -68,7 +68,7 @@ from .run_report import (
 )
 from .trajectory import ORCHESTRATOR, TrajectoryLogger
 from .validation import validate_addie
-from .agentic import budget, fanout, react, replan
+from .agentic import budget, fanout, react, redispatch
 from .agentic.client import AgenticLLM
 from .agentic.loop import ToolLoop
 from .agentic.protocol import PROTOCOL_REV, empty_stage_stats
@@ -288,7 +288,7 @@ def _run_fanout(config, memory, trajectory, design_brief, step, spec, *,
                    context for it.
 
     A set already in state is skipped, so a call that is handed sets the
-    state holds (a replan round) does no work twice.
+    state holds (a re-dispatch round) does no work twice.
     """
     # Planning and committing read and write the design state, and every such
     # event is stamped with whoever is currently acting — outside a scope they
@@ -302,7 +302,7 @@ def _run_fanout(config, memory, trajectory, design_brief, step, spec, *,
             work_sets, stats_dev = spec.plan_sets(state, parsed, config.development_mode)
         else:
             # A REPLAN round: the sets were derived from the gaps, not from
-            # re-normalizing the family (see agentic/replan.py).
+            # re-normalizing the family (see agentic/redispatch.py).
             stats_dev = {"set_count": len(work_sets),
                          "pair_count": sum(len(ws.pairs) or 1 for ws in work_sets),
                          "dropped_lo_refs": 0, "dropped_pairs": 0,
@@ -321,7 +321,7 @@ def _run_fanout(config, memory, trajectory, design_brief, step, spec, *,
                     else stats_dev.get("source", "llm")),
             work_sets=tuple(work_sets), stats=dict(stats_dev),
             round=round_index, answers=answers))
-        trajectory.log_dev_plan(
+        trajectory.log_work_sets(
             step.family,
             set_count=stats_dev["set_count"], pair_count=stats_dev["pair_count"],
             sets=[{"set_id": ws.set_id, "objectives": list(ws.objectives)}
@@ -378,7 +378,7 @@ def _run_fanout(config, memory, trajectory, design_brief, step, spec, *,
     # not: it is the order every later `read_nodes` listing and the
     # aggregate's lists come out in, so committing as each worker finished
     # would make the deliverable depend on the worker count. Nothing waits
-    # on any one set — the checks and the replan run after this returns.
+    # on any one set — the checks and the re-dispatch run after this returns.
     executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="agisd-fanout")
     try:
         futures = [executor.submit(run_one, work_set) for work_set in pending]
@@ -469,24 +469,24 @@ def _redispatch_rounds(config, memory, trajectory, design_brief, step, spec, *,
     round has nothing to ask it that its own repair turns did not. What the
     round decides is WHICH sets run — a set that is new because the Designer
     amended the blueprint, and a set that already ran and still owns an open
-    gap (see ``core/agentic/replan.py``)."""
+    gap (see ``core/agentic/redispatch.py``)."""
     stats: dict = {}
-    if step.name not in replan.REDISPATCHABLE or spec is None:
+    if step.name not in redispatch.REDISPATCHABLE or spec is None:
         return stats
     state = memory.state
-    for round_index in range(1, budget.REPLAN_ROUNDS + 1):
+    for round_index in range(1, budget.REDISPATCH_ROUNDS + 1):
         # The CHECK and the derivation are both the orchestrator's: they run
         # outside every agent's loop.
         with trajectory.acting_as(ORCHESTRATOR):
             violations = (_collect_violations(step.family, state, design_brief)
                           if graph_mode else _collect_violations_prose(step.family, state))
-            gaps = replan.gaps_for(step.name, violations)
+            gaps = redispatch.gaps_for(step.name, violations)
             if not gaps:
                 return stats
             trajectory.log_reconcile_result(step.family, gaps, agent=ORCHESTRATOR)
             work_sets, _stats = spec.plan_sets(
                 state, _dispatch_payload(state, spec), config.development_mode)
-            redo = replan.redo(step.name, gaps, work_sets,
+            redo = redispatch.redo(step.name, gaps, work_sets,
                                fanout.committed_set_ids(spec, state), round_index)
         if not redo:
             # Every gap belongs to a set that does not exist or to none at
@@ -635,7 +635,7 @@ def _run_multi(config, memory, graph, store, trajectory, design_brief, *,
                     regen_budget=regen_budget, backoff=backoff)
                 stats = _merge_stats(stats, set_stats)
                 # ── the gaps go back to the DEVELOPER TIER, which writes
-                # what is missing (agentic/replan.py). Its Developers wrote
+                # what is missing (agentic/redispatch.py). Its Developers wrote
                 # into the graph as they finished, so the checks can see the
                 # family as soon as the fan-out returns.
                 stats = _merge_stats(stats, _redispatch_rounds(

@@ -398,7 +398,7 @@ def aggregate_prose(store, trajectory, *, development_mode: str = "") -> dict:
     # deliverable declares them one level down, the same as in the graph arm.
     impl_doc = _with_session_guides(
         {k: v for k, v in doc("implementation_plan").items()
-         if k not in ("session_guides",) + _HARNESS_ONLY_SECTION_KEYS},
+         if k != "session_guides"},
         items("implementation_plan", "session_guides"))
     # ALWAYS synthesized (see the graph aggregator's matching note): the
     # prose arm's honest record covers only the within-artifact validation
@@ -555,8 +555,6 @@ def _compute_storyboard(instructional_strategies: dict, content_modules: list[di
 #: ``commit_assessment``): it belongs in the graph and its dump, where an
 #: auditor can see how the family was divided up, and not in the deliverable,
 #: which is what the judge scores.
-_HARNESS_ONLY_SECTION_KEYS = ("dev_plan",)
-
 def _set_scale(one: dict) -> int:
     counts = one.get("item_counts")
     total = 0
@@ -622,8 +620,6 @@ def _merge_node_data(nodes: list[dict]) -> dict:
         data = node.get("data", {})
         if isinstance(data, dict):
             merged.update(deepcopy(data))
-    for key in _HARNESS_ONLY_SECTION_KEYS:
-        merged.pop(key, None)
     return merged
 
 

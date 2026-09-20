@@ -47,7 +47,7 @@ def new_agent_run_id() -> str:
     to its last.
 
     Minted where the conversation BEGINS, not derived from what it is about:
-    a key hashed from ``(agent, phase, label, attempt)`` gave the replan round
+    a key hashed from ``(agent, phase, label, attempt)`` gave the re-dispatch round
     — which continues the Designer's own message list under a new step name
     — a different id, and the tab showed one conversation as two rows. No
     content-derived key can know that two labels are one conversation; an id
@@ -162,7 +162,7 @@ class Finding:
     #: ledger: WHY it is still here.
     #:
     #: ``converged`` — tried and could not be fixed;
-    #: ``budget``    — a repair/turn/replan budget ran out first;
+    #: ``budget``    — a repair/turn/re-dispatch budget ran out first;
     #: ``unowned``   — no family owns the type, so nobody was ever asked;
     #: ``unseen``    — filtered out of the agent's view (element-node filter,
     #:                 a work set's own loop).

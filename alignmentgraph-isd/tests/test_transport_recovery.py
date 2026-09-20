@@ -354,7 +354,7 @@ def test_a_partial_array_recovery_says_how_much_it_lost():
 
 #: The other half of the transposition above, and the one brace balance alone
 #: cannot see: an element short one CLOSING brace (the rubric criterion closes
-#: `"full"}]` where `"full"}}]` belongs). MEASURED on run 2b9e911a, the replan
+#: `"full"}]` where `"full"}}]` belongs). MEASURED on run 2b9e911a, the re-dispatch
 #: work set that asked for exactly one summative item.
 UNDERCLOSED_ELEMENT = (
     '[{"type": "performance_task", "question": "Q1", '
@@ -368,7 +368,7 @@ def test_an_element_short_a_closing_brace_costs_that_element_and_no_more():
     be swallowed into a block that never terminates and the WHOLE array was
     charged as one dropped block — `([], 1)`, on a payload whose first element
     parses cleanly on its own. The submit was rejected three times as "arrived
-    as text" and the item the replan round existed to produce was never
+    as text" and the item the re-dispatch round existed to produce was never
     written."""
     from alignmentgraph_isd.core.llm_io import parse_json_array
 

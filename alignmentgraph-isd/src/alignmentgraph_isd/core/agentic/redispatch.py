@@ -29,7 +29,7 @@ small model:
   round-1 re-run is ``AS-SET-01R1``. Without the tag it collides with the
   committed one and ``fanout.committed_set_ids`` skips it, so the round runs
   and produces nothing.
-* **One round.** ``REPLAN_ROUNDS`` is 1. A gap that survives a fresh
+* **One round.** ``REDISPATCH_ROUNDS`` is 1. A gap that survives a fresh
   Developer call with the gap spelled out is a gap the model cannot close,
   and asking again is how a stage turns into a hang.
 

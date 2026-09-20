@@ -52,7 +52,7 @@ EVENT_ACTIONS = {
     "calls_not_executed", "repair_window_closed",
     # structured records
     "repair", "node_add", "node_update", "doc_write", "validate", "check", "audit",
-    "retrieval", "dev_plan", "reconcile", "converge",
+    "retrieval", "work_sets", "reconcile", "converge",
 }
 
 #: Actions that only ever reach the deep action log, never `events`.

@@ -143,7 +143,7 @@ REPAIR_REQUEST_CAP = 6
 #: Re-dispatch rounds per family, per run. A gap that survives a fresh
 #: Developer call with the gap spelled out in its assignment is a gap the model
 #: cannot close, and asking again is how a stage turns into a hang.
-REPLAN_ROUNDS = 1
+REDISPATCH_ROUNDS = 1
 
 #: Rounds of check -> route -> repair -> re-check, both within a stage and in
 #: the cross-family reconciliation pass after the last one. Bounded because

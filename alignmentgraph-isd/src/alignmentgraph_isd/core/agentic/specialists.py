@@ -304,7 +304,7 @@ def commit_implementation(graph, trajectory, parsed: dict) -> None:
     is (``commit_assessment``): ``_dispatch_payload`` reads the fan-out's input
     back out of the state, so a stripped plan means the deterministic fallback
     decides every division. It is stripped again at AGGREGATION
-    (``aggregate._HARNESS_ONLY_SECTION_KEYS``), so the graph dump shows how the
+    so the graph dump shows how the
     delivery was divided while the judged output does not.
     """
     _merge_section(graph, trajectory, NodeType.IMPLEMENTATION_PLAN,
@@ -485,7 +485,7 @@ def _nothing_arrived(parsed: dict, keys: tuple[str, ...]) -> list[str]:
     accept ``{"artifact": {...}}`` as the artifact itself and commit the
     wrapper. That is the exact 2B failure ``unwrap_section`` exists to undo.
 
-    An EMPTY container has not arrived either: ``{"dev_plan": {}}`` accepted
+    An EMPTY container has not arrived either: ``{"assessment_plan": {}}`` accepted
     here is committed as nothing, found absent, and logged as the harness's
     ``commit_did_not_land`` for what is the model sending nothing. A
     rejection is the honest answer and gets the model its SUBMIT_BUDGET
@@ -792,7 +792,7 @@ class AgenticStep:
     readable_types: tuple[str, ...] = ()   #: node types the state read lists and read_node serves
     relations: tuple[str, ...] = ()        #: relation ids this stage's artifacts take part in
     #: Whether ``read_alignment_state`` is bound. False for a fan-out work set
-    #: and a replan round: their assignment IS their state, written into the
+    #: and a re-dispatch round: their assignment IS their state, written into the
     #: turn, and the family's gaps belong to whoever planned the sets.
     state_tool: bool = True
     docket: dict = field(default_factory=dict)  #: what the state read reports as MISSING: which
@@ -1157,7 +1157,7 @@ def step_done(step: AgenticStep, state) -> bool:
     and the ProseStore in prose mode; the guard must mean the same thing in
     both, or a regen loop spins on one arm and not the other.
 
-    A fan-out work set and a replan step declare ``done``; every stage submits
+    A fan-out work set and a re-dispatch step declare ``done``; every stage submits
     one artifact per call, so a stage is finished when every REQUIRED artifact
     has arrived — not when its primary element pool is non-empty, which one
     artifact alone would satisfy."""

@@ -139,7 +139,7 @@ def test_every_recovery_action_is_in_the_recovery_view():
         "phase_started", "phase_finished", "node_read", "node_write", "node_add",
         "node_update", "edge_read", "edge_write", "edge_walk", "llm_call",
         "agent_step", "validate", "check", "audit", "retrieval", "retrieval_query",
-        "doc_write", "reconcile", "dev_plan",
+        "doc_write", "reconcile", "work_sets",
     }
     assert recovery | outcomes == {a.value for a in TrajectoryAction}
     assert not recovery & outcomes

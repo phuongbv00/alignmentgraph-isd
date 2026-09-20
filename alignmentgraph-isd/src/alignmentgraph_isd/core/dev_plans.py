@@ -154,7 +154,7 @@ def _empty_stats(pair_count: int) -> dict:
     }
 
 
-#: What a replan round adds to a set's ordinal so its ids cannot land on the
+#: What a re-dispatch round adds to a set's ordinal so its ids cannot land on the
 #: round before it. Well above any plausible set count (``MAX_SETS_HARD_CAP``
 #: is 12, and the size bound can push past it), and correctness does not rest
 #: on the number: ``_composite_id`` scans past anything already taken.
@@ -494,7 +494,7 @@ def _assessment_ground_truth_pairs(lo_ids, coverage_targets,
     return list(dict.fromkeys(pairs))  # de-dup, order-preserving
 
 
-def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets, *, modules=None,
+def assessment_work_sets(parsed, lo_ids, coverage_targets, *, modules=None,
                                   blueprint=None, mode: str = "full"
                                   ) -> tuple[list[WorkSet], dict]:
     modules = _modules_in_order(modules)
@@ -804,7 +804,7 @@ def fit_time_budget(sets: list[WorkSet], modules: list[dict], stats: dict) -> No
                             "unbudgeted_sets": unbudgeted, "trimmed": planned - fitted}
 
 
-def normalize_activity_dev_plan(parsed, lo_ids, items_by_lo: dict | None = None, *,
+def activity_work_sets(parsed, lo_ids, items_by_lo: dict | None = None, *,
                                 modules=None, mode: str = "full"
                                 ) -> tuple[list[WorkSet], dict]:
     modules = _modules_in_order(modules)
@@ -1228,7 +1228,7 @@ def _chunk_scheduled(activities: list[str], materials: list[str], limit: int,
     ]
 
 
-def normalize_implementation_dev_plan(parsed, activity_ids, material_ids,
+def session_work_sets(parsed, activity_ids, material_ids,
                                        first_session: int = 1, *, modules=None,
                                        module_of: dict | None = None, mode: str = "full"
                                        ) -> tuple[list[WorkSet], dict]:
@@ -1251,9 +1251,9 @@ def normalize_implementation_dev_plan(parsed, activity_ids, material_ids,
     Blocks are also given their SESSION NUMBERS here (``first_session``), for
     the reason artifact ids are assigned by the harness: Developers never
     coordinate, so two of them left to number their own sessions both start at
-    one. ``first_session`` is where this round's numbering begins — a replan
+    one. ``first_session`` is where this round's numbering begins — a re-dispatch
     round passes one past what the committed guides already use, for the same
-    reason ``replan.tag_round`` strides the ordinal.
+    reason ``redispatch.tag_round`` strides the ordinal.
     """
     modules = _modules_in_order(modules)
     module_of = {_bare(k): _bare(v) for k, v in (module_of or {}).items()}
@@ -1569,7 +1569,7 @@ def _composite_id(prefix: str, ordinal: int, number: int, taken: set[str]) -> st
 
     The scan is the backstop for the two cases the composition does not cover
     on its own: a Developer that used one id twice inside its own set, and a
-    replan round whose stride somehow lands on ordinals already in play."""
+    re-dispatch round whose stride somehow lands on ordinals already in play."""
     while f"{prefix}-{ordinal:02d}{number:02d}" in taken:
         number += 1
     return f"{prefix}-{ordinal:02d}{number:02d}"
@@ -1671,7 +1671,7 @@ def _note_line(work_set: WorkSet) -> list[str]:
     """The assignment's footer: what is still missing, then how much to write.
 
     ``still_missing`` is present only on a SECOND dispatch of a set whose
-    first Developer left a gap (``agentic/replan.py``). It has to be said, and
+    first Developer left a gap (``agentic/redispatch.py``). It has to be said, and
     said in every family the same way: a commit drops a repeat
     (:func:`without_repeats`), so a set told only "write this again" produces
     nothing at all."""

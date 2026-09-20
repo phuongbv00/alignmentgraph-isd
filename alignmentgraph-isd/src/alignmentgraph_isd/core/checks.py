@@ -615,7 +615,7 @@ def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | 
             ))
     # The blueprint has to reach the WHOLE course. P14 and C2 say the same
     # thing later, on the module and the objective — after the Developers
-    # have run, when it costs a replan round. Said here, on the plan, it
+    # have run, when it costs a re-dispatch round. Said here, on the plan, it
     # reaches the Designer while the plan is still the only thing written.
     # MEASURED (run b8576814): three sets, all for MOD-01 and ILO-001;
     # two of three modules and two of three objectives had no assessment.
@@ -1082,7 +1082,7 @@ def relation_coverage(graph) -> list[Violation]:
             if node_id.startswith(f"{NodeType.OBJECTIVE}{graph.ELEMENT_SEP}"):
                 metadata["lo_id"] = _bare_id(graph, node_id)
             if node_id.startswith(f"{NodeType.MODULE}{graph.ELEMENT_SEP}"):
-                # What a replan round needs to turn "this module has nothing"
+                # What a re-dispatch round needs to turn "this module has nothing"
                 # into work: the module, and the objectives it serves.
                 module = (graph.get_node(node_id) or {}).get("data") or {}
                 metadata["module_id"] = _bare_id(graph, node_id)
@@ -1108,18 +1108,18 @@ _COVERAGE_HINTS = {
     "P5": ("Set `linked_module` to the id of the module this material belongs to."),
     "P12": ("No module serves this objective. List its id in the `objectives` of the "
             "module that teaches it."),
-    "P13": ("No activity belongs to this module. Plan an activity block for it, and have "
-            "every activity in that block set `module_id` to this module's id."),
+    "P13": ("No activity belongs to this module. Every activity written for it must set "
+            "`module_id` to this module's id."),
     "P14": ("No assessment item belongs to this module. Give the module a set in "
             "the assessment plan, and have its items set `set_id` to that "
             "set's id."),
     "P8": ("This media selection names no constraint that exists. Set "
            "`respects_constraints` to constraint ids from your read of the design "
            "state, which lists every constraint of this brief."),
-    "P10": ("Nobody scheduled this activity. Put it in a session block of the "
-            "implementation dev_plan, so a session guide delivers it."),
-    "P11": ("Nobody hands this material out. Put it in a session block of the "
-            "implementation dev_plan, so a session guide provisions it."),
+    "P10": ("Nobody scheduled this activity. Name its id in the `activity_ids` of a "
+            "session guide, so some session delivers it."),
+    "P11": ("Nobody hands this material out. Name its id in the `material_ids` of a "
+            "session guide, so some session provisions it."),
 }
 
 

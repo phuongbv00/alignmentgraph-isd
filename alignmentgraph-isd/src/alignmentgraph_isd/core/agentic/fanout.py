@@ -246,7 +246,7 @@ def _assessment_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dic
                  if isinstance(one, dict) and one.get("id")]
     derived = {"sets": [{"module_id": one.get("module_id"), "set_ids": [one["id"]]}
                         for one in blueprint]}
-    sets, stats = dev_plans.normalize_assessment_dev_plan(
+    sets, stats = dev_plans.assessment_work_sets(
         derived, _lo_ids(state), plan.get("lo_coverage_targets") or {},
         modules=parsed.get("modules"), blueprint=blueprint, mode=mode)
     named = dev_plans.name_sets_after(
@@ -267,7 +267,7 @@ def _activity_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dict]
     derived = {"activity_blocks": [{"module_id": m["id"],
                                     "objectives": list(m.get("objectives") or []),
                                     "block_minutes": m.get("minutes")} for m in modules]}
-    sets, stats = dev_plans.normalize_activity_dev_plan(
+    sets, stats = dev_plans.activity_work_sets(
         derived, _lo_ids(state), items_by_lo(state),
         modules=parsed.get("modules"), mode=mode)
     return (dev_plans.name_sets_after(sets, "AB", lambda ws: ws.module_id),
@@ -362,7 +362,7 @@ def _session_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dict]:
          "activity_ids": [a for a in activity_ids if module_of.get(a) == m["id"]],
          "material_ids": [x for x in material_ids if module_of.get(x) == m["id"]]}
         for m in modules]}
-    sets, stats = dev_plans.normalize_implementation_dev_plan(
+    sets, stats = dev_plans.session_work_sets(
         derived, activity_ids, material_ids,
         modules=parsed.get("modules"), module_of=module_of, mode=mode)
     return (dev_plans.name_sets_after(sets, "SB", lambda ws: ws.module_id),

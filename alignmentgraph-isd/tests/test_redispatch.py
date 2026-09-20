@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core import runner as run_module
-from alignmentgraph_isd.core.agentic import budget, replan
+from alignmentgraph_isd.core.agentic import budget, redispatch
 from alignmentgraph_isd.core.dev_plans import WorkSet
 
 from conftest import FakeChatModel, load_brief, run_brief
@@ -41,17 +41,17 @@ class _Gap:
         return f"{self.violation_type}|{self.node_id}"
 
 
-# ── what a replan is asked for ───────────────────────────────────────────────
+# ── what a re-dispatch is asked for ───────────────────────────────────────────────
 
 def test_only_gaps_new_work_can_close_are_sent_back():
     gaps = [_Gap("C2", lo_id="ILO-01"), _Gap("item_completeness", item_id="AT-01"),
             _Gap("evaluation_quality", section="pilot_data_plan")]
 
-    kept = replan.gaps_for("assessment", gaps)
+    kept = redispatch.gaps_for("assessment", gaps)
     assert [g.violation_type for g in kept] == ["C2"], (
         "a malformed item and a thin pilot plan are not answered by planning "
         "more work — they are the artifact's own author's to fix")
-    assert replan.gaps_for("content", gaps) == [], (
+    assert redispatch.gaps_for("content", gaps) == [], (
         "content owns no gap a new module assignment closes")
 
 
@@ -64,7 +64,7 @@ def test_only_a_set_that_owns_a_gap_runs_again():
                     pairs=(("ILO-02", "summative"),), objectives=("ILO-02",))
     gaps = [_Gap("plan_coverage", lo_id="ILO-01", plan_category="diagnostic")]
 
-    redo = replan.redo("assessment", gaps, [mine, other],
+    redo = redispatch.redo("assessment", gaps, [mine, other],
                        {"AS-SET-01", "AS-SET-02"}, 1)
     assert [ws.set_id for ws in redo] == ["AS-SET-01R1"]
     assert redo[0].payload["still_missing"] == ["plan_coverage for ILO-01"]
@@ -76,7 +76,7 @@ def test_a_set_the_state_has_never_seen_runs_because_it_is_new_work():
     without a `still_missing` note: nothing of it has been written."""
     new = WorkSet(set_id="AS-SET-04", ordinal=4,
                   pairs=(("ILO-09", "diagnostic"),), objectives=("ILO-09",))
-    redo = replan.redo("assessment", [_Gap("C2", lo_id="ILO-01")], [new], set(), 1)
+    redo = redispatch.redo("assessment", [_Gap("C2", lo_id="ILO-01")], [new], set(), 1)
 
     assert [ws.set_id for ws in redo] == ["AS-SET-04R1"]
     assert "still_missing" not in redo[0].payload
@@ -99,7 +99,7 @@ def test_round_sets_are_tagged_or_they_never_run():
     """Round 0's `AS-01` is committed and `committed_set_ids` reads the
     `plan_set` stamp, so a round-1 set numbered `AS-01` again is treated as
     already done. Without the tag the round runs and produces nothing."""
-    tagged = replan.tag_round([WorkSet(set_id="AS-01"), WorkSet(set_id="AS-02")], 1)
+    tagged = redispatch.tag_round([WorkSet(set_id="AS-01"), WorkSet(set_id="AS-02")], 1)
 
     assert [ws.set_id for ws in tagged] == ["AS-01R1", "AS-02R1"]
 
@@ -110,7 +110,7 @@ def test_a_second_dispatch_costs_no_designer_call():
     no prompt at all."""
     import inspect
 
-    source = inspect.getsource(replan)
+    source = inspect.getsource(redispatch)
     assert "ToolLoop" not in source and "intro=" not in source
 
 
@@ -140,11 +140,11 @@ def test_a_gap_produces_a_second_planning_round_and_new_work(monkeypatch):
         monkeypatch, [_Gap("C2", lo_id="ILO-01")])
 
     rounds = [p for p in result["plans"] if p["stage"] == "assessment"]
-    assert len(rounds) == 2, f"expected a replan round, got {[p['round'] for p in rounds]}"
+    assert len(rounds) == 2, f"expected a re-dispatch round, got {[p['round'] for p in rounds]}"
     second = rounds[1]
     assert second["round"] == 1
     assert "C2" in second["answers"], "the round records which gaps it answers"
-    assert second["work_sets"], "a replan that plans no work is not a replan"
+    assert second["work_sets"], "a re-dispatch that plans no work is not a re-dispatch"
     assert all(ws["set_id"].endswith("R1") for ws in second["work_sets"])
 
 
@@ -160,7 +160,7 @@ def test_a_second_dispatch_opens_no_conversation_of_its_own(monkeypatch):
     assert designer
     systems = {c["messages"][0]["content"] for c in designer}
     assert len(systems) == 1, "the Designer was given a second system prompt"
-    assert all(":replan" not in str(c.get("phase", "")) for c in result["contexts"])
+    assert all(":re-dispatch" not in str(c.get("phase", "")) for c in result["contexts"])
     redone = [c for c in result["contexts"] if str(c.get("phase", "")).endswith("R1")]
     assert redone, "the round ran no set at all"
     assert all("Developer" in c["agent"] for c in redone), (
@@ -195,7 +195,7 @@ def test_the_replan_actually_produces_the_missing_work():
 
     items = result["addie_output"]["development"]["assessment_tools"]
     from_round_one = [i for i in items if str(i.get("plan_set", "")).endswith("R1")]
-    assert from_round_one, "the replan planned work that never got written"
+    assert from_round_one, "the re-dispatch planned work that never got written"
 
 
 def test_the_round_is_bounded(monkeypatch):
@@ -215,14 +215,14 @@ def test_the_round_is_bounded(monkeypatch):
     result = run_brief(load_brief("java_oop_brief.json"), config)
 
     rounds = [p["round"] for p in result["plans"] if p["stage"] == "assessment"]
-    assert max(rounds) <= budget.REPLAN_ROUNDS
+    assert max(rounds) <= budget.REDISPATCH_ROUNDS
 
 
 def test_a_replan_is_not_a_retry():
     """`attempt` counts REGENS — a stage that came back empty and was run again
     from a fresh context.
 
-    A replan is not that. It continues the Designer's own conversation with new
+    A re-dispatch is not that. It continues the Designer's own conversation with new
     work to plan, so it inherits the attempt along with the id, the label and
     the compaction record: everything that describes the CONVERSATION rather
     than the task travels with the message list. Numbered from the round
@@ -234,7 +234,7 @@ def test_a_replan_is_not_a_retry():
     result = run_brief(load_brief("java_oop_brief.json"), config)
 
     replanned = {p["stage"] for p in result["plans"] if p["round"] > 0}
-    assert replanned, "this fixture must replan, or the test proves nothing"
+    assert replanned, "this fixture must re-dispatch, or the test proves nothing"
 
     for context in result["contexts"]:
         if context["label"] in replanned:

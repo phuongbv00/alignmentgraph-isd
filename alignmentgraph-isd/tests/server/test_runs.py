@@ -172,10 +172,10 @@ def test_the_work_set_plans_are_written_and_served(client, ready_program, wait_f
 
     # The join the trajectory inspector depends on: a `dev_plan` beat resolves
     # to its plan by SET IDS, because the event does not record its round and a
-    # replan round's ids carry it (`AS-01R1`) — matching on family alone would
+    # re-dispatch round's ids carry it (`AS-01R1`) — matching on family alone would
     # file round 0's sets under round 1's beat.
     deep = client.get(f"/api/runs/{run_id}/artifacts/trajectory_deep").json()
-    events = [a for a in deep["actions"] if a["action"] == "dev_plan"]
+    events = [a for a in deep["actions"] if a["action"] == "work_sets"]
     assert events, "the run dispatched no work sets"
     for event in events:
         ids = {entry["set_id"] for entry in event["context"]["sets"]}

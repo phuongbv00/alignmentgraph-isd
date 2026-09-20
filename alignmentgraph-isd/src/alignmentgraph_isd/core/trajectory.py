@@ -165,7 +165,7 @@ class TrajectoryAction(StrEnum):
     #: A residual cross-artifact violation handed to the family that owns it,
     #: after the last stage. See ``core/runner.py::_reconcile``.
     RECONCILE = "reconcile"
-    DEV_PLAN = "dev_plan"
+    WORK_SETS = "work_sets"
     #: A repair that must SUPPLY a missing artifact asked the model to write it
     #: and got nothing usable back, so it wrote nothing. Recorded because the
     #: alternative — a template that fills the hole — is invisible: the check
@@ -683,7 +683,7 @@ class TrajectoryLogger:
         self._record_event(
             TrajectoryAction.DOC_WRITE, "doc_write_event", agent=agent,
             key=key, field_count=size)
-        # Mirrored into the deep action log for the same reason ``log_dev_plan``
+        # Mirrored into the deep action log for the same reason ``log_work_sets``
         # is: that log is what the live consumer streams and what the story view
         # replays, so an artifact recorded only in ``events`` is one the run
         # cannot be watched producing.
@@ -749,7 +749,7 @@ class TrajectoryLogger:
             ready_to_aggregate=residual.ready_to_aggregate,
         )
 
-    def log_dev_plan(
+    def log_work_sets(
         self,
         family: str,
         *,
@@ -788,14 +788,14 @@ class TrajectoryLogger:
         harness silently reshaped cannot read as ``source: llm`` with nothing
         dropped."""
         self._record_event(
-            TrajectoryAction.DEV_PLAN, "dev_plan_event", agent=agent,
+            TrajectoryAction.WORK_SETS, "work_sets_event", agent=agent,
             family=family, set_count=set_count, pair_count=pair_count, sets=sets,
             source=source, fallback_used=fallback_used, dropped_refs=dropped_refs,
             dropped_pairs=dropped_pairs, duplicate_pairs=duplicate_pairs,
             appended_sets=appended_sets, oversized_splits=oversized_splits,
         )
         self.log_action(
-            TrajectoryAction.DEV_PLAN, agent=agent,
+            TrajectoryAction.WORK_SETS, agent=agent,
             family=family, set_count=set_count, pair_count=pair_count, sets=sets,
             source=source, fallback_used=fallback_used, dropped_refs=dropped_refs,
             dropped_pairs=dropped_pairs, duplicate_pairs=duplicate_pairs,

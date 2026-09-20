@@ -23,29 +23,29 @@ def _run(mode: str = "multi", context_mode: str = "graph"):
     return run_brief(brief, config)
 
 
-def test_dev_plan_events_fire_once_per_fanout_family_multi_arm():
+def test_work_set_events_fire_once_per_fanout_family_multi_arm():
     """One per family, plus one per RE-DISPATCH round. A family whose
-    Developers leave a gap is dispatched again (core/agentic/replan.py), and
+    Developers leave a gap is dispatched again (core/agentic/redispatch.py), and
     that second division of the work is a second event — the trace would
     otherwise under-report what the Developers were asked for."""
     result = _run("multi")
-    dev_plan_events = [e for e in result["trajectory"]["events"] if e["action"] == "dev_plan"]
-    families = {e["context"]["family"] for e in dev_plan_events}
+    work_set_events = [e for e in result["trajectory"]["events"] if e["action"] == "work_sets"]
+    families = {e["context"]["family"] for e in work_set_events}
     assert families == {"assessment_designer", "activity_designer", "content_designer",
                         "implementation_planner"}
 
     replans = sum(len([p for p in result["plans"] if p["stage"] == stage]) - 1
                   for stage in {p["stage"] for p in result["plans"]})
-    assert len(dev_plan_events) == len(families) + replans, (
+    assert len(work_set_events) == len(families) + replans, (
         "one dev_plan event per family per planning round")
 
-    by_family = {e["context"]["family"]: e for e in dev_plan_events}
+    by_family = {e["context"]["family"]: e for e in work_set_events}
     # No family asks the model how to divide its own work: each grouping is
     # derived from an artifact of the design (a set, a module).
-    assert {e["context"]["source"] for e in dev_plan_events} == {"deterministic"}
+    assert {e["context"]["source"] for e in work_set_events} == {"deterministic"}
     assert set(by_family) == families
 
-    for event in dev_plan_events:
+    for event in work_set_events:
         ctx = event["context"]
         assert ctx["set_count"] >= 1
         assert isinstance(ctx["sets"], list) and ctx["sets"]
@@ -57,10 +57,10 @@ def test_dev_plan_events_fire_once_per_fanout_family_multi_arm():
         assert event["agent"] == ORCHESTRATOR
 
 
-def test_dev_plan_events_fire_in_prose_arm_too():
+def test_work_set_events_fire_in_prose_arm_too():
     result = _run("multi", context_mode="prose")
-    dev_plan_events = [e for e in result["trajectory"]["events"] if e["action"] == "dev_plan"]
-    families = {e["context"]["family"] for e in dev_plan_events}
+    work_set_events = [e for e in result["trajectory"]["events"] if e["action"] == "work_sets"]
+    families = {e["context"]["family"] for e in work_set_events}
     assert families == {"assessment_designer", "activity_designer", "content_designer",
                         "implementation_planner"}
 
@@ -73,7 +73,7 @@ def test_the_single_arm_plans_no_work_sets_at_all():
     ``autonomy.design.submits_per_stage`` instead."""
     result = _run("single")
 
-    assert not [e for e in result["trajectory"]["events"] if e["action"] == "dev_plan"]
+    assert not [e for e in result["trajectory"]["events"] if e["action"] == "work_sets"]
     assert result["metadata"]["autonomy"]["design"]["submits_per_stage"]
 
 

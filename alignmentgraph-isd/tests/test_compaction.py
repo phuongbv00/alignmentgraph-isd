@@ -454,7 +454,7 @@ def test_the_directive_filter_keeps_a_reported_obligation():
         "The agent was told the operator_manual must reference the actual materials.",
         "It was rejected because assessment_plan.lo_coverage_targets was missing.",
         "The constraint said learners should work in pairs.",
-        "No objectives were left unassessed after the replan round.",
+        "No objectives were left unassessed after the re-dispatch round.",
     ):
         assert _clean(record) == record, record
 

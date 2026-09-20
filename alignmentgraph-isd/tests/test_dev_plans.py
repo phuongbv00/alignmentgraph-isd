@@ -15,7 +15,7 @@ def test_assessment_llm_plan_covers_everything_kept_verbatim():
         {"set_id": "X", "objectives": ["ILO-01", "ILO-02"], "plan_categories": ["formative"],
          "set_hint": "integrated case", "rationale": "shared scenario"},
     ]}
-    sets, stats = dp.normalize_assessment_dev_plan(parsed, ["ILO-01", "ILO-02"], targets)
+    sets, stats = dp.assessment_work_sets(parsed, ["ILO-01", "ILO-02"], targets)
     assert len(sets) == 1
     assert sets[0].set_id == "AS-01"
     assert set(sets[0].pairs) == {("ILO-01", "formative"), ("ILO-02", "formative")}
@@ -32,7 +32,7 @@ def test_assessment_filler_pairs_dropped_not_kept():
     parsed = {"sets": [
         {"objectives": ["ILO-01"], "plan_categories": ["formative", "summative", "diagnostic"]},
     ]}
-    sets, stats = dp.normalize_assessment_dev_plan(parsed, ["ILO-01"], targets)
+    sets, stats = dp.assessment_work_sets(parsed, ["ILO-01"], targets)
     all_pairs = {p for ws in sets for p in ws.pairs}
     assert all_pairs == {("ILO-01", "formative")}
     assert stats["dropped_pairs"] == 2
@@ -41,7 +41,7 @@ def test_assessment_filler_pairs_dropped_not_kept():
 def test_assessment_unknown_objective_dropped():
     targets = {"ILO-01": ["formative"]}
     parsed = {"sets": [{"objectives": ["ILO-99"], "plan_categories": ["formative"]}]}
-    sets, stats = dp.normalize_assessment_dev_plan(parsed, ["ILO-01"], targets)
+    sets, stats = dp.assessment_work_sets(parsed, ["ILO-01"], targets)
     assert stats["dropped_lo_refs"] == 1
     # ILO-99's set contributes nothing real; ILO-01/formative still gets a
     # set via the uncovered-pair top-up.
@@ -52,7 +52,7 @@ def test_assessment_unknown_objective_dropped():
 def test_assessment_uncovered_pair_appended_not_fallback():
     targets = {"ILO-01": ["formative"], "ILO-02": ["summative"]}
     parsed = {"sets": [{"objectives": ["ILO-01"], "plan_categories": ["formative"]}]}
-    sets, stats = dp.normalize_assessment_dev_plan(parsed, ["ILO-01", "ILO-02"], targets)
+    sets, stats = dp.assessment_work_sets(parsed, ["ILO-01", "ILO-02"], targets)
     assert stats["fallback_used"] is False
     assert stats["appended_sets"] == 1
     sources = {ws.source for ws in sets}
@@ -62,20 +62,20 @@ def test_assessment_uncovered_pair_appended_not_fallback():
 def test_assessment_empty_or_garbage_plan_is_pure_fallback():
     targets = {"ILO-01": ["formative"], "ILO-02": ["summative"]}
     for parsed in ({}, None, {"sets": "not a list"}, {"sets": []}):
-        sets, stats = dp.normalize_assessment_dev_plan(parsed, ["ILO-01", "ILO-02"], targets)
+        sets, stats = dp.assessment_work_sets(parsed, ["ILO-01", "ILO-02"], targets)
         assert stats["fallback_used"] is True
         assert {p for ws in sets for p in ws.pairs} == {("ILO-01", "formative"), ("ILO-02", "summative")}
         assert all(ws.source == "fallback" for ws in sets)
 
 
 def test_assessment_empty_targets_defaults_to_lo_x_summative():
-    sets, stats = dp.normalize_assessment_dev_plan({}, ["ILO-01", "ILO-02"], {})
+    sets, stats = dp.assessment_work_sets({}, ["ILO-01", "ILO-02"], {})
     assert {p for ws in sets for p in ws.pairs} == {("ILO-01", "summative"), ("ILO-02", "summative")}
     assert stats["pair_count"] == 2
 
 
 def test_assessment_no_objectives_at_all_returns_no_sets():
-    sets, stats = dp.normalize_assessment_dev_plan({}, [], {})
+    sets, stats = dp.assessment_work_sets({}, [], {})
     assert sets == []
     assert stats["pair_count"] == 0
 
@@ -83,7 +83,7 @@ def test_assessment_no_objectives_at_all_returns_no_sets():
 def test_assessment_namespaced_ids_are_normalized():
     targets = {"objective:ILO-01": ["formative"]}
     parsed = {"sets": [{"objectives": ["objective:ILO-01"], "plan_categories": ["formative"]}]}
-    sets, stats = dp.normalize_assessment_dev_plan(parsed, ["ILO-01"], targets)
+    sets, stats = dp.assessment_work_sets(parsed, ["ILO-01"], targets)
     assert {p for ws in sets for p in ws.pairs} == {("ILO-01", "formative")}
     assert stats["dropped_pairs"] == 0
 
@@ -95,7 +95,7 @@ def test_assessment_overflow_capped_and_merged_never_drops_a_pair():
     parsed = {"sets": [
         {"objectives": [lo_ids[i % 5]], "plan_categories": ["summative"]} for i in range(20)
     ]}
-    sets, stats = dp.normalize_assessment_dev_plan(parsed, lo_ids, targets)
+    sets, stats = dp.assessment_work_sets(parsed, lo_ids, targets)
     assert len(sets) <= 5
     all_pairs = {p for ws in sets for p in ws.pairs}
     assert all_pairs == {(lo, "summative") for lo in lo_ids}
@@ -110,7 +110,7 @@ def test_activity_llm_blocks_carry_items_by_lo():
     parsed = {"activity_blocks": [
         {"objectives": ["ILO-01", "ILO-02"], "block_theme": "intro"},
     ]}
-    sets, stats = dp.normalize_activity_dev_plan(parsed, ["ILO-01", "ILO-02"], items_by_lo)
+    sets, stats = dp.activity_work_sets(parsed, ["ILO-01", "ILO-02"], items_by_lo)
     assert len(sets) == 1
     assert sets[0].objectives == ("ILO-01", "ILO-02")
     assert sets[0].payload["assessment_items"] == ["AT-01", "AT-02"]
@@ -118,7 +118,7 @@ def test_activity_llm_blocks_carry_items_by_lo():
 
 
 def test_activity_fallback_when_plan_missing():
-    sets, stats = dp.normalize_activity_dev_plan(None, ["ILO-01"], {})
+    sets, stats = dp.activity_work_sets(None, ["ILO-01"], {})
     assert stats["fallback_used"] is True
     assert len(sets) == 1
     assert sets[0].objectives == ("ILO-01",)
@@ -126,7 +126,7 @@ def test_activity_fallback_when_plan_missing():
 
 def test_activity_uncovered_lo_appended():
     parsed = {"activity_blocks": [{"objectives": ["ILO-01"]}]}
-    sets, stats = dp.normalize_activity_dev_plan(parsed, ["ILO-01", "ILO-02"], {})
+    sets, stats = dp.activity_work_sets(parsed, ["ILO-01", "ILO-02"], {})
     covered = {lo for ws in sets for lo in ws.objectives}
     assert covered == {"ILO-01", "ILO-02"}
     assert stats["appended_sets"] == 1
@@ -303,7 +303,7 @@ def test_an_oversized_assessment_set_is_split_by_pair_not_by_objective():
     parsed = {"sets": [
         {"objectives": lo_ids, "plan_categories": ["diagnostic", "formative", "summative"]},
     ]}
-    sets, stats = dp.normalize_assessment_dev_plan(parsed, lo_ids, targets)
+    sets, stats = dp.assessment_work_sets(parsed, lo_ids, targets)
 
     limit = dp.max_units("assessment")
     assert all(len(ws.pairs) <= limit for ws in sets), [len(ws.pairs) for ws in sets]
@@ -322,7 +322,7 @@ def test_the_count_cap_can_no_longer_produce_an_unanswerable_tail():
     unanswerable. Size is applied after the merge and wins."""
     lo_ids = [f"ILO-{i:02d}" for i in range(1, 34)]
     targets = {lo: ["summative"] for lo in lo_ids}
-    sets, _stats = dp.normalize_assessment_dev_plan({}, lo_ids, targets)
+    sets, _stats = dp.assessment_work_sets({}, lo_ids, targets)
 
     limit = dp.max_units("assessment")
     assert all(len(ws.pairs) <= limit for ws in sets), (
@@ -336,7 +336,7 @@ def test_an_oversized_activity_block_is_split_and_keeps_its_item_slice():
     los = [f"ILO-{i:02d}" for i in range(1, 21)]
     items_by_lo = {lo: [f"AT-{lo}"] for lo in los}
     parsed = {"activity_blocks": [{"objectives": los, "block_theme": "everything"}]}
-    sets, _stats = dp.normalize_activity_dev_plan(parsed, los, items_by_lo)
+    sets, _stats = dp.activity_work_sets(parsed, los, items_by_lo)
 
     limit = dp.max_units("activity")
     assert all(len(ws.objectives) <= limit for ws in sets)
@@ -357,7 +357,7 @@ def test_a_set_that_already_fits_is_left_exactly_as_it_was():
         {"objectives": ["ILO-01", "ILO-02"], "plan_categories": ["formative"],
          "set_hint": "integrated case", "rationale": "shared scenario"},
     ]}
-    sets, _stats = dp.normalize_assessment_dev_plan(parsed, ["ILO-01", "ILO-02"], targets)
+    sets, _stats = dp.assessment_work_sets(parsed, ["ILO-01", "ILO-02"], targets)
     assert len(sets) == 1
     assert sets[0].payload["set_hint"] == "integrated case"
     assert sets[0].source == "llm"
@@ -374,7 +374,7 @@ def test_an_objective_keeps_its_own_pairs_when_a_set_is_split():
     cats = ["diagnostic", "formative", "summative"]
     targets = {lo: cats for lo in lo_ids}
     parsed = {"sets": [{"objectives": lo_ids, "plan_categories": cats}]}
-    sets, _stats = dp.normalize_assessment_dev_plan(parsed, lo_ids, targets)
+    sets, _stats = dp.assessment_work_sets(parsed, lo_ids, targets)
 
     assert len(sets) > 1, "12 pairs does not fit one call"
     for ws in sets:
@@ -393,14 +393,14 @@ def test_activity_splits_on_the_planned_count_not_the_objective_count():
 
     small = {"activity_blocks": [
         {"objectives": ["ILO-01", "ILO-02", "ILO-03"], "expected_activities": 3}]}
-    sets, _ = dp.normalize_activity_dev_plan(
+    sets, _ = dp.activity_work_sets(
         small, ["ILO-01", "ILO-02", "ILO-03"], {})
     assert len(sets) == 1, "three light objectives are one call"
 
     planned = limit + 2
     assert planned <= dp.MAX_EXPECTED_PER_SET, "keep the case inside the clamp"
     big = {"activity_blocks": [{"objectives": ["ILO-01"], "expected_activities": planned}]}
-    sets, _ = dp.normalize_activity_dev_plan(big, ["ILO-01"], {})
+    sets, _ = dp.activity_work_sets(big, ["ILO-01"], {})
     assert len(sets) == 2, "one heavy objective is two"
     quotas = [ws.payload["expected_activities"] for ws in sets]
     assert sum(quotas) == planned, "the plan is divided across batches, not repeated"
@@ -414,7 +414,7 @@ def test_a_backstop_split_still_gives_each_piece_a_distinct_scope():
     limit = dp.max_units("activity")
     parsed = {"activity_blocks": [
         {"objectives": ["ILO-01"], "expected_activities": limit + 2, "block_theme": "ramp"}]}
-    sets, _ = dp.normalize_activity_dev_plan(parsed, ["ILO-01"], {})
+    sets, _ = dp.activity_work_sets(parsed, ["ILO-01"], {})
 
     rendered = [dp.render_activity_set(ws) for ws in sets]
     assert "part 1 of 2 of 'ramp'" in rendered[0]
@@ -465,7 +465,7 @@ def test_blocks_the_planner_scoped_itself_survive_intact():
         {"objectives": ["ILO-01"], "block_theme": "unaided practice on a real case",
          "expected_activities": 5},
     ]}
-    sets, stats = dp.normalize_activity_dev_plan(parsed, ["ILO-01"], {})
+    sets, stats = dp.activity_work_sets(parsed, ["ILO-01"], {})
 
     assert len(sets) == 2
     assert [ws.payload["block_theme"] for ws in sets] == [
@@ -481,7 +481,7 @@ def test_the_harness_records_when_it_had_to_cut_a_planned_set():
     limit = dp.max_units("activity")
     parsed = {"activity_blocks": [
         {"objectives": ["ILO-01"], "block_theme": "pipeline", "expected_activities": limit + 2}]}
-    sets, stats = dp.normalize_activity_dev_plan(parsed, ["ILO-01"], {})
+    sets, stats = dp.activity_work_sets(parsed, ["ILO-01"], {})
 
     assert stats["oversized_splits"] == 1
     assert len(sets) == 2
@@ -505,7 +505,7 @@ def test_assessment_a_pair_named_in_two_sets_is_written_once():
         {"objectives": ["ILO-01", "ILO-02"], "plan_categories": ["formative"]},
         {"objectives": ["ILO-02", "ILO-03"], "plan_categories": ["formative"]},
     ]}
-    sets, stats = dp.normalize_assessment_dev_plan(parsed, ["ILO-01", "ILO-02", "ILO-03"], targets)
+    sets, stats = dp.assessment_work_sets(parsed, ["ILO-01", "ILO-02", "ILO-03"], targets)
     pairs = [p for ws in sets for p in ws.pairs]
     assert len(pairs) == len(set(pairs)), f"a pair is written twice: {pairs}"
     assert set(pairs) == {("ILO-01", "diagnostic"), ("ILO-01", "summative"),
@@ -526,7 +526,7 @@ def test_assessment_expected_items_is_the_planners_count_within_bounds():
         parsed = {"sets": [{"objectives": ["ILO-01", "ILO-02"],
                                        "plan_categories": ["formative"],
                                        "expected_items": expected}]}
-        sets, _ = dp.normalize_assessment_dev_plan(parsed, ["ILO-01", "ILO-02"], targets)
+        sets, _ = dp.assessment_work_sets(parsed, ["ILO-01", "ILO-02"], targets)
         return sets[0]
 
     assert one(4).payload["expected_items"] == 4
@@ -543,7 +543,7 @@ def test_assessment_expected_items_is_the_planners_count_within_bounds():
 
 def test_assessment_fallback_sets_carry_a_count_too():
     targets = {"ILO-01": ["formative", "summative"]}
-    sets, _ = dp.normalize_assessment_dev_plan({}, ["ILO-01"], targets)
+    sets, _ = dp.assessment_work_sets({}, ["ILO-01"], targets)
     assert sets[0].payload["expected_items"] == 2
     assert "write exactly 2 items" in dp.render_assessment_set(sets[0])
 
@@ -553,7 +553,7 @@ def test_activity_an_objective_in_two_untitled_blocks_is_written_once():
         {"objectives": ["ILO-01", "ILO-02"]},
         {"objectives": ["ILO-02"]},
     ]}
-    sets, stats = dp.normalize_activity_dev_plan(parsed, ["ILO-01", "ILO-02"])
+    sets, stats = dp.activity_work_sets(parsed, ["ILO-01", "ILO-02"])
     covered = [lo for ws in sets for lo in ws.objectives]
     assert sorted(covered) == ["ILO-01", "ILO-02"]
     assert stats["duplicate_pairs"] == 1
@@ -564,7 +564,7 @@ def test_activity_a_themed_second_block_for_one_objective_is_the_planner_splitti
         {"objectives": ["ILO-01"], "block_theme": "first contact"},
         {"objectives": ["ILO-01"], "block_theme": "unaided practice"},
     ]}
-    sets, stats = dp.normalize_activity_dev_plan(parsed, ["ILO-01"])
+    sets, stats = dp.activity_work_sets(parsed, ["ILO-01"])
     assert len(sets) == 2 and stats["duplicate_pairs"] == 0
 
 
@@ -623,7 +623,7 @@ def test_a_counting_sequence_is_cut_to_the_time_its_module_has():
 
     los = [f"ILO-0{i}" for i in range(1, 6)]
     plan = {"activity_blocks": _blocks(list(range(2, 35)))}
-    sets, stats = dev_plans.normalize_activity_dev_plan(
+    sets, stats = dev_plans.activity_work_sets(
         plan, los, modules=_one_module(600, los))
 
     ceiling = max(len(sets), 600 // dev_plans.MIN_ACTIVITY_MINUTES)
@@ -639,7 +639,7 @@ def test_a_block_plans_no_more_than_fits_in_its_own_minutes():
     from alignmentgraph_isd.core import dev_plans
 
     plan = {"activity_blocks": _blocks([8, 8], minutes=[45, 240])}
-    sets, _stats = dev_plans.normalize_activity_dev_plan(
+    sets, _stats = dev_plans.activity_work_sets(
         plan, ["ILO-01", "ILO-02"], modules=_one_module(285, ["ILO-01", "ILO-02"]))
     by_theme = {ws.payload["block_theme"]: ws.payload["expected_activities"] for ws in sets}
     assert by_theme["theme 0"] == 45 // dev_plans.MIN_ACTIVITY_MINUTES
@@ -654,12 +654,12 @@ def test_the_blocks_of_a_module_share_all_of_its_time_not_just_what_they_declare
     from alignmentgraph_isd.core import dev_plans
 
     plan = {"activity_blocks": _blocks([6], minutes=[15])}
-    sets, _stats = dev_plans.normalize_activity_dev_plan(
+    sets, _stats = dev_plans.activity_work_sets(
         plan, ["ILO-01"], modules=_one_module(120, ["ILO-01"]))
     assert sets[0].payload["block_minutes"] == 120
     assert sets[0].payload["expected_activities"] == 6
 
-    sampled, _stats = dev_plans.normalize_activity_dev_plan(
+    sampled, _stats = dev_plans.activity_work_sets(
         plan, ["ILO-01"], modules=_one_module(120, ["ILO-01"]), mode="sample")
     assert sampled[0].payload["expected_activities"] == dev_plans.SAMPLE_ACTIVITIES_PER_MODULE_FLOOR
 
@@ -683,7 +683,7 @@ def test_a_module_that_states_no_time_is_left_alone_and_the_record_says_so():
     up: the brief states duration as a band, not as hours."""
     from alignmentgraph_isd.core import dev_plans
 
-    sets, stats = dev_plans.normalize_activity_dev_plan(
+    sets, stats = dev_plans.activity_work_sets(
         {"activity_blocks": _blocks([4, 4])}, ["ILO-01", "ILO-02"],
         modules=_one_module(None, ["ILO-01", "ILO-02"]))
     assert _planned(sets) == 8
@@ -702,7 +702,7 @@ def test_a_block_never_spans_two_modules_and_the_sets_come_out_in_course_order()
     plan = {"activity_blocks": [
         {"set_id": "B1", "objectives": ["ILO-03", "ILO-01"], "block_theme": "across",
          "block_minutes": 120, "expected_activities": 4}]}
-    sets, stats = dev_plans.normalize_activity_dev_plan(
+    sets, stats = dev_plans.activity_work_sets(
         plan, ["ILO-01", "ILO-02", "ILO-03", "ILO-04"], modules=modules)
 
     assert [ws.module_id for ws in sets] == sorted(ws.module_id for ws in sets)
@@ -727,7 +727,7 @@ def test_assessment_sets_follow_the_sets_module_by_module():
         {"id": "SET-02", "module_id": "MOD-02", "timing": "summative", "format": "practical",
          "item_counts": {"performance_task": 2}, "covers_objectives": ["ILO-01", "ILO-02"]}]
     targets = {"ILO-01": ["formative", "summative"], "ILO-02": ["summative"]}
-    sets, _stats = dev_plans.normalize_assessment_dev_plan(
+    sets, _stats = dev_plans.assessment_work_sets(
         None, ["ILO-01", "ILO-02"], targets, modules=modules, blueprint=sets,
         mode="sample")
 
@@ -748,7 +748,7 @@ def test_a_session_block_is_delivered_inside_one_module():
     module_of = {"TLA-0101": "MOD-01", "TLA-0201": "MOD-02", "MAT-0101": "module:MOD-01"}
     plan = {"session_blocks": [{"set_id": "SB", "expected_sessions": 3,
                                 "activity_ids": ["TLA-0201", "TLA-0101"], "material_ids": []}]}
-    sets, _stats = dev_plans.normalize_implementation_dev_plan(
+    sets, _stats = dev_plans.session_work_sets(
         plan, ["TLA-0101", "TLA-0201", "TLA-0301"], ["MAT-0101"],
         modules=modules, module_of=module_of)
 

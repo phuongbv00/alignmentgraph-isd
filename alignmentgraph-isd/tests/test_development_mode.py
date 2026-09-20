@@ -29,7 +29,7 @@ LOS = ["ILO-01", "ILO-02", "ILO-03"]
 
 
 def _assessment(mode):
-    return dev_plans.normalize_assessment_dev_plan(
+    return dev_plans.assessment_work_sets(
         None, LOS, TARGETS, modules=MODULES, blueprint=SETS, mode=mode)[0]
 
 
@@ -74,8 +74,8 @@ def test_a_sampled_module_gets_a_sequence_of_activities_bounded_by_its_minutes()
          "block_minutes": 600, "expected_activities": 11},
         {"set_id": "B2", "objectives": ["ILO-03"], "block_theme": "u",
          "block_minutes": 120, "expected_activities": 1}]}
-    sample, _ = dev_plans.normalize_activity_dev_plan(plan, LOS, modules=MODULES, mode="sample")
-    full, _ = dev_plans.normalize_activity_dev_plan(plan, LOS, modules=MODULES, mode="full")
+    sample, _ = dev_plans.activity_work_sets(plan, LOS, modules=MODULES, mode="sample")
+    full, _ = dev_plans.activity_work_sets(plan, LOS, modules=MODULES, mode="full")
 
     by_module = {ws.module_id: ws.payload["expected_activities"] for ws in sample}
     assert by_module == {"MOD-01": 2 * dev_plans.SAMPLE_ACTIVITIES_PER_OBJECTIVE,
@@ -85,7 +85,7 @@ def test_a_sampled_module_gets_a_sequence_of_activities_bounded_by_its_minutes()
     assert {lo for ws in sample for lo in ws.objectives} == set(LOS), "every objective keeps a block"
 
     tight = [dict(MODULES[0], minutes=30), MODULES[1]]
-    squeezed, _ = dev_plans.normalize_activity_dev_plan(plan, LOS, modules=tight, mode="sample")
+    squeezed, _ = dev_plans.activity_work_sets(plan, LOS, modules=tight, mode="sample")
     assert squeezed[0].payload["expected_activities"] == 30 // dev_plans.MIN_ACTIVITY_MINUTES
 
 
@@ -100,7 +100,7 @@ def test_a_sampled_module_gets_at_most_two_materials_and_a_guide_or_two():
     assert first["full"]["expected_materials"] == 4
 
     module_of = {"TLA-0101": "MOD-01", "TLA-0201": "MOD-02"}
-    blocks, _ = dev_plans.normalize_implementation_dev_plan(
+    blocks, _ = dev_plans.session_work_sets(
         {"session_blocks": [{"set_id": "SB", "expected_sessions": 6,
                              "activity_ids": ["TLA-0101"], "material_ids": []}]},
         ["TLA-0101", "TLA-0201"], [], modules=MODULES, module_of=module_of, mode="sample")

@@ -1541,7 +1541,7 @@ def test_a_rejection_brings_the_contract_back_in_both_arms():
 
 def test_the_context_reports_every_tool_the_conversation_had():
     """A loop that continues another's messages may bind a NARROWER set — the
-    replan round binds only `submit_dev_plan`, a plan being the one thing it
+    re-dispatch round binds only `submit_dev_plan`, a plan being the one thing it
     asks for. Publishing just the live binding made the merged row claim the
     Designer never had `submit_assessment_plan`, which is how it wrote the plan
     in the first place."""

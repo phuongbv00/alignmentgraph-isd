@@ -92,7 +92,7 @@ def test_one_conversation_is_one_context(agent_mode, context_mode):
     away.
 
     A context used to be identified by hashing what it was ABOUT
-    (agent, phase, label, attempt). The replan round continues the Designer's
+    (agent, phase, label, attempt). The re-dispatch round continues the Designer's
     own message list under a new step name — so it hashed to a different id,
     and the Context tab showed that conversation TWICE, the second row
     containing the first. Same system prompt in both, so the existing guard

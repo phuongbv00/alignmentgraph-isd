@@ -90,7 +90,7 @@ def test_end_to_end_result_contract_and_every_step_produced():
     events = result["trajectory"]["events"]
     required = sum(len(parts_of(step)) for step in STEPS)
     optional = sum(len(step.submit_fields) - len(parts_of(step)) for step in STEPS)
-    work_sets = sum(e["context"]["set_count"] for e in events if e["action"] == "dev_plan")
+    work_sets = sum(e["context"]["set_count"] for e in events if e["action"] == "work_sets")
     # Plus the turns a stage spent fixing its own violations IN its own loop:
     # those are real submits, and they are what the deterministic net used to
     # do out of sight.
@@ -403,7 +403,7 @@ def test_the_trajectory_records_everything_a_run_audit_needs():
             #    agent batches its own submits and logs those. One or the other
             #    must be there — an arm whose work is invisible cannot be
             #    audited, and the two arms must not differ in whether they can be.
-            dev_plans = [e for e in events if e["action"] == "dev_plan"]
+            dev_plans = [e for e in events if e["action"] == "work_sets"]
             if agent_mode == "multi":
                 assert dev_plans, f"{label}: the fan-out left no record"
                 assert all(e["context"].get("set_count") is not None for e in dev_plans), label

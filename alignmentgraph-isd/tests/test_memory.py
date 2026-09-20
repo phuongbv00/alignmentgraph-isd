@@ -43,7 +43,7 @@ def test_a_republished_context_replaces_the_one_before_it():
 
 def test_the_identity_belongs_to_the_conversation_not_to_its_description():
     """Learned the hard way. The first version hashed
-    `(agent, phase, label, attempt)` — and the replan round, which continues the
+    `(agent, phase, label, attempt)` — and the re-dispatch round, which continues the
     Designer's OWN message list under a new step name, hashed to a different
     id. The tab then showed one conversation as two rows, the second containing
     the first: the split-block problem the in-loop repair was built to remove.
@@ -138,10 +138,10 @@ def test_a_run_remembers_what_each_designer_asked_its_developers_for():
             "no family asks the model how to divide its own work")
         assert plan["work_sets"], f"{plan['stage']} planned no work at all"
         # Round 0 is the first division; a later round is the re-dispatch of
-        # the sets that still owe work (core/agentic/replan.py).
+        # the sets that still owe work (core/agentic/redispatch.py).
         assert plan["round"] >= 0
         assert bool(plan["answers"]) == (plan["round"] > 0), (
-            "a replan round names the gaps it answers; round 0 answers none")
+            "a re-dispatch round names the gaps it answers; round 0 answers none")
         # The sets name the work, not just their count: this is what makes
         # "which Developer was asked for what" answerable after the run.
         assert all(ws.get("set_id") for ws in plan["work_sets"])

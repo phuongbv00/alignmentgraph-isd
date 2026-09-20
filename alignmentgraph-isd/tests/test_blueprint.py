@@ -233,7 +233,7 @@ def test_a_work_set_is_the_pairs_of_the_assessment_sets_it_names():
          "expected_items": 4},
         {"set_id": "SET-02", "module_id": "MOD-02", "set_ids": ["SET-03", "SET-09"],
          "expected_items": 2}]}
-    sets, stats = dev_plans.normalize_assessment_dev_plan(
+    sets, stats = dev_plans.assessment_work_sets(
         plan, ["ILO-01", "ILO-02"], targets, modules=modules, blueprint=sets,
         mode="sample")
     assert [(ws.module_id, ws.pairs, ws.source) for ws in sets] == [
@@ -432,7 +432,7 @@ def test_the_fanout_divides_the_sets_and_never_the_promise():
     modules = [{"id": "MOD-01", "title": "M", "minutes": 60, "objectives": ["ILO-01"]}]
     plan = {"sets": [_set("SET-01", "summative", ["ILO-01"])],
             "lo_coverage_targets": {"ILO-01": ["summative", "diagnostic"]}}
-    sets, stats = dev_plans.normalize_assessment_dev_plan(
+    sets, stats = dev_plans.assessment_work_sets(
         None, ["ILO-01"], plan["lo_coverage_targets"], modules=modules,
         blueprint=plan["sets"], mode="sample")
 
@@ -451,7 +451,7 @@ def test_a_plan_with_no_sets_still_divides_by_the_promise():
     """The fallback for an archived design from before the blueprint, and for
     one whose ``sets`` never landed: without them there is nothing else
     to divide."""
-    sets, _stats = dev_plans.normalize_assessment_dev_plan(
+    sets, _stats = dev_plans.assessment_work_sets(
         None, ["ILO-01"], {"ILO-01": ["summative", "diagnostic"]},
         modules=None, blueprint=[], mode="sample")
     assert sorted(p for ws in sets for p in ws.pairs) == [

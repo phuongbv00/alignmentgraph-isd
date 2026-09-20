@@ -199,7 +199,7 @@ class ToolLoop:
         self._nudged = False
         #: This conversation's id, and the name it is published under. Both are
         #: inherited when a loop CONTINUES someone else's message list — the
-        #: replan round is that case (run.py) — because a conversation that
+        #: re-dispatch round is that case (run.py) — because a conversation that
         #: gains turns under a new step name is still one conversation, and
         #: publishing it under a second id splits it into two rows of which the
         #: later contains the earlier.
@@ -443,7 +443,7 @@ class ToolLoop:
 
         ``_specs`` — what is PUBLISHED — is accumulated across the
         conversation, never replaced. A loop that continues another's messages
-        may bind a narrower set (the replan round binds only `submit_dev_plan`,
+        may bind a narrower set (the re-dispatch round binds only `submit_dev_plan`,
         because a plan is the one thing it is asking for), and publishing just
         the live binding made the merged row claim the agent never had
         `submit_assessment_plan`, which is how it wrote the plan in the first
@@ -1063,7 +1063,7 @@ class ToolLoop:
         The mirror of ``unwrap_section``, and the same class of near-miss: the
         tool is named after the artifact, so a model that has just been shown
         that artifact's schema sends the INSIDE of the envelope and leaves the
-        key off. Measured on the replan loop, where the tool has exactly one
+        key off. Measured on the re-dispatch loop, where the tool has exactly one
         parameter and every submit was rejected for a key the model had been
         given no reason to write.
 
