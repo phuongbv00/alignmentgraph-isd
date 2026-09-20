@@ -562,7 +562,8 @@ def blueprint_consistency(graph) -> list[Violation]:
     """The assessment plan says WHEN each objective is assessed twice — per
     instrument (``instruments``) and per objective (``lo_coverage_targets``,
     which P3, ``plan_coverage`` and the work-set planner read) — and the two
-    must agree, or an instrument exists that no item will ever be asked for.
+    must agree in BOTH directions, or an instrument exists that no item will
+    ever be asked for, or a promise exists that no instrument can keep.
     Also: an instrument must name a module and objectives that exist."""
     plan_node = graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))
     if plan_node is None:
@@ -576,11 +577,13 @@ def blueprint_consistency(graph) -> list[Violation]:
 
 def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | None = None,
                                objectives: set[str] | None = None) -> list[Violation]:
-    """The core of :func:`blueprint_consistency`. The promised-pairs half reads
-    the plan alone, so the prose arm runs it too; the two existence halves
-    need the other artifacts and run only when their id sets are given."""
+    """The core of :func:`blueprint_consistency`. Both promised-pairs halves
+    read the plan alone, so the prose arm runs them too; the two existence
+    halves need the other artifacts and run only when their id sets are
+    given."""
     violations: list[Violation] = []
-    promised = set(dev_plans.plan_category_pairs((plan or {}).get("lo_coverage_targets")))
+    promised_pairs = dev_plans.plan_category_pairs((plan or {}).get("lo_coverage_targets"))
+    promised = set(promised_pairs)
     for lo_id, timing in instrument_pairs(plan):
         if objectives is not None and lo_id not in objectives:
             continue    # reported below; promising it would promise nothing real
@@ -592,6 +595,29 @@ def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | 
                          f"lo_coverage_targets does not promise {lo_id} a {timing} item."),
                 repair_hint=f"Add \"{timing}\" to lo_coverage_targets[\"{lo_id}\"].",
                 metadata={"kind": "unpromised_pair", "lo_id": lo_id, "plan_category": timing},
+            ))
+    # The other direction, and the one nothing read. The work-set planner
+    # divides the INSTRUMENTS, so a promised pair no instrument covers reaches
+    # no Developer at all: it is an item nobody will be asked for. Said here it
+    # costs the Designer one turn while the plan is the only thing written;
+    # unsaid it surfaces as `plan_coverage` after the Developers have run, when
+    # no agent is left to write the instrument. The two are both reported on
+    # purpose — different nodes, different remedies: this one says the
+    # blueprint is short, that one says the promise went unrealised, and fixing
+    # this one before the fan-out is what stops that one from ever firing.
+    assessed_pairs = set(instrument_pairs(plan))
+    for lo_id, timing in (promised_pairs if _instruments(plan) else ()):
+        if objectives is not None and lo_id not in objectives:
+            continue    # a promise for an objective that does not exist
+        if (lo_id, timing) not in assessed_pairs:
+            violations.append(Violation(
+                node_id=node_id, edge_type="", violation_type="blueprint_consistency",
+                severity="warning",
+                message=(f"lo_coverage_targets promises {lo_id} a {timing} item, but no "
+                         f"instrument assesses {lo_id} at {timing} timing."),
+                repair_hint=(f"Add an instrument with timing \"{timing}\" covering {lo_id}, "
+                             f"or drop \"{timing}\" from lo_coverage_targets[\"{lo_id}\"]."),
+                metadata={"kind": "unassessed_pair", "lo_id": lo_id, "plan_category": timing},
             ))
     # The blueprint has to reach the WHOLE course. P14 and C2 say the same
     # thing later, on the module and the objective — after the Developers

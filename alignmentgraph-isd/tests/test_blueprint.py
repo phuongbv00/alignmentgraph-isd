@@ -94,7 +94,11 @@ def test_modules_accumulate_the_same_way_on_both_substrates():
 # ── the blueprint agrees with itself ────────────────────────────────────────
 
 def test_a_pair_an_instrument_promises_is_added_to_the_coverage_targets():
-    plan = {"instruments": [_instrument("INS-01", "formative", ["ILO-01", "objective:ILO-02"])],
+    plan = {"instruments": [_instrument("INS-01", "formative", ["ILO-01", "objective:ILO-02"]),
+                            # keeps the ONE summative promise, so the plan is
+                            # inconsistent in the direction this test is about
+                            # and in no other.
+                            _instrument("INS-02", "summative", ["ILO-01"])],
             "lo_coverage_targets": {"objective:ILO-01": ["summative"]}}
     graph, trajectory = _design(plan, []), TrajectoryLogger()
     found = checks.blueprint_consistency(graph)
@@ -122,11 +126,31 @@ def test_an_instrument_naming_nothing_real_is_handed_back_not_guessed():
     assert not trajectory.repair_events
 
 
-def test_the_prose_arm_checks_the_half_that_reads_the_plan_alone():
+def test_a_promise_no_instrument_can_keep_is_handed_back_before_the_fanout():
+    """The work-set planner divides the INSTRUMENTS, so this pair would reach
+    no Developer. Nothing read it until now: it surfaced only as
+    ``plan_coverage`` once the Developers had run and no agent was left."""
+    plan = {"instruments": [_instrument("INS-01", "summative", ["ILO-01", "ILO-02"])],
+            "lo_coverage_targets": {"ILO-01": ["summative", "diagnostic"],
+                                    "ILO-02": ["summative"]}}
+    graph, trajectory = _design(plan, []), TrajectoryLogger()
+    found = [v for v in checks.blueprint_consistency(graph)
+             if v.metadata["kind"] == "unassessed_pair"]
+    assert [(v.metadata["lo_id"], v.metadata["plan_category"]) for v in found] == [
+        ("ILO-01", "diagnostic")]
+    assert ":" not in found[0].node_id, (
+        "anchored on the plan, so the pre-tier element filter does not withhold it")
+
+    assert repairs.repair("assessment_designer", found, _ctx(graph, trajectory)) == found, (
+        "no lookup settles it — writing the instrument is the Designer's")
+    assert not trajectory.repair_events
+
+
+def test_the_prose_arm_checks_both_halves_that_read_the_plan_alone():
     plan = {"instruments": [_instrument("INS-01", "formative", ["ILO-01"], module="MOD-05")],
             "lo_coverage_targets": {"ILO-01": ["summative"]}}
     found = checks.blueprint_consistency_data("assessment_plan", plan)
-    assert [v.metadata["kind"] for v in found] == ["unpromised_pair"]
+    assert [v.metadata["kind"] for v in found] == ["unpromised_pair", "unassessed_pair"]
 
 
 # ── every item belongs to an instrument ─────────────────────────────────────
