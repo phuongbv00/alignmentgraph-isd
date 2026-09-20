@@ -820,3 +820,19 @@ def test_a_work_set_written_one_item_at_a_time_accumulates_and_a_repeat_adds_not
         "Which tool fits?", "Justify the choice.", "Which tool fits?"], (
         "the same words asked of another objective are another item")
     assert step.owes(more) == ""
+
+
+def test_an_objective_two_modules_serve_is_practised_in_both():
+    """Only a second block of the SAME module writes the same activities
+    twice. Keyed on the objective alone the second MODULE lost its block
+    whole and ended with no activity at all (P13), its objectives
+    unpractised (C3) — which is what a derived plan produces every time an
+    objective is shared, because a block is a module now."""
+    across = {"activity_blocks": [{"module_id": "MOD-01", "objectives": ["ILO-01"]},
+                                  {"module_id": "MOD-02", "objectives": ["ILO-01"]}]}
+    sets, stats = dp.activity_work_sets(across, ["ILO-01"])
+    assert len(sets) == 2 and stats["duplicate_pairs"] == 0
+
+    twice = {"activity_blocks": [{"module_id": "MOD-01", "objectives": ["ILO-01"]}] * 2}
+    sets, stats = dp.activity_work_sets(twice, ["ILO-01"])
+    assert len(sets) == 1 and stats["duplicate_pairs"] == 1

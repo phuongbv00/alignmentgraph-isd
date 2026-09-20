@@ -318,7 +318,7 @@ def _run_fanout(config, memory, trajectory, design_brief, step, spec, *,
         memory.remember_plan(Plan(
             stage=step.name, family=step.family,
             source=("fallback" if stats_dev["fallback_used"]
-                    else stats_dev.get("source", "llm")),
+                    else stats_dev.get("source", "deterministic")),
             work_sets=tuple(work_sets), stats=dict(stats_dev),
             round=round_index, answers=answers))
         trajectory.log_work_sets(
@@ -326,7 +326,7 @@ def _run_fanout(config, memory, trajectory, design_brief, step, spec, *,
             set_count=stats_dev["set_count"], pair_count=stats_dev["pair_count"],
             sets=[ws.summary() for ws in work_sets],
             source=("fallback" if stats_dev["fallback_used"]
-                    else stats_dev.get("source", "llm")),
+                    else stats_dev.get("source", "deterministic")),
             fallback_used=stats_dev["fallback_used"],
             dropped_refs=stats_dev["dropped_lo_refs"],
             dropped_pairs=stats_dev.get("dropped_pairs", 0),

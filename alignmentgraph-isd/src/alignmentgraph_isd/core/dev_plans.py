@@ -841,17 +841,22 @@ def activity_work_sets(parsed, lo_ids, items_by_lo: dict | None = None, *,
             objs = [_bare(o) for o in (raw.get("objectives") or []) if _bare(o)]
             known = list(dict.fromkeys(o for o in objs if o in lo_set))
             stats["dropped_lo_refs"] += len(objs) - len(known)
-            # Claimed PER MODULE. An objective two modules serve is practised
-            # in both — that is what a shared objective means — so only a
-            # second block of the SAME module is writing the same activities
-            # twice. Keyed on the objective alone it was the module that lost:
-            # a block is one module now, so the second module's block was
-            # dropped whole and the module ended with no activity at all
-            # (P13), its objectives unpractised (C3). The old escape hatch was
-            # a non-empty `block_theme`, which only a model-written plan ever
-            # carried.
+            # Claimed PER MODULE, and a themed block is kept regardless.
+            #
+            # An objective two modules serve is practised in both — that is
+            # what a shared objective means — so only a second block of the
+            # SAME module writes the same activities twice. Keyed on the
+            # objective alone it was the MODULE that lost: a derived block is
+            # one module, so the second module's block was dropped whole and
+            # that module ended with no activity at all (P13), its objectives
+            # unpractised (C3).
+            #
+            # `block_theme` stays the other way past the claim: a plan that
+            # scopes one objective into several distinct blocks meant them,
+            # and the backstop split labels its pieces from it.
+            themed = bool(str(raw.get("block_theme", "")).strip())
             module = _bare(raw.get("module_id"))
-            valid_objs = [o for o in known if (module, o) not in claimed]
+            valid_objs = [o for o in known if themed or (module, o) not in claimed]
             stats["duplicate_pairs"] += len(known) - len(valid_objs)
             if not valid_objs:
                 continue

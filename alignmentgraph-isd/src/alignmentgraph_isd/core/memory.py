@@ -96,10 +96,12 @@ class Transcript:
 class Plan:
     """One family's division into work sets, as the Designer decided it.
 
-    ``source`` is the honest part: ``"llm"`` when the Designer's own dev plan
-    was used, ``"fallback"`` when it was absent or unusable and the sets were
-    derived deterministically. A run where every family reads ``fallback`` is
-    a run where the planning half of the design was never exercised.
+    ``source`` is the honest part: ``"deterministic"`` — no model proposes a
+    grouping, every family derives its sets from an artifact of the design —
+    or ``"fallback"`` when there was nothing to derive from, which says the
+    stage before it produced nothing to divide. Each set carries its OWN
+    ``source`` (``derived`` / ``appended`` / ``fallback``), which is the finer
+    question: whether the design covered this obligation or the harness had to.
     """
 
     stage: str
@@ -107,8 +109,8 @@ class Plan:
     source: str
     work_sets: tuple = ()
     stats: dict = field(default_factory=dict)
-    #: 0 for the Designer's first division of the family; 1+ for a plan it made
-    #: in answer to violations found after its Developers ran.
+    #: 0 for the family's first division; 1+ for a re-dispatch of the sets
+    #: that still owed work after their Developers ran.
     round: int = 0
     #: The violation types this round was asked to close. Empty on round 0.
     answers: tuple[str, ...] = ()
