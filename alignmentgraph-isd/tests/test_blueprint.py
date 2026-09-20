@@ -408,3 +408,41 @@ def test_a_module_no_media_selection_serves_reaches_the_content_designer_before_
 
     graph.add_element_node(NodeType.MEDIA_SELECTION, "MED-02", {"id": "MED-02", "media_type": "video"})
     assert checks.media_coverage(graph) == [], "a selection naming no module serves them all"
+
+
+def test_the_fanout_divides_the_instruments_and_never_the_promise():
+    """A promised pair no instrument covers gets no work set.
+
+    It would be a set with no instrument in it, and ``render_assessment_set``
+    drops the whole "set each item's instrument_id to one of these ids" block
+    for such a set — so its Developer is shown no instrument and reaches for
+    the set's own header id. ``unassessed_pair`` is what reports the pair,
+    while the Designer can still add the instrument.
+    """
+    modules = [{"id": "MOD-01", "title": "M", "minutes": 60, "objectives": ["ILO-01"]}]
+    plan = {"instruments": [_instrument("INS-01", "summative", ["ILO-01"])],
+            "lo_coverage_targets": {"ILO-01": ["summative", "diagnostic"]}}
+    sets, stats = dev_plans.normalize_assessment_dev_plan(
+        None, ["ILO-01"], plan["lo_coverage_targets"], modules=modules,
+        instruments=plan["instruments"], mode="sample")
+
+    assert [list(ws.pairs) for ws in sets] == [[("ILO-01", "summative")]], (
+        "the diagnostic promise is the check's to report, not work to hand out"
+    )
+    assert all(ws.payload.get("instruments") for ws in sets), (
+        "an instrument-less set shows its Developer no instrument_id to write"
+    )
+    assert [v.metadata["kind"] for v in checks.blueprint_consistency_data(
+        "assessment_plan", plan, modules={"MOD-01"}, objectives={"ILO-01"})
+    ] == ["unassessed_pair"], "and it IS reported, on the plan, to its author"
+
+
+def test_a_plan_with_no_instruments_still_divides_by_the_promise():
+    """The fallback for an archived design from before the blueprint, and for
+    one whose ``instruments`` never landed: without them there is nothing else
+    to divide."""
+    sets, _stats = dev_plans.normalize_assessment_dev_plan(
+        None, ["ILO-01"], {"ILO-01": ["summative", "diagnostic"]},
+        modules=None, instruments=[], mode="sample")
+    assert sorted(p for ws in sets for p in ws.pairs) == [
+        ("ILO-01", "diagnostic"), ("ILO-01", "summative")]

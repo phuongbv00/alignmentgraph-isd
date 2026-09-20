@@ -407,8 +407,56 @@ def plan_category_pairs(coverage_targets) -> list[tuple[str, str]]:
     return list(dict.fromkeys(pairs))
 
 
-def _assessment_ground_truth_pairs(lo_ids, coverage_targets) -> list[tuple[str, str]]:
-    pairs = plan_category_pairs(coverage_targets)
+def instrument_pairs(instruments) -> list[tuple[str, str]]:
+    """The (objective, category) pairs the plan's INSTRUMENTS assess: every
+    objective an instrument covers, at that instrument's ``timing``. Bare ids
+    and valid categories only, first-seen order, no repeats.
+
+    ONE reader, shared with ``checks.instrument_pairs``: the check reports a
+    promised pair these do not cover (``unassessed_pair``) and this decides
+    what the fan-out divides, so a pair the two disagreed about would be
+    called assessed and still reach no Developer."""
+    pairs: list[tuple[str, str]] = []
+    for instrument in (instruments or []):
+        if not isinstance(instrument, dict):
+            continue
+        timing = str(instrument.get("timing") or "").strip().lower()
+        if timing not in _VALID_CATEGORIES:
+            continue
+        for ref in instrument.get("covers_objectives") or []:
+            pair = (_bare(ref), timing)
+            if pair[0] and pair not in pairs:
+                pairs.append(pair)
+    return pairs
+
+
+def _assessment_ground_truth_pairs(lo_ids, coverage_targets,
+                                   instruments=None) -> list[tuple[str, str]]:
+    """What the fan-out divides: the pairs the INSTRUMENTS assess.
+
+    ``lo_coverage_targets`` is the model's PROMISE, not the work. The two are
+    held together by ``checks.blueprint_consistency``, which reports a promise
+    no instrument keeps (``unassessed_pair``) while the plan is still the only
+    thing written and the Designer can add the instrument.
+
+    Reading the promise HERE instead made such a pair a work set of its own
+    with no instrument in it, and ``render_assessment_set`` drops the whole
+    "set each item's ``instrument_id`` to one of these ids" block for a set
+    that lists none — so its Developer was shown no instrument and reached for
+    the only id-shaped string left in its assignment, the set's own header.
+    MEASURED (run 50932ed8): three summative instruments against nine promised
+    pairs, six pairs appended into three instrument-less sets, items committed
+    with ``instrument_id`` "AS-02", "AS-04" and "MOD-03", and every one of the
+    run's seven residual violations was the ``instrument_alignment`` that
+    followed. Now an appended set is always a slice of some instrument's own
+    pairs, so it can never be instrument-less.
+
+    The promise is still the fallback for a plan that carries no instrument at
+    all — an archived design from before the blueprint, or one whose
+    ``instruments`` never landed."""
+    pairs = instrument_pairs(instruments)
+    if not pairs:
+        pairs = plan_category_pairs(coverage_targets)
     if not pairs:
         pairs = [(lo, "summative") for lo in (_bare(x) for x in (lo_ids or [])) if lo]
     return list(dict.fromkeys(pairs))  # de-dup, order-preserving
@@ -418,7 +466,7 @@ def normalize_assessment_dev_plan(parsed, lo_ids, coverage_targets, *, modules=N
                                   instruments=None, mode: str = "full"
                                   ) -> tuple[list[WorkSet], dict]:
     modules = _modules_in_order(modules)
-    pairs = _assessment_ground_truth_pairs(lo_ids, coverage_targets)
+    pairs = _assessment_ground_truth_pairs(lo_ids, coverage_targets, instruments)
     stats = _empty_stats(len(pairs))
     if not pairs:
         return [], stats

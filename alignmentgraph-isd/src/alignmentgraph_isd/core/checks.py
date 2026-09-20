@@ -543,19 +543,13 @@ def _instruments(plan: dict) -> list[dict]:
 
 
 def instrument_pairs(plan: dict) -> list[tuple[str, str]]:
-    """The (objective, category) pairs the plan's INSTRUMENTS promise: every
-    objective an instrument covers, at that instrument's timing. Bare ids and
-    valid categories only, first-seen order, no repeats."""
-    pairs: list[tuple[str, str]] = []
-    for instrument in _instruments(plan):
-        timing = str(instrument.get("timing") or "").lower().strip()
-        if timing not in dev_plans._VALID_CATEGORIES:
-            continue
-        for ref in instrument.get("covers_objectives") or []:
-            pair = (alignment.bare_ref(ref), timing)
-            if pair[0] and pair not in pairs:
-                pairs.append(pair)
-    return pairs
+    """The (objective, category) pairs the plan's INSTRUMENTS promise.
+
+    ONE definition, in ``dev_plans``, because the same pairs are what the
+    fan-out divides (``_assessment_ground_truth_pairs``). Two readers that
+    disagreed would call a pair assessed here and still give it no Developer
+    there."""
+    return dev_plans.instrument_pairs(_instruments(plan))
 
 
 def blueprint_consistency(graph) -> list[Violation]:
