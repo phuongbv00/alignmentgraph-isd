@@ -215,12 +215,22 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
     # question-level items a Developer writes for it. Three levels, one name
     # each: a plan holds SETS, a set holds TASKS, a task holds ITEMS.
     #
-    # Per module, and nested, for two reasons. It is the structure making the
-    # promise instead of a rule: a flat list let the model enumerate the three
-    # timings across every module (MEASURED, run 209d2cf5: 3 modules, 8 sets,
-    # 25 items in `sample`), and one entry per module cannot. And rubric item
-    # 30 ("총괄 평가 문항 개발") scores `문항 간 일관성` — coherence BETWEEN the
-    # items of one instrument — which a flat item list cannot show the judge.
+    # Per module, and nested, so that the unit each level divides by is the
+    # structure rather than a rule: a set IS a module, a work set IS a task,
+    # and a midterm and a final on one objective can no longer collapse into
+    # one work set handed both to write. And because rubric item 30
+    # ("총괄 평가 문항 개발") scores `문항 간 일관성` — coherence BETWEEN the items
+    # of one instrument — which a flat item list cannot show the judge.
+    #
+    # It does NOT cap how many tasks there are, and must not be described as
+    # if it did. One set per module bounds the SETS; `assessment_tasks` is
+    # unbounded, and the model reads "diagnostic / formative / summative" as
+    # a checklist inside a module's set exactly as it did across a flat list
+    # (MEASURED before the nesting, run 209d2cf5: 3 modules, 8 tasks, 25
+    # items in `sample`; measured after it, one module with eight tasks still
+    # plans 24). The sample quota caps ITEMS PER TASK and nothing caps the
+    # tasks — the two multiply, which is why they are calibrated together on
+    # the tune slice before `isd-exp freeze`.
     #
     # `timing` is the plan-category vocabulary (diagnostic = before, formative
     # = during, summative = after): one set of words for when a task happens.
