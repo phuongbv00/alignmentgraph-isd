@@ -156,7 +156,8 @@ def test_the_output_says_at_what_scale_it_was_written(context_mode):
     config.llm_factory = FakeChatModel
     output = run_brief(load_brief("minimal_brief.json"), config)["addie_output"]
 
-    items = output["development"]["assessment_tools"]
+    written = output["development"]["assessment_tools"]
+    items = [one for t in written for one in (t.get("items") or [])]
     tasks = [t for one in output["design"]["assessment_plan"]["sets"]
              for t in one["assessment_tasks"]]
     assert sum(t["items_written"] for t in tasks) == len(items) > 0

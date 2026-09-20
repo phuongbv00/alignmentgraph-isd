@@ -49,6 +49,7 @@ EVENT_ACTIONS = {
     "dropped_argument", "argument_reshaped", "tool_choice_downgraded",
     "read_of_assignment_id", "repair_declined", "run_stopped",
     "excess_artifacts_trimmed",
+    "items_without_parent",
     "calls_not_executed", "repair_window_closed",
     # structured records
     "repair", "node_add", "node_update", "doc_write", "validate", "check", "audit",

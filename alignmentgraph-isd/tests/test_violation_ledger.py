@@ -71,7 +71,6 @@ def test_every_check_in_a_broken_design_is_distinguishable():
     for name in ("bloom_verbs", "measurability", "rubric_consistency", "plan_coverage",
                  "item_completeness", "evaluation_quality", "activity_engagement",
                  "evidence_alignment", "actionability", "blueprint_consistency",
-                 "set_alignment",
                  "relation_coverage", "bloom_mismatches"):
         found += getattr(checks, name)(graph)
 

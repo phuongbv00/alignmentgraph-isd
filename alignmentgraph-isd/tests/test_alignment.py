@@ -2,6 +2,7 @@
 Bloom cross-checks. All deterministic — no LLM calls anywhere here."""
 from __future__ import annotations
 
+from conftest import add_assessment
 from alignmentgraph_isd.core.alignment_graph import alignment
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
 
@@ -10,8 +11,8 @@ from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
 
 def test_match_list_activity_prepares_for_multiple_assessments():
     graph = AlignmentGraph()
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-02", {"item_id": "AT-02"})
+    add_assessment(graph, {"item_id": "AT-01"})
+    add_assessment(graph, {"item_id": "AT-02"})
     graph.add_element_node(NodeType.ACTIVITY, "TLA-01", {"id": "TLA-01", "prepares_for_assessment": ["AT-01", "AT-02"]})
     violations = alignment.match_list(graph, "C4", field="prepares_for_assessment")
     assert violations == []
@@ -66,13 +67,11 @@ def test_p3_reads_the_field_the_plan_is_actually_required_to_write():
     graph = AlignmentGraph()
     graph.add_node(NodeType.ASSESSMENT_PLAN, "assessment_plan_0", {
         "lo_coverage_targets": {"ILO-01": ["formative"], "ILO-02": ["formative"]}})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01",
-                           {"item_id": "AT-01", "plan_category": "formative"})
-    # Unfailable is the C6/C7 trap: a category the plan never promised, and an
-    # item that declares none at all, still have no edge.
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-02",
-                           {"item_id": "AT-02", "plan_category": "summative"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-03", {"item_id": "AT-03"})
+    add_assessment(graph, {"item_id": "AT-01"}, task="AT-01", timing="formative")
+    # Unfailable is the C6/C7 trap: a timing the plan never promised, and a
+    # task that declares none at all, still have no edge.
+    add_assessment(graph, {"item_id": "AT-02"}, task="AT-02", timing="summative")
+    add_assessment(graph, {"item_id": "AT-03"}, task="AT-03", timing="")
 
     violations = alignment.match_p3_realizes(graph)
 
@@ -85,8 +84,9 @@ def test_match_p3_realizes_still_reads_an_archived_plan_s_buckets():
     graph dumped before 2026-09-16 still scores the same P3 it scored then."""
     graph = AlignmentGraph()
     graph.add_node(NodeType.ASSESSMENT_PLAN, "assessment_plan_0", {"summative": ["final exam"], "diagnostic": [], "formative": []})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01", "plan_category": "summative"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-02", {"item_id": "AT-02", "plan_category": "diagnostic"})  # plan.diagnostic is empty
+    add_assessment(graph, {"item_id": "AT-01"}, task="AT-01", timing="summative")
+    add_assessment(graph, {"item_id": "AT-02"}, task="AT-02",
+                   timing="diagnostic")  # plan.diagnostic is empty
     violations = alignment.match_p3_realizes(graph)
     violated_ids = {v["node_id"] for v in violations}
     assert violated_ids == {"assessment:AT-02"}
@@ -154,9 +154,9 @@ def test_a_module_with_no_activity_or_no_item_is_an_uncovered_source():
     graph.add_node(NodeType.ASSESSMENT_PLAN, graph.section_id(NodeType.ASSESSMENT_PLAN), {
         "sets": [{"id": "SET-01", "module_id": "module:MOD-01"},
                         {"id": "SET-02", "module_id": "MOD-09"}]})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01", "task_id": "SET-01"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-02", {"item_id": "AT-02", "task_id": "SET-02"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-03", {"item_id": "AT-03"})
+    add_assessment(graph, {"item_id": "AT-01"}, task="AT-01", module_id="module:MOD-01")
+    add_assessment(graph, {"item_id": "AT-02"}, task="AT-02", module_id="MOD-09")
+    add_assessment(graph, {"item_id": "AT-03"}, task="AT-03", module_id="")
     dangling = alignment.match_module_assessed(graph)
     assert [v["node_id"] for v in dangling] == ["assessment:AT-02", "assessment:AT-03"]
     assert alignment.relation_coverage(graph, "P14") == (0.5, ["module:MOD-02"])
@@ -170,8 +170,8 @@ def test_relation_coverage_source_side_reports_fraction_and_uncovered_ids():
     graph = AlignmentGraph()
     graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01"})
     graph.add_element_node(NodeType.OBJECTIVE, "ILO-02", {"id": "ILO-02"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01", "aligned_objective": "ILO-01"})
-    alignment.match_id_reverse(graph, "C2", field="aligned_objective")
+    add_assessment(graph, {"item_id": "AT-01", "aligned_objective": "ILO-01"})
+    alignment.match_from_items(graph, "C2", field="aligned_objective")
     coverage, uncovered = alignment.relation_coverage(graph, "C2")
     assert coverage == 0.5
     assert uncovered == ["objective:ILO-02"]
@@ -241,8 +241,8 @@ def test_bloom_assessment_violation_grouped_by_objective_not_per_edge():
     objective — this must be checked per-objective, not per-edge."""
     graph = AlignmentGraph()
     graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01", "level": "analyze"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01", "type": "multiple_choice"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-02", {"item_id": "AT-02", "type": "performance_task"})
+    add_assessment(graph, {"item_id": "AT-01", "type": "multiple_choice"})
+    add_assessment(graph, {"item_id": "AT-02", "type": "performance_task"})
     graph.add_edge("assessed_by", "objective:ILO-01", "assessment:AT-01", relation_id="C2", established_by="id")
     graph.add_edge("assessed_by", "objective:ILO-01", "assessment:AT-02", relation_id="C2", established_by="id")
     assert alignment.bloom_assessment_violations(graph) == []
@@ -251,7 +251,7 @@ def test_bloom_assessment_violation_grouped_by_objective_not_per_edge():
 def test_bloom_assessment_violation_fires_when_every_item_is_recognition_only():
     graph = AlignmentGraph()
     graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01", "level": "analyze"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01", "type": "multiple_choice"})
+    add_assessment(graph, {"item_id": "AT-01", "type": "multiple_choice"})
     graph.add_edge("assessed_by", "objective:ILO-01", "assessment:AT-01", relation_id="C2", established_by="id")
     violations = alignment.bloom_assessment_violations(graph)
     assert len(violations) == 1
@@ -263,7 +263,7 @@ def test_bloom_assessment_violation_honors_declared_required_cognitive_process()
     precedence over the format-derived fallback capability."""
     graph = AlignmentGraph()
     graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01", "level": "analyze"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01", "type": "multiple_choice", "required_cognitive_process": "analyze"})
+    add_assessment(graph, {"item_id": "AT-01", "type": "multiple_choice", "required_cognitive_process": "analyze"})
     graph.add_edge("assessed_by", "objective:ILO-01", "assessment:AT-01", relation_id="C2", established_by="id")
     assert alignment.bloom_assessment_violations(graph) == []
 
@@ -302,7 +302,7 @@ def test_bloom_assessment_violation_fires_on_a_level_shortfall_not_only_recognit
     nothing, and that is exactly what the RQ2 cognitive-demand family scores."""
     graph = AlignmentGraph()
     graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01", "level": "create"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {
+    add_assessment(graph, {
         "item_id": "AT-01", "type": "performance_task", "required_cognitive_process": "apply",
     })
     graph.add_edge("assessed_by", "objective:ILO-01", "assessment:AT-01",
@@ -315,7 +315,7 @@ def test_bloom_assessment_violation_fires_on_a_level_shortfall_not_only_recognit
 def test_bloom_assessment_violation_silent_when_item_meets_the_level():
     graph = AlignmentGraph()
     graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01", "level": "create"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {
+    add_assessment(graph, {
         "item_id": "AT-01", "type": "performance_task", "required_cognitive_process": "create",
     })
     graph.add_edge("assessed_by", "objective:ILO-01", "assessment:AT-01",

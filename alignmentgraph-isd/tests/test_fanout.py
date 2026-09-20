@@ -107,10 +107,16 @@ def test_id_collision_across_sets_is_remapped_not_overwritten_end_to_end():
     # an element pool of its own (2026-09-02). Its remap still runs — the same
     # `remap_and_tag` — but it lands on the parent, which the next assertion
     # checks directly.
-    for node_type in ("assessment", "activity", "material"):
-        ids = [n["id"] for n in graph["nodes"] if n["type"] == node_type]
+    # An assessment ITEM is a field of its task, not an element of its own
+    # (the task is), so its ids and its `plan_set` stamp are read from inside.
+    by_type = {t: [n for n in graph["nodes"] if n["type"] == t and ":" in n["id"]]
+               for t in ("assessment", "activity", "material")}
+    by_type["assessment"] = [{"id": one.get("item_id"), "data": one}
+                             for n in by_type["assessment"]
+                             for one in (n["data"].get("items") or [])]
+    for node_type, elements in by_type.items():
+        ids = [n["id"] for n in elements]
         assert len(ids) == len(set(ids)), f"{node_type} ids collided: {ids}"
-        elements = [n for n in graph["nodes"] if n["type"] == node_type and ":" in n["id"]]
         assert elements, f"{node_type} produced nothing"
         # `plan_set` marks an element a WORK SET produced. An element the repair
         # net synthesised carries no set because no set produced it — that is
@@ -123,7 +129,9 @@ def test_id_collision_across_sets_is_remapped_not_overwritten_end_to_end():
     # be unique only WITHIN an item: a criterion is a field, not a node, so the
     # same RC-01 on two different items collides with nothing — which is
     # precisely what stopped being true of the item ids above.
-    items = [n["data"] for n in graph["nodes"] if n["type"] == "assessment" and ":" in n["id"]]
+    items = [one for n in graph["nodes"]
+             if n["type"] == "assessment" and ":" in n["id"]
+             for one in (n["data"].get("items") or [])]
     assert any(i.get("rubric") for i in items), "no item carries a rubric criterion"
     for item in items:
         rc_ids = [rc.get("id") for rc in (item.get("rubric") or [])]

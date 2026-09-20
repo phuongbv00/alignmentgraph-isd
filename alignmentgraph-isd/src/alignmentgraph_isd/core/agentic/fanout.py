@@ -65,6 +65,14 @@ class SetOutput:
     #: it assigned — positional because the model does not write ids at all;
     #: see ``dev_plans.remap_and_tag`` for the measurement.
     self_ref_fields: tuple[str, ...] = ()
+    #: When set, this output is a FIELD of a PARENT element node rather than
+    #: a pool of nodes of its own: the item names its parent in this field and
+    #: the commit files it there. The reason is the one that made a rubric
+    #: criterion a field of its item — nothing but the parent owns it — and
+    #: the payoff is that membership stops being an id a Developer can get
+    #: wrong.
+    parent_field: str = ""
+    parent_list: str = "items"
     #: Per-ITEM errors for this output, or None for "a non-empty list is
     #: enough". Read by BOTH arms (``set_step``'s validator and the single
     #: arm's ``ReactLoop._validate``, through :func:`output_errors`): a rule
@@ -98,7 +106,7 @@ def _names_its(field_name: str, list_key: str, what: str) -> Callable[[list], li
     """An item validator: every item must say which ``what`` it belongs to.
 
     Only that it SAYS so. Whether the id exists is a check's question
-    (``set_alignment``, P13) — a validator has no state to ask — but an
+    (P13) — a validator has no state to ask — but an
     item that names nothing can be refused here, while its author is still in
     the conversation, instead of becoming a finding nobody can attribute."""
     def errors(items: list) -> list[str]:
@@ -295,18 +303,24 @@ def _material_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dict]
 
 
 def items_by_lo(state) -> dict[str, list[str]]:
-    """Which committed assessment items each objective already has.
+    """Which committed assessment TASKS each objective is measured by.
 
-    An activity set names the items its activities prepare for (``C4``), and a
-    Developer told to prepare learners for AT-03 without being told what AT-03
-    asks has to go and read it — the read cost ``_resolved_references`` exists
-    to remove."""
+    C4's far end is the task — the thing a learner sits — so an activity set
+    names tasks, not questions: "prepare learners for the practical" is the
+    claim an activity can make, and it is the one the relation records. Which
+    objectives a task measures is read off the items inside it, so this is
+    still the Developers' work rather than the plan's promise. A Developer
+    told to prepare learners for AT-03 and not told what AT-03 asks has to go
+    and read it — the read cost ``_resolved_references`` exists to remove."""
     by_lo: dict[str, list[str]] = {}
-    for item in _element_data(state, NodeType.ASSESSMENT, ("assessment", "assessment_tools")):
-        lo_id = dev_plans._bare(str(item.get("aligned_objective") or ""))
-        item_id = str(item.get("item_id") or "")
-        if lo_id and item_id:
-            by_lo.setdefault(lo_id, []).append(item_id)
+    for task in _element_data(state, NodeType.ASSESSMENT, ("assessment", "assessment_tools")):
+        task_id = str(task.get("id") or task.get("item_id") or "")
+        if not task_id:
+            continue
+        for one in (task.get("items") or [task]):
+            lo_id = dev_plans._bare(str((one or {}).get("aligned_objective") or ""))
+            if lo_id and task_id not in by_lo.setdefault(lo_id, []):
+                by_lo[lo_id].append(task_id)
     return by_lo
 
 
@@ -414,6 +428,7 @@ SPECS: dict[str, FanoutSpec] = {
                 rules=rules.RULES_ASSESSMENT_ITEMS_SET + "\n" + rules.RULES_RUBRICS_ITEM,
                 element_type=NodeType.ASSESSMENT, id_prefix="ATI",
                 doc_key=("assessment", "assessment_tools"),
+                parent_field="task_id",
                 validate_items=assessment_item_errors),
         ),
         developer_reads=(NodeType.OBJECTIVE,),
@@ -557,9 +572,9 @@ def _reference_blocks(work_set: dev_plans.WorkSet) -> tuple[tuple, ...]:
         # An activity set names the assessment items its activities prepare for,
         # BY ID. A Developer told to prepare learners for AT-03 and not told what
         # AT-03 asks has no choice but to go and read it.
-        (NodeType.ASSESSMENT, "The assessment items your set prepares learners for",
+        (NodeType.ASSESSMENT, "The assessment tasks your set prepares learners for",
          ("assessment", "assessment_tools"),
-         tuple(work_set.payload.get("assessment_items") or ()), "item_id", False),
+         tuple(work_set.payload.get("assessment_items") or ()), "id", False),
         # A session block schedules activities and materials by id, and it
         # schedules MANY of them — that is the whole reason this family fans
         # out. So these two are rendered COMPACT: one line each, the same row
@@ -724,20 +739,29 @@ def committed_set_ids(spec: FanoutSpec, state) -> set[str]:
     the outer regen loop retry ONLY the sets that came back empty."""
     primary = spec.outputs[0]
     if hasattr(state, "element_nodes"):
-        return {n["data"].get("plan_set") for n in state.element_nodes(primary.element_type)
-                if n["data"].get("plan_set")}
+        return {one.get("plan_set")
+                for one in _pool(state, primary) if one.get("plan_set")}
     key, field_name = primary.doc_key
     return {i.get("plan_set") for i in state.items(key, field_name)
             if isinstance(i, dict) and i.get("plan_set")}
+
+
+def _pool(state, output: SetOutput) -> list[dict]:
+    """The artifacts this output has already committed: the element nodes of
+    its type, or — when it lives inside one — the items of those nodes."""
+    nodes = state.element_nodes(output.element_type)
+    if not output.parent_field:
+        return [n["data"] for n in nodes]
+    return [one for n in nodes for one in (n["data"].get(output.parent_list) or [])
+            if isinstance(one, dict)]
 
 
 def _ids_already_held(state, output: SetOutput) -> frozenset[str]:
     """The ids this output's pool already carries, so a per-set commit bumps a
     colliding id instead of overwriting the set that got there first."""
     if hasattr(state, "element_nodes"):
-        return frozenset(
-            str(n["data"].get(output.id_field) or "")
-            for n in state.element_nodes(output.element_type))
+        return frozenset(str(one.get(output.id_field) or "")
+                         for one in _pool(state, output))
     key, field_name = output.doc_key
     return frozenset(
         str(item.get(output.id_field) or "")
@@ -805,6 +829,10 @@ def _deposit_sets(spec: FanoutSpec, state, trajectory, work_sets: list,
             state.put(key, updated)
             trajectory.log_doc_write(key, updated)
             continue
+        if output.parent_field:
+            committed[output.schema_key] = _attach_to_parent(
+                state, trajectory, output, merged)
+            continue
         node_ids = []
         for item in merged:
             raw_id = item.get(output.id_field)
@@ -821,10 +849,54 @@ def _deposit_sets(spec: FanoutSpec, state, trajectory, work_sets: list,
 
 
 
+def _attach_to_parent(state, trajectory, output: SetOutput, merged: list) -> list[str]:
+    """File each item inside the element node it belongs to; say which nodes
+    changed.
+
+    An item naming no parent, or one that does not exist, is DROPPED rather
+    than made a node of its own: the pool of this element type is the parents,
+    and a stray there would be counted as one by every check and every
+    coverage figure."""
+    by_parent: dict[str, list[dict]] = {}
+    for item in merged:
+        parent = dev_plans._bare(item.get(output.parent_field))
+        if parent:
+            by_parent.setdefault(parent, []).append(
+                {k: v for k, v in item.items() if k != output.parent_field})
+    touched: list[str] = []
+    homeless: list[str] = []
+    for parent, items in by_parent.items():
+        node_id = f"{output.element_type}{state.ELEMENT_SEP}{parent}"
+        node = state.get_node(node_id)
+        if node is None:
+            homeless += [str(one.get(output.id_field) or "?") for one in items]
+            continue
+        data = node.get("data") or {}
+        # The parent's own `timing` IS the item's plan category. Stamped here
+        # it cannot disagree with it the way a copy the Developer wrote could,
+        # and the check that policed that copy goes with it.
+        timing = str(data.get("timing") or "").strip().lower()
+        if timing:
+            items = [{**one, "plan_category": timing} for one in items]
+        state.update_node(node_id, {
+            output.parent_list: list(data.get(output.parent_list) or []) + items})
+        trajectory.log_node_edit("update", node_id, output.element_type)
+        touched.append(node_id)
+    if homeless:
+        # Never silent: an item whose parent does not exist is the whole
+        # artifact lost, and the likeliest cause is an order — the items
+        # submitted before the plan that declares their task.
+        trajectory.log_recovery_event(
+            ORCHESTRATOR, "items_without_parent", ", ".join(homeless[:8]),
+            f"{len(homeless)} {output.schema_key} named no {output.element_type} "
+            "that exists and were dropped")
+    return touched
+
+
 def _establish(spec: FanoutSpec, state, committed: dict[str, list[str]]) -> None:
     """Alignment relations for a family's freshly committed artifacts."""
     if spec.stage == "assessment":
-        alignment.match_id_reverse(state, "C2", field="aligned_objective")
+        alignment.match_from_items(state, "C2", field="aligned_objective")
         alignment.match_p3_realizes(state)
         alignment.match_module_assessed(state)
     elif spec.stage == "activities":

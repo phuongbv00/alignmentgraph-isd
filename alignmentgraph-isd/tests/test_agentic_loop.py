@@ -14,7 +14,7 @@ from alignmentgraph_isd.core.agentic.client import AgenticLLM
 from alignmentgraph_isd.core.agentic.loop import ToolLoop
 from alignmentgraph_isd.core.agentic import budget, protocol, specialists, tools
 from alignmentgraph_isd.core.agentic.specialists import STEPS
-from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
+from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType, alignment
 from alignmentgraph_isd.core.trajectory import TrajectoryLogger
 
 from conftest import load_brief
@@ -132,10 +132,12 @@ _OUTCOMES = {
 
 _ASSESSMENT = {
     "assessment_plan": {
+        # One SET per module, holding that module's assessment TASKS.
         "sets": [
-            {"id": "SET-01", "module_id": "MOD-01", "timing": "summative", "format": "practical",
-             "item_counts": {"performance_task": 1}, "covers_objectives": ["ILO-01"],
-             "minutes": 60, "weight_percent": 100}],
+            {"module_id": "MOD-01", "assessment_tasks": [
+                {"id": "AT-01", "timing": "summative", "format": "practical",
+                 "item_counts": {"performance_task": 1}, "covers_objectives": ["ILO-01"],
+                 "minutes": 60, "weight_percent": 100}]}],
         "lo_coverage_targets": {"ILO-01": ["summative"]},
         "expected_evidence": {"ILO-01": "A working artifact."},
         "formative_methods": ["Weekly critique with rubric"],
@@ -969,6 +971,8 @@ def test_a_developer_is_told_its_assignment_is_already_complete():
     graph = AlignmentGraph()
     trajectory = TrajectoryLogger()
     specialists.commit_outcomes(graph, trajectory, _OUTCOMES)
+    # The PLAN first: its tasks are the element nodes an item is filed inside.
+    specialists.commit_assessment(graph, trajectory, _ASSESSMENT)
     # `assessment` is dispatch-only now: the items come from its Developers.
     fanout.commit_sets(
         fanout.SPECS["assessment"], graph, trajectory,
@@ -980,7 +984,9 @@ def test_a_developer_is_told_its_assignment_is_already_complete():
     # the set that wrote it (`AT-0101`), so a reference typed from the schema
     # example points at nothing. Every family that references another reads it
     # first, which is why this holds in a real run too.
-    committed = graph.element_nodes(NodeType.ASSESSMENT)[0]["data"]["item_id"]
+    # The TASK, which is C4's far end: an activity prepares learners for the
+    # thing they sit, and the task's own items travel with it.
+    committed = graph.element_nodes(NodeType.ASSESSMENT)[0]["data"]["id"]
     work_set = dev_plans.WorkSet(
         set_id="AB-01", objectives=("ILO-01",),
         payload={"assessment_items": [committed]})

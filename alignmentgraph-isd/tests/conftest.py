@@ -988,3 +988,30 @@ class RepairActor:
 
         return RepairContext(graph=self.graph, store=self.store,
                              trajectory=self.trajectory, actor=self._name)
+
+
+def add_assessment(graph, *items, task="", **task_fields):
+    """Put ``items`` in an assessment TASK node, creating it if needed.
+
+    The assessment element is the task; an item is a field of it
+    (``fanout._attach_to_parent``). Tests that care about an item still write
+    the item — this is only where it lives. With no ``task`` each item gets a
+    task of its own named after it, which is the one-task-one-item shape the
+    graph had before items moved inside, so a test asserting on
+    ``assessment:AT-01`` still finds it.
+    """
+    from alignmentgraph_isd.core.alignment_graph import NodeType
+
+    if not task:
+        last = None
+        for one in items:
+            last = add_assessment(graph, one, task=str(one.get("item_id") or "AT-01"),
+                                  **task_fields)
+        return last
+    node_id = f"{NodeType.ASSESSMENT}{graph.ELEMENT_SEP}{task}"
+    existing = (graph.get_node(node_id) or {}).get("data") or {}
+    data = {"id": task, "timing": "summative", "module_id": "MOD-01",
+            **existing, **task_fields}
+    data["items"] = list(existing.get("items") or []) + [dict(i) for i in items]
+    graph.add_element_node(NodeType.ASSESSMENT, task, data)
+    return node_id

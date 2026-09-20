@@ -843,6 +843,18 @@ def _cosine_unit(a: Sequence[float], b: Sequence[float]) -> float:
 # ---------------------------------------------------------------------------
 
 
+def _nested_item_texts(tasks: Any) -> list[str]:
+    """Question texts one level down, for an ``assessment_tools`` whose
+    entries are assessment TASKS carrying their own ``items``."""
+    out: list[str] = []
+    if not isinstance(tasks, list):
+        return out
+    for task in tasks:
+        if isinstance(task, dict):
+            out += _texts_of(task.get("items"), "question")
+    return out
+
+
 def _texts_of(items: Any, *keys: str) -> list[str]:
     """Join the given keys of each dict item (or the item itself if str)."""
     out: list[str] = []
@@ -924,12 +936,22 @@ def extract_assessment_items(addie_output: dict) -> list[str]:
     ``development.assessment_tools`` and ``evaluation.summative
     .assessment_tools``. Only when no item-level question exists do the
     free-text ``design.assessment_plan`` strings serve as fallback.
+
+    ``assessment_tools`` is read BOTH ways. Six of the seven agents write it
+    flat — one entry per question — and one writes one entry per assessment
+    TASK with its questions in ``items``, because a task is what a learner
+    sits and the benchmark's own rubric scores coherence between the items of
+    one instrument. Reading only the flat shape would score that agent on an
+    empty item set, which floors four of the six panel signals; reading both
+    costs nothing, since a flat entry has no ``items`` and a task entry has no
+    top-level ``question``.
     """
     evaluation = addie_output.get("evaluation") or {}
     development = addie_output.get("development") or {}
     texts: list[str] = []
     texts += _texts_of(evaluation.get("quiz_items"), "question")
     texts += _texts_of(development.get("assessment_tools"), "question")
+    texts += _nested_item_texts(development.get("assessment_tools"))
     summative = evaluation.get("summative")
     if isinstance(summative, dict):
         texts += _texts_of(summative.get("assessment_tools"), "question")
@@ -1032,6 +1054,12 @@ def extract_declared_links(addie_output: dict) -> list[tuple[str, str]]:
     evaluation = addie_output.get("evaluation") or {}
     development = addie_output.get("development") or {}
     sources = [evaluation.get("quiz_items"), development.get("assessment_tools")]
+    # …and the same list read one level down, for an ``assessment_tools``
+    # whose entries are assessment TASKS carrying their items (see
+    # :func:`extract_assessment_items`).
+    sources += [task.get("items")
+                for task in (development.get("assessment_tools") or [])
+                if isinstance(task, dict) and isinstance(task.get("items"), list)]
     summative = evaluation.get("summative")
     if isinstance(summative, dict):
         sources.append(summative.get("assessment_tools"))

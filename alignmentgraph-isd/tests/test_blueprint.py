@@ -13,7 +13,7 @@ from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType, al
 from alignmentgraph_isd.core.prose_store import ProseStore
 from alignmentgraph_isd.core.trajectory import ORCHESTRATOR, TrajectoryLogger
 
-from conftest import load_brief
+from conftest import add_assessment, load_brief
 
 STEP = {step.name: step for step in specialists.STEPS}
 
@@ -160,37 +160,8 @@ def _item(item_id: str, lo: str, category: str, set_id: str) -> dict:
             "task_id": set_id}
 
 
-def test_an_item_is_filed_under_the_one_set_its_own_fields_identify():
-    plan = {"sets": [_set("SET-01", "formative", ["ILO-01"]),
-                            _set("SET-02", "summative", ["ILO-01", "ILO-02"]),
-                            _set("SET-03", "summative", ["ILO-02"])]}
-    graph = _design(plan, [
-        _item("AT-01", "ILO-01", "formative", "SET-01"),        # right
-        _item("AT-02", "ILO-01", "summative", "quiz-2"),        # unknown, one candidate
-        _item("AT-03", "ILO-01", "summative", "SET-01"),        # wrong timing, one candidate
-        _item("AT-04", "ILO-02", "summative", ""),              # two candidates
-    ])
-    trajectory = TrajectoryLogger()
-    found = checks.set_alignment(graph)
-    assert [v.node_id for v in found] == ["assessment:AT-02", "assessment:AT-03", "assessment:AT-04"]
-
-    left = repairs.repair("assessment_designer", found, _ctx(graph, trajectory))
-    assert [v.node_id for v in left] == ["assessment:AT-04"], "two candidates is not a lookup"
-    assert graph.get_node("assessment:AT-02")["data"]["task_id"] == "SET-02"
-    assert graph.get_node("assessment:AT-03")["data"]["task_id"] == "SET-02"
-    assert {e["target"] for e in graph.get_edges(relation_id="P14")} == {
-        "assessment:AT-01", "assessment:AT-02", "assessment:AT-03"}
-
-
-def test_a_plan_with_no_sets_gives_the_items_nothing_to_belong_to():
-    graph = _design({"lo_coverage_targets": {"ILO-01": ["summative"]}},
-                    [_item("AT-01", "ILO-01", "summative", "")])
-    assert checks.set_alignment(graph) == []
-    assert alignment.relation_coverage(graph, "P14") == (0.0, ["module:MOD-01"])
-
-
 def test_both_checks_are_owned_and_structural():
-    for kind in ("blueprint_consistency", "set_alignment"):
+    for kind in ("blueprint_consistency",):
         assert repairs.OWNER_BY_VIOLATION[kind] == "assessment_designer"
         assert kind in repairs.STRUCTURAL and kind not in repairs.REPORT_ONLY
     assert {"P7", "P12", "P13", "P14"} <= repairs.REPORT_ONLY
@@ -456,3 +427,15 @@ def test_a_plan_with_no_sets_still_divides_by_the_promise():
         modules=None, blueprint=[], mode="sample")
     assert sorted(p for ws in sets for p in ws.pairs) == [
         ("ILO-01", "diagnostic"), ("ILO-01", "summative")]
+
+
+def test_an_item_cannot_be_filed_under_the_wrong_task():
+    """It is not an id the model writes any more. An item lives INSIDE the
+    task it belongs to (``fanout._attach_to_parent``) and is stamped with
+    that task's own `timing`, so the membership and the plan category it
+    implies are structural. The check that policed both went with them: on
+    run 50932ed8 it was every one of the seven residual violations."""
+    from alignmentgraph_isd.core import checks as checks_mod
+
+    assert not hasattr(checks_mod, "set_alignment")
+    assert "set_alignment" not in repairs.OWNER_BY_VIOLATION

@@ -219,10 +219,19 @@ def commit_assessment(graph, trajectory, parsed: dict) -> None:
     """Dispatch commit: the PLAN. The items are produced one work set at a
     time by the Developer tier (see ``fanout.py``) — a single submit cannot
     carry a whole family's item list under the 8192 completion cap, and the
-    grouping is derived from the plan's own sets rather than stated."""
+    grouping is derived from the plan's own sets rather than stated.
+
+    The assessment ELEMENT is the TASK — the thing a learner sits — not the
+    question inside it. An item is a FIELD of its task for the reason a rubric
+    criterion is a field of its item: nothing but the task owns it, and its
+    membership is then structural instead of an id a Developer has to get
+    right. The Developer tier fills each task's ``items`` one work set at a
+    time (``fanout._attach_to_parent``)."""
     updates = _assessment_updates(parsed)
     if updates:
         _merge_section(graph, trajectory, NodeType.ASSESSMENT_PLAN, updates)
+        _decompose(graph, trajectory, NodeType.ASSESSMENT,
+                   [{**task, "items": []} for task in dev_plans.plan_tasks(updates)])
 
 
 def _assessment_updates(parsed: dict) -> dict:

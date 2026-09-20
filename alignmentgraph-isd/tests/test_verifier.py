@@ -12,7 +12,7 @@ actionability) plus repair-to-convergence without an LLM for a
 representative check per Designer."""
 from __future__ import annotations
 
-from conftest import RepairActor
+from conftest import add_assessment, RepairActor
 
 from alignmentgraph_isd.core import repairs
 
@@ -268,7 +268,7 @@ def test_rubric_consistency_fires_for_vague_description():
     reads it off the item — the same way the prose arm always has, which is
     what lets both substrates run the identical implementation."""
     graph = AlignmentGraph()
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {
+    add_assessment(graph, {
         "item_id": "AT-01", "type": "short_answer",
         "rubric": [{"id": "RC-01", "description": "good"}]})
     violations = [v for v in checks.rubric_consistency(graph)
@@ -278,7 +278,7 @@ def test_rubric_consistency_fires_for_vague_description():
 
 def test_rubric_consistency_silent_for_observable_description():
     graph = AlignmentGraph()
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {
+    add_assessment(graph, {
         "item_id": "AT-01", "type": "short_answer",
         "rubric": [{"id": "RC-01", "description":
                     "Scored 0-3: cites at least two pieces of observable evidence "
@@ -298,7 +298,7 @@ def test_a_vague_word_is_matched_as_a_word_and_not_as_a_substring():
             "real-time control and industrial applications, not consumer use.",
             "The learner provides a specific development toolchain and a clearly "
             "defined IoT prototype addressing a real-world problem."), start=1):
-        graph.add_element_node(NodeType.ASSESSMENT, f"AT-{index:02d}", {
+        add_assessment(graph, {
             "item_id": f"AT-{index:02d}", "type": "short_answer",
             "rubric": [{"id": f"RC-{index:02d}", "description": description}]})
 
@@ -329,7 +329,7 @@ def test_evidence_alignment_fires_when_item_cannot_produce_required_evidence():
     """The item is the criterion's PARENT now, not the far end of a C6 edge, so
     the lookup is direct and the "no linked item" case cannot occur."""
     graph = AlignmentGraph()
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {
+    add_assessment(graph, {
         "item_id": "AT-01", "type": "multiple_choice",
         "rubric": [{"id": "RC-01", "evidence_type": "performance_task"}]})
     violations = [v for v in checks.evidence_alignment(graph)
@@ -339,7 +339,7 @@ def test_evidence_alignment_fires_when_item_cannot_produce_required_evidence():
 
 def test_evidence_alignment_silent_when_item_can_produce_evidence():
     graph = AlignmentGraph()
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {
+    add_assessment(graph, {
         "item_id": "AT-01", "type": "performance_task",
         "rubric": [{"id": "RC-01", "evidence_type": "short_answer"}]})
     assert not [v for v in checks.evidence_alignment(graph)
@@ -389,13 +389,13 @@ def test_relation_coverage_flags_uncovered_core_relation():
 def test_relation_coverage_silent_once_established():
     graph = AlignmentGraph()
     graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01", "aligned_objective": "ILO-01"})
+    add_assessment(graph, {"item_id": "AT-01", "aligned_objective": "ILO-01"})
     assert "C2" not in _types(checks.relation_coverage(graph))
 
 
 def test_relation_coverage_reports_dangling_reference_from_rerunnable_establisher():
     graph = AlignmentGraph()
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01", "aligned_objective": "ILO-99"})
+    add_assessment(graph, {"item_id": "AT-01", "aligned_objective": "ILO-99"})
     assert "C2" in _types(checks.relation_coverage(graph))
 
 
@@ -404,7 +404,7 @@ def test_relation_coverage_reports_dangling_reference_from_rerunnable_establishe
 def test_bloom_mismatches_tags_assessment_and_activity_separately():
     graph = AlignmentGraph()
     graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01", "level": "analyze"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01", "type": "multiple_choice"})
+    add_assessment(graph, {"item_id": "AT-01", "type": "multiple_choice"})
     graph.add_edge("assessed_by", "objective:ILO-01", "assessment:AT-01", relation_id="C2", established_by="id")
     graph.add_element_node(NodeType.ACTIVITY, "TLA-01", {"id": "TLA-01", "learner_cognitive_process": "remember"})
     graph.add_edge("practiced_by", "objective:ILO-01", "activity:TLA-01", relation_id="C3", established_by="id")
@@ -420,7 +420,7 @@ def test_a_vague_rubric_criterion_is_reported_and_left_alone():
     that says nothing about the item it scores, and a check that passes because
     the words changed."""
     graph = AlignmentGraph()
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {
+    add_assessment(graph, {
         "item_id": "AT-01", "type": "short_answer",
         "rubric": [{"id": "RC-01", "description": "good"}]})
     trajectory = TrajectoryLogger()
@@ -435,7 +435,7 @@ def test_a_vague_rubric_criterion_is_reported_and_left_alone():
 
     assert remaining == before, "an unrepairable violation must be handed back, not swallowed"
     assert checks.rubric_consistency(graph) == before
-    kept = graph.get_node("assessment:AT-01")["data"]["rubric"][0]
+    kept = graph.get_node("assessment:AT-01")["data"]["items"][0]["rubric"][0]
     assert kept["description"] == "good", "the criterion is left exactly as written"
     assert not trajectory.repair_events, "nothing changed, so nothing is logged as a repair"
 
@@ -476,7 +476,7 @@ def _plan_graph(targets: dict, items: list[tuple[str, str]]) -> AlignmentGraph:
             "id": lo_id, "level": "apply", "statement": f"Perform {lo_id}.",
         })
     for i, (lo_id, category) in enumerate(items, start=1):
-        graph.add_element_node(NodeType.ASSESSMENT, f"AT-{i:02d}", {
+        add_assessment(graph, {
             "item_id": f"AT-{i:02d}", "aligned_objective": lo_id,
             "plan_category": category, "type": "performance_task",
         })

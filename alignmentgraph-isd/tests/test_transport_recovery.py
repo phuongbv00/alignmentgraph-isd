@@ -12,6 +12,7 @@ import json
 
 import pytest
 
+from conftest import add_assessment
 from alignmentgraph_isd.core import checks, dev_plans
 from alignmentgraph_isd.core.agentic import loop, specialists, tools
 from alignmentgraph_isd.core.agentic.specialists import STEPS
@@ -145,7 +146,7 @@ def test_a_rich_coverage_promise_is_realised_by_matching_items():
             "ILO-01": [{"plan_category": "diagnostic", "set": "entry quiz"},
                        {"plan_category": "summative", "set": "final project"}]},
     })
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-D-ILO-01", {
+    add_assessment(graph, {
         "item_id": "AT-D-ILO-01", "aligned_objective": "ILO-01",
         "plan_category": "diagnostic", "question": "q"})
 
@@ -153,7 +154,7 @@ def test_a_rich_coverage_promise_is_realised_by_matching_items():
     assert [v.metadata["plan_category"] for v in violations] == ["summative"], (
         "the diagnostic promise is realised; only the summative one is open")
 
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-S-ILO-01", {
+    add_assessment(graph, {
         "item_id": "AT-S-ILO-01", "aligned_objective": "ILO-01",
         "plan_category": "summative", "question": "q"})
     assert checks.plan_coverage(graph) == [], "the check must be satisfiable"

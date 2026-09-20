@@ -413,7 +413,7 @@ def node_violations(graph: AlignmentGraph) -> dict[str, list[str]]:
                   checks.plan_coverage, checks.item_completeness,
                   checks.evaluation_quality, checks.activity_engagement,
                   checks.evidence_alignment, checks.blueprint_consistency,
-                  checks.set_alignment, checks.media_coverage,
+                  checks.media_coverage,
                   checks.actionability, checks.relation_coverage,
                   checks.bloom_mismatches):
         for violation in check(graph):

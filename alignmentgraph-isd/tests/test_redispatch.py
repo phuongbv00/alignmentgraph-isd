@@ -193,7 +193,8 @@ def test_the_replan_actually_produces_the_missing_work():
     assert [p["round"] for p in rounds] == [0, 1]
     assert "plan_coverage" in rounds[1]["answers"]
 
-    items = result["addie_output"]["development"]["assessment_tools"]
+    items = [one for t in result["addie_output"]["development"]["assessment_tools"]
+             for one in (t.get("items") or [])]
     from_round_one = [i for i in items if str(i.get("plan_set", "")).endswith("R1")]
     assert from_round_one, "the re-dispatch planned work that never got written"
 

@@ -89,7 +89,7 @@ OWNED_BY_FAMILY: dict[str, frozenset[str]] = {
     "outcome_designer": frozenset({"bloom", "P7", "P12"}),
     "assessment_designer": frozenset(
         {"C2", "P3", "P14", "bloom_mismatch_assessment", "evaluation_quality", "plan_coverage",
-         "item_completeness", "blueprint_consistency", "set_alignment"}),
+         "item_completeness", "blueprint_consistency"}),
     "activity_designer": frozenset(
         {"C3", "C4", "P4", "P13", "activity_engagement", "bloom_mismatch_activity",
          "time_budget"}),
@@ -164,7 +164,7 @@ STRUCTURAL: frozenset[str] = frozenset({
     # promises is added to `lo_coverage_targets`, an item is pointed at the ONE
     # set its own objective and category identify. What a lookup cannot
     # settle is handed back and reaches the agent.
-    "blueprint_consistency", "set_alignment",
+    "blueprint_consistency",
 })
 
 
@@ -322,7 +322,6 @@ def _repair_assessment_family(ctx: RepairContext, violations: list) -> list:
     coverage = [v for v in violations if v.violation_type in ("C2", "P3")]
     completeness = [v for v in violations if v.violation_type == "item_completeness"]
     blueprint = [v for v in violations if v.violation_type == "blueprint_consistency"]
-    membership = [v for v in violations if v.violation_type == "set_alignment"]
     if completeness:
         repair_item_completeness(ctx, completeness)
     if coverage:
@@ -330,8 +329,7 @@ def _repair_assessment_family(ctx: RepairContext, violations: list) -> list:
     # The blueprint first: an item is matched to a set by the pairs
     # the plan promises, so those have to be complete before the lookup runs.
     unsettled = repair_blueprint_pairs(ctx, blueprint) if blueprint else []
-    unsettled += repair_set_membership(ctx, membership) if membership else []
-    handled = coverage + completeness + blueprint + membership
+    handled = coverage + completeness + blueprint
     return [v for v in violations if v not in handled] + unsettled
 
 
@@ -376,39 +374,6 @@ def repair_blueprint_pairs(ctx: RepairContext, violations: list) -> list:
                 repaired_fields=["lo_coverage_targets"], rule="repair_blueprint_pairs",
                 input_summary="; ".join(v.message for v in fixable)[:200],
                 output_summary=f"Promised what the sets already assess: {', '.join(added)}.")
-    return rest
-
-
-def repair_set_membership(ctx: RepairContext, violations: list) -> list:
-    """``set_alignment``: point an item at the ONE set its own
-    ``aligned_objective`` and ``plan_category`` identify. Zero candidates or
-    several is not a lookup — which quiz a question belongs to is then a
-    design decision — and the violation is returned."""
-    graph = ctx.graph
-    plan = (graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN)) or {}).get("data") or {}
-    sets = dev_plans.plan_tasks(plan)
-    repaired: list[str] = []
-    rest: list = []
-    for violation in violations:
-        node = graph.get_node(violation.node_id)
-        data = (node or {}).get("data") or {}
-        lo_id = alignment.bare_ref(data.get("aligned_objective", ""))
-        category = str(data.get("plan_category") or "").lower()
-        candidates = [
-            alignment.bare_ref(i.get("id", "")) for i in sets
-            if str(i.get("timing") or "").lower() == category
-            and lo_id in map(alignment.bare_ref, i.get("covers_objectives") or [])]
-        if node is None or len(candidates) != 1 or not candidates[0]:
-            rest.append(violation)
-            continue
-        graph.update_node(violation.node_id, {"task_id": candidates[0], "repaired": True})
-        repaired.append(f"{violation.node_id} -> {candidates[0]}")
-    if repaired:
-        alignment.match_module_assessed(graph)
-        _log_repair(ctx, violations[0].node_id, violation_type="set_alignment",
-                    repaired_fields=["assessment_tools"], rule="repair_set_membership",
-                    input_summary="; ".join(v.message for v in violations)[:200],
-                    output_summary=f"Filed items under their set: {', '.join(repaired)}.")
     return rest
 
 
@@ -542,10 +507,19 @@ def repair_activity_coverage(ctx: RepairContext, violations: list) -> None:
     coverage to every downstream measure without any design behind it."""
     graph = ctx.graph
     activities = [dict(n["data"]) for n in graph.element_nodes(NodeType.ACTIVITY)]
-    assessment_ids = [str(n["data"].get("item_id"))
-                      for n in graph.element_nodes(NodeType.ASSESSMENT) if n["data"].get("item_id")]
-    item_lo = {str(n["data"].get("item_id")): alignment.bare_ref(n["data"].get("aligned_objective"))
-               for n in graph.element_nodes(NodeType.ASSESSMENT) if n["data"].get("item_id")}
+    # C4's far end is the assessment TASK — the thing a learner sits, and the
+    # element this graph holds. Which objectives it measures is read off the
+    # items inside it, so an activity is pointed at a task that measures what
+    # it practises rather than at a question.
+    tasks = [n for n in graph.element_nodes(NodeType.ASSESSMENT)
+             if n["data"].get("id") or n["id"]]
+    assessment_ids = [str(n["data"].get("id")
+                          or n["id"].split(graph.ELEMENT_SEP, 1)[-1]) for n in tasks]
+    task_los = {
+        str(n["data"].get("id") or n["id"].split(graph.ELEMENT_SEP, 1)[-1]): {
+            alignment.bare_ref(one.get("aligned_objective"))
+            for one in (n["data"].get("items") or []) if isinstance(one, dict)}
+        for n in tasks}
 
     repaired_ids: list[str] = []
     touched: set[str] = set()
@@ -562,8 +536,9 @@ def repair_activity_coverage(ctx: RepairContext, violations: list) -> None:
             # An item no activity prepares for: point one activity at it —
             # prefer an activity aligned to the item's own objective.
             host = next(
-                (a for a in activities if isinstance(a, dict) and item_lo.get(bare)
-                 and item_lo[bare] in [alignment.bare_ref(r) for r in (a.get("aligned_objectives") or [])]),
+                (a for a in activities if isinstance(a, dict) and task_los.get(bare)
+                 and task_los[bare] & {alignment.bare_ref(r)
+                                       for r in (a.get("aligned_objectives") or [])}),
                 activities[0],
             )
             prep = host.setdefault("prepares_for_assessment", [])
@@ -582,7 +557,8 @@ def repair_activity_coverage(ctx: RepairContext, violations: list) -> None:
                 prep = [r for r in prep if r in assessment_ids]
                 if not prep:
                     act_los = [alignment.bare_ref(r) for r in (act.get("aligned_objectives") or [])]
-                    pick = next((i for i in assessment_ids if item_lo.get(i) in act_los),
+                    pick = next((i for i in assessment_ids
+                                 if task_los.get(i, set()) & set(act_los)),
                                 assessment_ids[0])
                     prep.append(pick)
                 act["prepares_for_assessment"] = prep

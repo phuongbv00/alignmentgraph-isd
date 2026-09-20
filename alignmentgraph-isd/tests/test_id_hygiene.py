@@ -14,6 +14,8 @@ Regressions pinned here were measured on a 2B smoke run
 """
 from __future__ import annotations
 
+from conftest import add_assessment
+
 from alignmentgraph_isd.config import HarnessRunConfig
 from alignmentgraph_isd.core import checks, repairs
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType, alignment
@@ -32,10 +34,10 @@ def test_bare_ref_strips_only_known_type_namespaces():
 def test_matchers_resolve_namespaced_references():
     graph = AlignmentGraph()
     graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {
+    add_assessment(graph, {
         "item_id": "AT-01", "aligned_objective": "objective:ILO-01",
     })
-    violations = alignment.match_id_reverse(graph, "C2", field="aligned_objective")
+    violations = alignment.match_from_items(graph, "C2", field="aligned_objective")
     assert violations == []
     assert graph.get_edges(relation_id="C2", source="objective:ILO-01")
 
@@ -46,7 +48,7 @@ def test_plan_coverage_accepts_namespaced_target_keys():
     graph.add_node(NodeType.ASSESSMENT_PLAN, "assessment_plan_0", {
         "lo_coverage_targets": {"objective:ILO-01": ["summative"]},
     })
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {
+    add_assessment(graph, {
         "item_id": "AT-01", "aligned_objective": "ILO-01", "plan_category": "summative",
     })
     assert checks.plan_coverage(graph) == []
@@ -73,7 +75,7 @@ def test_prompt_context_renders_bare_ids_only():
 def _c4_fixture():
     graph = AlignmentGraph()
     graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01", "level": "apply"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {
+    add_assessment(graph, {
         "item_id": "AT-01", "aligned_objective": "ILO-01", "plan_category": "summative",
     })
     graph.add_node(NodeType.ACTIVITY, "activity_0", {"learning_activities": [

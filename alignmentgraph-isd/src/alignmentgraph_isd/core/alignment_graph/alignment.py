@@ -233,6 +233,59 @@ def leg_verb(relation_id: RelationId) -> str:
 _NAMESPACE_PREFIXES: tuple[str, ...] = tuple(f"{t}:" for t in NodeType)
 
 
+def assessment_items(graph) -> list[tuple[str, dict]]:
+    """Every assessment ITEM of the design, as ``(task node id, item)``.
+
+    The assessment ELEMENT is the TASK; an item is a field of the task it
+    belongs to. Every check and repair that judges an item works on this
+    pair: the item is the subject, and the task node is where the finding is
+    anchored, because that is the node a reader can open and the one a
+    coverage figure counts."""
+    out: list[tuple[str, dict]] = []
+    for task in graph.element_nodes(NodeType.ASSESSMENT):
+        for item in (task["data"].get("items") or []):
+            if isinstance(item, dict):
+                out.append((task["id"], item))
+    return out
+
+
+def match_from_items(graph, relation_id: "RelationId", *, field: str) -> list[dict]:
+    """:func:`match_id_reverse` where the artifact DECLARING the reference is
+    an item inside the referencing node rather than the node itself.
+
+    C2 is the case. The assessment element is the task, but what says which
+    objective is assessed is each item's ``aligned_objective``, written by a
+    Developer one question at a time. Reading the task's own
+    ``covers_objectives`` instead would move the evidence from the work to
+    the Designer's promise — where ``blueprint_consistency`` already checks
+    it — and a backbone relation restating a plan check is the trap that
+    retired C6/C7. A task no item of which names a resolvable objective is
+    the finding."""
+    relation = REGISTRY[relation_id]
+    resolved_type = relation.single_source_type
+    violations: list[dict] = []
+    for node in graph.element_nodes(relation.target_node_types[0]):
+        refs: list[str] = []
+        for item in (node["data"].get("items") or []):
+            ref = bare_ref((item or {}).get(field, "")) if isinstance(item, dict) else ""
+            if ref and ref not in refs:
+                refs.append(ref)
+        landed = [(r, rid) for r, rid in
+                  ((r, resolve_element(graph, resolved_type, r)) for r in refs) if rid]
+        for ref, resolved_id in landed:
+            graph.add_edge(
+                relation.key, resolved_id, node["id"],
+                evidence=ref, relation_id=relation_id, established_by="id",
+                rationale=(f"{node['id']} holds an item declaring {field}={ref}, "
+                           f"resolved to {resolved_id}."))
+        if not landed:
+            violations.append({
+                "relation_id": relation_id, "node_id": node["id"],
+                "message": (f"{node['id']} has no item with a resolvable {field} "
+                            f"({', '.join(refs) or 'none named'}).")})
+    return violations
+
+
 def bare_ref(ref: object) -> str:
     """Normalize a model-written id reference to its bare form.
 
@@ -319,41 +372,28 @@ def match_id_reverse(
 
 
 def match_module_assessed(graph: AlignmentGraph) -> list[dict]:
-    """P14: the module an assessment item belongs to, through its set.
+    """P14: the module an assessment TASK belongs to.
 
-    Two ids the model wrote, joined: the item names its set
-    (``task_id``) and the assessment plan's task names its module
-    (``module_id``). A set is a FIELD of the plan rather than a node —
-    nothing but the items that point at it belongs to it — so the join is read
-    off the plan section and the edge runs module -> item. Either half missing
-    or dangling leaves the item without an edge, which is the finding."""
+    The task IS the element and carries its own ``module_id``, copied down
+    from the set that holds it (``dev_plans.plan_tasks``), so this resolves
+    one id rather than joining two the model wrote. A task naming no module
+    that exists is the finding."""
     relation = REGISTRY["P14"]
-    plan = graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))
-    module_of = {
-        bare_ref(one.get("id", "")): bare_ref(one.get("module_id", ""))
-        for one in dev_plans.plan_tasks((plan or {}).get("data") or {})}
     violations: list[dict] = []
     for node in graph.element_nodes(NodeType.ASSESSMENT):
-        one = bare_ref(node["data"].get("task_id", ""))
-        module = module_of.get(one, "")
+        module = bare_ref(node["data"].get("module_id", ""))
         module_id = resolve_element(graph, NodeType.MODULE, module)
         if module_id:
             graph.add_edge(
                 relation.key, module_id, node["id"],
-                evidence=one, relation_id="P14", established_by="id",
-                rationale=(f"{node['id']} declares task_id={one}, whose "
-                           f"module_id is {module}."),
-            )
+                evidence=module, relation_id="P14", established_by="id",
+                rationale=f"{node['id']} declares module_id={module}.")
         else:
             violations.append({
                 "relation_id": "P14", "node_id": node["id"],
-                "message": (f"{node['id']} names no set of an existing module "
-                            f"(task_id={one!r})."),
-            })
+                "message": (f"{node['id']} names no module that exists "
+                            f"(module_id={module!r}).")})
     return violations
-
-
-# ── id-list match, standard direction: source declares a list of targets ────
 
 def match_list(
     graph: AlignmentGraph,
@@ -463,15 +503,18 @@ def _promised_categories(plan: dict) -> set[str]:
 
 
 def match_p3_realizes(graph: AlignmentGraph) -> list[dict]:
-    """P3: an assessment item realizes the plan when its declared
-    ``plan_category`` is one the plan promised (see
-    :func:`_promised_categories`)."""
+    """P3: an assessment TASK realizes the plan when its ``timing`` is one
+    the plan promised (see :func:`_promised_categories`).
+
+    The task's own timing, never a category copied onto each item: the items
+    are stamped FROM it at commit, so a copy could only ever agree, and a
+    relation that cannot fail is not evidence."""
     plan_node = graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))
     plan = plan_node["data"] if plan_node else {}
     promised = _promised_categories(plan)
     violations: list[dict] = []
     for item in graph.element_nodes(NodeType.ASSESSMENT):
-        category = str(item["data"].get("plan_category", "") or "").strip().lower()
+        category = str(item["data"].get("timing", "") or "").strip().lower()
         if category and category in promised:
             graph.add_edge(
                 REGISTRY["P3"].key, graph.section_id(NodeType.ASSESSMENT_PLAN), item["id"],
@@ -758,19 +801,32 @@ def bloom_assessment_violations(graph: AlignmentGraph) -> list[dict]:
     by_objective: dict[str, tuple[dict, list[dict]]] = {}
     for edge in graph.get_edges(relation_id="C2"):
         objective = graph.get_node(edge["source"])
-        item = graph.get_node(edge["target"])
-        if not item or not objective:
+        task = graph.get_node(edge["target"])
+        if not task or not objective:
             continue
-        by_objective.setdefault(objective["id"], (objective, []))[1].append(item)
+        lo = str(objective["data"].get("id")
+                 or objective["id"].split(graph.ELEMENT_SEP, 1)[-1])
+        # The edge names the TASK; what elicits a cognitive process is the
+        # ITEM, and only the items aligned to THIS objective count — a task
+        # covering two objectives must not redeem one with the other's item.
+        # When none names it, the edge is the authority and the task's items
+        # all count: something established it, and an objective measured by a
+        # task with no item at all is `plan_coverage`'s finding, not this one.
+        items = [one for one in (task["data"].get("items") or []) if isinstance(one, dict)]
+        mine = [one for one in items
+                if bare_ref(one.get("aligned_objective", "")) == lo] or items
+        by_objective.setdefault(objective["id"], (objective, []))[1].extend(mine)
 
     violations: list[dict] = []
     for objective, items in by_objective.values():
+        if not items:
+            continue
         level = bloom_level_of(str(objective["data"].get("level", "")))
-        capability = max((_item_capability(i["data"]) for i in items), default=0)
+        capability = max((_item_capability(i) for i in items), default=0)
         if format_valid_for_capability(capability, level):
             continue
         lo_id = str(objective["data"].get("id") or objective["id"].split(graph.ELEMENT_SEP, 1)[-1])
-        item_ids = [str(i["data"].get("item_id") or i["id"].split(graph.ELEMENT_SEP, 1)[-1]) for i in items]
+        item_ids = [str(i.get("item_id") or "?") for i in items]
         violations.append({
             "relation_id": "C2", "node_id": objective["id"],
             "message": (

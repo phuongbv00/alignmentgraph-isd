@@ -69,12 +69,14 @@ def broken_graph() -> AlignmentGraph:
     # WIN over its format, so a multiple_choice item asserting "apply" passes
     # this check — the honest low claim is what makes the mismatch visible.)
     # item_completeness: a choice item with no options and no answer key
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-0101", {
-        "item_id": "AT-0101", "type": "multiple_choice",
+    # The assessment ELEMENT is the TASK; the item lives inside it, so its
+    # membership and its plan category cannot be wrong any more.
+    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {
+        "id": "AT-01", "module_id": "MOD-01", "timing": "summative",
+        "items": [{
+        "item_id": "ATI-0101", "type": "multiple_choice",
         "question": "Which of these is inheritance?",
         "aligned_objective": "ILO-01", "plan_category": "summative",
-        # set_alignment: a summative item filed under the formative quiz
-        "set_id": "SET-02",
         "required_cognitive_process": "remember",
         "scoring_criteria": "One mark for the correct option.",
         # evidence_alignment: a criterion asking for evidence the item cannot give
@@ -82,6 +84,7 @@ def broken_graph() -> AlignmentGraph:
                     "evidence_type": "performance_task",
                     "levels": {"excellent": "full", "satisfactory": "partial",
                                "needs_improvement": "none"}}],
+        }],
     })
 
     # ── activities: one, at the wrong level, leaving objectives unpractised ──

@@ -13,7 +13,7 @@ from alignmentgraph_isd.core.alignment_graph import viz
 from alignmentgraph_isd.core.llm_io import _extract_token_usage
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
 
-from conftest import FakeChatModel, load_brief, run_brief
+from conftest import add_assessment, FakeChatModel, load_brief, run_brief
 
 
 # ── token usage extraction across provider shapes ────────────────────────────
@@ -164,8 +164,8 @@ def _triad_graph(*, with_c4: bool, same_assessment: bool = True) -> AlignmentGra
     optionally closing the triad — onto AT-01, or onto an unrelated item."""
     graph = AlignmentGraph()
     graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01", "level": "apply"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-99", {"item_id": "AT-99"})
+    add_assessment(graph, {"item_id": "AT-01"})
+    add_assessment(graph, {"item_id": "AT-99"})
     graph.add_element_node(NodeType.ACTIVITY, "TLA-01", {"activity_name": "practice"})
     # C2 (assessed_by) and C3 (practiced_by) are id-reverse: source=LO.
     graph.add_edge("C2-assessed_by", "objective:ILO-01", "assessment:AT-01",
@@ -182,7 +182,7 @@ def _triad_graph(*, with_c4: bool, same_assessment: bool = True) -> AlignmentGra
 def test_objective_annotation_flags_unaligned_objective():
     graph = AlignmentGraph()
     graph.add_element_node(NodeType.OBJECTIVE, "ILO-01", {"id": "ILO-01", "level": "apply"})
-    graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {"item_id": "AT-01"})
+    add_assessment(graph, {"item_id": "AT-01"})
     # C2 (assessed_by) is id-reverse: source=LO, target=Assessment.
     graph.add_edge("C2-assessed_by", "objective:ILO-01", "assessment:AT-01", relation_id="C2", established_by="id")
     # measured (assessed) only — no practiced edge -> the triad cannot close
@@ -221,7 +221,10 @@ def test_bloom_is_no_longer_a_leg_of_aligned():
     graph = _triad_graph(with_c4=True)
     # An Apply-level objective assessed by a recall-only item: the Bloom
     # cross-check fails while every structural edge stands.
-    graph.update_node("assessment:AT-01", {"required_cognitive_process": "remember"})
+    # An item's claim, not the task's: the task is the element, the ITEM is
+    # what elicits a cognitive process.
+    graph.update_node("assessment:AT-01", {"items": [
+        {"item_id": "AT-01", "required_cognitive_process": "remember"}]})
     ann = viz.objective_annotations(graph)["objective:ILO-01"]
     assert ann["aligned"] is True
     assert ann["bloom_ok"] is False
@@ -364,7 +367,10 @@ def test_a_red_edge_names_the_check_that_actually_failed():
     # The activity practices at the objective's own level, so only the
     # assessment rule can fail — which is the whole point of the split.
     graph.update_node("activity:TLA-01", {"learner_cognitive_process": "apply"})
-    graph.update_node("assessment:AT-01", {"required_cognitive_process": "remember"})
+    # An item's claim, not the task's: the task is the element, the ITEM is
+    # what elicits a cognitive process.
+    graph.update_node("assessment:AT-01", {"items": [
+        {"item_id": "AT-01", "required_cognitive_process": "remember"}]})
     annotations = viz.to_node_link(graph)["objective_alignment"]["objective:ILO-01"]
     assert annotations["bloom_assessment_ok"] is False
     assert annotations["bloom_activity_ok"] is True
@@ -434,7 +440,10 @@ def test_an_old_payload_keeps_the_red_edges_it_recorded():
     every red edge — 13 real findings across two runs — so the union is the
     fallback: the coarser marking is what those runs themselves recorded."""
     graph = _triad_graph(with_c4=True)
-    graph.update_node("assessment:AT-01", {"required_cognitive_process": "remember"})
+    # An item's claim, not the task's: the task is the element, the ITEM is
+    # what elicits a cognitive process.
+    graph.update_node("assessment:AT-01", {"items": [
+        {"item_id": "AT-01", "required_cognitive_process": "remember"}]})
     archived = viz.to_node_link(graph)
     archived["objective_alignment"] = {
         node_id: {k: v for k, v in flags.items()

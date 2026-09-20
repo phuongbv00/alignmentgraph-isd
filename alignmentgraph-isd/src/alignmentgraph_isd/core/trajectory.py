@@ -149,6 +149,10 @@ class TrajectoryAction(StrEnum):
     #: commit kept the stated count (``dev_plans.trim_to_quota``). Dropping,
     #: never writing: what a check measures is always kept.
     EXCESS_ARTIFACTS_TRIMMED = "excess_artifacts_trimmed"
+    #: Items whose parent element does not exist, so they had nowhere to be
+    #: filed and were dropped. The likeliest cause is order — a batch of
+    #: items submitted before the plan that declares the task they name.
+    ITEMS_WITHOUT_PARENT = "items_without_parent"
     #: A step ended without the agent producing a valid artifact. Nothing
     #: writes one on its behalf: a scripted single-shot fallback covers 26-35%
     #: of the full pipeline's artifacts and only in the multi arm, which would
@@ -211,6 +215,7 @@ _RECOVERY_ACTIONS = frozenset({
     TrajectoryAction.BUDGET_EXHAUSTED,
     TrajectoryAction.RUN_STOPPED,
     TrajectoryAction.EXCESS_ARTIFACTS_TRIMMED,
+    TrajectoryAction.ITEMS_WITHOUT_PARENT,
     TrajectoryAction.TOOL_BINDING_UNAVAILABLE,
     TrajectoryAction.TOOL_CALL_MARKUP_RECOVERED,
     TrajectoryAction.ARGUMENT_RESHAPED,

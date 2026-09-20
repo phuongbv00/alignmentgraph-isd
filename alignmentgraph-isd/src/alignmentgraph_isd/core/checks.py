@@ -425,10 +425,11 @@ def _criteria_of(graph) -> list[tuple[str, dict]]:
     arm does, and both run the identical check.
     """
     found: list[tuple[str, dict]] = []
-    for item in graph.element_nodes(NodeType.ASSESSMENT):
-        for rc in item["data"].get("rubric") or []:
+    for node_id, item in alignment.assessment_items(graph):
+        for rc in item.get("rubric") or []:
             if isinstance(rc, dict):
-                found.append((f"{item['id']}/{rc.get('id', '?')}", rc))
+                found.append((f"{node_id}/{item.get('item_id', '?')}"
+                              f"/{rc.get('id', '?')}", rc))
     return found
 
 
@@ -510,8 +511,7 @@ def plan_coverage(graph) -> list[Violation]:
         return []
 
     realised: set[tuple[str, str]] = set()
-    for item in graph.element_nodes(NodeType.ASSESSMENT):
-        data = item["data"]
+    for _node_id, data in alignment.assessment_items(graph):
         lo = alignment.bare_ref(data.get("aligned_objective", ""))
         category = str(data.get("plan_category", "") or "").lower()
         if lo and category:
@@ -661,41 +661,6 @@ def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | 
     return violations
 
 
-def set_alignment(graph) -> list[Violation]:
-    """Every assessment item belongs to one set of the plan, at that
-    set's timing. An item naming no set that exists, or sitting
-    in a formative set while calling itself summative, is an item the
-    blueprint cannot account for. Silent when the plan has no sets:
-    there is nothing to belong to, and that absence is the plan's finding."""
-    plan_node = graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))
-    timing_of = {alignment.bare_ref(i.get("id", "")): str(i.get("timing") or "").lower()
-                 for i in _sets((plan_node or {}).get("data") or {})}
-    if not timing_of:
-        return []
-    violations: list[Violation] = []
-    for item in graph.element_nodes(NodeType.ASSESSMENT):
-        data = item["data"]
-        item_id = data.get("item_id", item["id"].rsplit(graph.ELEMENT_SEP, 1)[-1])
-        one = alignment.bare_ref(data.get("task_id", ""))
-        category = str(data.get("plan_category") or "").lower()
-        if one not in timing_of:
-            problem = (f"Item '{item_id}' names set {one!r}, which the "
-                       "assessment plan does not have.")
-        elif category != timing_of[one]:
-            problem = (f"Item '{item_id}' is a {category or 'uncategorised'} item in "
-                       f"{one}, a {timing_of[one]} set.")
-        else:
-            continue
-        violations.append(Violation(
-            node_id=item["id"], edge_type="", violation_type="set_alignment",
-            severity="warning", message=problem,
-            repair_hint=("Set task_id to an assessment task of the plan whose "
-                         "timing is this item's plan_category and which covers its objective."),
-            metadata={"item_id": item_id},
-        ))
-    return violations
-
-
 _CHOICE_ITEM_TYPES = frozenset({"multiple_choice", "true_false", "matching"})
 
 
@@ -704,9 +669,7 @@ def item_completeness(graph) -> list[Violation]:
     matching) is not administrable without its response set:
     options (except true_false, whose options are implicit) and the answer
     key. Measured: every MCQ in a 2B run shipped question-only."""
-    return item_completeness_items(
-        [(a["id"], a["data"]) for a in graph.element_nodes(NodeType.ASSESSMENT)]
-    )
+    return item_completeness_items(alignment.assessment_items(graph))
 
 
 def item_completeness_items(items: list[tuple[str, dict]]) -> list[Violation]:
@@ -943,9 +906,9 @@ def evidence_alignment(graph) -> list[Violation]:
     does not belong to, and there is no "no linked item" case to skip.
     """
     violations: list[Violation] = []
-    for item in graph.element_nodes(NodeType.ASSESSMENT):
-        capability = alignment.item_type_capability(str(item["data"].get("type", "") or ""))
-        for rc in item["data"].get("rubric") or []:
+    for node_id, data in alignment.assessment_items(graph):
+        capability = alignment.item_type_capability(str(data.get("type", "") or ""))
+        for rc in data.get("rubric") or []:
             if not isinstance(rc, dict):
                 continue
             evidence_type = str(rc.get("evidence_type", "") or "")
@@ -955,13 +918,13 @@ def evidence_alignment(graph) -> list[Violation]:
                 continue
             rc_id = str(rc.get("id", "?"))
             violations.append(Violation(
-                node_id=item["id"], edge_type="", violation_type="evidence_alignment",
+                node_id=node_id, edge_type="", violation_type="evidence_alignment",
                 severity="warning",
                 message=(f"Rubric criterion '{rc_id}' expects '{evidence_type}' evidence but "
-                         f"'{item['data'].get('item_id', '?')}' can't produce it."),
+                         f"'{data.get('item_id', '?')}' can't produce it."),
                 repair_hint="Either loosen the criterion's evidence type or change the item's format.",
                 metadata={"rc_id": rc_id, "evidence_type": evidence_type,
-                          "item_id": str(item["data"].get("item_id", ""))},
+                          "item_id": str(data.get("item_id", ""))},
             ))
     return violations
 
@@ -1033,14 +996,14 @@ def relation_coverage(graph) -> list[Violation]:
     violations: list[Violation] = []
 
     establisher_gaps: list[dict] = []
-    establisher_gaps += alignment.match_id_reverse(graph, "C2", field="aligned_objective")
+    establisher_gaps += alignment.match_from_items(graph, "C2", field="aligned_objective")
     establisher_gaps += alignment.match_list_reverse(graph, "C3", field="aligned_objectives")
     establisher_gaps += alignment.match_list(graph, "C4", field="prepares_for_assessment")
     establisher_gaps += alignment.match_p3_realizes(graph)
     establisher_gaps += alignment.match_p6_realizes(graph)
     establisher_gaps += alignment.match_id_reverse(graph, "P13", field="module_id")
     # Re-run for its EDGES only. What is wrong with an item's `task_id`
-    # is `set_alignment`'s finding, in words that say what to change.
+    # is the membership finding, in words that say what to change.
     alignment.match_module_assessed(graph)
     for gap in establisher_gaps:
         node_id = gap["node_id"]

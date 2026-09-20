@@ -113,7 +113,7 @@ class ADDIEOutputAggregator:
             **_development_scope(
                 self.development_mode,
                 _merge_node_data(self.graph.section_nodes(NodeType.ASSESSMENT_PLAN)),
-                items=len(assessment_tools),
+                items=_items_in(assessment_tools),
                 activities=len(self.graph.element_nodes(NodeType.ACTIVITY)),
                 materials=len(materials),
                 modules=len(self.graph.element_nodes(NodeType.MODULE))),
@@ -381,11 +381,18 @@ def aggregate_prose(store, trajectory, *, development_mode: str = "") -> dict:
     activity_plan = doc("activity_plan")
     content_modules = items("objective", "course_modules")
     instructional_strategies = activity_plan.get("instructional_strategies") or {}
+    # The blackboard has no nodes, so its items sit flat under one key; the
+    # deliverable declares them inside the TASK they belong to, the same as
+    # in the graph arm. Both arms therefore ship ONE shape — an output that
+    # differed by arm would be a difference sitting on the `context_mode`
+    # axis rather than on the machinery it ablates.
+    assessment_tools = _tasks_with_items(
+        doc("assessment_plan"), _shape_rubrics(items("assessment", "assessment_tools")))
+
     design = {
         "learning_objectives": items("objective", "learning_objectives"),
         "learning_activities": items("activity", "learning_activities"),
-        "assessment_plan": _with_items_written(
-            doc("assessment_plan"), items("assessment", "assessment_tools")),
+        "assessment_plan": _with_items_written(doc("assessment_plan"), assessment_tools),
         "content_structure": {"modules": content_modules},
         "instructional_strategies": instructional_strategies,
         "non_instructional_strategies": activity_plan.get("non_instructional_strategies") or {},
@@ -393,7 +400,6 @@ def aggregate_prose(store, trajectory, *, development_mode: str = "") -> dict:
     }
     design["storyboard"] = _compute_storyboard(instructional_strategies, content_modules)
 
-    assessment_tools = _shape_rubrics(items("assessment", "assessment_tools"))
     # The blackboard holds the guides as a top-level list of the implementation
     # document (that is where the fan-out's ``doc_key`` deposits them); the
     # deliverable declares them one level down, the same as in the graph arm.
@@ -434,7 +440,7 @@ def aggregate_prose(store, trajectory, *, development_mode: str = "") -> dict:
         "instructor_guide": impl_doc.get("instructor_guide") or {},
         "operator_manual": impl_doc.get("operator_manual") or {},
         **_development_scope(
-            development_mode, doc("assessment_plan"), items=len(assessment_tools),
+            development_mode, doc("assessment_plan"), items=_items_in(assessment_tools),
             activities=len(design["learning_activities"]),
             materials=len(items("material", "learner_materials")),
             modules=len(content_modules)),
@@ -576,11 +582,11 @@ def _with_items_written(plan: dict, items: list[dict]) -> dict:
     sets = plan.get("sets")
     if not isinstance(sets, list):
         return plan
-    written: dict[str, int] = {}
-    for item in items:
-        if isinstance(item, dict) and item.get("task_id"):
-            key = str(item["task_id"]).rsplit(":", 1)[-1]
-            written[key] = written.get(key, 0) + 1
+    # The items are INSIDE their task, so this counts what each one holds
+    # rather than joining on an id: membership is structural now.
+    written = {str(t.get("id", "")): len([one for one in (t.get("items") or [])
+                                          if isinstance(one, dict)])
+               for t in items if isinstance(t, dict)}
 
     def counted(task: object) -> object:
         if not isinstance(task, dict):
@@ -592,6 +598,35 @@ def _with_items_written(plan: dict, items: list[dict]) -> dict:
         if isinstance(one, dict) and isinstance(one.get("assessment_tasks"), list)
         else counted(one)
         for one in sets]}
+
+
+def _items_in(tasks: list) -> int:
+    """How many assessment ITEMS the design carries: the tasks hold them."""
+    return sum(len([one for one in (t.get("items") or []) if isinstance(one, dict)])
+               for t in tasks if isinstance(t, dict))
+
+
+def _tasks_with_items(plan: dict, items: list) -> list[dict]:
+    """The plan's assessment TASKS, each carrying the items that name it.
+
+    The prose arm's counterpart of the graph arm's task nodes: there the
+    Developer files an item inside its task at commit
+    (``fanout._attach_to_parent``), here the blackboard keeps one flat list
+    and the join happens on the way out. An item naming no task, or one the
+    plan does not have, goes under the FIRST task rather than being dropped:
+    losing a learner-facing question to a bad id is worse than filing it
+    imprecisely, and the alignment panel reads every item's text."""
+    tasks = [dict(t) for t in dev_plans.plan_tasks(plan)]
+    if not tasks:
+        return [dict(one) for one in items]
+    by_id = {str(t.get("id", "")): t for t in tasks}
+    for task in tasks:
+        task["items"] = []
+    for one in items:
+        ref = str((one or {}).get("task_id") or "").rsplit(":", 1)[-1]
+        host = by_id.get(ref, tasks[0])
+        host["items"].append({k: v for k, v in one.items() if k != "task_id"})
+    return tasks
 
 
 def _development_scope(mode: str, plan: dict, *, items: int, activities: int,

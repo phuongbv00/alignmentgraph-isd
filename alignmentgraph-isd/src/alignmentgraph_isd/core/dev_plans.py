@@ -520,7 +520,7 @@ def _assessment_ground_truth_pairs(lo_ids, coverage_targets,
     MEASURED (run 50932ed8): three summative sets against nine promised
     pairs, six pairs appended into three set-less sets, items committed
     with ``set_id`` "AS-02", "AS-04" and "MOD-03", and every one of the
-    run's seven residual violations was the ``set_alignment`` that
+    run's seven residual violations was the membership finding that
     followed. Now an appended set is always a slice of some set's own
     pairs, so it can never be set-less.
 
@@ -1460,7 +1460,7 @@ def with_membership(work_set: WorkSet, schema_key: str, items: list) -> list:
     not: MEASURED (run 53a9cd1a), five refusals and a give-up-and-regen for
     `set_id` on sets that each listed a single set. Only a
     MISSING id is filled. One the model wrote is left as written, right or
-    wrong — that is what P13 and ``set_alignment`` measure — and an
+    wrong — that is what P13 measures — and an
     item with several candidates is left without one for the validator."""
     if schema_key == "learning_activities" and work_set.module_id:
         return [{**item, "module_id": work_set.module_id}

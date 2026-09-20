@@ -116,6 +116,8 @@ def test_a_submit_adds_to_a_stage_rather_than_replacing_it():
     several calls, so a second submit must ADD."""
     from test_agentic_loop import _ANALYSIS, _ASSESSMENT, _OUTCOMES
 
+    # The PLAN travels with the first batch: its tasks are what an item is
+    # filed inside, so a batch arriving before them has nowhere to land.
     first = dict(_ASSESSMENT)
     second = {"assessment_tools": [
         dict(_ASSESSMENT["assessment_tools"][0], item_id="AT-99", question="A second batch.")]}
@@ -127,7 +129,8 @@ def test_a_submit_adds_to_a_stage_rather_than_replacing_it():
     ])
     loop.run()
 
-    items = graph.element_nodes(NodeType.ASSESSMENT)
+    items = [one for n in graph.element_nodes(NodeType.ASSESSMENT)
+             for one in (n["data"].get("items") or [])]
     assert len(items) > len(first["assessment_tools"]), (
         "the second submit replaced the first batch instead of adding to it")
     assert loop.stats["submits_per_stage"]["assessment"] == 2
