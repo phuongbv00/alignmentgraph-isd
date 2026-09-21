@@ -185,8 +185,8 @@ class ADDIEOutputAggregator:
         plan_data = _merge_node_data(self.graph.section_nodes(NodeType.ASSESSMENT_PLAN))
         improvements = [n["data"] for n in self.graph.element_nodes(NodeType.IMPROVEMENT)]
 
-        formative_items = [t for t in assessment_tools if str(t.get("plan_category", "")).lower() == "formative"]
-        summative_items = [t for t in assessment_tools if str(t.get("plan_category", "")).lower() == "summative"]
+        formative_tasks = _timed(assessment_tools, "formative")
+        summative_tasks = _timed(assessment_tools, "summative")
 
         # The formative half of ADDIE Evaluation is scored on more than a list
         # of sets: the rubric asks which areas learners struggled with,
@@ -209,24 +209,24 @@ class ADDIEOutputAggregator:
                 for entry in (pilot.get("anticipated_difficulties") or [])
                 if isinstance(entry, dict)
             ],
-            "assessment_tools": formative_items,
+            "assessment_tools": formative_tasks,
         }
-        objective_ids = {t.get("aligned_objective") for t in summative_items if t.get("aligned_objective")}
+        objective_ids = {t.get("aligned_objective") for t in summative_tasks if t.get("aligned_objective")}
         # Effectiveness/adoption synthesis: summative is the "summative"-tagged
         # slice of the unified Assessment pool, and nothing generates this
         # narrative, so it is synthesized deterministically from the counts.
         summative = {
-            "assessment_tools": summative_items,
+            "assessment_tools": summative_tasks,
             "effectiveness_analysis": {
                 "learning_outcomes": {
-                    "details": f"{len(summative_items)} summative item(s) covering {len(objective_ids)} objective(s)."
+                    "details": f"{len(summative_tasks)} summative item(s) covering {len(objective_ids)} objective(s)."
                 },
             },
             "adoption_decision": {
-                "decision": "adopt" if summative_items else "pending",
+                "decision": "adopt" if summative_tasks else "pending",
                 "rationale": (
                     "Summative evidence exists for the covered objectives; proceed to pilot review."
-                    if summative_items else
+                    if summative_tasks else
                     "No summative evidence was generated; adoption cannot be recommended yet."
                 ),
             },
@@ -264,6 +264,43 @@ def _with_session_guides(implementation: dict, guides: list) -> dict:
     guide = dict(guide) if isinstance(guide, dict) else {}
     guide["session_guides"] = list(guides)
     return {**implementation, "instructor_guide": guide}
+
+
+def _objective_assessment_map(objective_ids: list, tasks: list) -> dict:
+    """Which assessment TASKS measure each objective.
+
+    The far end is the task, as it is for C2 — an objective is measured by the
+    quiz or practical a learner sits — and which objectives a task measures is
+    read off the ITEMS inside it, so the map is the Developers' work rather
+    than the plan's promise. A bare item entry (the prose arm's fallback for a
+    plan that declares no task) answers for itself."""
+    by_lo: dict[str, list[str]] = {lo: [] for lo in objective_ids}
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        task_id = str(task.get("id") or task.get("item_id") or "")
+        if not task_id:
+            continue
+        for one in (task.get("items") or [task]):
+            lo = dev_plans._bare(str((one or {}).get("aligned_objective") or ""))
+            if lo in by_lo and task_id not in by_lo[lo]:
+                by_lo[lo].append(task_id)
+    return by_lo
+
+
+def _timed(tasks: list, timing: str) -> list:
+    """The assessment tasks that happen at one point in the course.
+
+    The plan's word is ``timing`` and it lives on the TASK — the thing a
+    learner sits. ``plan_category`` is the ITEM's copy of it, stamped from the
+    task at commit, and is read here only for the one shape that is still a
+    flat item list: the prose arm's fallback for a plan that declares no task
+    (``_tasks_with_items``). ONE reader for both arms — a bucket that filled
+    on one substrate and not the other would sit on the ``context_mode`` axis
+    itself."""
+    want = timing.strip().lower()
+    return [t for t in tasks if isinstance(t, dict)
+            and str(t.get("timing") or t.get("plan_category") or "").strip().lower() == want]
 
 
 def _shape_rubrics(items: list) -> list:
@@ -455,10 +492,8 @@ def aggregate_prose(store, trajectory, *, development_mode: str = "") -> dict:
 
     plan_data = doc("assessment_plan")
     improvement_doc = analysis_doc.get("improvement_plan") or {}
-    formative_items = [t for t in assessment_tools
-                       if isinstance(t, dict) and str(t.get("plan_category", "")).lower() == "formative"]
-    summative_items = [t for t in assessment_tools
-                       if isinstance(t, dict) and str(t.get("plan_category", "")).lower() == "summative"]
+    formative_tasks = _timed(assessment_tools, "formative")
+    summative_tasks = _timed(assessment_tools, "summative")
     pilot = plan_data.get("pilot_data_plan", {})
     pilot = pilot if isinstance(pilot, dict) else {}
     formative = {
@@ -476,21 +511,21 @@ def aggregate_prose(store, trajectory, *, development_mode: str = "") -> dict:
             for entry in (pilot.get("anticipated_difficulties") or [])
             if isinstance(entry, dict)
         ],
-        "assessment_tools": formative_items,
+        "assessment_tools": formative_tasks,
     }
-    objective_ids_covered = {t.get("aligned_objective") for t in summative_items if t.get("aligned_objective")}
+    objective_ids_covered = {t.get("aligned_objective") for t in summative_tasks if t.get("aligned_objective")}
     summative = {
-        "assessment_tools": summative_items,
+        "assessment_tools": summative_tasks,
         "effectiveness_analysis": {
             "learning_outcomes": {
-                "details": f"{len(summative_items)} summative item(s) covering {len(objective_ids_covered)} objective(s)."
+                "details": f"{len(summative_tasks)} summative item(s) covering {len(objective_ids_covered)} objective(s)."
             },
         },
         "adoption_decision": {
-            "decision": "adopt" if summative_items else "pending",
+            "decision": "adopt" if summative_tasks else "pending",
             "rationale": (
                 "Summative evidence exists for the covered objectives; proceed to pilot review."
-                if summative_items else
+                if summative_tasks else
                 "No summative evidence was generated; adoption cannot be recommended yet."
             ),
         },
@@ -512,14 +547,8 @@ def aggregate_prose(store, trajectory, *, development_mode: str = "") -> dict:
     objective_ids = [lo.get("id") for lo in design["learning_objectives"]
                      if isinstance(lo, dict) and lo.get("id")]
     if objective_ids:
-        development["objective_assessment_map"] = {
-            lo_id: [
-                item.get("item_id")
-                for item in assessment_tools
-                if isinstance(item, dict) and item.get("aligned_objective") == lo_id
-            ]
-            for lo_id in objective_ids
-        }
+        development["objective_assessment_map"] = _objective_assessment_map(
+            objective_ids, assessment_tools)
     return output
 
 
@@ -687,14 +716,8 @@ def _add_alignment_views(output: dict, graph) -> dict:
     objective_ids = [lo.get("id") for lo in objectives if isinstance(lo, dict) and lo.get("id")]
     if objective_ids:
         design["alignment_matrix"] = _build_alignment_matrix(objective_ids, graph)
-        development["objective_assessment_map"] = {
-            lo_id: [
-                item.get("item_id")
-                for item in assessment_tools
-                if isinstance(item, dict) and item.get("aligned_objective") == lo_id
-            ]
-            for lo_id in objective_ids
-        }
+        development["objective_assessment_map"] = _objective_assessment_map(
+            objective_ids, assessment_tools)
 
     return output
 
