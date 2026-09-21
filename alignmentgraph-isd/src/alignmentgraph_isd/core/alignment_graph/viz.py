@@ -235,7 +235,7 @@ def _node_display(node: dict) -> dict:
         "label": node_id.split(ELEMENT_SEP, 1)[-1] if element else (node_type or node_id),
         "kind": "element" if element else "section",
         "detail": "" if is_objective else str(
-            data.get("type") or data.get("activity_name")
+            data.get("type") or data.get("format") or data.get("activity_name")
             or data.get("title") or data.get("item_id") or ""),
         "level": str(data.get("level") or "") if is_objective else "",
         "repaired": bool(data.get("repaired")),
