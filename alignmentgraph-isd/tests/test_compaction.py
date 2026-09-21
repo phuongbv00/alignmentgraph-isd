@@ -507,3 +507,24 @@ def test_the_fold_pays_only_for_what_it_can_keep():
     assert model.capped == compaction.SUMMARY_MAX_TOKENS
     assert compaction.SUMMARY_MAX_TOKENS * 3 >= compaction.MAX_SUMMARY_CHARS, \
         "the cap must leave room for the summary the fold actually keeps"
+
+
+def test_the_cap_goes_out_under_both_names():
+    """`langchain-openai` sends `max_tokens` as `max_completion_tokens`, the
+    newer OpenAI field. A backend that predates it ignores the unknown key in
+    silence — MEASURED (run aba81e58): the cap went out and a fold came back
+    with 6,427 completion tokens against 512, which is 209 s of a 1,229 s run
+    spent on text discarded at 1,200 characters. `extra_body` rides into the
+    request JSON untouched, so the legacy name travels too."""
+    from alignmentgraph_isd.core.agentic import client
+
+    code = inspect.getsource(client.AgenticLLM.call_prose)
+    assert "extra_body" in code and '"max_tokens"' in code, \
+        "the legacy spelling must go out beside the new one"
+
+
+def test_an_ignored_cap_is_on_the_record():
+    """An overspend nobody can see is one nobody fixes."""
+    from alignmentgraph_isd.core.agentic import client
+
+    assert "completion_cap_ignored" in inspect.getsource(client.AgenticLLM.call_prose)

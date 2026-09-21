@@ -188,9 +188,19 @@ class AgenticLLM:
             raw_llm = self.config.llm_factory()
             if max_tokens > 0:
                 try:
-                    raw_llm = raw_llm.bind(max_tokens=max_tokens)
+                    # BOTH spellings. langchain-openai sends `max_tokens` as
+                    # `max_completion_tokens`, the newer OpenAI field, and a
+                    # backend that predates it ignores an unknown key in
+                    # silence — MEASURED (run aba81e58, a third-party router):
+                    # the cap went out and a fold came back with 6,427
+                    # completion tokens against 512. `extra_body` rides into
+                    # the request JSON untouched, so the legacy name goes too
+                    # and whichever the backend reads, the cap binds.
+                    raw_llm = raw_llm.bind(max_tokens=max_tokens,
+                                           extra_body={"max_tokens": max_tokens})
                 except Exception:  # noqa: BLE001 - a backend that cannot be bound
-                    pass
+                    self.trajectory.log_recovery_event(
+                        self.identity, "completion_cap_unbindable", "", str(max_tokens))
             started = self._begin(messages)
             with gate_for(self.config).hold():
                 result = raw_llm.invoke(messages)
@@ -199,6 +209,14 @@ class AgenticLLM:
             self.trajectory.log_recovery_event(self.identity, "llm_error", "", str(exc))
             return ""
         content, _calls, _cut = self._account(result, messages, started)
+        _prompt, completion = _extract_token_usage(result)
+        if max_tokens > 0 and completion > max_tokens:
+            # The backend took the cap as a suggestion. Recorded rather than
+            # swallowed: this is paid-for text the caller is about to discard,
+            # and an overspend nobody can see is one nobody fixes.
+            self.trajectory.log_recovery_event(
+                self.identity, "completion_cap_ignored", f"asked {max_tokens}",
+                f"served {completion}")
         return content
 
     def _begin(self, messages: list[dict]) -> float:
