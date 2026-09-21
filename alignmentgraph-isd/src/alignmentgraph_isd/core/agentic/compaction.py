@@ -74,6 +74,21 @@ MAX_INPUT_CHARS = 12000
 #: it never becomes the reason the window is full.
 MAX_SUMMARY_CHARS = 1200
 
+#: What the fold's own model call may SPEND, in completion tokens.
+#:
+#: The prompt asks for ``MAX_SUMMARY_CHARS`` and ``_clean`` truncates to it, so
+#: everything a model writes past that is paid for and thrown away. Nothing
+#: used to stop it: ``call_prose`` binds no cap of its own and inherits the
+#: serving reserve (8192 on the ladder). MEASURED (run 7123a976, a 9B model):
+#: two folds returned 5,985 and 3,849 completion tokens — roughly 24,000 and
+#: 15,000 characters against a 1,200-character limit — and cost 122 s and 67 s
+#: of a 683 s run. That is 28% of the wall clock spent generating text that was
+#: then cut by 95%. At three characters per token (``COLD_CHARS_PER_TOKEN``,
+#: the pessimistic end) 1,200 characters is 400 tokens; the headroom here lets
+#: a model close its last sentence rather than being cut mid-word, and the cut
+#: itself is no loss because ``_clean`` was making it anyway.
+SUMMARY_MAX_TOKENS = 512
+
 _SYSTEM = (
     "You compress the older part of another agent's working transcript so it "
     "can keep going inside a context window. You are not doing its work and "
@@ -134,7 +149,8 @@ def summarize(call_llm, previous: str, dropped: list) -> tuple[str, str]:
                           dropped=body)
     try:
         answer = call_llm.call_prose([{"role": "system", "content": _SYSTEM},
-                                      {"role": "user", "content": prompt}])
+                                       {"role": "user", "content": prompt}],
+                                      max_tokens=SUMMARY_MAX_TOKENS)
     except Exception:  # noqa: BLE001 - a summary is never load-bearing
         return previous, "error"
     text = _clean(answer)

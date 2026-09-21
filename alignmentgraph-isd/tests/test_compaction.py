@@ -55,8 +55,9 @@ class _Model:
         self.answer = answer
         self.seen: list = []
 
-    def call_prose(self, messages):
+    def call_prose(self, messages, *, max_tokens: int = 0):
         self.seen.append(messages)
+        self.capped = max_tokens
         if isinstance(self.answer, Exception):
             raise self.answer
         return self.answer
@@ -120,10 +121,16 @@ def test_no_response_format_is_ever_sent():
     prose under `response_format={"type": "json_object"}` came back as JSON and
     was discarded on every compaction of run e81b8108. Nothing on this path may
     reintroduce it — and nothing may bind a tool either, because compaction is
-    the harness acting over the agent's head, not a move in its protocol."""
+    the harness acting over the agent's head, not a move in its protocol.
+
+    What is forbidden is a TOOL or a response format, named exactly. The list
+    used to hold a bare ``bind(`` as a proxy for ``bind_tools(``, which also
+    caught ``bind(max_tokens=…)`` — a spend cap, the opposite of giving this
+    path a capability: it takes one away, and the fold needs it because the
+    answer is truncated on arrival anyway (``SUMMARY_MAX_TOKENS``)."""
     code = _without_docstrings(inspect.getsource(AgenticLLM.call_prose).lstrip())
     code += _without_docstrings(inspect.getsource(compaction))
-    for forbidden in ("response_format", "json_object", "bind_tools", "bind(",
+    for forbidden in ("response_format", "json_object", "bind_tools", "tools=",
                       "tool_choice"):
         assert forbidden not in code, f"{forbidden} is back on the prose path"
 
@@ -483,3 +490,20 @@ def test_a_compacted_result_is_forgotten_whatever_shape_the_guard_keeps():
     forget_compacted_calls(seen, [{"role": "tool", "tool_call_id": "c1"},
                                   {"role": "tool", "tool_call_id": "c3"}])
     assert list(seen) == ["b"]
+
+
+def test_the_fold_pays_only_for_what_it_can_keep():
+    """The prompt asks for `MAX_SUMMARY_CHARS` and `_clean` truncates to it, so
+    a completion past that is bought and thrown away.
+
+    MEASURED (run 7123a976, a 9B model): two folds returned 5,985 and 3,849
+    completion tokens against a 1,200-character limit and cost 122 s and 67 s
+    of a 683 s run — 28% of the wall clock, cut by 95% on arrival. The limit
+    was in the prompt the whole time; the model ignored it, so it is bound."""
+    model = _Model()
+
+    compaction.summarize(model, "", [{"role": "user", "content": "x" * 400}])
+
+    assert model.capped == compaction.SUMMARY_MAX_TOKENS
+    assert compaction.SUMMARY_MAX_TOKENS * 3 >= compaction.MAX_SUMMARY_CHARS, \
+        "the cap must leave room for the summary the fold actually keeps"

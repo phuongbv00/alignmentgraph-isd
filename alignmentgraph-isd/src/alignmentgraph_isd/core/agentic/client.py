@@ -159,7 +159,7 @@ class AgenticLLM:
                 self.identity, "tool_binding_unavailable", str(exc)[:120], "")
             return None
 
-    def call_prose(self, messages: list[dict]) -> str:
+    def call_prose(self, messages: list[dict], *, max_tokens: int = 0) -> str:
         """One model call with NO tools bound and NO ``response_format``.
 
         Not an agent's turn: the ONLY caller is the compaction hook
@@ -168,6 +168,16 @@ class AgenticLLM:
         any agent's context — ``tests/test_compaction.py`` enforces the
         one-caller rule. See the class docstring for why ``response_format``
         must never return on this path.
+
+        ``max_tokens`` caps what this call may SPEND. The caller knows how much
+        of the answer it can use — the fold truncates to
+        ``MAX_SUMMARY_CHARS`` — and without a cap the whole serving reserve is
+        available for text that is then thrown away (see
+        ``compaction.SUMMARY_MAX_TOKENS`` for the measurement). Bound rather
+        than requested, because the 1,200-character limit is already in the
+        prompt and a 9B model wrote 24,000 characters anyway. A backend that
+        refuses the binding is called unbound rather than not at all: a summary
+        is never load-bearing.
         """
         if self.config.llm_factory is None:
             self.trajectory.log_llm_call(0, 0)
@@ -176,6 +186,11 @@ class AgenticLLM:
             return ""
         try:
             raw_llm = self.config.llm_factory()
+            if max_tokens > 0:
+                try:
+                    raw_llm = raw_llm.bind(max_tokens=max_tokens)
+                except Exception:  # noqa: BLE001 - a backend that cannot be bound
+                    pass
             started = self._begin(messages)
             with gate_for(self.config).hold():
                 result = raw_llm.invoke(messages)
