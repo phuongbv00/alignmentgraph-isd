@@ -569,12 +569,13 @@ def _reference_blocks(work_set: dev_plans.WorkSet) -> tuple[tuple, ...]:
     return (
         (NodeType.OBJECTIVE, "The objectives your set names",
          ("objective", "learning_objectives"), work_set.objectives, "id", False),
-        # An activity set names the assessment items its activities prepare for,
-        # BY ID. A Developer told to prepare learners for AT-03 and not told what
-        # AT-03 asks has no choice but to go and read it.
+        # An activity set names the assessment TASKS its activities prepare for,
+        # BY ID — C4's far end is the task, the thing a learner sits. A Developer
+        # told to prepare learners for AT-03 and not told what AT-03 asks has no
+        # choice but to go and read it.
         (NodeType.ASSESSMENT, "The assessment tasks your set prepares learners for",
          ("assessment", "assessment_tools"),
-         tuple(work_set.payload.get("assessment_items") or ()), "id", False),
+         tuple(work_set.payload.get("assessment_task_ids") or ()), "id", False),
         # A session block schedules activities and materials by id, and it
         # schedules MANY of them — that is the whole reason this family fans
         # out. So these two are rendered COMPACT: one line each, the same row

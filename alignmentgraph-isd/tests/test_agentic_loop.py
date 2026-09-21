@@ -989,7 +989,7 @@ def test_a_developer_is_told_its_assignment_is_already_complete():
     committed = graph.element_nodes(NodeType.ASSESSMENT)[0]["data"]["id"]
     work_set = dev_plans.WorkSet(
         set_id="AB-01", objectives=("ILO-01",),
-        payload={"assessment_items": [committed]})
+        payload={"assessment_task_ids": [committed]})
     intro = fanout.set_step(fanout.SPECS["activities"], work_set, step, graph).intro
 
     assert "It is all you need" in intro

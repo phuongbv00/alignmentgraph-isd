@@ -210,8 +210,9 @@ given — do not introduce content unrelated to them."""
 RULES_ACTIVITIES = """\
 Every activity belongs to ONE module: set ``module_id`` to the id of the module it is taught in.
 Every activity must list ``aligned_objectives`` (existing ILO ids it practices, TLA = Teaching/
-Learning Activity) and ``prepares_for_assessment`` (existing assessment item ids it prepares
-learners for). ``materials_needed`` is free text, NOT an id — describe what content/resource
+Learning Activity) and ``prepares_for_assessment`` (ids of existing assessment TASKS it
+prepares learners for — the quiz, practical or project a learner sits, e.g. "AT-02", never an
+individual question). ``materials_needed`` is free text, NOT an id — describe what content/resource
 would help, a later step will source it. ``learner_cognitive_process`` must be one of:
 %(bloom_levels)s — and must be at or above the level of
 every objective it aligns to (an Apply+ objective needs a hands-on activity: lab, exercise,
@@ -234,7 +235,9 @@ Every activity belongs to the module YOUR ASSIGNED BLOCK names: set ``module_id`
 module's id on every activity.
 Every activity must list ``aligned_objectives`` (existing ILO ids it practices, TLA = Teaching/
 Learning Activity, drawn ONLY from YOUR ASSIGNED BLOCK's objectives) and
-``prepares_for_assessment`` (existing assessment item ids it prepares learners for).
+``prepares_for_assessment`` (ids of existing assessment TASKS it prepares learners for — the
+quiz, practical or project a learner sits, drawn from the list YOUR ASSIGNMENT gives, never an
+individual question).
 ``materials_needed`` is free text, NOT an id — describe what content/resource would help, a
 later step will source it. ``learner_cognitive_process`` must be one of:
 %(bloom_levels)s — and must be at or above the level of

@@ -890,7 +890,7 @@ def activity_work_sets(parsed, lo_ids, items_by_lo: dict | None = None, *,
             sets.append(WorkSet(
                 set_id="", objectives=tuple(valid_objs), pairs=(),
                 payload={"planned_module": _bare(raw.get("module_id")),
-                         "assessment_items": items, "block_theme": str(raw.get("block_theme", "")),
+                         "assessment_task_ids": items, "block_theme": str(raw.get("block_theme", "")),
                          "rationale": str(raw.get("rationale", "")),
                          "block_minutes": raw.get("block_minutes"),
                          "expected_activities": _expected(
@@ -905,7 +905,7 @@ def activity_work_sets(parsed, lo_ids, items_by_lo: dict | None = None, *,
     for lo in missing:
         sets.append(WorkSet(
             set_id="", objectives=(lo,), pairs=(),
-            payload={"assessment_items": items_by_lo.get(lo, []), "block_theme": "",
+            payload={"assessment_task_ids": items_by_lo.get(lo, []), "block_theme": "",
                      "rationale": "", "expected_activities": _expected(None, 1)},
             source=src,
         ))
@@ -922,9 +922,9 @@ def activity_work_sets(parsed, lo_ids, items_by_lo: dict | None = None, *,
 
     def _merge(tail: list[WorkSet]) -> WorkSet:
         merged_objs = tuple(dict.fromkeys(o for ws in tail for o in ws.objectives))
-        merged_items = sorted({i for ws in tail for i in ws.payload.get("assessment_items", [])})
+        merged_items = sorted({i for ws in tail for i in ws.payload.get("assessment_task_ids", [])})
         return WorkSet(set_id="", objectives=merged_objs, pairs=(),
-                        payload={"assessment_items": merged_items, "block_theme": "", "rationale": "",
+                        payload={"assessment_task_ids": merged_items, "block_theme": "", "rationale": "",
                                  **({"module": tail[-1].payload["module"]}
                                     if tail[-1].payload.get("module") else {})},
                         source=tail[-1].source)
@@ -954,7 +954,7 @@ def activity_work_sets(parsed, lo_ids, items_by_lo: dict | None = None, *,
                     set_id="", objectives=tuple(chunk), pairs=(),
                     payload={**ws.payload,
                              "expected_activities": per_objective * len(chunk),
-                             "assessment_items": sorted(
+                             "assessment_task_ids": sorted(
                                  {i for lo in chunk for i in items_by_lo.get(lo, [])})},
                     source=ws.source), limit)
             ]
@@ -1053,7 +1053,7 @@ def _activity_sets_by_module(sets: list[WorkSet], modules: list[dict],
                     1, round(int(payload.get("expected_activities") or 1) * share))
                 if _positive(payload.get("block_minutes")):
                     payload["block_minutes"] = int(_positive(payload["block_minutes"]) * share)
-                payload["assessment_items"] = sorted(
+                payload["assessment_task_ids"] = sorted(
                     {i for lo in objs for i in items_by_lo.get(lo, [])})
             pieces.append(WorkSet(set_id="", objectives=tuple(objs), pairs=(),
                                   payload=payload, source="llm"))
@@ -1065,7 +1065,7 @@ def _activity_sets_by_module(sets: list[WorkSet], modules: list[dict],
             continue
         pieces.append(WorkSet(
             set_id="", objectives=tuple(objs), pairs=(), source=leftover_source,
-            payload={"assessment_items": sorted({i for lo in objs for i in items_by_lo.get(lo, [])}),
+            payload={"assessment_task_ids": sorted({i for lo in objs for i in items_by_lo.get(lo, [])}),
                      "block_theme": "", "rationale": "",
                      "expected_activities": _expected(None, len(objs)),
                      "module": next(m for m in modules if m["id"] == module_id)}))
@@ -1819,10 +1819,11 @@ def render_activity_set(work_set: WorkSet) -> str:
         lines.append("objectives YOU must cover:")
         for lo in work_set.objectives:
             lines.append(f"  - {lo}")
-    items = work_set.payload.get("assessment_items") or []
-    if items:
-        lines.append("existing assessment item ids these activities may prepare learners for:")
-        lines.append(", ".join(items))
+    tasks = work_set.payload.get("assessment_task_ids") or []
+    if tasks:
+        lines.append("existing assessment task ids these activities may prepare learners for "
+                     "(put these in ``prepares_for_assessment``):")
+        lines.append(", ".join(tasks))
     theme = work_set.payload.get("block_theme")
     if theme:
         lines.append(f"block_theme: {theme}")

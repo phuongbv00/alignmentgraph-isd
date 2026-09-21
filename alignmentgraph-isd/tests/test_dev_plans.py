@@ -113,7 +113,7 @@ def test_activity_llm_blocks_carry_items_by_lo():
     sets, stats = dp.activity_work_sets(parsed, ["ILO-01", "ILO-02"], items_by_lo)
     assert len(sets) == 1
     assert sets[0].objectives == ("ILO-01", "ILO-02")
-    assert sets[0].payload["assessment_items"] == ["AT-01", "AT-02"]
+    assert sets[0].payload["assessment_task_ids"] == ["AT-01", "AT-02"]
     assert stats["fallback_used"] is False
 
 
@@ -345,7 +345,7 @@ def test_an_oversized_activity_block_is_split_and_keeps_its_item_slice():
     # a Developer told to prepare learners for items it is not writing for
     # would align its activities to the wrong things.
     for ws in sets:
-        assert set(ws.payload["assessment_items"]) == {f"AT-{lo}" for lo in ws.objectives}
+        assert set(ws.payload["assessment_task_ids"]) == {f"AT-{lo}" for lo in ws.objectives}
 
 
 def test_a_set_that_already_fits_is_left_exactly_as_it_was():
