@@ -269,3 +269,29 @@ def test_a_gap_with_no_objective_is_owned_by_the_set_that_wrote_it():
     assert [ws.set_id for ws in out] == ["AB-MOD-02R1"], "only the set that wrote it re-runs"
     assert out[0].payload["still_missing"] == [gap.message], \
         "the re-run is told what is missing, in the check's own words"
+
+
+def test_a_gap_a_lookup_settles_is_not_worth_a_developer_call():
+    """The `plan_set` ownership path is for gaps the deterministic net may NOT
+    close. C4 has a repair — `repair_content_coverage` re-points a dangling
+    `prepares_for_assessment` — so dispatching a block again to write what the
+    lookup settles is the waste this module is bounded to avoid.
+
+    MEASURED (run 7123a976): 19 dangling C4s, every one `repaired_by_harness`
+    in the round that followed, re-dispatched all three activity blocks. Ten
+    more activities, six Developer calls instead of three, nothing changed."""
+    from alignmentgraph_isd.core import dev_plans
+    from alignmentgraph_isd.core.agentic import redispatch
+    from alignmentgraph_isd.core.checks import Violation
+
+    def gap(kind):
+        return Violation(node_id="activity:TLA-0201", edge_type="", violation_type=kind,
+                         severity="error", message="m",
+                         metadata={"node_id": "activity:TLA-0201", "plan_set": "AB-MOD-02"})
+
+    sets = [dev_plans.WorkSet(set_id="AB-MOD-02", objectives=("ILO-002",))]
+
+    assert redispatch.redo("activities", [gap("C4")], sets, {"AB-MOD-02"}, 1) == []
+    assert [ws.set_id for ws in
+            redispatch.redo("activities", [gap("C3")], sets, {"AB-MOD-02"}, 1)] \
+        == ["AB-MOD-02R1"]

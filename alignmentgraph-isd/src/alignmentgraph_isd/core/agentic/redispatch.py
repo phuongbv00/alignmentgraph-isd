@@ -43,7 +43,7 @@ import re
 
 from dataclasses import replace
 
-from .. import dev_plans
+from .. import dev_plans, repairs
 
 #: Which families can be re-dispatched, and on which gaps. A family is here
 #: only when its gaps map exactly onto work the Developer tier can be asked
@@ -149,8 +149,16 @@ def _owns(stage: str, work_set, gap) -> bool:
     below cannot claim it and it was dropped — measured on run 43c4ca5e, every
     one of the 12 C3 gaps, although ``REDISPATCHABLE`` lists C3 for this
     family. ``plan_set`` is on the element because the commit stamped it."""
+    # Only for a gap the deterministic net may NOT close. Paying a Developer
+    # call to write what a lookup settles is the waste this whole module is
+    # bounded to avoid: MEASURED (run 7123a976), 19 dangling C4s — every one
+    # of them `repaired_by_harness` in the round that followed — re-dispatched
+    # all three activity blocks, which wrote 10 more activities, spent 6
+    # Developer calls instead of 3 and changed nothing. A REPORT_ONLY type has
+    # no such lookup, so a writer is the only route it has.
     plan_set = str(_metadata(gap).get("plan_set") or "")
-    if plan_set and plan_set == _base_set_id(work_set.set_id):
+    if (plan_set and str(getattr(gap, "violation_type", "")) in repairs.REPORT_ONLY
+            and plan_set == _base_set_id(work_set.set_id)):
         return True
     if stage == "assessment":
         pairs = set(work_set.pairs)
