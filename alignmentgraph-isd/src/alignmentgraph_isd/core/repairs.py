@@ -314,6 +314,26 @@ def _element_lo_map(graph) -> dict[str, dict]:
     }
 
 
+def _task_nodes(graph) -> dict[str, dict]:
+    """The assessment TASK nodes by their own id.
+
+    Every item-level repair below reaches its question through one of these:
+    the element is the task and a question is a field of it, so a routine that
+    looked an item id up among the element nodes would find nothing and fix
+    nothing, silently."""
+    return {str(n["data"].get("id") or ""): n
+            for n in graph.element_nodes(NodeType.ASSESSMENT)
+            if isinstance(n.get("data"), dict) and n["data"].get("id")}
+
+
+def _rewrite_items(graph, trajectory, node: dict, items: list) -> None:
+    """Write a task's item list back, in place. ``update_node`` rather than
+    ``add_element_node``: the task keeps every other field it was committed
+    with, and nothing re-enters the graph under an item's id."""
+    graph.update_node(node["id"], {"items": items})
+    trajectory.log_node_edit("update", node["id"], NodeType.ASSESSMENT)
+
+
 def _repair_assessment_family(ctx: RepairContext, violations: list) -> list:
     # Everything else — bloom_mismatch_assessment, evaluation_quality (a thin
     # pilot plan, a plan with no formative method), plan_coverage (a planned
@@ -391,7 +411,7 @@ def repair_assessment_coverage(ctx: RepairContext, violations: list) -> None:
     never saw.
     """
     graph = ctx.graph
-    tools = [dict(n["data"]) for n in graph.element_nodes(NodeType.ASSESSMENT)]
+    tasks = _task_nodes(graph)
     lo_map = _element_lo_map(graph)
     plan_node = graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))
     # The categories the plan PROMISED, read the one way every consumer of
@@ -403,24 +423,38 @@ def repair_assessment_coverage(ctx: RepairContext, violations: list) -> None:
         alignment._promised_categories(plan_node["data"] if plan_node else {})
     ) or ["summative"]
 
+    # C2 and P3 both report on the TASK — C2 because ``match_from_items``
+    # reads the objectives off the items it holds, P3 because the timing is
+    # the task's own — so the flagged id is a task id, and the dangling
+    # reference it names sits one level down or on the task itself.
     repaired_ids: list[str] = []
     for violation in violations:
-        item_id = str(violation.metadata.get("item_id") or "")
-        if not item_id:
+        task_id = str(violation.metadata.get("item_id") or "")
+        node = tasks.get(task_id)
+        if not node:
             continue
-        item = next((t for t in tools if isinstance(t, dict) and str(t.get("item_id")) == item_id), None)
-        if not item:
+        data = dict(node["data"])
+        items = [dict(i) for i in (data.get("items") or []) if isinstance(i, dict)]
+        touched = False
+        for item in items:
+            aligned = str(item.get("aligned_objective") or "")
+            if lo_map and aligned not in lo_map:
+                question = str(item.get("question", "")).lower()
+                item["aligned_objective"] = next(
+                    (lo for lo in lo_map if lo.lower() in question), next(iter(lo_map), aligned))
+                item["repaired"] = True
+                touched = True
+        # The item's ``plan_category`` is stamped FROM this, so the timing is
+        # the one place it can be wrong and the one place to fix it.
+        if str(data.get("timing", "")).lower() not in alignment._ASSESSMENT_PLAN_CATEGORIES:
+            data["timing"] = plan_categories[0]
+            items = [{**i, "plan_category": plan_categories[0]} for i in items]
+            touched = True
+        if not touched:
             continue
-        aligned = str(item.get("aligned_objective") or "")
-        if lo_map and aligned not in lo_map:
-            question = str(item.get("question", "")).lower()
-            item["aligned_objective"] = next(
-                (lo for lo in lo_map if lo.lower() in question), next(iter(lo_map), aligned))
-        if str(item.get("plan_category", "")).lower() not in alignment._ASSESSMENT_PLAN_CATEGORIES:
-            item["plan_category"] = plan_categories[0]
-        item["repaired"] = True
-        graph.add_element_node(NodeType.ASSESSMENT, item_id, dict(item))
-        repaired_ids.append(item_id)
+        graph.update_node(node["id"], {**data, "items": items, "repaired": True})
+        ctx.trajectory.log_node_edit("update", node["id"], NodeType.ASSESSMENT)
+        repaired_ids.append(task_id)
 
     if not repaired_ids:
         return
@@ -447,8 +481,11 @@ def repair_item_completeness(ctx: RepairContext, violations: list) -> None:
     if not wanted:
         return
     if ctx.graph_mode:
-        pool = {str(n["data"].get("item_id", "")): dict(n["data"])
-                for n in ctx.graph.element_nodes(NodeType.ASSESSMENT)}
+        # The questions live inside their task, so the pool is built one level
+        # down and each id remembers which task holds it.
+        pool = {str(item.get("item_id", "")): dict(item)
+                for node in _task_nodes(ctx.graph).values()
+                for item in (node["data"].get("items") or []) if isinstance(item, dict)}
     else:
         doc = ctx.store.get("assessment") or {}
         pool = {str(t.get("item_id", "")): dict(t)
@@ -460,10 +497,14 @@ def repair_item_completeness(ctx: RepairContext, violations: list) -> None:
     reformatted = list(updates_by_id)
 
     if ctx.graph_mode:
-        for iid, updates in updates_by_id.items():
-            node_id = f"{NodeType.ASSESSMENT}{ctx.graph.ELEMENT_SEP}{iid}"
-            ctx.graph.update_node(node_id, updates)
-            ctx.trajectory.log_node_edit("update", node_id, NodeType.ASSESSMENT)
+        for node in _task_nodes(ctx.graph).values():
+            items = [dict(i) for i in (node["data"].get("items") or []) if isinstance(i, dict)]
+            hit = [i for i in items if str(i.get("item_id", "")) in updates_by_id]
+            if not hit:
+                continue
+            for item in hit:
+                item.update(updates_by_id[str(item.get("item_id", ""))])
+            _rewrite_items(ctx.graph, ctx.trajectory, node, items)
     else:
         doc = ctx.store.get("assessment") or {}
         tools = [
@@ -653,25 +694,29 @@ def repair_evidence_alignment(ctx: RepairContext, violations: list) -> None:
     flagged = {(str(v.metadata.get("item_id") or ""), str(v.metadata.get("rc_id") or ""))
                for v in violations}
     repaired_ids: list[str] = []
-    for item in graph.element_nodes(NodeType.ASSESSMENT):
-        item_type = str(item["data"].get("type", "") or "")
-        if not item_type:
-            continue
-        item_id = str(item["data"].get("item_id", ""))
-        criteria = [dict(rc) if isinstance(rc, dict) else rc
-                    for rc in (item["data"].get("rubric") or [])]
+    for node in _task_nodes(graph).values():
+        items = [dict(i) for i in (node["data"].get("items") or []) if isinstance(i, dict)]
         touched = False
-        for rc in criteria:
-            if not isinstance(rc, dict) or (item_id, str(rc.get("id", ""))) not in flagged:
+        for item in items:
+            item_type = str(item.get("type", "") or "")
+            if not item_type:
                 continue
-            rc["evidence_type"] = item_type
-            rc["repaired"] = True
-            repaired_ids.append(str(rc.get("id", "")))
-            touched = True
+            item_id = str(item.get("item_id", ""))
+            criteria = [dict(rc) if isinstance(rc, dict) else rc
+                        for rc in (item.get("rubric") or [])]
+            hit = False
+            for rc in criteria:
+                if not isinstance(rc, dict) or (item_id, str(rc.get("id", ""))) not in flagged:
+                    continue
+                rc["evidence_type"] = item_type
+                rc["repaired"] = True
+                repaired_ids.append(str(rc.get("id", "")))
+                hit = True
+            if hit:
+                item["rubric"] = criteria
+                touched = True
         if touched:
-            data = {**item["data"], "rubric": criteria}
-            graph.add_element_node(
-                NodeType.ASSESSMENT, str(item["data"].get("item_id", "")), data)
+            _rewrite_items(graph, ctx.trajectory, node, items)
     if not repaired_ids:
         return
     _log_repair(ctx, str(NodeType.ASSESSMENT),

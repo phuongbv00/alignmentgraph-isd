@@ -157,10 +157,13 @@ def _placeholder_errors(node_type: str, field: str, value: Any) -> list[str]:
         errors.append(f"{path}: {PLACEHOLDER_FIELD_MARKER}")
     return errors
 
-# Item-level id fields per section list, validated for non-empty well-formed ids.
+# The id field of each section list's ENTRIES, validated for non-empty
+# well-formed ids. ``assessment_tools`` holds assessment TASKS, whose id field
+# is ``id`` like every other element's; ``item_id`` belongs to the questions
+# one level down, inside a task's own ``items``.
 _LIST_ITEM_ID_FIELD = {
     "objective": ("learning_objectives", "id"),
-    "assessment": ("assessment_tools", "item_id"),
+    "assessment": ("assessment_tools", "id"),
     "activity": ("learning_activities", "id"),
 }
 

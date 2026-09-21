@@ -42,14 +42,15 @@ def test_repair_logs_structured_repair_events():
     traj = TrajectoryLogger()
     config = HarnessRunConfig()
 
-    # A DANGLING-reference C2: the item exists, its `aligned_objective` names
-    # nothing. That is a structural fix over ids the design already holds, so
+    # A DANGLING-reference C2: the task exists and holds an item whose
+    # `aligned_objective` names nothing. That is a structural fix over ids the design already holds, so
     # it repairs without a model. (The other C2 shape — no item at all — is a
     # generation, and with no model it now writes nothing and logs
     # `repair_unfilled` instead, which is a different record.)
     graph.add_element_node(NodeType.ASSESSMENT, "AT-01", {
-        "item_id": "AT-01", "question": "Apply X to a case.",
-        "aligned_objective": "ILO-99", "plan_category": "summative"})
+        "id": "AT-01", "timing": "summative", "format": "quiz", "module_id": "MOD-01",
+        "items": [{"item_id": "ATI-0101", "question": "Apply X to a case.",
+                   "aligned_objective": "ILO-99", "plan_category": "summative"}]})
     violation = Violation(
         node_id="assessment:AT-01", edge_type="assessed_by", violation_type="C2",
         message="AT-01 names no real objective", metadata={"item_id": "AT-01"},

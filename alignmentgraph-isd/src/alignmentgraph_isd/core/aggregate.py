@@ -211,7 +211,7 @@ class ADDIEOutputAggregator:
             ],
             "assessment_tools": formative_tasks,
         }
-        objective_ids = {t.get("aligned_objective") for t in summative_tasks if t.get("aligned_objective")}
+        objective_ids = _objectives_in(summative_tasks)
         # Effectiveness/adoption synthesis: summative is the "summative"-tagged
         # slice of the unified Assessment pool, and nothing generates this
         # narrative, so it is synthesized deterministically from the counts.
@@ -219,7 +219,9 @@ class ADDIEOutputAggregator:
             "assessment_tools": summative_tasks,
             "effectiveness_analysis": {
                 "learning_outcomes": {
-                    "details": f"{len(summative_tasks)} summative item(s) covering {len(objective_ids)} objective(s)."
+                    "details": f"{len(summative_tasks)} summative assessment task(s) carrying "
+                               f"{_items_in(summative_tasks)} item(s), covering "
+                               f"{len(objective_ids)} objective(s)."
                 },
             },
             "adoption_decision": {
@@ -288,6 +290,22 @@ def _objective_assessment_map(objective_ids: list, tasks: list) -> dict:
     return by_lo
 
 
+def _objectives_in(tasks: list) -> set:
+    """The objectives the given assessment tasks actually measure, read off
+    each item's own ``aligned_objective`` — the Developers' work, the same
+    source C2 reads. A flat entry (the prose arm's shape for a plan with no
+    task) answers for itself."""
+    found = set()
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        for one in (task.get("items") or [task]):
+            lo = str((one or {}).get("aligned_objective") or "")
+            if lo:
+                found.add(lo)
+    return found
+
+
 def _timed(tasks: list, timing: str) -> list:
     """The assessment tasks that happen at one point in the course.
 
@@ -319,6 +337,13 @@ def _shape_rubrics(items: list) -> list:
     for item in items:
         if not isinstance(item, dict):
             out.append(item)
+            continue
+        if isinstance(item.get("items"), list):
+            # An assessment TASK: the criteria are on the questions it holds,
+            # one level down. The graph arm hands this function the task nodes
+            # and the prose arm hands it the flat items it has yet to nest, so
+            # without this branch the two substrates shape different things.
+            out.append({**item, "items": _shape_rubrics(item["items"])})
             continue
         criteria = [rc for rc in (item.get("rubric") or []) if isinstance(rc, dict)]
         if not criteria:
@@ -513,12 +538,14 @@ def aggregate_prose(store, trajectory, *, development_mode: str = "") -> dict:
         ],
         "assessment_tools": formative_tasks,
     }
-    objective_ids_covered = {t.get("aligned_objective") for t in summative_tasks if t.get("aligned_objective")}
+    objective_ids_covered = _objectives_in(summative_tasks)
     summative = {
         "assessment_tools": summative_tasks,
         "effectiveness_analysis": {
             "learning_outcomes": {
-                "details": f"{len(summative_tasks)} summative item(s) covering {len(objective_ids_covered)} objective(s)."
+                "details": f"{len(summative_tasks)} summative assessment task(s) carrying "
+                               f"{_items_in(summative_tasks)} item(s), covering "
+                               f"{len(objective_ids_covered)} objective(s)."
             },
         },
         "adoption_decision": {
