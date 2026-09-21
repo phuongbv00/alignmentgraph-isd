@@ -439,3 +439,44 @@ def test_an_item_cannot_be_filed_under_the_wrong_task():
 
     assert not hasattr(checks_mod, "set_alignment")
     assert "set_alignment" not in repairs.OWNER_BY_VIOLATION
+
+
+def test_a_self_named_nested_task_list_is_unwrapped_at_the_transport():
+    """``"assessment_tasks": {"assessment_tasks": [...]}`` means the list.
+
+    Run d7722e8e: the model named the nested list twice, ``plan_tasks`` found
+    no list on the set, read the SET ITSELF as the task, and every activity in
+    the design prepared for ``SET-01`` rather than for one of the three tasks
+    under it."""
+    from alignmentgraph_isd.core.agentic import tools
+
+    params = {"type": "object",
+              "properties": {"assessment_plan": tools.ARTIFACT_SCHEMAS["assessment_plan"]}}
+    tasks = [{"id": "AT-01", "timing": "diagnostic", "covers_objectives": ["ILO-01"]},
+             {"id": "AT-02", "timing": "summative", "covers_objectives": ["ILO-01"]}]
+    reshaped: list = []
+    out = tools.reshape_args(
+        params,
+        {"assessment_plan": {"sets": [{"id": "SET-01", "module_id": "MOD-01",
+                                       "assessment_tasks": {"assessment_tasks": tasks}}]}},
+        reshaped=reshaped)
+
+    assert [t["id"] for t in dev_plans.plan_tasks(out["assessment_plan"])] == ["AT-01", "AT-02"]
+    assert reshaped == ["assessment_plan.sets[0].assessment_tasks"]
+
+
+def test_a_self_named_wrapper_with_a_sibling_is_left_for_the_validator():
+    """A list has nowhere to keep a sibling, so the unwrap declines rather
+    than dropping what it cannot carry."""
+    from alignmentgraph_isd.core.agentic import tools
+
+    params = {"type": "object",
+              "properties": {"assessment_plan": tools.ARTIFACT_SCHEMAS["assessment_plan"]}}
+    wrapped = {"assessment_tasks": [{"id": "AT-01"}], "note": "kept"}
+    reshaped: list = []
+    out = tools.reshape_args(
+        params, {"assessment_plan": {"sets": [{"id": "SET-01", "assessment_tasks": wrapped}]}},
+        reshaped=reshaped)
+
+    assert out["assessment_plan"]["sets"][0]["assessment_tasks"] == wrapped
+    assert reshaped == []

@@ -652,6 +652,22 @@ def reshape_args(parameters: dict, args: dict, *, reshaped: list,
         kind = (schema or {}).get("type")
         if kind == "array":
             items = (schema or {}).get("items") or {}
+            if isinstance(value, dict):
+                # ``"assessment_tasks": {"assessment_tasks": [...]}`` means the
+                # list. This is ``_unwrap_self_named`` one level down, where a
+                # model that names the artifact twice names a nested LIST twice
+                # — MEASURED (run d7722e8e, the assessment blueprint), after
+                # which ``dev_plans.plan_tasks`` saw a set with no task list,
+                # read the SET ITSELF as the task, and every activity in the
+                # design prepared for ``SET-01`` instead of the three tasks
+                # under it. Only when that key is the dict's ONLY key: a list
+                # has nowhere to keep a sibling, so anything else is left for
+                # the validator to reject rather than silently dropped.
+                inner = value.get(path.rsplit(".", 1)[-1])
+                if not (len(value) == 1 and isinstance(inner, list)):
+                    return value
+                reshaped.append(path)
+                value = inner
             if isinstance(value, str):
                 if items.get("type") != "string" or not value.strip():
                     return value
