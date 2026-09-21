@@ -185,6 +185,9 @@ def _verify_family(family: str, *, state, design_brief, graph_mode: bool, memory
 
     found: list = []
     with trajectory.acting_as(ORCHESTRATOR):
+        # Whoever was shown its issues before this net ran keeps the credit for
+        # having looked; everything else is unseen by construction.
+        seen_by_agent = memory.shown_keys()
         for _ in range(budget.SELF_VALIDATION_BUDGET):
             found, unowned = collect()
             round_no, keys = observe(found, unowned)
@@ -195,7 +198,19 @@ def _verify_family(family: str, *, state, design_brief, graph_mode: bool, memory
             before = len(trajectory.repair_events)
             repairs.repair(family, found, ctx)
             if len(trajectory.repair_events) == before:
-                memory.mark_open_reason(keys, reason="converged", round=round_no)
+                # A round that repairs nothing means two different things, and
+                # merging them would be a wrong claim: an agent that was SHOWN
+                # the finding and did not fix it converged, while one nobody
+                # was ever able to ask is UNSEEN. The second is the normal fate
+                # of an element-level finding here, because the check runs
+                # after the Developer's loop has closed and the Designer's own
+                # loop closed before its Developers wrote (the element filter
+                # in ``repair_turn.collect_own``). Measured on run 43c4ca5e,
+                # 19 of the 23 open findings had reached no agent at all.
+                memory.mark_open_reason(
+                    {k for k in keys if k in seen_by_agent}, reason="converged", round=round_no)
+                memory.mark_open_reason(
+                    {k for k in keys if k not in seen_by_agent}, reason="unseen", round=round_no)
                 trajectory.log_convergence(
                     family, sorted(keys), [v.violation_type for v in found],
                     round_number=round_no, agent=ORCHESTRATOR)
@@ -357,11 +372,14 @@ def _run_fanout(config, memory, trajectory, design_brief, step, spec, *,
                 stats[key] = max(stats.get(key, 0), value)
             else:
                 stats[key] = stats.get(key, 0) + value
-        # COMMIT THIS SET NOW, not once the whole family has run: with the
-        # work in the graph, the checks can see it while the family's DESIGNER
-        # still has its loop open, so a gap can go back to the agent whose job
-        # is to plan around it. Ids stay collision-free because the remapper
-        # reads the ids the state already holds (`_ids_already_held`).
+        # COMMIT THIS SET NOW, not once the whole family has run: a later set
+        # is then written against ids the earlier ones already hold, and the
+        # re-dispatch round sees the whole family's work rather than the last
+        # set's. NOT so a gap can reach the Designer — in this arm its loop
+        # returned before the fan-out started, which is why an element-level
+        # finding here ends up `unseen` and why `redispatch` is the route back
+        # to a writer. Ids stay collision-free because the remapper reads the
+        # ids the state already holds (`_ids_already_held`).
         payload = {"set_id": work_set.set_id, **(captured.get("section") or {})}
         with trajectory.acting_as(orchestrator):
             fanout.commit_sets(spec, state, trajectory, [work_set], [payload])

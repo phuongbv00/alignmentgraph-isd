@@ -385,7 +385,19 @@ class Memory:
     #: converging is trivially true for a type it is not allowed to touch,
     #: while "the agent never got its third turn" is a parameter we chose and
     #: the one a reader can act on.
-    _REASON_PRECEDENCE = ("unowned", "budget", "converged", "unexplained")
+    #: ``unseen`` outranks ``converged``: a type the net may not touch
+    #: converges trivially, and reading that as "the agent tried" would credit
+    #: the model with a look it never got.
+    _REASON_PRECEDENCE = ("unowned", "budget", "unseen", "converged", "unexplained")
+
+    def shown_keys(self) -> set[str]:
+        """The findings some agent has actually been shown.
+
+        ``shown_to_agent`` is stamped only by ``repair_turn.stamp_shown``, on
+        a state read the agent CHOSE to make after being pointed at its open
+        issues — so this is the set that can honestly be called looked at."""
+        return {key for key, finding in self._findings.items()
+                if finding.shown_to_agent}
 
     def mark_open_reason(self, keys, *, reason: str, round: int = 0) -> None:
         """Why these are still here — set where the run gave up on them, so a

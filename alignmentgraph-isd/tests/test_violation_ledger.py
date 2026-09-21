@@ -448,3 +448,49 @@ def test_only_the_violations_actually_rendered_are_stamped_shown():
     stamped = Counter(f.shown_to_agent for f in memory.findings)
     assert stamped == {1: budget.REPAIR_REQUEST_CAP, 0: 2}
     assert len(trajectory.check_events) == 1, "one round, not one per half"
+
+
+def test_a_gap_nobody_could_be_shown_is_unseen_not_converged():
+    """`converged` means an agent looked and could not fix it. A round that
+    repairs nothing ALSO covers the case where no agent was ever able to see
+    the finding — an element-level check runs after the Developer's loop has
+    closed, and the Designer's loop closed before its Developers wrote.
+
+    Measured on run 43c4ca5e: 19 of 23 open findings had reached no agent, and
+    every one was stamped `converged`. `open_reason` is the line between a
+    result about the model and a parameter we chose, so the two must not share
+    a word."""
+    from alignmentgraph_isd.core.memory import Memory
+    from alignmentgraph_isd.core.checks import Violation
+
+    def one(node_id, kind):
+        return Violation(node_id=node_id, edge_type="", violation_type=kind,
+                         severity="warning", message="m", metadata={})
+
+    from alignmentgraph_isd.core.alignment_graph import AlignmentGraph
+
+    memory = Memory.of(AlignmentGraph())
+    looked, blind = one("activity:TLA-01", "C3"), one("activity:TLA-02", "C3")
+    memory.observe_violations([looked], round=1, family="activity_designer",
+                          shown_to_agent=True)
+    memory.observe_violations([blind], round=1, family="activity_designer")
+
+    assert memory.shown_keys() == {looked.key}
+
+    memory.mark_open_reason({looked.key}, reason="converged")
+    memory.mark_open_reason({blind.key}, reason="unseen")
+    memory.settle({looked.key, blind.key})   # both still residual
+    reasons = {f["key"]: f["open_reason"] for f in memory.findings_dicts()} \
+        if hasattr(memory, "findings_dicts") else \
+        {f.key: f.open_reason for f in memory._findings.values()}
+    assert reasons[looked.key] == "converged"
+    assert reasons[blind.key] == "unseen"
+
+
+def test_unseen_outranks_converged():
+    """A type the deterministic net may not touch converges trivially, so a
+    later `converged` must never overwrite the fact that nobody looked."""
+    from alignmentgraph_isd.core.memory import Memory
+
+    assert Memory._REASON_PRECEDENCE.index("unseen") \
+        < Memory._REASON_PRECEDENCE.index("converged")
