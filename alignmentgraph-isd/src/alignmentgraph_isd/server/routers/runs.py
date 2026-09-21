@@ -93,7 +93,8 @@ def start_run(
 
     return RunCreated(run_id=run.id, status=run.status,
                       agent_mode=state.agent_mode, context_mode=state.context_mode,
-                      development_mode=state.development_mode)
+                      development_mode=state.development_mode,
+                      fanout_workers=state.fanout_workers)
 
 
 @router.get("/runs/{run_id}", response_model=RunDetail)

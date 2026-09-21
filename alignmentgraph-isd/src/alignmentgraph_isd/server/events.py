@@ -105,6 +105,10 @@ class RunState:
     #: Not an axis, carried beside them for the same reason: how much of the
     #: planned scale this run writes out (``HarnessRunConfig.development_mode``).
     development_mode: str = ""
+    #: How many of one family's Developers ran at once. Wall time only — the
+    #: graph is identical — but a reader comparing two runs' durations has to
+    #: know which posture each one ran under.
+    fanout_workers: int = 1
 
     events: list[Event] = field(default_factory=list)
     # Latest graph only, pre-serialized. `light` drops the per-node `data`
@@ -337,6 +341,8 @@ class RunState:
                    if self.agent_mode and self.context_mode else {})
             if self.development_mode:
                 arm["development_mode"] = self.development_mode
+            if self.fanout_workers > 1:
+                arm["fanout_workers"] = self.fanout_workers
             return {**self.stats, **arm,
                     "event_count": len(self.events), "graph_rev": self.graph_rev}
 
@@ -359,10 +365,11 @@ class RunRegistry:
 
     def create(self, run_id: str, program_id: str,
                agent_mode: str = "", context_mode: str = "",
-               development_mode: str = "") -> RunState:
+               development_mode: str = "", fanout_workers: int = 1) -> RunState:
         state = RunState(run_id=run_id, program_id=program_id,
                          agent_mode=agent_mode, context_mode=context_mode,
-                         development_mode=development_mode)
+                         development_mode=development_mode,
+                         fanout_workers=fanout_workers)
         with self._lock:
             self._runs[run_id] = state
             # Insertion order, so the oldest finished runs go first. Live runs

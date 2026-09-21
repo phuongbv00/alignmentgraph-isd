@@ -8,7 +8,7 @@ interface Props {
   stream: RunStreamState
   canRun: boolean
   runDisabledReason: string
-  onRun: (arm: Arm, fullDevelopment?: boolean) => void
+  onRun: (arm: Arm, fullDevelopment?: boolean, parallel?: boolean) => void
   onCancel: () => void
   starting: boolean
 }
@@ -145,13 +145,14 @@ function RunSplitButton({ canRun, starting, idle, disabledReason, onRun }: {
   starting: boolean
   idle: boolean
   disabledReason: string
-  onRun: (arm: Arm, fullDevelopment?: boolean) => void
+  onRun: (arm: Arm, fullDevelopment?: boolean, parallel?: boolean) => void
 }) {
   const [open, setOpen] = useState(false)
   // Belongs to the OPEN menu and to nothing else: it applies to the arm picked
   // from this menu and is gone when the menu closes, for the reason the arm is
   // not remembered either — what a run was is a property of that run.
   const [fullDevelopment, setFullDevelopment] = useState(false)
+  const [parallel, setParallel] = useState(false)
   const wrap = useRef<HTMLDivElement>(null)
   const caret = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDivElement>(null)
@@ -251,7 +252,7 @@ function RunSplitButton({ canRun, starting, idle, disabledReason, onRun }: {
                 // Closed first: `onRun` is async and flips `starting`, which
                 // disables the control this menu hangs off.
                 setOpen(false)
-                onRun(arm, fullDevelopment)
+                onRun(arm, fullDevelopment, parallel)
               }}
             >
               {arm.label}
@@ -267,6 +268,17 @@ function RunSplitButton({ canRun, starting, idle, disabledReason, onRun }: {
               onChange={(event) => setFullDevelopment(event.target.checked)}
             />{' '}
             Full development
+          </label>
+          <label
+            className="menu-item"
+            title="Run one family's Developers at the same time instead of one after another. Same graph, same calls, same artifacts — wall time only. Do not use on a shared or rate-limited endpoint: it buys HTTP 429s instead of time."
+          >
+            <input
+              type="checkbox"
+              checked={parallel}
+              onChange={(event) => setParallel(event.target.checked)}
+            />{' '}
+            Parallel developers
           </label>
         </div>
       )}

@@ -169,6 +169,17 @@ class RunCreate(BaseModel):
     a representative sample of what the design plans or all of it — but it is
     chosen per run exactly as the axes are, so it travels with them.
 
+    Neither is ``fanout_workers``, and it is not even a property of the design:
+    it runs one family's Developers at once instead of one after another, and
+    the graph, the calls and the artifacts are identical whatever it is set to
+    (``tests/test_fanout.py::test_parallel_workers_produce_the_same_graph_as_sequential``).
+    It buys WALL TIME and nothing else, which is why it belongs with the run
+    rather than in the model settings, and why it is worth having here at all:
+    measured on run 7123a976, the four families' Developer calls were 266 s in
+    sequence and 112 s if each family's ran together. It is a posture towards
+    the ENDPOINT, so raising it on a shared or rate-limited one buys HTTP 429s
+    instead of time.
+
     Every field is optional and ``None`` means "did not say": the field is left
     out of the harness config entirely, so ``HarnessRunConfig`` supplies it. The
     defaults are deliberately NOT repeated here — a default written in two
@@ -179,6 +190,7 @@ class RunCreate(BaseModel):
     agent_mode: AgentMode | None = None
     context_mode: ContextMode | None = None
     development_mode: DevelopmentMode | None = None
+    fanout_workers: int | None = Field(default=None, ge=1, le=8)
 
 
 class RunCreated(BaseModel):
@@ -189,6 +201,7 @@ class RunCreated(BaseModel):
     agent_mode: str = ""
     context_mode: str = ""
     development_mode: str = ""
+    fanout_workers: int = 1
 
 
 class RunDetail(BaseModel):

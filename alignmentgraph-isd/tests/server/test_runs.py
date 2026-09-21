@@ -1003,3 +1003,25 @@ def test_a_cancelled_run_keeps_what_the_page_was_showing(client, ready_program,
     directory = artifacts.run_dir(manager.settings, ready_program, run_id)
     assert not (directory / artifacts.ARTIFACT_FILES["trajectory_deep"]).exists()
     assert (directory / artifacts.EVENTS_FILE).exists()
+
+
+def test_a_run_may_ask_for_parallel_developers(client, ready_program):
+    """Wall time only: the graph, the calls and the artifacts are identical
+    whatever this is set to (`test_parallel_workers_produce_the_same_graph_as_
+    sequential`), so it is a posture towards the endpoint rather than a choice
+    about the design — and the response says what the run resolved to, because
+    a reader comparing two runs' durations has to know which one each ran
+    under."""
+    response = client.post(f"/api/programs/{ready_program}/runs",
+                           json={"fanout_workers": 4})
+
+    assert response.status_code == 202, response.text
+    assert response.json()["fanout_workers"] == 4
+
+
+def test_a_bodiless_run_stays_sequential(client, ready_program):
+    """The default is the harness's, written in one place."""
+    response = client.post(f"/api/programs/{ready_program}/runs")
+
+    assert response.status_code == 202, response.text
+    assert response.json()["fanout_workers"] == 1

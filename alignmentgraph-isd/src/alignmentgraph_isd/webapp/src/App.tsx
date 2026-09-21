@@ -263,7 +263,7 @@ export default function App() {
     void refreshPrograms()
   }
 
-  const startRun = async (arm: Arm, fullDevelopment = false) => {
+  const startRun = async (arm: Arm, fullDevelopment = false, parallel = false) => {
     if (!activeId) return
     setStarting(true)
     setError('')
@@ -275,6 +275,9 @@ export default function App() {
       const options = {
         ...(arm.isDefault ? {} : { agent_mode: arm.agentMode, context_mode: arm.contextMode }),
         ...(fullDevelopment ? { development_mode: 'full' as const } : {}),
+        // 4 is the widest any family here gets (one set per module), so it
+        // never queues and never asks the endpoint for more than the work.
+        ...(parallel ? { fanout_workers: 4 } : {}),
       }
       const { run_id } = await api.startRun(
         activeId, Object.keys(options).length ? options : undefined)
@@ -367,7 +370,8 @@ export default function App() {
               stream={stream}
               canRun={canRun}
               runDisabledReason={runDisabledReason}
-              onRun={(arm, fullDevelopment) => void startRun(arm, fullDevelopment)}
+              onRun={(arm, fullDevelopment, parallel) =>
+                void startRun(arm, fullDevelopment, parallel)}
               onCancel={() => void cancelRun()}
               starting={starting}
             />
