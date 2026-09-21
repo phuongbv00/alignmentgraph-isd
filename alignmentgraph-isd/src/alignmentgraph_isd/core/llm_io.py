@@ -301,11 +301,26 @@ def close_unclosed_arrays(text: str) -> str:
     that can mean only one thing — the array was meant to end before it — so
     the ``]`` goes in front of that key's comma. Nothing else is touched: no
     value is rewritten, and text this does not apply to comes back unchanged.
+
+    The comma and the array must belong to the SAME container, which is why
+    every opener carries its own. Read off the latest comma anywhere, the
+    insertion lands outside the array it is closing: MEASURED, ``{"x": 1,
+    "fm": ["fm": ["a"], …`` became ``{"x": 1], "fm": …`` — a repair that
+    corrupts a part of the text that was never broken. And a key that is the
+    array's FIRST token has no comma to go in front of at all, so the ``]``
+    goes straight after the ``[``, leaving the empty array and the key as
+    siblings; the key repeated is then the one that stands, which is exactly
+    what a model naming the field twice meant. MEASURED (run d7722e8e,
+    ``assessment_plan``): ``"formative_methods": ["formative_methods": ["exit
+    tickets"], "lo_coverage_targets": {…}`` recovered ONE of the artifact's
+    fields, so the submit was refused for a `lo_coverage_targets` the model
+    could see it had just written, three times, and the stage ended.
     """
     out: list[str] = []
-    stack: list[str] = []
+    # One frame per open container: its opener, where its contents begin in
+    # `out`, and the latest comma seen INSIDE it (-1 = none yet).
+    stack: list[list] = []
     index, length = 0, len(text)
-    last_comma = -1                     # position in `out` of the latest top-level comma
     while index < length:
         char = text[index]
         if char == '"':
@@ -316,28 +331,33 @@ def close_unclosed_arrays(text: str) -> str:
             after = end + 1
             while after < length and text[after] in " \t\r\n":
                 after += 1
-            if (stack and stack[-1] == "[" and after < length and text[after] == ":"
-                    and last_comma != -1):
-                out.insert(last_comma, "]")
-                stack.pop()
+            if stack and stack[-1][0] == "[" and after < length and text[after] == ":":
+                _, floor, comma = stack.pop()
+                # In front of the comma the array already has; where it has
+                # none, straight after the `[`, and then the separator the
+                # key needs to stand as the next field of the object.
+                out.insert(comma, "]") if comma != -1 else out.insert(floor, "],")
             out.append(token)
             index = end + 1
             continue
         if char in "[{":
-            stack.append(char)
-        elif char in "]}":
+            out.append(char)
+            stack.append([char, len(out), -1])
+            index += 1
+            continue
+        if char in "]}":
             if not stack:
                 index += 1
                 continue                # a closer with nothing open: dropped
             # The closer that MATCHES what is open — `..."]` ending an object
             # is the same slip as the one above, seen from the other end.
-            char = "]" if stack.pop() == "[" else "}"
-        elif char == ",":
-            last_comma = len(out)
+            char = "]" if stack.pop()[0] == "[" else "}"
+        elif char == "," and stack:
+            stack[-1][2] = len(out)
         out.append(char)
         index += 1
     # Whatever is still open is closed, innermost first.
-    out.extend("]" if opener == "[" else "}" for opener in reversed(stack))
+    out.extend("]" if frame[0] == "[" else "}" for frame in reversed(stack))
     return "".join(out)
 
 

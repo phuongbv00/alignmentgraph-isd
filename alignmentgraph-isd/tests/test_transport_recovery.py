@@ -652,3 +652,41 @@ def test_both_arms_carry_a_refused_artifact_the_same_way():
         source = inspect.getsource(module)
         assert "turn_mod.carry_over(self._kept" in source, module.__name__
         assert "turn_mod.keep_fields(self._kept" in source, module.__name__
+
+
+def test_an_array_whose_first_token_is_a_key_closes_at_the_bracket():
+    """``"fm": ["fm": ["exit"], "next": …`` — the array opens and a KEY is the
+    very next thing in it, so there is no comma to put the ``]`` in front of.
+
+    MEASURED (run d7722e8e, `assessment_plan`): the tolerant parser kept only
+    the field before the break, so the submit was refused for a
+    `lo_coverage_targets` the model could see it had just written — three
+    times, until the stage ended with nothing committed.
+    """
+    import json
+
+    from alignmentgraph_isd.core.llm_io import close_unclosed_arrays
+
+    text = ('{"assessment_plan": {"formative_methods": ["formative_methods": ["exit tickets"], '
+            '"lo_coverage_targets": {"ILO-01": ["diagnostic"]}, '
+            '"pilot_data_plan": {"anticipated_difficulties": [{"area": "x"}]}}}')
+    plan = json.loads(close_unclosed_arrays(text))["assessment_plan"]
+
+    assert sorted(plan) == ["formative_methods", "lo_coverage_targets", "pilot_data_plan"]
+    assert plan["formative_methods"] == ["exit tickets"]
+    assert plan["lo_coverage_targets"] == {"ILO-01": ["diagnostic"]}
+
+
+def test_the_closing_bracket_goes_in_its_own_container_s_comma():
+    """The comma and the array must belong to the same container.
+
+    Read off the latest comma anywhere, the insertion lands OUTSIDE the array
+    it is closing and corrupts a part of the text that was never broken:
+    ``{"x": 1, "fm": ["fm": ["a"], …`` became ``{"x": 1], "fm": …``.
+    """
+    import json
+
+    from alignmentgraph_isd.core.llm_io import close_unclosed_arrays
+
+    text = '{"p": {"x": 1, "fm": ["fm": ["a"], "lo": 2}}'
+    assert json.loads(close_unclosed_arrays(text)) == {"p": {"x": 1, "fm": ["a"], "lo": 2}}
