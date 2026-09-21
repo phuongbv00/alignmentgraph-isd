@@ -1012,7 +1012,17 @@ def relation_coverage(graph) -> list[Violation]:
         violations.append(Violation(
             node_id=node_id, edge_type="", violation_type=gap["relation_id"],
             severity="error" if tier == "core" else "warning", message=gap["message"],
-            metadata={"node_id": node_id, "item_id": bare_id},
+            # The work set that wrote this element, so a second dispatch can
+            # tell whose gap it is. The coverage-side gaps below name an
+            # objective and are owned through that; an ESTABLISHER gap is
+            # about a reference that resolves to nothing, so it has no
+            # objective to be owned by and was silently dropped by
+            # ``redispatch._owns`` — the whole of C3 on run 43c4ca5e.
+            # ``plan_set`` is stamped on every element at commit
+            # (``dev_plans.remap_and_tag``), so it is always there to read.
+            metadata={"node_id": node_id, "item_id": bare_id,
+                      "plan_set": str(((graph.get_node(node_id) or {}).get("data")
+                                       or {}).get("plan_set") or "")},
         ))
 
     # What the establishers already reported, by the SAME identity the ledger

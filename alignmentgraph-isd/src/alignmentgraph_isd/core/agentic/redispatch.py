@@ -39,6 +39,8 @@ ask it. That is also why this module composes no prompt.
 """
 from __future__ import annotations
 
+import re
+
 from dataclasses import replace
 
 from .. import dev_plans
@@ -132,8 +134,24 @@ def tag_round(work_sets: list, round_index: int) -> list:
             for ws in work_sets]
 
 
+def _base_set_id(set_id: str) -> str:
+    """``AS-SET-01R1`` -> ``AS-SET-01``. A round suffix is this harness's
+    (``tag_round``), so a gap left by round 1 still belongs to the set the
+    next round derives under its own name."""
+    return re.sub(r"R\d+$", "", str(set_id or ""))
+
+
 def _owns(stage: str, work_set, gap) -> bool:
-    """Whether this set is the one that should have produced what is missing."""
+    """Whether this set is the one that should have produced what is missing.
+
+    The work set that WROTE the element answers first. A gap about a reference
+    that resolves to nothing names no objective, so the objective-based tests
+    below cannot claim it and it was dropped — measured on run 43c4ca5e, every
+    one of the 12 C3 gaps, although ``REDISPATCHABLE`` lists C3 for this
+    family. ``plan_set`` is on the element because the commit stamped it."""
+    plan_set = str(_metadata(gap).get("plan_set") or "")
+    if plan_set and plan_set == _base_set_id(work_set.set_id):
+        return True
     if stage == "assessment":
         pairs = set(work_set.pairs)
         category = str(_metadata(gap).get("plan_category") or "").strip().lower()

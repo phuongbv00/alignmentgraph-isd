@@ -241,3 +241,31 @@ def test_a_replan_is_not_a_retry():
         if context["label"] in replanned:
             assert context["attempt"] == 1, (
                 f"{context['agent']} is badged as a retry for having replanned")
+
+
+def test_a_gap_with_no_objective_is_owned_by_the_set_that_wrote_it():
+    """`REDISPATCHABLE` lists C3 for activities, but `_owns` matched only on
+    objective ids from the gap's metadata — and an ESTABLISHER gap is about a
+    reference that resolves to nothing, so it names no objective and was
+    dropped. Measured on run 43c4ca5e: all 12 C3 gaps, every round.
+
+    `plan_set` is stamped on the element at commit, so the set that wrote it
+    is always knowable."""
+    from alignmentgraph_isd.core import dev_plans
+    from alignmentgraph_isd.core.agentic import redispatch
+    from alignmentgraph_isd.core.checks import Violation
+
+    gap = Violation(
+        node_id="activity:TLA-0203", edge_type="", violation_type="C3", severity="error",
+        message="activity:TLA-0203 has no resolvable aligned_objectives.",
+        metadata={"node_id": "activity:TLA-0203", "item_id": "TLA-0203",
+                  "plan_set": "AB-MOD-02"})
+    mine = dev_plans.WorkSet(set_id="AB-MOD-02", objectives=("ILO-003",))
+    other = dev_plans.WorkSet(set_id="AB-MOD-01", objectives=("ILO-002",))
+
+    out = redispatch.redo("activities", [gap], [mine, other],
+                          {"AB-MOD-02", "AB-MOD-01"}, 1)
+
+    assert [ws.set_id for ws in out] == ["AB-MOD-02R1"], "only the set that wrote it re-runs"
+    assert out[0].payload["still_missing"] == [gap.message], \
+        "the re-run is told what is missing, in the check's own words"
