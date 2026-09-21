@@ -233,11 +233,12 @@ submitting: [1] is the first activity you wrote, [2] the second. Leave it empty 
 of your own activities genuinely has to come first.
 Every activity belongs to the module YOUR ASSIGNED BLOCK names: set ``module_id`` to that
 module's id on every activity.
-Every activity must list ``aligned_objectives`` (existing ILO ids it practices, TLA = Teaching/
-Learning Activity, drawn ONLY from YOUR ASSIGNED BLOCK's objectives) and
-``prepares_for_assessment`` (ids of existing assessment TASKS it prepares learners for — the
-quiz, practical or project a learner sits, drawn from the list YOUR ASSIGNMENT gives, never an
-individual question).
+Every activity must list ``aligned_objectives`` (TLA = Teaching/Learning Activity) and
+``prepares_for_assessment``. Both hold IDS OF THINGS THAT ALREADY EXIST, copied character for
+character from the ids you have been given — an objective id is ``ILO-003``, never a Bloom verb
+and never the objective's sentence; an assessment task id is ``AT-02``, the quiz, practical or
+project a learner sits, never an individual question. Use only the objectives you were given to
+cover, and only the assessment tasks you were given.
 ``materials_needed`` is free text, NOT an id — describe what content/resource would help, a
 later step will source it. ``learner_cognitive_process`` must be one of:
 %(bloom_levels)s — and must be at or above the level of

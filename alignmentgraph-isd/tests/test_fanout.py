@@ -267,3 +267,86 @@ def test_the_event_says_which_artifact_each_set_was_derived_from():
     assert all(s["for_sets"] for s in assessment), (
         "an assessment set writes for a named set of the blueprint")
     assert len({tuple(s["for_sets"]) for s in assessment}) == len(assessment)
+
+
+# ── a reference must name something that exists ─────────────────────────────
+
+def _known():
+    from alignmentgraph_isd.core.alignment_graph import NodeType
+    return {NodeType.OBJECTIVE: ["ILO-001", "ILO-002", "ILO-003", "ILO-004"],
+            NodeType.MODULE: ["MOD-01", "MOD-02"],
+            NodeType.ASSESSMENT: ["AT-001", "AT-002"]}
+
+
+def _activity(**over):
+    base = {"activity_name": "Lab", "description": "d", "module_id": "MOD-01",
+            "aligned_objectives": ["ILO-001"], "prepares_for_assessment": ["AT-001"],
+            "learner_cognitive_process": "apply"}
+    return {**base, **over}
+
+
+def test_an_objective_reference_that_names_nothing_real_is_refused():
+    """Every shape run 43c4ca5e's activity Developers actually wrote.
+
+    The assignment named `ILO-003`; the model wrote a mangled id, a wrong
+    prefix, a Bloom verb and the objective's whole sentence. C3 — a core
+    relation — was established for 6 of 18 activities, and all 14 findings
+    died with `shown_to_agent = 0`, because nothing refuses a reference while
+    its author is still in the conversation."""
+    from alignmentgraph_isd.core.agentic import fanout
+
+    for written in ("Loal-003", "LO-003", "evaluate",
+                    "Learners will analyze technological affordances to segment "
+                    "scientific problem-solving processes into three or more phases."):
+        errors = fanout.output_errors(
+            fanout.SPECS["activities"],
+            {"learning_activities": [_activity(aligned_objectives=[written])]}, _known())
+        assert errors, f"{written!r} was accepted"
+        assert "aligned_objectives" in errors[0]
+        assert "ILO-001" in errors[0], "the refusal must say which ids to use"
+
+
+def test_a_reference_that_resolves_is_accepted_however_it_is_spelled():
+    """The validator matches with `alignment.matches_ref`, the same tolerance
+    the establisher resolves with, so it can never refuse a spelling the edge
+    would have accepted."""
+    from alignmentgraph_isd.core.agentic import fanout
+
+    for written in ("ILO-003", "ilo_003", "OBJECTIVE-ILO-003"):
+        assert not fanout.output_errors(
+            fanout.SPECS["activities"],
+            {"learning_activities": [_activity(aligned_objectives=[written])]}, _known())
+
+
+def test_a_partly_dangling_list_still_builds_its_edges_and_is_kept():
+    """`alignment.match_list` establishes one edge per resolved reference and
+    reports a gap only if NONE resolve. A validator stricter than the thing it
+    protects would reject an artifact the design would have used."""
+    from alignmentgraph_isd.core.agentic import fanout
+
+    assert not fanout.output_errors(
+        fanout.SPECS["activities"],
+        {"learning_activities": [_activity(prepares_for_assessment=["AT-001", "AT-999"])]},
+        _known())
+
+
+def test_the_check_stands_down_when_it_cannot_know_the_ids():
+    """No pool, no finding — refusing everything because the snapshot came
+    back empty would be the harness's failure charged to the model."""
+    from alignmentgraph_isd.core.agentic import fanout
+
+    assert not fanout.output_errors(
+        fanout.SPECS["activities"],
+        {"learning_activities": [_activity(aligned_objectives=["evaluate"])]}, {})
+
+
+def test_both_arms_are_handed_the_same_id_snapshot():
+    """The rule is stated over the DESIGN, not over an assignment: the single
+    arm has no assignment, and a rule only one arm can break would be a second
+    variable on the decomposition axis."""
+    import inspect
+
+    from alignmentgraph_isd.core.agentic import fanout, react
+
+    assert "known_ids" in inspect.getsource(react.ReactLoop._validate)
+    assert "known" in inspect.signature(fanout.output_errors).parameters

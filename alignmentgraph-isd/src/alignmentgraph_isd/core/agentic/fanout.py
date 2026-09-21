@@ -79,15 +79,105 @@ class SetOutput:
     #: enforced on the Developer tier alone would be a rejection one side of
     #: the decomposition axis gets and the other does not.
     validate_items: Callable[[list], list[str]] | None = None
+    #: ``field -> element type`` for every field of this artifact that
+    #: references ANOTHER family by id. Declarative, because the check is one
+    #: rule over all of them: the id must name something that exists.
+    ref_fields: tuple[tuple[str, str], ...] = ()
 
 
-def output_errors(spec: "FanoutSpec", section: dict) -> list[str]:
+def _section_doc(state, node_type: str, doc_key: str) -> dict:
+    """One section document, off the graph or off the blackboard."""
+    if hasattr(state, "element_nodes"):
+        return ((state.get_node(state.section_id(node_type)) or {}).get("data")) or {}
+    return state.get(doc_key) or {}
+
+
+def known_ids(state) -> dict[str, list[str]]:
+    """``element type -> the ids that exist``, identically on either substrate.
+
+    What a submit-time reference check compares against. Objectives and modules
+    come from the element pool, which both substrates key by ``id``. The
+    assessment pool comes from the PLAN that declares the tasks, not from the
+    element pool: the graph arm's ``ASSESSMENT`` nodes ARE the tasks, but the
+    blackboard keeps ``assessment_tools`` as a flat list of questions keyed by
+    ``item_id``, so reading the pool would hand the two arms different facts
+    and refuse in one arm what it accepts in the other.
+    """
+    plan = _section_doc(state, NodeType.ASSESSMENT_PLAN, "assessment_plan")
+    pools = {
+        NodeType.OBJECTIVE: _element_ids(
+            state, NodeType.OBJECTIVE, ("objective", "learning_objectives")),
+        NodeType.MODULE: _element_ids(
+            state, NodeType.MODULE, ("module", "course_modules")),
+        NodeType.ASSESSMENT: [t.get("id") for t in dev_plans.plan_tasks(plan)],
+    }
+    # An id we could not read is not an id to measure against: where a pool is
+    # empty the check stands down rather than refusing everything.
+    return {kind: [str(one) for one in ids if str(one or "").strip()]
+            for kind, ids in pools.items()}
+
+
+def reference_errors(list_key: str, items: list, ref_fields, known) -> list[str]:
+    """A reference must name something that EXISTS.
+
+    ``_names_its`` refuses an item that names nothing; this refuses one that
+    names nothing REAL, which is the same objection one step along and the
+    same moment to raise it — while the author is still in the conversation.
+    MEASURED (run 43c4ca5e): 12 of 18 activities wrote an ``aligned_objectives``
+    that resolves to no objective — ``evaluate``, ``LO-003`` against
+    ``ILO-003``, and one block that wrote the objective's whole statement as
+    its id — so C3, a core relation, was established for 6 activities out of
+    18 and all 14 findings died with ``shown_to_agent = 0``.
+
+    What it does NOT do is choose the right id: a reference that resolves to
+    two elements is left alone, and an artifact naming a real objective it has
+    nothing to do with passes. C3 still fails for an objective nobody
+    practises, which is what it is there to measure. Matching is
+    ``alignment.matches_ref``, the same tolerance the establisher resolves
+    with, so the validator cannot refuse a spelling the edge would accept.
+
+    Refused only when NOTHING in the field resolves, which is exactly when the
+    establisher reports a gap (``alignment.match_list``: one edge per resolved
+    reference, "a violation only if NONE resolve"). A field of four ids two of
+    which are real still builds its edges, so refusing it would make the
+    contract shown stricter than the one the artifact is judged against — the
+    same defect ``required_floor`` exists to prevent, in the other direction.
+    An empty field is ``_names_its``'s question, not this one.
+    """
+    errors: list[str] = []
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            continue
+        for field, node_type in ref_fields:
+            pool = (known or {}).get(node_type)
+            if not pool:
+                continue            # nothing to compare against: not our finding
+            raw = item.get(field)
+            refs = [one for one in (raw if isinstance(raw, list) else [raw])
+                    if str(one or "").strip()]
+            if not refs or any(alignment.matches_ref(pool, node_type, one) for one in refs):
+                continue
+            named = ", ".join(repr(str(one)[:40]) for one in refs[:3])
+            errors.append(
+                f"{list_key}[{index}].{field}: {named} "
+                f"name{'s' if len(refs) == 1 else ''} no {node_type} that exists — "
+                f"write one of these ids: {', '.join(sorted(pool)[:8])}")
+    return errors
+
+
+def output_errors(spec: "FanoutSpec", section: dict, known: dict | None = None) -> list[str]:
     """Errors for whatever fan-out output a submit carries, in either arm.
 
     One implementation because the two arms submit the same artifacts by
     different routes: a Developer's own submit in ``multi``, a batch inside the
     stage submit in ``single``. Two copies would drift, and a drifted item rule
     is a rejection on one side of the axis only.
+
+    ``known`` is the id snapshot :func:`reference_errors` compares against
+    (:func:`known_ids`). Both arms pass it, from the state each already holds:
+    the rule has to be stated over the DESIGN rather than over an assignment,
+    because the single arm has no assignment and a rule only one arm can break
+    would be a second variable on the decomposition axis.
     """
     errors: list[str] = []
     for output in spec.outputs:
@@ -99,6 +189,8 @@ def output_errors(spec: "FanoutSpec", section: dict) -> list[str]:
             continue
         if output.validate_items is not None:
             errors += output.validate_items(items)
+        if output.ref_fields and known:
+            errors += reference_errors(output.schema_key, items, output.ref_fields, known)
     return errors
 
 
@@ -111,7 +203,7 @@ def _names_its(field_name: str, list_key: str, what: str) -> Callable[[list], li
     the conversation, instead of becoming a finding nobody can attribute."""
     def errors(items: list) -> list[str]:
         return [f"{list_key}[{index}].{field_name}: name the {what} this belongs to, "
-                "by an id your assignment lists"
+                "by one of the ids you were given"
                 for index, item in enumerate(items)
                 if isinstance(item, dict) and not str(item.get(field_name) or "").strip()]
     return errors
@@ -450,7 +542,10 @@ SPECS: dict[str, FanoutSpec] = {
                 self_ref_fields=("prerequisite_activities",),
                 element_type=NodeType.ACTIVITY, id_prefix="TLA",
                 doc_key=("activity", "learning_activities"),
-                validate_items=_names_its("module_id", "learning_activities", "module")),
+                validate_items=_names_its("module_id", "learning_activities", "module"),
+                ref_fields=(("aligned_objectives", NodeType.OBJECTIVE),
+                            ("prepares_for_assessment", NodeType.ASSESSMENT),
+                            ("module_id", NodeType.MODULE))),
         ),
         developer_reads=(NodeType.OBJECTIVE, NodeType.ASSESSMENT),
         render=dev_plans.render_activity_set, plan_sets=_activity_sets,
@@ -641,6 +736,10 @@ def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
     tools stay whatever the family's stage allows — a Developer still needs to
     see the objectives it is writing for."""
     primary = spec.outputs[0].schema_key
+    # The reference pools, snapshotted once per set rather than per submit:
+    # nothing this Developer writes adds to them, and the single arm reads the
+    # same fact from its own state.
+    known = known_ids(state) if state is not None else {}
     whole = spec.render(work_set) + _resolved_references(work_set, state)
     assignment = _capped(whole)
     truncated = assignment != whole
@@ -652,7 +751,7 @@ def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
         # Judged as it will be committed: a membership id the set itself
         # settles is filled in (``dev_plans.with_membership``), never refused.
         filled = {**parsed, primary: dev_plans.with_membership(work_set, primary, items)}
-        return output_errors(spec, filled)
+        return output_errors(spec, filled, known)
 
     def owes(section: dict) -> str:
         # Counted without repeats: what the commit's trim would drop as a
@@ -779,9 +878,11 @@ def commit_sets(spec: FanoutSpec, state, trajectory, work_sets: list, payloads: 
     artifact types.
 
     Callable per set or for a whole batch. Per set is what the multi arm does
-    now, so a Developer's work is in the design state — and therefore visible
-    to the checks — while the family's Designer still has its loop open and
-    can be asked to re-plan around what is missing. The ids already in the
+    now, so each set is written against the ids its siblings already hold and
+    the re-dispatch round sees the whole family rather than the last set. In
+    the SINGLE arm the design loop is still open at this point and a gap can
+    reach the agent; in the multi arm the Designer's loop has returned, and
+    the route back to a writer is a second dispatch. The ids already in the
     state are handed to the remapper as ``taken``, or the second set's
     ``AT-01`` would overwrite the first's rather than being bumped.
 

@@ -58,6 +58,7 @@ from __future__ import annotations
 import re
 
 from dataclasses import dataclass
+from collections.abc import Iterable
 from typing import Literal, get_args
 
 from .. import dev_plans
@@ -326,12 +327,32 @@ def resolve_element(graph: AlignmentGraph, node_type: NodeType | str, ref: objec
     exact = f"{node_type}{graph.ELEMENT_SEP}{bare}"
     if graph.get_node(exact):
         return exact
+    known = [node["id"].split(graph.ELEMENT_SEP, 1)[-1]
+             for node in graph.element_nodes(node_type)]
+    hit = matches_ref(known, node_type, bare)
+    return f"{node_type}{graph.ELEMENT_SEP}{hit}" if hit else ""
+
+
+def matches_ref(known: Iterable[str], node_type: NodeType | str, ref: object) -> str:
+    """The one id of ``known`` a model-written ``ref`` names, or ``""``.
+
+    The tolerance of :func:`resolve_element` over a plain id list rather than a
+    graph, so the submit-time validator that refuses a reference to something
+    that does not exist and the establisher that builds the edge agree by
+    construction on what "names it" means — on either substrate, since a list
+    of ids is all this needs. Ambiguity resolves to nothing, for the reason
+    given above: choosing between two elements would be authoring the edge."""
+    bare = bare_ref(ref)
+    if not bare:
+        return ""
+    ids = [str(one) for one in known if str(one)]
+    if bare in ids:
+        return bare
     type_name = _squash(node_type)
     wanted = _squash(bare)
     forms = {wanted, wanted.removeprefix(type_name), type_name + wanted}
-    hits = [node["id"] for node in graph.element_nodes(node_type)
-            if {_squash(node["id"].split(graph.ELEMENT_SEP, 1)[-1])} & forms
-            or _squash(node["id"].split(graph.ELEMENT_SEP, 1)[-1]).removeprefix(type_name) in forms]
+    hits = [one for one in ids
+            if {_squash(one)} & forms or _squash(one).removeprefix(type_name) in forms]
     return hits[0] if len(hits) == 1 else ""
 
 
