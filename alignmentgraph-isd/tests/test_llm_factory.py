@@ -51,3 +51,35 @@ def test_unsupported_api_spec_raises_when_built():
     with pytest.raises(ValueError, match="Unsupported api_spec"):
         factory()
 
+
+
+def test_every_call_has_a_deadline():
+    """There was no timeout anywhere, so a request that stalled stalled the
+    run and the only way out was someone pressing cancel. MEASURED (run
+    d3f566aa): a compaction started at 743 s and had returned nothing 273 s
+    later when the run was cancelled by hand."""
+    from alignmentgraph_isd.core.llm import DEFAULT_TIMEOUT_SECONDS, llm_factory_from_env
+
+    model = llm_factory_from_env(
+        model_name="m", api_spec="openai_compatible", base_url="http://h/v1",
+        api_key="k", read_env=False)()
+
+    assert model.request_timeout == DEFAULT_TIMEOUT_SECONDS
+    # Read off what a call can legitimately need: 8,192 completion tokens at
+    # the slowest healthy rate measured (~40 tok/s) is about 205 s.
+    assert 180 <= DEFAULT_TIMEOUT_SECONDS <= 300
+
+
+def test_thinking_is_left_on_unless_a_connection_turns_it_off():
+    """The ladder serves WITH thinking and the harness records that channel, so
+    turning it off is a different posture and has to be asked for."""
+    from alignmentgraph_isd.core.llm import llm_factory_from_env
+
+    def build(**over):
+        return llm_factory_from_env(
+            model_name="m", api_spec="openai_compatible", base_url="http://h/v1",
+            api_key="k", read_env=False, **over)()
+
+    assert not getattr(build(), "extra_body", None)
+    assert build(disable_thinking=True).extra_body == {
+        "chat_template_kwargs": {"enable_thinking": False}}

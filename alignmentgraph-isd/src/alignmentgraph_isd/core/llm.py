@@ -26,6 +26,26 @@ def _env(*names: str) -> str:
     return ""
 
 
+#: How long ONE model call may take before it is abandoned, in seconds.
+#:
+#: There was no timeout anywhere: a request that stalled stalled the run, and
+#: the only way out was for someone to press cancel. MEASURED (run d3f566aa):
+#: a compaction started at 743 s and had returned nothing 273 s later when the
+#: run was cancelled by hand; a whole design was lost to one request that
+#: never came back.
+#:
+#: 240 s is read off what a call can legitimately need rather than off the
+#: provider's behaviour. The completion cap is 8,192 tokens, and the slowest
+#: HEALTHY throughput measured across these runs is about 40 tokens/s, so
+#: 8,192 tokens is roughly 205 s; below that rate the backend is degraded, not
+#: busy. The two calls that ever exceeded this were folds that ran 221 s and
+#: 244 s and BOTH returned "error", so cutting them loses nothing that worked.
+#:
+#: A timeout surfaces as an ordinary model error, which every loop already
+#: handles as a spent turn — nothing new has to decide what to do about it.
+DEFAULT_TIMEOUT_SECONDS = 240.0
+
+
 def llm_factory_from_env(
     *,
     model_name: str = "",
@@ -34,6 +54,8 @@ def llm_factory_from_env(
     api_key: str = "",
     temperature: float | None = None,
     max_tokens: int | None = None,
+    timeout: float | None = None,
+    disable_thinking: bool = False,
     http_client: Any = None,
     read_env: bool = True,
 ) -> ChatModelFactory | None:
@@ -77,6 +99,9 @@ def llm_factory_from_env(
     if max_tokens is None:
         env_max_tokens = env("AGENT_MODEL_MAX_TOKENS")
         max_tokens = int(env_max_tokens) if env_max_tokens else 4096
+    if timeout is None:
+        env_timeout = env("AGENT_MODEL_TIMEOUT_SECONDS")
+        timeout = float(env_timeout) if env_timeout else DEFAULT_TIMEOUT_SECONDS
 
     def factory() -> Any:
         kwargs: dict[str, Any] = {
@@ -84,6 +109,23 @@ def llm_factory_from_env(
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        if timeout and timeout > 0:
+            kwargs["timeout"] = timeout
+        if disable_thinking:
+            # vLLM reads this per request and overrides the server default
+            # (docs.vllm.ai, "Overriding Server Defaults for Thinking Mode at
+            # Request Level"); a backend that does not understand it ignores
+            # the key. TOOL CALLING IS UNAFFECTED — the reasoning parser and
+            # the tool-call parser are separate, and with thinking disabled the
+            # former simply routes the whole output to content.
+            #
+            # What it buys is not only speed. With thinking ON, a reply that
+            # reasons past the completion cap never closes `</think>`, so vLLM
+            # classifies EVERYTHING as reasoning and returns no content at all:
+            # the call is charged in full and comes back empty. MEASURED (run
+            # d3f566aa): one Developer call spent all 8,192 completion tokens
+            # that way, returned nothing, and was logged `invalid_action`.
+            kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
         if resolved_api_key:
             kwargs["api_key"] = resolved_api_key
 

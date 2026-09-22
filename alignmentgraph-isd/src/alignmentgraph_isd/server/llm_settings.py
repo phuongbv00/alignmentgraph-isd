@@ -47,6 +47,7 @@ class ResolvedConfig:
     temperature: float | None = None
     max_tokens: int | None = None
     context_window: int | None = None
+    disable_thinking: bool = False
     connection_id: str = ""
     name: str = ""
     source: str = SOURCE_NONE
@@ -65,6 +66,7 @@ def config_of(row: LLMConnection) -> ResolvedConfig:
         temperature=row.temperature,
         max_tokens=row.max_tokens,
         context_window=row.context_window,
+        disable_thinking=bool(getattr(row, "disable_thinking", False)),
         connection_id=row.id,
         name=row.name,
         source=SOURCE_DATABASE,
@@ -116,6 +118,7 @@ def build_factory(config: ResolvedConfig | None = None, *, http_client=None):
         api_key=config.api_key,
         temperature=config.temperature if config.temperature is not None else DEFAULT_TEMPERATURE,
         max_tokens=config.completion_cap,
+        disable_thinking=config.disable_thinking,
         http_client=http_client,
         read_env=False,
     )

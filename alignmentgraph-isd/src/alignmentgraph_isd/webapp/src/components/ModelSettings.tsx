@@ -45,6 +45,7 @@ interface FormState {
   temperature: string
   max_tokens: string
   context_window: string
+  disable_thinking: boolean
 }
 
 const BLANK: FormState = {
@@ -55,6 +56,7 @@ const BLANK: FormState = {
   temperature: '',
   max_tokens: '',
   context_window: '',
+  disable_thinking: false,
 }
 
 const formOf = (connection: LLMConnection): FormState => ({
@@ -65,6 +67,7 @@ const formOf = (connection: LLMConnection): FormState => ({
   temperature: connection.temperature === null ? '' : String(connection.temperature),
   max_tokens: connection.max_tokens === null ? '' : String(connection.max_tokens),
   context_window: connection.context_window === null ? '' : String(connection.context_window),
+  disable_thinking: Boolean(connection.disable_thinking),
 })
 
 /** Connections to OpenAI-compatible endpoints, one of them active.
@@ -190,6 +193,7 @@ export function ModelSettings({ onClose, onSaved }: Props) {
     temperature: form.temperature === '' ? null : Number(form.temperature),
     max_tokens: form.max_tokens === '' ? null : Number(form.max_tokens),
     context_window: form.context_window === '' ? null : Number(form.context_window),
+    disable_thinking: form.disable_thinking,
   })
 
   /** Run a mutation and adopt its response, which is the whole list back.
@@ -419,6 +423,22 @@ export function ModelSettings({ onClose, onSaved }: Props) {
                     placeholder="e.g. 16384"
                   />
                 </label>
+              </div>
+              <label className="field-row" style={{ marginTop: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={form.disable_thinking}
+                  onChange={(e) => setForm({ ...form, disable_thinking: e.target.checked })}
+                />{' '}
+                <span>Ask the endpoint not to think</span>
+              </label>
+              <div className="small muted" style={{ marginTop: -4 }}>
+                Reasoning is billed in the same reply budget as the answer, so a
+                model that thinks past the output cap never finishes its thought
+                and the call comes back empty, charged in full. Turning it off
+                leaves tool calling untouched. It is a different posture, not a
+                speed setting: the ladder serves WITH thinking, so leave this
+                clear for a run meant to compare against it.
               </div>
               <div className="small muted" style={{ marginTop: -4 }}>
                 The window is everything the endpoint serves, prompt and reply

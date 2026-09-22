@@ -21,6 +21,7 @@ export interface LLMConnection {
   max_tokens: number | null
   /** The window the endpoint serves, in tokens. */
   context_window: number | null
+  disable_thinking: boolean
   is_active: boolean
   updated_at: string | null
 }
@@ -44,6 +45,7 @@ export interface LLMConnectionInput {
   temperature: number | null
   max_tokens: number | null
   context_window: number | null
+  disable_thinking: boolean
 }
 
 export interface ModelList {

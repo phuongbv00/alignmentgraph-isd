@@ -114,6 +114,10 @@ class LLMConnection(SQLModel, table=True):
     # back to a fixed 24,000-character transcript budget — a number unrelated to
     # whatever this connection points at.
     context_window: int | None = None
+    # Ask the endpoint not to think. Off by default: the ladder serves WITH
+    # thinking and the harness records that channel, so a run that turns it off
+    # is a different posture and has to say so deliberately.
+    disable_thinking: bool = False
     is_active: bool = Field(default=False, index=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
