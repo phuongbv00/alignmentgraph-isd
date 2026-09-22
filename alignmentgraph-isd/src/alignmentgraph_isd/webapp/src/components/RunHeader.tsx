@@ -82,6 +82,19 @@ export function RunHeader({ stream, canRun, runDisabledReason, onRun, onCancel, 
             </span>
           )}
 
+          {/* Only when it was asked for. This one confused two runs in a row:
+              the option is chosen behind a menu and changes nothing a reader
+              can see in the output, so the run has to say it out loud. */}
+          {(stream.stats.fanout_workers ?? 1) > 1 && (
+            <span
+              className="pill arm"
+              title={`${stream.stats.fanout_workers} of one family's Developers ran at once. `
+                + 'Wall time only — the graph and the artifacts are identical.'}
+            >
+              parallel ×{stream.stats.fanout_workers}
+            </span>
+          )}
+
           {/* Beside the status while the run is going: it changes every few
               seconds and is the thing being watched. A finished run's summary is
               a different kind of line — long, read once — and gets its own band

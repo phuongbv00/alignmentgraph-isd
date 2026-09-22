@@ -99,6 +99,8 @@ export interface RunStats {
   context_mode?: ContextMode
   // Beside the arm for the same reason, and optional for the same reason.
   development_mode?: DevelopmentMode
+  /** Present only when a run asked for more than one; wall time only. */
+  fanout_workers?: number
 }
 
 export interface RunSummary {
