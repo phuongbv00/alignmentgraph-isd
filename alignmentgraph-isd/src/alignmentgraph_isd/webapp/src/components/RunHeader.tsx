@@ -153,6 +153,10 @@ function RunSplitButton({ canRun, starting, idle, disabledReason, onRun }: {
   // not remembered either — what a run was is a property of that run.
   const [fullDevelopment, setFullDevelopment] = useState(false)
   const [parallel, setParallel] = useState(false)
+  const options = [
+    ...(fullDevelopment ? ['full development'] : []),
+    ...(parallel ? ['parallel developers'] : []),
+  ]
   const wrap = useRef<HTMLDivElement>(null)
   const caret = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDivElement>(null)
@@ -205,9 +209,14 @@ function RunSplitButton({ canRun, starting, idle, disabledReason, onRun }: {
     <div className="split" ref={wrap}>
       <button
         className="btn small primary icon-label"
-        onClick={() => onRun(DEFAULT_ARM)}
+        // The options live in the menu this button sits beside, and they are
+        // this button's too: ticking one and pressing Run applied nothing,
+        // because only picking an ARM from the menu carried them. The title
+        // names whatever is on, since a checkbox behind a closed menu is a
+        // setting the reader cannot see.
+        onClick={() => onRun(DEFAULT_ARM, fullDevelopment, parallel)}
         disabled={disabled}
-        title={runTitle(disabledReason, DEFAULT_ARM)}
+        title={runTitle(disabledReason, DEFAULT_ARM, options)}
       >
         {starting ? <Loader2 size={13} className="spin" /> : idle
           ? <Play size={13} /> : <RotateCw size={13} />}
@@ -224,7 +233,9 @@ function RunSplitButton({ canRun, starting, idle, disabledReason, onRun }: {
           }
         }}
         disabled={disabled}
-        title={disabledReason || 'Run under another ablation arm'}
+        title={disabledReason
+          || (options.length > 0 ? `On: ${options.join(', ')}` : 'Run under another ablation arm')}
+        data-options={options.length > 0 ? 'on' : undefined}
         aria-label="Choose an ablation arm"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -286,8 +297,9 @@ function RunSplitButton({ canRun, starting, idle, disabledReason, onRun }: {
   )
 }
 
-function runTitle(disabledReason: string, arm: Arm): string {
-  return disabledReason || arm.label
+function runTitle(disabledReason: string, arm: Arm, options: string[] = []): string {
+  if (disabledReason) return disabledReason
+  return options.length === 0 ? arm.label : `${arm.label} — ${options.join(', ')}`
 }
 
 /**
