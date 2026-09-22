@@ -159,7 +159,8 @@ class AgenticLLM:
                 self.identity, "tool_binding_unavailable", str(exc)[:120], "")
             return None
 
-    def call_prose(self, messages: list[dict], *, max_tokens: int = 0) -> str:
+    def call_prose(self, messages: list[dict], *, max_tokens: int = 0,
+                   extra_body: dict | None = None) -> str:
         """One model call with NO tools bound and NO ``response_format``.
 
         Not an agent's turn: the ONLY caller is the compaction hook
@@ -196,8 +197,9 @@ class AgenticLLM:
                     # completion tokens against 512. `extra_body` rides into
                     # the request JSON untouched, so the legacy name goes too
                     # and whichever the backend reads, the cap binds.
-                    raw_llm = raw_llm.bind(max_tokens=max_tokens,
-                                           extra_body={"max_tokens": max_tokens})
+                    raw_llm = raw_llm.bind(
+                        max_tokens=max_tokens,
+                        extra_body={"max_tokens": max_tokens, **(extra_body or {})})
                 except Exception:  # noqa: BLE001 - a backend that cannot be bound
                     self.trajectory.log_recovery_event(
                         self.identity, "completion_cap_unbindable", "", str(max_tokens))

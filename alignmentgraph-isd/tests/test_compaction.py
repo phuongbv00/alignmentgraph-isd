@@ -55,9 +55,10 @@ class _Model:
         self.answer = answer
         self.seen: list = []
 
-    def call_prose(self, messages, *, max_tokens: int = 0):
+    def call_prose(self, messages, *, max_tokens: int = 0, extra_body=None):
         self.seen.append(messages)
         self.capped = max_tokens
+        self.body = extra_body or {}
         if isinstance(self.answer, Exception):
             raise self.answer
         return self.answer
@@ -528,3 +529,40 @@ def test_an_ignored_cap_is_on_the_record():
     from alignmentgraph_isd.core.agentic import client
 
     assert "completion_cap_ignored" in inspect.getsource(client.AgenticLLM.call_prose)
+
+
+def test_the_fold_is_not_asked_to_think():
+    """It compresses a transcript it is handed whole: there is nothing to
+    reason about, and on a ladder served with thinking ON the reasoning is
+    billed in the same completion budget as the answer.
+
+    MEASURED (run bdb68b56): one fold returned 4,701 completion tokens
+    carrying 1,061 CHARACTERS — about 350 tokens of summary and 4,350 of
+    reasoning — and took 244 s, a third of that run's model time. It is also
+    what makes the cap safe: sized for the summary alone, it would be spent on
+    reasoning before a character of answer appeared."""
+    model = _Model()
+
+    compaction.summarize(model, "", [{"role": "user", "content": "x" * 400}])
+
+    assert model.body.get("chat_template_kwargs") == {"enable_thinking": False}
+
+
+def test_a_failed_fold_says_what_failed():
+    """`error` on its own is unattributable: run bdb68b56 spent 244 s, was
+    accounted for in full, and still came back `error` with nothing anywhere
+    naming what raised."""
+    noted: list = []
+
+    class _Raises:
+        identity = "Orchestrator"
+        trajectory = type("T", (), {
+            "log_recovery_event": lambda self, *a: noted.append(a)})()
+
+        def call_prose(self, messages, **kwargs):
+            raise RuntimeError("the backend hung up")
+
+    summary, outcome = compaction.summarize(_Raises(), "kept", [{"role": "user", "content": "x"}])
+
+    assert (summary, outcome) == ("kept", "error")
+    assert noted and "RuntimeError" in noted[0][1:] or any("hung up" in str(a) for a in noted[0])

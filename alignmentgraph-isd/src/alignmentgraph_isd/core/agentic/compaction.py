@@ -74,6 +74,25 @@ MAX_INPUT_CHARS = 12000
 #: it never becomes the reason the window is full.
 MAX_SUMMARY_CHARS = 1200
 
+#: Whether the fold's model call is asked to THINK.
+#:
+#: It is not. The summariser compresses a transcript it is handed whole; there
+#: is nothing to reason about, and on a ladder served with thinking ON the
+#: reasoning is billed in the same completion budget as the answer. MEASURED
+#: (run bdb68b56): one fold returned 4,701 completion tokens carrying 1,061
+#: CHARACTERS of content — roughly 350 tokens of summary and 4,350 of
+#: reasoning — and took 244 s, a third of that run's model time.
+#:
+#: That measurement also corrects the cap below. A cap sized for the summary
+#: alone would be spent on reasoning before a single character of answer
+#: appeared, so asking for no thinking is what makes the cap safe rather than
+#: strangling. Sent as a vLLM chat-template hint and ignored where it is not
+#: understood; a fold that then runs out of budget returns "unusable" and the
+#: caller falls back to the previous summary, which costs 512 tokens instead
+#: of 4,701. ``metadata.autonomy`` reports ``compactions`` beside
+#: ``compaction_summaries``, so the rate that degrades to is visible.
+NO_THINKING = {"chat_template_kwargs": {"enable_thinking": False}}
+
 #: What the fold's own model call may SPEND, in completion tokens.
 #:
 #: The prompt asks for ``MAX_SUMMARY_CHARS`` and ``_clean`` truncates to it, so
@@ -150,8 +169,14 @@ def summarize(call_llm, previous: str, dropped: list) -> tuple[str, str]:
     try:
         answer = call_llm.call_prose([{"role": "system", "content": _SYSTEM},
                                        {"role": "user", "content": prompt}],
-                                      max_tokens=SUMMARY_MAX_TOKENS)
-    except Exception:  # noqa: BLE001 - a summary is never load-bearing
+                                      max_tokens=SUMMARY_MAX_TOKENS,
+                                      extra_body=NO_THINKING)
+    except Exception as exc:  # noqa: BLE001 - a summary is never load-bearing
+        # Named, not just counted. "error" on its own is unattributable:
+        # MEASURED (run bdb68b56), a fold ran for 244 s, was accounted for in
+        # full, and still came back "error" with nothing anywhere saying what
+        # raised — the message had been swallowed here.
+        _note(call_llm, "compaction_failed", type(exc).__name__, str(exc)[:200])
         return previous, "error"
     text = _clean(answer)
     if not text:
@@ -206,6 +231,21 @@ def _render(dropped: list) -> str:
     if len(text) <= MAX_INPUT_CHARS:
         return text
     return "[…older removed turns elided…]\n" + text[-MAX_INPUT_CHARS:]
+
+
+def _note(call_llm, action: str, summary: str, detail: str) -> None:
+    """Record something about the fold, if the caller can record at all.
+
+    The hook is handed an object it is allowed to know one method of, so the
+    trajectory is reached defensively: a test double has neither, and a
+    summary is never load-bearing enough to fail a run over its own logging."""
+    trajectory = getattr(call_llm, "trajectory", None)
+    identity = getattr(call_llm, "identity", ORCHESTRATOR)
+    if trajectory is not None:
+        try:
+            trajectory.log_recovery_event(identity, action, summary, detail)
+        except Exception:  # noqa: BLE001 - logging is not load-bearing
+            pass
 
 
 def _clean(answer) -> str:
