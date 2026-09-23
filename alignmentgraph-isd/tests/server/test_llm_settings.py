@@ -348,3 +348,87 @@ def test_connections_are_locked_while_a_run_is_going(client, ready_program, bloc
 def test_a_name_that_is_too_long_is_rejected(real_settings):
     response = real_settings.post("/api/connections", json={"name": "x" * 101})
     assert response.status_code == 422
+
+
+# ── a database that predates a field ─────────────────────────────────────────
+
+def _old_connection_table(path):
+    """The table exactly as it was before `disable_thinking` existed."""
+    import sqlite3
+
+    con = sqlite3.connect(path / "demo.db")
+    con.executescript("""
+    CREATE TABLE llmconnection (
+      id VARCHAR NOT NULL PRIMARY KEY, name VARCHAR, base_url VARCHAR, api_key VARCHAR,
+      model_name VARCHAR, temperature FLOAT, max_tokens INTEGER, context_window INTEGER,
+      is_active BOOLEAN, created_at DATETIME, updated_at DATETIME);
+    INSERT INTO llmconnection VALUES
+      ('c1','served','https://router','k','a-model',0.7,8192,16384,1,'2026-09-16','2026-09-17'),
+      ('c2','local','http://localhost','','b-model',0.2,4096,8192,0,'2026-09-18','2026-09-18');
+    """)
+    con.commit()
+    con.close()
+
+
+def test_a_field_added_after_the_database_exists_reaches_it(tmp_path):
+    """`create_all` creates a missing TABLE and never a missing COLUMN, so a
+    field added to a model after someone's database exists is invisible to the
+    DDL and fatal to the SELECT that names it.
+
+    MEASURED: adding `LLMConnection.disable_thinking` took every connection
+    endpoint down with `no such column` until the file was deleted."""
+    import sqlite3
+
+    from alignmentgraph_isd.server import db as db_module
+    from alignmentgraph_isd.server import models  # noqa: F401 - registers the tables
+    from alignmentgraph_isd.server.settings import Settings
+
+    _old_connection_table(tmp_path)
+    db_module.reset_engine()
+    try:
+        db_module.init_db(Settings(data_root=tmp_path))
+    finally:
+        db_module.reset_engine()
+
+    con = sqlite3.connect(tmp_path / "demo.db")
+    columns = [c[1] for c in con.execute("pragma table_info(llmconnection)")]
+    rows = con.execute(
+        "select id, model_name, disable_thinking from llmconnection order by id").fetchall()
+    con.close()
+
+    assert "disable_thinking" in columns
+    # Additive only: every row survives, and the new column takes the model's
+    # own default rather than a value this code invented.
+    assert rows == [("c1", "a-model", 0), ("c2", "b-model", 0)]
+
+
+def test_adding_a_column_is_idempotent_and_keeps_what_it_does_not_know(tmp_path):
+    """It adds; it never drops, renames or retypes — so a second start changes
+    nothing, and a column this code has never heard of is left alone."""
+    import sqlite3
+
+    from alignmentgraph_isd.server import db as db_module
+    from alignmentgraph_isd.server import models  # noqa: F401 - registers the tables
+    from alignmentgraph_isd.server.settings import Settings
+
+    _old_connection_table(tmp_path)
+    con = sqlite3.connect(tmp_path / "demo.db")
+    con.execute("ALTER TABLE llmconnection ADD COLUMN retired_setting VARCHAR")
+    con.commit()
+    con.close()
+
+    for _ in range(2):
+        db_module.reset_engine()
+        try:
+            db_module.init_db(Settings(data_root=tmp_path))
+        finally:
+            db_module.reset_engine()
+
+    con = sqlite3.connect(tmp_path / "demo.db")
+    columns = [c[1] for c in con.execute("pragma table_info(llmconnection)")]
+    count = con.execute("select count(*) from llmconnection").fetchone()[0]
+    con.close()
+
+    assert columns.count("disable_thinking") == 1, "a second start must add nothing"
+    assert "retired_setting" in columns, "a column the model has moved on from is kept"
+    assert count == 2

@@ -430,24 +430,8 @@ export function ModelSettings({ onClose, onSaved }: Props) {
                   checked={form.disable_thinking}
                   onChange={(e) => setForm({ ...form, disable_thinking: e.target.checked })}
                 />{' '}
-                <span>Ask the endpoint not to think</span>
+                <span>Disable model thinking</span>
               </label>
-              <div className="small muted" style={{ marginTop: -4 }}>
-                Reasoning is billed in the same reply budget as the answer, so a
-                model that thinks past the output cap never finishes its thought
-                and the call comes back empty, charged in full. Turning it off
-                leaves tool calling untouched. It is a different posture, not a
-                speed setting: the ladder serves WITH thinking, so leave this
-                clear for a run meant to compare against it.
-              </div>
-              <div className="small muted" style={{ marginTop: -4 }}>
-                The window is everything the endpoint serves, prompt and reply
-                together; the output cap is the reply's share of it, and the
-                transcript is trimmed to leave that much room. Leave the window
-                blank and the harness falls back to a fixed budget unrelated to
-                this model.
-              </div>
-
               {result && (
                 <div className={`probe ${result.ok ? 'ok' : 'bad'}`}>
                   {result.ok ? <CircleCheck size={14} /> : <CircleAlert size={14} />}
