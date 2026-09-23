@@ -100,6 +100,8 @@ def profile_env(profile: Profile, *, slots: str | None = None,
         env["_AGENT_MODEL_STREAMING"] = "1" if serving.streaming else "0"
     if serving.thinking_budget is not None:
         env["_AGENT_MODEL_THINKING_BUDGET"] = str(serving.thinking_budget)
+    if cfg.harness.fanout_workers is not None:
+        env["_HARNESS_FANOUT_WORKERS"] = str(cfg.harness.fanout_workers)
     return env
 
 

@@ -53,6 +53,25 @@ streaming = true
 # freezing. Two of the [[model]] tables below are routed today.
 thinking_budget = 512
 
+[harness]
+# The proposed system's own run posture, uniform across every rung and every
+# arm. Published to its adapter as HARNESS_FANOUT_WORKERS; `audit preflight`
+# fails if .env sets that too.
+#
+# How many of one design family's Developers run at the same time (1 = one
+# after another). WALL TIME ONLY: commits stay in plan order, so the graph, the
+# calls and the artifacts are identical whatever it is set to
+# (alignmentgraph-isd tests/test_fanout.py). A family has about one work set
+# per module, so a number above the module count buys nothing, and the
+# adapter's call gate -- 2/3/4/6 for the conservative/moderate/aggressive/turbo
+# `-r` preset -- caps it further.
+#
+# It moves `execution_time_seconds`, so it is fixed before `isd-exp freeze
+# write` and not changed after. Raising it multiplies the calls a slot has in
+# flight at once (the launch plan prints the bound per slot); on a shared or
+# routed endpoint that buys HTTP 429s instead of time.
+fanout_workers = 1
+
 # --- The models -------------------------------------------------------------
 # A FLAT list. One table per model, in no particular order: nothing here is a
 # position in a sequence, and nothing assumes one family or one host.

@@ -79,6 +79,9 @@ def config_fingerprint() -> dict:
             "streaming": cfg.serving.streaming,
             "thinking_budget": cfg.serving.thinking_budget,
         },
+        "harness": {
+            "fanout_workers": cfg.harness.fanout_workers,
+        },
         # Recorded as DECLARED, never as resolved: a blank per-judge provider
         # means the reader derives that judge's label from its own model slug,
         # and writing the profile in here would record a label no report will

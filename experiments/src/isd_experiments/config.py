@@ -222,6 +222,19 @@ class Serving:
 
 
 @dataclass(frozen=True)
+class Harness:
+    """The proposed system's own run posture, uniform across every rung and arm.
+
+    Not a serving limit: nothing here changes what an endpoint is asked to do
+    per call. It changes how many calls are in flight at once, so it moves wall
+    time and `execution_time_seconds`, never the design a run produces."""
+
+    #: How many of one family's Developers run at once. 1 is sequential; the
+    #: adapter's call gate (from the `-r` preset) caps it further.
+    fanout_workers: int | None = None
+
+
+@dataclass(frozen=True)
 class JudgeModel:
     """One LLM judge. Empty fields fall back to the `[judge]` defaults."""
 
@@ -264,6 +277,7 @@ class Experiment:
     #: The [alignment] table, verbatim. Parsed by alignment.presets rather than
     #: here, so this module stays free of measurement concepts.
     alignment_raw: dict = field(default_factory=dict)
+    harness: Harness = field(default_factory=Harness)
 
     def by_slot(self, slot: str) -> Model:
         for m in self.models:
@@ -413,6 +427,21 @@ def _serving(raw: dict, src: Path) -> Serving:
                    streaming=streaming, thinking_budget=thinking_budget, options=rest)
 
 
+def _harness(raw: dict, src: Path) -> Harness:
+    rest = dict(raw)
+    workers = rest.pop("fanout_workers", None)
+    if workers is not None and (
+            not isinstance(workers, int) or isinstance(workers, bool) or workers < 1):
+        raise SystemExit(
+            f"{src}: [harness].fanout_workers must be a positive integer, got {workers!r}.")
+    # Strict, unlike [serving]'s pass-through options: every key here is
+    # published to the proposed system, so a misspelt one would silently be a
+    # posture that is written down and never applied.
+    if rest:
+        raise SystemExit(f"{src}: unknown key(s) in [harness]: {', '.join(sorted(rest))}.")
+    return Harness(fanout_workers=workers)
+
+
 #: Key-shaped names refused in [judge]. The declaration carries the NAME of an
 #: environment variable; a value belongs in .env, which is not committed.
 _JUDGE_SECRET_KEYS = ("api_key", "api_keys", "key", "keys")
@@ -558,6 +587,7 @@ def load(path: Path | None = None) -> Experiment:
         raise SystemExit(f"{src}: duplicate [[model]] slot(s) in {slots}.")
 
     serving = _serving(raw.get("serving", {}), src)
+    harness = _harness(raw.get("harness", {}), src)
     judge = _judge(raw.get("judge", {}), src)
 
     profiles = {
@@ -568,7 +598,8 @@ def load(path: Path | None = None) -> Experiment:
         raise SystemExit(f"{src} declares no [experiment.*] profiles.")
 
     return Experiment(models=declared, serving=serving, judge=judge, profiles=profiles,
-                      source=src, alignment_raw=raw.get("alignment", {}))
+                      source=src, alignment_raw=raw.get("alignment", {}),
+                      harness=harness)
 
 
 @lru_cache(maxsize=None)

@@ -408,9 +408,13 @@ Agent nào tự fan-out thì phải tự chặn mình. Adapter `alignmentgraph-i
 của riêng nó (`LLM_CONCURRENCY_BY_RATE_LIMIT`: conservative 2 / moderate 3 / aggressive 4 / turbo 6 — preset lạ hoặc
 không có thì dùng 4), rồi truyền vào `HarnessRunConfig.llm_max_concurrency`. Ghi đè bằng
 `HARNESS_LLM_MAX_CONCURRENCY` (đặt `0` để tắt hẳn); `HARNESS_LLM_MIN_INTERVAL` giãn thời điểm bắt đầu call cho endpoint
-đo theo rate thay vì theo concurrency, mặc định tắt. `HARNESS_FANOUT_WORKERS` (mặc định 1 = fan-out tuần tự, ladder
-không đặt) cho các Developer của một family ở arm multi chạy đồng thời, bị cap bởi chính cap trên; commit vẫn theo thứ tự
-plan nên graph không đổi, chỉ đổi wall time, và được ghi vào `metadata.run_config.fanout_workers`.
+đo theo rate thay vì theo concurrency, mặc định tắt. `HARNESS_FANOUT_WORKERS` cho các Developer của một family ở arm
+multi chạy đồng thời (1 = tuần tự), bị cap bởi chính cap trên; commit vẫn theo thứ tự plan nên graph không đổi, chỉ đổi
+wall time, và được ghi vào `metadata.run_config.fanout_workers`. Với ladder, giá trị khai báo MỘT lần ở
+`experiment.toml [harness].fanout_workers`, launcher gắn vào command prefix như các serving limit, freeze manifest ghi
+lại, và `audit preflight` fail nếu `.env` cũng đặt biến này. Chốt trước `isd-exp freeze write` vì nó đổi
+`execution_time_seconds`. `--dry-run` in cận trên số call đồng thời của mỗi slot (scenario song song × agent song song ×
+Developer song song) để cân với sức chịu của endpoint.
 `HARNESS_DEVELOPMENT_MODE` (`sample` | `full`, ladder KHÔNG đặt = `sample`) quyết định Developer viết một mẫu đại diện
 của thiết kế hay toàn bộ: plan luôn nêu quy mô thật (quiz 40 câu), `sample` viết 3 item/instrument, 2 TLA/ILO (sàn
 3/module), 2 material/module, 1–2 session guide/module; `full` viết hết và chia batch. KHÔNG phải trục ablation — mọi arm

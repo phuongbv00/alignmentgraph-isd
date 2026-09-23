@@ -325,6 +325,30 @@ class TestServingLimits:
         assert s.options["somehost"]["rest_base"] == "https://x/v1"
 
 
+class TestHarnessPosture:
+    """The Developer worker count is declared once, like a serving limit, and a
+    value the adapter could not apply is refused here rather than dropped."""
+
+    def test_the_declared_count_is_read(self):
+        assert config.load().harness.fanout_workers >= 1
+
+    def test_it_is_optional(self, tmp_path):
+        assert config.load(write(tmp_path, TWO_RUNG)).harness.fanout_workers is None
+
+    @pytest.mark.parametrize("value", ["0", "-1", "true", '"4"'])
+    def test_anything_but_a_positive_integer_is_rejected(self, tmp_path, value):
+        body = TWO_RUNG + f"\n[harness]\nfanout_workers = {value}\n"
+        with pytest.raises(SystemExit, match="positive integer"):
+            config.load(write(tmp_path, body))
+
+    def test_an_unknown_key_is_rejected(self, tmp_path):
+        """Every key here is published to the proposed system, so a misspelt
+        one would be a posture written down and never applied."""
+        body = TWO_RUNG + "\n[harness]\nfanout_worker = 2\n"
+        with pytest.raises(SystemExit, match="unknown key"):
+            config.load(write(tmp_path, body))
+
+
 class TestJudgeDeclaration:
     """The judge roster decides what every reported LLM judge score means, so it
     belongs in the file the freeze manifest fingerprints rather than in a .env a

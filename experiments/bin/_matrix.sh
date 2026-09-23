@@ -293,6 +293,31 @@ matrix_serving_prefix() {
     _serving_var AGENT_MODEL_MAX_OUTPUT_TOKENS "${_AGENT_MODEL_MAX_OUTPUT_TOKENS:-}"
     _serving_var AGENT_MODEL_STREAMING         "${_AGENT_MODEL_STREAMING:-}"
     _serving_var AGENT_MODEL_THINKING_BUDGET   "${_AGENT_MODEL_THINKING_BUDGET:-}"
+    _serving_var HARNESS_FANOUT_WORKERS        "${_HARNESS_FANOUT_WORKERS:-}"
+}
+
+# An UPPER BOUND on one slot's concurrent model calls, which is what its
+# endpoint has to absorb: scenarios at once x agents at once x the proposed
+# system's Developers at once. Every agent is counted as fanning out, so the
+# bound is loose when most of the roster is a baseline. The three tables are
+# copies: scenarios and agents from run_benchmark.py's rate presets, the
+# Developer gate from the adapter's LLM_CONCURRENCY_BY_RATE_LIMIT. They are
+# printed for sizing, never enforced, so a drift misstates a number on screen
+# and changes nothing that runs.
+matrix_peak_calls() {
+    local scen agents gate
+    case "$1" in
+        conservative) scen=2;  agents=2;  gate=2 ;;
+        moderate)     scen=4;  agents=3;  gate=3 ;;
+        aggressive)   scen=8;  agents=7;  gate=4 ;;
+        turbo)        scen=15; agents=10; gate=6 ;;
+        *) echo "?"; return 0 ;;
+    esac
+    (( agents > NUM_AGENTS )) && agents=$NUM_AGENTS
+    (( scen > NUM_SCENARIOS )) && scen=$NUM_SCENARIOS
+    local workers="${_HARNESS_FANOUT_WORKERS:-1}"
+    (( workers > gate )) && workers=$gate
+    echo $(( scen * agents * workers ))
 }
 
 matrix_confirm() {
@@ -316,8 +341,10 @@ matrix_confirm() {
         upper=$(slot_upper "$slot")
         name_var="${upper}_AGENT_MODEL_NAME"
         rate_var="${upper}_RATE_LIMIT"
-        echo "    - ${slot}: ${!name_var} (rate=${!rate_var:-$RATE_LIMIT})"
+        echo "    - ${slot}: ${!name_var} (rate=${!rate_var:-$RATE_LIMIT}," \
+             "peak ≲ $(matrix_peak_calls "${!rate_var:-$RATE_LIMIT}") calls in flight)"
     done
+    echo "  Developer workers: ${_HARNESS_FANOUT_WORKERS:-unset (1)} ([harness].fanout_workers)"
     echo ""
     echo "  !! WARNING: this launches ~$((NUM_SLOTS * NUM_RUNS)) full benchmark runs"
     echo "  !! (~$((NUM_SLOTS * NUM_RUNS * NUM_AGENTS * NUM_SCENARIOS)) agent generations, plus LLM judge calls)."
@@ -352,6 +379,7 @@ matrix_write_manifest() {
     AGENT_MODEL_MAX_OUTPUT_TOKENS="${_AGENT_MODEL_MAX_OUTPUT_TOKENS:-}" \
     AGENT_MODEL_STREAMING="${_AGENT_MODEL_STREAMING:-}" \
     AGENT_MODEL_THINKING_BUDGET="${_AGENT_MODEL_THINKING_BUDGET:-}" \
+    HARNESS_FANOUT_WORKERS="${_HARNESS_FANOUT_WORKERS:-}" \
     python3 - "$manifest" <<'PYEOF'
 import json, os, sys
 
@@ -410,6 +438,9 @@ manifest = {
         "max_output_tokens": os.environ.get("AGENT_MODEL_MAX_OUTPUT_TOKENS", ""),
         "streaming": os.environ.get("AGENT_MODEL_STREAMING", ""),
         "thinking_budget": os.environ.get("AGENT_MODEL_THINKING_BUDGET", ""),
+    },
+    "harness": {
+        "fanout_workers": os.environ.get("HARNESS_FANOUT_WORKERS", ""),
     },
     "git": {
         "isd_agent_benchmark_commit": os.environ["BENCH_COMMIT"],

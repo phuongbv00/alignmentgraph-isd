@@ -190,7 +190,8 @@ class TestTheChildCommandCarriesTheDeclaration:
         load, so neither can take them back."""
         command = plan.split("command (first slot):", 1)[1]
         names = ("AGENT_MODEL_CONTEXT_WINDOW", "AGENT_MODEL_MAX_OUTPUT_TOKENS",
-                 "AGENT_MODEL_STREAMING", "AGENT_MODEL_THINKING_BUDGET")
+                 "AGENT_MODEL_STREAMING", "AGENT_MODEL_THINKING_BUDGET",
+                 "HARNESS_FANOUT_WORKERS")
         for name in names:
             assert f"{name}='" in command
         # Nothing between the LAST assignment and the interpreter: an exported

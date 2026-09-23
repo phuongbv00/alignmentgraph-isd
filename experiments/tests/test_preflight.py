@@ -19,6 +19,9 @@ max_output_tokens = 8192
 streaming = true
 thinking_budget = 512
 
+[harness]
+fanout_workers = 1
+
 [[model]]
 slot = "tiny"
 model = "vendor/model-1b"
@@ -63,6 +66,17 @@ class TestServingLimitsAreDeclaredOnce:
         one of the two is fingerprinted, so the duplicate is the dangerous one."""
         found = _findings(tmp_path, "AGENT_MODEL_STREAMING=1\n")
         ok, detail = found["AGENT_MODEL_STREAMING absent from .env"]
+        assert not ok and "experiment.toml owns" in detail
+
+    def test_the_developer_worker_count_is_held_to_the_same_rule(self, tmp_path):
+        """Not a serving limit, but recorded in the freeze manifest all the
+        same: undeclared, the adapter's default runs; also in .env, a stale
+        line runs a posture nobody fingerprinted."""
+        body = DECLARED.replace("[harness]\nfanout_workers = 1\n", "")
+        ok, detail = _findings(tmp_path, body=body)["[harness].fanout_workers declared"]
+        assert not ok and "experiment.toml" in detail
+        found = _findings(tmp_path, "HARNESS_FANOUT_WORKERS=4\n")
+        ok, detail = found["HARNESS_FANOUT_WORKERS absent from .env"]
         assert not ok and "experiment.toml owns" in detail
 
     def test_an_exported_assignment_counts_as_setting_it(self, tmp_path):

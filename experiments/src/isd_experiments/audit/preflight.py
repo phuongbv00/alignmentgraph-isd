@@ -60,6 +60,13 @@ SERVING_LIMIT_ENV = {
     "thinking_budget": "AGENT_MODEL_THINKING_BUDGET",
 }
 
+#: The proposed system's run posture -> the variable its adapter reads. Not a
+#: serving limit, but the same two questions apply: declared, and not also in
+#: .env, where a stale line would be a posture nobody fingerprinted.
+HARNESS_POSTURE_ENV = {
+    "fanout_workers": "HARNESS_FANOUT_WORKERS",
+}
+
 _fail = 0
 
 
@@ -118,7 +125,7 @@ _STRAY_SUFFIXES = ("_AGENT_MODEL_BASE_URL", "_AGENT_MODEL_BASE_URLS",
 
 
 def check_protection(cfg, env_path: Path) -> list[tuple[bool, str, str]]:
-    """(ok, label, detail) per serving limit. Pure: no network, no environment.
+    """(ok, label, detail) per serving limit and harness posture. Pure: no network, no environment.
 
     Two findings per limit, and they are different questions. Declared? -- an
     undeclared limit means the launcher passes nothing and the benchmark falls
@@ -131,17 +138,21 @@ def check_protection(cfg, env_path: Path) -> list[tuple[bool, str, str]]:
     """
     assigned = env_file_assignments(env_path)
     findings: list[tuple[bool, str, str]] = []
-    for attr, env_name in SERVING_LIMIT_ENV.items():
-        value = getattr(cfg.serving, attr)
+    declared = [("serving", cfg.serving, attr, env_name)
+                for attr, env_name in SERVING_LIMIT_ENV.items()]
+    declared += [("harness", cfg.harness, attr, env_name)
+                 for attr, env_name in HARNESS_POSTURE_ENV.items()]
+    for table, section, attr, env_name in declared:
+        value = getattr(section, attr)
         findings.append((
             value is not None,
-            f"[serving].{attr} declared",
+            f"[{table}].{attr} declared",
             f"{value}" if value is not None else f"absent from {cfg.source}",
         ))
         findings.append((
             env_name not in assigned,
             f"{env_name} absent from .env",
-            f"{env_path} also sets it -- experiment.toml owns this limit"
+            f"{env_path} also sets it -- experiment.toml owns this setting"
             if env_name in assigned else "",
         ))
 

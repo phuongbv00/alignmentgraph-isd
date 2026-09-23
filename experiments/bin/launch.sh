@@ -50,6 +50,10 @@ if [ "$DRY_RUN" = "1" ]; then
     echo "  judge   : ${JUDGE_FLAGS:-(not declared — the environment answers)}"
     echo "  serving : ${SERVING_PREFIX:-(not declared — benchmark defaults apply)}"
     echo "  pool    : ${POOL_HINT:-}"
+    for slot in $_SLOTS_LIST; do
+        rate_var="$(slot_upper "$slot")_RATE_LIMIT"
+        echo "  peak    : ${slot} ≲ $(matrix_peak_calls "${!rate_var:-$RATE_LIMIT}") model calls in flight (rate=${!rate_var:-$RATE_LIMIT})"
+    done
     echo ""
     # The command itself, for the first slot: what the flags and the prefix
     # actually come out as is not checkable from a summary of them.
