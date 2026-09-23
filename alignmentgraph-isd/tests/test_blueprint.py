@@ -61,17 +61,26 @@ def test_the_outcome_designer_is_told_this_course_s_ceiling_and_it_is_never_enfo
     text = alignment_state.read(graph, brief, STEP["outcomes"]).text
     assert "course_modules: at most 2 for this course" in text
 
-    many = [{"id": f"MOD-0{n}", "title": f"Module {n}", "objectives": ["ILO-01"], "minutes": 30}
+    many = [{"id": f"MOD-0{n}", "title": f"Module {n}", "objectives": ["ILO-01"],
+             "covers_topics": ["TOP-01"], "minutes": 30}
             for n in range(1, 6)]
     assert specialists.validate_outcomes({"course_modules": many}) == []
     specialists.commit_outcomes(graph, trajectory, {"course_modules": many})
     assert "course_modules: at most" not in alignment_state.read(graph, brief, STEP["outcomes"]).text
 
 
-def test_a_module_must_name_its_objectives_and_its_time():
+def test_a_module_must_name_its_objectives_its_topics_and_its_time():
+    """Each of the three is load-bearing, so each is asked of the author while
+    it is still in the conversation. `objectives` and `minutes` are what every
+    later family divides and sizes its work by. `covers_topics` is what ties
+    the module back to the instructional analysis, and it is the whole source
+    of P7 -- declared optional it left that relation unable to fire for a
+    module the model simply did not fill it in for."""
     errors = specialists.validate_outcomes({"course_modules": [
-        {"id": "MOD-01", "title": "M", "objectives": [], "minutes": 0}]})
+        {"id": "MOD-01", "title": "M", "objectives": [], "covers_topics": [],
+         "minutes": 0}]})
     assert errors == ["course_modules[0].objectives must list at least one objective id",
+                      "course_modules[0].covers_topics must list at least one topic id",
                       "course_modules[0].minutes must be a positive number"]
 
 

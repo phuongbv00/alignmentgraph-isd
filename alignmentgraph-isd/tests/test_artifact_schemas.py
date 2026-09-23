@@ -138,3 +138,67 @@ def test_a_media_selection_names_the_constraints_it_respects():
         short = {k: v for k, v in whole.items() if k != field}
         errors = steps["content"].validate({"media_selections": [short]})
         assert any(f"media_selections[0].{field}" in e for e in errors), (field, errors)
+
+
+#: Every field a MATRIX relation is built from, and the artifact that declares
+#: it. A relation is only as strong as the contract behind its field: declared
+#: OPTIONAL, it cannot fire for an artifact the model simply did not fill in,
+#: and the resulting 0.00 says nothing about the design. That is how P8 read
+#: 0.00 on run bd2531da in a graph where every other relation read 1.00.
+#:
+#: Exemptions carry their reason and are the interesting half of this table.
+#: The test to apply is not "does a relation read it" but "would requiring it
+#: make the model WRITE something true": a field the design cannot be built
+#: without is asked for, and a field an honest artifact may leave empty is not,
+#: because forcing that one buys an edge by fabrication.
+_EDGE_FIELDS = [
+    ("P7",  "course_modules",      "covers_topics",           True),
+    ("P12", "course_modules",      "objectives",              True),
+    ("C2",  "assessment_tools",    "aligned_objective",       True),
+    ("P13", "learning_activities", "module_id",               True),
+    ("C3",  "learning_activities", "aligned_objectives",      True),
+    ("P5",  "learner_materials",   "linked_module",           True),
+    ("P6",  "learner_materials",   "type",                    True),
+    ("P6",  "media_selections",    "media_type",              True),
+    ("P8",  "media_selections",    "respects_constraints",    True),
+    ("P10", "session_guides",      "activity_ids",            True),
+    # An activity need not prepare for a named task: a warm-up or a diagnostic
+    # discussion honestly prepares for none. C4 is a CORE relation read by the
+    # alignment panel, so an activity pushed to name a task it has nothing to
+    # do with would buy a backbone edge by fabrication -- the worst place in
+    # the system for it. C4's coverage side is the TASK anyway ("an assessment
+    # task nothing prepares for"), which requiring the field on every activity
+    # would not close.
+    ("C4",  "learning_activities", "prepares_for_assessment", False),
+    # A session with no activity is not a session; a session that hands out no
+    # material is ordinary. The obligation is on the BLOCK -- every material id
+    # it was handed lands in some guide -- and that is carried by the
+    # deterministic division, not by each guide.
+    ("P11", "session_guides",      "material_ids",            False),
+]
+
+
+def test_every_relation_field_is_required_or_exempt_for_a_reason():
+    for relation, artifact, field, required in _EDGE_FIELDS:
+        schema = artifact_schemas.ARTIFACT_SCHEMAS[artifact]
+        assert field in schema["properties"], (relation, artifact, field)
+        assert (field in schema["required"]) is required, (
+            f"{relation}: {artifact}.{field} — a relation's field changed its "
+            f"contract. Either restore it, or move the entry and say in the "
+            f"comment above why the model may honestly leave it out.")
+
+
+def test_the_table_covers_every_relation_that_reads_a_model_written_field():
+    """The guard is only worth having while it is complete.
+
+    The relations absent from the table are the ones built from something the
+    HARNESS knows rather than something the model wrote: P1/P2/P4 record a
+    section's provenance over ids the commit already holds, P3/P14 read an
+    assessment task's own ``timing``/``module_id`` (both required inside
+    ``assessment_plan.sets``), and P9 is established from the plan sections.
+    """
+    from alignmentgraph_isd.core.alignment_graph import alignment
+
+    harness_established = {"P1", "P2", "P3", "P4", "P9", "P14"}
+    covered = {relation for relation, _a, _f, _r in _EDGE_FIELDS} | harness_established
+    assert covered == set(alignment.MATRIX), set(alignment.MATRIX) ^ covered

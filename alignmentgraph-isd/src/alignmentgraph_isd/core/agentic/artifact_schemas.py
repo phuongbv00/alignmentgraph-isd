@@ -195,11 +195,12 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
         "id": {"type": "string", "description": "MOD-01, MOD-02, ... in course order"},
         "title": {"type": "string"}, "description": {"type": "string"},
         "objectives": _arr() | {"description": "ids of the objectives this module serves"},
-        "covers_topics": _arr(),
+        "covers_topics": _arr() | {"description":
+            "ids of the topics this module teaches"},
         "minutes": {"type": "integer",
                     "description": "learner time this module gets; the modules' minutes "
                                    "add up to the course's time"},
-    }, ("id", "title", "objectives", "minutes")),
+    }, ("id", "title", "objectives", "covers_topics", "minutes")),
 
     # ── assessment ───────────────────────────────────────────────────────
     # No "diagnostic"/"formative"/"summative" buckets. Declared here they are

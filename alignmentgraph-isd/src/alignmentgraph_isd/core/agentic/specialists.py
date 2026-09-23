@@ -615,9 +615,11 @@ def _module_errors(modules) -> list[str]:
         for key in ("id", "title"):
             if not str(module.get(key) or "").strip():
                 errors.append(f"{where}.{key} must be a non-empty string")
-        if not [o for o in (module.get("objectives") or []) if str(o).strip()] \
-                or not isinstance(module.get("objectives"), list):
-            errors.append(f"{where}.objectives must list at least one objective id")
+        for key, what in (("objectives", "objective id"),
+                          ("covers_topics", "topic id")):
+            value = module.get(key)
+            if not isinstance(value, list) or not [v for v in value if str(v).strip()]:
+                errors.append(f"{where}.{key} must list at least one {what}")
         minutes = module.get("minutes")
         if isinstance(minutes, bool) or not isinstance(minutes, (int, float)) or minutes <= 0:
             errors.append(f"{where}.minutes must be a positive number")

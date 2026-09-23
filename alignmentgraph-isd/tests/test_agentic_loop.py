@@ -125,7 +125,7 @@ _OUTCOMES = {
     ],
     "course_modules": [
         {"id": "MOD-01", "title": "Inheritance in practice", "objectives": ["ILO-01"],
-         "covers_topics": [], "minutes": 120},
+         "covers_topics": ["TOP-01"], "minutes": 120},
     ],
 }
 
