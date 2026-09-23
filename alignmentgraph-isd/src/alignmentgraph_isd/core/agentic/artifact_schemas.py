@@ -320,8 +320,10 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
     "media_selections": _obj({
         "id": {"type": "string"}, "media_type": _MEDIA,
         "purpose": {"type": "string"}, "rationale": {"type": "string"},
-        "respects_constraints": _arr(), "for_modules": _arr(),
-    }, ("id", "media_type", "for_modules")),
+        "respects_constraints": _arr() | {"description":
+            "ids of the constraints this medium was chosen in light of"},
+        "for_modules": _arr(),
+    }, ("id", "media_type", "for_modules", "respects_constraints")),
     #: Item schema — the fan-out's ``learner_materials``.
     "learner_materials": _obj({
         "title": {"type": "string"},

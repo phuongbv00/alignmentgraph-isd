@@ -663,6 +663,47 @@ def validate_content(parsed: dict) -> list[str]:
         return empty
     errors: list[str] = []
     _require_list(parsed, ("media_selections",), errors)
+    if not errors:
+        errors += _media_selection_errors(parsed["media_selections"])
+    return errors
+
+
+def _media_selection_errors(selections) -> list[str]:
+    """Every field the schema declares required, judged per selection.
+
+    The four are each load-bearing, and three of them fail SILENTLY when
+    absent, which is why the model is asked while it is still in the
+    conversation rather than left to the checks: ``_decompose`` keeps only
+    elements carrying an ``id``, so a selection without one is dropped without
+    a word; ``for_modules`` is what hands a module its media, and a module left
+    out gets materials of no chosen medium; ``media_type`` is the far end of
+    P6, which a material's ``type`` has to match.
+
+    ``respects_constraints`` is the one this function was added for. It is the
+    whole source of P8, and it was declared OPTIONAL while the relation that
+    measures it required it. MEASURED (run bd2531da): all 12 selections omitted
+    it, P8 read 0.00 against a graph where every other relation read 1.00, and
+    the 12 findings were stamped ``unseen`` -- the check runs after the stage's
+    loop has closed, so nobody was ever in a position to fix it. Two parts of
+    one system reading two different contracts, the same shape as the
+    ``lo_coverage_targets`` defect.
+    """
+    if not isinstance(selections, list):
+        return []
+    errors: list[str] = []
+    for index, selection in enumerate(selections):
+        where = f"media_selections[{index}]"
+        if not isinstance(selection, dict):
+            errors.append(f"{where} must be an object")
+            continue
+        for key in ("id", "media_type"):
+            if not str(selection.get(key) or "").strip():
+                errors.append(f"{where}.{key} must be a non-empty string")
+        for key, what in (("for_modules", "module id"),
+                          ("respects_constraints", "constraint id")):
+            value = selection.get(key)
+            if not isinstance(value, list) or not [v for v in value if str(v).strip()]:
+                errors.append(f"{where}.{key} must list at least one {what}")
     return errors
 
 

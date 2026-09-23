@@ -110,3 +110,31 @@ def test_a_required_list_that_arrives_empty_is_rejected():
     for stage, payload, field in _EMPTY_REQUIRED_LISTS:
         errors = steps[stage].validate(payload)
         assert any(field in e for e in errors), (stage, field, errors)
+
+
+def test_a_media_selection_names_the_constraints_it_respects():
+    """P8 is built entirely from ``respects_constraints``, so the field the
+    relation requires has to be the field the contract requires.
+
+    It was declared OPTIONAL while P8 required it. MEASURED (run bd2531da):
+    all 12 selections omitted it, P8 read 0.00 in a graph where every other
+    relation read 1.00, and all 12 findings were stamped ``unseen`` -- the
+    check runs after the stage's loop has closed, so no agent was ever in a
+    position to fix it. The same shape as the ``lo_coverage_targets`` defect:
+    two parts of one system reading two different contracts.
+
+    Pinned on BOTH halves, because either one alone leaves the asymmetry: the
+    schema is what the model is shown, the validator is what refuses a submit.
+    """
+    schema = artifact_schemas.ARTIFACT_SCHEMAS["media_selections"]
+    assert "respects_constraints" in schema["required"]
+    assert schema["properties"]["respects_constraints"]["minItems"] == 1
+
+    steps = {step.name: step for step in specialists.STEPS}
+    whole = {"id": "MS-01", "media_type": "slides",
+             "for_modules": ["MOD-01"], "respects_constraints": ["c001"]}
+    assert steps["content"].validate({"media_selections": [whole]}) == []
+    for field in ("respects_constraints", "for_modules"):
+        short = {k: v for k, v in whole.items() if k != field}
+        errors = steps["content"].validate({"media_selections": [short]})
+        assert any(f"media_selections[0].{field}" in e for e in errors), (field, errors)

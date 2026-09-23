@@ -265,10 +265,10 @@ media, so go through the modules one by one and make sure EVERY module id appear
 ask for (their ``materials_needed``): your read of the design state lists every activity with
 its module, name and cognitive process, which is what this decision needs; read one in full
 only when its listing line leaves you unsure.
-Every media selection should set ``respects_constraints`` to the ids of the constraints it was
-chosen in light of, copied from your read of the design state, which lists every constraint of
-this brief with its description — a constraint you did not read there does not exist, and a name
-you invent links to nothing.
+Every media selection must also set ``respects_constraints`` to the ids of the constraints it
+was chosen in light of, copied from your read of the design state, which lists every constraint
+of this brief with its description — a constraint you did not read there does not exist, and a
+name you invent links to nothing.
 media_type must be one of: %(media_types)s."""
 
 RULES_MEDIA_SELECTIONS = RULES_MEDIA_SELECTIONS % {"media_types": ", ".join(MEDIA_TYPES)}
