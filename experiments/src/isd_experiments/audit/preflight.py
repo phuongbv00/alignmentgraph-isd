@@ -68,6 +68,7 @@ GENERATION_ENV = {
 #: .env, where a stale line would be a posture nobody fingerprinted.
 HARNESS_POSTURE_ENV = {
     "fanout_workers": "HARNESS_FANOUT_WORKERS",
+    "development_mode": "HARNESS_DEVELOPMENT_MODE",
 }
 
 _fail = 0

@@ -75,6 +75,12 @@ class TestTheUniformConfig:
         assert env["AGENT_MODEL_MAX_OUTPUT_TOKENS"] == str(cfg.generation.max_output_tokens)
         assert env["AGENT_MODEL_CONTEXT_WINDOW"] == str(cfg.serving.context_window)
 
+    def test_the_harness_posture_comes_from_the_declaration(self):
+        cfg = current()
+        env = llm.pinned_env(cfg)
+        assert env["HARNESS_FANOUT_WORKERS"] == str(cfg.harness.fanout_workers)
+        assert env["HARNESS_DEVELOPMENT_MODE"] == cfg.harness.development_mode
+
 
 class TestTheBaselinesAreBuiltAsTheBenchmarkBuildsThem:
     def test_baseline_is_handed_the_uniform_budget_explicitly(self, monkeypatch):

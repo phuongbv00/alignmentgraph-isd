@@ -23,6 +23,7 @@ from __future__ import annotations
 # deterministic split uses, imported rather than written twice: a planner told
 # "at most 8" while the harness splits at 6 would have its own grouping taken
 # apart behind it. Cycle-free: dev_plans imports nothing local.
+from .dev_plans import BLOOM_ORDER as _BLOOM_ORDER
 from .dev_plans import MIN_ACTIVITY_MINUTES as _MIN_ACTIVITY_MINUTES
 from .dev_plans import MAX_MODULES, MODULES_BY_COURSE_HOURS
 from .dev_plans import max_units as _max_units
@@ -31,6 +32,9 @@ from .dev_plans import max_units as _max_units
 #: (``core/agentic/artifact_schemas.py``) and this module's own ``RULES_*``
 #: prose, so a value list is typed exactly once.
 BLOOM_LEVELS = ("remember", "understand", "apply", "analyze", "evaluate", "create")
+# `dev_plans` orders a light assignment by the same six and cannot import this
+# module (it is imported here), so the two are asserted equal where both exist.
+assert BLOOM_LEVELS == _BLOOM_ORDER, "rulebook.BLOOM_LEVELS and dev_plans.BLOOM_ORDER differ"
 BLOOM_VERBS = ("recall", "explain", "apply", "analyze", "evaluate", "design")
 
 #: How many intended learning outcomes one course carries.
@@ -141,7 +145,7 @@ no evidence that it worked.
 
 For each task state its ``format`` (quiz, practical, project, ...), its real scale in
 ``item_counts`` (item type -> how many the FULL task has, e.g. 20 multiple_choice and 3
-short_answer — the true size, even though only a sample of those items is written out later),
+short_answer — the true size, even though not every one of them may be written out later),
 the ``covers_objectives`` it assesses (ids from that module's objectives), its ``minutes``, and its
 ``weight_percent`` of the course grade (0 when ungraded; the graded tasks add up to 100).
 Every objective must be covered by at least one task.
@@ -150,6 +154,11 @@ lo_coverage_targets must agree with the tasks: an objective is promised a catego
 when a task with that ``timing`` covers it.
 formative_methods must each name a task and a cadence (e.g. "exit tickets after each
 module"), consistent with the formative intent above.
+pilot_data_plan.collection_points must name at least two points, each said in WORDS a reader
+of the evaluation alone can follow: ``when`` in the course, ``where`` (the module or session by
+its title), ``what`` data is collected and by which instrument (a quiz, an observation, a
+survey — name the task's title beside its id), and ``from_whom``. An id alone is not a
+collection point.
 pilot_data_plan.anticipated_difficulties must name at least two SPECIFIC areas, each anchored to
 BOTH the content module or session where learners would struggle AND the objective id affected
 (e.g. "Module 3 (interactive content design) — ILO-02", never "general comprehension"), each
@@ -290,10 +299,10 @@ RULES_MATERIALS = """\
 Every material's ``linked_module`` must name an existing module id it belongs to, and
 its ``type`` must be the ``media_type`` of the media selection it realizes — one of
 %(media_types)s — with ``format`` a delivery format for that type.
-``content`` must BE the learner-facing substance of the material, ready to hand to a learner —
-the actual text, worked example, exercise instructions, or a scene-by-scene script for
-video/slides — several sentences of scenario-specific detail, never a one-line description of
-what the content would contain."""
+``content`` is the material itself, never a description of it: the learner-facing substance —
+text, worked example, exercise instructions, or a scene-by-scene script for video/slides — at
+the depth YOUR ASSIGNMENT states, and never a one-line summary of what the content would
+contain."""
 
 RULES_MATERIALS = RULES_MATERIALS % {"media_types": ", ".join(MEDIA_TYPES)}
 
@@ -309,11 +318,10 @@ filler beyond the stated count. Each material's ``type`` must be the ``media_typ
 media selection it realizes — one of %(media_types)s — and its ``format`` a delivery format for
 that type, respecting the constraints those media declared: your module's own media list above
 is what decides the type.
-``content`` must BE the learner-facing substance of the material, ready to hand to a learner —
-the actual text, worked example, exercise instructions, or a scene-by-scene script for
-video/slides — several sentences of scenario-specific detail, never a one-line description of
-what the content would contain. Because you are developing one module at a time, give this
-module's materials the full length and detail a learner would actually need."""
+``content`` is the material itself, never a description of it: the learner-facing substance —
+text, worked example, exercise instructions, or a scene-by-scene script for video/slides — at
+the depth YOUR ASSIGNMENT states, and never a one-line summary of what the content would
+contain."""
 
 RULES_MATERIALS_UNIT = RULES_MATERIALS_UNIT % {"media_types": ", ".join(MEDIA_TYPES)}
 

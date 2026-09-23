@@ -172,7 +172,7 @@ class RunCreate(BaseModel):
     """Which ablation arm to run under, and how much of the design to write out.
 
     ``development_mode`` is not an axis — it says whether the Developers write
-    a representative sample of what the design plans or all of it — but it is
+    a light, reviewable slice of what the design plans or all of it — but it is
     chosen per run exactly as the axes are, so it travels with them.
 
     Neither is ``fanout_workers``, and it is not even a property of the design:

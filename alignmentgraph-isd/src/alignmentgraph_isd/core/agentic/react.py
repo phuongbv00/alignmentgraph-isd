@@ -370,7 +370,10 @@ class ReactLoop:
             # The SAME item rules a Developer's submit is held to
             # (`fanout.output_errors`), because this agent is writing exactly
             # what a Developer would.
-            errors += fanout.output_errors(spec, present, fanout.known_ids(self.state))
+            errors += fanout.output_errors(
+                spec, present, fanout.known_ids(self.state),
+                levels=fanout.objective_levels(self.state),
+                committed_best=fanout.committed_item_levels(self.state))
         return errors
 
     def run(self) -> None:

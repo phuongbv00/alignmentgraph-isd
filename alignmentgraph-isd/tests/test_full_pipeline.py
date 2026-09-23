@@ -137,6 +137,25 @@ def test_evaluation_carries_formative_findings_and_feedback_summary():
     # plan — reading it off the latter silently yielded "" on every run.
     assert evaluation["improvement_plan"]["feedback_summary"]
 
+def test_the_evaluation_phase_can_be_read_on_its_own():
+    """The LLM judge is handed each ADDIE phase alone, so a reference into the
+    design (`AT-01`, `ILO-04`, `MOD-02`) is a meaningless token inside
+    `evaluation` unless its label travels with it. Collection points are said
+    in words, and every bare id in the formative narrative carries the task's
+    timing and format, the objective's statement or the module's title."""
+    config = HarnessRunConfig()
+    config.llm_factory = FakeChatModel
+    output = run_brief(load_brief("minimal_brief.json"), config)["addie_output"]
+    formative = output["evaluation"]["formative"]
+    points = formative["data_collection"]["collection_points"]
+    assert points and all(set(p) >= {"when", "where", "what", "from_whom"} for p in points)
+    areas = [d["area"] for d in formative["anticipated_difficulties"]]
+    assert any("ILO-04 (" in a for a in areas), areas
+    assert any("MOD-02 (Inheritance and Design)" in a for a in areas), areas
+    for entry in formative["revision_plan"]:
+        assert "MOD-02 (" in entry["action"] or "MOD-02" not in entry["action"]
+
+
 
 def test_implementation_plan_is_linked_into_the_graph():
     """The implementation plan used to be the one artifact in the graph with no

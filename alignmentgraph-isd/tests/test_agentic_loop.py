@@ -142,7 +142,11 @@ _ASSESSMENT = {
         "expected_evidence": {"ILO-01": "A working artifact."},
         "formative_methods": ["Weekly critique with rubric"],
         "pilot_data_plan": {
-            "collection_points": ["After the first lab"],
+            "collection_points": [
+                {"when": "after module 1", "where": "Module 1 — Basics",
+                 "what": "exit-ticket quiz results and observation notes", "from_whom": "all learners"},
+                {"when": "before the final task", "where": "Module 2 — Practice",
+                 "what": "draft review with the rubric", "from_whom": "each learner"}],
             "anticipated_difficulties": [
                 {"area": "ILO-01", "rationale": "Abstraction is hard for these learners.",
                  "detected_by": "Weekly critique with rubric",

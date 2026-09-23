@@ -24,6 +24,7 @@ temperature = 0.7
 
 [harness]
 fanout_workers = 1
+development_mode = "light"
 
 [[serving.slots]]
 slot = "tiny"
@@ -75,11 +76,19 @@ class TestServingLimitsAreDeclaredOnce:
         """Not a serving limit, but recorded in the freeze manifest all the
         same: undeclared, the adapter's default runs; also in .env, a stale
         line runs a posture nobody fingerprinted."""
-        body = DECLARED.replace("[harness]\nfanout_workers = 1\n", "")
+        body = DECLARED.replace("fanout_workers = 1\n", "")
         ok, detail = _findings(tmp_path, body=body)["[harness].fanout_workers declared"]
         assert not ok and "experiment.toml" in detail
         found = _findings(tmp_path, "HARNESS_FANOUT_WORKERS=4\n")
         ok, detail = found["HARNESS_FANOUT_WORKERS absent from .env"]
+        assert not ok and "experiment.toml owns" in detail
+
+    def test_the_development_mode_is_held_to_the_same_rule(self, tmp_path):
+        body = DECLARED.replace('development_mode = "light"\n', "")
+        ok, detail = _findings(tmp_path, body=body)["[harness].development_mode declared"]
+        assert not ok and "experiment.toml" in detail
+        found = _findings(tmp_path, "HARNESS_DEVELOPMENT_MODE=full\n")
+        ok, detail = found["HARNESS_DEVELOPMENT_MODE absent from .env"]
         assert not ok and "experiment.toml owns" in detail
 
     def test_an_exported_assignment_counts_as_setting_it(self, tmp_path):

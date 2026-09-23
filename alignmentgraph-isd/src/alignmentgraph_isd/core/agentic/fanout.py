@@ -169,7 +169,9 @@ def reference_errors(list_key: str, items: list, ref_fields, known) -> list[str]
     return errors
 
 
-def output_errors(spec: "FanoutSpec", section: dict, known: dict | None = None) -> list[str]:
+def output_errors(spec: "FanoutSpec", section: dict, known: dict | None = None, *,
+                  levels: dict[str, str] | None = None,
+                  committed_best: dict[str, int] | None = None) -> list[str]:
     """Errors for whatever fan-out output a submit carries, in either arm.
 
     One implementation because the two arms submit the same artifacts by
@@ -181,7 +183,10 @@ def output_errors(spec: "FanoutSpec", section: dict, known: dict | None = None) 
     (:func:`known_ids`). Both arms pass it, from the state each already holds:
     the rule has to be stated over the DESIGN rather than over an assignment,
     because the single arm has no assignment and a rule only one arm can break
-    would be a second variable on the decomposition axis.
+    would be a second variable on the decomposition axis. ``levels`` and
+    ``committed_best`` are the same kind of snapshot for
+    :func:`item_level_errors` (:func:`objective_levels`,
+    :func:`committed_item_levels`).
     """
     errors: list[str] = []
     for output in spec.outputs:
@@ -195,6 +200,8 @@ def output_errors(spec: "FanoutSpec", section: dict, known: dict | None = None) 
             errors += output.validate_items(items)
         if output.ref_fields and known:
             errors += reference_errors(output.schema_key, items, output.ref_fields, known)
+        if levels and output.element_type == NodeType.ASSESSMENT:
+            errors += item_level_errors(items, levels, committed_best)
     return errors
 
 
@@ -337,6 +344,79 @@ def _derived_stats(stats: dict) -> dict:
     return {**stats, "source": "deterministic", "fallback_used": False}
 
 
+def objective_levels(state) -> dict[str, str]:
+    """``objective id -> its declared Bloom level``, identically on either
+    substrate. What a light assignment reads to fix each item's and each
+    activity's cognitive level: the objectives' OWN word, never the harness's."""
+    return {
+        str(one["id"]): str(one.get("level") or "").strip().lower()
+        for one in _element_data(state, NodeType.OBJECTIVE, ("objective", "learning_objectives"))
+        if one.get("id")
+    }
+
+
+def committed_item_levels(state) -> dict[str, int]:
+    """``objective id -> the highest declared level of any committed item
+    aligned to it``, on either substrate: the graph arm's tasks carry their
+    items, the blackboard keeps the questions flat. What
+    :func:`item_level_errors` counts beside a submit, so an objective already
+    measured at its level is not refused another, lower item."""
+    from ..alignment_graph import alignment  # noqa: PLC0415  (a leaf; no cycle)
+    best: dict[str, int] = {}
+    for entry in _element_data(state, NodeType.ASSESSMENT, ("assessment", "assessment_tools")):
+        for item in (entry.get("items") or [entry]):
+            if not isinstance(item, dict):
+                continue
+            lo = dev_plans._bare(str(item.get("aligned_objective") or ""))
+            level = alignment.bloom_level_of(item.get("required_cognitive_process"))
+            if lo and level is not None:
+                best[lo] = max(best.get(lo, -1), level)
+    return best
+
+
+def item_level_errors(items: list, levels: dict[str, str],
+                      committed_best: dict[str, int] | None = None) -> list[str]:
+    """An objective whose items ALL sit below its own level is not measured.
+
+    The rule ``bloom_mismatch_assessment`` applies after the fact — the highest
+    declared ``required_cognitive_process`` of an objective's items against the
+    objective's ``level`` — asked at submit, while the author is still in the
+    conversation. Counts THIS submit together with what the design already
+    holds for the objective, so a batch adding one more low item to an
+    objective measured at its level is not refused. Stated over the DESIGN,
+    never over an assignment, so both arms are held to it identically; an
+    objective with no readable level, or one this submit does not align to,
+    is not judged."""
+    from ..alignment_graph import alignment  # noqa: PLC0415  (a leaf; no cycle)
+    best: dict[str, int] = dict(committed_best or {})
+    first_index: dict[str, int] = {}
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            continue
+        lo = dev_plans._bare(str(item.get("aligned_objective") or ""))
+        if not lo:
+            continue
+        first_index.setdefault(lo, index)
+        level = alignment.bloom_level_of(item.get("required_cognitive_process"))
+        if level is not None:
+            best[lo] = max(best.get(lo, -1), level)
+    errors: list[str] = []
+    for lo, index in first_index.items():
+        wanted = alignment.bloom_level_of(levels.get(lo))
+        if wanted is None or best.get(lo, -1) >= wanted:
+            continue
+        name = alignment.bloom_level_name(wanted)
+        formats = (", ".join(dev_plans.OPEN_RESPONSE_TYPES)
+                   if wanted >= alignment.bloom_level_of("apply") else "any type")
+        errors.append(
+            f"assessment_tools[{index}].required_cognitive_process: {lo} states "
+            f"{alignment.a_level(name)}-level performance and none of your item(s) for it "
+            f"reaches {name} — set one item's "
+            f"required_cognitive_process to '{name}' in a type that carries it ({formats}), "
+            "or write one that does")
+    return errors
+
+
 def _assessment_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dict]:
     """One work set per INSTRUMENT of the blueprint.
 
@@ -351,7 +431,8 @@ def _assessment_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dic
                         for one in blueprint]}
     sets, stats = dev_plans.assessment_work_sets(
         derived, _lo_ids(state), plan.get("lo_coverage_targets") or {},
-        modules=parsed.get("modules"), blueprint=blueprint, mode=mode)
+        modules=parsed.get("modules"), blueprint=blueprint, mode=mode,
+        levels=objective_levels(state))
     named = dev_plans.name_sets_after(
         sets, "AS", lambda ws: next((i["id"] for i in ws.payload.get("sets") or []
                                      if i.get("id")), ws.module_id))
@@ -363,7 +444,7 @@ def _activity_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dict]
 
     Unlike the other three families nothing in the design states how MANY
     activities a module needs, so the count comes from the module's own
-    minutes (``fit_time_budget``) and, under ``sample``, from the sample
+    minutes (``fit_time_budget``) and, under ``light``, from the light
     quota."""
     modules = [m for m in (parsed.get("modules") or [])
                if isinstance(m, dict) and m.get("id")]
@@ -372,7 +453,7 @@ def _activity_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dict]
                                     "block_minutes": m.get("minutes")} for m in modules]}
     sets, stats = dev_plans.activity_work_sets(
         derived, _lo_ids(state), items_by_lo(state),
-        modules=parsed.get("modules"), mode=mode)
+        modules=parsed.get("modules"), mode=mode, levels=objective_levels(state))
     return (dev_plans.name_sets_after(sets, "AB", lambda ws: ws.module_id),
             _derived_stats(stats))
 
@@ -757,6 +838,8 @@ def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
     # nothing this Developer writes adds to them, and the single arm reads the
     # same fact from its own state.
     known = known_ids(state) if state is not None else {}
+    levels = objective_levels(state) if state is not None else {}
+    committed_best = committed_item_levels(state) if state is not None else {}
     whole = spec.render(work_set) + _resolved_references(work_set, state)
     assignment = _capped(whole)
     truncated = assignment != whole
@@ -768,7 +851,7 @@ def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
         # Judged as it will be committed: a membership id the set itself
         # settles is filled in (``dev_plans.with_membership``), never refused.
         filled = {**parsed, primary: dev_plans.with_membership(work_set, primary, items)}
-        return output_errors(spec, filled, known)
+        return output_errors(spec, filled, known, levels=levels, committed_best=committed_best)
 
     def owes(section: dict) -> str:
         # Counted without repeats: what the commit's trim would drop as a

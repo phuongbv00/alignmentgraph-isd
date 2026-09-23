@@ -6,6 +6,7 @@ into the shape ``core/validation.py`` defines.
 """
 from __future__ import annotations
 
+import re
 from copy import deepcopy
 
 from . import dev_plans
@@ -192,7 +193,12 @@ class ADDIEOutputAggregator:
             **_merge_node_data(self.graph.section_nodes(NodeType.IMPROVEMENT)),
             "improvements": improvements,
         }
-        return _evaluation_from(assessment_tools, plan_data, improvement_plan)
+        return _evaluation_from(
+            assessment_tools, plan_data, improvement_plan,
+            labels=_label_index(
+                assessment_tools,
+                [n["data"] for n in self.graph.element_nodes(NodeType.OBJECTIVE)],
+                [n["data"] for n in self.graph.element_nodes(NodeType.MODULE)]))
 
 
 def _with_session_guides(implementation: dict, guides: list) -> dict:
@@ -241,10 +247,56 @@ def _objective_assessment_map(objective_ids: list, tasks: list) -> dict:
     return by_lo
 
 
-def _evaluation_from(assessment_tools: list, plan_data: dict, improvement_plan: dict) -> dict:
+_BARE_REF = re.compile(r"(?<![A-Za-z0-9-])([A-Z]{1,5}-?\d{1,4})\b(?!\s*\()")
+
+
+def _label_index(assessment_tools: list, objectives: list, modules: list) -> dict[str, str]:
+    """``id -> a short label`` for every task, objective and module of the
+    design: what a reader of ONE phase needs to follow a reference into
+    another. The LLM judge is handed each ADDIE phase on its own, so an id that
+    is only defined in ``design`` is a meaningless token inside ``evaluation``."""
+    index: dict[str, str] = {}
+    for task in assessment_tools:
+        if isinstance(task, dict) and task.get("id"):
+            parts = [str(task.get(k)) for k in ("timing", "format") if task.get(k)]
+            module = task.get("module_id")
+            index[str(task["id"])] = " ".join(parts) + (f", {module}" if module else "")
+    for one in objectives:
+        if isinstance(one, dict) and one.get("id"):
+            index[str(one["id"])] = str(one.get("statement") or "")[:90]
+    for one in modules:
+        if isinstance(one, dict) and one.get("id"):
+            index[str(one["id"])] = str(one.get("title") or "")[:60]
+    return {k: v for k, v in index.items() if v}
+
+
+def _labelled(value, labels: dict[str, str]):
+    """``value`` with every bare id the index knows followed by its label in
+    parentheses, recursively through lists and dicts. The model's own words are
+    never rewritten -- a label is appended, once, and an id already followed by
+    an opening parenthesis is left as the model explained it."""
+    if not labels:
+        return value
+    if isinstance(value, str):
+        return _BARE_REF.sub(
+            lambda m: f"{m.group(1)} ({labels[m.group(1)]})" if m.group(1) in labels else m.group(1),
+            value)
+    if isinstance(value, list):
+        return [_labelled(v, labels) for v in value]
+    if isinstance(value, dict):
+        return {k: _labelled(v, labels) for k, v in value.items()}
+    return value
+
+
+def _evaluation_from(assessment_tools: list, plan_data: dict, improvement_plan: dict,
+                     *, labels: dict[str, str] | None = None) -> dict:
     """The evaluation phase, from the assessment pool, the assessment plan and
     the improvement plan -- ONE reader for both substrates, since a bucket that
     filled on one and not the other would sit on the ``context_mode`` axis.
+
+    ``labels`` (:func:`_label_index`) is appended to every id the formative
+    narrative names: this phase is judged on its own, and a collection point
+    that reads ``AT-01`` alone says nothing to a reader who never saw the plan.
 
     The formative half of ADDIE Evaluation is scored on more than a list of
     sets: the rubric asks which areas learners struggled with, why, and what
@@ -257,13 +309,14 @@ def _evaluation_from(assessment_tools: list, plan_data: dict, improvement_plan: 
     summative_tasks = _timed(assessment_tools, "summative")
     pilot = plan_data.get("pilot_data_plan", {})
     pilot = pilot if isinstance(pilot, dict) else {}
+    labels = labels or {}
     formative = {
-        "data_collection": {
+        "data_collection": _labelled({
             "methods": plan_data.get("formative_methods", []),
             "collection_points": pilot.get("collection_points", []),
-        },
-        "anticipated_difficulties": pilot.get("anticipated_difficulties", []),
-        "revision_plan": [
+        }, labels),
+        "anticipated_difficulties": _labelled(pilot.get("anticipated_difficulties", []), labels),
+        "revision_plan": _labelled([
             {
                 "problem_area": entry.get("area", ""),
                 "evidence_source": entry.get("detected_by", ""),
@@ -271,7 +324,7 @@ def _evaluation_from(assessment_tools: list, plan_data: dict, improvement_plan: 
             }
             for entry in (pilot.get("anticipated_difficulties") or [])
             if isinstance(entry, dict)
-        ],
+        ], labels),
         "assessment_tools": formative_tasks,
     }
     objective_ids = _objectives_in(summative_tasks)
@@ -529,7 +582,10 @@ def aggregate_prose(store, trajectory, *, development_mode: str = "") -> dict:
         **{k: v for k, v in improvement_doc.items() if k != "improvements"},
         "improvements": improvement_doc.get("improvements") or [],
     }
-    evaluation = _evaluation_from(assessment_tools, plan_data, improvement_plan)
+    evaluation = _evaluation_from(
+        assessment_tools, plan_data, improvement_plan,
+        labels=_label_index(assessment_tools, items("objective", "learning_objectives"),
+                            content_modules))
 
     output = {
         "analysis": analysis,
@@ -664,15 +720,17 @@ def _development_scope(mode: str, plan: dict, *, items: int, activities: int,
     planned = sum(_set_scale(t) for t in dev_plans.plan_tasks(plan))
     scale = (f"{items} of the {planned} assessment items the blueprint plans"
              if planned else f"{items} assessment items")
-    how = ("a representative sample of the design" if mode == "sample"
+    light = mode == "light"
+    how = ("a typical, reviewable slice of the design" if light
            else "the design at the scale its plan states")
+    depth = ("each item and activity written in full and each material as a structured "
+             "outline" if light else "each written in full")
     return {"development_scope": {
         "mode": mode, "items_planned": planned, "items_written": items,
         "note": (f"Development writes out {how}: {scale}, {activities} learning activities and "
-                 f"{materials} learner materials across {modules} modules, each written in "
-                 "full. The assessment plan's sets state every set's full scale "
-                 "(item_counts) beside how many of its items are written here "
-                 "(items_written)."),
+                 f"{materials} learner materials across {modules} modules, {depth}. The "
+                 "assessment plan's sets state every task's full scale (item_counts) beside "
+                 "how many of its items are written here (items_written)."),
     }}
 
 

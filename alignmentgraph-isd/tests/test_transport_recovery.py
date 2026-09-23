@@ -450,12 +450,15 @@ def test_reshaping_recurses_through_objects_array_items_and_additional_propertie
     args = tools.reshape_args(plan, {"assessment_plan": {
         "lo_coverage_targets": {"ILO-01": "formative"},
         "formative_methods": "Weekly critique",
-        "pilot_data_plan": {"collection_points": "After lab 1",
+        "pilot_data_plan": {"collection_points": [
+                                {"when": "after lab 1", "where": "Module 1", "what": "lab log",
+                                 "from_whom": "learners"}],
                             "anticipated_difficulties": []}}}, reshaped=reshaped)
     ap = args["assessment_plan"]
     assert ap["lo_coverage_targets"] == {"ILO-01": ["formative"]}
     assert ap["formative_methods"] == ["Weekly critique"]
-    assert ap["pilot_data_plan"]["collection_points"] == ["After lab 1"]
+    assert ap["pilot_data_plan"]["collection_points"][0]["what"] == "lab log", (
+        "an array of objects is left as written")
     assert "assessment_plan.lo_coverage_targets.ILO-01" in reshaped
 
     items = tools.submit_parameters(fanout.set_step(

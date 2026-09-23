@@ -192,7 +192,7 @@ class TestTheChildCommandCarriesTheDeclaration:
     def test_nothing_the_declaration_says_travels_on_the_command(self, plan):
         command = self._command(plan)
         for leaked in ("--agent-model", "--judge-model", "AGENT_MODEL_",
-                       "HARNESS_FANOUT_WORKERS"):
+                       "HARNESS_FANOUT_WORKERS", "HARNESS_DEVELOPMENT_MODE"):
             assert leaked not in command, leaked
 
     def test_every_parent_expanded_value_is_quoted(self, plan):

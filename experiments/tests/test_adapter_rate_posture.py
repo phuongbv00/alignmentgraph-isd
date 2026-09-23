@@ -96,13 +96,18 @@ def test_regen_backoff_tracks_the_runners_delay(monkeypatch):
 
 
 def test_the_development_mode_is_the_package_default_unless_asked_for(monkeypatch):
-    """The ladder runs sampled development; a results dir written in full has
-    to have asked for it, and a typo must not silently become either."""
+    """Unset keeps the package default; a declared value is applied as spelled
+    in experiment.toml; and a value the harness could not apply RAISES, since
+    the freeze manifest records it and a value silently dropped here would be
+    a posture written down that never ran."""
     assert "development_mode" not in _regen_settings_from_env()
     monkeypatch.setenv("HARNESS_DEVELOPMENT_MODE", " Full ")
     assert _regen_settings_from_env()["development_mode"] == "full"
-    monkeypatch.setenv("HARNESS_DEVELOPMENT_MODE", "everything")
-    assert "development_mode" not in _regen_settings_from_env()
+    monkeypatch.setenv("HARNESS_DEVELOPMENT_MODE", "light")
+    assert _regen_settings_from_env()["development_mode"] == "light"
+    monkeypatch.setenv("HARNESS_DEVELOPMENT_MODE", "sample")
+    with pytest.raises(ValueError, match="HARNESS_DEVELOPMENT_MODE"):
+        _regen_settings_from_env()
 
 
 def test_fanout_workers_are_off_unless_asked_for(monkeypatch):

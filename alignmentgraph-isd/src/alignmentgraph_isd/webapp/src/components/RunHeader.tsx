@@ -75,13 +75,13 @@ export function RunHeader({ stream, canRun, runDisabledReason, onRun, onCancel, 
           )}
 
           {/* Only a run that says so: a run recorded before the mode existed
-              reports nothing, and "sample" on it would be a guess. */}
+              reports nothing, and "light" on it would be a guess. */}
           {stream.stats.development_mode && (
             <span
               className="pill arm"
               title={stream.stats.development_mode === 'full'
                 ? 'Every artifact the design plans was written out'
-                : 'A representative sample of what the design plans was written out'}
+                : 'A light, reviewable slice of what the design plans was written out: typical items and activities, outlined materials'}
             >
               {stream.stats.development_mode}
             </span>
@@ -292,7 +292,7 @@ function RunSettingsMenu({ settings, onChange }: {
           <div className="menu-sep" role="separator" />
           <label
             className="menu-item"
-            title="Write every artifact the design plans instead of a representative sample. Many more model calls."
+            title="Write every artifact the design plans instead of a light, reviewable slice. Many more model calls."
           >
             <input
               type="checkbox"

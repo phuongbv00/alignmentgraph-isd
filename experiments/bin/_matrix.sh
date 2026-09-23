@@ -292,6 +292,7 @@ matrix_confirm() {
              "peak ≲ $(matrix_peak_calls "${!rate_var:-$RATE_LIMIT}") calls in flight)"
     done
     echo "  Developer workers: ${_HARNESS_FANOUT_WORKERS:-unset (1)} ([harness].fanout_workers)"
+    echo "  Development:       ${_HARNESS_DEVELOPMENT_MODE:-unset (light)} ([harness].development_mode)"
     echo ""
     echo "  !! WARNING: this launches ~$((NUM_SLOTS * NUM_RUNS)) full benchmark runs"
     if [[ "${JUDGE_AFTER_RUN:-0}" == "1" ]]; then
@@ -332,6 +333,7 @@ matrix_write_manifest() {
     AGENT_MODEL_THINKING_BUDGET="${_AGENT_MODEL_THINKING_BUDGET:-}" \
     AGENT_MODEL_TEMPERATURE="${_AGENT_MODEL_TEMPERATURE:-}" \
     HARNESS_FANOUT_WORKERS="${_HARNESS_FANOUT_WORKERS:-}" \
+    HARNESS_DEVELOPMENT_MODE="${_HARNESS_DEVELOPMENT_MODE:-}" \
     python3 - "$manifest" <<'PYEOF'
 import json, os, sys
 
@@ -396,6 +398,7 @@ manifest = {
     },
     "harness": {
         "fanout_workers": os.environ.get("HARNESS_FANOUT_WORKERS", ""),
+        "development_mode": os.environ.get("HARNESS_DEVELOPMENT_MODE", ""),
     },
     "git": {
         "isd_agent_benchmark_commit": os.environ["BENCH_COMMIT"],

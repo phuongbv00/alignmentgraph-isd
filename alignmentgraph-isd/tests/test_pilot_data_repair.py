@@ -12,7 +12,11 @@ from alignmentgraph_isd.core import checks, repairs
 from alignmentgraph_isd.core.trajectory import TrajectoryLogger
 
 _GOOD_PILOT = {
-    "collection_points": ["After module 1", "Before the final task"],
+    "collection_points": [
+                {"when": "after module 1", "where": "Module 1 — Basics",
+                 "what": "exit-ticket quiz results and observation notes", "from_whom": "all learners"},
+                {"when": "before the final task", "where": "Module 2 — Practice",
+                 "what": "draft review with the rubric", "from_whom": "each learner"}],
     "anticipated_difficulties": [
         {"area": "ILO-01", "rationale": "Hard concept.", "detected_by": "Exit tickets",
          "first_revision": "Add a worked example."},

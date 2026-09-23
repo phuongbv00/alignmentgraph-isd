@@ -189,7 +189,7 @@ for, and the course module it is one share of (`module_id`). Every family
 divides its work by the modules the outcomes stage wrote, so reading a plan
 down its `module_id`s is reading the course in order. The count reflects the
 run's development mode: the Run menu's **Full development** box asks for every
-artifact the design plans, and an unticked run writes a representative sample
+artifact the design plans, and an unticked run writes a light, reviewable slice
 (`POST /api/programs/{id}/runs` takes `development_mode` beside the two axes,
 and the run's header shows which it was).
 

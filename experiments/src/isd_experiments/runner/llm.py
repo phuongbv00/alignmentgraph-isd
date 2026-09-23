@@ -82,6 +82,8 @@ def pinned_env(cfg: Experiment) -> dict[str, str]:
         env["AGENT_MODEL_TEMPERATURE"] = str(gen.temperature)
     if cfg.harness.fanout_workers is not None:
         env["HARNESS_FANOUT_WORKERS"] = str(cfg.harness.fanout_workers)
+    if cfg.harness.development_mode is not None:
+        env["HARNESS_DEVELOPMENT_MODE"] = cfg.harness.development_mode
     return env
 
 

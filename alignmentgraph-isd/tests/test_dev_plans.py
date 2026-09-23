@@ -660,8 +660,8 @@ def test_the_blocks_of_a_module_share_all_of_its_time_not_just_what_they_declare
     assert sets[0].payload["expected_activities"] == 6
 
     sampled, _stats = dev_plans.activity_work_sets(
-        plan, ["ILO-01"], modules=_one_module(120, ["ILO-01"]), mode="sample")
-    assert sampled[0].payload["expected_activities"] == dev_plans.SAMPLE_ACTIVITIES_PER_MODULE_FLOOR
+        plan, ["ILO-01"], modules=_one_module(120, ["ILO-01"]), mode="light")
+    assert sampled[0].payload["expected_activities"] == dev_plans.LIGHT_ACTIVITIES_PER_MODULE_FLOOR
 
 
 def test_a_set_that_writes_fewer_than_it_was_asked_for_is_not_finished():
@@ -729,7 +729,7 @@ def test_assessment_sets_follow_the_sets_module_by_module():
     targets = {"ILO-01": ["formative", "summative"], "ILO-02": ["summative"]}
     sets, _stats = dev_plans.assessment_work_sets(
         None, ["ILO-01", "ILO-02"], targets, modules=modules, blueprint=sets,
-        mode="sample")
+        mode="light")
 
     assert [(ws.module_id, ws.pairs) for ws in sets] == [
         ("MOD-01", (("ILO-01", "formative"),)),

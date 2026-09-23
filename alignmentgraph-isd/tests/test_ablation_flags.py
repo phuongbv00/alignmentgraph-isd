@@ -878,3 +878,18 @@ def test_no_schema_example_hands_a_model_a_value_it_must_derive():
         "the materials schema singles out one media type as if it were the answer")
     assert set(field.get("enum") or ()) == set(rulebook.MEDIA_TYPES), (
         "the materials schema's `type` enum has drifted from rulebook.MEDIA_TYPES")
+
+
+def test_the_open_response_types_are_the_ones_the_check_credits_with_apply():
+    """`dev_plans` fixes a light item's type without importing the graph
+    package the prose arm ablates, so it keeps a local list of the types whose
+    ceiling carries apply and above. It must be the same list the Bloom check
+    applies, or a light assignment would name a type the check then refuses."""
+    from alignmentgraph_isd.core import dev_plans
+    from alignmentgraph_isd.core.alignment_graph import alignment
+    from alignmentgraph_isd.core.rulebook import BLOOM_LEVELS, EVIDENCE_TYPES
+
+    apply = alignment.bloom_level_of("apply")
+    carrying = {t for t in EVIDENCE_TYPES if alignment.item_type_capability(t) >= apply}
+    assert set(dev_plans.OPEN_RESPONSE_TYPES) == carrying
+    assert dev_plans.BLOOM_ORDER == BLOOM_LEVELS

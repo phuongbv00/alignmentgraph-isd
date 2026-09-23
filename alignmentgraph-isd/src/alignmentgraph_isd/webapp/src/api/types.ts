@@ -77,7 +77,7 @@ export type RunStatus = 'running' | 'cancelling' | 'succeeded' | 'failed' | 'can
 /** The two ablation axes, as the server spells them (`config.py`). */
 export type AgentMode = 'single' | 'multi'
 /** How much of the planned scale a run writes out. Not an ablation axis. */
-export type DevelopmentMode = 'sample' | 'full'
+export type DevelopmentMode = 'light' | 'full'
 export type ContextMode = 'prose' | 'graph'
 
 export interface RunStats {

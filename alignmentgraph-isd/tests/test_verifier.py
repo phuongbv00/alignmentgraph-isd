@@ -113,7 +113,11 @@ def test_evaluation_quality_silent_when_methods_and_pilot_data_declared():
     graph.add_node(NodeType.ASSESSMENT_PLAN, "assessment_plan_0", {
         "formative": ["Weekly critique"], "formative_methods": ["Exit tickets"],
         "pilot_data_plan": {
-            "collection_points": ["After module 1"],
+            "collection_points": [
+                {"when": "after module 1", "where": "Module 1 — Basics",
+                 "what": "exit-ticket quiz results and observation notes", "from_whom": "all learners"},
+                {"when": "before the final task", "where": "Module 2 — Practice",
+                 "what": "draft review with the rubric", "from_whom": "each learner"}],
             "anticipated_difficulties": [
                 {"area": "ILO-01", "rationale": "Hard concept.", "detected_by": "Exit tickets",
                  "first_revision": "Add a worked example."},

@@ -69,6 +69,34 @@ thinking_budget = 0
 # (2/3/4/6); fixed before `freeze write`.
 fanout_workers = 6
 
+# How much of the planned scale the proposed system's Developers write out.
+# The plan always states the course at full scale (item_counts, minutes, media
+# selections); the mode decides how much of it is written:
+#
+#                     "light" (default)                    "full"
+#   purpose           a typical, reviewable slice —        deployment: everything
+#                     for humans, the LLM judge and        the design plans
+#                     the alignment panel
+#   assessment items  ~3 per task: ONE per (objective x    every planned item, in
+#                     timing) pair, at the objective's     batches that divide the
+#                     own Bloom level, in a type that      task's item_counts
+#                     can carry it (apply+ -> short_
+#                     answer / performance_task)
+#   activities        1 per objective at its level, at     the planner's count,
+#                     least 3 per module (introduce,       inside the module's
+#                     practise, apply)                     minutes
+#   materials         2 per module (its typical media),    every media selection,
+#                     content = 400-800-char OUTLINE       content complete and
+#                                                          learner-ready
+#   session guides    1 per module (2 past 180 min),       same
+#                     scheduling every id
+#   plan, analysis,   identical — full scale, written      identical
+#   implementation    once
+#
+# Uniform across arms and rungs, not an ablation axis; recorded in
+# metadata.run_config and the freeze manifest. Fixed before `freeze write`.
+development_mode = "light"
+
 # --- Judges ------------------------------------------------------------------
 # Score a finished run: `isd-exp judge llm|alignment`, or `run --judge`.
 

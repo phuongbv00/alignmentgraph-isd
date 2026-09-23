@@ -231,6 +231,11 @@ class Generation:
     temperature: float | None = None
 
 
+#: The two development modes the proposed system runs under; the adapter and
+#: `alignmentgraph_isd.config.DevelopmentMode` accept exactly these.
+DEVELOPMENT_MODES = ("light", "full")
+
+
 @dataclass(frozen=True)
 class Harness:
     """The proposed system's own run posture, uniform across every rung and arm.
@@ -242,6 +247,10 @@ class Harness:
     #: How many of one family's Developers run at once. 1 is sequential; the
     #: adapter's call gate (from the `-r` preset) caps it further.
     fanout_workers: int | None = None
+    #: How much of the planned scale the Developers write out: "light" (a
+    #: typical, reviewable slice) or "full" (everything the design plans). The
+    #: table in experiment.toml [harness] states the difference.
+    development_mode: str | None = None
 
 
 @dataclass(frozen=True)
@@ -474,12 +483,17 @@ def _harness(raw: dict, src: Path) -> Harness:
             not isinstance(workers, int) or isinstance(workers, bool) or workers < 1):
         raise SystemExit(
             f"{src}: [harness].fanout_workers must be a positive integer, got {workers!r}.")
+    mode = rest.pop("development_mode", None)
+    if mode is not None and mode not in DEVELOPMENT_MODES:
+        raise SystemExit(
+            f"{src}: [harness].development_mode must be one of "
+            f"{', '.join(repr(m) for m in DEVELOPMENT_MODES)}, got {mode!r}.")
     # Strict, unlike [serving]'s pass-through options: every key here is
     # published to the proposed system, so a misspelt one would silently be a
     # posture that is written down and never applied.
     if rest:
         raise SystemExit(f"{src}: unknown key(s) in [harness]: {', '.join(sorted(rest))}.")
-    return Harness(fanout_workers=workers)
+    return Harness(fanout_workers=workers, development_mode=mode)
 
 
 #: Key-shaped names refused in [judge.llm]. The declaration carries the NAME of an

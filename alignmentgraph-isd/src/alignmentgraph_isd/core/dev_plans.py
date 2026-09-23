@@ -268,61 +268,122 @@ def _chunks(seq: list, size: int) -> list[list]:
 
 # ── development mode: how much of the planned scale is written out ─────────
 #
-# The PLAN always states the course at full scale — a 40-item quiz, a module's
-# whole run of activities. ``development_mode`` decides how much of that the
-# Developers write: ``"full"`` is all of it, ``"sample"`` a representative
-# sample. It changes NUMBERS in a work set's payload and one sentence of its
-# assignment, never a ``RULES_*`` block, so the pinned prompts do not depend
-# on it. Not an ablation axis: it is recorded in ``metadata.run_config`` and
-# every arm of one experiment runs under the same value.
+# The PLAN always states the course at full scale (item_counts, minutes, media
+# selections); ``development_mode`` decides how much of it is written:
+#
+#                     "light" (default)                    "full"
+#   purpose           a typical, reviewable slice —        deployment: everything
+#                     for humans, the LLM judge and        the design plans
+#                     the alignment panel
+#   assessment items  ~3 per task: ONE per (objective x    every planned item, in
+#                     timing) pair, at the objective's     batches that divide the
+#                     own Bloom level, in a type that      task's item_counts
+#                     can carry it (apply+ -> short_
+#                     answer / performance_task)
+#   activities        1 per objective at its level, at     the planner's count,
+#                     least 3 per module (introduce,       inside the module's
+#                     practise, apply)                     minutes
+#   materials         2 per module (its typical media),    every media selection,
+#                     content = 400-800-char OUTLINE       content complete and
+#                                                          learner-ready
+#   session guides    1 per module (2 past 180 min),       same
+#                     scheduling every id
+#   plan, analysis,   identical — full scale, written      identical
+#   implementation    once
+#
+# It changes NUMBERS and an explicit per-artifact assignment in a work set's
+# payload plus one note in its assignment, never a ``RULES_*`` block, so the
+# pinned prompts do not depend on it. The assignment is DERIVED from the design
+# (the blueprint, the objectives' own ``level``), never invented content. Not
+# an ablation axis: every arm of one experiment shares it, it is declared once
+# in experiment.toml ``[harness].development_mode`` and recorded in
+# ``metadata.run_config``.
 
-DEVELOPMENT_MODES = ("sample", "full")
+DEVELOPMENT_MODES = ("light", "full")
 
-#: What ``"sample"`` writes. PROVISIONAL parameters of this harness, chosen so
-#: that a sampled design is not thinner than the baselines it is scored beside
+#: What ``"light"`` writes. PROVISIONAL parameters of this harness, chosen so
+#: that a light design is not thinner than the baselines it is scored beside
 #: on the rubric items judged by artifact count (assessment plan and items,
 #: activity structure, learner materials): those agents are asked for at least
 #: ten quiz items plus five others and deliver ten to fifteen. To be calibrated
 #: on the tune slice — the same scenarios in both modes, compared per rubric
 #: item — before the configuration is frozen, and not changed after.
-SAMPLE_ITEMS_PER_INSTRUMENT = 3
-SAMPLE_ACTIVITIES_PER_OBJECTIVE = 2
+LIGHT_ITEMS_PER_TASK = 3
+LIGHT_ACTIVITIES_PER_OBJECTIVE = 1
 #: One module's activities read as a sequence — introduce, practise, apply —
 #: and two do not make one.
-SAMPLE_ACTIVITIES_PER_MODULE_FLOOR = 3
-SAMPLE_MATERIALS_PER_MODULE = 2
-SAMPLE_MINUTES_PER_SESSION_GUIDE = 180
-SAMPLE_SESSION_GUIDES_PER_MODULE = 2
+LIGHT_ACTIVITIES_PER_MODULE_FLOOR = 3
+LIGHT_MATERIALS_PER_MODULE = 2
+#: The length of a light material's ``content``: an outline a reviewer can read
+#: against the module's objectives, not the text a learner would be handed.
+LIGHT_MATERIAL_OUTLINE_CHARS = (400, 800)
+LIGHT_MINUTES_PER_SESSION_GUIDE = 180
+LIGHT_SESSION_GUIDES_PER_MODULE = 2
 
-_SAMPLE_NOTES = {
+#: Bloom's six, in order. ``rulebook.BLOOM_LEVELS`` is the vocabulary the
+#: prompts and schemas name; it asserts equality with this at import, because
+#: ``rulebook`` imports this module and the order cannot be read back the
+#: other way.
+BLOOM_ORDER = ("remember", "understand", "apply", "analyze", "evaluate", "create")
+_APPLY = BLOOM_ORDER.index("apply")
+#: Item types whose ceiling carries Apply and above. The local twin of
+#: ``alignment_graph.alignment._ITEM_TYPE_CAPABILITY`` (this module must not
+#: import the graph package the prose arm is ablating);
+#: ``tests/test_ablation_flags.py`` asserts the two agree.
+OPEN_RESPONSE_TYPES = ("performance_task", "short_answer")
+#: A light module's activities, read as a sequence.
+ACTIVITY_SEQUENCE = ("introduce", "practise", "apply independently")
+
+_LIGHT_NOTES = {
     "assessment": (
-        f"SAMPLE DEVELOPMENT: each set states its full scale in item_counts; write a "
-        f"representative sample of it — about {SAMPLE_ITEMS_PER_INSTRUMENT} items per "
-        "set, spread over its item types, and never fewer than one per (objective x "
-        "plan_category) pair. Each item is written in full, as it would be administered."),
+        f"LIGHT DEVELOPMENT: each task states its full scale in item_counts; write about "
+        f"{LIGHT_ITEMS_PER_TASK} items per task. For every (objective x plan_category) pair a "
+        "task covers, exactly ONE item whose required_cognitive_process is that objective's "
+        "own level, in a type that can carry it — performance_task or short_answer for apply "
+        "and above (add short_answer if the task's item_counts names neither), otherwise the "
+        "task's most numerous type; fill the rest with the most numerous type that carries "
+        "the pair's level. Each item is written in full, as it would be administered."),
     "activity": (
-        f"SAMPLE DEVELOPMENT: write a representative sample of the module's activities — about "
-        f"{SAMPLE_ACTIVITIES_PER_OBJECTIVE} per objective and at least "
-        f"{SAMPLE_ACTIVITIES_PER_MODULE_FLOOR} per module, a complete introduce, practise, "
+        f"LIGHT DEVELOPMENT: write {LIGHT_ACTIVITIES_PER_OBJECTIVE} activity per objective, "
+        "with learner_cognitive_process at that objective's own level, and never fewer than "
+        f"{LIGHT_ACTIVITIES_PER_MODULE_FLOOR} per module — a complete introduce, practise, "
         "apply sequence rather than a catalogue. Each activity is written in full."),
     "material": (
-        f"SAMPLE DEVELOPMENT: write a representative sample of the module's materials — at most "
-        f"{SAMPLE_MATERIALS_PER_MODULE} per module, each one complete and ready to hand to a "
-        "learner."),
+        f"LIGHT DEVELOPMENT: write at most {LIGHT_MATERIALS_PER_MODULE} materials for this "
+        "module — its typical media. Each material's content is a structured OUTLINE of about "
+        f"{LIGHT_MATERIAL_OUTLINE_CHARS[0]}-{LIGHT_MATERIAL_OUTLINE_CHARS[1]} characters: "
+        "section headings, the key points under each, one worked example sketched in two or "
+        "three sentences, and the exercise instructions in brief — enough for a reviewer to "
+        "see what a learner would receive and how it serves the module's objectives, not the "
+        "full text."),
     "session_guide": (
-        f"SAMPLE DEVELOPMENT: write one session guide per module, or "
-        f"{SAMPLE_SESSION_GUIDES_PER_MODULE} for a module longer than "
-        f"{SAMPLE_MINUTES_PER_SESSION_GUIDE} minutes — and still name EVERY activity and material "
-        "id the block lists, because a guide is where each one is scheduled."),
+        f"LIGHT DEVELOPMENT: write one session guide per module, or "
+        f"{LIGHT_SESSION_GUIDES_PER_MODULE} for a module longer than "
+        f"{LIGHT_MINUTES_PER_SESSION_GUIDE} minutes — and still name EVERY activity and "
+        "material id the block lists, because a guide is where each one is scheduled."),
+}
+
+#: ``"full"`` is silent except where the two modes ask for a different DEPTH
+#: of the same field: a material's content is complete under full and an
+#: outline under light, and the rule block, shared by both, says only that the
+#: content is the material itself at the depth the assignment states.
+_FULL_NOTES = {
+    "material": (
+        "FULL DEVELOPMENT: every media selection of this module is realized. Each material's "
+        "content is complete and ready to hand to a learner — the full text, the worked "
+        "example worked through, the exercise instructions in full, or the whole "
+        "scene-by-scene script — several paragraphs of scenario-specific detail, the length "
+        "and depth a learner would actually need."),
 }
 
 
 def development_note(mode: str, family: str) -> str:
-    """The one sentence that tells a writer its development is a sample, or
-    ``""`` under ``"full"``. ONE wording for both decomposition arms: a
-    Developer reads it in its assignment and the single agent in its stage
-    turn (it divides its own batches, so the rule is all it is given)."""
-    return _SAMPLE_NOTES.get(family, "") if mode == "sample" else ""
+    """The one note that tells a writer how much of its family the mode writes.
+    ONE wording for both decomposition arms: a Developer reads it in its
+    assignment and the single agent in its stage turn (it divides its own
+    batches, so the rule is all it is given). Empty where the mode adds nothing
+    to the family's rules."""
+    return (_LIGHT_NOTES if mode == "light" else _FULL_NOTES).get(family, "")
 
 
 def _set_total(one: dict) -> int:
@@ -336,16 +397,78 @@ def _set_total(one: dict) -> int:
     return total
 
 
-def _planned_items(work_set: WorkSet, mode: str) -> int | None:
-    """How many items the assessment sets of one work set call for under
+def _planned_items(work_set: WorkSet, mode: str, levels: dict | None = None) -> int | None:
+    """How many items the assessment tasks of one work set call for under
     ``mode``; ``None`` when it lists none and the pair count has to decide."""
-    sets = [i for i in (work_set.payload.get("sets") or []) if isinstance(i, dict)]
-    if not sets:
+    tasks = [i for i in (work_set.payload.get("sets") or []) if isinstance(i, dict)]
+    if not tasks:
         return None
-    totals = [_set_total(i) or SAMPLE_ITEMS_PER_INSTRUMENT for i in sets]
-    if mode == "sample":
-        totals = [min(total, SAMPLE_ITEMS_PER_INSTRUMENT) for total in totals]
-    return max(sum(totals), len(work_set.pairs))
+    if mode == "light":
+        return max(len(_light_rows(work_set, levels or {})), len(work_set.pairs))
+    return max(sum(_set_total(i) or LIGHT_ITEMS_PER_TASK for i in tasks), len(work_set.pairs))
+
+
+def _level_index(name: object) -> int | None:
+    key = str(name or "").strip().lower()
+    return BLOOM_ORDER.index(key) if key in BLOOM_ORDER else None
+
+
+def _type_for(level: int | None, counts: dict) -> tuple[str, bool]:
+    """``(type, blueprint_type_added)`` for one item at ``level`` drawn from a
+    task's ``item_counts``: apply and above needs an open-response type, so the
+    first of :data:`OPEN_RESPONSE_TYPES` the task names — or ``short_answer``,
+    flagged, when it names none; below apply the task's most numerous type."""
+    ranked = [t for t, _n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
+    if level is not None and level >= _APPLY:
+        for kind in OPEN_RESPONSE_TYPES:
+            if kind in counts:
+                return kind, False
+        return "short_answer", True
+    return (ranked[0] if ranked else "short_answer"), False
+
+
+def light_item_assignment(task: dict | None, pairs, levels: dict) -> list[dict]:
+    """The TYPICAL items of one task under ``"light"``: ONE per (objective x
+    timing) pair the task covers, at that objective's own level in a type that
+    carries it, then filler up to :data:`LIGHT_ITEMS_PER_TASK` (never past the
+    task's own total) cycling the pairs in the same way. A pure function of the
+    design — the blueprint's counts and the objectives' declared ``level`` —
+    so it assigns work and invents no content; ``levels`` is ``objective id ->
+    level`` and an objective with no readable level is assigned no level."""
+    task = task if isinstance(task, dict) else None
+    counts: dict[str, int] = {}
+    for kind, value in ((task or {}).get("item_counts") or {}).items():
+        try:
+            counts[str(kind)] = max(0, int(value))
+        except (TypeError, ValueError):
+            continue
+    timing = str((task or {}).get("timing") or "").strip().lower()
+    covered = {_bare(o) for o in ((task or {}).get("covers_objectives") or [])}
+    mine = [p for p in pairs if task is None or (p[0] in covered and p[1] == timing)]
+    rows: list[dict] = []
+    for lo, category in mine:
+        level = _level_index(levels.get(lo))
+        kind, added = _type_for(level, counts)
+        row = {"objective": lo, "plan_category": category,
+               "task_id": _bare((task or {}).get("id")), "type": kind,
+               "level": BLOOM_ORDER[level] if level is not None else ""}
+        if added:
+            row["blueprint_type_added"] = True
+        rows.append(row)
+    if not rows:
+        return rows
+    quota = (min(LIGHT_ITEMS_PER_TASK, _set_total(task) or LIGHT_ITEMS_PER_TASK)
+             if task else len(mine))
+    for index in range(max(0, quota - len(rows))):
+        rows.append(dict(rows[index % len(mine)]))
+    return rows
+
+
+def _light_rows(work_set: WorkSet, levels: dict) -> list[dict]:
+    """Every light item of a work set, task by task; a set that names no task
+    (a plan carrying none) gets one row per pair with no type or task."""
+    tasks = [t for t in (work_set.payload.get("sets") or []) if isinstance(t, dict)] or [None]
+    return [row for task in tasks for row in light_item_assignment(task, work_set.pairs, levels)]
 
 
 def _stamp_mode(sets: list[WorkSet], mode: str, family: str) -> None:
@@ -536,8 +659,13 @@ def _assessment_ground_truth_pairs(lo_ids, coverage_targets,
 
 
 def assessment_work_sets(parsed, lo_ids, coverage_targets, *, modules=None,
-                                  blueprint=None, mode: str = "full"
+                                  blueprint=None, mode: str = "full",
+                                  levels: dict | None = None
                                   ) -> tuple[list[WorkSet], dict]:
+    """``levels`` is ``objective id -> Bloom level`` (the objectives' own,
+    from the design state); ``"light"`` derives each set's typical item
+    assignment from it and ``"full"`` never reads it."""
+    levels = dict(levels or {})
     modules = _modules_in_order(modules)
     pairs = _assessment_ground_truth_pairs(lo_ids, coverage_targets, blueprint)
     stats = _empty_stats(len(pairs))
@@ -644,7 +772,7 @@ def assessment_work_sets(parsed, lo_ids, coverage_targets, *, modules=None,
             ws.payload["sets"] = _sets_for(blueprint, module["id"], ws.pairs)
         sets = _in_course_order(pieces, modules)
         stats["appended_sets"] = len(loose)
-        sets = [batch for ws in sets for batch in _item_batches(ws, mode)]
+        sets = [batch for ws in sets for batch in _item_batches(ws, mode, levels)]
 
     def _merge(tail: list[WorkSet]) -> WorkSet:
         merged_pairs = tuple(dict.fromkeys(p for ws in tail for p in ws.pairs))
@@ -690,6 +818,13 @@ def assessment_work_sets(parsed, lo_ids, coverage_targets, *, modules=None,
     for ws in numbered:
         ws.payload["expected_items"] = _expected_items(
             ws.payload.get("expected_items"), len(ws.pairs))
+        if mode == "light":
+            # The typical items of THIS set, derived from what it holds after
+            # every merge and split — a copied payload would describe another
+            # set's pairs.
+            rows = _light_rows(ws, levels)
+            ws.payload["assigned_items"] = rows
+            ws.payload["expected_items"] = max(len(rows), len(ws.pairs))
     _stamp_mode(numbered, mode, "assessment")
     stats["set_count"] = len(numbered)
     stats["oversized_splits"] = (
@@ -697,16 +832,16 @@ def assessment_work_sets(parsed, lo_ids, coverage_targets, *, modules=None,
     return numbered, stats
 
 
-def _item_batches(work_set: WorkSet, mode: str) -> list[WorkSet]:
-    """Size a set by what its INSTRUMENTS call for under ``mode``.
+def _item_batches(work_set: WorkSet, mode: str, levels: dict | None = None) -> list[WorkSet]:
+    """Size a set by what its TASKS call for under ``mode``.
 
-    ``"sample"`` writes a few items of each set and fits one call.
+    ``"light"`` writes the typical items of each task and fits one call.
     ``"full"`` writes every item the blueprint counts, which for a 40-item
     quiz is several calls: the set becomes batches, each with its own quota
     (the total is DIVIDED between them, never repeated) and its own share of
     the pairs, and each told which part of the whole it is. A set that lists
     no set keeps the planner's count."""
-    planned = _planned_items(work_set, mode)
+    planned = _planned_items(work_set, mode, levels)
     if planned is None:
         return [work_set]
     limit = max_units("assessment")
@@ -846,8 +981,12 @@ def fit_time_budget(sets: list[WorkSet], modules: list[dict], stats: dict) -> No
 
 
 def activity_work_sets(parsed, lo_ids, items_by_lo: dict | None = None, *,
-                                modules=None, mode: str = "full"
+                                modules=None, mode: str = "full",
+                                levels: dict | None = None
                                 ) -> tuple[list[WorkSet], dict]:
+    """``levels`` is ``objective id -> Bloom level``; ``"light"`` assigns each
+    block one activity per objective at that level and ``"full"`` never reads it."""
+    levels = dict(levels or {})
     modules = _modules_in_order(modules)
     items_by_lo = items_by_lo or {}
     los = [lo for lo in (_bare(x) for x in (lo_ids or [])) if lo]
@@ -917,8 +1056,8 @@ def activity_work_sets(parsed, lo_ids, items_by_lo: dict | None = None, *,
         stats["appended_sets"] = sum(1 for ws in sets if ws.source != "llm")
     for ws in sets:
         ws.payload.pop("planned_module", None)
-    if mode == "sample":
-        _sample_activities(sets)
+    if mode == "light":
+        _light_activities(sets)
 
     def _merge(tail: list[WorkSet]) -> WorkSet:
         merged_objs = tuple(dict.fromkeys(o for ws in tail for o in ws.objectives))
@@ -986,6 +1125,8 @@ def activity_work_sets(parsed, lo_ids, items_by_lo: dict | None = None, *,
     planned_total = sum(int(ws.payload.get("expected_activities") or 1) for ws in sets)
     numbered = _cap_and_number(sets, max(planned_total, len(los)), "AB", _merge,
                                family="activity", split=_split)
+    if mode == "light":
+        _assign_light_activities(numbered, levels)
     _stamp_mode(numbered, mode, "activity")
     stats["set_count"] = len(numbered)
     stats["oversized_splits"] = (
@@ -993,20 +1134,37 @@ def activity_work_sets(parsed, lo_ids, items_by_lo: dict | None = None, *,
     return numbered, stats
 
 
-def _sample_activities(sets: list[WorkSet]) -> None:
-    """``"sample"``: a block writes ``SAMPLE_ACTIVITIES_PER_OBJECTIVE`` per
+def _light_activities(sets: list[WorkSet]) -> None:
+    """``"light"``: a block writes ``LIGHT_ACTIVITIES_PER_OBJECTIVE`` per
     objective it covers, and a module never fewer than
-    ``SAMPLE_ACTIVITIES_PER_MODULE_FLOOR`` between its blocks. The module's
+    ``LIGHT_ACTIVITIES_PER_MODULE_FLOOR`` between its blocks. The module's
     minutes still cap it (``fit_time_budget`` runs after this)."""
     for ws in sets:
         ws.payload["expected_activities"] = min(
-            MAX_EXPECTED_PER_SET, SAMPLE_ACTIVITIES_PER_OBJECTIVE * max(1, len(ws.objectives)))
+            MAX_EXPECTED_PER_SET, LIGHT_ACTIVITIES_PER_OBJECTIVE * max(1, len(ws.objectives)))
     for module_id in dict.fromkeys(ws.module_id for ws in sets):
         mine = [ws for ws in sets if ws.module_id == module_id]
-        short = SAMPLE_ACTIVITIES_PER_MODULE_FLOOR - sum(
+        short = LIGHT_ACTIVITIES_PER_MODULE_FLOOR - sum(
             ws.payload["expected_activities"] for ws in mine)
         if module_id and short > 0:
             mine[0].payload["expected_activities"] += short
+
+
+def _assign_light_activities(sets: list[WorkSet], levels: dict) -> None:
+    """``payload["assigned_activities"]``: one row per activity a light block
+    writes — its objective and the objective's own level, cycling the block's
+    objectives when the module floor asks for more than one each, and its
+    place in the introduce/practise/apply sequence. Derived from the design:
+    nothing here is content."""
+    for ws in sets:
+        count = int(ws.payload.get("expected_activities") or 1)
+        objectives = list(ws.objectives) or [""]
+        rows = []
+        for index in range(count):
+            lo = objectives[index % len(objectives)]
+            rows.append({"objective": lo, "level": str(levels.get(lo) or ""),
+                         "stage": ACTIVITY_SEQUENCE[index % len(ACTIVITY_SEQUENCE)]})
+        ws.payload["assigned_activities"] = rows
 
 
 def _activity_sets_by_module(sets: list[WorkSet], modules: list[dict],
@@ -1167,6 +1325,25 @@ def _expected_materials(raw: object, media_count: int) -> int:
     return min(max(value, floor), ceiling)
 
 
+def typical_media(media: list[dict], count: int) -> list[dict]:
+    """A module's TYPICAL media, ``count`` of them: the first selection of its
+    most-used ``media_type``, then the first of the next most-used DIFFERENT
+    type, and so on; a module of one type gives its first ``count``.
+    Deterministic — ties break on first appearance — and a reading of what the
+    module chose, not a choice of the harness's own."""
+    by_type: dict[str, list[dict]] = {}
+    for one in media:
+        by_type.setdefault(str(one.get("media_type") or "").strip().lower(), []).append(one)
+    ranked = sorted(by_type, key=lambda t: (-len(by_type[t]), media.index(by_type[t][0])))
+    picked = [by_type[t][0] for t in ranked[:count]]
+    for kind in ranked:
+        for one in by_type[kind][1:]:
+            if len(picked) >= count:
+                return picked[:count]
+            picked.append(one)
+    return picked[:count]
+
+
 def material_work_units(modules: list[dict], media_selections: list[dict],
                          constraints: list[dict] | None = None, *,
                          mode: str = "full") -> list[WorkSet]:
@@ -1213,10 +1390,11 @@ def material_work_units(modules: list[dict], media_selections: list[dict],
     for module in modules:
         mid = _bare(module["id"])
         media_for_unit = by_module[mid] + unassigned
-        if mode == "sample":
+        media_total = len(media_for_unit)
+        if mode == "light":
             # The unit realises what it is handed, one material per selection,
-            # so a sample is the module's first few selections.
-            media_for_unit = media_for_unit[:SAMPLE_MATERIALS_PER_MODULE]
+            # so a light unit is handed the module's TYPICAL media.
+            media_for_unit = typical_media(media_for_unit, LIGHT_MATERIALS_PER_MODULE)
         batches = (_chunks(media_for_unit, limit)
                    if len(media_for_unit) > limit else [media_for_unit])
         for index, media_batch in enumerate(batches, start=1):
@@ -1224,11 +1402,15 @@ def material_work_units(modules: list[dict], media_selections: list[dict],
             # per batch; only an unsplit one has room for a planned count.
             planned = (_expected_materials(module.get("expected_materials"), len(media_batch))
                        if len(batches) == 1 else len(media_batch))
+            if mode == "light":
+                # The planner's own count is the FULL module's; a light unit
+                # writes its typical media and no more.
+                planned = min(planned, LIGHT_MATERIALS_PER_MODULE)
             sets.append(WorkSet(
                 set_id=f"MU-{mid}" if len(batches) == 1 else f"MU-{mid}-{index:02d}",
                 payload={"modules": [module], "media_selections": media_batch,
                          "constraints": _constraints_for(media_batch),
-                         "expected_materials": planned},
+                         "expected_materials": planned, "media_total": media_total},
                 source="deterministic",
             ))
 
@@ -1446,25 +1628,25 @@ def session_work_sets(parsed, activity_ids, material_ids,
     stats["set_count"] = len(numbered)
     stats["oversized_splits"] = (
         numbered[0].payload.pop("_oversized_splits", 0) if numbered else 0)
-    if mode == "sample":
-        _sample_sessions(numbered)
+    if mode == "light":
+        _light_sessions(numbered)
     _stamp_mode(numbered, mode, "session_guide")
     return _number_sessions(numbered, first_session), stats
 
 
-def _sample_sessions(sets: list[WorkSet]) -> None:
-    """``"sample"``: one guide per block, or up to
-    ``SAMPLE_SESSION_GUIDES_PER_MODULE`` when the block is a whole module
-    longer than ``SAMPLE_MINUTES_PER_SESSION_GUIDE``. The ids a block schedules
-    are untouched — a sampled guide still names every one of them."""
+def _light_sessions(sets: list[WorkSet]) -> None:
+    """``"light"``: one guide per block, or up to
+    ``LIGHT_SESSION_GUIDES_PER_MODULE`` when the block is a whole module
+    longer than ``LIGHT_MINUTES_PER_SESSION_GUIDE``. The ids a block schedules
+    are untouched — a light guide still names every one of them."""
     per_module: dict[str, int] = {}
     for ws in sets:
         per_module[ws.module_id] = per_module.get(ws.module_id, 0) + 1
     for ws in sets:
         minutes = _positive((ws.payload.get("module") or {}).get("minutes"))
-        long_module = per_module[ws.module_id] == 1 and minutes > SAMPLE_MINUTES_PER_SESSION_GUIDE
+        long_module = per_module[ws.module_id] == 1 and minutes > LIGHT_MINUTES_PER_SESSION_GUIDE
         ws.payload["expected_sessions"] = (
-            SAMPLE_SESSION_GUIDES_PER_MODULE if long_module else 1)
+            LIGHT_SESSION_GUIDES_PER_MODULE if long_module else 1)
 
 
 def _number_sessions(sets: list[WorkSet], first_session: int = 1) -> list[WorkSet]:
@@ -1596,7 +1778,7 @@ def trim_to_quota(work_set: WorkSet, schema_key: str, items: list) -> tuple[list
     """Hold a set to the count its assignment stated: ``(kept, dropped)``.
 
     "Write exactly N" is told to the Developer and was enforced by nobody.
-    MEASURED (run aef73e0a, sample mode): a set told to write 3 items submitted
+    MEASURED (run aef73e0a, light mode): a set told to write 3 items submitted
     17 — three of them word-for-word repeats — another told 3 activities wrote
     15, and a block told one session guide wrote eight that each scheduled the
     same eleven activities. One module then held 15 of the design's 24
@@ -1822,6 +2004,30 @@ def _set_lines(work_set: WorkSet) -> list[str]:
     return lines
 
 
+def _assigned_item_lines(rows: list[dict]) -> list[str]:
+    """The light assignment, one line per item, every field the Developer
+    must copy stated rather than left to be inferred from the pair list."""
+    count = len(rows)
+    lines = [f"write exactly {count} item{'' if count == 1 else 's'}, one per line — each "
+             "item's aligned_objective, plan_category, task_id, type and "
+             "required_cognitive_process are FIXED as stated:"]
+    added: list[tuple[str, str, str]] = []
+    for index, row in enumerate(rows, start=1):
+        task = f" — task {row['task_id']}" if row.get("task_id") else ""
+        level = (f" · required_cognitive_process {row['level']}" if row.get("level")
+                 else " · required_cognitive_process at the objective's own level")
+        lines.append(f"  item {index}: {row.get('objective', '')} x {row.get('plan_category', '')}"
+                     f"{task} · {row.get('type', '')}{level}")
+        if row.get("blueprint_type_added"):
+            key = (str(row.get("task_id")), str(row.get("objective")), str(row.get("type")))
+            if key not in added:
+                added.append(key)
+    for task_id, lo, kind in added:
+        lines.append(f"  ({kind} is not in {task_id or 'the task'}'s item_counts: added so "
+                     f"{lo}'s level is measured honestly)")
+    return lines
+
+
 def render_assessment_set(work_set: WorkSet) -> str:
     lines = [f"assignment: {work_set.set_id}"] + _module_line(work_set)
     if work_set.pairs:
@@ -1832,12 +2038,16 @@ def render_assessment_set(work_set: WorkSet) -> str:
         # promising a category its own `lo_coverage_targets` did not name)
         # says how many survived.
         count = _expected_items(work_set.payload.get("expected_items"), len(work_set.pairs))
-        lines.append(f"write exactly {count} item{'' if count == 1 else 's'} — "
-                     + ("one for each (objective x plan_category) pair below:"
-                        if count == len(work_set.pairs) else
-                        "covering every (objective x plan_category) pair below at least once:"))
-        for lo, category in work_set.pairs:
-            lines.append(f"  - {lo} x {category}")
+        assigned = [r for r in (work_set.payload.get("assigned_items") or []) if isinstance(r, dict)]
+        if assigned:
+            lines += _assigned_item_lines(assigned)
+        else:
+            lines.append(f"write exactly {count} item{'' if count == 1 else 's'} — "
+                         + ("one for each (objective x plan_category) pair below:"
+                            if count == len(work_set.pairs) else
+                            "covering every (objective x plan_category) pair below at least once:"))
+            for lo, category in work_set.pairs:
+                lines.append(f"  - {lo} x {category}")
     lines += _set_lines(work_set)
     hint = work_set.payload.get("set_hint")
     if hint:
@@ -1873,7 +2083,17 @@ def render_activity_set(work_set: WorkSet) -> str:
     if rationale:
         lines.append(f"rationale: {rationale}")
     expected = work_set.payload.get("expected_activities")
-    if expected:
+    assigned = [r for r in (work_set.payload.get("assigned_activities") or []) if isinstance(r, dict)]
+    if assigned:
+        lines.append(f"write exactly {len(assigned)} activit{'y' if len(assigned) == 1 else 'ies'}, "
+                     "one per line — aligned_objectives and learner_cognitive_process are FIXED "
+                     "as stated:")
+        for index, row in enumerate(assigned, start=1):
+            level = (f"learner_cognitive_process {row['level']}" if row.get("level")
+                     else "learner_cognitive_process at the objective's own level")
+            lines.append(f"  activity {index}: {row.get('objective', '')} · {level}"
+                         + (f" · {row['stage']}" if row.get("stage") else ""))
+    elif expected:
         lines.append(f"how many activities to write: {expected}")
     batch = work_set.payload.get("batch")
     if batch:
@@ -1903,7 +2123,11 @@ def render_material_set(work_set: WorkSet) -> str:
         for module in modules:
             lines.append(f"  [MODULE:{module.get('id', '')}] {json.dumps(module, ensure_ascii=False)}")
     media = work_set.payload.get("media_selections") or []
-    if media:
+    total = int(work_set.payload.get("media_total") or 0)
+    if media and total > len(media):
+        lines.append(f"these are {len(media)} of the module's {total} media selections — its "
+                     "typical media; the others stay planned in the design:")
+    elif media:
         lines.append("media selections for this module:")
         for selection in media:
             lines.append(f"  [MEDIA:{selection.get('id', '')}] {json.dumps(selection, ensure_ascii=False)}")

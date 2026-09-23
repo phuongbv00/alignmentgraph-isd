@@ -243,12 +243,16 @@ def respec(messages: list, step, brief: str) -> str:
 #: Which agent-facing protocol a run spoke, recorded in
 #: ``metadata.run_config`` so that runs on either side of a change to the
 #: tools an agent is bound or to how a stage ends are never pooled by mistake.
-#: 4 = the course's modules written by the outcomes stage and dividing every
+#: 5 = the course's modules written by the outcomes stage and dividing every
 #: family's work, an assessment blueprint of sets, 17 relations (3 core: the
 #: edges of the constructive-alignment triad), a run that stops when no module
-#: is written, and an outcomes stage that writes no course goal of its own —
-#: what the course is for is the brief's, which every stage is already shown.
-PROTOCOL_REV = 4
+#: is written, an outcomes stage that writes no course goal of its own — what
+#: the course is for is the brief's, which every stage is already shown — and
+#: a development mode of ``light`` or ``full``, where a light assignment fixes
+#: each item's objective, type and cognitive level and each activity's
+#: objective and level, the mode states a material's depth, and the pilot
+#: data plan names its collection points in words.
+PROTOCOL_REV = 5
 
 #: The answer to a repeated read whose result is unchanged — ONE wording for
 #: both arms, and only ever said when it is true (``turn.answer_read`` has

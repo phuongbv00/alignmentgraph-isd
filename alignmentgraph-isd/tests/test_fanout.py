@@ -397,3 +397,59 @@ def test_an_item_naming_a_task_that_does_not_exist_is_refused():
     assert fanout.reference_errors(
         "assessment_tools", [{**whole, "task_id": "AT-99"}], ref,
         {NodeType.ASSESSMENT: [], NodeType.OBJECTIVE: ["ILO-01"]}) == []
+
+
+def _item(lo: str, level: str, kind: str = "short_answer") -> dict:
+    return {"question": f"Do the thing for {lo}", "type": kind, "aligned_objective": lo,
+            "required_cognitive_process": level, "task_id": "AT-001",
+            "rubric": [{"criterion": "does it", "levels": {"full": "does it fully and correctly",
+                                                            "partial": "does part of it correctly"},
+                        "evidence_type": kind}]}
+
+
+def test_an_objective_measured_only_below_its_level_is_refused_at_submit():
+    """The submit-time twin of `bloom_mismatch_assessment`: the highest declared
+    `required_cognitive_process` of an objective's items against the
+    objective's own `level`, asked while the author is still in the
+    conversation. One item at the level redeems the objective; an objective
+    with no readable level is not judged."""
+    from alignmentgraph_isd.core.agentic import fanout
+
+    levels = {"ILO-01": "apply", "ILO-02": "remember"}
+    errors = fanout.item_level_errors(
+        [_item("ILO-01", "understand", "multiple_choice"), _item("ILO-02", "remember")], levels)
+    assert len(errors) == 1 and errors[0].startswith("assessment_tools[0].required_cognitive_process")
+    assert "apply" in errors[0] and "performance_task, short_answer" in errors[0]
+    assert not fanout.item_level_errors(
+        [_item("ILO-01", "understand", "multiple_choice"), _item("ILO-01", "apply")], levels)
+    from alignmentgraph_isd.core.alignment_graph import alignment
+    assert not fanout.item_level_errors(
+        [_item("ILO-01", "understand", "multiple_choice")], levels,
+        {"ILO-01": alignment.bloom_level_of("apply")}), (
+        "an item already committed at the level counts")
+    assert not fanout.item_level_errors([_item("ILO-09", "remember")], levels)
+    assert not fanout.item_level_errors([_item("ILO-01", "remember")], {})
+
+
+def test_both_arms_hold_a_submit_to_the_objectives_level_the_same_way():
+    """`output_errors` runs the level rule for the assessment family only, from
+    the same two snapshots on either substrate (`objective_levels`,
+    `committed_item_levels`)."""
+    import inspect
+
+    from alignmentgraph_isd.core.agentic import fanout, react
+
+    levels = {"ILO-01": "apply"}
+    errors = fanout.output_errors(
+        fanout.SPECS["assessment"],
+        {"assessment_tools": [_item("ILO-01", "understand", "multiple_choice")]}, {},
+        levels=levels)
+    assert any("required_cognitive_process" in e for e in errors)
+    assert not fanout.output_errors(
+        fanout.SPECS["assessment"], {"assessment_tools": [_item("ILO-01", "apply")]}, {},
+        levels=levels)
+    assert not fanout.output_errors(
+        fanout.SPECS["activities"], {"learning_activities": []}, {}, levels=levels)
+    source = inspect.getsource(react.ReactLoop._validate)
+    assert "objective_levels" in source and "committed_item_levels" in source
+    assert "objective_levels" in inspect.getsource(fanout.set_step)

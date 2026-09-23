@@ -124,7 +124,11 @@ _ASSESSMENT_PLAN = {
         "expected_evidence": {f"ILO-0{i}": "A working code artifact with justification." for i in range(1, 6)},
         "formative_methods": ["Weekly design critique with rubric", "Exit tickets after each module"],
         "pilot_data_plan": {
-            "collection_points": ["After module 1", "After the design review lab"],
+            "collection_points": [
+                {"when": "after module 1", "where": "Module 1 — Basics",
+                 "what": "exit-ticket quiz results and observation notes", "from_whom": "all learners"},
+                {"when": "before the final task", "where": "Module 2 — Practice",
+                 "what": "draft review with the rubric", "from_whom": "each learner"}],
             "anticipated_difficulties": [
                 {"area": "ILO-04", "rationale": "Analyzing coupling needs design vocabulary these learners lack.",
                  "detected_by": "Weekly design critique with rubric",

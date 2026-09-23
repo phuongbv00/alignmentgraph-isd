@@ -88,13 +88,20 @@ def _regen_settings_from_env() -> dict[str, Any]:
             raise ValueError(
                 f"HARNESS_FANOUT_WORKERS must be a positive integer, got {workers!r}")
         settings["fanout_workers"] = count
-    # ``HARNESS_DEVELOPMENT_MODE=full`` writes every artifact the design plans
-    # instead of a representative sample of them. Unset keeps the package
-    # default (``sample``), which is what the ladder runs. An env knob and not
-    # a per-arm kwarg: it is not an ablation axis, so every arm of one
-    # experiment must share it, and one variable is how they do.
-    mode = (os.getenv("HARNESS_DEVELOPMENT_MODE") or "").strip().lower()
-    if mode in ("sample", "full"):
+    # ``HARNESS_DEVELOPMENT_MODE`` is ``light`` (a typical, reviewable slice of
+    # what the design plans) or ``full`` (everything); unset keeps the package
+    # default. An env knob and not a per-arm kwarg: it is not an ablation
+    # axis, so every arm of one experiment must share it, and one variable is
+    # how they do. A malformed value RAISES, as ``HARNESS_FANOUT_WORKERS``
+    # does: experiment.toml declares it and the freeze manifest records it, so
+    # a value silently ignored here would be a posture written down that
+    # never ran.
+    raw_mode = os.getenv("HARNESS_DEVELOPMENT_MODE")
+    if raw_mode:
+        mode = raw_mode.strip().lower()
+        if mode not in ("light", "full"):
+            raise ValueError(
+                f"HARNESS_DEVELOPMENT_MODE must be 'light' or 'full', got {raw_mode!r}")
         settings["development_mode"] = mode
     interval = os.getenv("HARNESS_LLM_MIN_INTERVAL")
     if interval is not None:

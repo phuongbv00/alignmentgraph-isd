@@ -211,15 +211,28 @@ def _bare_id(graph, node_id: str) -> str:
     return node_id.split(graph.ELEMENT_SEP, 1)[-1] if graph.is_element(node_id) else node_id
 
 
+def _concrete(text: object) -> bool:
+    lowered = str(text or "").strip().lower()
+    return bool(lowered) and not any(marker in lowered for marker in _PLACEHOLDER_MARKERS)
+
+
 def _has_concrete_items(*candidates) -> bool:
     for candidate in candidates:
         if isinstance(candidate, list):
             for item in candidate:
-                text = item if isinstance(item, str) else str(item)
-                lowered = text.strip().lower()
-                if lowered and not any(marker in lowered for marker in _PLACEHOLDER_MARKERS):
+                if _concrete(item if isinstance(item, str) else str(item)):
                     return True
     return False
+
+
+def _concrete_collection_points(points: object) -> int:
+    """How many pilot collection points say WHEN and WHAT in words: a point is
+    an object (``{when, where, what, from_whom}``), and a bare id or a
+    placeholder in either field is not one."""
+    if not isinstance(points, list):
+        return 0
+    return sum(1 for one in points if isinstance(one, dict)
+               and _concrete(one.get("when")) and _concrete(one.get("what")))
 
 
 def duration_hours(design_brief: DesignBrief) -> float:
@@ -784,17 +797,19 @@ def evaluation_quality_data(node_id: str, data: dict) -> list[Violation]:
         and str(entry.get("area", "")).strip()
         and str(entry.get("first_revision", "")).strip()
     ]
-    if len(difficulties) < 2 or not _has_concrete_items(pilot.get("collection_points")):
+    if len(difficulties) < 2 or _concrete_collection_points(pilot.get("collection_points")) < 2:
         violations.append(Violation(
             node_id=node_id, edge_type="", violation_type="evaluation_quality", severity="warning",
             message=(
-                "Pilot data plan is missing or thin: it needs concrete collection points and "
-                "at least two anticipated difficulties, each naming an area and a first revision."
+                "Pilot data plan is missing or thin: it needs at least two collection points "
+                "said in words ({when, where, what, from_whom}) and at least two anticipated "
+                "difficulties, each naming an area and a first revision."
             ),
             repair_hint=(
-                "Fill assessment_plan.pilot_data_plan with collection_points and >=2 "
-                "anticipated_difficulties ({area, rationale, detected_by, first_revision}), "
-                "each naming a real objective or content module."
+                "Fill assessment_plan.pilot_data_plan with >=2 collection_points ({when, where, "
+                "what, from_whom} — the module or session by title, the instrument by title, "
+                "never an id alone) and >=2 anticipated_difficulties ({area, rationale, "
+                "detected_by, first_revision}), each naming a real objective or content module."
             ),
             metadata={"section": "pilot_data_plan"},
         ))

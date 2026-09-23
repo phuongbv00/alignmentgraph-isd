@@ -143,14 +143,18 @@ preset system):
 The resolved axes are recorded in `result["metadata"]["run_config"]`, so every
 run is self-describing.
 
-`development_mode` (`"sample"` | `"full"`, default `"sample"`) sits beside them
+`development_mode` (`"light"` | `"full"`, default `"light"`) sits beside them
 and is NOT an axis. A design is always PLANNED at full scale — the assessment
 blueprint says a module's quiz has 40 items — and this setting decides how much
-of it the Developers write out: a representative sample (`core/dev_plans.py`'s
-`SAMPLE_*` quotas) or all of it, batched. It changes numbers in a work set and
-one sentence of its assignment, never a rule block, and the output states the
-scale it was written at (`development.development_scope`, plus `items_written`
-on every instrument). Every arm of one experiment runs under the same value. They exist for the thesis ablation study (the
+of it the Developers write out: `light` a typical, reviewable slice (one item per
+objective × timing at the objective's own Bloom level, one activity per objective,
+two outlined materials per module — `core/dev_plans.py`'s `LIGHT_*` quotas and
+the table at the head of its development-mode section), `full` all of it,
+batched, with complete learner-ready materials. It changes numbers and a derived
+assignment in a work set and one note in its assignment, never a rule block, and
+the output states the scale it was written at (`development.development_scope`,
+plus `items_written` on every task). Every arm of one experiment runs under the
+same value. They exist for the thesis ablation study (the
 benchmark registers one agent id per arm); production use keeps the defaults.
 
 ### Graph dump (explainability / auditability)

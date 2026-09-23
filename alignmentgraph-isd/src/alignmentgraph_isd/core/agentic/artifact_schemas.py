@@ -262,12 +262,20 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
             "additionalProperties": {"type": "string"}},
         "formative_methods": _arr(),
         "pilot_data_plan": _obj({
-            "collection_points": _arr(),
+            # Said in words, because the evaluation phase is judged on its own:
+            # a reader of it never sees the design's ids.
+            "collection_points": _arr_of(_obj({
+                "when": {"type": "string", "description": "when in the course"},
+                "where": {"type": "string", "description": "the module or session, by title"},
+                "what": {"type": "string",
+                         "description": "what data, collected by which instrument (its title, id beside it)"},
+                "from_whom": {"type": "string"}},
+                ("when", "where", "what", "from_whom"))),
             "anticipated_difficulties": _arr_of(_obj({
                 "area": {"type": "string"}, "rationale": {"type": "string"},
                 "detected_by": {"type": "string"}, "first_revision": {"type": "string"}},
                 ("area", "rationale", "detected_by", "first_revision"))),
-        }, ("anticipated_difficulties",)),
+        }, ("collection_points", "anticipated_difficulties")),
     }, ("sets", "lo_coverage_targets", "pilot_data_plan")),
     #: Item schema — the fan-out's ``assessment_tools`` (assessment items).
     "assessment_tools": _obj({

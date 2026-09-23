@@ -84,6 +84,7 @@ def config_fingerprint() -> dict:
         },
         "harness": {
             "fanout_workers": cfg.harness.fanout_workers,
+            "development_mode": cfg.harness.development_mode,
         },
         # Recorded as DECLARED, never as resolved: a blank per-judge provider
         # means the reader derives that judge's label from its own model slug,

@@ -432,12 +432,18 @@ wall time, và được ghi vào `metadata.run_config.fanout_workers`. Với lad
 lại, và `audit preflight` fail nếu `.env` cũng đặt biến này. Chốt trước `isd-exp freeze write` vì nó đổi
 `execution_time_seconds`. `--dry-run` in cận trên số call đồng thời của mỗi slot (scenario song song × agent song song ×
 Developer song song) để cân với sức chịu của endpoint.
-`HARNESS_DEVELOPMENT_MODE` (`sample` | `full`, ladder KHÔNG đặt = `sample`) quyết định Developer viết một mẫu đại diện
-của thiết kế hay toàn bộ: plan luôn nêu quy mô thật (quiz 40 câu), `sample` viết 3 item/instrument, 2 TLA/ILO (sàn
-3/module), 2 material/module, 1–2 session guide/module; `full` viết hết và chia batch. KHÔNG phải trục ablation — mọi arm
-của một thí nghiệm phải chạy cùng một giá trị, ghi ở `metadata.run_config.development_mode`; output tự khai phạm vi ở
-`development.development_scope`. Quota `sample` (`dev_plans.SAMPLE_*`) là tham số tạm: hiệu chỉnh trên `train_10` (cùng
-scenario ở hai mode, so các mục rubric chấm theo item) TRƯỚC `isd-exp freeze`, sau đó không đổi.
+`HARNESS_DEVELOPMENT_MODE` (`light` | `full`) quyết định Developer viết một lát cắt điển hình của thiết kế hay toàn
+bộ, khai MỘT lần ở `experiment.toml [harness].development_mode` (bảng so sánh hai mode nằm ngay trong comment của khoá
+đó), runner ghim vào môi trường như `fanout_workers`, freeze manifest ghi lại, `audit preflight` fail nếu `.env` cũng
+đặt, và adapter RAISE nếu giá trị sai. Plan luôn nêu quy mô thật (quiz 40 câu). `light` (mặc định): ~3 item/task — MỘT
+item cho mỗi cặp (objective × timing) ở đúng mức Bloom của objective, type phải mang được mức đó (apply+ → short_answer
+/ performance_task); 1 TLA/ILO (sàn 3/module, introduce–practise–apply); 2 material/module chọn theo media điển hình,
+`content` là OUTLINE 400–800 ký tự; 1–2 session guide/module vẫn xếp lịch mọi id. `full`: viết hết, chia batch, material
+đầy đủ. Mục đích của `light` là để người và benchmark chấm được chất lượng alignment và nội dung điển hình; `full` là bản
+triển khai. KHÔNG phải trục ablation — mọi arm của một thí nghiệm chạy cùng một giá trị, ghi ở
+`metadata.run_config.development_mode`; output tự khai phạm vi ở `development.development_scope`. Quota `light`
+(`dev_plans.LIGHT_*`) là tham số tạm: hiệu chỉnh trên `train_10` (cùng scenario ở hai mode, so các mục rubric chấm theo
+item) TRƯỚC `isd-exp freeze`, sau đó không đổi.
 
 Tổng request in-flight = `max_workers × scenario_max_workers × cap`. Gate là **per-run**, không process-wide: gate chung
 sẽ khiến fan-out của arm này xếp hàng trước call của arm kia và thổi phồng `execution_time_seconds` của arm kia.

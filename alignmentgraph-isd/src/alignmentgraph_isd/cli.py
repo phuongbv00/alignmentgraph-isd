@@ -37,8 +37,8 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--temperature", type=float, default=None, help="Sampling temperature (env: AGENT_MODEL_TEMPERATURE).")
     run_parser.add_argument("--max-tokens", type=int, default=None, help="Max output tokens (env: AGENT_MODEL_MAX_TOKENS).")
     run_parser.add_argument(
-        "--development-mode", choices=("sample", "full"), default="sample",
-        help="How much of the planned scale is written out: a representative sample "
+        "--development-mode", choices=("light", "full"), default="light",
+        help="How much of the planned scale is written out: a light, reviewable slice "
              "(default) or every artifact the design plans.")
 
     dot_parser = subparsers.add_parser(
