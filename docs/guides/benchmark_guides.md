@@ -204,10 +204,10 @@ vLLM `v0.25.1`, bf16, context **16384** cho cả 4 model, mỗi model một pod,
 ```bash
 AGENT_MODEL_MAX_OUTPUT_TOKENS=8192
 AGENT_MODEL_STREAMING=1
-AGENT_MODEL_THINKING_BUDGET=512
+AGENT_MODEL_THINKING_BUDGET=0
 ```
 
-Cả ba khai trong `[generation]` của `experiment.toml` (`max_output_tokens`, `streaming`, `thinking_budget`), cùng với
+`thinking_budget = 0` vì ladder hiện có rung đi qua router: router chỉ tôn trọng trạng thái tắt, không tôn trọng trần, nên một số dương chỉ hợp lệ khi mọi rung đều self-host. Cả ba khai trong `[generation]` của `experiment.toml` (`max_output_tokens`, `streaming`, `thinking_budget`), cùng với
 `temperature`. Runner ghim chúng vào môi trường của process, đè lên `.env`. Pre-flight (mục 6.1) **fail** nếu `.env`
 cũng đặt chúng: hai nguồn cho một giới hạn phải đồng nhất trên mọi agent và mọi size chính là cách một so sánh mất luận
 điểm fairness trong im lặng. `shared/llm/factory.py` là nơi duy nhất đọc cả ba, nên "đồng nhất" là tính chất của code

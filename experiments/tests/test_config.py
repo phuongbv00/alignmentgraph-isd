@@ -472,13 +472,16 @@ class TestJudgeDeclaration:
             "SOMEHOST_API_KEY,SOMEHOST_API_KEY|SOMEHOST_API_KEY2"
         assert env["JUDGE_MODEL_CREDENTIAL_STRATEGIES"] == "first,round_robin"
 
-    def test_the_study_scores_each_cell_with_one_judge(self):
-        """Pinned, not because one is better than two, but because the roster is
-        what every reported LLM judge score is a score FROM. A second judge is
-        the corroboration subset; adding it back silently would make two runs
-        incomparable while both tables still say "LLM judge score"."""
+    def test_the_study_scores_each_cell_with_the_declared_roster(self):
+        """Pinned because the roster is what every reported LLM judge score is
+        a score FROM: a judge added or dropped silently would make two runs
+        incomparable while both tables still say "LLM judge score". Two judges
+        are declared so that each cell carries the second judge's item-level
+        scoring beside the first's (the corroboration reading); the aggregate
+        is still their median."""
         judge = config.load().judge
-        assert [m.name for m in judge.models] == ["openai/gpt-4o-mini"]
+        assert [m.name for m in judge.models] == [
+            "openai/gpt-4o-mini", "google/gemini-2.5-flash-lite"]
 
     def test_the_declaration_emits_no_more_than_it_states(self):
         """It replaced four lines of an environment file. Anything beyond those

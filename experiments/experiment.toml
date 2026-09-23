@@ -60,7 +60,7 @@ temperature = 0.7               # for agents that do not pin their own
 # Reasoning tokens allowed before the answer (0 = thinking off). A reply that
 # reasons past max_output_tokens returns no content and scores as a failure.
 # A router enforces only 0: a positive cap needs every rung self-hosted.
-thinking_budget = 512
+thinking_budget = 0
 
 # --- The proposed system's run posture ---------------------------------------
 [harness]
