@@ -218,7 +218,7 @@ class TestHelpSubcommand:
         assert "isd-exp pool comparison" in out.stdout
         out = run("help", "judge", "alignment")
         assert out.returncode == 0
-        assert "--all-arms" in out.stdout
+        assert "--primary-only" in out.stdout
 
     def test_the_experiment_is_the_object_of_the_verb(self):
         """`run comparison`, never `comparison run`: the stage is the verb."""

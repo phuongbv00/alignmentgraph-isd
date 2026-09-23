@@ -371,8 +371,7 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
                f"{proposed} pooled mean Trajectory at {m['label']}")
         newcmd(f"llmJudgeHarnessTotal{w}", fmt_num(harness.get("mean_total", float("nan"))),
                f"{proposed} pooled mean Total (benchmark composite) at {m['label']}")
-        # Across-scenario SD, not run-to-run: with one deterministic run per
-        # cell there are no run-level means to take an SD of. Emitted only when
+        # Across-scenario SD, not run-to-run: with one run per cell there are no run-level means to take an SD of. Emitted only when
         # it exists, so a cell without it leaves the macro undefined and LaTeX
         # says so, rather than the prose quoting a silent "nan".
         sd_addie = harness.get("sd_addie_across_scenarios")

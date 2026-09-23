@@ -101,20 +101,12 @@ class BloomArm:
         return True if p is None else p.exists()
 
 
-#: What `[alignment].judge_arms` may say.
-JUDGE_ARMS = ("primary", "all")
-
-
 @dataclass(frozen=True)
 class Arms:
     encoders: dict[str, EncoderArm]
     bloom: dict[str, BloomArm]
     primary_encoder: str
     primary_bloom: str
-    #: Which arms `run --with-judge` scores after generating: "primary" (the
-    #: artifact pooling reads) or "all" (the whole star). A hand-run
-    #: `judge alignment` chooses its arms on its own command line.
-    judge_arms: str = "primary"
 
     def encoder(self, key: str) -> EncoderArm:
         try:
@@ -167,7 +159,7 @@ def _load(exp_config) -> Arms:
                         display=body.get("display", key), short=body.get("short", key),
                         macro=body.get("macro", key.title()),
                         base_urls=config.urls(body.get("base_urls"),
-                                              f"[alignment.encoders.{key}]"),
+                                              f"[judge.alignment.encoders.{key}]"),
                         key_env=body.get("key_env", ""),
                         revision=body.get("revision"))
         for key, body in raw.get("encoders", {}).items()
@@ -181,7 +173,7 @@ def _load(exp_config) -> Arms:
     }
     if not encoders or not bloom:
         raise SystemExit(
-            f"{exp_config.source}: [alignment.encoders] and [alignment.bloom] "
+            f"{exp_config.source}: [judge.alignment.encoders] and [judge.alignment.bloom] "
             f"must each declare at least one arm."
         )
 
@@ -194,17 +186,9 @@ def _load(exp_config) -> Arms:
                 f"found {owners or 'none'}."
             )
 
-    judge_arms = raw.get("judge_arms", "primary")
-    if judge_arms not in JUDGE_ARMS:
-        raise SystemExit(
-            f"{exp_config.source}: [alignment].judge_arms = {judge_arms!r}; "
-            f"choose from {', '.join(JUDGE_ARMS)}."
-        )
-
     arms = Arms(encoders=encoders, bloom=bloom,
                 primary_encoder=raw.get("primary_encoder", ""),
-                primary_bloom=raw.get("primary_bloom", ""),
-                judge_arms=judge_arms)
+                primary_bloom=raw.get("primary_bloom", ""))
     # The declared primary must be the arm that owns the empty suffix, or the
     # artifact pooling reads would come from an arm nobody called primary.
     for name, key, table in (("encoder", arms.primary_encoder, encoders),

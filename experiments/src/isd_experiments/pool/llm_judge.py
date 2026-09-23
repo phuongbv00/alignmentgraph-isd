@@ -3,7 +3,7 @@
 One model size at a time: every comparison is PAIRED WITHIN a size, because a
 scenario is the unit of analysis and the same scenario must be on both sides of
 a difference. Uncertainty comes from resampling scenarios (bootstrap CI, paired
-Wilcoxon), not from repeating runs -- with one deterministic run per cell there
+Wilcoxon), not from repeating runs -- with one run per cell there
 is no run-to-run spread to resample.
 """
 

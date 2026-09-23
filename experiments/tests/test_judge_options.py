@@ -34,6 +34,7 @@ BODY_ONLY = {
     "require_all": "turns a skipped arm into an exit, decided before scoring",
     "sweep_csv": "the roster's destination, written after every arm is done",
     "dry_run": "prints the scope and returns before anything is contacted",
+    "yes": "skips the overwrite prompt, asked once in the body before any arm",
 }
 
 

@@ -123,7 +123,7 @@ class TestTheRunDirectory:
         tmp_path, cfg, _ = world
         monkeypatch.setenv("AGENT_MODEL_MAX_OUTPUT_TOKENS", "1")
         _generate(tmp_path, cfg)
-        assert os.environ["AGENT_MODEL_MAX_OUTPUT_TOKENS"] == str(cfg.serving.max_output_tokens)
+        assert os.environ["AGENT_MODEL_MAX_OUTPUT_TOKENS"] == str(cfg.generation.max_output_tokens)
         assert os.environ["BENCHMARK_RATE_LIMIT"] == "turbo"
 
 

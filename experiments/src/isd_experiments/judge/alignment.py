@@ -36,10 +36,10 @@ re-judge what is already judged, ``dry_run`` to print the scope and write
 nothing.
 
 Examples:
-  # primary configuration only (the default when no preset flag is given)
+  # every arm declared in experiment.toml (the default: the whole star)
   ./isd-exp judge alignment results/test_90_...
-  # the whole sensitivity star in one invocation
-  ./isd-exp judge alignment results/test_90_... --all-arms
+  # the primary configuration alone -- the only arm that needs the pod
+  ./isd-exp judge alignment results/test_90_... --primary-only
   # every encoder arm except the served primary — no pod involved at all
   ./isd-exp judge alignment results/test_90_... \
       --encoder-presets bgem3,granite,tfidf
@@ -223,9 +223,12 @@ def _tfidf_label(model: str, ngram: tuple[int, int]) -> str:
 def resolve_arms(args) -> list[tuple[str, str]]:
     """The (encoder key, Bloom key) arms to score — the star, never the grid.
 
-    Selection: --all-arms / --encoder-presets / --encoder-preset for family A,
-    --bloom-presets / --bloom-preset for family B; with none of them the sweep
-    is the single primary configuration (the declared primary of each axis).
+    With no selection, every arm declared in experiment.toml: the primary
+    configuration plus one arm per declared deviation (``Arms.star``), so what
+    gets scored is what the declaration registers, and removing an arm there
+    removes it here. A selection narrows that: --primary-only for the primary
+    configuration alone, --encoder-presets / --encoder-preset / --all-encoders
+    for family A, --bloom-presets / --bloom-preset for family B.
 
     Every arm deviates from that configuration on **at most one axis**. A grid
     would double the cost and the surface to audit without answering anything
@@ -235,8 +238,15 @@ def resolve_arms(args) -> list[tuple[str, str]]:
     registry = declared_arms()
     primary_enc, primary_bloom = registry.primary_encoder, registry.primary_bloom
 
+    narrowed = (args.primary_only or args.all_encoders or args.encoder_presets
+                or args.encoder_preset or args.bloom_presets or args.bloom_preset)
+    if not narrowed:
+        return registry.star()
+    if args.primary_only:
+        return [(primary_enc, primary_bloom)]
+
     enc_keys: list[str] = []
-    if args.all_arms or args.all_encoders:
+    if args.all_encoders:
         enc_keys += list(registry.encoders)
     for raw in (args.encoder_presets or "").split(","):
         if raw.strip():
@@ -245,8 +255,6 @@ def resolve_arms(args) -> list[tuple[str, str]]:
         enc_keys.append(args.encoder_preset)
 
     bloom_keys: list[str] = []
-    if args.all_arms:
-        bloom_keys += list(registry.bloom)
     for raw in (args.bloom_presets or "").split(","):
         if raw.strip():
             bloom_keys.append(raw.strip())
@@ -271,19 +279,16 @@ def resolve_arms(args) -> list[tuple[str, str]]:
     # therefore not a request this can honour: rewriting it into two unrelated
     # star arms would give the caller neither the cross they asked for nor any
     # warning that the label on the resulting artifact meant something else.
-    # --all-arms is the sweep itself and is exempt: it means "every star arm".
-    if not args.all_arms:
-        off_enc = [k for k in enc_keys if k != primary_enc]
-        off_bloom = [k for k in bloom_keys if k != primary_bloom]
-        if off_enc and off_bloom:
-            raise SystemExit(
-                f"cannot deviate on both axes at once: encoder {off_enc} with "
-                f"bloom {off_bloom}. The sweep is a star, not a grid — run one "
-                f"axis per invocation (or --all-arms for the whole star)."
-            )
+    # No selection at all is the whole star, which is exempt by construction.
+    off_enc = [k for k in enc_keys if k != primary_enc]
+    off_bloom = [k for k in bloom_keys if k != primary_bloom]
+    if off_enc and off_bloom:
+        raise SystemExit(
+            f"cannot deviate on both axes at once: encoder {off_enc} with "
+            f"bloom {off_bloom}. The sweep is a star, not a grid — run one "
+            f"axis per invocation (or name no arm for the whole star)."
+        )
 
-    if not enc_keys and not bloom_keys:
-        return [(primary_enc, primary_bloom)]
     arms = [(key, primary_bloom) for key in enc_keys]
     if primary_bloom in bloom_keys and not enc_keys:
         arms.append((primary_enc, primary_bloom))
@@ -385,7 +390,7 @@ def resolve_encoder_specs(args) -> list[EncoderSpec]:
         if not spec.base_urls:
             spec.available = False
             spec.skip_reason = (
-                f"no endpoint (declare base_urls on [alignment.encoders.{key}] in "
+                f"no endpoint (declare base_urls on [judge.alignment.encoders.{key}] in "
                 f"{current_config().source}, pass --embed-base-urls-for {slot}=..., "
                 f"or use --embed-cache-only)"
             )
@@ -429,7 +434,7 @@ def probe_specs(specs: list[EncoderSpec], api_key_of, cache_only: bool) -> None:
                 raise SystemExit(
                     f"[{spec.key}] endpoint {url} serves {live!r} but the "
                     f"encoder is {spec.model!r}. Point base_urls on "
-                    f"[alignment.encoders.{spec.key}] at a server that "
+                    f"[judge.alignment.encoders.{spec.key}] at a server that "
                     f"serves {spec.model!r}."
                 )
 
@@ -792,7 +797,7 @@ def build_encoder(spec: EncoderSpec, run_dir: Path, args):
             slot = encoder_slot(spec.key)
             raise SystemExit(
                 f"encoder [{spec.key}] needs an endpoint: declare base_urls on "
-                f"[alignment.encoders.{spec.key}] in {current_config().source}, or "
+                f"[judge.alignment.encoders.{spec.key}] in {current_config().source}, or "
                 f"pass --embed-base-urls-for {slot}=..., e.g. a server running "
                 f"'vllm serve {spec.model} --task embed'. Pass --embed-cache-only "
                 "to run purely off the embedding cache."
@@ -960,7 +965,7 @@ def run(*,
         all_encoders: bool = False,
         bloom_preset: str = "", bloom_presets: str = "",
         bloom_checkpoint: Path | None = None,
-        all_arms: bool = False,
+        primary_only: bool = False,
         # where each served arm is embedded, and how
         embed_base_urls_for: list[str] | tuple[str, ...] = (),
         embed_revision_for: list[str] | tuple[str, ...] = (),
@@ -973,7 +978,7 @@ def run(*,
         limit: int | None = None,
         reaggregate: bool = False, overwrite: bool = False,
         require_all: bool = False, sweep_csv: Path | None = None,
-        dry_run: bool = False) -> int:
+        dry_run: bool = False, yes: bool = False) -> int:
     """Score the alignment panel over one or more run dirs.
 
     Several helpers below take the whole options bag rather than a long
@@ -1016,7 +1021,10 @@ def run(*,
     if writes_primary and not reaggregate:
         print(f"NOTE: {', '.join(writes_primary)} writes an unsuffixed file — this "
               "OVERWRITES alignment_scores.json, the artifact pooling reads.")
-        if sys.stdin.isatty() and input("Continue? [y/N] ").strip().lower() != "y":
+        # `yes` for an unattended caller: a launched run sits in a tmux session,
+        # which IS a terminal, so the prompt would wait there for nobody.
+        if (not yes and sys.stdin.isatty()
+                and input("Continue? [y/N] ").strip().lower() != "y"):
             return 1
 
     # Encoder-outer / run-dir-inner. Scenario artifacts are published atomically

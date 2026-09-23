@@ -176,7 +176,8 @@ class TestTheChildCommandCarriesTheDeclaration:
 
     @staticmethod
     def _command(plan: str) -> str:
-        return plan.split("command (first slot):", 1)[1]
+        # The first slot's command: the plan prints one per slot.
+        return plan.split("commands:", 1)[1].split("# --- tmux session", 2)[1]
 
     def test_each_session_runs_the_experiment_in_the_foreground(self, plan):
         command = self._command(plan)
@@ -203,21 +204,27 @@ class TestTheChildCommandCarriesTheDeclaration:
             assert after.startswith("'"), f"{flag} is not quoted"
 
     def test_judging_is_off_unless_asked_for(self, plan):
-        assert "--with-judge" not in self._command(plan)
-        assert "judge   : off" in plan
+        assert "--judge" not in self._command(plan)
+        assert "judges  : off" in plan
 
-    def test_with_judge_reaches_every_session(self):
+    def test_judge_reaches_every_session(self):
         import os
 
         out = subprocess.run(
             [str(paths.exp_root() / ".venv" / "bin" / "python"),
              "-m", "isd_experiments.cli", "run", "comparison", "--dry-run",
-             "--with-judge"],
+             "--judge"],
             capture_output=True, text=True, env=dict(os.environ),
             cwd=str(paths.exp_root()))
         assert out.returncode == 0, out.stderr
-        assert "--with-judge" in self._command(out.stdout)
-        assert "judge   : llm + alignment" in out.stdout
+        assert "--judge" in self._command(out.stdout)
+        assert "judges  : after each run" in out.stdout
+        from isd_experiments.alignment.presets import current as arms
+        from isd_experiments.config import current as cfg
+        judged = arms()
+        assert f"* llm       : {','.join(m.name for m in cfg().judge.models)}" in out.stdout
+        assert (f"* alignment : {judged.primary_encoder},{judged.primary_bloom}"
+                in out.stdout)
 
 
 class TestNoDeclaredFieldIsInert:
@@ -334,3 +341,16 @@ class TestNoDeclaredFieldIsInert:
                 f"profile_env publishes <SLOT>_AGENT_MODEL_{suffix}, which the "
                 f"launcher never reads."
             )
+
+
+def test_an_unpooled_profile_says_why_instead_of_printing_nothing():
+    """`tune` has no pool command; the plan line said `pool    : ` and nothing."""
+    import os
+
+    out = subprocess.run(
+        [str(paths.exp_root() / ".venv" / "bin" / "python"),
+         "-m", "isd_experiments.cli", "run", "tune", "--dry-run"],
+        capture_output=True, text=True, env=dict(os.environ), cwd=str(paths.exp_root()))
+    assert out.returncode == 0, out.stderr
+    line = next(ln for ln in out.stdout.splitlines() if ln.strip().startswith("pool"))
+    assert "not pooled" in line

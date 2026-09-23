@@ -23,9 +23,9 @@
 #   _RUN_TAGS_LIST    space-separated run tags (one tag = one run per cell)
 #   SESSION_PREFIX    tmux session name prefix
 #   POOL_HINT         the pooling command to print when the launch finishes
-#   WITH_JUDGE        1 = each run is judged (LLM judge + alignment) once generated
+#   JUDGE_AFTER_RUN        1 = each run is judged (LLM judge + alignment) once generated
 #   _ISD_EXPERIMENT_CONFIG  the declaration the child re-reads
-#   _ALIGNMENT_JUDGE_ARMS   [alignment].judge_arms, for the plan and the banner
+#   _ALIGNMENT_JUDGE_ARM_LIST  the declared alignment arms, for the plan
 #
 # SOURCE THIS FIRST, before the caller's own config block. It cd's to the repo
 # root and sources .env, and .env is allowed to override an experiment's
@@ -158,7 +158,7 @@ matrix_resolve_slots() {
         fi
         echo "ERROR: no serving BASE_URL set for slot(s):${_missing_base_url}" >&2
         echo "Bring the endpoints up (see docs/guides/benchmark_guides.md), then declare them" >&2
-        echo "as base_urls on the matching [[model]] table in experiment.toml." >&2
+        echo "as base_urls on the matching [[serving.slots]] table in experiment.toml." >&2
         exit 1
     fi
 }
@@ -294,7 +294,7 @@ matrix_confirm() {
     echo "  Developer workers: ${_HARNESS_FANOUT_WORKERS:-unset (1)} ([harness].fanout_workers)"
     echo ""
     echo "  !! WARNING: this launches ~$((NUM_SLOTS * NUM_RUNS)) full benchmark runs"
-    if [[ "${WITH_JUDGE:-0}" == "1" ]]; then
+    if [[ "${JUDGE_AFTER_RUN:-0}" == "1" ]]; then
         echo "  !! (~$((NUM_SLOTS * NUM_RUNS * NUM_AGENTS * NUM_SCENARIOS)) agent generations, then LLM judge calls)."
     else
         echo "  !! (~$((NUM_SLOTS * NUM_RUNS * NUM_AGENTS * NUM_SCENARIOS)) agent generations; judging is a later step)."
@@ -330,6 +330,7 @@ matrix_write_manifest() {
     AGENT_MODEL_MAX_OUTPUT_TOKENS="${_AGENT_MODEL_MAX_OUTPUT_TOKENS:-}" \
     AGENT_MODEL_STREAMING="${_AGENT_MODEL_STREAMING:-}" \
     AGENT_MODEL_THINKING_BUDGET="${_AGENT_MODEL_THINKING_BUDGET:-}" \
+    AGENT_MODEL_TEMPERATURE="${_AGENT_MODEL_TEMPERATURE:-}" \
     HARNESS_FANOUT_WORKERS="${_HARNESS_FANOUT_WORKERS:-}" \
     python3 - "$manifest" <<'PYEOF'
 import json, os, sys
@@ -384,11 +385,14 @@ manifest = {
         "provider": os.environ.get("JUDGE_MODEL_PROVIDER", ""),
         "models": _judge_models(),
     },
-    "serving_limits": {
+    "serving": {
         "context_window": os.environ.get("AGENT_MODEL_CONTEXT_WINDOW", ""),
+    },
+    "generation": {
         "max_output_tokens": os.environ.get("AGENT_MODEL_MAX_OUTPUT_TOKENS", ""),
         "streaming": os.environ.get("AGENT_MODEL_STREAMING", ""),
         "thinking_budget": os.environ.get("AGENT_MODEL_THINKING_BUDGET", ""),
+        "temperature": os.environ.get("AGENT_MODEL_TEMPERATURE", ""),
     },
     "harness": {
         "fanout_workers": os.environ.get("HARNESS_FANOUT_WORKERS", ""),
@@ -430,22 +434,28 @@ matrix_child_command() {
     upper=$(slot_upper "$slot")
     rate_var="${upper}_RATE_LIMIT"
     slot_rate="${!rate_var:-$RATE_LIMIT}"
-    [[ "${WITH_JUDGE:-0}" == "1" ]] && judge_flag=" --with-judge"
+    [[ "${JUDGE_AFTER_RUN:-0}" == "1" ]] && judge_flag=" --judge"
 
-    printf '%s' "cd '$EXP_ROOT' || exit 1; \
-source '$ENV_FILE' 2>/dev/null || true; \
-export RESULTS_DIR='$RESULTS_ROOT'; \
-for tag in $_RUN_TAGS_LIST; do \
-    echo \"=== ${slot} run \$tag starting: \$(date) ===\"; \
-    ISD_EXPERIMENT_CONFIG='$_ISD_EXPERIMENT_CONFIG' '$BENCH_PYTHON' -m isd_experiments.cli \
-        run '$EXPERIMENT' --foreground \
-        --slots '$slot' \
-        --tags \"\$tag\" \
-        --agents '$AGENTS' \
-        --rate-limit '$slot_rate'$judge_flag \
-        2>&1 | tee -a '$log_file'; \
-    echo \"=== ${slot} run \$tag finished: \$(date) ===\"; \
-done; echo 'Slot done!'; read"
+    # Real newlines and backslash continuations, not one line joined by `;`:
+    # the dry run prints this string as it is, and tmux hands the same string
+    # to `sh -c`, which reads it the same way. What a reader checks is what runs.
+    printf '%s' "cd '$EXP_ROOT' || exit 1
+source '$ENV_FILE' 2>/dev/null || true
+export RESULTS_DIR='$RESULTS_ROOT'
+for tag in $_RUN_TAGS_LIST; do
+    echo \"=== ${slot} run \$tag starting: \$(date) ===\"
+    ISD_EXPERIMENT_CONFIG='$_ISD_EXPERIMENT_CONFIG' \\
+    '$BENCH_PYTHON' -m isd_experiments.cli \\
+        run '$EXPERIMENT' --foreground \\
+        --slots '$slot' \\
+        --tags \"\$tag\" \\
+        --agents '$AGENTS' \\
+        --rate-limit '$slot_rate'$judge_flag \\
+        2>&1 | tee -a '$log_file'
+    echo \"=== ${slot} run \$tag finished: \$(date) ===\"
+done
+echo 'Slot done!'
+read"
 }
 
 # One tmux session per model slot; slots run in PARALLEL, the run tags of a slot
@@ -490,6 +500,8 @@ matrix_launch() {
     echo ""
     echo "Stop everything: tmux kill-server"
     echo ""
-    echo "After all runs finish, pool with:"
-    echo "  $POOL_HINT"
+    if [[ -n "${POOL_HINT:-}" ]]; then
+        echo "After all runs finish, pool with:"
+        echo "  $POOL_HINT"
+    fi
 }

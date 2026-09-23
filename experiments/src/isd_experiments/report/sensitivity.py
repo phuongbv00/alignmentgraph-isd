@@ -596,7 +596,7 @@ def run(*, pooled_path: Path | None = None, outdir: Path | None = None,
     if not pooled.get("alignment_sensitivity"):
         if not quiet:
             print(f"- no alignment_sensitivity layer in {src.name} — skipped.\n"
-                  f"  Produce it with:  {paths.cli()} judge alignment <run dirs> --all-arms\n"
+                  f"  Produce it with:  {paths.cli()} judge alignment <run dirs>\n"
                   f"                    {paths.cli()} pool comparison --auto-encoders --auto-bloom")
         return []
 

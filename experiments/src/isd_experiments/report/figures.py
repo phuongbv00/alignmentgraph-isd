@@ -43,7 +43,7 @@ from ..stats import spearman_rho
 #: a total_score statistic; drawing it under an ADDIE or Trajectory mean once
 #: overstated spread by a factor of sixteen.
 #:
-#: These are SDs across SCENARIOS, drawn as SEM: one deterministic run per cell
+#: These are SDs across SCENARIOS, drawn as SEM: one run per cell
 #: means a run-to-run SD has a single value and does not exist. Both ladder
 #: figures use this convention, so their error bars mean the same thing.
 LLM_JUDGE_SD_FIELD = {

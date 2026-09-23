@@ -21,9 +21,9 @@ from .. import paths
 from ..config import Experiment, Model
 
 #: The per-call output budget every agent is given, unless ``.env`` states one
-#: (``AGENT_MODEL_MAX_TOKENS``), which is then equally uniform. The serving
-#: ceiling (``[serving].max_output_tokens``) is applied on top of it by the
-#: model factory as min(this, the ceiling).
+#: (``AGENT_MODEL_MAX_TOKENS``), which is then equally uniform. The ceiling
+#: (``[generation].max_output_tokens``) is applied on top of it by the model
+#: factory as min(this, the ceiling).
 UNIFORM_MAX_TOKENS = 16384
 
 
@@ -59,24 +59,27 @@ def rate_preset(name: str) -> RatePreset:
         ) from None
 
 
-def serving_env(cfg: Experiment) -> dict[str, str]:
-    """The serving limits and the harness posture, as the variables read for them.
+def pinned_env(cfg: Experiment) -> dict[str, str]:
+    """The window, the generation settings and the harness posture, as the
+    variables they are read under.
 
-    ``shared/llm/factory.py`` reads the first four for every agent, and the
+    ``shared/llm`` reads the generation settings for every agent, and the
     proposed system's adapter reads the window, the ceiling and the worker
     count. Only what the declaration states is emitted: an absent value keeps
     the reader's own default rather than a number this module made up.
     """
-    serving, env = cfg.serving, {}
-    if serving.context_window is not None:
-        env["AGENT_MODEL_CONTEXT_WINDOW"] = str(serving.context_window)
-    if serving.max_output_tokens is not None:
-        env["AGENT_MODEL_MAX_OUTPUT_TOKENS"] = str(serving.max_output_tokens)
-    if serving.streaming is not None:
+    gen, env = cfg.generation, {}
+    if cfg.serving.context_window is not None:
+        env["AGENT_MODEL_CONTEXT_WINDOW"] = str(cfg.serving.context_window)
+    if gen.max_output_tokens is not None:
+        env["AGENT_MODEL_MAX_OUTPUT_TOKENS"] = str(gen.max_output_tokens)
+    if gen.streaming is not None:
         # "0" rather than nothing: it has to be able to turn streaming OFF.
-        env["AGENT_MODEL_STREAMING"] = "1" if serving.streaming else "0"
-    if serving.thinking_budget is not None:
-        env["AGENT_MODEL_THINKING_BUDGET"] = str(serving.thinking_budget)
+        env["AGENT_MODEL_STREAMING"] = "1" if gen.streaming else "0"
+    if gen.thinking_budget is not None:
+        env["AGENT_MODEL_THINKING_BUDGET"] = str(gen.thinking_budget)
+    if gen.temperature is not None:
+        env["AGENT_MODEL_TEMPERATURE"] = str(gen.temperature)
     if cfg.harness.fanout_workers is not None:
         env["HARNESS_FANOUT_WORKERS"] = str(cfg.harness.fanout_workers)
     return env
@@ -98,13 +101,13 @@ def load_credentials() -> None:
 
 
 def pin_posture(cfg: Experiment, rate_limit: str) -> None:
-    """The declared serving limits and the rate posture, OVER whatever ``.env``
-    or the shell carried.
+    """The declared window, generation settings and rate posture, OVER whatever
+    ``.env`` or the shell carried.
 
     Once per process, before any agent is built: the model factory and the
     adapter read these from ``os.environ`` at call time.
     """
-    os.environ.update(serving_env(cfg))
+    os.environ.update(pinned_env(cfg))
     os.environ.update(rate_env(rate_limit))
 
 
@@ -112,7 +115,8 @@ def slot_config(cfg: Experiment, model: Model):
     """The ``LLMConfig`` one rung is served under, before any agent sees it.
 
     The endpoints travel as one comma-joined value, which the config splits and
-    round-robins across; the key variables likewise.
+    round-robins across; the key variables likewise. The temperature is passed
+    explicitly, so it is the declared one whatever the environment says.
     """
     from shared.llm import llm_config_from_env
 
@@ -123,6 +127,7 @@ def slot_config(cfg: Experiment, model: Model):
         api_key_envs=tuple(
             name.strip() for name in cfg.key_env_for(model).split(",") if name.strip()
         ),
+        temperature=cfg.generation.temperature,
     )
 
 

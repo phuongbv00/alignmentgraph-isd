@@ -20,13 +20,13 @@ TWO_RUNG = """
 api_spec = "openai_compatible"
 key_env = "MY_KEY"
 
-[[model]]
+[[serving.slots]]
 slot = "tiny"
 model = "meta-llama/Llama-3.2-1B-Instruct"
 display = "1B"
 base_urls = ["http://localhost:8000/v1"]
 
-[[model]]
+[[serving.slots]]
 slot = "big"
 model = "google/gemma-2-27b-it"
 display = "27B"
@@ -227,8 +227,20 @@ class TestValidation:
     def test_an_empty_declaration_is_rejected(self, tmp_path):
         body = "\n".join(l for l in TWO_RUNG.splitlines()
                          if not l.startswith(("slot", "model", "display",
-                                              "base_urls", "[[model]]")))
-        with pytest.raises(SystemExit, match=r"\[\[model\]\]"):
+                                              "base_urls", "[[serving.slots]]")))
+        with pytest.raises(SystemExit, match=r"\[\[serving\.slots\]\]"):
+            config.load(write(tmp_path, body))
+
+    @pytest.mark.parametrize("old, where", [
+        ("[[model]]", r"\[\[model\]\] -> \[\[serving\.slots\]\]"),
+        ("[alignment]", r"\[alignment\.\.\.\] -> \[judge\.alignment"),
+        ("[judge]\nprovider = \"x\"", r"\[judge\] provider -> \[judge\.llm\]"),
+    ])
+    def test_a_table_in_the_wrong_place_is_refused_with_its_move(self, tmp_path, old, where):
+        """Read silently, `[alignment]` would be no arms and `[[model]]` no
+        ladder -- an error far from the cause."""
+        body = TWO_RUNG + "\n" + old + ("\nslot = \"x\"\n" if old == "[[model]]" else "\n")
+        with pytest.raises(SystemExit, match=where):
             config.load(write(tmp_path, body))
 
     def test_duplicate_slot_is_rejected(self, tmp_path):
@@ -261,39 +273,43 @@ class TestArmFlags:
         assert arm.expected_flags == {"agent_mode": "single", "context_mode": "graph"}
 
 
-class TestServingLimits:
-    """The limits every rung is served under, declared once for the whole ladder.
+class TestGenerationSettings:
+    """How every call of every agent is made, declared once for the whole ladder.
 
-    They live in `[serving]` and not on a rung because applying them uniformly to
-    every agent and every size is the fairness argument the comparison rests on.
-    A per-rung window would turn the ladder into a comparison of budgets.
+    They live in `[generation]` and not on a rung or an agent because applying
+    them uniformly is the fairness argument the comparison rests on; the window
+    stays in `[serving]`, since it is a property of the endpoints.
     """
 
-    def test_the_declared_limits_are_read(self):
-        s = config.load().serving
-        assert s.context_window and s.max_output_tokens
-        assert s.streaming is True
+    @staticmethod
+    def _gen(tmp_path, lines):
+        return config.load(write(tmp_path, TWO_RUNG + "\n[generation]\n" + lines + "\n"))
+
+    def test_the_declared_settings_are_read(self):
+        cfg = config.load()
+        assert cfg.serving.context_window and cfg.generation.max_output_tokens
+        assert cfg.generation.streaming is True
+        assert cfg.generation.temperature is not None
 
     def test_they_are_optional(self, tmp_path):
         """A foreign ladder must still load; the pressure to declare them comes
-        from `audit preflight`, which fails on an undeclared limit, not from the
-        parser, which would make every other config unusable."""
-        s = config.load(write(tmp_path, TWO_RUNG)).serving
-        assert (s.context_window, s.max_output_tokens, s.streaming) == (None, None, None)
-        assert s.thinking_budget is None
+        from `audit preflight`, which fails on an undeclared setting, not from
+        the parser, which would make every other config unusable."""
+        cfg = config.load(write(tmp_path, TWO_RUNG))
+        g = cfg.generation
+        assert (cfg.serving.context_window, g.max_output_tokens, g.streaming) == (None,) * 3
+        assert g.thinking_budget is None and g.temperature is None
 
     def test_a_clamp_that_leaves_no_room_for_a_prompt_is_rejected(self, tmp_path):
-        body = TWO_RUNG.replace(
-            'key_env = "MY_KEY"',
-            'key_env = "MY_KEY"\ncontext_window = 8192\nmax_output_tokens = 8192')
+        body = TWO_RUNG.replace('key_env = "MY_KEY"',
+                                'key_env = "MY_KEY"\ncontext_window = 8192')
+        body += "\n[generation]\nmax_output_tokens = 8192\n"
         with pytest.raises(SystemExit, match="no room for a prompt"):
             config.load(write(tmp_path, body))
 
     def test_a_non_boolean_streaming_is_rejected(self, tmp_path):
-        body = TWO_RUNG.replace('key_env = "MY_KEY"',
-                                'key_env = "MY_KEY"\nstreaming = "yes"')
         with pytest.raises(SystemExit, match="true or false"):
-            config.load(write(tmp_path, body))
+            self._gen(tmp_path, 'streaming = "yes"')
 
     def test_a_zero_window_is_rejected(self, tmp_path):
         body = TWO_RUNG.replace('key_env = "MY_KEY"',
@@ -305,14 +321,33 @@ class TestServingLimits:
         """0 means "serve with thinking off", which is a declaration like any
         other -- so it must not go through the positive-integer parser, whose
         whole job is to reject 0 as a missing value."""
-        body = TWO_RUNG.replace('key_env = "MY_KEY"',
-                                'key_env = "MY_KEY"\nthinking_budget = 0')
-        assert config.load(write(tmp_path, body)).serving.thinking_budget == 0
+        assert self._gen(tmp_path, "thinking_budget = 0").generation.thinking_budget == 0
 
     def test_a_negative_thinking_budget_is_rejected(self, tmp_path):
-        body = TWO_RUNG.replace('key_env = "MY_KEY"',
-                                'key_env = "MY_KEY"\nthinking_budget = -1')
         with pytest.raises(SystemExit, match="non-negative integer"):
+            self._gen(tmp_path, "thinking_budget = -1")
+
+    @pytest.mark.parametrize("value", ["-0.1", "2.5", '"hot"', "true"])
+    def test_a_temperature_out_of_range_is_rejected(self, tmp_path, value):
+        with pytest.raises(SystemExit, match=r"temperature must be a number in \[0, 2\]"):
+            self._gen(tmp_path, f"temperature = {value}")
+
+    def test_an_integer_temperature_reads_as_a_float(self, tmp_path):
+        assert self._gen(tmp_path, "temperature = 1").generation.temperature == 1.0
+
+    def test_a_misspelt_key_is_refused(self, tmp_path):
+        """Every key reaches every agent's calls: a typo is a posture written
+        down and never applied."""
+        with pytest.raises(SystemExit, match="unknown key"):
+            self._gen(tmp_path, "temprature = 0.7")
+
+    @pytest.mark.parametrize("key, value", [("max_output_tokens", "8192"),
+                                            ("streaming", "true"),
+                                            ("thinking_budget", "0"),
+                                            ("temperature", "0.7")])
+    def test_a_generation_key_in_serving_is_refused_with_its_move(self, tmp_path, key, value):
+        body = TWO_RUNG.replace('key_env = "MY_KEY"', f'key_env = "MY_KEY"\n{key} = {value}')
+        with pytest.raises(SystemExit, match=r"belong\(s\) in \[generation\]"):
             config.load(write(tmp_path, body))
 
     def test_options_still_collect_the_remainder(self, tmp_path):
@@ -355,15 +390,15 @@ class TestJudgeDeclaration:
     tuning session can leave behind."""
 
     JUDGE = textwrap.dedent("""
-        [judge]
+        [judge.llm]
         provider = "somehost"
         base_url = "https://somehost.test/v1"
         key_env = "SOMEHOST_API_KEY"
 
-        [[judge.models]]
+        [[judge.llm.models]]
         name = "vendor/model-a"
 
-        [[judge.models]]
+        [[judge.llm.models]]
         name = "vendor/model-b"
         key_envs = ["SOMEHOST_API_KEY", "SOMEHOST_API_KEY2"]
         """)
@@ -483,8 +518,8 @@ class TestJudgeDeclaration:
             self._judge(tmp_path, body)
 
     def test_a_section_with_no_models_is_refused(self, tmp_path):
-        with pytest.raises(SystemExit, match="no \\[\\[judge.models\\]\\]"):
-            self._judge(tmp_path, "\n[judge]\nprovider = \"somehost\"\n")
+        with pytest.raises(SystemExit, match="no \\[\\[judge.llm.models\\]\\]"):
+            self._judge(tmp_path, "\n[judge.llm]\nprovider = \"somehost\"\n")
 
     def test_the_flags_carry_the_same_roster_as_the_environment(self, tmp_path):
         """One renderer, because a re-judge scored by a different roster than the

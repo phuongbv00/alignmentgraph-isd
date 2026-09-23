@@ -194,20 +194,27 @@ class Profile:
 
 @dataclass(frozen=True)
 class Serving:
-    """How the ladder is served, and the limits every rung is served under.
-
-    The limits are declared once for the whole ladder rather than per rung:
-    applying them uniformly to every agent and every size is the fairness
-    argument the comparison rests on, and a per-rung window would turn the
-    ladder into a comparison of budgets instead of a comparison of model scale.
-    """
+    """What the endpoints are: the contract they speak, the key they take, and
+    the window they were launched with. One declaration for every rung."""
 
     api_spec: str
     key_env: str
     #: The window the endpoints were launched with, in tokens.
     context_window: int | None = None
+    options: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class Generation:
+    """How every model call is made, identically for every agent and every rung.
+
+    Declared once rather than per rung or per agent: applying them uniformly is
+    the fairness argument the comparison rests on, and a per-rung budget would
+    turn the ladder into a comparison of budgets instead of model scale.
+    """
+
     #: Ceiling on every agent's per-call output budget, applied centrally by the
-    #: benchmark's model factory as min(the agent's own, this).
+    #: model factory as min(the agent's own, this).
     max_output_tokens: int | None = None
     #: Client-side streaming with stream_usage, for a proxy that closes a long
     #: non-streaming read before the largest rung finishes a turn.
@@ -218,7 +225,10 @@ class Serving:
     #: past `max_output_tokens` the reasoning block never closes and the reply
     #: comes back empty, charged in full.
     thinking_budget: int | None = None
-    options: dict[str, Any] = field(default_factory=dict)
+    #: Sampling temperature of the run config every agent is handed. An agent
+    #: that pins its own in its constructor keeps it: that choice is part of
+    #: the agent as the benchmark ships it.
+    temperature: float | None = None
 
 
 @dataclass(frozen=True)
@@ -236,7 +246,7 @@ class Harness:
 
 @dataclass(frozen=True)
 class JudgeModel:
-    """One LLM judge. Empty fields fall back to the `[judge]` defaults."""
+    """One LLM judge. Empty fields fall back to the `[judge.llm]` defaults."""
 
     name: str
     provider: str = ""
@@ -274,10 +284,11 @@ class Experiment:
     judge: Judge
     profiles: dict[str, Profile]
     source: Path
-    #: The [alignment] table, verbatim. Parsed by alignment.presets rather than
-    #: here, so this module stays free of measurement concepts.
+    #: The [judge.alignment] table, verbatim. Parsed by alignment.presets rather
+    #: than here, so this module stays free of measurement concepts.
     alignment_raw: dict = field(default_factory=dict)
     harness: Harness = field(default_factory=Harness)
+    generation: Generation = field(default_factory=Generation)
 
     def by_slot(self, slot: str) -> Model:
         for m in self.models:
@@ -369,7 +380,7 @@ def _required_display(raw: dict) -> str:
     value = raw.get("display")
     if not value or not isinstance(value, str):
         raise SystemExit(
-            f"[[model]] {raw.get('slot', '?')!r}: display is required -- the column "
+            f"[[serving.slots]] {raw.get('slot', '?')!r}: display is required -- the column "
             f"header and axis tick for this model, e.g. \"9B\"."
         )
     return value
@@ -381,28 +392,47 @@ def _model(raw: dict) -> Model:
         model=raw["model"],
         display=_required_display(raw),
         family=raw.get("family", ""),
-        base_urls=urls(raw.get("base_urls"), f'[[model]] {raw["slot"]!r}'),
+        base_urls=urls(raw.get("base_urls"), f'[[serving.slots]] {raw["slot"]!r}'),
         key_env=raw.get("key_env", ""),
         api_spec=raw.get("api_spec", ""),
     )
 
 
+#: [generation] keys, refused in [serving] with the move to make.
+GENERATION_KEYS = ("max_output_tokens", "streaming", "thinking_budget", "temperature")
+
+
+def _positive_int(rest: dict, key: str, where: str, src: Path) -> int | None:
+    value = rest.pop(key, None)
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise SystemExit(f"{src}: {where}.{key} must be a positive integer, got {value!r}.")
+    return value
+
+
 def _serving(raw: dict, src: Path) -> Serving:
-    """Pop the declared keys; whatever is left is the host's own table."""
+    """Pop the declared keys; whatever is left is the host's own table.
+
+    ``slots`` is the model list and is read by :func:`load`, never kept here.
+    """
     rest = dict(raw)
+    rest.pop("slots", None)
+    misplaced = [k for k in GENERATION_KEYS if k in rest]
+    if misplaced:
+        raise SystemExit(
+            f"{src}: {', '.join(misplaced)} belong(s) in [generation], not [serving]: "
+            f"they govern every agent's calls, not the endpoints.")
     api_spec = rest.pop("api_spec", "openai_compatible")
     key_env = rest.pop("key_env", "LLM_API_KEY")
+    context_window = _positive_int(rest, "context_window", "[serving]", src)
+    return Serving(api_spec=api_spec, key_env=key_env,
+                   context_window=context_window, options=rest)
 
-    def _positive_int(key: str) -> int | None:
-        value = rest.pop(key, None)
-        if value is None:
-            return None
-        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
-            raise SystemExit(f"{src}: [serving].{key} must be a positive integer, got {value!r}.")
-        return value
 
-    context_window = _positive_int("context_window")
-    max_output_tokens = _positive_int("max_output_tokens")
+def _generation(raw: dict, serving: Serving, src: Path) -> Generation:
+    rest = dict(raw)
+    max_output_tokens = _positive_int(rest, "max_output_tokens", "[generation]", src)
     # Not `_positive_int`: 0 is the posture "serve with thinking off", which is
     # a declaration like any other, not an omission.
     thinking_budget = rest.pop("thinking_budget", None)
@@ -410,21 +440,31 @@ def _serving(raw: dict, src: Path) -> Serving:
             not isinstance(thinking_budget, int) or isinstance(thinking_budget, bool)
             or thinking_budget < 0):
         raise SystemExit(
-            f"{src}: [serving].thinking_budget must be a non-negative integer, "
+            f"{src}: [generation].thinking_budget must be a non-negative integer, "
             f"got {thinking_budget!r}.")
     streaming = rest.pop("streaming", None)
     if streaming is not None and not isinstance(streaming, bool):
-        raise SystemExit(f"{src}: [serving].streaming must be true or false, got {streaming!r}.")
-    if (context_window is not None and max_output_tokens is not None
-            and max_output_tokens >= context_window):
+        raise SystemExit(f"{src}: [generation].streaming must be true or false, "
+                         f"got {streaming!r}.")
+    temperature = rest.pop("temperature", None)
+    if temperature is not None and (
+            not isinstance(temperature, (int, float)) or isinstance(temperature, bool)
+            or not 0 <= temperature <= 2):
+        raise SystemExit(f"{src}: [generation].temperature must be a number in [0, 2], "
+                         f"got {temperature!r}.")
+    # Strict: every key here reaches every agent's calls, so a misspelt one
+    # would be a posture that is written down and never applied.
+    if rest:
+        raise SystemExit(f"{src}: unknown key(s) in [generation]: {', '.join(sorted(rest))}.")
+    window = serving.context_window
+    if window is not None and max_output_tokens is not None and max_output_tokens >= window:
         raise SystemExit(
-            f"{src}: [serving].max_output_tokens ({max_output_tokens}) leaves no room for a "
-            f"prompt inside context_window ({context_window})."
+            f"{src}: [generation].max_output_tokens ({max_output_tokens}) leaves no room "
+            f"for a prompt inside [serving].context_window ({window})."
         )
-
-    return Serving(api_spec=api_spec, key_env=key_env,
-                   context_window=context_window, max_output_tokens=max_output_tokens,
-                   streaming=streaming, thinking_budget=thinking_budget, options=rest)
+    return Generation(max_output_tokens=max_output_tokens, streaming=streaming,
+                      thinking_budget=thinking_budget,
+                      temperature=float(temperature) if temperature is not None else None)
 
 
 def _harness(raw: dict, src: Path) -> Harness:
@@ -442,7 +482,7 @@ def _harness(raw: dict, src: Path) -> Harness:
     return Harness(fanout_workers=workers)
 
 
-#: Key-shaped names refused in [judge]. The declaration carries the NAME of an
+#: Key-shaped names refused in [judge.llm]. The declaration carries the NAME of an
 #: environment variable; a value belongs in .env, which is not committed.
 _JUDGE_SECRET_KEYS = ("api_key", "api_keys", "key", "keys")
 
@@ -480,17 +520,17 @@ def _judge(raw: dict, src: Path) -> Judge:
                 f"in .env."
             )
 
-    _refuse_secrets(raw, "[judge]")
+    _refuse_secrets(raw, "[judge.llm]")
     models_raw = raw.get("models", [])
     if not models_raw:
         raise SystemExit(
-            f"{src}: [judge] declares no [[judge.models]]. Name at least one judge, or drop "
-            f"the section and let the environment answer for the roster."
+            f"{src}: [judge.llm] declares no [[judge.llm.models]]. Name at least one judge, "
+            f"or drop the section and let the environment answer for the roster."
         )
 
     models = []
     for idx, entry in enumerate(models_raw, 1):
-        where = f"[[judge.models]] #{idx}"
+        where = f"[[judge.llm.models]] #{idx}"
         _refuse_secrets(entry, where)
         name = _judge_scalar(entry, "name", where, src)
         if not name:
@@ -518,9 +558,9 @@ def _judge(raw: dict, src: Path) -> Judge:
         ))
 
     return Judge(
-        provider=_judge_scalar(raw, "provider", "[judge]", src),
-        base_url=_judge_scalar(raw, "base_url", "[judge]", src),
-        key_env=_judge_scalar(raw, "key_env", "[judge]", src),
+        provider=_judge_scalar(raw, "provider", "[judge.llm]", src),
+        base_url=_judge_scalar(raw, "base_url", "[judge.llm]", src),
+        key_env=_judge_scalar(raw, "key_env", "[judge.llm]", src),
         models=tuple(models),
     )
 
@@ -569,6 +609,26 @@ def _profile(name: str, raw: dict, declared: tuple[Model, ...]) -> Profile:
     )
 
 
+#: Top-level tables this file does not read, and where their contents belong.
+#: One is refused with the move to make: read silently, `[alignment]` would be
+#: no arms and `[[model]]` no ladder, and the error would surface far from here.
+_RETIRED_TABLES = {
+    "model": "[[model]] -> [[serving.slots]]",
+    "alignment": "[alignment...] -> [judge.alignment...]",
+}
+
+
+def _refuse_retired_layout(raw: dict, src: Path) -> None:
+    moved = [_RETIRED_TABLES[k] for k in _RETIRED_TABLES if k in raw]
+    judges = raw.get("judge", {})
+    stray = sorted(k for k in judges if k not in {"llm", "alignment"})
+    if stray:
+        moved.append(f"[judge] {', '.join(stray)} -> [judge.llm] (and [[judge.models]] "
+                     f"-> [[judge.llm.models]])")
+    if moved:
+        raise SystemExit(f"{src}: tables in the wrong place; move:\n  " + "\n  ".join(moved))
+
+
 def load(path: Path | None = None) -> Experiment:
     """Read and validate experiment.toml."""
     src = path or paths.config_file()
@@ -579,16 +639,20 @@ def load(path: Path | None = None) -> Experiment:
         )
     raw = tomllib.loads(src.read_text(encoding="utf-8"))
 
-    declared = tuple(_model(m) for m in raw.get("model", []))
+    _refuse_retired_layout(raw, src)
+    serving_raw = raw.get("serving", {})
+    declared = tuple(_model(m) for m in serving_raw.get("slots", []))
     if not declared:
-        raise SystemExit(f"{src} declares no [[model]] tables.")
+        raise SystemExit(f"{src} declares no [[serving.slots]] tables.")
     slots = [m.slot for m in declared]
     if len(set(slots)) != len(slots):
-        raise SystemExit(f"{src}: duplicate [[model]] slot(s) in {slots}.")
+        raise SystemExit(f"{src}: duplicate [[serving.slots]] slot(s) in {slots}.")
 
-    serving = _serving(raw.get("serving", {}), src)
+    serving = _serving(serving_raw, src)
+    generation = _generation(raw.get("generation", {}), serving, src)
     harness = _harness(raw.get("harness", {}), src)
-    judge = _judge(raw.get("judge", {}), src)
+    judges = raw.get("judge", {})
+    judge = _judge(judges.get("llm", {}), src)
 
     profiles = {
         name: _profile(name, body, declared)
@@ -598,8 +662,8 @@ def load(path: Path | None = None) -> Experiment:
         raise SystemExit(f"{src} declares no [experiment.*] profiles.")
 
     return Experiment(models=declared, serving=serving, judge=judge, profiles=profiles,
-                      source=src, alignment_raw=raw.get("alignment", {}),
-                      harness=harness)
+                      source=src, alignment_raw=judges.get("alignment", {}),
+                      harness=harness, generation=generation)
 
 
 @lru_cache(maxsize=None)

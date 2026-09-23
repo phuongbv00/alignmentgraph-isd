@@ -23,7 +23,7 @@
                                                  loop đến khi chốt                │
                                                                                   ▼
 [8] pool ◄── [7] judge llm + alignment ◄── [6] audit ◄── [5] run: TN1 test_90  4 size × 1 run × 7 agent
-     │        (--with-judge nối 5 và 7)                    TN2 test_30  2 size × 1 run × 4 arm
+     │        (--judge nối 5 và 7)                         TN2 test_30  2 size × 1 run × 4 arm
      ▼
 [9] gen tables + figures ─► [10] teardown
 ```
@@ -36,7 +36,7 @@
 | Agent | 7 hệ (6 baseline + hệ đề xuất) | 4 arm (A0 + 3) |
 | Size | 0.8B / 2B / 4B / 9B | 0.8B / 4B |
 | Dataset | `test_90` | `test_30` |
-| Run/ô | 1 (deterministic) | 1 (deterministic) |
+| Run/ô | 1 | 1 |
 | Tag | `r1` | `a1` |
 | Launcher | `isd-exp run comparison` | `isd-exp run ablation` |
 
@@ -66,7 +66,7 @@ bản upstream. Bản upstream đó không chạy được với các agent đã
 thí nghiệm không gọi tới nó (`tests/test_architecture.py::TestComponentsNotTheEntryPoint`).
 
 **Sinh và chấm là hai bước.** `run` chỉ sinh artifact. `judge llm` và `judge alignment` chấm một
-run đã xong và không bao giờ sinh lại. `run --with-judge` nối hai bước: sinh xong run nào thì
+run đã xong và không bao giờ sinh lại. `run --judge` nối hai bước: sinh xong run nào thì
 chấm run đó.
 
 | Lệnh | Vai trò | Mục |
@@ -77,13 +77,13 @@ chấm run đó.
 | `isd-exp run tune` | hiệu chỉnh cost và budget trên `train_10` | 4 |
 | `isd-exp freeze write` / `verify` | ghi / đối chiếu manifest code freeze | 5 GĐ3 |
 | `isd-exp audit preflight` | trước launch: endpoint, auth, model, flag, disk | 6.1 |
-| `isd-exp run comparison [--with-judge] [--dry-run]` | **so sánh**: hệ đề xuất vs baseline theo thang model | 5 |
-| `isd-exp run ablation [--with-judge] [--dry-run]` | **ablation**: 2×2 phân rã × substrate | 5.4 |
+| `isd-exp run comparison [--judge] [--dry-run]` | **so sánh**: hệ đề xuất vs baseline theo thang model | 5 |
+| `isd-exp run ablation [--judge] [--dry-run]` | **ablation**: 2×2 phân rã × substrate | 5.4 |
 | `isd-exp audit inflight` | khi đang chạy: red flag trong log + độ tươi của progress | 6.2 |
 | `isd-exp audit postrun` | sau run: completeness / integrity / metrics | 6.3 |
 | `isd-exp audit repair` | chấm lại LLM judge cho ô lỗi transient, **không** sinh lại output | 6.4 |
 | `isd-exp judge llm <run-dir>` | chấm LLM judge (rubric ADDIE + trajectory) bằng evaluator của benchmark | 7.1 |
-| `isd-exp judge alignment <run-dir>` | chấm panel alignment (không LLM), `--all-arms` cho cả sao sensitivity | 7.2 |
+| `isd-exp judge alignment <run-dir>` | chấm panel alignment (không LLM) trên mọi arm khai trong `experiment.toml`; `--primary-only` chỉ chấm arm chính | 7.2 |
 | `isd-exp trajectory rescore` | lớp diagnostic cap cao, chấm lại trajectory đã lưu *(chưa hiện thực)* | 5 GĐ1 |
 | `isd-exp pool comparison` | pool run so sánh → `pooled_comparison.json` + thống kê | 8 |
 | `isd-exp pool ablation` | pool 4 arm → `pooled_ablation.json` + factorial + drift | 5.4 |
@@ -207,10 +207,17 @@ AGENT_MODEL_STREAMING=1
 AGENT_MODEL_THINKING_BUDGET=512
 ```
 
-Cả ba khai trong `experiment.toml` (`[serving].max_output_tokens` / `.streaming` / `.thinking_budget`), launcher truyền
-xuống benchmark dưới dạng command prefix. Pre-flight (mục 6.1) **fail** nếu `.env` cũng đặt chúng: hai nguồn cho một
-giới hạn phải đồng nhất trên mọi agent và mọi size chính là cách một so sánh mất luận điểm fairness trong im lặng.
-`shared/llm/factory.py` là nơi duy nhất đọc cả ba, nên "đồng nhất" là tính chất của code chứ không phải của kỷ luật.
+Cả ba khai trong `[generation]` của `experiment.toml` (`max_output_tokens`, `streaming`, `thinking_budget`), cùng với
+`temperature`. Runner ghim chúng vào môi trường của process, đè lên `.env`. Pre-flight (mục 6.1) **fail** nếu `.env`
+cũng đặt chúng: hai nguồn cho một giới hạn phải đồng nhất trên mọi agent và mọi size chính là cách một so sánh mất luận
+điểm fairness trong im lặng. `shared/llm/factory.py` là nơi duy nhất đọc cả ba, nên "đồng nhất" là tính chất của code
+chứ không phải của kỷ luật.
+
+`temperature` là temperature của config giao cho mọi agent. Agent nào tự ghim temperature trong constructor thì giữ
+giá trị của nó, vì đó là một phần của agent như benchmark phát hành: `baseline`, `react-isd`, `dick-carey-agent`,
+`rpisd-agent` ghim 0.7, `eduplanner` ghim 0.7 cho analyst/evaluator và 0.3 cho optimizer. `addie-agent` và
+`alignmentgraph-isd` dùng giá trị khai báo. Vì mọi agent sinh ở temperature > 0, một run **không** tất định: "1 run
+mỗi ô" là thiết kế, không phải tính chất của lần sinh.
 
 Ladder serve **để nguyên thinking**. `--reasoning-parser qwen3` (mục 3.2) tách phần suy nghĩ sang `reasoning_content`
 nên `content` vẫn sạch cho đường tool-call/JSON; harness ghi lại kênh đó vào transcript nhưng không bao giờ gửi ngược cho
@@ -272,10 +279,10 @@ Pod tạo thủ công trên console từ template public dùng chung cho cả 4 
 
 Storage: container 20GB + mỗi pod một network volume mount `/workspace` cho HF cache — weights sống sót qua restart.
 
-5. Dán URL vào `[[model]]` tương ứng trong `experiment.toml`:
+5. Dán URL vào `[[serving.slots]]` tương ứng trong `experiment.toml`:
 
 ```toml
-[[model]]
+[[serving.slots]]
 slot = "qwen9b"
 family = "Qwen3.5"
 model = "Qwen/Qwen3.5-9B"
@@ -292,7 +299,7 @@ băm đúng file đó nên một run đã xong luôn trả lời được nó ch
 trên GPU của mình, vài rung trên hosted API — khai y hệt, thêm `key_env` cho rung đó:
 
 ```toml
-[[model]]
+[[serving.slots]]
 slot = "qwen9b"
 family = "Qwen3.5"
 model = "qwen/qwen3.5-9b"                  # id mà HOST ĐÓ serve
@@ -328,7 +335,7 @@ Chỉnh prompt/config của `alignmentgraph-isd` trên tập tách biệt với 
 
 ```bash
 ./isd-exp run tune --slots qwen2b --agents baseline,react-isd,alignmentgraph-isd \
-    --tags tune1 --with-judge
+    --tags tune1 --judge
 ```
 
 - `--slots` nhiều slot = chạy **song song** (mỗi slot một tmux session). `--tags` nhiều tag = chạy **tuần tự**
@@ -347,7 +354,7 @@ Không có profile riêng cho việc này. Thu hẹp chính `tune` lại:
 ./isd-exp run tune --foreground --slots qwen08b --tags t1 --agents alignmentgraph-isd,react-isd
 ```
 
-Một rung nhỏ nhất trên `train_10` = 20 generation. **Không tốn LLM judge call nào**: không có `--with-judge` thì `run`
+Một rung nhỏ nhất trên `train_10` = 20 generation. **Không tốn LLM judge call nào**: không có `--judge` thì `run`
 chỉ sinh artifact. Muốn chấm thì chạy `judge llm` / `judge alignment` trên run dir đó sau (mục 7).
 
 Đọc gì: `gave_up`, coverage P10/P11, violation ledger, cost, và panel alignment (chạy local). Nếu bất thường thì sửa
@@ -359,7 +366,7 @@ trước khi mở rộng ra đủ 4 rung.
 
 TN1: 4 size × 1 run × 7 agent × 90 scenario ≈ **2 520 agent generation**. TN2: 2 size × 1 run × 4 arm
 × 30 scenario = **240 generation**. Mỗi scenario sau đó được LLM judge chấm một lần cho mọi agent của nó
-(`judge llm`, mục 7.1), bằng roster khai trong `[judge]`. Một run đơn ở rate `turbo` mất vài giờ; TN1 chạy 4 size
+(`judge llm`, mục 7.1), bằng roster khai trong `[judge.llm]`. Một run đơn ở rate `turbo` mất vài giờ; TN1 chạy 4 size
 song song.
 
 7 agent TN1 = 6 baseline + `alignmentgraph-isd`, lấy từ roster của profile trong `experiment.toml`.
@@ -368,13 +375,13 @@ Ba arm ablation KHÔNG chạy ở đây nữa; chúng là TN2 (mục 5.4).
 ### 5.2 Launch
 
 ```bash
-./isd-exp run comparison --with-judge    # gõ "yes" ở prompt
+./isd-exp run comparison --judge    # gõ "yes" ở prompt
 ```
 
 - Mỗi tmux session chạy `isd-exp run comparison --foreground --slots <slot> --tags <tag>` cho từng tag. Lệnh đó
   tự đọc `experiment.toml` (model, endpoint, serving limit, roster judge), nên không giá trị nào của declaration đi
   qua chuỗi lệnh shell.
-- `--with-judge`: sinh xong run nào thì chạy `judge llm` rồi `judge alignment` (arm theo `[alignment].judge_arms`)
+- `--judge`: sinh xong run nào thì chạy `judge llm` rồi `judge alignment` (mọi arm khai trong `experiment.toml`)
   trên run đó. Judge lỗi không làm mất phần sinh: run dir vẫn đủ, và log in ra lệnh để chấm nốt. Bỏ cờ này thì
   chấm sau bằng tay (mục 7).
 
@@ -443,11 +450,11 @@ Cap thực tế được ghi vào `metadata.run_config.llm_max_concurrency` nên
 
 ```bash
 # sau khi TN1 xong và code đã freeze
-./isd-exp run ablation --with-judge
+./isd-exp run ablation --judge
 ```
 
 **Có benchmark run riêng (đổi 2026-09-10).** TN2 = 4 arm × 2 size (0.8B, 4B) × `test_30`, 1 run
-deterministic mỗi ô, tag `a1`. Bốn arm nằm trong **cùng một run** mỗi size nên chia chung LLM judge
+mỗi ô, tag `a1`. Bốn arm nằm trong **cùng một run** mỗi size nên chia chung LLM judge
 session per scenario → delta arm-vs-A0 không dính LLM judge drift.
 
 **A0 chạy lại trong TN2, không lấy từ TN1.** LLM judge session, scenario set và dải size đều khác, nên
@@ -632,7 +639,7 @@ Output và trajectory chỉ được đọc, không bao giờ sinh lại.
 
 Hai bài chấm, hai lệnh cùng một khuôn (`src/isd_experiments/judge/`). Cả hai đọc run dir đã sinh xong và không bao
 giờ sinh lại. Cả hai nhận glob, `--agents` để lọc roster, `--overwrite` để chấm lại cái đã chấm, và `--dry-run` để in
-phạm vi mà không gọi gì. Chạy lại sau khi bị ngắt thì tiếp đúng chỗ dừng. `run --with-judge` gọi cả hai sau mỗi run;
+phạm vi mà không gọi gì. Chạy lại sau khi bị ngắt thì tiếp đúng chỗ dừng. `run --judge` gọi cả hai sau mỗi run;
 chạy tay thì theo thứ tự dưới đây.
 
 ### 7.1 LLM judge
@@ -644,7 +651,7 @@ chạy tay thì theo thứ tự dưới đây.
 
 Mỗi scenario được chấm bằng **một** lần gọi evaluator của benchmark, `isd-evaluator compare --no-run --use-llm
 --multi-judge`, trên mọi agent có output trong scenario đó. Đây chính là lời gọi benchmark làm sau mỗi scenario, cùng
-rubric, cùng đường multi-judge, với roster khai trong `[judge]`. Chỉ thời điểm chạy là khác: sau khi sinh xong, không
+rubric, cùng đường multi-judge, với roster khai trong `[judge.llm]`. Chỉ thời điểm chạy là khác: sau khi sinh xong, không
 đan xen với lúc sinh. Kết quả ghi đúng chỗ cũ: `comparison_report.json` + `.md` trong từng scenario dir, và
 `evaluation` của scenario trong `benchmark_summary.json`.
 
@@ -659,8 +666,12 @@ rubric, cùng đường multi-judge, với roster khai trong `[judge]`. Chỉ th
 ### 7.2 Alignment (RQ2)
 
 Chỉ đọc `*_output.json` và ghi `alignment_scores.json` vào từng scenario dir. Thiếu bước này thì mục 8 vẫn chạy nhưng
-**bỏ trống toàn bộ RQ2** (graceful skip, dễ quên). `run --with-judge` chạy nó tự động với arm khai ở
-`[alignment].judge_arms` (`primary` hoặc `all`).
+**bỏ trống toàn bộ RQ2** (graceful skip, dễ quên). `run --judge` chạy nó tự động.
+
+**Mặc định chấm mọi arm khai trong `experiment.toml`**: cấu hình chính cộng mỗi arm lệch một trục
+(`[judge.alignment.encoders.*]`, `[judge.alignment.bloom.*]`). Muốn thôi chấm một arm thì xoá arm đó khỏi toml. Cờ trên dòng lệnh
+chỉ thu hẹp: `--primary-only` chấm riêng cấu hình chính, `--encoder-presets` / `--bloom-presets` chấm các arm lệch
+theo một trục. Arm không chạy được (pod tắt, thiếu checkpoint) bị **SKIP kèm lý do**, trừ khi có `--require-all`.
 
 **Chỉ encoder primary (8B) cần pod.** Mọi arm còn lại chạy trên máy local (A.3). Pod dùng cùng convention template
 ladder: **<https://console.runpod.io/deploy?template=3i3er665bh>** — GPU ≥24GB (bf16 weights ~16GB), không sửa start
@@ -671,24 +682,35 @@ Chuẩn bị trước một lần: checkpoint Bloom (arm chính) — xem A.3.
 Khai URL của pod vào arm primary trong `experiment.toml`, cùng chỗ với ladder:
 
 ```toml
-[alignment.encoders.nemotron]
-base_urls = ["https://<pod_id>-8000.proxy.runpod.net/v1"]
-# revision = "<HF commit>"   # ghim weights; cũng vào khoá cache embedding
+[judge.alignment.encoders]
+nemotron = { kind = "api", model = "nvidia/llama-embed-nemotron-8b", suffix = "", macro = "Nemotron", short = "Nemotron", base_urls = ["https://<pod_id>-8000.proxy.runpod.net/v1"] }
 ```
+
+Mỗi arm là **một dòng** inline table: sửa `base_urls` ngay trên dòng đó, không mở thêm tiêu đề
+`[judge.alignment.encoders.nemotron]` (TOML báo lỗi bảng khai hai lần). Muốn ghim weights thì thêm
+`revision = "<HF commit>"` vào cùng dòng; khoá này cũng vào khoá cache embedding.
 
 ```bash
-RUNS='results/test_90_benchmark_*_r* results/test_30_benchmark_*_a*'
+RUNS='results/test_90_benchmark_*_c1_* results/test_30_benchmark_*_a1_*'
 
-# (1) arm primary — cần pod đang chạy
+# Một lệnh, pod bật suốt: mọi arm khai trong toml
 ./isd-exp judge alignment $RUNS
-
-# (2) TẮT POD, rồi chấm 3 arm sensitivity còn lại hoàn toàn local (~70 phút)
-./isd-exp judge alignment $RUNS \
-    --encoder-presets bgem3,granite,tfidf --bloom-presets lexicon
 ```
 
-Tách hai bước như trên là cách rẻ nhất: pod chỉ sống đúng khoảng thời gian chấm arm primary. Chạy một phát
-`--all-arms` cũng đúng, chỉ là pod nằm không trong lúc ba arm local chạy.
+Cách rẻ nhất là tách ba bước, để pod chỉ sống đúng lúc chấm arm chính:
+
+```bash
+# (1) arm chính — cần pod đang chạy
+./isd-exp judge alignment $RUNS --primary-only
+
+# (2) TẮT POD, rồi chấm 3 arm encoder local (~70 phút)
+./isd-exp judge alignment $RUNS --encoder-presets bgem3,granite,tfidf
+
+# (3) arm Bloom lexicon: vector của encoder chính lấy từ cache, không cần pod
+./isd-exp judge alignment $RUNS --bloom-presets lexicon --embed-cache-only
+```
+
+Bước (2) và (3) phải tách, vì sweep là hình sao: một lần gọi chỉ lệch một trục.
 
 **Sweep là hình sao, không phải lưới.** Cấu hình chính = (`nemotron` + `bertbloom`); mỗi arm lệch **đúng một trục**.
 Tổng 5 arm (1 chính + 3 encoder + 1 Bloom), không phải 4×2 = 8 — lưới không trả lời thêm câu hỏi nào mà nhân đôi chi

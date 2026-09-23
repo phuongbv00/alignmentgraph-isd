@@ -1,126 +1,23 @@
-# The experiment, declared.
-#
-# This file is the ONLY thing to edit to run a different model ladder, serve
-# from a different host, or change what the two experiments compare. Nothing in
-# src/ names a vendor or a model family; tests/test_no_vendor_names.py enforces
-# that.
+# The experiment, declared: the only file to edit to change the ladder, the
+# hosts, the experiments or the judges. src/ names no vendor or model family.
 
+# --- Serving: what the endpoints are ------------------------------------------
 [serving]
-# The API contract the endpoints speak. shared/llm/factory.py dispatches on it.
-api_spec = "openai_compatible"
-# Name of the env var holding the key every rung authenticates with.
-key_env = "LLM_API_KEY"
+api_spec = "openai_compatible"  # API contract the endpoints speak
+key_env = "LLM_API_KEY"         # default key variable for a slot without its own
+context_window = 16384          # window the endpoints were launched with
 
-# --- serving limits: uniform across every agent and every rung ---------------
-# Applying them uniformly is the fairness argument the comparison rests on, so
-# they sit here and never on a rung: a per-rung window would make the ladder a
-# comparison of budgets rather than of model scale. The launcher hands them to
-# the benchmark as a command prefix, so a stale .env line cannot take them back,
-# and `audit preflight` fails if .env sets any of them at all.
-#
-# The window the endpoints were launched with, in tokens.
-context_window = 16384
-# Ceiling on every agent's per-call output budget. The benchmark's model factory
-# applies it centrally as min(the agent's own budget, this), and the proposed
-# system reserves exactly this much for the answer when it sizes its transcript.
-max_output_tokens = 8192
-# Client-side streaming with stream_usage. Required behind a proxy that closes a
-# long non-streaming read before the largest rung finishes a turn.
-streaming = true
-# How many tokens a reply may spend REASONING before it must start answering.
-# 0 serves with thinking off; a positive number caps it.
-#
-# A cap rather than an off switch: reasoning shares one completion budget with
-# the answer, so a reply that reasons past max_output_tokens never closes its
-# thinking block, the reasoning parser classifies the whole output as thinking,
-# and the call is charged in full and returns NO CONTENT -- which the harness
-# then records as the model failing to act. That is infrastructure noise
-# flowing into a scored quantity, so this is a measurement-validity setting and
-# not a speed setting.
-#
-# The number is fixed on the tune slice BEFORE `isd-exp freeze write` and is
-# not revised after results are seen, like the trajectory cap policy.
-#
-# A POSITIVE NUMBER IS ONLY MEANINGFUL IF EVERY RUNG IS SERVED RATHER THAN
-# ROUTED. A self-hosted endpoint enforces the ceiling; an aggregating router
-# picks an upstream provider per request, and measured, one honoured the
-# ceiling while another ignored it -- so a ladder mixing the two would enforce
-# it on some rungs and not others, which is bias along the independent variable
-# itself. What a router DOES enforce reliably is 0. So: self-host every rung
-# and declare a number, or declare 0. Nothing here can check this for you --
-# whether an endpoint is served or routed is not a property this file records,
-# and src/ may not name a vendor -- so it is the operator's to confirm before
-# freezing. Two of the [[model]] tables below are routed today.
-thinking_budget = 512
-
-[harness]
-# The proposed system's own run posture, uniform across every rung and every
-# arm. Published to its adapter as HARNESS_FANOUT_WORKERS; `audit preflight`
-# fails if .env sets that too.
-#
-# How many of one design family's Developers run at the same time (1 = one
-# after another). WALL TIME ONLY: commits stay in plan order, so the graph, the
-# calls and the artifacts are identical whatever it is set to
-# (alignmentgraph-isd tests/test_fanout.py). A family has about one work set
-# per module, so a number above the module count buys nothing, and the
-# adapter's call gate -- 2/3/4/6 for the conservative/moderate/aggressive/turbo
-# `-r` preset -- caps it further.
-#
-# It moves `execution_time_seconds`, so it is fixed before `isd-exp freeze
-# write` and not changed after. Raising it multiplies the calls a slot has in
-# flight at once (the launch plan prints the bound per slot); on a shared or
-# routed endpoint that buys HTTP 429s instead of time.
-fanout_workers = 6
-
-# --- The models -------------------------------------------------------------
-# A FLAT list. One table per model, in no particular order: nothing here is a
-# position in a sequence, and nothing assumes one family or one host.
-#
-# What makes a LADDER is which slots an experiment picks and in what order --
-# `[experiment.*].slots` below. So a second family, the same size twice on
-# different hosts, or a model shared by three experiments all declare the same
-# way here, and a new ladder is a new `slots` list rather than a new section.
-#   slot      IDENTITY, unique, and the env-quad prefix
-#             -> <SLOT>_AGENT_MODEL_{BASE_URLS,NAME,API_KEY_ENVS}
-#   family    display prefix for THIS model on axes, headers and captions.
-#             Per model: one global prefix was the one-family assumption.
-#   model     what the server serves; passed to --agent-model-name, and what
-#             `audit preflight` expects the endpoint's /v1/models to report
-#   display   REQUIRED: the column header and axis tick for this model, e.g.
-#             "0.8B". Stated, never derived: it used to come from a parameter
-#             count, and a label derived from a number cannot tell two models
-#             of the same size apart. The LaTeX macro word comes from `slot`
-#             (qwen08b -> QwenZeroEightB), which is unique by construction.
-#   base_urls where the model is served. One URL, or a list of them when several
-#             servers hold the SAME model -- the agents round-robin across the
-#             list. Set them by hand after the servers are up; this file is the
-#             only place an endpoint is written, and `audit preflight`
-#             checks exactly these URLs before a run.
-#   key_env   the env var holding THIS model's bearer token. Omit it and the
-#             model falls back to [serving].key_env -- but on a declaration
-#             that spans hosts, naming it here is what keeps one provider's
-#             credential from being handed to another provider's endpoint.
-#   api_spec  optional: the API contract THIS endpoint speaks. Omit and it
-#             uses [serving].api_spec.
-#
-# Nothing has to live on one host. A model here is a URL, a model id and a key
-# name, so a ladder mixing your own GPUs with a hosted API needs no new
-# concept -- only a per-model key_env naming that provider's credential:
-#
-#   [[model]]
-#   slot = "qwen9b"
-#   model = "qwen/qwen3.5-9b"              # the id THAT host serves it under
-#   display = "9B"
-#   base_urls = ["https://openrouter.ai/api/v1"]
-#   key_env = "OPENROUTER_API_KEY"
-#
-# Worth saying out loud, because the declaration will not say it for you: a
-# hosted model is not the same instrument as a self-hosted one. The provider
-# chooses the quantisation, the backend and the sampling defaults, and may
-# route one id to several of them -- so a `slots` list mixing the two compares
-# model scale AND serving stack at once. `freeze write` records what you
-# declared, not what the provider did with it.
-[[model]]
+# One table per model; an experiment's `slots` picks and orders them.
+#   slot       unique id (env prefix <SLOT>_AGENT_MODEL_*, LaTeX macro word)
+#   model      id the endpoint serves; `audit preflight` checks /v1/models
+#   display    column header / axis tick, e.g. "0.8B" (required)
+#   family     optional display prefix, e.g. "Qwen3.5"
+#   base_urls  endpoint(s) of the SAME model; several are round-robined
+#   key_env    this model's key variable (default: [serving].key_env)
+#   api_spec   optional override of [serving].api_spec
+# A hosted slot is a different instrument from a self-hosted one (provider
+# picks quantisation and backend): mixing them compares serving stacks too.
+[[serving.slots]]
 slot = "qwen08b"
 model = "Qwen/Qwen3.5-0.8B"
 family = "Qwen3.5"
@@ -128,7 +25,7 @@ display = "0.8B"
 base_urls = ["https://<POD_ID>-8000.proxy.runpod.net/v1"]
 key_env = "VLLM_API_KEY"
 
-[[model]]
+[[serving.slots]]
 slot = "qwen2b"
 model = "Qwen/Qwen3.5-2B:featherless-ai"
 family = "Qwen3.5"
@@ -136,7 +33,7 @@ display = "2B"
 base_urls = ["https://router.huggingface.co/v1"]
 key_env = "HF_TOKEN"
 
-[[model]]
+[[serving.slots]]
 slot = "qwen4b"
 model = "Qwen/Qwen3.5-4B"
 family = "Qwen3.5"
@@ -144,7 +41,7 @@ display = "4B"
 base_urls = ["https://<POD_ID>-8000.proxy.runpod.net/v1"]
 key_env = "VLLM_API_KEY"
 
-[[model]]
+[[serving.slots]]
 slot = "qwen9b"
 model = "qwen/qwen3.5-9b:nitro"
 family = "Qwen3.5"
@@ -152,36 +49,78 @@ display = "9B"
 base_urls = ["https://openrouter.ai/api/v1"]
 key_env = "OPENROUTER_API_KEY"
 
-# --- The LLM judge ----------------------------------------------------------
-# The roster decides what every reported LLM judge score means, so it is
-# declared here, where `isd-exp freeze write` fingerprints it, rather than left
-# to a .env a tuning session can leave behind. The launcher passes it to the
-# benchmark as --judge-model-* flags, and `isd-exp audit repair` names the same
-# roster, so a re-judged row is scored by the judges that scored the run.
-#
-# Only the NAME of a key variable appears here. A key value is not expressible
-# in this file -- the parser refuses one.
-[judge]
+# --- Generation: every call of every agent -----------------------------------
+# Applied identically to every agent and every rung (the fairness argument);
+# `audit preflight` fails if .env sets any of them. Fixed before `freeze write`.
+[generation]
+max_output_tokens = 8192        # per-call output ceiling, min(agent's own, this)
+streaming = true                # needed behind proxies that cut long reads
+temperature = 0.7               # for agents that do not pin their own
+
+# Reasoning tokens allowed before the answer (0 = thinking off). A reply that
+# reasons past max_output_tokens returns no content and scores as a failure.
+# A router enforces only 0: a positive cap needs every rung self-hosted.
+thinking_budget = 512
+
+# --- The proposed system's run posture ---------------------------------------
+[harness]
+# Developers of one family run at once (1 = sequential). Wall time only: the
+# design is identical whatever the value. Capped by the rate preset's call gate
+# (2/3/4/6); fixed before `freeze write`.
+fanout_workers = 6
+
+# --- Judges ------------------------------------------------------------------
+# Score a finished run: `isd-exp judge llm|alignment`, or `run --judge`.
+
+# The benchmark's LLM judge. Only key variable NAMES belong here; a key value
+# is refused.
+[judge.llm]
 provider = "openrouter"
 base_url = "https://openrouter.ai/api/v1"
 key_env = "OPENROUTER_API_KEY"
+models = [  # in the order the evaluator reports them
+    { name = "openai/gpt-4o-mini" },
+    { name = "google/gemini-2.5-flash-lite" },
+]
 
-# One table per judge, in the order the evaluator reports them. The roadmap
-# scores each cell with ONE judge; a second is the corroboration subset, and
-# adding it back changes what every reported LLM judge score is a score FROM,
-# so it is a decision rather than a knob.
-[[judge.models]]
-name = "openai/gpt-4o-mini"
+# The alignment panel. Every arm below is scored by default: the primary pair
+# plus one arm per single-axis deviation (a star, not a grid). The arm with
+# suffix "" writes alignment_scores.json, the file pooling reads; exactly one
+# encoder and one classifier may have it.
+#   kind       api (served, needs base_urls) | local (sentence-transformers)
+#              | tfidf | transformer (Bloom checkpoint) | lexicon
+#   macro      LaTeX word form (no digits);  short  label in tables/figures
+#   revision   optional HF commit; part of the embedding-cache key
+[judge.alignment]
+primary_encoder = "nemotron"
+primary_bloom = "bertbloom"
 
-[[judge.models]]
-name = "google/gemini-2.5-flash-lite"
+[judge.alignment.encoders]
+nemotron = { kind = "api",   model = "nvidia/llama-embed-nemotron-8b", suffix = "", macro = "Nemotron", short = "Nemotron", base_urls = ["https://<POD_ID>-8000.proxy.runpod.net/v1"] }
+bgem3    = { kind = "local", model = "BAAI/bge-m3", suffix = "bgem3", macro = "BgeMThree", short = "bge-m3" }
+granite  = { kind = "local", model = "ibm-granite/granite-embedding-311m-multilingual-r2", suffix = "granite", macro = "Granite", short = "granite" }
+tfidf    = { kind = "tfidf", model = "tfidf-char-ngram", suffix = "tfidf", macro = "Tfidf", short = "TF-IDF" }
 
-# --- The two official experiments -------------------------------------------
+# A missing checkpoint skips its arm; it never falls back to another.
+[judge.alignment.bloom]
+bertbloom = { kind = "transformer", checkpoint = "bloom-bert-edm2022", suffix = "", macro = "BertBloom", short = "BERT" }
+lexicon   = { kind = "lexicon", suffix = "lexicon", macro = "Lexicon", short = "lexicon" }
+
+# --- Experiments -------------------------------------------------------------
+# `slots` = "all" or a list of slot ids; `tags` = one run per tag, per slot.
+
+[experiment.tune]
+# Calibration only; never enters the paper (own tag namespace, no manifest).
+title = "TUNE - cost and budget calibration"
+dataset = "train_10"
+slots = ["qwen9b"]
+tags = ["t1"]
+rate_limit = "turbo"
+session_prefix = "tune"
+confirm = false
+agents = ["alignmentgraph-isd", "react-isd"]
 
 [experiment.comparison]
-# The proposed system against the benchmark's own agents, across model scale.
-# `slots` is what makes this experiment's ladder: "all" takes every declared
-# model in declaration order, or name them to carve a specific one.
 title = "COMPARISON - proposed system vs baselines across model scale"
 dataset = "test_90"
 slots = "all"
@@ -200,10 +139,8 @@ agents = [
 ]
 
 [experiment.ablation]
-# 2x2: decomposition (agent_mode) x substrate (context_mode). The reference arm
-# is re-run here rather than borrowed from the comparison experiment -- judge
-# session, scenario set and size range all differ, so a delta is only clean
-# when both sides come from the same run.
+# 2x2 decomposition x substrate. The reference arm runs here too, so every
+# delta comes from one run.
 title = "ABLATION - decomposition x substrate"
 dataset = "test_30"
 slots = ["qwen08b", "qwen4b"]          # both ends of the deployment envelope
@@ -211,116 +148,9 @@ tags = ["a1"]
 rate_limit = "turbo"
 session_prefix = "ablation"
 reference = "alignmentgraph-isd"
-
-# Reference arm first: every delta is taken against it, and leading with it
-# makes that visible in the banner and the manifest.
-[[experiment.ablation.arms]]
-id = "alignmentgraph-isd"
-agent_mode = "multi"
-context_mode = "graph"
-[[experiment.ablation.arms]]
-id = "alignmentgraph-isd-multi-prose"
-agent_mode = "multi"
-context_mode = "prose"
-[[experiment.ablation.arms]]
-id = "alignmentgraph-isd-single-graph"
-agent_mode = "single"
-context_mode = "graph"
-[[experiment.ablation.arms]]
-id = "alignmentgraph-isd-single-prose"
-agent_mode = "single"
-context_mode = "prose"
-
-[experiment.tune]
-# Not an official experiment: cost estimation and budget calibration only.
-# Its results never enter the paper, which is why it has its own tag namespace.
-title = "TUNE - cost and budget calibration"
-dataset = "train_10"
-slots = ["qwen9b"]
-tags = ["t1"]
-rate_limit = "turbo"
-session_prefix = "tune"
-confirm = false
-agents = ["alignmentgraph-isd", "react-isd"]
-
-# --- The alignment measurement ----------------------------------------------
-# Two instrument families, each with its own sensitivity axis. The sweep is a
-# STAR, not a grid: every arm deviates from the primary on exactly one axis.
-#
-#   kind = "api"    served over an OpenAI-compatible embeddings endpoint
-#          "local"  sentence-transformers in-process (downloads once)
-#          "tfidf"  pure Python, no download, bit-wise deterministic
-# The arm whose suffix is "" owns alignment_scores.json -- the artifact pooling
-# reads -- so exactly one encoder and one classifier may have an empty suffix.
-
-[alignment]
-primary_encoder = "nemotron"
-primary_bloom = "bertbloom"
-# The arms `isd-exp run <experiment> --with-judge` scores once a run is
-# generated: "primary" (the configuration above, the only artifact pooling
-# reads, and the only arm that needs the embedding pod) or "all" (the whole
-# star). The local sweep arms are cheapest scored later, over every run at once,
-# after the pod is down -- one axis per invocation, since the sweep is a star:
-#   isd-exp judge alignment <runs> --encoder-presets bgem3,granite,tfidf
-#   isd-exp judge alignment <runs> --bloom-presets lexicon --embed-cache-only
-judge_arms = "primary"
-
-[alignment.encoders.nemotron]
-# LaTeX macro names cannot contain digits, so each arm needs a word form.
-macro = "Nemotron"
-short = "Nemotron"
-kind = "api"
-model = "nvidia/llama-embed-nemotron-8b"
-suffix = ""
-# The one arm that needs a server (`vllm serve <model> --task embed`); the
-# others run in-process on this machine. Same shape as a rung's: several URLs
-# load-balance ONE embedding space, so every one of them must serve this model.
-# `key_env` is available here too, for an endpoint on a different host.
-base_urls = []
-# HF commit pinning the weights. It also enters the embedding-cache key, so a
-# bump re-embeds rather than serving the old vectors under the new label.
-# revision = "<commit>"
-
-[alignment.encoders.bgem3]
-# LaTeX macro names cannot contain digits, so each arm needs a word form.
-macro = "BgeMThree"
-short = "bge-m3"
-kind = "local"
-model = "BAAI/bge-m3"
-suffix = "bgem3"
-
-[alignment.encoders.granite]
-# LaTeX macro names cannot contain digits, so each arm needs a word form.
-macro = "Granite"
-short = "granite"
-kind = "local"
-model = "ibm-granite/granite-embedding-311m-multilingual-r2"
-suffix = "granite"
-
-[alignment.encoders.tfidf]
-# LaTeX macro names cannot contain digits, so each arm needs a word form.
-macro = "Tfidf"
-short = "TF-IDF"
-kind = "tfidf"
-model = "tfidf-char-ngram"
-suffix = "tfidf"
-
-# Family B. The primary is a 6-way BERT head fine-tuned on the EDM2022CLO
-# corpus; the lexicon arm is derived from the taxonomy rather than from
-# labelled data, which is what makes it a real independence check rather than
-# a mirror. A missing checkpoint SKIPS its arm -- it never falls back silently,
-# because a silent fallback changes the primary instrument without saying so.
-[alignment.bloom.bertbloom]
-# LaTeX macro names cannot contain digits, so each arm needs a word form.
-macro = "BertBloom"
-short = "BERT"
-kind = "transformer"
-checkpoint = "bloom-bert-edm2022"
-suffix = ""
-
-[alignment.bloom.lexicon]
-# LaTeX macro names cannot contain digits, so each arm needs a word form.
-macro = "Lexicon"
-short = "lexicon"
-kind = "lexicon"
-suffix = "lexicon"
+arms = [  # reference first
+    { id = "alignmentgraph-isd",              agent_mode = "multi",  context_mode = "graph" },
+    { id = "alignmentgraph-isd-multi-prose",  agent_mode = "multi",  context_mode = "prose" },
+    { id = "alignmentgraph-isd-single-graph", agent_mode = "single", context_mode = "graph" },
+    { id = "alignmentgraph-isd-single-prose", agent_mode = "single", context_mode = "prose" },
+]

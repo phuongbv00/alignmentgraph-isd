@@ -40,7 +40,7 @@ INFORMAL = {"tune"}
 
 def profile_env(profile: Profile, *, slots: str | None = None,
                 tags: str | None = None, agents: str | None = None,
-                with_judge: bool = False) -> dict[str, str]:
+                judge: bool = False) -> dict[str, str]:
     """The contract launch.sh reads. Overrides are per-invocation, not sticky."""
     slot_list = slots.replace(",", " ") if slots else " ".join(profile.slots)
     tag_list = tags.replace(",", " ") if tags else " ".join(profile.tags)
@@ -65,7 +65,7 @@ def profile_env(profile: Profile, *, slots: str | None = None,
         "POOL_HINT": pool_cmd,
         "CONFIRM": "0" if (informal or not profile.confirm) else "1",
         "MANIFEST": "0" if informal else "1",
-        "WITH_JUDGE": "1" if with_judge else "0",
+        "JUDGE_AFTER_RUN": "1" if judge else "0",
     }
 
     # Per-slot values, from the declared ladder rather than from blocks naming
@@ -78,10 +78,13 @@ def profile_env(profile: Profile, *, slots: str | None = None,
     # into its command rather than exported, because a tmux server that is
     # already running hands a new session its own environment, not ours.
     env["_ISD_EXPERIMENT_CONFIG"] = str(cfg.source)
-    if with_judge:
+    if judge:
         # Read only when asked: a declaration that never judges alignment need
         # not declare the instruments for it.
-        env["_ALIGNMENT_JUDGE_ARMS"] = declared_arms().judge_arms
+        # For the plan only: every declared arm as "<encoder>,<bloom>", arms
+        # separated by "; ", so a reader sees which instruments score the run.
+        env["_ALIGNMENT_JUDGE_ARM_LIST"] = "; ".join(
+            f"{enc},{bloom}" for enc, bloom in declared_arms().star())
     for model in profile.models:
         prefix = model.env_prefix
         # UNDERSCORED, like the serving limits below and for the same reason:
@@ -100,23 +103,24 @@ def profile_env(profile: Profile, *, slots: str | None = None,
             # endpoint later is then a pure config change.
             env[f"_{prefix}_AGENT_MODEL_BASE_URLS"] = ",".join(model.base_urls)
 
-    # The serving limits and the judge roster travel under UNDERSCORED names.
-    # The launcher sources .env in its own shell before it reads any of this, so
-    # a variable published under the name the benchmark reads would be taken
-    # back by a stale line in that file; the launcher turns these into a command
-    # prefix and a flag list, which nothing downstream can override.
+    # The window, the generation settings, the harness posture and the judge
+    # roster travel under UNDERSCORED names, for the plan and the manifest only
+    # (the run itself reads the declaration). The launcher sources .env in its
+    # own shell first, so a plain name could be taken back by a stale line there.
     env.update({f"_{k}": v for k, v in judge_env(cfg.judge).items()})
-    serving = cfg.serving
-    if serving.context_window is not None:
-        env["_AGENT_MODEL_CONTEXT_WINDOW"] = str(serving.context_window)
-    if serving.max_output_tokens is not None:
-        env["_AGENT_MODEL_MAX_OUTPUT_TOKENS"] = str(serving.max_output_tokens)
-    if serving.streaming is not None:
+    if cfg.serving.context_window is not None:
+        env["_AGENT_MODEL_CONTEXT_WINDOW"] = str(cfg.serving.context_window)
+    gen = cfg.generation
+    if gen.max_output_tokens is not None:
+        env["_AGENT_MODEL_MAX_OUTPUT_TOKENS"] = str(gen.max_output_tokens)
+    if gen.streaming is not None:
         # "0" rather than nothing: the prefix has to be able to turn streaming
         # OFF against an environment that says otherwise.
-        env["_AGENT_MODEL_STREAMING"] = "1" if serving.streaming else "0"
-    if serving.thinking_budget is not None:
-        env["_AGENT_MODEL_THINKING_BUDGET"] = str(serving.thinking_budget)
+        env["_AGENT_MODEL_STREAMING"] = "1" if gen.streaming else "0"
+    if gen.thinking_budget is not None:
+        env["_AGENT_MODEL_THINKING_BUDGET"] = str(gen.thinking_budget)
+    if gen.temperature is not None:
+        env["_AGENT_MODEL_TEMPERATURE"] = str(gen.temperature)
     if cfg.harness.fanout_workers is not None:
         env["_HARNESS_FANOUT_WORKERS"] = str(cfg.harness.fanout_workers)
     return env
@@ -124,11 +128,11 @@ def profile_env(profile: Profile, *, slots: str | None = None,
 
 def launch(experiment: str, *, dry_run: bool = False, slots: str | None = None,
            tags: str | None = None, agents: str | None = None,
-           with_judge: bool = False) -> int:
+           judge: bool = False) -> int:
     profile = current_config().profile(experiment)
     env = dict(os.environ)
     env.update(profile_env(profile, slots=slots, tags=tags, agents=agents,
-                           with_judge=with_judge))
+                           judge=judge))
     env["DRY_RUN"] = "1" if dry_run else "0"
     if not LAUNCHER.exists():
         raise SystemExit(f"Launcher missing: {LAUNCHER}")

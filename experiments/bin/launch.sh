@@ -21,7 +21,7 @@
 #   CONFIRM=0     skip the cost prompt (tuning and canary runs)
 #   MANIFEST=0    skip the manifest (not an official experiment)
 #   DRY_RUN=1     print the plan and exit without launching
-#   WITH_JUDGE=1  judge each run (LLM judge, then alignment) once it is generated
+#   JUDGE_AFTER_RUN=1  judge each run (LLM judge, then alignment) once it is generated
 # ---------------------------------------------------------------------------
 set -u
 
@@ -48,14 +48,17 @@ if [ "$DRY_RUN" = "1" ]; then
     echo "  python  : $BENCH_PYTHON"
     echo "  bench   : $BENCH_ROOT"
     echo "  env     : $ENV_FILE"
-    echo "  roster  : ${_JUDGE_MODEL_NAMES:-(not declared — the environment answers)}"
-    if [[ "${WITH_JUDGE:-0}" == "1" ]]; then
-        echo "  judge   : llm + alignment (${_ALIGNMENT_JUDGE_ARMS:-primary} arms), after each run"
+    if [[ "${JUDGE_AFTER_RUN:-0}" == "1" ]]; then
+        echo "  judges  : after each run"
+        echo "    * llm       : ${_JUDGE_MODEL_NAMES:-(not declared — the environment answers)}"
+        echo "    * alignment : ${_ALIGNMENT_JUDGE_ARM_LIST:-?}"
     else
-        echo "  judge   : off ($EXP_ROOT/isd-exp judge llm|alignment <run_dir> afterwards)"
+        echo "  judges  : off ($EXP_ROOT/isd-exp judge llm|alignment <run_dir> afterwards)"
     fi
-    echo "  serving : window=${_AGENT_MODEL_CONTEXT_WINDOW:--} max_out=${_AGENT_MODEL_MAX_OUTPUT_TOKENS:--} streaming=${_AGENT_MODEL_STREAMING:--} thinking=${_AGENT_MODEL_THINKING_BUDGET:--} fanout=${_HARNESS_FANOUT_WORKERS:--}"
-    echo "  pool    : ${POOL_HINT:-}"
+    echo "  serving : window=${_AGENT_MODEL_CONTEXT_WINDOW:--}"
+    echo "  generate: max_out=${_AGENT_MODEL_MAX_OUTPUT_TOKENS:--} streaming=${_AGENT_MODEL_STREAMING:--} thinking=${_AGENT_MODEL_THINKING_BUDGET:--} temperature=${_AGENT_MODEL_TEMPERATURE:--}"
+    echo "  harness : fanout=${_HARNESS_FANOUT_WORKERS:--}"
+    echo "  pool    : ${POOL_HINT:-(not pooled — ${EXPERIMENT} results never enter the paper)}"
     for slot in $_SLOTS_LIST; do
         rate_var="$(slot_upper "$slot")_RATE_LIMIT"
         echo "  peak    : ${slot} ≲ $(matrix_peak_calls "${!rate_var:-$RATE_LIMIT}") model calls in flight (rate=${!rate_var:-$RATE_LIMIT})"
@@ -63,9 +66,13 @@ if [ "$DRY_RUN" = "1" ]; then
     echo ""
     # The command itself, for the first slot: what the flags and the prefix
     # actually come out as is not checkable from a summary of them.
-    echo "  command (first slot):"
-    matrix_child_command "${_SLOTS_LIST%% *}" "$RESULTS_ROOT/<slot>.log"
-    echo ""
+    echo "  commands:"
+    for slot in $_SLOTS_LIST; do
+        echo ""
+        echo "# --- tmux session ${SESSION_PREFIX}-${slot} ---"
+        matrix_child_command "$slot" "$RESULTS_ROOT/<run>/${slot}.log"
+        echo ""
+    done
     echo ""
     echo "(nothing launched)"
     exit 0

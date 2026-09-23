@@ -71,8 +71,8 @@ class TestTheUniformConfig:
 
     def test_the_serving_limits_come_from_the_declaration(self):
         cfg = current()
-        env = llm.serving_env(cfg)
-        assert env["AGENT_MODEL_MAX_OUTPUT_TOKENS"] == str(cfg.serving.max_output_tokens)
+        env = llm.pinned_env(cfg)
+        assert env["AGENT_MODEL_MAX_OUTPUT_TOKENS"] == str(cfg.generation.max_output_tokens)
         assert env["AGENT_MODEL_CONTEXT_WINDOW"] == str(cfg.serving.context_window)
 
 
@@ -222,33 +222,82 @@ def test_the_launch_banner_sizes_slots_with_the_runners_presets():
         assert (int(m.group(1)), int(m.group(2))) == (preset.scenarios, preset.agents), name
 
 
-class TestJudgeArms:
-    """`[alignment].judge_arms` decides what `run --with-judge` scores."""
+class TestAlignmentArmSelection:
+    """`judge alignment` scores the arms experiment.toml declares, unless told
+    to narrow; `run --judge` scores the same set."""
 
-    def _load(self, tmp_path, value):
-        from isd_experiments.alignment.presets import _load
-        from isd_experiments.config import load
+    @staticmethod
+    def _arms(**flags):
+        from types import SimpleNamespace
 
-        src = (paths.exp_root() / "experiment.toml").read_text(encoding="utf-8")
-        line = 'judge_arms = "primary"'
-        assert line in src
-        path = tmp_path / "experiment.toml"
-        path.write_text(src.replace(line, value), encoding="utf-8")
-        return _load(load(path))
+        from isd_experiments.judge.alignment import resolve_arms
+        base = dict(primary_only=False, all_encoders=False, encoder_presets="",
+                    encoder_preset="", bloom_presets="", bloom_preset="")
+        return resolve_arms(SimpleNamespace(**{**base, **flags}))
 
-    def test_the_shipped_declaration_scores_the_primary(self):
+    def test_no_selection_is_every_declared_arm(self):
         from isd_experiments.alignment.presets import current as arms
-        assert arms().judge_arms == "primary"
+        declared = arms()
+        chosen = self._arms()
+        assert chosen == declared.star()
+        assert chosen[0] == (declared.primary_encoder, declared.primary_bloom)
+        assert len(chosen) == len(declared.encoders) + len(declared.bloom) - 1
 
-    def test_absent_means_primary(self, tmp_path):
-        assert self._load(tmp_path, "").judge_arms == "primary"
+    def test_primary_only_is_the_primary_configuration(self):
+        from isd_experiments.alignment.presets import current as arms
+        declared = arms()
+        assert self._arms(primary_only=True) == [
+            (declared.primary_encoder, declared.primary_bloom)]
 
-    def test_all_is_the_whole_star(self, tmp_path):
-        from isd_experiments.runner import judge_arms_flags
-        assert self._load(tmp_path, 'judge_arms = "all"').judge_arms == "all"
-        assert judge_arms_flags("all") == {"all_arms": True}
-        assert judge_arms_flags("primary") == {"all_arms": False}
+    def test_a_selection_narrows_to_one_axis(self):
+        from isd_experiments.alignment.presets import current as arms
+        declared = arms()
+        other = next(k for k in declared.bloom if k != declared.primary_bloom)
+        assert self._arms(bloom_presets=other) == [(declared.primary_encoder, other)]
 
-    def test_anything_else_is_refused(self, tmp_path):
-        with pytest.raises(SystemExit, match="judge_arms"):
-            self._load(tmp_path, 'judge_arms = "some"')
+    def test_deviating_on_both_axes_is_refused(self):
+        from isd_experiments.alignment.presets import current as arms
+        declared = arms()
+        enc = next(k for k in declared.encoders if k != declared.primary_encoder)
+        bloom = next(k for k in declared.bloom if k != declared.primary_bloom)
+        with pytest.raises(SystemExit, match="both axes"):
+            self._arms(encoder_presets=enc, bloom_presets=bloom)
+
+    def test_a_chained_judge_never_waits_on_a_prompt(self, monkeypatch, tmp_path):
+        """A launched run sits in tmux, which is a terminal: the overwrite
+        prompt would wait there for nobody."""
+        from isd_experiments import runner
+        from isd_experiments.judge import alignment
+
+        seen = {}
+        monkeypatch.setattr(alignment, "run", lambda **kw: seen.update(kw) or 0)
+        assert runner._judge_alignment(tmp_path) == 0
+        assert seen["yes"] is True
+        assert "primary_only" not in seen, "the chained judge must score every arm"
+
+
+class TestTheDeclaredTemperature:
+    """`[generation].temperature` is the temperature of the config every agent
+    is handed, whatever the environment says. An agent that pins its own keeps
+    it -- that is the agent as the benchmark ships it."""
+
+    def test_the_slot_config_carries_the_declared_value(self, monkeypatch):
+        monkeypatch.setenv("AGENT_MODEL_TEMPERATURE", "1.9")
+        cfg = current()
+        model = cfg.by_slot(cfg.profile("tune").slots[0])
+        assert llm.slot_config(cfg, model).temperature == cfg.generation.temperature
+
+    def test_it_is_pinned_into_the_environment_too(self):
+        cfg = current()
+        assert llm.pinned_env(cfg)["AGENT_MODEL_TEMPERATURE"] == str(cfg.generation.temperature)
+
+    def test_every_generation_field_is_published_for_the_plan_and_the_manifest(self):
+        """A field the TOML declares must reach what records the run."""
+        import dataclasses
+
+        from isd_experiments.config import Generation
+        from isd_experiments.launch import profile_env
+
+        emitted = set(profile_env(current().profile("tune")))
+        for field in dataclasses.fields(Generation):
+            assert f"_AGENT_MODEL_{field.name.upper()}" in emitted, field.name

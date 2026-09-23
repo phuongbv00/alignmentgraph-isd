@@ -51,13 +51,16 @@ def slots() -> list[str]:
     """
     return [m.slot for m in current_config().models]
 
-#: Serving limit -> the variable the benchmark reads it under. The launcher
-#: writes these onto the child command; .env must not carry them at all.
+#: Declared setting -> the variable it is read under. The runner pins these
+#: itself; .env must not carry them at all.
 SERVING_LIMIT_ENV = {
     "context_window": "AGENT_MODEL_CONTEXT_WINDOW",
+}
+GENERATION_ENV = {
     "max_output_tokens": "AGENT_MODEL_MAX_OUTPUT_TOKENS",
     "streaming": "AGENT_MODEL_STREAMING",
     "thinking_budget": "AGENT_MODEL_THINKING_BUDGET",
+    "temperature": "AGENT_MODEL_TEMPERATURE",
 }
 
 #: The proposed system's run posture -> the variable its adapter reads. Not a
@@ -125,7 +128,7 @@ _STRAY_SUFFIXES = ("_AGENT_MODEL_BASE_URL", "_AGENT_MODEL_BASE_URLS",
 
 
 def check_protection(cfg, env_path: Path) -> list[tuple[bool, str, str]]:
-    """(ok, label, detail) per serving limit and harness posture. Pure: no network, no environment.
+    """(ok, label, detail) per declared setting. Pure: no network, no environment.
 
     Two findings per limit, and they are different questions. Declared? -- an
     undeclared limit means the launcher passes nothing and the benchmark falls
@@ -140,6 +143,8 @@ def check_protection(cfg, env_path: Path) -> list[tuple[bool, str, str]]:
     findings: list[tuple[bool, str, str]] = []
     declared = [("serving", cfg.serving, attr, env_name)
                 for attr, env_name in SERVING_LIMIT_ENV.items()]
+    declared += [("generation", cfg.generation, attr, env_name)
+                 for attr, env_name in GENERATION_ENV.items()]
     declared += [("harness", cfg.harness, attr, env_name)
                  for attr, env_name in HARNESS_POSTURE_ENV.items()]
     for table, section, attr, env_name in declared:

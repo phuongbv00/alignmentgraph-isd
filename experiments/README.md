@@ -9,7 +9,7 @@ this package's own.
 
 Generating and scoring are separate steps. `isd-exp run <experiment>` generates;
 `isd-exp judge llm` and `isd-exp judge alignment` score a finished run and never regenerate it;
-`run --with-judge` chains them.
+`run --judge` chains them.
 
 ## Layout
 

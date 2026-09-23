@@ -15,14 +15,17 @@ DECLARED = """
 api_spec = "openai_compatible"
 key_env = "MY_KEY"
 context_window = 16384
+
+[generation]
 max_output_tokens = 8192
 streaming = true
 thinking_budget = 512
+temperature = 0.7
 
 [harness]
 fanout_workers = 1
 
-[[model]]
+[[serving.slots]]
 slot = "tiny"
 model = "vendor/model-1b"
 display = "1B"
@@ -57,7 +60,7 @@ class TestServingLimitsAreDeclaredOnce:
         back to its own default -- which is not the run anyone wrote down."""
         body = DECLARED.replace("max_output_tokens = 8192\n", "")
         found = _findings(tmp_path, body=body)
-        ok, detail = found["[serving].max_output_tokens declared"]
+        ok, detail = found["[generation].max_output_tokens declared"]
         assert not ok and "experiment.toml" in detail
 
     def test_a_limit_also_set_in_the_env_file_fails(self, tmp_path):

@@ -73,11 +73,14 @@ def config_fingerprint() -> dict:
         # limits and the judge roster decide what every reported number means,
         # and a reader should not have to re-read a config that has moved on to
         # find out which ones a frozen run was answered under.
-        "serving_limits": {
+        "serving": {
             "context_window": cfg.serving.context_window,
-            "max_output_tokens": cfg.serving.max_output_tokens,
-            "streaming": cfg.serving.streaming,
-            "thinking_budget": cfg.serving.thinking_budget,
+        },
+        "generation": {
+            "max_output_tokens": cfg.generation.max_output_tokens,
+            "streaming": cfg.generation.streaming,
+            "thinking_budget": cfg.generation.thinking_budget,
+            "temperature": cfg.generation.temperature,
         },
         "harness": {
             "fanout_workers": cfg.harness.fanout_workers,

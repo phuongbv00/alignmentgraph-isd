@@ -260,7 +260,7 @@ def generate(cfg: Experiment, *, experiment: str, slot: str, tag: str,
             "rate_limit": rate,
             "max_workers": preset.agents,
             "scenario_max_workers": preset.scenarios,
-            "serving": llm.serving_env(cfg),
+            "pinned_env": llm.pinned_env(cfg),
         },
         "scenarios": {profile.dataset: {}},
     }

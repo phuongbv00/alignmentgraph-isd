@@ -88,8 +88,8 @@ The ladder comprises Qwen3.5 checkpoints at 0.8B, 2B, 4B, and 9B; holding the mo
 family constant means only capacity changes between sizes. TN1 covers all four
 sizes, TN2 the two ends of the deployment envelope, 0.8B and 4B.
 
-Each cell is generated once under deterministic decoding rather than averaged over
-repeated runs. Uncertainty is carried by the paired, per-scenario analyses of
+Each cell is generated once, at each agent's own sampling temperature, rather than
+averaged over repeated runs. Uncertainty is carried by the paired, per-scenario analyses of
 \Cref{sec:stats}, which resample scenarios rather than runs; with 90 paired
 scenarios, scenario-level variation dominates the run-to-run variation that
 repetition would estimate, and the saving is spent on the ablation and the expert

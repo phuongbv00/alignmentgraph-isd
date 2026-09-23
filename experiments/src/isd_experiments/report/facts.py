@@ -447,7 +447,7 @@ def sec_llm_judge_tables(lad):
          "**A mean and its SD must come from the same signal** - the columns below are already "
          "paired correctly (`mean_addie` with `sd_addie_across_scenarios`, etc.). "
          "The SD is ACROSS SCENARIOS, not across runs: the comparison experiment generates one "
-         "deterministic run per cell, so a run-to-run SD has a single value and "
+         "run per cell, so a run-to-run SD has a single value and "
          "does not exist. It is descriptive spread, not a precision estimate.\n"]
     for m in lad.get("models") or []:
         L.append(f"### {m.get('label','?')}\n")

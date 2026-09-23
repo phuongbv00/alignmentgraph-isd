@@ -94,9 +94,9 @@ def build_parser() -> argparse.ArgumentParser:
         r.add_argument("--slots", help="comma-separated model slots (default: the profile's)")
         r.add_argument("--tags", help="comma-separated run tags (default: the profile's)")
         r.add_argument("--agents", help="comma-separated roster override")
-        r.add_argument("--with-judge", action="store_true",
+        r.add_argument("--judge", action="store_true",
                        help="judge each run once generated: `judge llm`, then "
-                            "`judge alignment` on [alignment].judge_arms")
+                            "`judge alignment` on every declared arm")
         r.add_argument("--foreground", action="store_true",
                        help="run ONE slot x ONE tag in this process instead of "
                             "launching tmux sessions (what each session runs)")
@@ -126,7 +126,9 @@ def build_parser() -> argparse.ArgumentParser:
     sc.add_argument("--all-encoders", action="store_true")
     sc.add_argument("--bloom-preset", default=""), sc.add_argument("--bloom-presets", default="")
     sc.add_argument("--bloom-checkpoint", type=_p)
-    sc.add_argument("--all-arms", action="store_true", help="the whole sensitivity star")
+    sc.add_argument("--primary-only", action="store_true",
+                    help="the primary configuration alone (default: every arm "
+                         "declared in experiment.toml)")
     # Where each served arm is embedded, and how. Endpoints are per arm on
     # purpose: the cache key does not record the backend, so one shared URL
     # would mix two numerically different sources under one key.
@@ -147,6 +149,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="re-judge scenarios that are already judged")
     sc.add_argument("--dry-run", action="store_true",
                     help="print the arms and the scope; nothing contacted or written")
+    sc.add_argument("--yes", "-y", action="store_true",
+                    help="do not ask before overwriting alignment_scores.json")
     sc.add_argument("--require-all", action="store_true",
                     help="fail instead of skipping an arm that cannot run")
     sc.add_argument("--sweep-csv", type=_p)
@@ -351,7 +355,7 @@ def _dispatch(args) -> int:
             encoder_preset=args.encoder_preset, encoder_presets=args.encoder_presets,
             all_encoders=args.all_encoders,
             bloom_preset=args.bloom_preset, bloom_presets=args.bloom_presets,
-            bloom_checkpoint=args.bloom_checkpoint, all_arms=args.all_arms,
+            bloom_checkpoint=args.bloom_checkpoint, primary_only=args.primary_only,
             embed_base_urls_for=args.embed_base_urls_for,
             embed_revision_for=args.embed_revision_for,
             embed_cache_only=args.embed_cache_only,
@@ -360,7 +364,7 @@ def _dispatch(args) -> int:
             agents=args.agents, scenario_root=args.scenario_root, limit=args.limit,
             reaggregate=args.reaggregate, overwrite=args.overwrite,
             require_all=args.require_all, sweep_csv=args.sweep_csv,
-            dry_run=args.dry_run,
+            dry_run=args.dry_run, yes=args.yes,
         )
 
     if command == "trajectory" and sub == "rescore":
@@ -396,7 +400,7 @@ def _run(args) -> int:
     if not args.foreground:
         from .launch import launch
         return launch(args.sub, dry_run=args.dry_run, slots=args.slots, tags=args.tags,
-                      agents=args.agents, with_judge=args.with_judge)
+                      agents=args.agents, judge=args.judge)
 
     from .config import current
     from .runner import run_one
@@ -406,11 +410,11 @@ def _run(args) -> int:
     if args.dry_run:
         print(f"would generate: {args.sub} slot={slot} tag={tag} "
               f"agents={args.agents or ','.join(profile.agents)} "
-              f"judge={'on' if args.with_judge else 'off'}")
+              f"judge={'on' if args.judge else 'off'}")
         return 0
     agents = [a.strip() for a in args.agents.split(",") if a.strip()] if args.agents else None
     return run_one(experiment=args.sub, slot=slot, tag=tag, agents=agents,
-                   rate_limit=args.rate_limit, with_judge=args.with_judge)
+                   rate_limit=args.rate_limit, judge=args.judge)
 
 
 def _report(args) -> int:

@@ -4,7 +4,7 @@ Nothing about the scoring is ours. Every scenario is judged by one call of the
 benchmark's evaluator, ``isd-evaluator compare --no-run``, over every agent that
 left an output in that scenario -- the call the benchmark made after each
 scenario, with the same rubric, the same multi-judge path and the roster
-declared in ``[judge]``. What moved is only WHEN it runs: after generation
+declared in ``[judge.llm]``. What moved is only WHEN it runs: after generation
 rather than interleaved with it, so a run can be generated once and judged,
 re-judged or repaired without regenerating anything.
 
