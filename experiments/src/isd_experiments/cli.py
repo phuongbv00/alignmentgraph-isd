@@ -1,15 +1,15 @@
 """`isd-exp` -- the experiment, one command per stage.
 
-Subcommands are grouped to read down the roadmap, so the order you run them is
-the order they appear in `--help`, and a stage nobody has built yet is visible
-as a gap rather than absent:
+Stages are verbs, and the experiment is what a verb acts on (`run comparison`,
+`pool ablation`). They are listed to read down the roadmap, so the order you
+run them is the order they appear in `--help`:
 
-    setup / doctor            once per machine
+    doctor                    once per machine
     data / bloom              inputs
-    tune                      cheap check before spending
     freeze / audit preflight  lock the version, verify the endpoints
-    comparison / ablation     the two official experiments
-    score / trajectory        offline scoring, no regeneration
+    run                       generate: tune, comparison, ablation
+    judge / trajectory        score finished runs, no regeneration
+    pool                      pool the scored runs of one experiment
     report / audit artifacts  the manuscript's numbers
     expert                    human validation
 """
@@ -20,11 +20,21 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import paths
-
 
 def _p(value: str) -> Path:
     return Path(value).expanduser()
+
+
+#: The launchable experiments, with the line `help run` shows for each.
+EXPERIMENTS = {
+    "tune": "cost and budget calibration on the training split",
+    "comparison": "the proposed system against baselines, across the ladder",
+    "ablation": "the 2x2 factorial over decomposition and substrate",
+}
+
+#: The rate presets a run accepts (runner/llm.py::RATE_PRESETS), spelled here
+#: so the parser can build without importing the runner.
+RATE_LIMITS = ("conservative", "moderate", "aggressive", "turbo")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -63,15 +73,6 @@ def build_parser() -> argparse.ArgumentParser:
     bv.add_argument("labels", type=_p, nargs="?")
     bv.add_argument("--bloom-checkpoint", type=_p), bv.add_argument("--out", type=_p)
 
-    # ── cheap check ──────────────────────────────────────────────────────
-    g = sub.add_parser(
-        "tune", help="cost and budget calibration on the training split",
-    ).add_subparsers(dest="sub", required=True)
-    r = g.add_parser("run", help="launch")
-    r.add_argument("--dry-run", action="store_true",
-                   help="print the launch plan and exit")
-    r.add_argument("--slots"), r.add_argument("--tags"), r.add_argument("--agents")
-
     # ── freeze ───────────────────────────────────────────────────────────
     fr = sub.add_parser("freeze", help="record the version an experiment ran on").add_subparsers(
         dest="sub", required=True)
@@ -79,29 +80,44 @@ def build_parser() -> argparse.ArgumentParser:
     fw.add_argument("--tag"), fw.add_argument("--out", type=_p)
     fr.add_parser("verify", help="compare the working tree against a manifest")
 
-    # ── the two official experiments ─────────────────────────────────────
-    for name, helptext in (
-        ("comparison", "the proposed system against baselines, across the ladder"),
-        ("ablation", "the 2x2 factorial over decomposition and substrate"),
-    ):
-        g = sub.add_parser(name, help=helptext).add_subparsers(dest="sub", required=True)
-        r = g.add_parser("run", help="launch")
-        r.add_argument("--dry-run", action="store_true")
-        r.add_argument("--slots"), r.add_argument("--tags"), r.add_argument("--agents")
-        pl = g.add_parser("pool", help="pool the runs into a single JSON")
-        pl.add_argument("patterns", nargs="*", metavar="GLOB")
-        pl.add_argument("--out", type=_p)
-        pl.add_argument("--agents", help="comma-separated roster override "
-                                         "(this fixes the Holm family size)")
-        if name == "comparison":
-            pl.add_argument("--encoders", default="")
-            pl.add_argument("--auto-encoders", action="store_true")
-            pl.add_argument("--auto-bloom", action="store_true")
-        else:
-            pl.add_argument("--comparison-pooled", type=_p)
+    # ── generate ─────────────────────────────────────────────────────────
+    # The experiments are fixed here rather than read from the config: `help`
+    # has to work on a checkout whose config does not load, which is exactly
+    # when someone reaches for it. Whether the profile exists is checked when
+    # the command runs.
+    run = sub.add_parser("run", help="generate an experiment's runs (no scoring unless asked)"
+                         ).add_subparsers(dest="sub", required=True, metavar="<experiment>")
+    for name, helptext in EXPERIMENTS.items():
+        r = run.add_parser(name, help=helptext)
+        r.add_argument("--dry-run", action="store_true",
+                       help="print the launch plan and exit")
+        r.add_argument("--slots", help="comma-separated model slots (default: the profile's)")
+        r.add_argument("--tags", help="comma-separated run tags (default: the profile's)")
+        r.add_argument("--agents", help="comma-separated roster override")
+        r.add_argument("--with-judge", action="store_true",
+                       help="judge each run once generated: `judge llm`, then "
+                            "`judge alignment` on [alignment].judge_arms")
+        r.add_argument("--foreground", action="store_true",
+                       help="run ONE slot x ONE tag in this process instead of "
+                            "launching tmux sessions (what each session runs)")
+        r.add_argument("--rate-limit", choices=RATE_LIMITS,
+                       help="rate preset (default: the profile's, or <SLOT>_RATE_LIMIT)")
 
-    # ── offline scoring ──────────────────────────────────────────────────
-    sc = sub.add_parser("score", help="score the alignment panel (no LLM, no regeneration)")
+    # ── score finished runs ──────────────────────────────────────────────
+    jd = sub.add_parser("judge", help="score finished runs (no regeneration)").add_subparsers(
+        dest="sub", required=True)
+    jl = jd.add_parser("llm", help="the benchmark's LLM judge (ADDIE rubric + trajectory)")
+    jl.add_argument("run_dirs", nargs="*", metavar="RUN_DIR")
+    jl.add_argument("--agents", default="", help="comma-separated roster filter")
+    jl.add_argument("--workers", type=int, default=4, help="scenarios judged at once")
+    jl.add_argument("--overwrite", action="store_true",
+                    help="re-judge scenarios that are already judged")
+    jl.add_argument("--dry-run", action="store_true",
+                    help="print what would be judged; no LLM judge calls")
+    jl.add_argument("--limit", type=int)
+    jl.add_argument("--scenario-root", type=_p)
+
+    sc = jd.add_parser("alignment", help="the alignment panel (no LLM)")
     sc.add_argument("run_dirs", nargs="*", metavar="RUN_DIR")
     # Arm selection. With no flag the primary configuration runs alone; the
     # sweep is a star, so an arm deviating on both axes at once is an error
@@ -123,10 +139,14 @@ def build_parser() -> argparse.ArgumentParser:
     sc.add_argument("--tfidf-ngram-range", default="2-3", metavar="LO-HI")
     sc.add_argument("--local-device")
     # What to score.
-    sc.add_argument("--agents", help="comma-separated roster override")
+    sc.add_argument("--agents", default="", help="comma-separated roster filter")
     sc.add_argument("--scenario-root", type=_p)
     sc.add_argument("--limit", type=int)
-    sc.add_argument("--reaggregate", action="store_true"), sc.add_argument("--overwrite", action="store_true")
+    sc.add_argument("--reaggregate", action="store_true")
+    sc.add_argument("--overwrite", action="store_true",
+                    help="re-judge scenarios that are already judged")
+    sc.add_argument("--dry-run", action="store_true",
+                    help="print the arms and the scope; nothing contacted or written")
     sc.add_argument("--require-all", action="store_true",
                     help="fail instead of skipping an arm that cannot run")
     sc.add_argument("--sweep-csv", type=_p)
@@ -136,6 +156,22 @@ def build_parser() -> argparse.ArgumentParser:
     trs = tr.add_parser("rescore", help="diagnostic layer at a higher tool-call cap")
     trs.add_argument("run_dirs", nargs="*", metavar="RUN_DIR")
     trs.add_argument("--cap", type=int, default=120)
+
+    # ── pool ─────────────────────────────────────────────────────────────
+    pool = sub.add_parser("pool", help="pool an experiment's scored runs into one JSON"
+                          ).add_subparsers(dest="sub", required=True, metavar="<experiment>")
+    for name in ("comparison", "ablation"):
+        pl = pool.add_parser(name, help=EXPERIMENTS[name])
+        pl.add_argument("patterns", nargs="*", metavar="GLOB")
+        pl.add_argument("--out", type=_p)
+        pl.add_argument("--agents", help="comma-separated roster override "
+                                         "(this fixes the Holm family size)")
+        if name == "comparison":
+            pl.add_argument("--encoders", default="")
+            pl.add_argument("--auto-encoders", action="store_true")
+            pl.add_argument("--auto-bloom", action="store_true")
+        else:
+            pl.add_argument("--comparison-pooled", type=_p)
 
     # ── the manuscript's numbers ─────────────────────────────────────────
     rep = sub.add_parser("report", help="generate tables, figures and notes").add_subparsers(
@@ -182,7 +218,7 @@ def build_parser() -> argparse.ArgumentParser:
     ex.add_parser("sample", help="draw a blinded subset for expert review")
     ex.add_parser("aggregate", help="combine returned score sheets")
 
-    h = sub.add_parser("help", help="show help for a stage, e.g. `help comparison pool`")
+    h = sub.add_parser("help", help="show help for a stage, e.g. `help pool comparison`")
     h.add_argument("topic", nargs="*", metavar="STAGE",
                    help="stage, optionally with its subcommand; omit for the overview")
 
@@ -274,12 +310,10 @@ def _dispatch(args) -> int:
         return bloom.validate(labels=args.labels, checkpoint=args.bloom_checkpoint,
                               out=args.out)
 
-    if command in {"tune", "comparison", "ablation"} and sub == "run":
-        from .launch import launch
-        return launch(command, dry_run=args.dry_run, slots=args.slots,
-                      tags=args.tags, agents=args.agents)
+    if command == "run":
+        return _run(args)
 
-    if command == "comparison" and sub == "pool":
+    if command == "pool" and sub == "comparison":
         from .pool import comparison
         comparison.run(experiment="comparison", patterns=args.patterns or None,
                        out=args.out, encoders=args.encoders,
@@ -287,7 +321,7 @@ def _dispatch(args) -> int:
                        agents=args.agents.split(",") if args.agents else None)
         return 0
 
-    if command == "ablation" and sub == "pool":
+    if command == "pool" and sub == "ablation":
         from .pool import ablation
         ablation.run(patterns=args.patterns or None, out=args.out,
                      comparison_pooled=args.comparison_pooled)
@@ -301,12 +335,18 @@ def _dispatch(args) -> int:
             return manifest.verify()
         return 0
 
-    if command == "score":
-        from .alignment import score
+    if command == "judge" and sub == "llm":
+        from .judge import llm
+        return llm.run(run_dirs=args.run_dirs, agents=args.agents, workers=args.workers,
+                       overwrite=args.overwrite, dry_run=args.dry_run, limit=args.limit,
+                       scenario_root=args.scenario_root)
+
+    if command == "judge" and sub == "alignment":
+        from .judge import alignment
         # Every option the scorer's helpers read is a parameter of `run`, and a
         # test holds the two sets equal -- a helper reaching for an attribute no
         # caller can set fails at the first line of the first arm.
-        return score.run(
+        return alignment.run(
             run_dirs=args.run_dirs,
             encoder_preset=args.encoder_preset, encoder_presets=args.encoder_presets,
             all_encoders=args.all_encoders,
@@ -320,6 +360,7 @@ def _dispatch(args) -> int:
             agents=args.agents, scenario_root=args.scenario_root, limit=args.limit,
             reaggregate=args.reaggregate, overwrite=args.overwrite,
             require_all=args.require_all, sweep_csv=args.sweep_csv,
+            dry_run=args.dry_run,
         )
 
     if command == "trajectory" and sub == "rescore":
@@ -337,6 +378,39 @@ def _dispatch(args) -> int:
         return (sample.run() if args.sub == "sample" else rubric.aggregate())
 
     raise SystemExit(f"Unhandled command: {command} {sub}")
+
+
+def _one(value: str | None, default: tuple[str, ...], what: str) -> str:
+    """The single slot or tag a foreground run takes."""
+    items = [v for v in (value.replace(",", " ").split() if value else default) if v]
+    if len(items) != 1:
+        raise SystemExit(
+            f"--foreground runs exactly one {what}; got {items or 'none'}. "
+            f"Name it with --{what}s."
+        )
+    return items[0]
+
+
+def _run(args) -> int:
+    """`run <experiment>`: launch tmux sessions, or one run in this process."""
+    if not args.foreground:
+        from .launch import launch
+        return launch(args.sub, dry_run=args.dry_run, slots=args.slots, tags=args.tags,
+                      agents=args.agents, with_judge=args.with_judge)
+
+    from .config import current
+    from .runner import run_one
+    profile = current().profile(args.sub)
+    slot = _one(args.slots, profile.slots, "slot")
+    tag = _one(args.tags, profile.tags, "tag")
+    if args.dry_run:
+        print(f"would generate: {args.sub} slot={slot} tag={tag} "
+              f"agents={args.agents or ','.join(profile.agents)} "
+              f"judge={'on' if args.with_judge else 'off'}")
+        return 0
+    agents = [a.strip() for a in args.agents.split(",") if a.strip()] if args.agents else None
+    return run_one(experiment=args.sub, slot=slot, tag=tag, agents=agents,
+                   rate_limit=args.rate_limit, with_judge=args.with_judge)
 
 
 def _report(args) -> int:

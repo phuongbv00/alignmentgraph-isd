@@ -28,7 +28,6 @@ Exit code 0 = no red findings, 1 = red findings present.
 """
 from __future__ import annotations
 
-import argparse
 import glob
 import json
 import sys
@@ -36,13 +35,12 @@ from collections import Counter
 from pathlib import Path
 
 from .. import paths
-
-
 from ..alignment.protocol import (
     extract_activities,
     extract_assessment_items,
     extract_objectives,
 )
+from ..judge import rundirs
 
 # What each official experiment is supposed to produce. Comparison and ablation
 # are separate experiments with different rosters, so one shared list would
@@ -110,6 +108,18 @@ def expected_for(run_dir: Path, agents: list[str] | None,
             default_n if n_scenarios is None else n_scenarios)
 
 
+def deferred_scenarios(run_dir: Path) -> set[str]:
+    """Scenarios the run recorded as generated but not yet judged."""
+    path = run_dir / "benchmark_summary.json"
+    try:
+        results = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return set()
+    return {sid for scenarios in results.get("scenarios", {}).values()
+            for sid, record in scenarios.items()
+            if isinstance(record, dict) and record.get("evaluation_deferred")}
+
+
 def audit_run(run_dir: Path, fields_only: bool = False,
               agents: list[str] | None = None,
               n_scenarios: int | None = None) -> dict:
@@ -120,16 +130,11 @@ def audit_run(run_dir: Path, fields_only: bool = False,
     flat_single = any(run_dir.glob("*_output.json")) if run_dir.exists() else False
     if flat_single:
         return audit_scored_fields(run_dir, [run_dir])
-    variant_dirs = [d for d in run_dir.iterdir() if d.is_dir()] if run_dir.exists() else []
-    scen_dirs: list[Path] = []
-    for d in variant_dirs:
-        subs = [s for s in d.iterdir() if s.is_dir()]
-        if subs and any((s / "comparison_report.json").exists() for s in subs):
-            scen_dirs = sorted(subs)
-            break
-    if not scen_dirs:  # flat single-run layout
-        scen_dirs = sorted(d for d in variant_dirs
-                           if (d / "comparison_report.json").exists())
+    # Every dir an agent was attempted in, judged or not: a run is generated
+    # first and judged later, so a missing report is a state before it is a
+    # failure.
+    scen_dirs = [d for d in rundirs.scenario_dirs(run_dir) if d != run_dir] \
+        if run_dir.exists() else []
 
     if fields_only:
         return audit_scored_fields(run_dir, scen_dirs)
@@ -140,13 +145,20 @@ def audit_run(run_dir: Path, fields_only: bool = False,
     if n != expected_scenarios:
         red.append(f"scenario dirs = {n}, expected {expected_scenarios}")
     missing: dict[str, int] = {a: 0 for a in expected_agents}
-    no_report = 0
+    unjudged, no_report = 0, 0
+    deferred = deferred_scenarios(run_dir)
     for sd in scen_dirs:
         for a in expected_agents:
             if not (sd / f"{a}_output.json").exists():
                 missing[a] += 1
         if not (sd / "comparison_report.json").exists():
-            no_report += 1
+            if sd.name in deferred:
+                unjudged += 1
+            else:
+                no_report += 1
+    if unjudged:
+        info.append(f"{unjudged} scenario(s) not judged yet — run "
+                    f"`{paths.cli()} judge llm {run_dir}`")
     if no_report:
         red.append(f"{no_report} scenario(s) without comparison_report.json")
     for a, m in missing.items():
@@ -238,11 +250,11 @@ def audit_run(run_dir: Path, fields_only: bool = False,
     if 0 < primary_coverage < n:
         red.append(
             f"partial alignment_scores.json coverage: {primary_coverage}/{n} "
-            f"(resume `{paths.cli()} score` before pooling the alignment panel)"
+            f"(resume `{paths.cli()} judge alignment` before pooling the alignment panel)"
         )
     elif primary_coverage == 0:
         info.append(f"alignment_scores.json: {coverage.get('primary', 0)}/{n} "
-                    f"(run `{paths.cli()} score` before pooling the alignment panel)")
+                    f"(run `{paths.cli()} judge alignment` before pooling the alignment panel)")
     for arm, count in sorted(coverage.items()):
         if arm != "primary" and count < n:
             red.append(f"partial alignment_scores.{arm}.json coverage: {count}/{n} "

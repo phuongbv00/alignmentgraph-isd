@@ -23,7 +23,7 @@ See also (different jobs, both also called "stratified"):
   - split_train_test.py: one-time 95/5 split of the raw dataset, stratified on
     domain|difficulty|learning_environment.
   - sampling_strategy.py (StratifiedScenarioSampler): runtime n-sample selection
-    inside run_benchmark.py, stratified on 4 separate imbalance axes and may
+    inside the benchmark's own runner, stratified on 4 separate imbalance axes and may
     duplicate items (oversample strategy).
 This script instead copies a fixed subset to disk, no duplicates.
 

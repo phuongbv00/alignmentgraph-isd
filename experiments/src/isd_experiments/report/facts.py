@@ -806,8 +806,8 @@ def run(*, comparison_pooled: Path | None = None, ablation_pooled: Path | None =
         if not quiet:
             print("- facts sheet skipped, missing: "
                   + ", ".join(p.name for p in missing)
-                  + f"\n  Produce them with:  {paths.cli()} comparison pool"
-                  + f" ; {paths.cli()} ablation pool")
+                  + f"\n  Produce them with:  {paths.cli()} pool comparison"
+                  + f" ; {paths.cli()} pool ablation")
         return None
 
     lad = schema.load(cmp_path)

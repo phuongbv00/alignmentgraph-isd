@@ -266,7 +266,7 @@ def pool_alignment(models: list[dict], run_dirs_by_model: dict[str, list[Path]],
                 f"scenario, so the pooled panel would carry "
                 f"{len(panel)}/{len(PANEL)} signals and the whole-panel Holm "
                 f"family would shrink to match. Re-score these run dirs with "
-                f"`{paths.cli()} score --overwrite` (a signal added since the "
+                f"`{paths.cli()} judge alignment --overwrite` (a signal added since the "
                 f"artifacts were written is absent from them, and the cached "
                 f"artifacts are otherwise valid so a plain re-run reuses them)."
             )
@@ -310,7 +310,7 @@ def pool_alignment(models: list[dict], run_dirs_by_model: dict[str, list[Path]],
             f"[{scores_filename}] the pooled run dirs were scored with "
             f"{len(configs)} different protocol configurations: {detail}. "
             f"Re-score every run dir with one configuration "
-            f"(`{paths.cli()} score --overwrite`) before pooling — a mean over "
+            f"(`{paths.cli()} judge alignment --overwrite`) before pooling — a mean over "
             "two instruments is not an alignment measurement."
         )
 

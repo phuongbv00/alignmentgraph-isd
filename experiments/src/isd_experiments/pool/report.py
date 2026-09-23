@@ -104,7 +104,7 @@ def print_report(pooled: dict, proposed: str, baselines: list[str]) -> None:
                   f"score files found ({pct:.0f}%). The numbers below are pooled "
                   "over what was scored, NOT over the full design; a low per-agent "
                   "n= here is indistinguishable from agent failure. Finish scoring "
-                  f"(`{paths.cli()} score`) and re-pool before using these for "
+                  f"(`{paths.cli()} judge alignment`) and re-pool before using these for "
                   f"the paper — `{paths.cli()} audit postrun` lists which run "
                   "dirs are short.")
         if not align.get("encoder_revision_pinned"):

@@ -85,7 +85,7 @@ def load(path: Path) -> dict:
     if not path.exists():
         raise PooledError(
             f"No pooled file at {path}.\n"
-            f"  Produce it with `{paths.cli()} comparison pool` (or `ablation pool`)."
+            f"  Produce it with `{paths.cli()} pool comparison` (or `pool ablation`)."
         )
     try:
         doc = json.loads(path.read_text(encoding="utf-8"))

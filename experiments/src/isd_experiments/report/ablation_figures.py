@@ -333,7 +333,7 @@ def run(*, pooled_path: Path | None = None, outdir: Path | None = None,
     src = pooled_path or (paths.results_root() / "pooled_ablation.json")
     if not src.exists():
         if not quiet:
-            print(f"- no {src.name} — skipped. Produce it with:  {paths.cli()} ablation pool")
+            print(f"- no {src.name} — skipped. Produce it with:  {paths.cli()} pool ablation")
         return []
     pooled = schema.load(src)
     out = outdir or paths.figures_dir()

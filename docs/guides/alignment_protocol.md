@@ -6,7 +6,7 @@
 > - Mức claim + luật viết: [`docs/paper/claim-rules.md`](../paper/claim-rules.md); nội dung paper: `docs/paper/acm/`
 > - Lệnh chạy scorer/pooling + metrics reference: [`docs/guides/benchmark_guides.md`](benchmark_guides.md) (§7, Appendix A)
 > - Code: `isd-agent-benchmark/evaluator/src/isd_evaluator/metrics/alignment.py`, scorer
->   `experiments/06_score_alignment.py`, pooling `isd-exp comparison pool`
+>   `experiments/06_score_alignment.py`, pooling `isd-exp pool comparison`
 
 ## 1. Định vị & claim
 

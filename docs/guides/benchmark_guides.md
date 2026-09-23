@@ -4,7 +4,7 @@
 > hậu xử lý ra số cho paper, kèm định nghĩa metric (Phụ lục A). Mục tiêu: đọc mỗi file này là
 > tái lập được thực nghiệm.
 >
-> Mọi lệnh chạy từ `isd-agent-benchmark/` trừ khi ghi khác. Bối cảnh RQ: bản thảo `docs/paper/acm/` (§Experimental Design) + [`docs/guides/alignment_protocol.md`](alignment_protocol.md).
+> Mọi lệnh `./isd-exp` chạy từ `experiments/` trừ khi ghi khác. Bối cảnh RQ: bản thảo `docs/paper/acm/` (§Experimental Design) + [`docs/guides/alignment_protocol.md`](alignment_protocol.md).
 
 **Ba quy tắc không được vi phạm:**
 
@@ -22,8 +22,8 @@
 [1] setup ─► [2] split data ─► [3] serving ─► [4] TUNE (train_10) ─► CODE FREEZE ─┐
                                                  loop đến khi chốt                │
                                                                                   ▼
-[8] pool ◄── [7] score alignment ◄── [6] audit ◄── [5] TN1 test_90  4 size × 1 run × 7 agent
-     │            (RQ2, local)                         TN2 test_30  2 size × 1 run × 4 arm
+[8] pool ◄── [7] judge llm + alignment ◄── [6] audit ◄── [5] run: TN1 test_90  4 size × 1 run × 7 agent
+     │        (--with-judge nối 5 và 7)                    TN2 test_30  2 size × 1 run × 4 arm
      ▼
 [9] gen tables + figures ─► [10] teardown
 ```
@@ -38,7 +38,7 @@
 | Dataset | `test_90` | `test_30` |
 | Run/ô | 1 (deterministic) | 1 (deterministic) |
 | Tag | `r1` | `a1` |
-| Launcher | `isd-exp comparison run` | `isd-exp ablation run` |
+| Launcher | `isd-exp run comparison` | `isd-exp run ablation` |
 
 **A0 chạy LẠI trong TN2**, không mượn từ TN1: LLM judge session, scenario set và dải size đều khác,
 nên delta arm−A0 chỉ sạch khi hai vế đến từ cùng một run. Trước 2026-09-10 các arm chạy chung
@@ -46,7 +46,7 @@ trong ladder (10 agent một run) — mọi mô tả kiểu đó trong tài li�
 
 **1 run mỗi ô, không phải 3.** Bất định ước lượng theo SCENARIO (paired Wilcoxon + bootstrap trên
 90 cặp), không theo run. Lặp chỉ dùng cho *targeted repeat* — vài ô quyết định, báo riêng với n
-riêng: `RUN_TAGS="r2,r3" LADDER_SLOTS="qwen08b,qwen4b" AGENTS="..." ./isd-exp comparison run`.
+riêng: `./isd-exp run comparison --tags r2,r3 --slots qwen08b,qwen4b --agents ...`.
 
 ### Bản đồ lệnh
 
@@ -54,28 +54,39 @@ Toàn bộ thí nghiệm chạy qua **một** entry point: `experiments/isd-exp`
 định vị — tìm `.venv` nằm cạnh nó rồi exec, nên **không cần activate và không cần thêm vào
 PATH**; chạy `./isd-exp ...` từ trong `experiments/` là được. (Nếu bạn thích cài thật:
 `pip install -e experiments/` sẽ đặt lệnh `isd-exp` lên PATH của môi trường đó.)
-Nhóm subcommand đọc dọc theo sáu giai đoạn của lộ trình, nên thứ tự chạy chính là thứ tự
-`isd-exp --help` liệt kê. Benchmark (`isd-agent-benchmark/`) chỉ còn là **công cụ đo**: nó
-không biết gì về thí nghiệm, và ba script còn lại trong `scripts/` chỉ phục vụ việc chạy
-benchmark độc lập.
+Stage là động từ, thí nghiệm là tân ngữ: `run comparison`, `judge llm`, `pool ablation`. Các
+stage xếp dọc theo sáu giai đoạn của lộ trình, nên thứ tự chạy chính là thứ tự `isd-exp --help`
+liệt kê.
+
+**Thí nghiệm chỉ dùng thành phần của ISD-Agent-Bench, không dùng entrypoint của nó.** Thành phần
+gồm scenario, sáu baseline agent, `shared/llm` (cấu hình model mà mọi agent dựng từ đó), rubric
+và evaluator. Phần điều phối là của `experiments/` (`src/isd_experiments/runner/`): chạy agent
+nào, dưới model nào, ghi vào đâu. `run_benchmark.py` và `scripts/` của benchmark đã trả về đúng
+bản upstream. Bản upstream đó không chạy được với các agent đã rewire sang `shared/llm`, và
+thí nghiệm không gọi tới nó (`tests/test_architecture.py::TestComponentsNotTheEntryPoint`).
+
+**Sinh và chấm là hai bước.** `run` chỉ sinh artifact. `judge llm` và `judge alignment` chấm một
+run đã xong và không bao giờ sinh lại. `run --with-judge` nối hai bước: sinh xong run nào thì
+chấm run đó.
 
 | Lệnh | Vai trò | Mục |
 |---|---|---|
 | `isd-exp doctor [--fix]` | kiểm checkout, 10 gói editable của benchmark, `.env`, checkpoint Bloom | 1 |
 | `isd-exp data split <tên>` | cắt `train_10` / `test_90` / `test_30` (kèm kiểm disjoint) | 2 |
 | `isd-exp bloom train` / `validate` | huấn luyện head Bloom 6 lớp / chấm arm vs nhãn chuyên gia | A.3 |
-| `isd-exp tune run` | hiệu chỉnh cost và budget trên `train_10` | 4 |
+| `isd-exp run tune` | hiệu chỉnh cost và budget trên `train_10` | 4 |
 | `isd-exp freeze write` / `verify` | ghi / đối chiếu manifest code freeze | 5 GĐ3 |
 | `isd-exp audit preflight` | trước launch: endpoint, auth, model, flag, disk | 6.1 |
-| `isd-exp comparison run [--dry-run]` | **so sánh**: hệ đề xuất vs baseline theo thang model | 5 |
-| `isd-exp ablation run [--dry-run]` | **ablation**: 2×2 phân rã × substrate | 5.4 |
+| `isd-exp run comparison [--with-judge] [--dry-run]` | **so sánh**: hệ đề xuất vs baseline theo thang model | 5 |
+| `isd-exp run ablation [--with-judge] [--dry-run]` | **ablation**: 2×2 phân rã × substrate | 5.4 |
 | `isd-exp audit inflight` | khi đang chạy: red flag trong log + độ tươi của progress | 6.2 |
 | `isd-exp audit postrun` | sau run: completeness / integrity / metrics | 6.3 |
 | `isd-exp audit repair` | chấm lại LLM judge cho ô lỗi transient, **không** sinh lại output | 6.4 |
-| `isd-exp score <run-dir>` | chấm panel alignment (không LLM), `--all-arms` cho cả sao sensitivity | 7 |
+| `isd-exp judge llm <run-dir>` | chấm LLM judge (rubric ADDIE + trajectory) bằng evaluator của benchmark | 7.1 |
+| `isd-exp judge alignment <run-dir>` | chấm panel alignment (không LLM), `--all-arms` cho cả sao sensitivity | 7.2 |
 | `isd-exp trajectory rescore` | lớp diagnostic cap cao, chấm lại trajectory đã lưu *(chưa hiện thực)* | 5 GĐ1 |
-| `isd-exp comparison pool` | pool run so sánh → `pooled_comparison.json` + thống kê | 8 |
-| `isd-exp ablation pool` | pool 4 arm → `pooled_ablation.json` + factorial + drift | 5.4 |
+| `isd-exp pool comparison` | pool run so sánh → `pooled_comparison.json` + thống kê | 8 |
+| `isd-exp pool ablation` | pool 4 arm → `pooled_ablation.json` + factorial + drift | 5.4 |
 | `isd-exp report tables` | bảng LLM judge + alignment, macro, `stats_summary.md` | 9 |
 | `isd-exp report figures` | hình LLM judge + alignment | 9 |
 | `isd-exp report cost` | hồ sơ cost/deployability đọc thẳng từ trajectory | 9 |
@@ -87,10 +98,7 @@ benchmark độc lập.
 | `isd-exp audit artifacts` | **cổng cuối**: artifact đủ, thật, mới, đã wire vào paper | 9.1 |
 | `isd-exp expert sample` / `aggregate` | gói expert validation *(chưa hiện thực)* | 5 GĐ6 |
 
-Còn lại bên benchmark, chỉ dùng khi chạy benchmark một mình:
-`./scripts/1_setup.sh` (dựng venv riêng cho submodule — repo này **không** giữ sẵn nó),
-`./scripts/2_split_data.sh` (split gốc 95/5), `./scripts/3_run_benchmark_test.sh`
-(smoke 1 scenario).
+Bên benchmark chỉ còn dùng một script: `./scripts/2_split_data.sh` (split gốc 95/5).
 
 **Cấu hình thí nghiệm nằm ở `experiments/experiment.toml`** — thang model, nơi host, dataset,
 roster agent, các arm ablation, preset encoder/Bloom. Đổi thang model hay đổi nhà cung cấp
@@ -101,25 +109,18 @@ lọt trở lại vào `src/`.
 
 ## 1. Setup
 
-**Cả repo chỉ có hai môi trường.** `experiments/.venv` chạy mọi thứ thuộc thí nghiệm — cả
-`isd-exp` lẫn `run_benchmark.py`, vì `run_benchmark.py` được gọi như subprocess dưới đúng
-interpreter đó. Nên benchmark, bảy agent, `alignmentgraph-isd` và `isd-evaluator` là mười
-bản cài editable nằm trong nó; không danh sách dependency nào đặt tên được cho một đường
-dẫn trong checkout này, nên `isd-exp doctor` báo cái nào thiếu và `--fix` cài.
-`alignmentgraph-isd/.venv` là của web app demo, tách biệt hoàn toàn.
+**Cả repo chỉ có hai môi trường.** `experiments/.venv` chạy mọi thứ thuộc thí nghiệm: mọi run
+được sinh trong chính interpreter này. Gốc benchmark (cài gói `shared`), sáu baseline agent,
+`alignmentgraph-isd` và `isd-evaluator` là chín bản cài editable nằm trong nó. Không danh sách
+dependency nào đặt tên được cho một đường dẫn trong checkout này, nên `isd-exp doctor` báo cái
+nào thiếu và `--fix` cài. `alignmentgraph-isd/.venv` là của web app demo, tách biệt hoàn toàn.
 
 ```bash
 cd experiments
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-./isd-exp doctor --fix            # cài mười gói editable + symlink .env
-
-cd ../isd-agent-benchmark
-../experiments/.venv/bin/python run_benchmark.py --check   # mọi agent module import sạch
-./scripts/3_run_benchmark_test.sh # smoke 1 scenario
+./isd-exp doctor --fix            # cài chín gói editable + symlink .env
+./isd-exp run tune --dry-run      # kế hoạch launch, không chạy gì
 ```
-
-`./scripts/1_setup.sh` vẫn còn và vẫn dựng được venv riêng cho submodule — nó là cái giữ
-cho benchmark chạy độc lập được. Từ monorepo thì không cần: dùng `experiments/.venv`.
 
 ### `.env`
 
@@ -326,12 +327,12 @@ thay một slot bằng hosted API chỉ là đổi URL.
 Chỉnh prompt/config của `alignmentgraph-isd` trên tập tách biệt với tập báo cáo.
 
 ```bash
-DATASET=train_10 AGENT_MODEL_SLOTS=qwen2b AGENTS=baseline,react-isd,alignmentgraph-isd \
-RUN_TAGS=tune1 ./isd-exp tune run
+./isd-exp run tune --slots qwen2b --agents baseline,react-isd,alignmentgraph-isd \
+    --tags tune1 --with-judge
 ```
 
-- `AGENT_MODEL_SLOTS` nhiều slot = chạy **song song** (mỗi slot một tmux session). `RUN_TAGS` nhiều tag = chạy **tuần
-  tự** trong mỗi session (`tune1,tune2,tune3` để đo độ ổn định cùng code).
+- `--slots` nhiều slot = chạy **song song** (mỗi slot một tmux session). `--tags` nhiều tag = chạy **tuần tự**
+  trong mỗi session (`tune1,tune2,tune3` để đo độ ổn định cùng code).
 - Kết quả vào `results/train_10_benchmark_<model>_tune<N>_<ts>/`. Tag `tuneN` để không lẫn với run báo cáo `r1/r2/r3`.
 - Thu hẹp `--agents` cho rẻ khi debug, nhưng **vòng chốt cuối chạy đủ 7 agent** để chắc thay đổi không phá agent khác.
 - Kết thúc tune = **commit đóng băng code** (manifest ladder sẽ ghi commit hash).
@@ -341,12 +342,13 @@ RUN_TAGS=tune1 ./isd-exp tune run
 Không có profile riêng cho việc này. Thu hẹp chính `tune` lại:
 
 ```bash
-./isd-exp tune run --slots qwen08b --agents alignmentgraph-isd,react-isd
+./isd-exp run tune --slots qwen08b --agents alignmentgraph-isd,react-isd
+# hoặc chạy ngay trong terminal hiện tại, không qua tmux:
+./isd-exp run tune --foreground --slots qwen08b --tags t1 --agents alignmentgraph-isd,react-isd
 ```
 
-Một rung nhỏ nhất trên `train_10` = 20 generation. **Vẫn gọi LLM judge** — `run_benchmark.py` spawn
-`isd-evaluator` vô điều kiện khi có từ 2 agent thành công, không có flag nào tắt, nên không tồn tại chế độ chạy
-harness mà không tốn judge call. Muốn có thì phải thêm flag ở `run_benchmark.py`.
+Một rung nhỏ nhất trên `train_10` = 20 generation. **Không tốn LLM judge call nào**: không có `--with-judge` thì `run`
+chỉ sinh artifact. Muốn chấm thì chạy `judge llm` / `judge alignment` trên run dir đó sau (mục 7).
 
 Đọc gì: `gave_up`, coverage P10/P11, violation ledger, cost, và panel alignment (chạy local). Nếu bất thường thì sửa
 trước khi mở rộng ra đủ 4 rung.
@@ -356,18 +358,25 @@ trước khi mở rộng ra đủ 4 rung.
 ### 5.1 Quy mô
 
 TN1: 4 size × 1 run × 7 agent × 90 scenario ≈ **2 520 agent generation**. TN2: 2 size × 1 run × 4 arm
-× 30 scenario = **240 generation**. Mỗi generation thêm LLM judge evaluation (1 LLM judge full + LLM judge thứ
-hai trên subset corroboration). Một run đơn ở rate `turbo` mất vài giờ; TN1 chạy 4 size song song.
+× 30 scenario = **240 generation**. Mỗi scenario sau đó được LLM judge chấm một lần cho mọi agent của nó
+(`judge llm`, mục 7.1), bằng roster khai trong `[judge]`. Một run đơn ở rate `turbo` mất vài giờ; TN1 chạy 4 size
+song song.
 
-7 agent TN1 = 6 default + `alignmentgraph-isd` (không nằm trong defaults — launcher thêm sẵn).
+7 agent TN1 = 6 baseline + `alignmentgraph-isd`, lấy từ roster của profile trong `experiment.toml`.
 Ba arm ablation KHÔNG chạy ở đây nữa; chúng là TN2 (mục 5.4).
 
 ### 5.2 Launch
 
 ```bash
-source .env
-./isd-exp comparison run    # gõ "yes" ở prompt
+./isd-exp run comparison --with-judge    # gõ "yes" ở prompt
 ```
+
+- Mỗi tmux session chạy `isd-exp run comparison --foreground --slots <slot> --tags <tag>` cho từng tag. Lệnh đó
+  tự đọc `experiment.toml` (model, endpoint, serving limit, roster judge), nên không giá trị nào của declaration đi
+  qua chuỗi lệnh shell.
+- `--with-judge`: sinh xong run nào thì chạy `judge llm` rồi `judge alignment` (arm theo `[alignment].judge_arms`)
+  trên run đó. Judge lỗi không làm mất phần sinh: run dir vẫn đủ, và log in ra lệnh để chấm nốt. Bỏ cờ này thì
+  chấm sau bằng tay (mục 7).
 
 - Endpoint lấy từ `base_urls` trong experiment.toml; rung nào chưa khai ⇒ hard-fail kèm hướng dẫn.
 - Mỗi size một tmux session (`ladder-qwen08b`...), chạy **song song**; trong mỗi session các tag chạy
@@ -385,7 +394,7 @@ Monitor: `tmux attach -t ladder-qwen2b` (detach `Ctrl+B, D`) hoặc `tail -f res
 **Resume từng phần** — mỗi (size, run) là một invocation độc lập:
 
 ```bash
-LADDER_SLOTS="qwen4b" RUN_TAGS="r2,r3" ./isd-exp comparison run
+./isd-exp run comparison --slots qwen4b --tags r2,r3
 ```
 
 Mỗi lần re-launch ghi manifest mới — giữ tất cả. **Không xoá** run dir dở dang vội: script pool báo tường minh scenario
@@ -394,8 +403,9 @@ thiếu; chỉ xoá dir cũ **sau khi** pool xác nhận dir mới đủ 90 scen
 ### 5.3 Rate limit
 
 `RATE_LIMIT` (default `turbo`) là preset toàn cục đặt worker count + `BENCHMARK_DELAY`. Override per-slot bằng
-`<SLOT>_RATE_LIMIT`. Rate được echo lúc launch và ghi vào manifest. `run_benchmark.py` publish posture của nó ra env
-dưới dạng `BENCHMARK_RATE_LIMIT` + `BENCHMARK_DELAY` — không biết gì về knob nội bộ của agent nào.
+`<SLOT>_RATE_LIMIT`. Rate được echo lúc launch và ghi vào manifest. Bảng preset nằm ở `runner/llm.py::RATE_PRESETS`
+(giữ đúng số của benchmark). Runner publish posture ra env dưới dạng `BENCHMARK_RATE_LIMIT` + `BENCHMARK_DELAY` và
+không biết gì về knob nội bộ của agent nào.
 
 **Concurrency bên trong một agent (2026-08-31).** `max_workers` × `scenario_max_workers` chỉ chặn số **agent** chạy
 đồng thời. Agent nào tự fan-out bên trong thì nằm ngoài posture đó: `alignmentgraph-isd` chạy `content_designer` và
@@ -433,7 +443,7 @@ Cap thực tế được ghi vào `metadata.run_config.llm_max_concurrency` nên
 
 ```bash
 # sau khi TN1 xong và code đã freeze
-./isd-exp ablation run
+./isd-exp run ablation --with-judge
 ```
 
 **Có benchmark run riêng (đổi 2026-09-10).** TN2 = 4 arm × 2 size (0.8B, 4B) × `test_30`, 1 run
@@ -441,7 +451,7 @@ deterministic mỗi ô, tag `a1`. Bốn arm nằm trong **cùng một run** mỗ
 session per scenario → delta arm-vs-A0 không dính LLM judge drift.
 
 **A0 chạy lại trong TN2, không lấy từ TN1.** LLM judge session, scenario set và dải size đều khác, nên
-so một arm TN2 với A0 của ladder là so xuyên thí nghiệm. `isd-exp ablation pool` vẫn đặt A0 của
+so một arm TN2 với A0 của ladder là so xuyên thí nghiệm. `isd-exp pool ablation` vẫn đặt A0 của
 TN2 cạnh A0 của TN1 nhưng như một **drift gauge**: nó chặn trên phần delta có thể do session gây
 ra, không phải một phép so arm. Trước 2026-09-10 hai con số này đến từ cùng một run và phải bằng
 nhau — mô tả đó đã hết hiệu lực.
@@ -486,13 +496,14 @@ KHÔNG phải audit: không relation, không coverage). Trục vì
 vậy là một **bundle** ("bỏ máy alignment thì harness còn gì") và phải được disclose như bundle, không claim
 single-variable.
 
-Axes là **kwargs cố định theo agent_id** trong registry của `run_benchmark.py` (không phải env var) → không chạy nhầm
-config được; mỗi run ghi `metadata.run_config` vào trajectory và script pool **hard-fail** nếu flag không khớp agent_id.
+Axes là **kwargs cố định theo agent_id** (không phải env var). Runner đọc chúng từ `[[experiment.ablation.arms]]`
+(`runner/agents.py::proposed_cells`), đúng khai báo mà pooling dùng để kiểm flag, nên không chạy nhầm config được.
+Mỗi run ghi `metadata.run_config` vào trajectory và script pool **hard-fail** nếu flag không khớp agent_id.
 
 Post-processing chạy **sau khi ladder xong** (consistency check cần `pooled_comparison.json`):
 
 ```bash
-./isd-exp ablation pool \
+./isd-exp pool ablation \
     --auto-glob 'results/test_30_benchmark_*_a*' \
     --ladder-pooled results/pooled_comparison.json          # → results/pooled_ablation.json
 ./isd-exp report ablation-tables
@@ -519,7 +530,7 @@ Diễn giải cần ghi trong paper:
 
 - Hướng delta trong bảng/hình = **arm − A0** (âm = gỡ thành phần làm giảm chất lượng); trong `pooled_ablation.json` các
   row comparison lưu chiều A0 − arm (contribution).
-- `isd-exp comparison pool` chỉ xét proposed + 6 baseline nên 3 arm nằm cùng run dir **không bị nuốt** vào phía ladder.
+- `isd-exp pool comparison` chỉ xét proposed + 6 baseline nên 3 arm nằm cùng run dir **không bị nuốt** vào phía ladder.
 - Ở hai arm prose, mọi cơ chế cross-artifact (edge checks, docket, plan_coverage, routing, residual audit,
   aggregator coverage-net, `design.alignment_matrix`) **vắng theo thiết kế** — chênh lệch từ đó là **một phần của
   hiệu ứng đo được**, không phải bug. Regen loop + 5 within-artifact check + self-repair **bật ở mọi arm**.
@@ -600,9 +611,9 @@ activities / evaluation) có rỗng không. Quan trọng: output parse được 
 | `기본 출력 반환` / stub marker         | Baseline ghi default output   | Loại scenario/run, tìm nguyên nhân rỗng    |
 | `응답 길이: 0`                       | Model trả rỗng                | Kiểm pod log + cap completion (<think>)    |
 | `token_usage = 0` hàng loạt      | Accounting hỏng               | Sửa trước khi chạy tiếp — số token sai hết |
-| `token_usage = 0` ở **một số** agent | Agent đó dùng `LLMConfig` đã tách khỏi counter của run | Counter đi theo lineage của config: `_get_agent_runner` mở scope bằng `new_token_scope()`, `copy_with()` chia sẻ lại. Chạy `pytest shared/tests/test_token_accounting_reaches_agents.py` |
+| `token_usage = 0` ở **một số** agent | Agent đó dùng `LLMConfig` đã tách khỏi counter của run | Counter đi theo lineage của config: `runner/llm.py::uniform_config` mở scope bằng `new_token_scope()`, `copy_with()` chia sẻ lại. Chạy `pytest tests/test_runner_agents.py` |
 | Model name metadata ≠ run dir    | Nhầm URL pod ↔ slot           | Loại run, kiểm `base_urls` trong experiment.toml |
-| `evaluation_error` trong summary | LLM judge chết giữa chừng         | `04_repair_ladder_results.py` (xem dưới)   |
+| `FAILED` trong log `judge llm`   | LLM judge chết giữa chừng     | Chạy lại đúng lệnh `judge llm`, hoặc `audit repair` (xem dưới) |
 | Pod EXITED giữa run              | OOM/crash server              | Xem RunPod console log, kiểm VRAM          |
 
 LLM judge lỗi transient sửa được **không cần sinh lại output**:
@@ -617,11 +628,39 @@ Script chấm lại từng agent bị ảnh hưởng trong thư mục tạm rồ
 `.pre-judge-repair`.
 Output và trajectory chỉ được đọc, không bao giờ sinh lại.
 
-## 7. Score alignment (RQ2)
+## 7. Judge — LLM judge và alignment
 
-Bước này **không nằm trong ladder**, phải chạy tay sau bench. Chỉ đọc `*_output.json` và ghi
-`alignment_scores.json` vào từng scenario dir. Thiếu bước này thì mục 8 vẫn chạy nhưng **bỏ trống toàn bộ RQ2**
-(graceful skip — dễ quên).
+Hai bài chấm, hai lệnh cùng một khuôn (`src/isd_experiments/judge/`). Cả hai đọc run dir đã sinh xong và không bao
+giờ sinh lại. Cả hai nhận glob, `--agents` để lọc roster, `--overwrite` để chấm lại cái đã chấm, và `--dry-run` để in
+phạm vi mà không gọi gì. Chạy lại sau khi bị ngắt thì tiếp đúng chỗ dừng. `run --with-judge` gọi cả hai sau mỗi run;
+chạy tay thì theo thứ tự dưới đây.
+
+### 7.1 LLM judge
+
+```bash
+./isd-exp judge llm 'results/test_90_benchmark_*_c1_*' --dry-run   # phạm vi, không gọi LLM judge
+./isd-exp judge llm 'results/test_90_benchmark_*_c1_*'
+```
+
+Mỗi scenario được chấm bằng **một** lần gọi evaluator của benchmark, `isd-evaluator compare --no-run --use-llm
+--multi-judge`, trên mọi agent có output trong scenario đó. Đây chính là lời gọi benchmark làm sau mỗi scenario, cùng
+rubric, cùng đường multi-judge, với roster khai trong `[judge]`. Chỉ thời điểm chạy là khác: sau khi sinh xong, không
+đan xen với lúc sinh. Kết quả ghi đúng chỗ cũ: `comparison_report.json` + `.md` trong từng scenario dir, và
+`evaluation` của scenario trong `benchmark_summary.json`.
+
+- Scenario được chấm khi có ít nhất **một** agent có output. Benchmark gốc đòi hai (quy tắc của leaderboard), nhưng
+  run ablation hay tune một agent vẫn cần điểm.
+- `--workers` (mặc định 4) là số scenario chấm song song.
+- Scenario có report đủ mọi agent và đủ metric thì bỏ qua. Report đủ nhưng có một LLM judge trả lỗi thì dùng
+  `audit repair` (mục 6.4), sửa từng row, không chấm lại cả scenario.
+- Run chưa chấm thì `audit postrun` báo **info** "not judged yet", không báo đỏ. Summary của run mang cờ
+  `evaluation_deferred` cho tới khi scenario được chấm.
+
+### 7.2 Alignment (RQ2)
+
+Chỉ đọc `*_output.json` và ghi `alignment_scores.json` vào từng scenario dir. Thiếu bước này thì mục 8 vẫn chạy nhưng
+**bỏ trống toàn bộ RQ2** (graceful skip, dễ quên). `run --with-judge` chạy nó tự động với arm khai ở
+`[alignment].judge_arms` (`primary` hoặc `all`).
 
 **Chỉ encoder primary (8B) cần pod.** Mọi arm còn lại chạy trên máy local (A.3). Pod dùng cùng convention template
 ladder: **<https://console.runpod.io/deploy?template=3i3er665bh>** — GPU ≥24GB (bf16 weights ~16GB), không sửa start
@@ -641,10 +680,10 @@ base_urls = ["https://<pod_id>-8000.proxy.runpod.net/v1"]
 RUNS='results/test_90_benchmark_*_r* results/test_30_benchmark_*_a*'
 
 # (1) arm primary — cần pod đang chạy
-./isd-exp score $RUNS
+./isd-exp judge alignment $RUNS
 
 # (2) TẮT POD, rồi chấm 3 arm sensitivity còn lại hoàn toàn local (~70 phút)
-./isd-exp score $RUNS \
+./isd-exp judge alignment $RUNS \
     --encoder-presets bgem3,granite,tfidf --bloom-presets lexicon
 ```
 
@@ -663,7 +702,7 @@ miễn phí — chạy CPU, vector lấy từ cache:
 # cần checkpoint trước (một lần, vài phút GPU):
 python ./isd-exp bloom train --train ../EDM2022CLO/data/sample_full.csv \
     --output-dir models/bloom-bert-edm2022
-./isd-exp score --bloom-presets lexicon --embed-cache-only $RUNS
+./isd-exp judge alignment --bloom-presets lexicon --embed-cache-only $RUNS
 ```
 
 Cách scorer hoạt động:
@@ -716,7 +755,7 @@ Validity evidence cho Bloom — chạy một lần, báo cả hai arm + κ giữ
 ## 8. Pool → thống kê RQ1 + RQ2
 
 ```bash
-./isd-exp comparison pool \
+./isd-exp pool comparison \
     --auto-glob 'results/test_90_benchmark_*_r*' --auto-encoders --auto-bloom
 ```
 
@@ -778,7 +817,7 @@ không kiểm nó.
 **Quy ước artifact (2026-07-30, enforce bằng `isd-exp audit artifacts` check I):** mọi text trong artifact là
 **tiếng Anh**, số dùng **dấu chấm** (`87.77`). Caption chỉ nói *bảng chiếu gì* và *một ô là gì*, ~100–250 ký tự;
 phần biện luận phương pháp thuộc mục Methods. Mean và SD phải cùng một signal (`sd_{addie,traj,total}_across_scenarios`
-trong pooled; `run_to_run_sd` trần là Total, chỉ còn tồn tại cho `isd-exp ablation pool`). Ô nào tính trên tập
+trong pooled; `run_to_run_sd` trần là Total, chỉ còn tồn tại cho `isd-exp pool ablation`). Ô nào tính trên tập
 scenario thiếu thì phải in `n` + footnote — RQ2 đếm scenario có **ít nhất một** run chấm được, điều kiện yếu hơn
 complete-case (đủ mọi run của ô) của RQ1, nên hai bảng ghi nhãn khác nhau.
 Số format kiểu VN (`{,}`). `isd-exp report sync` là **bước copy duy nhất** sang `docs/generated/`; LaTeX trỏ tới đó bằng
@@ -879,7 +918,7 @@ Về composite: per-scenario `total_score` trong `comparison_report.json` —
 
 ## A.2 RQ1 statistics
 
-File: [`isd-exp comparison pool`](../../experiments/src/isd_experiments/pool/comparison.py).
+File: [`isd-exp pool comparison`](../../experiments/src/isd_experiments/pool/comparison.py).
 Input: 4 size × 1 run × 90 scenario (TN1), mỗi scenario đã có `Total` cho từng agent.
 
 - **`mean_total`** — trung bình `Total` của một agent tại một size, pool qua run rồi qua scenario (complete-case là

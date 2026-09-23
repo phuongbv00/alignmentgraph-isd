@@ -129,7 +129,7 @@ def gen_tab_alignment(pooled: dict) -> str:
     if not align or not align.get("models"):
         return (header_comment(pooled, "tab_alignment.tex — placeholder")
                 + "% No alignment_scores.json data was present in the pooled input.\n"
-                  "% Re-run isd-exp comparison pool after the alignment metric\n"
+                  "% Re-run isd-exp pool comparison after the alignment metric\n"
                   "% (alignment scoring) lands in the scenario dirs, then regenerate this file.\n"
                   "% This file intentionally renders nothing.\n")
 

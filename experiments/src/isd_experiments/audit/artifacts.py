@@ -234,7 +234,7 @@ def check_protocol_integrity(rep: Report, ctx: dict) -> None:
                            f"but {missing} are absent — the whole-panel Holm "
                            "family is built from what pooled, so every "
                            "p_holm_panel is corrected over too few comparisons. "
-                           f"Re-score with `{paths.cli()} score --overwrite` "
+                           f"Re-score with `{paths.cli()} judge alignment --overwrite` "
                            "(cached artifacts predating the signal are otherwise "
                            "valid, so a plain re-run reuses them), then re-pool")
         stale = sorted(pooled_panel - declared)
@@ -457,7 +457,7 @@ def run(*, strict: bool = False, check_docs: bool = True) -> int:
     rep = Report()
     if not ctx["ladder"]:
         rep.add("red", f"B: {POOLED_COMPARISON.name} not found — nothing downstream of "
-                       f"`{paths.cli()} comparison pool` can be trusted")
+                       f"`{paths.cli()} pool comparison` can be trusted")
     if not ctx["ablation"]:
         rep.add("info", "B: no pooled_ablation.json — ablation artifacts not expected")
     if not ctx["sensitivity"]:

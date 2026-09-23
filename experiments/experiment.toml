@@ -256,6 +256,14 @@ agents = ["alignmentgraph-isd", "react-isd"]
 [alignment]
 primary_encoder = "nemotron"
 primary_bloom = "bertbloom"
+# The arms `isd-exp run <experiment> --with-judge` scores once a run is
+# generated: "primary" (the configuration above, the only artifact pooling
+# reads, and the only arm that needs the embedding pod) or "all" (the whole
+# star). The local sweep arms are cheapest scored later, over every run at once,
+# after the pod is down -- one axis per invocation, since the sweep is a star:
+#   isd-exp judge alignment <runs> --encoder-presets bgem3,granite,tfidf
+#   isd-exp judge alignment <runs> --bloom-presets lexicon --embed-cache-only
+judge_arms = "primary"
 
 [alignment.encoders.nemotron]
 # LaTeX macro names cannot contain digits, so each arm needs a word form.

@@ -1,11 +1,17 @@
 """Turn an experiment profile into a launch.
 
-The shell keeps the tmux orchestration -- building a command string whose `$tag`
-expands in the child, one session per model slot -- because that is genuinely
-shell-shaped work and porting it to subprocess would be more code and more
-escaping for no gain. What moves here is the DECISION of what to launch: the
-profile comes from experiment.toml, so what an official run consists of is
-declared once rather than re-typed at a prompt.
+The shell keeps the tmux orchestration -- one session per model slot, the run
+tags of a slot one after another inside it -- because that is genuinely
+shell-shaped work. What each session RUNS is `isd-exp run <experiment>
+--foreground` for one slot and one tag, which reads the declaration itself
+(models, serving limits, judge roster), so nothing the run depends on travels
+through the shell at all.
+
+What the shell still receives is what it prints and records: the cost banner,
+the dry-run plan and the manifest. Those values travel under UNDERSCORED names,
+because the launcher sources .env in its own shell after this, and a value
+published under a name .env can also carry would be taken back by a stale line
+there -- a manifest attesting to a model that never ran.
 
 That also closes a hazard that needs guarding wherever `.env` can override an
 experiment's own identity: a leftover `DATASET=train_10` from a tuning session
@@ -19,6 +25,7 @@ import os
 import subprocess
 
 from . import paths
+from .alignment.presets import current as declared_arms
 from .config import Profile
 from .config import current as current_config
 from .judge import judge_env
@@ -32,7 +39,8 @@ INFORMAL = {"tune"}
 
 
 def profile_env(profile: Profile, *, slots: str | None = None,
-                tags: str | None = None, agents: str | None = None) -> dict[str, str]:
+                tags: str | None = None, agents: str | None = None,
+                with_judge: bool = False) -> dict[str, str]:
     """The contract launch.sh reads. Overrides are per-invocation, not sticky."""
     slot_list = slots.replace(",", " ") if slots else " ".join(profile.slots)
     tag_list = tags.replace(",", " ") if tags else " ".join(profile.tags)
@@ -41,7 +49,7 @@ def profile_env(profile: Profile, *, slots: str | None = None,
 
     # Printed by the launcher when a run finishes, so it must name a command
     # the reader can actually type from where they are standing.
-    pool_cmd = (f"{paths.cli()} {profile.name} pool"
+    pool_cmd = (f"{paths.cli()} pool {profile.name}"
                 if profile.name in {"comparison", "ablation"} else "")
 
     env = {
@@ -57,6 +65,7 @@ def profile_env(profile: Profile, *, slots: str | None = None,
         "POOL_HINT": pool_cmd,
         "CONFIRM": "0" if (informal or not profile.confirm) else "1",
         "MANIFEST": "0" if informal else "1",
+        "WITH_JUDGE": "1" if with_judge else "0",
     }
 
     # Per-slot values, from the declared ladder rather than from blocks naming
@@ -65,6 +74,14 @@ def profile_env(profile: Profile, *, slots: str | None = None,
     # place a rung's URL is written, so a leftover export of the same name in
     # the surrounding shell must not decide where a run's requests go.
     cfg = current_config()
+    # The child reads the declaration itself; it has to read THIS one. Baked
+    # into its command rather than exported, because a tmux server that is
+    # already running hands a new session its own environment, not ours.
+    env["_ISD_EXPERIMENT_CONFIG"] = str(cfg.source)
+    if with_judge:
+        # Read only when asked: a declaration that never judges alignment need
+        # not declare the instruments for it.
+        env["_ALIGNMENT_JUDGE_ARMS"] = declared_arms().judge_arms
     for model in profile.models:
         prefix = model.env_prefix
         # UNDERSCORED, like the serving limits below and for the same reason:
@@ -106,10 +123,12 @@ def profile_env(profile: Profile, *, slots: str | None = None,
 
 
 def launch(experiment: str, *, dry_run: bool = False, slots: str | None = None,
-           tags: str | None = None, agents: str | None = None) -> int:
+           tags: str | None = None, agents: str | None = None,
+           with_judge: bool = False) -> int:
     profile = current_config().profile(experiment)
     env = dict(os.environ)
-    env.update(profile_env(profile, slots=slots, tags=tags, agents=agents))
+    env.update(profile_env(profile, slots=slots, tags=tags, agents=agents,
+                           with_judge=with_judge))
     env["DRY_RUN"] = "1" if dry_run else "0"
     if not LAUNCHER.exists():
         raise SystemExit(f"Launcher missing: {LAUNCHER}")

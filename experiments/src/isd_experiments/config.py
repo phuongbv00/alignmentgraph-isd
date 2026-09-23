@@ -307,8 +307,8 @@ class Experiment:
     def slot_of_label(self, label: str) -> str | None:
         """Run-dir model label -> the slot that produced it, or None.
 
-        The benchmark names a run directory after the model id with the org
-        prefix dropped and ':' turned into '-' (run_benchmark.py). Matching has
+        A run directory is named after the model id with the org prefix
+        dropped and ':' turned into '-' (runner/llm.py::model_dir_label). Matching has
         to reproduce that spelling exactly: comparing against the raw id is why
         every hosted model, whose id carries a ':', silently failed to resolve
         and fell back to printing its own directory name as a header.

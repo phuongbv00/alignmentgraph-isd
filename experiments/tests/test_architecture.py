@@ -71,7 +71,7 @@ class TestDependencyDirection:
 # ── path anchoring and dynamic imports ───────────────────────────────────────
 
 class TestNoPathHacks:
-    """One anchor, one dynamic import, no sys.path surgery.
+    """One anchor, no dynamic imports, no sys.path surgery.
 
     The twenty scripts this replaces each counted `parents[N]` to find the
     repository and inserted the evaluator onto sys.path by hand. Both are
@@ -87,21 +87,35 @@ class TestNoPathHacks:
         )
 
     def test_no_sys_path_insert(self):
-        offenders = [h for h in _grep(r"sys\.path\.insert", SRC)
-                     if not h.startswith("src/isd_experiments/bench.py:")]
+        offenders = _grep(r"sys\.path\.insert", SRC)
         assert offenders == [], (
             "Install packages instead of inserting them onto sys.path:\n" + "\n".join(offenders)
         )
 
-    def test_spec_loading_only_in_bench(self):
-        """run_benchmark.py has no install route, so exactly one of these is
-        legitimate. Six sibling scripts used to load each other this way purely
-        because their filenames began with digits."""
-        offenders = [h for h in _grep(r"spec_from_file_location", SRC)
-                     if not h.startswith("src/isd_experiments/bench.py:")]
+    def test_no_loading_by_file_path(self):
+        """Every benchmark component this package uses is an installed package,
+        so nothing is loaded by file path. Six sibling scripts once loaded each
+        other that way purely because their filenames began with digits."""
+        offenders = _grep(r"spec_from_file_location", SRC)
         assert offenders == [], (
-            "Import siblings normally; bench.py holds the one unavoidable case:\n"
-            + "\n".join(offenders)
+            "Import installed packages normally:\n" + "\n".join(offenders)
+        )
+
+
+class TestComponentsNotTheEntryPoint:
+    """The benchmark supplies components -- its agents, `shared`, the scenarios,
+    the evaluator -- and never the orchestration.
+
+    Running the comparison through the benchmark's own entry point would make
+    the study depend on a script it does not own, and customising that script
+    is what made it drift from the one the benchmark ships. The runner is this
+    package's (`runner/`); the entry point is not named, imported or launched.
+    """
+
+    def test_the_entry_point_is_never_named(self):
+        offenders = _grep(r"run_benchmark", SRC, BIN)
+        assert offenders == [], (
+            "the benchmark's entry point is referenced again:\n" + "\n".join(offenders)
         )
 
 
@@ -148,16 +162,13 @@ class TestSemanticNaming:
 class TestOneResultsVariable:
     """One env var names the results tree, end to end.
 
-    There were briefly two -- one read by this package, one exported to
-    run_benchmark.py -- and the launcher set the second from the first. That is
-    a relay, not a setting: they could only ever hold the same value, so the
-    second name was one more thing to keep in step and one more place for them
-    to disagree.
+    One name for one fact: a second name that could only ever hold the same
+    value is a relay rather than a setting, one more thing to keep in step and
+    one more place for the two to disagree.
 
-    The name is deliberately plain (`RESULTS_DIR`) because it is literally the
-    variable run_benchmark.py reads; `doctor` reports an inherited value rather
-    than assuming it, since a plain name in a global namespace is one another
-    tool can also set.
+    The name is deliberately plain (`RESULTS_DIR`); `doctor` reports an
+    inherited value rather than assuming it, since a plain name in a global
+    namespace is one another tool can also set.
     """
 
     NAME = "RESULTS_DIR"
@@ -175,7 +186,7 @@ class TestOneResultsVariable:
         assert p.results_root() == tmp_path
 
     def test_bench_hands_the_same_name_through(self, monkeypatch, tmp_path):
-        """Passed through, not translated: the benchmark reads this variable."""
+        """Passed through to a subprocess, not translated."""
         from isd_experiments import bench
 
         monkeypatch.setenv(self.NAME, str(tmp_path))
@@ -183,11 +194,11 @@ class TestOneResultsVariable:
         assert env[self.NAME] == str(tmp_path)
         assert not [k for k in env if "BENCH_RESULTS" in k]
 
-    def test_the_benchmark_reads_the_same_name(self):
-        """The one-line change in the submodule. Read as source rather than
-        imported, because importing run_benchmark.py executes 67 KB of it."""
-        src = (paths.bench_root() / "run_benchmark.py").read_text(encoding="utf-8")
-        assert f'os.environ.get("{self.NAME}")' in src
+    def test_the_runner_writes_under_it(self, monkeypatch, tmp_path):
+        from isd_experiments.runner.execute import run_dir_for
+
+        monkeypatch.setenv(self.NAME, str(tmp_path))
+        assert run_dir_for("split", "org/model", "t1", "20260101_000000").parent == tmp_path
 
     def test_the_launcher_exports_it(self):
         matrix = (BIN / "_matrix.sh").read_text(encoding="utf-8")

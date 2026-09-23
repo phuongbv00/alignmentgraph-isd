@@ -8,23 +8,26 @@
 # so the two copies of slot resolution could drift apart silently.
 #
 # Everything that differs between experiments is a variable the caller exports,
-# and `isd-exp <stage> run` is what exports them — the profile comes from
+# and `isd-exp run <experiment>` is what exports them — the profile comes from
 # experiment.toml, so what an official run consists of is declared rather than
-# typed at a prompt.
+# typed at a prompt. Each tmux session then runs `isd-exp run <experiment>
+# --foreground` per tag, which reads the same declaration itself.
 #
 # Required from the caller:
 #   EXPERIMENT EXPERIMENT_TITLE DATASET CANONICAL_DATASET AGENTS
 #   RATE_LIMIT _SLOTS_LIST _RUN_TAGS_LIST SESSION_PREFIX POOL_HINT
+#   _ISD_EXPERIMENT_CONFIG
 # Optional:
 #   CONFIRM=0     skip the cost prompt (tuning and canary runs)
 #   MANIFEST=0    skip the manifest (not an official experiment)
 #   DRY_RUN=1     print the plan and exit without launching
+#   WITH_JUDGE=1  judge each run (LLM judge, then alignment) once it is generated
 # ---------------------------------------------------------------------------
 set -u
 
 source "$(dirname "$0")/_matrix.sh"
 
-: "${EXPERIMENT:?launch.sh needs a profile — use \`isd-exp <stage> run\`}"
+: "${EXPERIMENT:?launch.sh needs a profile — use \`isd-exp run <experiment>\`}"
 : "${DATASET:?}" "${AGENTS:?}" "${SESSION_PREFIX:?}"
 CONFIRM="${CONFIRM:-1}"
 MANIFEST="${MANIFEST:-1}"
@@ -34,8 +37,6 @@ matrix_resolve_slots
 matrix_export_slots
 matrix_export_keys
 matrix_counts
-matrix_judge_flags
-matrix_serving_prefix
 
 if [ "$DRY_RUN" = "1" ]; then
     echo "== DRY RUN — ${EXPERIMENT_TITLE:-$EXPERIMENT} =="
@@ -47,8 +48,13 @@ if [ "$DRY_RUN" = "1" ]; then
     echo "  python  : $BENCH_PYTHON"
     echo "  bench   : $BENCH_ROOT"
     echo "  env     : $ENV_FILE"
-    echo "  judge   : ${JUDGE_FLAGS:-(not declared — the environment answers)}"
-    echo "  serving : ${SERVING_PREFIX:-(not declared — benchmark defaults apply)}"
+    echo "  roster  : ${_JUDGE_MODEL_NAMES:-(not declared — the environment answers)}"
+    if [[ "${WITH_JUDGE:-0}" == "1" ]]; then
+        echo "  judge   : llm + alignment (${_ALIGNMENT_JUDGE_ARMS:-primary} arms), after each run"
+    else
+        echo "  judge   : off ($EXP_ROOT/isd-exp judge llm|alignment <run_dir> afterwards)"
+    fi
+    echo "  serving : window=${_AGENT_MODEL_CONTEXT_WINDOW:--} max_out=${_AGENT_MODEL_MAX_OUTPUT_TOKENS:--} streaming=${_AGENT_MODEL_STREAMING:--} thinking=${_AGENT_MODEL_THINKING_BUDGET:--} fanout=${_HARNESS_FANOUT_WORKERS:--}"
     echo "  pool    : ${POOL_HINT:-}"
     for slot in $_SLOTS_LIST; do
         rate_var="$(slot_upper "$slot")_RATE_LIMIT"

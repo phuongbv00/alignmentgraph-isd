@@ -595,8 +595,8 @@ def gen_stats_md(pooled: dict) -> str:
                         f"| {row.get('p_holm', float('nan')):.3g} | {pp_txt} "
                         f"| {row['n']} |")
     else:
-        L.append(f"Absent — run `{paths.cli()} score` on each ablation run "
-                 f"dir, then re-run `{paths.cli()} ablation pool` and "
+        L.append(f"Absent — run `{paths.cli()} judge alignment` on each ablation run "
+                 f"dir, then re-run `{paths.cli()} pool ablation` and "
                  f"`{paths.cli()} report ablation-tables`.")
     L.append("")
     inter = pooled.get("interaction") or {}
@@ -726,7 +726,7 @@ def run(*, pooled_path: Path | None = None, outdir: Path | None = None,
     src = pooled_path or (paths.results_root() / "pooled_ablation.json")
     if not src.exists():
         if not quiet:
-            print(f"- no {src.name} — skipped. Produce it with:  {paths.cli()} ablation pool")
+            print(f"- no {src.name} — skipped. Produce it with:  {paths.cli()} pool ablation")
         return []
     pooled = schema.load(src)
     out = outdir or paths.generated_dir()

@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-import textwrap
 
 import pytest
 
@@ -86,34 +85,30 @@ class TestLadderIsConfiguration:
             assert e[f"_{prefix}_AGENT_MODEL_NAME"]
             assert e[f"_{prefix}_AGENT_MODEL_API_KEY_ENVS"]
 
-    def test_a_hybrid_ladder_reaches_the_benchmark_with_each_key(self, tmp_path):
+    def test_a_hybrid_ladder_reaches_each_rung_with_its_own_key(self, tmp_path):
         """Not every rung lives on the same host, so not every rung
         authenticates with the same credential.
 
-        End to end through the launcher rather than through profile_env alone:
-        the value has to survive experiment.toml -> the underscored export ->
-        `source .env` -> the flag string, and it is the middle step that used
-        to lose it.
+        Asserted on the config the runner builds for the rung, which is what
+        every agent of that run is handed.
         """
-        import os
+        from isd_experiments.config import load
+        from isd_experiments.runner.llm import slot_config
+
         src = (paths.exp_root() / "tests" / "fixtures" / "two_rung.toml").read_text()
-        cfg = tmp_path / "experiment.toml"
-        # On the FIRST rung: a dry run prints the first slot's command, and it
-        # is the printed command this test is about.
-        cfg.write_text(
+        cfg_path = tmp_path / "experiment.toml"
+        cfg_path.write_text(
             src.replace('base_urls = ["http://localhost:8000/v1"]',
                         'base_urls = ["https://hosted.test/v1"]\n'
                         'key_env = "HOSTED_KEY"'),
             encoding="utf-8")
-        out = subprocess.run(
-            [str(paths.exp_root() / ".venv" / "bin" / "python"),
-             "-m", "isd_experiments.cli", "comparison", "run", "--dry-run"],
-            capture_output=True, text=True, cwd=str(paths.exp_root()),
-            env=dict(os.environ, ISD_EXPERIMENT_CONFIG=str(cfg)))
-        assert out.returncode == 0, out.stderr
-        assert "--agent-model-api-key-envs 'HOSTED_KEY'" in out.stdout, (
-            "the hosted rung lost its own key on the way to the benchmark")
-        assert "--agent-model-base-url 'https://hosted.test/v1'" in out.stdout
+        cfg = load(cfg_path)
+        first, second = cfg.models[0], cfg.models[1]
+        hosted = slot_config(cfg, first)
+        assert hosted.api_key_envs == ("HOSTED_KEY",), (
+            "the hosted rung lost its own key on the way to the agents")
+        assert hosted.all_base_urls == ("https://hosted.test/v1",)
+        assert slot_config(cfg, second).api_key_envs == (cfg.serving.key_env,)
 
     def test_no_slot_quad_is_published_under_a_shadowable_name(self, envs):
         """A plain name here is one `source .env` away from being overridden."""
@@ -132,7 +127,7 @@ class TestLadderIsConfiguration:
         env = dict(os.environ, ISD_EXPERIMENT_CONFIG=str(cfg))
         out = subprocess.run(
             [str(paths.exp_root() / ".venv" / "bin" / "python"),
-             "-m", "isd_experiments.cli", "comparison", "run", "--dry-run"],
+             "-m", "isd_experiments.cli", "run", "comparison", "--dry-run"],
             capture_output=True, text=True, env=env, cwd=str(paths.exp_root()))
         assert out.returncode == 0, out.stderr
         assert "tiny big" in out.stdout
@@ -162,7 +157,7 @@ def _dry_run(config_path=None):
         env["ISD_EXPERIMENT_CONFIG"] = str(config_path)
     out = subprocess.run(
         [str(paths.exp_root() / ".venv" / "bin" / "python"),
-         "-m", "isd_experiments.cli", "comparison", "run", "--dry-run"],
+         "-m", "isd_experiments.cli", "run", "comparison", "--dry-run"],
         capture_output=True, text=True, env=env, cwd=str(paths.exp_root()))
     assert out.returncode == 0, out.stderr
     return out.stdout
@@ -171,80 +166,58 @@ def _dry_run(config_path=None):
 class TestTheChildCommandCarriesTheDeclaration:
     """A summary of the flags is not the flags.
 
-    Assembling the child command in its own function is what lets a dry run
-    print the thing that would really be executed -- and what makes the three
-    channels checkable without spending a benchmark run: an argument the parent
-    quotes, a flag list that beats the environment, and an assignment prefix
-    that sits after the child re-reads .env.
+    Each tmux session runs `isd-exp run <experiment> --foreground` for one slot
+    and one tag, and that run reads the declaration itself. So the command
+    carries the declaration's PATH and what a launch may override for this
+    invocation, and nothing the declaration already says -- a model, an
+    endpoint, a serving limit or a judge on the command line would be a second
+    copy that can disagree with the first.
     """
 
-    def test_the_api_spec_is_passed_and_the_vendor_label_is_gone(self, plan):
-        """`api_spec` is what the benchmark dispatches the client on. The label
-        that used to travel in its place carried the endpoint-discovery
-        provider, which is a different question with different values."""
-        assert "--agent-model-api-spec 'openai_compatible'" in plan
-        assert "--agent-model-provider" not in plan
+    @staticmethod
+    def _command(plan: str) -> str:
+        return plan.split("command (first slot):", 1)[1]
 
-    def test_the_serving_limits_prefix_the_interpreter(self, plan):
-        """After the child sources .env and ahead of the benchmark's own dotenv
-        load, so neither can take them back."""
-        command = plan.split("command (first slot):", 1)[1]
-        names = ("AGENT_MODEL_CONTEXT_WINDOW", "AGENT_MODEL_MAX_OUTPUT_TOKENS",
-                 "AGENT_MODEL_STREAMING", "AGENT_MODEL_THINKING_BUDGET",
-                 "HARNESS_FANOUT_WORKERS")
-        for name in names:
-            assert f"{name}='" in command
-        # Nothing between the LAST assignment and the interpreter: an exported
-        # variable would sit before the child re-reads .env, which is the whole
-        # difference between this and an export. Found by position rather than
-        # by name, so adding a limit does not silently stop this from checking
-        # the thing it is named after.
-        last = max(command.index(f"{name}='") for name in names)
-        after = command[last:].split("='", 1)[1]
-        assert after.split("'", 1)[1].strip().startswith("'"), after[:80]
-        assert "run_benchmark.py" in after.split(";", 1)[0]
+    def test_each_session_runs_the_experiment_in_the_foreground(self, plan):
+        command = self._command(plan)
+        assert "-m isd_experiments.cli" in command
+        assert "run 'comparison' --foreground" in command
+        assert "run_benchmark.py" not in command
+
+    def test_the_child_reads_the_same_declaration(self, plan):
+        from isd_experiments.config import current
+        assert f"ISD_EXPERIMENT_CONFIG='{current().source}'" in self._command(plan)
+
+    def test_nothing_the_declaration_says_travels_on_the_command(self, plan):
+        command = self._command(plan)
+        for leaked in ("--agent-model", "--judge-model", "AGENT_MODEL_",
+                       "HARNESS_FANOUT_WORKERS"):
+            assert leaked not in command, leaked
 
     def test_every_parent_expanded_value_is_quoted(self, plan):
         """An unquoted empty expansion disappears and shifts the next flag's
-        value onto this one -- the failure matrix_resolve_slots fails fast on."""
-        command = plan.split("command (first slot):", 1)[1]
-        for flag in ("--dataset", "--agents", "--rate-limit", "--agent-model-api-spec",
-                     "--agent-model-base-url", "--agent-model-name",
-                     "--agent-model-api-key-envs"):
+        value onto this one."""
+        command = self._command(plan)
+        for flag in ("--slots", "--agents", "--rate-limit"):
             after = command.split(f"{flag} ", 1)[1]
             assert after.startswith("'"), f"{flag} is not quoted"
 
-    def test_an_undeclared_judge_contributes_no_flag(self, tmp_path):
-        """Undeclared has to leave the command unshifted, not empty-argumented:
-        the benchmark and the evaluator must still answer for the roster the way
-        they do with no experiment.toml at all."""
-        cfg = tmp_path / "experiment.toml"
-        cfg.write_text((paths.exp_root() / "tests" / "fixtures" / "two_rung.toml")
-                       .read_text(encoding="utf-8"), encoding="utf-8")
-        command = _dry_run(cfg).split("command (first slot):", 1)[1]
-        assert "--judge-model" not in command
-        assert "AGENT_MODEL_MAX_OUTPUT_TOKENS='" not in command
+    def test_judging_is_off_unless_asked_for(self, plan):
+        assert "--with-judge" not in self._command(plan)
+        assert "judge   : off" in plan
 
-    def test_a_declared_judge_reaches_the_command(self, tmp_path):
-        cfg = tmp_path / "experiment.toml"
-        cfg.write_text(
-            (paths.exp_root() / "tests" / "fixtures" / "two_rung.toml")
-            .read_text(encoding="utf-8")
-            + textwrap.dedent("""
-                [judge]
-                provider = "somehost"
-                key_env = "SOMEHOST_API_KEY"
+    def test_with_judge_reaches_every_session(self):
+        import os
 
-                [[judge.models]]
-                name = "vendor/model-a"
-                """),
-            encoding="utf-8")
-        command = _dry_run(cfg).split("command (first slot):", 1)[1]
-        assert "--judge-model-names 'vendor/model-a'" in command
-        assert "--judge-model-api-key-env 'SOMEHOST_API_KEY'" in command
-        # A key VALUE has no spelling in the declaration and none on the command.
-        assert "--judge-model-api-key '" not in command
-        assert "--judge-model-api-keys" not in command
+        out = subprocess.run(
+            [str(paths.exp_root() / ".venv" / "bin" / "python"),
+             "-m", "isd_experiments.cli", "run", "comparison", "--dry-run",
+             "--with-judge"],
+            capture_output=True, text=True, env=dict(os.environ),
+            cwd=str(paths.exp_root()))
+        assert out.returncode == 0, out.stderr
+        assert "--with-judge" in self._command(out.stdout)
+        assert "judge   : llm + alignment" in out.stdout
 
 
 class TestNoDeclaredFieldIsInert:

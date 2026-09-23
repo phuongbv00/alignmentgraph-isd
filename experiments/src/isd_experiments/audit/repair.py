@@ -41,12 +41,12 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Any
+
 from .. import bench, paths
 from ..config import current as current_config
 from ..judge import judge_env
-from typing import Any
-
-
+from ..runner import summary as run_summary
 
 DEFAULT_RUN_GLOB = "results/test_90_benchmark_*_r*"
 DEFAULT_BACKUP_SUFFIX = ".pre-llm-judge-repair"
@@ -109,7 +109,7 @@ def resolve_run_dirs(patterns: list[str]) -> list[Path]:
     seen: set[Path] = set()
     for pattern in raw_patterns:
         absolute_pattern = (
-            pattern if Path(pattern).is_absolute() else str(paths.bench_root() / pattern)
+            pattern if Path(pattern).is_absolute() else str(paths.exp_root() / pattern)
         )
         for match in sorted(glob.glob(absolute_pattern)):
             path = Path(match).resolve()
@@ -346,10 +346,8 @@ def sync_reports(
                 f"scenarios/{target.variant}/{target.scenario_id}"
             )
         scenario_slot["evaluation"] = merged_report
-        with tempfile.TemporaryDirectory(prefix="isd-summary-repair-") as temp:
-            rendered_summary = Path(temp) / "SUMMARY.md"
-            bench.load_run_benchmark().generate_summary_report(summary, rendered_summary)
-            summary_markdown = rendered_summary.read_text(encoding="utf-8")
+        scenario_slot.pop("evaluation_deferred", None)
+        summary_markdown = run_summary.render_markdown(summary)
     else:
         print(
             f"    warning: {summary_path} is missing; scenario report repaired "

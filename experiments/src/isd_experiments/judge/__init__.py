@@ -1,4 +1,10 @@
-"""The declared LLM judge roster, rendered into the variables it is read from.
+"""Scoring finished runs, and the LLM judge roster they are scored with.
+
+Two judges, one module each, with one shape: :mod:`.llm` (the benchmark's own
+evaluator) and :mod:`.alignment` (the constructive-alignment panel). What they
+share about a run dir is in :mod:`.rundirs`.
+
+The declared LLM judge roster is rendered here into the variables it is read from.
 
 The evaluator resolves its roster from the environment: ``JUDGE_MODEL_NAMES`` is
 the master list and every other plural is index-aligned to it, with ``|``
@@ -16,7 +22,7 @@ been scored by a different one.
 
 from __future__ import annotations
 
-from .config import Judge
+from ..config import Judge
 
 
 def judge_env(judge: Judge) -> dict[str, str]:

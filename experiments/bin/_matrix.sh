@@ -7,7 +7,7 @@
 # lines of this file rather than sourcing it — so the two copies of slot
 # resolution could drift apart with nothing to notice.
 #
-# What differs between profiles is exported by `isd-exp <stage> run` from
+# What differs between profiles is exported by `isd-exp run <experiment>` from
 # experiment.toml, which is also what removed a real hazard: this file used to
 # source .env and let it override an experiment's own identity, so a stray
 # DATASET=train_10 from a tuning session would silently run an official
@@ -23,6 +23,9 @@
 #   _RUN_TAGS_LIST    space-separated run tags (one tag = one run per cell)
 #   SESSION_PREFIX    tmux session name prefix
 #   POOL_HINT         the pooling command to print when the launch finishes
+#   WITH_JUDGE        1 = each run is judged (LLM judge + alignment) once generated
+#   _ISD_EXPERIMENT_CONFIG  the declaration the child re-reads
+#   _ALIGNMENT_JUDGE_ARMS   [alignment].judge_arms, for the plan and the banner
 #
 # SOURCE THIS FIRST, before the caller's own config block. It cd's to the repo
 # root and sources .env, and .env is allowed to override an experiment's
@@ -41,13 +44,12 @@
 EXP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BENCH_ROOT="${ISD_BENCH_ROOT:-$(cd "$EXP_ROOT/../isd-agent-benchmark" && pwd)}"
 RESULTS_ROOT="${RESULTS_DIR:-$EXP_ROOT/results}"
-# The interpreter that runs run_benchmark.py. ONE environment holds both sides
+# The interpreter every run is generated in. ONE environment holds both sides
 # -- isd-exp and the seven agents -- so this is the same one `isd-exp` itself
 # runs in, and `bench.bench_python()` resolves to the same place. A bare
-# `python run_benchmark.py` would instead inherit whichever interpreter happens
-# to be active, and when that is the wrong one the failure is an ImportError
-# deep inside an agent registry, which reads like an agent bug rather than an
-# install one.
+# `python` would instead inherit whichever interpreter happens to be active,
+# and when that is the wrong one the failure is an ImportError deep inside an
+# agent registry, which reads like an agent bug rather than an install one.
 BENCH_PYTHON="${ISD_BENCH_PYTHON:-$EXP_ROOT/.venv/bin/python}"
 [ -x "$BENCH_PYTHON" ] || {
     echo "No interpreter at $BENCH_PYTHON" >&2
@@ -86,8 +88,8 @@ for _v in $_MATRIX_INLINE_VARS; do
 done
 unset _v _pre
 
-# Per-slot defaults come from experiment.toml, exported by `isd-exp <stage>
-# run` before this file is sourced. Nothing about the ladder is written here:
+# Per-slot defaults come from experiment.toml, exported by `isd-exp run
+# <experiment>` before this file is sourced. Nothing about the ladder is written here:
 # the rungs, their model ids and their API-key env names are configuration, so
 # running a different ladder is a config edit rather than a patch to this file.
 # That includes the endpoints: `base_urls` on the rung is where a slot's URLs
@@ -101,7 +103,7 @@ slot_upper() {
 # the rung takes a list and the agents round-robin across them
 # (shared/llm/config.py::resolve_base_url).
 #
-# _<SLOT>_AGENT_MODEL_BASE_URLS is what `isd-exp <stage> run` exports out of
+# _<SLOT>_AGENT_MODEL_BASE_URLS is what `isd-exp run <experiment>` exports out of
 # experiment.toml, and it is read FIRST: the underscore is what puts it out of
 # reach of the `source .env` above. A stale endpoint line in .env -- especially
 # an EMPTY one left behind by an earlier tool -- would otherwise take back the
@@ -136,9 +138,8 @@ matrix_resolve_slots() {
     done
     unset _suffix
 
-    # Fail fast: an empty *_BASE_URL would otherwise vanish from the unquoted
-    # run_benchmark.py invocation below (bash drops empty unquoted expansions),
-    # silently shifting --agent-model-base-url's value onto the next flag.
+    # Fail fast: a slot with no endpoint would launch a session whose every
+    # model call fails, and report hours later as a run of agent failures.
     _missing_base_url=""
     for slot in $_SLOTS_LIST; do
         upper=$(slot_upper "$slot")
@@ -195,17 +196,16 @@ matrix_export_keys() {
     done
     register_key_envs "${JUDGE_MODEL_API_KEY_ENV:-}"
     register_key_envs "${JUDGE_MODEL_API_KEY_ENVS:-}"
-    # The declared roster, which does not travel under the name the evaluator
-    # reads (see matrix_judge_flags).
+    # The declared roster, which travels under an underscored name so .env
+    # cannot take it back.
     register_key_envs "${_JUDGE_MODEL_API_KEY_ENV:-}"
     register_key_envs "${_JUDGE_MODEL_API_KEY_ENVS:-}"
 }
 
 
-# Export the slot env vars so both the manifest's python and the tmux child
-# shells see them: a rung's model and api_spec may come from experiment.toml
-# alone, in which case they are plain shell variables in THIS process and
-# nothing below inherits them.
+# Export the slot env vars so the manifest's python sees them: a rung's model
+# and api_spec may come from experiment.toml alone, in which case they are plain
+# shell variables in THIS process and nothing below inherits them.
 matrix_export_slots() {
     for slot in $_SLOTS_LIST; do
         upper=$(slot_upper "$slot")
@@ -224,10 +224,9 @@ matrix_counts() {
     NUM_SLOTS=$(echo "$_SLOTS_LIST" | wc -w | tr -d ' ')
     NUM_RUNS=$(echo "$_RUN_TAGS_LIST" | wc -w | tr -d ' ')
     NUM_AGENTS=$(echo "${AGENTS//,/ }" | wc -w | tr -d ' ')
-    # The splits live in the BENCHMARK tree -- paths.scenarios_dir() says so,
-    # and the child command below cd's there before naming --dataset. This file
-    # cd's to EXP_ROOT, so the path has to be absolute: a bare "scenarios/..."
-    # counts zero here and stops every real launch.
+    # The splits live in the BENCHMARK tree -- paths.scenarios_dir() says so.
+    # This file cd's to EXP_ROOT, so the path has to be absolute: a bare
+    # "scenarios/..." counts zero here and stops every real launch.
     _scenario_dir="$BENCH_ROOT/scenarios/${DATASET}"
     NUM_SCENARIOS=$(ls "$_scenario_dir"/*.json 2>/dev/null | wc -l | tr -d ' ')
     if [[ -z "$NUM_SCENARIOS" || "$NUM_SCENARIOS" == "0" ]]; then
@@ -244,64 +243,12 @@ matrix_counts() {
 }
 
 
-# The judge roster, as flags on the benchmark's own command line.
-#
-# Flags rather than exports: this file sources .env once in the parent and the
-# tmux child sources it again, so anything published under the name the
-# evaluator reads can be taken back by a stale line in that file. The benchmark
-# layers the flags it was given OVER the environment it hands the evaluator, so
-# a flag is the one channel .env cannot override.
-#
-# Assembled into ONE variable that is either empty or a complete, internally
-# quoted fragment. A bare `--judge-model-names ${maybe_empty}` would vanish from
-# the unquoted command string and shift the NEXT flag's value onto this one --
-# the failure matrix_resolve_slots already fails fast on for BASE_URL.
-_judge_flag() {
-    [[ -n "$2" ]] && JUDGE_FLAGS="$JUDGE_FLAGS $1 '$2'"
-    return 0
-}
-
-matrix_judge_flags() {
-    JUDGE_FLAGS=""
-    [[ -n "${_JUDGE_MODEL_NAMES:-}" ]] || return 0
-    _judge_flag --judge-model-provider              "${_JUDGE_MODEL_PROVIDER:-}"
-    _judge_flag --judge-model-providers             "${_JUDGE_MODEL_PROVIDERS:-}"
-    _judge_flag --judge-model-names                 "${_JUDGE_MODEL_NAMES:-}"
-    _judge_flag --judge-model-base-url              "${_JUDGE_MODEL_BASE_URL:-}"
-    _judge_flag --judge-model-base-urls             "${_JUDGE_MODEL_BASE_URLS:-}"
-    _judge_flag --judge-model-api-key-env           "${_JUDGE_MODEL_API_KEY_ENV:-}"
-    _judge_flag --judge-model-api-key-envs          "${_JUDGE_MODEL_API_KEY_ENVS:-}"
-    _judge_flag --judge-model-credential-strategies "${_JUDGE_MODEL_CREDENTIAL_STRATEGIES:-}"
-}
-
-
-# The serving limits, as an assignment prefix on the benchmark invocation.
-#
-# A prefix and not an export, for the same reason the judge travels as flags:
-# it is applied AFTER the child sources .env and ahead of the benchmark's own
-# dotenv load (which does not override), so neither can take it back. These
-# limits are uniform across every agent and every rung by design, which is what
-# the fairness argument rests on, so there is nothing per-slot here.
-_serving_var() {
-    [[ -n "$2" ]] && SERVING_PREFIX="$SERVING_PREFIX$1='$2' "
-    return 0
-}
-
-matrix_serving_prefix() {
-    SERVING_PREFIX=""
-    _serving_var AGENT_MODEL_CONTEXT_WINDOW    "${_AGENT_MODEL_CONTEXT_WINDOW:-}"
-    _serving_var AGENT_MODEL_MAX_OUTPUT_TOKENS "${_AGENT_MODEL_MAX_OUTPUT_TOKENS:-}"
-    _serving_var AGENT_MODEL_STREAMING         "${_AGENT_MODEL_STREAMING:-}"
-    _serving_var AGENT_MODEL_THINKING_BUDGET   "${_AGENT_MODEL_THINKING_BUDGET:-}"
-    _serving_var HARNESS_FANOUT_WORKERS        "${_HARNESS_FANOUT_WORKERS:-}"
-}
-
 # An UPPER BOUND on one slot's concurrent model calls, which is what its
 # endpoint has to absorb: scenarios at once x agents at once x the proposed
 # system's Developers at once. Every agent is counted as fanning out, so the
 # bound is loose when most of the roster is a baseline. The three tables are
-# copies: scenarios and agents from run_benchmark.py's rate presets, the
-# Developer gate from the adapter's LLM_CONCURRENCY_BY_RATE_LIMIT. They are
+# copies: scenarios and agents from runner/llm.py::RATE_PRESETS, the Developer
+# gate from the adapter's LLM_CONCURRENCY_BY_RATE_LIMIT. They are
 # printed for sizing, never enforced, so a drift misstates a number on screen
 # and changes nothing that runs.
 matrix_peak_calls() {
@@ -347,7 +294,11 @@ matrix_confirm() {
     echo "  Developer workers: ${_HARNESS_FANOUT_WORKERS:-unset (1)} ([harness].fanout_workers)"
     echo ""
     echo "  !! WARNING: this launches ~$((NUM_SLOTS * NUM_RUNS)) full benchmark runs"
-    echo "  !! (~$((NUM_SLOTS * NUM_RUNS * NUM_AGENTS * NUM_SCENARIOS)) agent generations, plus LLM judge calls)."
+    if [[ "${WITH_JUDGE:-0}" == "1" ]]; then
+        echo "  !! (~$((NUM_SLOTS * NUM_RUNS * NUM_AGENTS * NUM_SCENARIOS)) agent generations, then LLM judge calls)."
+    else
+        echo "  !! (~$((NUM_SLOTS * NUM_RUNS * NUM_AGENTS * NUM_SCENARIOS)) agent generations; judging is a later step)."
+    fi
     echo "  !! This costs REAL MONEY and takes MANY HOURS."
     echo "  !! Also billing GPU time per endpoint on top of this."
     echo "=============================================================="
@@ -458,45 +409,40 @@ print(f"Manifest written: {sys.argv[1]}")
 PYEOF
 }
 
-# The command one slot's tmux session runs.
+# The command one slot's tmux session runs: `isd-exp run <experiment>
+# --foreground` once per run tag, for this slot. The run reads the declaration
+# itself -- the rung's model and endpoints, the serving limits, the judge
+# roster -- so none of them travels through this string. What does is only what
+# a launch may override for this invocation: the slot, the tag, the roster, the
+# rate preset, and whether to judge.
 #
-# Every value below is expanded by THIS shell and single-quoted, so an empty one
-# becomes a present-but-empty argument instead of disappearing and shifting the
-# next flag's value onto the wrong flag. The two exceptions are $SERVING_PREFIX
-# and $JUDGE_FLAGS, which are deliberately unquoted: each is either wholly empty
-# -- the correct meaning of "not declared" -- or a complete fragment that has
-# already quoted its own values.
+# Every value below is expanded by THIS shell and single-quoted, so an empty
+# one becomes a present-but-empty argument instead of disappearing and shifting
+# the next flag's value onto the wrong flag. The declaration's path is an
+# assignment prefix rather than an export: a tmux server that is already
+# running gives a new session its own environment, not this one.
 #
 # Built here rather than inline in matrix_launch so a dry run can print the
-# command that would actually run, which is the only way to check the flags and
-# the prefix without spending a benchmark run on it.
+# command that would actually run.
 matrix_child_command() {
     local slot="$1" log_file="$2"
-    local upper base_url_var name_var key_envs_var api_spec_var rate_var slot_rate
+    local upper rate_var slot_rate judge_flag=""
     upper=$(slot_upper "$slot")
-    api_spec_var="${upper}_AGENT_MODEL_API_SPEC"
-    base_url_var="${upper}_AGENT_MODEL_BASE_URL"
-    name_var="${upper}_AGENT_MODEL_NAME"
-    key_envs_var="${upper}_AGENT_MODEL_API_KEY_ENVS"
     rate_var="${upper}_RATE_LIMIT"
     slot_rate="${!rate_var:-$RATE_LIMIT}"
+    [[ "${WITH_JUDGE:-0}" == "1" ]] && judge_flag=" --with-judge"
 
-    # The child runs in the BENCHMARK tree (run_benchmark.py lives there),
-    # with the experiment's .env and results dir handed over explicitly.
-    printf '%s' "cd '$BENCH_ROOT' || exit 1; \
+    printf '%s' "cd '$EXP_ROOT' || exit 1; \
 source '$ENV_FILE' 2>/dev/null || true; \
 export RESULTS_DIR='$RESULTS_ROOT'; \
 for tag in $_RUN_TAGS_LIST; do \
     echo \"=== ${slot} run \$tag starting: \$(date) ===\"; \
-    $SERVING_PREFIX'$BENCH_PYTHON' run_benchmark.py \
-        --dataset '$DATASET' \
+    ISD_EXPERIMENT_CONFIG='$_ISD_EXPERIMENT_CONFIG' '$BENCH_PYTHON' -m isd_experiments.cli \
+        run '$EXPERIMENT' --foreground \
+        --slots '$slot' \
+        --tags \"\$tag\" \
         --agents '$AGENTS' \
-        --rate-limit '$slot_rate' \
-        --agent-model-api-spec '${!api_spec_var}' \
-        --agent-model-base-url '${!base_url_var}' \
-        --agent-model-name '${!name_var}' \
-        --agent-model-api-key-envs '${!key_envs_var}'$JUDGE_FLAGS \
-        --run-tag \"\$tag\" \
+        --rate-limit '$slot_rate'$judge_flag \
         2>&1 | tee -a '$log_file'; \
     echo \"=== ${slot} run \$tag finished: \$(date) ===\"; \
 done; echo 'Slot done!'; read"

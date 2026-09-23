@@ -596,8 +596,8 @@ def run(*, pooled_path: Path | None = None, outdir: Path | None = None,
     if not pooled.get("alignment_sensitivity"):
         if not quiet:
             print(f"- no alignment_sensitivity layer in {src.name} — skipped.\n"
-                  f"  Produce it with:  {paths.cli()} score <run dirs> --all-arms\n"
-                  f"                    {paths.cli()} comparison pool --auto-encoders --auto-bloom")
+                  f"  Produce it with:  {paths.cli()} judge alignment <run dirs> --all-arms\n"
+                  f"                    {paths.cli()} pool comparison --auto-encoders --auto-bloom")
         return []
 
     blocks = axis_blocks(pooled)

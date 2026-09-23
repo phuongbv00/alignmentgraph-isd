@@ -207,21 +207,32 @@ class TestHelpSubcommand:
         assert "<stage>" in out.stdout
 
     def test_help_for_a_stage(self):
-        out = run("help", "score")
+        out = run("help", "judge")
         assert out.returncode == 0
-        assert "isd-exp score" in out.stdout
-        assert "--all-arms" in out.stdout
+        assert "isd-exp judge" in out.stdout
+        assert "alignment" in out.stdout and "llm" in out.stdout
 
     def test_help_for_a_nested_subcommand(self):
-        out = run("help", "comparison", "pool")
+        out = run("help", "pool", "comparison")
         assert out.returncode == 0
-        assert "isd-exp comparison pool" in out.stdout
+        assert "isd-exp pool comparison" in out.stdout
+        out = run("help", "judge", "alignment")
+        assert out.returncode == 0
+        assert "--all-arms" in out.stdout
+
+    def test_the_experiment_is_the_object_of_the_verb(self):
+        """`run comparison`, never `comparison run`: the stage is the verb."""
+        for words in (("run", "comparison"), ("run", "ablation"), ("run", "tune"),
+                      ("pool", "ablation"), ("judge", "llm")):
+            assert run("help", *words).returncode == 0, words
+        for words in (("comparison",), ("score",)):
+            assert run("help", *words).returncode == 1, words
 
     def test_unknown_stage_lists_the_real_ones_and_fails(self):
         out = run("help", "nope")
         assert out.returncode == 1
         assert "Unknown stage" in out.stderr
-        for stage in ("comparison", "ablation", "report", "audit"):
+        for stage in ("run", "judge", "pool", "report", "audit"):
             assert stage in out.stderr
 
     def test_unknown_subcommand_shows_its_stage(self):

@@ -110,8 +110,8 @@ class HarnessRunConfig(BaseModel):
     # shared endpoint answered with HTTP 429 on the multi arms only — a
     # throttling handicap on one side of the ``agent_mode`` axis. Any concurrent
     # fan-out reintroduced here brings that back.
-    # The benchmark adapter sources this from env (HARNESS_LLM_MAX_CONCURRENCY,
-    # exported by run_benchmark.py from the -r preset).
+    # The experiment's adapter sources this from env (HARNESS_LLM_MAX_CONCURRENCY,
+    # else the runner's rate preset, BENCHMARK_RATE_LIMIT).
     # ``llm_min_interval_seconds`` additionally spaces call STARTS apart, for an
     # endpoint that meters request rate rather than concurrency; it is off by
     # default and deliberately NOT wired to BENCHMARK_DELAY, which is a

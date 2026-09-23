@@ -517,7 +517,7 @@ def print_report(pooled: dict, a0: str, arms: list[str]) -> None:
                   f"Δ={row['delta']:+.2f}{flag}")
     if pooled.get("alignment") is None:
         print(f"\n  (the alignment layer is absent — run "
-              f"`{paths.cli()} score` on each "
+              f"`{paths.cli()} judge alignment` on each "
               f"run dir, then re-pool.)")
 
 

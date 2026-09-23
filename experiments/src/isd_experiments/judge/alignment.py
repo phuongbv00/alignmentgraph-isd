@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-"""Post-hoc offline constructive-alignment scoring over a benchmark run dir.
+"""The alignment judge: the constructive-alignment panel over finished runs.
 
 Walks a results run directory (flat single-run or nested dataset layout),
 scores every ``<agent_id>_output.json`` with the deterministic, threshold-free
@@ -31,13 +30,18 @@ a non-primary encoder *and* a non-primary Bloom arm in the same arm is an
 error, not a silent cross-product — the question each axis answers ("does the
 ranking depend on this instrument?") needs one deviation at a time.
 
+The same shape as the LLM judge (:mod:`.llm`): one ``run`` over run dirs
+resolved by :mod:`.rundirs`, the same ``agents`` filter, ``overwrite`` to
+re-judge what is already judged, ``dry_run`` to print the scope and write
+nothing.
+
 Examples:
   # primary configuration only (the default when no preset flag is given)
-  ./isd-exp score results/test_90_...
+  ./isd-exp judge alignment results/test_90_...
   # the whole sensitivity star in one invocation
-  ./isd-exp score results/test_90_... --all-arms
+  ./isd-exp judge alignment results/test_90_... --all-arms
   # every encoder arm except the served primary — no pod involved at all
-  ./isd-exp score results/test_90_... \
+  ./isd-exp judge alignment results/test_90_... \
       --encoder-presets bgem3,granite,tfidf
 
 Re-run the same command after an interruption: complete per-scenario artifacts
@@ -47,9 +51,7 @@ are skipped, while corrupt or incomplete artifacts are repaired. Use
 
 from __future__ import annotations
 
-import argparse
 import csv
-import glob as globmod
 import json
 import os
 import re
@@ -59,18 +61,16 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
-from .. import paths
-from ..config import current as current_config
-from .presets import current as declared_arms
 
+from .. import paths
+from ..alignment.presets import current as declared_arms
 
 # Endpoints are declared in experiment.toml, but the KEY they authenticate
 # with is a secret and lives in .env -- so read .env here rather than requiring
 # `source .env` first, which would make the first run of a cold shell the one
 # that fails. load_dotenv does not override a variable already exported in the
 # shell, so an explicit export still wins.
-
-from .protocol import (  # noqa: E402
+from ..alignment.protocol import (  # noqa: E402
     ALIGNMENT_SIGNALS,
     AlignmentEvaluator,
     LexiconBloomClassifier,
@@ -80,9 +80,11 @@ from .protocol import (  # noqa: E402
     TransformerBloomClassifier,
     reaggregate,
 )
+from ..config import current as current_config
+from . import rundirs
 
 #: The sensitivity design lives in ``experiment.toml`` and is read through
-#: :mod:`.presets`: ``declared_arms().encoders`` is family A and
+#: :mod:`..alignment.presets`: ``declared_arms().encoders`` is family A and
 #: ``.bloom`` is family B. Selecting an arm ties the model to its suffix so an
 #: artifact can never end up labelled with an instrument that did not produce
 #: it — and to its BACKEND, which matters just as much: the embedding cache key
@@ -120,7 +122,7 @@ from .protocol import (  # noqa: E402
 def encoder_slot(key: str) -> str:
     """Preset key -> env-var slot prefix, e.g. 'bgem3' -> 'BGEM3'.
 
-    Same rule as the ladder's ``slot_upper`` (scripts/4_run_benchmark.sh), so
+    Same rule as the launcher's ``slot_upper`` (bin/_matrix.sh), so
     an arm names itself the same way a rung does. It is what --embed-*-for
     flags and the run artifacts key on.
     """
@@ -438,46 +440,6 @@ def probe_specs(specs: list[EncoderSpec], api_key_of, cache_only: bool) -> None:
 COMPONENTS = [signal for signal, _family in ALIGNMENT_SIGNALS]
 
 
-def find_scenario_dirs(run_dir: Path) -> list[Path]:
-    """Directories that contain agent outputs (flat run dir or nested)."""
-    if list(run_dir.glob("*_output.json")):
-        return [run_dir]
-    dirs = sorted(
-        {path.parent for path in run_dir.glob("*/*/*_output.json")}
-        | {path.parent for path in run_dir.glob("*/*_output.json")}
-    )
-    return dirs
-
-
-def load_scenario(scenario_dir: Path, run_dir: Path, scenario_root: Path) -> dict | None:
-    """Scenario dict for a scenario dir.
-
-    Prefers the copy embedded in ``comparison_report.json`` (always matches
-    the run), then falls back to ``<scenario_root>/<variant>/<dir_name>.json``.
-    """
-    report_path = scenario_dir / "comparison_report.json"
-    if report_path.exists():
-        try:
-            report = json.loads(report_path.read_text(encoding="utf-8"))
-            scenario = report.get("scenario")
-            if isinstance(scenario, dict) and scenario:
-                return scenario
-        except (json.JSONDecodeError, OSError):
-            pass
-    variant = scenario_dir.parent.name if scenario_dir != run_dir else None
-    candidates = [scenario_root / f"{scenario_dir.name}.json"]
-    if variant:
-        candidates.insert(0, scenario_root / variant / f"{scenario_dir.name}.json")
-    candidates += sorted(scenario_root.glob(f"*/{scenario_dir.name}.json"))
-    for candidate in candidates:
-        if candidate.exists():
-            try:
-                return json.loads(candidate.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                continue
-    return None
-
-
 def score_scenario_dir(
     scenario_dir: Path,
     evaluator: AlignmentEvaluator,
@@ -487,7 +449,7 @@ def score_scenario_dir(
     """(scores, missing_outputs) for one scenario dir.
 
     ``missing_outputs`` is the other half of the roster and is what makes an
-    alignment-panel failure policy possible at all. ``run_benchmark.py`` writes
+    alignment-panel failure policy possible at all. The runner writes
     ``<agent>_output.json`` only on success but ``<agent>_log.txt`` on BOTH
     paths, so a log without an output is an agent that was attempted and
     crashed. Without recording it, a crashed agent simply vanishes from the
@@ -520,27 +482,6 @@ def score_scenario_dir(
         print(f"    ! no score for {sorted(missing)} (recorded as missing_outputs)",
               file=sys.stderr)
     return scores, missing
-
-
-def expected_agent_ids(
-    scenario_dir: Path,
-    agents_filter: set[str] | None,
-) -> set[str]:
-    """Agents attempted in this scenario, after applying ``--agents``.
-
-    Successful attempts have an output; failed attempts still have a log.
-    Their union is the roster a complete alignment artifact must account for
-    through either ``agents`` or ``missing_outputs``.
-    """
-    ids = {
-        path.stem[: -len("_output")]
-        for path in scenario_dir.glob("*_output.json")
-    }
-    ids.update(
-        path.stem[: -len("_log")]
-        for path in scenario_dir.glob("*_log.txt")
-    )
-    return ids if agents_filter is None else ids & agents_filter
 
 
 def reusable_scores_payload(
@@ -808,7 +749,7 @@ def _reaggregate_run(run_dir: Path, args, spec: EncoderSpec) -> int:
     """Recompute objective-level endpoints in every alignment_scores*.json
     under ``run_dir`` from the stored per-objective signals — no scoring."""
     scores_name = spec.scores_name
-    scenario_dirs = find_scenario_dirs(run_dir)
+    scenario_dirs = rundirs.scenario_dirs(run_dir)
     if args.limit is not None:
         scenario_dirs = scenario_dirs[: args.limit]
     per_agent: dict[str, list[dict]] = defaultdict(list)
@@ -928,15 +869,13 @@ def score_run(run_dir: Path, args, spec: EncoderSpec, base_encoder=None):
 
     encoder = base_encoder if base_encoder is not None else build_encoder(spec, run_dir, args)
     encoder_label = spec.label
-    agents_filter = (
-        {a.strip() for a in args.agents.split(",") if a.strip()} if args.agents else None
-    )
+    agents_filter = rundirs.agent_filter(args.agents)
 
-    scenario_dirs = find_scenario_dirs(run_dir)
+    scenario_dirs = rundirs.scenario_dirs(run_dir)
     if args.limit is not None:
         scenario_dirs = scenario_dirs[: args.limit]
     if not scenario_dirs:
-        raise SystemExit(f"No *_output.json found under {run_dir}")
+        raise SystemExit(f"No agent attempts found under {run_dir}")
 
     evaluator = AlignmentEvaluator(encoder=encoder,
                                    bloom_classifier=build_bloom(spec, args))
@@ -945,7 +884,7 @@ def score_run(run_dir: Path, args, spec: EncoderSpec, base_encoder=None):
     per_agent: dict[str, list[dict]] = defaultdict(list)
     for scenario_dir in scenario_dirs:
         scores_path = scenario_dir / scores_name
-        expected_agents = expected_agent_ids(scenario_dir, agents_filter)
+        expected_agents = rundirs.attempted_agents(scenario_dir, agents_filter)
         payload = None
         if scores_path.exists() and not args.overwrite:
             payload, invalid_reason = reusable_scores_payload(
@@ -964,7 +903,7 @@ def score_run(run_dir: Path, args, spec: EncoderSpec, base_encoder=None):
                     file=sys.stderr,
                 )
         if payload is None:
-            scenario = load_scenario(scenario_dir, run_dir, args.scenario_root.resolve())
+            scenario = rundirs.load_scenario(scenario_dir, run_dir, args.scenario_root.resolve())
             if scenario is None:
                 print(f"  ! {scenario_dir.name}: scenario JSON not found, "
                       "topics fall back to a single bucket", file=sys.stderr)
@@ -996,6 +935,24 @@ def score_run(run_dir: Path, args, spec: EncoderSpec, base_encoder=None):
     return rows
 
 
+def print_scope(specs: list[EncoderSpec], run_dirs: list[Path],
+                only: set[str] | None, limit: int | None) -> None:
+    """What a real invocation would judge. No endpoint is contacted."""
+    print("== alignment judge — dry run (nothing contacted, nothing written)")
+    for spec in specs:
+        state = "runnable" if spec.available else f"SKIPPED — {spec.skip_reason}"
+        print(f"  arm {spec.arm_label:22s} -> {spec.scores_name:36s} {state}")
+    for run_dir in run_dirs:
+        dirs = rundirs.scenario_dirs(run_dir)
+        if limit is not None:
+            dirs = dirs[:limit]
+        pending = sum(1 for d in dirs for s in specs
+                      if s.available and not (d / s.scores_name).exists())
+        agents = sorted({a for d in dirs for a in rundirs.attempted_agents(d, only)})
+        print(f"  {run_dir.name}: {len(dirs)} scenario(s), agents {', '.join(agents) or '-'}; "
+              f"{pending} (scenario, arm) artifact(s) not written yet")
+
+
 def run(*,
         run_dirs: list[str] | tuple[str, ...] = (),
         # arm selection
@@ -1015,13 +972,14 @@ def run(*,
         agents: str = "", scenario_root: Path | None = None,
         limit: int | None = None,
         reaggregate: bool = False, overwrite: bool = False,
-        require_all: bool = False, sweep_csv: Path | None = None) -> int:
+        require_all: bool = False, sweep_csv: Path | None = None,
+        dry_run: bool = False) -> int:
     """Score the alignment panel over one or more run dirs.
 
     Several helpers below take the whole options bag rather than a long
     parameter list, which is the right shape for them -- an encoder spec is
     resolved from a dozen interacting flags. Every option they read is a
-    parameter here, and `tests/test_score_options.py` holds the two sets equal:
+    parameter here, and `tests/test_judge_options.py` holds the two sets equal:
     a helper reading an attribute no caller can set fails at the first line of
     the first arm, and nothing about the call site says which one is missing.
     """
@@ -1030,26 +988,11 @@ def run(*,
 
     specs = resolve_encoder_specs(args)
 
-    # Patterns are expanded here as well as by the shell: quoting a glob is the
-    # obvious thing to type (`isd-exp comparison pool --auto-glob` requires
-    # it), and an unexpanded pattern otherwise fails with a confusing
-    # "Not a directory: results/..._r[123]_*".
-    resolved: list[Path] = []
-    unmatched: list[str] = []
-    for pattern in run_dirs:
-        hits = sorted(globmod.glob(str(pattern)))
-        if hits:
-            resolved += [Path(h).resolve() for h in hits]
-        else:
-            unmatched.append(str(pattern))
-    if unmatched:
-        raise SystemExit("No run dir matched: " + ", ".join(unmatched))
-    not_dirs = [d for d in resolved if not d.is_dir()]
-    if not_dirs:
-        raise SystemExit("Not a directory: " + ", ".join(str(d) for d in not_dirs))
-    run_dirs = list(dict.fromkeys(resolved))
-    if not run_dirs:
-        raise SystemExit("Name at least one run dir to score.")
+    run_dirs = rundirs.resolve(run_dirs)
+
+    if dry_run:
+        print_scope(specs, run_dirs, rundirs.agent_filter(agents), limit)
+        return 0
 
     # Confirm every endpoint really serves what we are about to label its
     # artifacts with — once per invocation, not per run dir.

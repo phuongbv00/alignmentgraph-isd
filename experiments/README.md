@@ -2,9 +2,14 @@
 
 The thesis experiment. One entry point, `isd-exp`; everything else here serves it.
 
-This exists so the benchmark can be a **tool** again. The pipeline used to live inside
-`isd-agent-benchmark/`, a fork of someone else's project, which meant rebasing on upstream or
-handing the benchmark to anyone else dragged this study along with it.
+This exists so the benchmark can be a **tool** again. The study uses ISD-Agent-Bench's
+components -- its scenarios, its six baseline agents, `shared/llm`, its rubric and its evaluator --
+and none of its entry points: the orchestration (`runner/`) and the scoring steps (`judge/`) are
+this package's own.
+
+Generating and scoring are separate steps. `isd-exp run <experiment>` generates;
+`isd-exp judge llm` and `isd-exp judge alignment` score a finished run and never regenerate it;
+`run --with-judge` chains them.
 
 ## Layout
 
@@ -14,12 +19,14 @@ bin/                   tmux launchers (shell, because tmux orchestration is shel
 models/                Bloom checkpoint (gitignored; moved between machines, never retrained)
 results/               run dirs, pooled JSON, generated/ (gitignored)
 src/isd_experiments/
-  paths.py bench.py    where things are; how the benchmark is reached
+  paths.py bench.py    where things are; how the benchmark's components are reached
   config.py            experiment.toml -> typed objects
   stats.py             hand-rolled inferential statistics, stdlib only
   runs.py schema.py    run-dir discovery; the pooled-JSON contract
   latex.py plots.py    shared formatting and figure style
-  alignment/           the constructive-alignment measurement
+  runner/              generate one run: agents, the uniform model config, the run dir
+  judge/               score finished runs: llm (the benchmark's evaluator), alignment
+  alignment/           the constructive-alignment instruments (protocol, presets, Bloom)
   pool/                LLM judge and panel pooling, per experiment
   report/              tables, figures, notes, the facts sheet, sync
   audit/               preflight, inflight, postrun, repair, artifacts
@@ -52,7 +59,7 @@ needs activating, nothing goes on `PATH`.
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # once
 ./isd-exp doctor --fix
 ./isd-exp help                # subcommands read down the roadmap's six phases
-./isd-exp help comparison     # or any stage; `help <stage> <sub>` goes deeper
+./isd-exp help run comparison # or any stage; `help <stage> <sub>` goes deeper
 ```
 
 If you would rather have a real command, `pip install -e .` into any environment puts

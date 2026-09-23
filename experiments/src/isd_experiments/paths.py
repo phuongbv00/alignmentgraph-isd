@@ -53,12 +53,13 @@ def bench_root() -> Path:
     """The benchmark submodule, validated.
 
     Validated rather than assumed because everything downstream -- scenarios,
-    run_benchmark.py, the evaluator -- hangs off it, and a wrong value here
+    the agents, the evaluator -- hangs off it, and a wrong value here
     surfaces hundreds of lines later as a FileNotFoundError naming some leaf
     file, which says nothing about the actual cause.
     """
     root = _env_path("ISD_BENCH_ROOT") or (THESIS_ROOT / "isd-agent-benchmark")
-    missing = [n for n in ("run_benchmark.py", "scenarios") if not (root / n).exists()]
+    missing = [n for n in ("agents", "evaluator", "shared", "scenarios")
+               if not (root / n).exists()]
     if missing:
         raise SystemExit(
             f"Not a benchmark checkout: {root}\n"
@@ -94,10 +95,9 @@ def results_root() -> Path:
     Owned by the experiment, not by the benchmark: the benchmark is a tool and
     a tool does not own the results of the study that uses it.
 
-    ONE variable, read here and handed to run_benchmark.py unchanged (see
-    ``bench.bench_env``). There were briefly two -- one for each side -- which
-    is a relay rather than a setting: they could only ever hold the same value,
-    and a second name for one fact is a second thing to keep in step.
+    ONE variable, read here and handed to every subprocess unchanged (see
+    ``bench.bench_env``): a second name for one fact is a second thing to keep
+    in step.
     """
     return _env_path("RESULTS_DIR") or (EXP_ROOT / "results")
 
@@ -119,10 +119,6 @@ def env_file() -> Path:
     """Credentials, and nothing else -- endpoints are declared in the config.
 
     Canonically ``experiments/.env`` -- the experiment owns its configuration.
-    The benchmark's own entry points (``run_benchmark.py --check``, the smoke
-    script) hard-code ``load_dotenv(<benchmark>/.env)``, so a symlink there
-    keeps them working; ``isd-exp doctor --fix`` creates it.
-
     Until that move happens, an existing benchmark-side ``.env`` is still
     honoured. Moving a credentials file is the user's to do, and the pipeline
     working from either location is better than it failing on a path.
@@ -196,8 +192,7 @@ def pip() -> str:
 def scenarios_dir() -> Path:
     """The scenario corpus, which stays with the benchmark.
 
-    Derived splits are written back here too: `--dataset X` is resolved by
-    run_benchmark.py against its own scenarios/, so a split that lived anywhere
-    else would need the benchmark taught a second lookup path.
+    Derived splits are written back here too, beside the splits the benchmark
+    ships, so every split is found by one lookup.
     """
     return bench_root() / "scenarios"

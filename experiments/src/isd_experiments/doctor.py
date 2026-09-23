@@ -52,11 +52,11 @@ def run(*, fix: bool = False) -> int:
                        ("Bloom corpus", paths.edm_root())):
         (c.ok if path.exists() else c.warn)(name, str(path))
 
-    # 2. The packages run_benchmark.py imports. It is launched as a subprocess
-    #    under THIS interpreter, so the seven agents, the harness and the
-    #    evaluator have to be installed here; absent, the failure is an
-    #    ImportError deep inside an agent registry, which reads like an agent
-    #    bug rather than an install one.
+    # 2. The packages a run imports. Runs are generated under THIS
+    #    interpreter, so the benchmark's shared config, its six agents, the
+    #    harness and the evaluator have to be installed here; absent, the
+    #    failure is an ImportError deep inside the agent registry, which reads
+    #    like an agent bug rather than an install one.
     absent = bench.missing_packages()
     if absent and fix:
         bench.install_packages(absent)
@@ -71,7 +71,8 @@ def run(*, fix: bool = False) -> int:
              f"{len(bench.bench_packages())} editable in {bench.bench_python()}")
 
     # 3. Configuration, credentials, and the symlink that keeps the benchmark's
-    #    own entry points configured after `.env` moved here.
+    #    components configured: the evaluator loads `.env` from the benchmark
+    #    root on its own, and runs with that root as its working directory.
     env = paths.env_file()
     if env.exists():
         c.ok(".env", str(env))
@@ -88,8 +89,8 @@ def run(*, fix: bool = False) -> int:
         c.ok("benchmark .env symlink", "created")
     else:
         c.warn("benchmark .env symlink",
-               f"missing — run `{paths.cli()} doctor --fix` (run_benchmark.py --check "
-               "and the smoke script read it from the benchmark root)")
+               f"missing — run `{paths.cli()} doctor --fix` (the evaluator reads "
+               "it from the benchmark root)")
 
     # 4. The declaration, and the packages the pipeline imports.
     try:
@@ -100,8 +101,8 @@ def run(*, fix: bool = False) -> int:
     except SystemExit as exc:
         c.bad("experiment.toml", str(exc).splitlines()[0])
 
-    # 5. Where results go. RESULTS_DIR is a deliberately plain name -- it is the
-    #    same variable run_benchmark.py reads, so there is only one -- but a
+    # 5. Where results go. RESULTS_DIR is a deliberately plain name -- one
+    #    variable for every reader and every subprocess -- but a
     #    plain name in a GLOBAL namespace is one another tool can also set. A
     #    run silently writing somewhere else is the failure that would cost
     #    most, so an inherited value is reported rather than assumed.
