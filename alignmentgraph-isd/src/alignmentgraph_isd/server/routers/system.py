@@ -57,7 +57,7 @@ def _out(row: LLMConnection) -> LLMConnectionOut:
         temperature=row.temperature,
         max_tokens=row.max_tokens,
         context_window=row.context_window,
-        disable_thinking=bool(getattr(row, "disable_thinking", False)),
+        thinking_budget=getattr(row, "thinking_budget", None),
         is_active=row.is_active,
         updated_at=row.updated_at,
     )
@@ -89,7 +89,7 @@ def _fields(payload: LLMConnectionIn) -> dict:
         "temperature": payload.temperature,
         "max_tokens": payload.max_tokens,
         "context_window": payload.context_window,
-        "disable_thinking": payload.disable_thinking,
+        "thinking_budget": payload.thinking_budget,
     }
     if payload.api_key is not None:
         fields["api_key"] = payload.api_key

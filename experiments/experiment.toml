@@ -27,6 +27,31 @@ max_output_tokens = 8192
 # Client-side streaming with stream_usage. Required behind a proxy that closes a
 # long non-streaming read before the largest rung finishes a turn.
 streaming = true
+# How many tokens a reply may spend REASONING before it must start answering.
+# 0 serves with thinking off; a positive number caps it.
+#
+# A cap rather than an off switch: reasoning shares one completion budget with
+# the answer, so a reply that reasons past max_output_tokens never closes its
+# thinking block, the reasoning parser classifies the whole output as thinking,
+# and the call is charged in full and returns NO CONTENT -- which the harness
+# then records as the model failing to act. That is infrastructure noise
+# flowing into a scored quantity, so this is a measurement-validity setting and
+# not a speed setting.
+#
+# The number is fixed on the tune slice BEFORE `isd-exp freeze write` and is
+# not revised after results are seen, like the trajectory cap policy.
+#
+# A POSITIVE NUMBER IS ONLY MEANINGFUL IF EVERY RUNG IS SERVED RATHER THAN
+# ROUTED. A self-hosted endpoint enforces the ceiling; an aggregating router
+# picks an upstream provider per request, and measured, one honoured the
+# ceiling while another ignored it -- so a ladder mixing the two would enforce
+# it on some rungs and not others, which is bias along the independent variable
+# itself. What a router DOES enforce reliably is 0. So: self-host every rung
+# and declare a number, or declare 0. Nothing here can check this for you --
+# whether an endpoint is served or routed is not a property this file records,
+# and src/ may not name a vendor -- so it is the operator's to confirm before
+# freezing. Two of the [[model]] tables below are routed today.
+thinking_budget = 512
 
 # --- The models -------------------------------------------------------------
 # A FLAT list. One table per model, in no particular order: nothing here is a

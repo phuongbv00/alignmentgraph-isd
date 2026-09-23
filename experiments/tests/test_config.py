@@ -280,6 +280,7 @@ class TestServingLimits:
         parser, which would make every other config unusable."""
         s = config.load(write(tmp_path, TWO_RUNG)).serving
         assert (s.context_window, s.max_output_tokens, s.streaming) == (None, None, None)
+        assert s.thinking_budget is None
 
     def test_a_clamp_that_leaves_no_room_for_a_prompt_is_rejected(self, tmp_path):
         body = TWO_RUNG.replace(
@@ -298,6 +299,20 @@ class TestServingLimits:
         body = TWO_RUNG.replace('key_env = "MY_KEY"',
                                 'key_env = "MY_KEY"\ncontext_window = 0')
         with pytest.raises(SystemExit, match="positive integer"):
+            config.load(write(tmp_path, body))
+
+    def test_a_zero_thinking_budget_is_a_posture_not_an_omission(self, tmp_path):
+        """0 means "serve with thinking off", which is a declaration like any
+        other -- so it must not go through the positive-integer parser, whose
+        whole job is to reject 0 as a missing value."""
+        body = TWO_RUNG.replace('key_env = "MY_KEY"',
+                                'key_env = "MY_KEY"\nthinking_budget = 0')
+        assert config.load(write(tmp_path, body)).serving.thinking_budget == 0
+
+    def test_a_negative_thinking_budget_is_rejected(self, tmp_path):
+        body = TWO_RUNG.replace('key_env = "MY_KEY"',
+                                'key_env = "MY_KEY"\nthinking_budget = -1')
+        with pytest.raises(SystemExit, match="non-negative integer"):
             config.load(write(tmp_path, body))
 
     def test_options_still_collect_the_remainder(self, tmp_path):

@@ -45,7 +45,7 @@ interface FormState {
   temperature: string
   max_tokens: string
   context_window: string
-  disable_thinking: boolean
+  thinking_budget: string
 }
 
 const BLANK: FormState = {
@@ -56,7 +56,7 @@ const BLANK: FormState = {
   temperature: '',
   max_tokens: '',
   context_window: '',
-  disable_thinking: false,
+  thinking_budget: '',
 }
 
 const formOf = (connection: LLMConnection): FormState => ({
@@ -67,7 +67,7 @@ const formOf = (connection: LLMConnection): FormState => ({
   temperature: connection.temperature === null ? '' : String(connection.temperature),
   max_tokens: connection.max_tokens === null ? '' : String(connection.max_tokens),
   context_window: connection.context_window === null ? '' : String(connection.context_window),
-  disable_thinking: Boolean(connection.disable_thinking),
+  thinking_budget: connection.thinking_budget === null ? '' : String(connection.thinking_budget),
 })
 
 /** Connections to OpenAI-compatible endpoints, one of them active.
@@ -193,7 +193,7 @@ export function ModelSettings({ onClose, onSaved }: Props) {
     temperature: form.temperature === '' ? null : Number(form.temperature),
     max_tokens: form.max_tokens === '' ? null : Number(form.max_tokens),
     context_window: form.context_window === '' ? null : Number(form.context_window),
-    disable_thinking: form.disable_thinking,
+    thinking_budget: form.thinking_budget === '' ? null : Number(form.thinking_budget),
   })
 
   /** Run a mutation and adopt its response, which is the whole list back.
@@ -423,15 +423,20 @@ export function ModelSettings({ onClose, onSaved }: Props) {
                     placeholder="e.g. 16384"
                   />
                 </label>
+                <label className="field">
+                  {/* Blank leaves the endpoint's own posture alone; 0 turns
+                      thinking off; a number caps it. A cap is what keeps a
+                      reply from spending its whole completion budget reasoning
+                      and coming back with no content at all. */}
+                  <span>Thinking budget</span>
+                  <input
+                    type="number" min="0"
+                    value={form.thinking_budget}
+                    onChange={(e) => setForm({ ...form, thinking_budget: e.target.value })}
+                    placeholder="server default"
+                  />
+                </label>
               </div>
-              <label className="field-row" style={{ marginTop: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={form.disable_thinking}
-                  onChange={(e) => setForm({ ...form, disable_thinking: e.target.checked })}
-                />{' '}
-                <span>Disable model thinking</span>
-              </label>
               {result && (
                 <div className={`probe ${result.ok ? 'ok' : 'bad'}`}>
                   {result.ok ? <CircleCheck size={14} /> : <CircleAlert size={14} />}

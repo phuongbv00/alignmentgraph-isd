@@ -189,13 +189,17 @@ class TestTheChildCommandCarriesTheDeclaration:
         """After the child sources .env and ahead of the benchmark's own dotenv
         load, so neither can take them back."""
         command = plan.split("command (first slot):", 1)[1]
-        for name in ("AGENT_MODEL_CONTEXT_WINDOW", "AGENT_MODEL_MAX_OUTPUT_TOKENS",
-                     "AGENT_MODEL_STREAMING"):
+        names = ("AGENT_MODEL_CONTEXT_WINDOW", "AGENT_MODEL_MAX_OUTPUT_TOKENS",
+                 "AGENT_MODEL_STREAMING", "AGENT_MODEL_THINKING_BUDGET")
+        for name in names:
             assert f"{name}='" in command
-        # Nothing between the last assignment and the interpreter: an exported
+        # Nothing between the LAST assignment and the interpreter: an exported
         # variable would sit before the child re-reads .env, which is the whole
-        # difference between this and an export.
-        after = command.split("AGENT_MODEL_STREAMING='", 1)[1]
+        # difference between this and an export. Found by position rather than
+        # by name, so adding a limit does not silently stop this from checking
+        # the thing it is named after.
+        last = max(command.index(f"{name}='") for name in names)
+        after = command[last:].split("='", 1)[1]
         assert after.split("'", 1)[1].strip().startswith("'"), after[:80]
         assert "run_benchmark.py" in after.split(";", 1)[0]
 

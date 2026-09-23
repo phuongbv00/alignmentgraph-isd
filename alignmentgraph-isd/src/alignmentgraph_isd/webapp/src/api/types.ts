@@ -21,7 +21,8 @@ export interface LLMConnection {
   max_tokens: number | null
   /** The window the endpoint serves, in tokens. */
   context_window: number | null
-  disable_thinking: boolean
+  /** Reasoning ceiling in tokens: null = the server's posture, 0 = off, N = at most N. */
+  thinking_budget: number | null
   is_active: boolean
   updated_at: string | null
 }
@@ -45,7 +46,7 @@ export interface LLMConnectionInput {
   temperature: number | null
   max_tokens: number | null
   context_window: number | null
-  disable_thinking: boolean
+  thinking_budget: number | null
 }
 
 export interface ModelList {

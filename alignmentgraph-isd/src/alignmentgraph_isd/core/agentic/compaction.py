@@ -58,6 +58,7 @@ from __future__ import annotations
 
 import re
 
+from ..llm import thinking_extra_body
 from ..llm_io import parse_json_response
 from ..trajectory import ORCHESTRATOR
 from .protocol import BRIEF_HEADER_RE, lost_briefs
@@ -91,7 +92,13 @@ MAX_SUMMARY_CHARS = 1200
 #: caller falls back to the previous summary, which costs 512 tokens instead
 #: of 4,701. ``metadata.autonomy`` reports ``compactions`` beside
 #: ``compaction_summaries``, so the rate that degrades to is visible.
-NO_THINKING = {"chat_template_kwargs": {"enable_thinking": False}}
+#:
+#: Built from ``thinking_extra_body`` rather than written out, so it carries
+#: BOTH spellings. ``bind(extra_body=...)`` REPLACES the client's own, so a
+#: table written here by hand would drop whichever key the run's connection had
+#: set and this call alone would think freely on that backend — the one call
+#: where reasoning is pure waste.
+NO_THINKING = thinking_extra_body(0)
 
 #: What the fold's own model call may SPEND, in completion tokens.
 #:

@@ -17,6 +17,7 @@ key_env = "MY_KEY"
 context_window = 16384
 max_output_tokens = 8192
 streaming = true
+thinking_budget = 512
 
 [[model]]
 slot = "tiny"

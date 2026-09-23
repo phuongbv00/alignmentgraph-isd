@@ -57,9 +57,9 @@ def _add_missing_columns(engine) -> None:
     ``create_all`` creates a missing TABLE and never a missing COLUMN, so every
     field added to a model after someone's database exists is invisible to
     SQLAlchemy's DDL and fatal to its SELECT: the query names the column and
-    SQLite answers ``no such column``. MEASURED: adding
-    ``LLMConnection.disable_thinking`` took every connection endpoint down with
-    a 500 until the file was deleted.
+    SQLite answers ``no such column``. MEASURED: adding one boolean to
+    ``LLMConnection`` took every connection endpoint down with a 500 until the
+    file was deleted.
 
     ADDITIVE ONLY, which is what makes this safe without a migration tool. It
     adds; it never drops, renames, retypes or reorders, so it cannot destroy a

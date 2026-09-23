@@ -98,6 +98,8 @@ def profile_env(profile: Profile, *, slots: str | None = None,
         # "0" rather than nothing: the prefix has to be able to turn streaming
         # OFF against an environment that says otherwise.
         env["_AGENT_MODEL_STREAMING"] = "1" if serving.streaming else "0"
+    if serving.thinking_budget is not None:
+        env["_AGENT_MODEL_THINKING_BUDGET"] = str(serving.thinking_budget)
     return env
 
 

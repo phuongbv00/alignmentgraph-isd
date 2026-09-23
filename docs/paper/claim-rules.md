@@ -97,6 +97,20 @@ Mức tất định được phép claim: *reproducible up to floating-point noi
   thấy trọn, hệ phân rã 150–350 call nên chỉ thấy phần đầu. Đây là bất lợi cơ học, phải nói
   trước; chính sách hai lớp (cap 20 benchmark-comparable + cap 120 diagnostic) chốt trước
   `test_90` và không đổi sau khi thấy kết quả.
+- **Trần token suy luận trên toàn ladder**: ladder serve với thinking bật, và phần suy nghĩ
+  tiêu chung ngân sách completion với câu trả lời — nên một reply nghĩ vượt 8192 token không
+  bao giờ đóng khối `</think>`, bị xếp là suy nghĩ từ đầu đến cuối, và trả về `content` rỗng mà
+  harness ghi là `invalid_action`. Đó là nhiễu hạ tầng chảy vào trajectory, tức là một đại
+  lượng được chấm điểm. `[serving].thinking_budget` chặn nó bằng cách ép khối suy nghĩ đóng
+  lại. Phải khai: **con số này là bao nhiêu, nó áp lên mọi agent và mọi size như nhau, và nó
+  chốt trên tune slice trước `isd-exp freeze` rồi không đổi sau khi thấy kết quả** — cùng chính
+  sách với trần trajectory. Phải khai thêm rằng đây là **trần, không phải tắt**: model vẫn
+  suy luận, chỉ bị giới hạn. Không được mô tả nó như một tối ưu tốc độ.
+  Và phải khai **nấc nào thật sự bị ép**: một endpoint tự host ép được trần, một router tổng
+  hợp thì chỉ ép được trạng thái tắt — nó chọn provider thượng nguồn theo từng request, nên
+  cùng một tham số lúc được nghe lúc không (đo 2026-09-23). Ladder trộn hai loại endpoint sẽ
+  ép trần ở nấc này và không ở nấc kia, tức là nhiễu thiên lệch theo đúng biến độc lập; nếu
+  không tự host được cả bốn nấc thì posture hợp lệ duy nhất là `0`.
 - **`objective_cognitive_congruence` dùng cosine để ghép cặp** trước khi so Bloom, nên họ B
   không độc lập hoàn toàn với họ A; chỉ Porter và Webb–Bloom là đối trọng đầy đủ. Nói trước,
   không chờ reviewer bắt.

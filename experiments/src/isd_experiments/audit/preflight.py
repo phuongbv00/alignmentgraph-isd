@@ -57,6 +57,7 @@ SERVING_LIMIT_ENV = {
     "context_window": "AGENT_MODEL_CONTEXT_WINDOW",
     "max_output_tokens": "AGENT_MODEL_MAX_OUTPUT_TOKENS",
     "streaming": "AGENT_MODEL_STREAMING",
+    "thinking_budget": "AGENT_MODEL_THINKING_BUDGET",
 }
 
 _fail = 0

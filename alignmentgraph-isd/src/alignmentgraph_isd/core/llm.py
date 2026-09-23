@@ -46,6 +46,53 @@ def _env(*names: str) -> str:
 DEFAULT_TIMEOUT_SECONDS = 240.0
 
 
+def thinking_extra_body(budget: int | None) -> dict[str, Any]:
+    """The request fields that hold a reply's reasoning to ``budget`` tokens.
+
+    ``None`` leaves the server's own posture alone. ``0`` turns thinking off.
+    A positive number caps the reasoning and lets the answer through.
+
+    Why a CAP rather than an off switch: reasoning shares one completion budget
+    with the answer, so a reply that reasons past the cap never closes
+    ``</think>``, the reasoning parser classifies the whole output as reasoning,
+    and the call is charged in full and comes back with no content. A budget
+    forces the block closed, so there is always an answer — without taking the
+    model's reasoning away. MEASURED (run 91983c9d): three calls spent all
+    8,192 completion tokens that way, returned nothing, and were logged
+    `invalid_action` — 182 s, 34% of that run's model time.
+
+    Both spellings go out together, because the two kinds of backend read
+    different ones and each ignores the other's: a self-hosted vLLM reads
+    `thinking_token_budget` (a `SamplingParams` field) and `chat_template_kwargs`,
+    an aggregating router reads `reasoning`. One payload for every endpoint is
+    what keeps the posture uniform, which is what a comparison across endpoints
+    rests on.
+
+    WHAT A ROUTER CAN AND CANNOT DO, measured (2026-09-23, `qwen/qwen3.5-9b`
+    through a router, one question, max_tokens 300): `thinking_token_budget`
+    and `chat_template_kwargs` were ignored outright, 300 completion tokens and
+    empty content. `reasoning.enabled: false` was honoured every time — 4 to 5
+    tokens, an answer. `reasoning.max_tokens: 64` was honoured by one upstream
+    provider (68 tokens, an answer) and ignored by another (300 tokens, empty),
+    the router choosing per request. So a router enforces the OFF state and NOT
+    a ceiling. A ceiling needs an endpoint that is served, not routed.
+
+    TOOL CALLING IS UNAFFECTED: the reasoning parser and the tool-call parser
+    are separate, and a bounded reasoning block simply ends sooner.
+
+    The twin of this table is ``shared/llm/factory.py::_thinking_extra_body``
+    in the benchmark, which serves the other six agents. It cannot be shared —
+    ``shared/`` must not depend on any one agent — so each side pins the exact
+    payload in a test and a drift shows up as a diff.
+    """
+    if budget is None:
+        return {}
+    if budget <= 0:
+        return {"chat_template_kwargs": {"enable_thinking": False},
+                "reasoning": {"enabled": False}}
+    return {"thinking_token_budget": budget, "reasoning": {"max_tokens": budget}}
+
+
 def llm_factory_from_env(
     *,
     model_name: str = "",
@@ -55,7 +102,7 @@ def llm_factory_from_env(
     temperature: float | None = None,
     max_tokens: int | None = None,
     timeout: float | None = None,
-    disable_thinking: bool = False,
+    thinking_budget: int | None = None,
     http_client: Any = None,
     read_env: bool = True,
 ) -> ChatModelFactory | None:
@@ -102,6 +149,13 @@ def llm_factory_from_env(
     if timeout is None:
         env_timeout = env("AGENT_MODEL_TIMEOUT_SECONDS")
         timeout = float(env_timeout) if env_timeout else DEFAULT_TIMEOUT_SECONDS
+    if thinking_budget is None:
+        env_budget = env("AGENT_MODEL_THINKING_BUDGET")
+        if env_budget:
+            try:
+                thinking_budget = max(0, int(env_budget))
+            except ValueError:
+                pass
 
     def factory() -> Any:
         kwargs: dict[str, Any] = {
@@ -111,21 +165,9 @@ def llm_factory_from_env(
         }
         if timeout and timeout > 0:
             kwargs["timeout"] = timeout
-        if disable_thinking:
-            # vLLM reads this per request and overrides the server default
-            # (docs.vllm.ai, "Overriding Server Defaults for Thinking Mode at
-            # Request Level"); a backend that does not understand it ignores
-            # the key. TOOL CALLING IS UNAFFECTED — the reasoning parser and
-            # the tool-call parser are separate, and with thinking disabled the
-            # former simply routes the whole output to content.
-            #
-            # What it buys is not only speed. With thinking ON, a reply that
-            # reasons past the completion cap never closes `</think>`, so vLLM
-            # classifies EVERYTHING as reasoning and returns no content at all:
-            # the call is charged in full and comes back empty. MEASURED (run
-            # d3f566aa): one Developer call spent all 8,192 completion tokens
-            # that way, returned nothing, and was logged `invalid_action`.
-            kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
+        extra_body = thinking_extra_body(thinking_budget)
+        if extra_body:
+            kwargs["extra_body"] = extra_body
         if resolved_api_key:
             kwargs["api_key"] = resolved_api_key
 

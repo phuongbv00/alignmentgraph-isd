@@ -353,7 +353,12 @@ def test_a_name_that_is_too_long_is_rejected(real_settings):
 # ── a database that predates a field ─────────────────────────────────────────
 
 def _old_connection_table(path):
-    """The table exactly as it was before `disable_thinking` existed."""
+    """The table as it was before the reasoning posture had a column.
+
+    It carries `disable_thinking`, the boolean that posture used to be, so
+    this is not a hypothetical old shape: it is what is on disk wherever the
+    app ran between the two.
+    """
     import sqlite3
 
     con = sqlite3.connect(path / "demo.db")
@@ -361,10 +366,11 @@ def _old_connection_table(path):
     CREATE TABLE llmconnection (
       id VARCHAR NOT NULL PRIMARY KEY, name VARCHAR, base_url VARCHAR, api_key VARCHAR,
       model_name VARCHAR, temperature FLOAT, max_tokens INTEGER, context_window INTEGER,
-      is_active BOOLEAN, created_at DATETIME, updated_at DATETIME);
+      is_active BOOLEAN, created_at DATETIME, updated_at DATETIME,
+      disable_thinking BOOLEAN DEFAULT 0 NOT NULL);
     INSERT INTO llmconnection VALUES
-      ('c1','served','https://router','k','a-model',0.7,8192,16384,1,'2026-09-16','2026-09-17'),
-      ('c2','local','http://localhost','','b-model',0.2,4096,8192,0,'2026-09-18','2026-09-18');
+      ('c1','served','https://router','k','a-model',0.7,8192,16384,1,'2026-09-16','2026-09-17',0),
+      ('c2','local','http://localhost','','b-model',0.2,4096,8192,0,'2026-09-18','2026-09-18',1);
     """)
     con.commit()
     con.close()
@@ -375,7 +381,7 @@ def test_a_field_added_after_the_database_exists_reaches_it(tmp_path):
     field added to a model after someone's database exists is invisible to the
     DDL and fatal to the SELECT that names it.
 
-    MEASURED: adding `LLMConnection.disable_thinking` took every connection
+    MEASURED: adding one boolean to `LLMConnection` took every connection
     endpoint down with `no such column` until the file was deleted."""
     import sqlite3
 
@@ -393,13 +399,14 @@ def test_a_field_added_after_the_database_exists_reaches_it(tmp_path):
     con = sqlite3.connect(tmp_path / "demo.db")
     columns = [c[1] for c in con.execute("pragma table_info(llmconnection)")]
     rows = con.execute(
-        "select id, model_name, disable_thinking from llmconnection order by id").fetchall()
+        "select id, model_name, thinking_budget from llmconnection order by id").fetchall()
     con.close()
 
-    assert "disable_thinking" in columns
+    assert "thinking_budget" in columns
     # Additive only: every row survives, and the new column takes the model's
-    # own default rather than a value this code invented.
-    assert rows == [("c1", "a-model", 0), ("c2", "b-model", 0)]
+    # own default rather than a value this code invented -- here None, which
+    # reads as "leave the endpoint's own posture alone".
+    assert rows == [("c1", "a-model", None), ("c2", "b-model", None)]
 
 
 def test_adding_a_column_is_idempotent_and_keeps_what_it_does_not_know(tmp_path):
@@ -429,6 +436,10 @@ def test_adding_a_column_is_idempotent_and_keeps_what_it_does_not_know(tmp_path)
     count = con.execute("select count(*) from llmconnection").fetchone()[0]
     con.close()
 
-    assert columns.count("disable_thinking") == 1, "a second start must add nothing"
+    assert columns.count("thinking_budget") == 1, "a second start must add nothing"
     assert "retired_setting" in columns, "a column the model has moved on from is kept"
+    # The real instance of that: the boolean this posture used to be. It is
+    # dead, and leaving it is what "additive only" means -- dropping it is the
+    # one operation SQLite cannot do without rewriting the table.
+    assert "disable_thinking" in columns
     assert count == 2

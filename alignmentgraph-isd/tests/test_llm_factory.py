@@ -16,6 +16,7 @@ _ENV_VARS = (
     "AGENT_MODEL_API_KEY",
     "AGENT_MODEL_TEMPERATURE",
     "AGENT_MODEL_MAX_TOKENS",
+    "AGENT_MODEL_THINKING_BUDGET",
 )
 
 
@@ -70,9 +71,9 @@ def test_every_call_has_a_deadline():
     assert 180 <= DEFAULT_TIMEOUT_SECONDS <= 300
 
 
-def test_thinking_is_left_on_unless_a_connection_turns_it_off():
+def test_thinking_is_left_on_unless_a_connection_bounds_it():
     """The ladder serves WITH thinking and the harness records that channel, so
-    turning it off is a different posture and has to be asked for."""
+    bounding it is a different posture and has to be asked for."""
     from alignmentgraph_isd.core.llm import llm_factory_from_env
 
     def build(**over):
@@ -81,5 +82,51 @@ def test_thinking_is_left_on_unless_a_connection_turns_it_off():
             api_key="k", read_env=False, **over)()
 
     assert not getattr(build(), "extra_body", None)
-    assert build(disable_thinking=True).extra_body == {
-        "chat_template_kwargs": {"enable_thinking": False}}
+    assert build(thinking_budget=512).extra_body == {
+        "thinking_token_budget": 512, "reasoning": {"max_tokens": 512}}
+    assert build(thinking_budget=0).extra_body == {
+        "chat_template_kwargs": {"enable_thinking": False},
+        "reasoning": {"enabled": False}}
+
+
+def test_both_spellings_of_the_budget_go_out_together():
+    """Pinned to the byte, because this table has a twin it cannot import.
+
+    `shared/llm/factory.py::_thinking_extra_body` in the benchmark serves the
+    other six agents, and `shared/` must not depend on any one agent -- so the
+    only thing keeping the two in step is that each pins the exact payload.
+
+    Both spellings, because the two kinds of backend read different ones and
+    each ignores the other's: MEASURED, a router honoured `reasoning` and
+    ignored `thinking_token_budget`, while a self-hosted vLLM reads the latter.
+    A router enforces only the OFF state, never the ceiling -- see
+    `core/llm.py::thinking_extra_body` for that measurement.
+    """
+    from alignmentgraph_isd.core.llm import thinking_extra_body
+
+    assert thinking_extra_body(None) == {}
+    assert thinking_extra_body(0) == {
+        "chat_template_kwargs": {"enable_thinking": False},
+        "reasoning": {"enabled": False}}
+    assert thinking_extra_body(256) == {
+        "thinking_token_budget": 256, "reasoning": {"max_tokens": 256}}
+
+
+def test_the_budget_is_read_from_the_environment_like_its_siblings(monkeypatch):
+    """An `AGENT_MODEL_*` name, because it is uniform serving posture rather
+    than one agent's knob -- and `read_env=False` still keeps it out, so what
+    the app's dialog shows stays what the app's runs use."""
+    from alignmentgraph_isd.core.llm import llm_factory_from_env
+
+    monkeypatch.setenv("AGENT_MODEL_THINKING_BUDGET", "128")
+
+    def build(**over):
+        return llm_factory_from_env(
+            model_name="m", api_spec="openai_compatible", base_url="http://h/v1",
+            api_key="k", **over)()
+
+    assert build().extra_body == {
+        "thinking_token_budget": 128, "reasoning": {"max_tokens": 128}}
+    assert not getattr(build(read_env=False), "extra_body", None)
+    # An explicit argument outranks it, like every other setting here.
+    assert build(thinking_budget=0).extra_body["reasoning"] == {"enabled": False}

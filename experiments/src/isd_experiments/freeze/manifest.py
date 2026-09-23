@@ -77,6 +77,7 @@ def config_fingerprint() -> dict:
             "context_window": cfg.serving.context_window,
             "max_output_tokens": cfg.serving.max_output_tokens,
             "streaming": cfg.serving.streaming,
+            "thinking_budget": cfg.serving.thinking_budget,
         },
         # Recorded as DECLARED, never as resolved: a blank per-judge provider
         # means the reader derives that judge's label from its own model slug,

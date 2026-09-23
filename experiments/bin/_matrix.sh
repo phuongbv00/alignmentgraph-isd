@@ -292,6 +292,7 @@ matrix_serving_prefix() {
     _serving_var AGENT_MODEL_CONTEXT_WINDOW    "${_AGENT_MODEL_CONTEXT_WINDOW:-}"
     _serving_var AGENT_MODEL_MAX_OUTPUT_TOKENS "${_AGENT_MODEL_MAX_OUTPUT_TOKENS:-}"
     _serving_var AGENT_MODEL_STREAMING         "${_AGENT_MODEL_STREAMING:-}"
+    _serving_var AGENT_MODEL_THINKING_BUDGET   "${_AGENT_MODEL_THINKING_BUDGET:-}"
 }
 
 matrix_confirm() {
@@ -350,6 +351,7 @@ matrix_write_manifest() {
     AGENT_MODEL_CONTEXT_WINDOW="${_AGENT_MODEL_CONTEXT_WINDOW:-}" \
     AGENT_MODEL_MAX_OUTPUT_TOKENS="${_AGENT_MODEL_MAX_OUTPUT_TOKENS:-}" \
     AGENT_MODEL_STREAMING="${_AGENT_MODEL_STREAMING:-}" \
+    AGENT_MODEL_THINKING_BUDGET="${_AGENT_MODEL_THINKING_BUDGET:-}" \
     python3 - "$manifest" <<'PYEOF'
 import json, os, sys
 
@@ -407,6 +409,7 @@ manifest = {
         "context_window": os.environ.get("AGENT_MODEL_CONTEXT_WINDOW", ""),
         "max_output_tokens": os.environ.get("AGENT_MODEL_MAX_OUTPUT_TOKENS", ""),
         "streaming": os.environ.get("AGENT_MODEL_STREAMING", ""),
+        "thinking_budget": os.environ.get("AGENT_MODEL_THINKING_BUDGET", ""),
     },
     "git": {
         "isd_agent_benchmark_commit": os.environ["BENCH_COMMIT"],

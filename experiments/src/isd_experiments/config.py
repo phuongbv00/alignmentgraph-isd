@@ -196,8 +196,8 @@ class Profile:
 class Serving:
     """How the ladder is served, and the limits every rung is served under.
 
-    The three limits are declared once for the whole ladder rather than per
-    rung: applying them uniformly to every agent and every size is the fairness
+    The limits are declared once for the whole ladder rather than per rung:
+    applying them uniformly to every agent and every size is the fairness
     argument the comparison rests on, and a per-rung window would turn the
     ladder into a comparison of budgets instead of a comparison of model scale.
     """
@@ -212,6 +212,12 @@ class Serving:
     #: Client-side streaming with stream_usage, for a proxy that closes a long
     #: non-streaming read before the largest rung finishes a turn.
     streaming: bool | None = None
+    #: How many tokens a reply may spend reasoning before it must answer.
+    #: 0 turns thinking off, a positive number caps it. A cap and not an off
+    #: switch because reasoning shares the completion budget with the answer:
+    #: past `max_output_tokens` the reasoning block never closes and the reply
+    #: comes back empty, charged in full.
+    thinking_budget: int | None = None
     options: dict[str, Any] = field(default_factory=dict)
 
 
@@ -383,6 +389,15 @@ def _serving(raw: dict, src: Path) -> Serving:
 
     context_window = _positive_int("context_window")
     max_output_tokens = _positive_int("max_output_tokens")
+    # Not `_positive_int`: 0 is the posture "serve with thinking off", which is
+    # a declaration like any other, not an omission.
+    thinking_budget = rest.pop("thinking_budget", None)
+    if thinking_budget is not None and (
+            not isinstance(thinking_budget, int) or isinstance(thinking_budget, bool)
+            or thinking_budget < 0):
+        raise SystemExit(
+            f"{src}: [serving].thinking_budget must be a non-negative integer, "
+            f"got {thinking_budget!r}.")
     streaming = rest.pop("streaming", None)
     if streaming is not None and not isinstance(streaming, bool):
         raise SystemExit(f"{src}: [serving].streaming must be true or false, got {streaming!r}.")
@@ -395,7 +410,7 @@ def _serving(raw: dict, src: Path) -> Serving:
 
     return Serving(api_spec=api_spec, key_env=key_env,
                    context_window=context_window, max_output_tokens=max_output_tokens,
-                   streaming=streaming, options=rest)
+                   streaming=streaming, thinking_budget=thinking_budget, options=rest)
 
 
 #: Key-shaped names refused in [judge]. The declaration carries the NAME of an

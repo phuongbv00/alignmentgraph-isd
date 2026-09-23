@@ -11,7 +11,7 @@
 1. Mọi quyết định tuning chỉ dựa trên `train_10`. `test_90` chỉ chạy sau khi freeze code. Sửa code sau đó ⇒ chạy lại
    ladder.
 2. Số trong paper **chỉ** đến từ `results/generated/` (mục 9). Không gõ tay.
-3. Cấu hình LLM judge và 2 flag bảo hộ (mục 3.3) phải **đồng nhất** giữa mọi run và mọi agent — đó là điều kiện công bằng
+3. Cấu hình LLM judge và 3 flag bảo hộ (mục 3.3) phải **đồng nhất** giữa mọi run và mọi agent — đó là điều kiện công bằng
    của so sánh.
 
 ---
@@ -198,20 +198,64 @@ vLLM `v0.25.1`, bf16, context **16384** cho cả 4 model, mỗi model một pod,
 --enable-prefix-caching
 ```
 
-### 3.3 Hai flag bảo hộ — bắt buộc, đảm bảo tính công bằng của so sánh
+### 3.3 Ba flag bảo hộ — bắt buộc, đảm bảo tính công bằng của so sánh
 
 ```bash
 AGENT_MODEL_MAX_OUTPUT_TOKENS=8192
 AGENT_MODEL_STREAMING=1
+AGENT_MODEL_THINKING_BUDGET=512
 ```
 
-Cả hai khai trong `experiment.toml` (`[serving].max_output_tokens` / `.streaming`), launcher truyền xuống benchmark
-dưới dạng command prefix. Pre-flight (mục 6.1) **fail** nếu `.env` cũng đặt chúng: hai nguồn cho một giới hạn phải
-đồng nhất trên mọi agent và mọi size chính là cách một so sánh mất luận điểm fairness trong im lặng.
+Cả ba khai trong `experiment.toml` (`[serving].max_output_tokens` / `.streaming` / `.thinking_budget`), launcher truyền
+xuống benchmark dưới dạng command prefix. Pre-flight (mục 6.1) **fail** nếu `.env` cũng đặt chúng: hai nguồn cho một
+giới hạn phải đồng nhất trên mọi agent và mọi size chính là cách một so sánh mất luận điểm fairness trong im lặng.
+`shared/llm/factory.py` là nơi duy nhất đọc cả ba, nên "đồng nhất" là tính chất của code chứ không phải của kỷ luật.
 
 Ladder serve **để nguyên thinking**. `--reasoning-parser qwen3` (mục 3.2) tách phần suy nghĩ sang `reasoning_content`
 nên `content` vẫn sạch cho đường tool-call/JSON; harness ghi lại kênh đó vào transcript nhưng không bao giờ gửi ngược cho
 model, và một lượt chỉ có suy nghĩ bị tính như lượt rỗng.
+
+**`thinking_budget` là TRẦN cho phần suy nghĩ, không phải công tắc tắt** (`0` = tắt, `N` = nhiều nhất N token). Lý do
+nó tồn tại là hiệu lực đo lường, không phải tốc độ. Phần suy nghĩ tiêu chung ngân sách completion với câu trả lời, nên
+một reply nghĩ vượt `max_output_tokens` **không bao giờ đóng khối `</think>`**; reasoning parser xếp toàn bộ output là
+suy nghĩ, call bị tính tiền đủ và trả về **`content` rỗng** — mà harness ghi là `invalid_action`, tức là "model không
+hành động". Đó là nhiễu hạ tầng chảy thẳng vào một đại lượng được chấm điểm (trajectory). Đo trên một run 2B:
+3 call kiểu này đốt trọn 8.192 token mỗi cái, tổng 182 s = 34% thời gian model của cả run.
+
+Trần ép khối suy nghĩ đóng lại (vLLM: *"forces the model to produce `reasoning_end_str`"*), nên **luôn có `content`**,
+mà không lấy đi năng lực suy luận của model. Tool calling không bị ảnh hưởng: reasoning parser và tool-call parser là
+hai thứ tách rời.
+
+Mỗi request mang **hai cách nói** cùng lúc, vì hai loại backend đọc hai tên khác nhau và mỗi bên lặng lẽ bỏ qua tên của
+bên kia:
+
+| `thinking_budget` | gửi trong `extra_body` |
+|---|---|
+| không khai | *(không gì)* |
+| `0` | `{"chat_template_kwargs": {"enable_thinking": false}, "reasoning": {"enabled": false}}` |
+| `N > 0` | `{"thinking_token_budget": N, "reasoning": {"max_tokens": N}}` |
+
+vLLM tự host đọc `thinking_token_budget` (một trường `SamplingParams`) và `chat_template_kwargs`; router tổng hợp đọc
+`reasoning`. Gửi cả hai là cách giữ **một payload duy nhất** cho mọi nấc, mà một payload duy nhất chính là luận điểm
+fairness.
+
+**Router chỉ ép được trạng thái TẮT, không ép được TRẦN.** Đo 2026-09-23 trên `qwen/qwen3.5-9b` sau một router, cùng
+một câu hỏi, `max_tokens=300`: `thinking_token_budget` và `chat_template_kwargs` bị bỏ qua hoàn toàn (300 token,
+`content` rỗng); `reasoning.enabled=false` được nghe **mọi lần** (4–5 token, có câu trả lời); `reasoning.max_tokens=64`
+được một provider thượng nguồn nghe (68 token, có trả lời) và một provider khác bỏ qua (300 token, rỗng) — router chọn
+provider **theo từng request**.
+
+Hệ quả cho ladder, phải quyết trước khi freeze: **`thinking_budget = N` chỉ có nghĩa khi cả bốn nấc đều tự host.**
+`experiment.toml` hiện có 2/4 nấc chạy qua router (`qwen2b`, `qwen9b` — tạm thời, vì hết quota; mục 3.1 khai cả bốn
+trên pod RunPod). Nếu chạy chính thức trên cấu hình lai thì trần được ép ở nấc này và không ở nấc kia, tức là **nhiễu
+thiên lệch theo đúng biến độc lập** — tệ hơn nhiễu đồng đều. Hai lối ra hợp lệ, không có lối thứ ba: tự host cả bốn
+nấc rồi khai `N`, hoặc khai `0` (tắt hẳn), vốn đồng nhất ở mọi loại endpoint.
+
+`--reasoning-config` (mục 3.2) **không bắt buộc**: không khai thì vLLM tự khởi tạo cặp token biên từ chính
+`--reasoning-parser`. Phải curl một pod sống để xác nhận trước khi freeze — xem mục 6.1.
+
+Con số cụ thể **chốt trên tune slice TRƯỚC `isd-exp freeze write` và không sửa lại sau khi thấy kết quả**, đúng như
+chính sách trần trajectory.
 
 ### 3.4 Tạo pod + khai endpoint
 
@@ -490,8 +534,23 @@ Cấu trúc results: `results/test_90_benchmark_<model>_r<N>_<ts>/test_90/<scena
 ./isd-exp audit preflight
 ```
 
-Check: 4 pod alive + auth (401/200), model khớp slot, smoke completion (pod sinh ra chữ ở `content` **hoặc**
-`reasoning_content` — thinking đang bật nên rỗng `content` chưa phải lỗi), 2 flag bảo hộ có mặt, disk trống.
+Check: 4 pod alive + auth (401/200), model khớp slot, smoke completion, 3 flag bảo hộ có mặt, disk trống.
+
+Smoke completion: pod phải sinh ra chữ ở `content`. Với `thinking_budget` đã khai (mục 3.3) thì **`content` rỗng LÀ
+một lỗi** — trước đây không, vì thinking bật không trần thì một reply toàn suy nghĩ là hợp lệ. Đây cũng là chỗ xác
+minh trần thật sự có tác dụng trên pod, phải làm **trước** `isd-exp freeze write`:
+
+```bash
+curl -s "$POD/chat/completions" -H "Authorization: Bearer $VLLM_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"model":"'"$MODEL"'","messages":[{"role":"user","content":"9.11 and 9.8, which is greater?"}],
+       "max_tokens":300,"thinking_token_budget":64,"reasoning":{"max_tokens":64}}' \
+  | python3 -c 'import json,sys; m=json.load(sys.stdin)["choices"][0]["message"]; \
+    print(len(m.get("reasoning_content") or ""), repr((m.get("content") or "")[:60]))'
+```
+
+Phải thấy `reasoning_content` ngắn và `content` **không rỗng**. `400` ⇒ bản vLLM trên image chưa có
+`thinking_token_budget`, phải nâng image trong template (mục 3.4). `200` nhưng suy nghĩ vẫn dài ⇒ thêm
+`--reasoning-config` vào lệnh serve. Chạy cùng body đó với `reasoning.max_tokens` bỏ đi để thấy đối chứng.
 
 ### 6.2 In-flight (mỗi 30–60 phút)
 
@@ -619,8 +678,9 @@ Cách scorer hoạt động:
   không có cách tắt, vì mỗi lần chấm phải để lại dấu vết nó đã phủ những arm nào.
 - Scorer hỏi `/v1/models` **từng arm** và **hard-fail** nếu pod serve model khác preset: cache key là
   `sha1(model[@revision] + text)` nên chấm nhầm pod sẽ ghi vector sai dưới key trông đúng — hỏng ngầm.
-- **Pod không trả lời `/v1/models` bị loại khỏi `.env`** khi sync (tên model trong record RunPod chỉ là *nhãn pod*,
-  không phải bằng chứng về thứ đang được serve). Pod đang boot thì chờ rồi re-run; `--allow-unverified` để ép.
+- Tên model trong record RunPod chỉ là **nhãn pod**, không phải bằng chứng về thứ đang được serve — nên endpoint
+  khai trong `experiment.toml` vẫn phải được scorer hỏi lại như trên. Pod đang boot thì chờ rồi re-run;
+  `--allow-unverified` để ép.
 - `tfidf` thuần CPU, luôn chạy được kể cả khi không pod nào sống. Chỉ có 1 GPU thì bật từng pod một rồi lặp lại đúng
   lệnh trên — arm đã xong được bỏ qua.
 - Chết giữa chừng: chạy lại **nguyên lệnh**. Scenario hoàn chỉnh được skip, file hỏng/thiếu tự chấm lại.
