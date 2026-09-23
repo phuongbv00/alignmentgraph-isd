@@ -211,6 +211,49 @@ class TestTokenAccountingReachesEveryAgent:
             f"{agent_id} builds its models from a config detached from the run's "
             "token counter, so its token_usage will be 0 on every run.")
 
+    @pytest.mark.parametrize(
+        "agent_id", ["react-isd", "addie-agent", "dick-carey-agent", "rpisd-agent"])
+    def test_two_concurrent_runs_of_a_tool_style_agent_keep_their_own_counters(
+            self, agent_id):
+        """The runner builds and runs each agent inside one pool worker, several
+        at once. A tool-style agent finds its config through
+        ``shared.llm.get_default_llm_config()`` at call time and fans out on its
+        own pool, so that lookup has to be scoped to the run that constructed
+        the agent, all the way into its fan-out threads -- or every concurrent
+        run of these agents reports into whichever run configured last."""
+        import threading
+
+        from shared.llm import ContextThreadPoolExecutor, get_default_llm_config
+
+        try:
+            self._config_used(agent_id, _run_config())
+        except ImportError as exc:
+            pytest.skip(f"{agent_id} not importable: {exc}")
+
+        barrier = threading.Barrier(2)
+        seen: list[tuple] = []
+
+        def one_run() -> None:
+            config = _run_config()
+            # Construct the agent the way `registry.build`'s closure does on
+            # call, in this run's thread, without running it.
+            self._config_used(agent_id, config)
+            barrier.wait()
+            with ContextThreadPoolExecutor(max_workers=1) as pool:
+                counter = pool.submit(get_default_llm_config).result()._token_counter
+            seen.append((config, counter))
+
+        threads = [threading.Thread(target=one_run) for _ in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert len(seen) == 2
+        for config, counter in seen:
+            assert counter is config._token_counter, (
+                f"a concurrent run of {agent_id} resolved the default config to "
+                "another run's token counter")
+
 
 def test_the_launch_banner_sizes_slots_with_the_runners_presets():
     """`matrix_peak_calls` copies the preset table to print a bound; a drift

@@ -36,7 +36,10 @@ phục vụ objective; (iv) cognitive demand tương thích. Map thẳng vào pr
 ## 3. Pipeline (đúng runtime, không hứa quá)
 
 1. **Extract text-only** từ ADDIE output (objectives, assessment items, activities, evaluation texts) — không đọc
-   nhãn/ID tự khai để chấm (chỉ dùng làm validation evidence).
+   nhãn/ID tự khai để chấm (chỉ dùng làm validation evidence). Activity = hoạt động dạy-học (TLA) trong
+   `design.learning_activities` và các layout tương đương (`lesson_plan.modules[].activities`,
+   `instructional_strategies.activities`); chuỗi sự kiện Gagné trong `instructional_strategies.sequence` là cấu
+   trúc của một buổi, không phải activity, nên không đưa vào tập này.
 2. **Encoder — bộ ba độc lập lineage.** Primary là `nvidia/llama-embed-nemotron-8b` (NVIDIA, 11/2025;
    #1 MMTEB 69.46; **Bitext Mining 81.72** — proxy công bố tốt nhất cho căn chỉnh liên ngôn ngữ;
    `babakhin2025nemotron`).

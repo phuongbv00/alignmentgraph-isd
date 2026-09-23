@@ -983,7 +983,17 @@ def extract_assessment_items(addie_output: dict) -> list[str]:
 
 
 def extract_activities(addie_output: dict) -> list[str]:
-    """Learning-activity texts, union over schema and observed layouts."""
+    """Learning-activity texts, union over schema and observed layouts.
+
+    An activity is a teaching/learning activity (a TLA in the constructive-
+    alignment sense): ``design.learning_activities``, the activities of a
+    ``development.lesson_plan`` module, or the compact ``activities`` list some
+    agents write on the strategy object. A strategy's ``sequence`` of Gagné
+    events ("Gain attention", "Inform learners of objectives", ...) is NOT read:
+    it is the structure of a session, not a set of activities with a Bloom
+    demand of their own, and every agent that writes one also writes the
+    activities it schedules.
+    """
     design = addie_output.get("design") or {}
     development = addie_output.get("development") or {}
     texts: list[str] = []
@@ -994,10 +1004,8 @@ def extract_activities(addie_output: dict) -> list[str]:
     for strategy_key in ("instructional_strategy", "instructional_strategies"):
         strategy = design.get(strategy_key)
         if isinstance(strategy, dict):
-            texts += _texts_of(strategy.get("sequence"), "event", "activity")
             # Observed EduPlanner / ADDIE-Agent layout: the strategy is a
-            # compact {methods, activities, rationale} object rather than a
-            # Gagné-style sequence.
+            # compact {methods, activities, rationale} object.
             texts += _texts_of(
                 strategy.get("activities"),
                 "activity",

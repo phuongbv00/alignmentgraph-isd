@@ -51,16 +51,14 @@ ALIGNED_OUTPUT = {
             {"id": "LO-003", "level": "Create",
              "statement": "Compose modular code applying function design principles"},
         ],
-        "instructional_strategy": {
-            "sequence": [
-                {"event": "Concept lesson",
-                 "activity": "Lecture explaining the concepts of variables and data types"},
-                {"event": "Lab",
-                 "activity": "Hands-on practice implementing programs with conditionals and loops"},
-                {"event": "Project",
-                 "activity": "Project composing modular code with function design principles"},
-            ]
-        },
+        "learning_activities": [
+            {"activity_name": "Concept lesson",
+             "description": "Lecture explaining the concepts of variables and data types"},
+            {"activity_name": "Lab",
+             "description": "Hands-on practice implementing programs with conditionals and loops"},
+            {"activity_name": "Project",
+             "description": "Project composing modular code with function design principles"},
+        ],
     },
     "evaluation": {
         "quiz_items": [
@@ -86,12 +84,10 @@ ALIGNED_OUTPUT = {
 MISALIGNED_OUTPUT = {
     "design": {
         "learning_objectives": ALIGNED_OUTPUT["design"]["learning_objectives"],
-        "instructional_strategy": {
-            "sequence": [
-                {"event": "Lecture",
-                 "activity": "Lecture listing the history of world coffee culture"},
-            ]
-        },
+        "learning_activities": [
+            {"activity_name": "Lecture",
+             "description": "Lecture listing the history of world coffee culture"},
+        ],
     },
     "evaluation": {
         "quiz_items": [
@@ -294,8 +290,8 @@ class TestEdgeCases:
         instead of counting against the agent that produced them.
         """
         output = {
-            "design": {"instructional_strategy":
-                       ALIGNED_OUTPUT["design"]["instructional_strategy"]},
+            "design": {"learning_activities":
+                       ALIGNED_OUTPUT["design"]["learning_activities"]},
             "evaluation": ALIGNED_OUTPUT["evaluation"],
         }
         score = evaluate(output)
@@ -474,7 +470,8 @@ class TestExtraction:
     def test_real_run_layout(self):
         # Layout observed in actual benchmark runs: assessment items in
         # development.assessment_tools / evaluation.summative.assessment_tools,
-        # activities in design.instructional_strategies + learning_activities.
+        # activities in design.learning_activities; the strategy's Gagné
+        # sequence beside them is session structure and is not an activity.
         output = {
             "design": {
                 "learning_objectives": [
@@ -506,7 +503,7 @@ class TestExtraction:
         activities = extract_activities(output)
         assert len(objectives) == 1
         assert len(items) == 2
-        assert len(activities) == 2
+        assert activities == ["Survey lab Hands-on survey design"]
         score = AlignmentEvaluator().evaluate(output, SCENARIO)
         assert_unit_interval(score)
         assert score.counts["assessment"] == 2

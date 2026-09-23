@@ -185,54 +185,6 @@ class ADDIEOutputAggregator:
         plan_data = _merge_node_data(self.graph.section_nodes(NodeType.ASSESSMENT_PLAN))
         improvements = [n["data"] for n in self.graph.element_nodes(NodeType.IMPROVEMENT)]
 
-        formative_tasks = _timed(assessment_tools, "formative")
-        summative_tasks = _timed(assessment_tools, "summative")
-
-        # The formative half of ADDIE Evaluation is scored on more than a list
-        # of sets: the rubric asks which areas learners struggled with,
-        # why, and what first-round revision follows — the assessment plan's
-        # pilot_data_plan, surfaced here.
-        pilot = plan_data.get("pilot_data_plan", {})
-        pilot = pilot if isinstance(pilot, dict) else {}
-        formative = {
-            "data_collection": {
-                "methods": plan_data.get("formative_methods", []),
-                "collection_points": pilot.get("collection_points", []),
-            },
-            "anticipated_difficulties": pilot.get("anticipated_difficulties", []),
-            "revision_plan": [
-                {
-                    "problem_area": entry.get("area", ""),
-                    "evidence_source": entry.get("detected_by", ""),
-                    "action": entry.get("first_revision", ""),
-                }
-                for entry in (pilot.get("anticipated_difficulties") or [])
-                if isinstance(entry, dict)
-            ],
-            "assessment_tools": formative_tasks,
-        }
-        objective_ids = _objectives_in(summative_tasks)
-        # Effectiveness/adoption synthesis: summative is the "summative"-tagged
-        # slice of the unified Assessment pool, and nothing generates this
-        # narrative, so it is synthesized deterministically from the counts.
-        summative = {
-            "assessment_tools": summative_tasks,
-            "effectiveness_analysis": {
-                "learning_outcomes": {
-                    "details": f"{len(summative_tasks)} summative assessment task(s) carrying "
-                               f"{_items_in(summative_tasks)} item(s), covering "
-                               f"{len(objective_ids)} objective(s)."
-                },
-            },
-            "adoption_decision": {
-                "decision": "adopt" if summative_tasks else "pending",
-                "rationale": (
-                    "Summative evidence exists for the covered objectives; proceed to pilot review."
-                    if summative_tasks else
-                    "No summative evidence was generated; adoption cannot be recommended yet."
-                ),
-            },
-        }
         # feedback_summary/next_iteration_goals come from the improvement plan
         # (the same call as the improvements, grounded in the gaps) — never
         # from the assessment plan, which does not carry them.
@@ -240,8 +192,7 @@ class ADDIEOutputAggregator:
             **_merge_node_data(self.graph.section_nodes(NodeType.IMPROVEMENT)),
             "improvements": improvements,
         }
-        improvement_plan.setdefault("feedback_summary", "")
-        return {"formative": formative, "summative": summative, "improvement_plan": improvement_plan}
+        return _evaluation_from(assessment_tools, plan_data, improvement_plan)
 
 
 def _with_session_guides(implementation: dict, guides: list) -> dict:
@@ -288,6 +239,63 @@ def _objective_assessment_map(objective_ids: list, tasks: list) -> dict:
             if lo in by_lo and task_id not in by_lo[lo]:
                 by_lo[lo].append(task_id)
     return by_lo
+
+
+def _evaluation_from(assessment_tools: list, plan_data: dict, improvement_plan: dict) -> dict:
+    """The evaluation phase, from the assessment pool, the assessment plan and
+    the improvement plan -- ONE reader for both substrates, since a bucket that
+    filled on one and not the other would sit on the ``context_mode`` axis.
+
+    The formative half of ADDIE Evaluation is scored on more than a list of
+    sets: the rubric asks which areas learners struggled with, why, and what
+    first-round revision follows -- the assessment plan's ``pilot_data_plan``,
+    surfaced here. The summative half's narrative is synthesized from the
+    counts, because nothing in the design generates it: it reports what the
+    summative tasks cover and nothing the run did not measure.
+    """
+    formative_tasks = _timed(assessment_tools, "formative")
+    summative_tasks = _timed(assessment_tools, "summative")
+    pilot = plan_data.get("pilot_data_plan", {})
+    pilot = pilot if isinstance(pilot, dict) else {}
+    formative = {
+        "data_collection": {
+            "methods": plan_data.get("formative_methods", []),
+            "collection_points": pilot.get("collection_points", []),
+        },
+        "anticipated_difficulties": pilot.get("anticipated_difficulties", []),
+        "revision_plan": [
+            {
+                "problem_area": entry.get("area", ""),
+                "evidence_source": entry.get("detected_by", ""),
+                "action": entry.get("first_revision", ""),
+            }
+            for entry in (pilot.get("anticipated_difficulties") or [])
+            if isinstance(entry, dict)
+        ],
+        "assessment_tools": formative_tasks,
+    }
+    objective_ids = _objectives_in(summative_tasks)
+    summative = {
+        "assessment_tools": summative_tasks,
+        "effectiveness_analysis": {
+            "learning_outcomes": {
+                "details": f"{len(summative_tasks)} summative assessment task(s) carrying "
+                           f"{_items_in(summative_tasks)} item(s), covering "
+                           f"{len(objective_ids)} objective(s)."
+            },
+        },
+        "adoption_decision": {
+            "decision": "adopt" if summative_tasks else "pending",
+            "rationale": (
+                "Summative evidence exists for the covered objectives; proceed to pilot review."
+                if summative_tasks else
+                "No summative evidence was generated; adoption cannot be recommended yet."
+            ),
+        },
+    }
+    improvement_plan = dict(improvement_plan)
+    improvement_plan.setdefault("feedback_summary", "")
+    return {"formative": formative, "summative": summative, "improvement_plan": improvement_plan}
 
 
 def _objectives_in(tasks: list) -> set:
@@ -517,52 +525,11 @@ def aggregate_prose(store, trajectory, *, development_mode: str = "") -> dict:
 
     plan_data = doc("assessment_plan")
     improvement_doc = analysis_doc.get("improvement_plan") or {}
-    formative_tasks = _timed(assessment_tools, "formative")
-    summative_tasks = _timed(assessment_tools, "summative")
-    pilot = plan_data.get("pilot_data_plan", {})
-    pilot = pilot if isinstance(pilot, dict) else {}
-    formative = {
-        "data_collection": {
-            "methods": plan_data.get("formative_methods", []),
-            "collection_points": pilot.get("collection_points", []),
-        },
-        "anticipated_difficulties": pilot.get("anticipated_difficulties", []),
-        "revision_plan": [
-            {
-                "problem_area": entry.get("area", ""),
-                "evidence_source": entry.get("detected_by", ""),
-                "action": entry.get("first_revision", ""),
-            }
-            for entry in (pilot.get("anticipated_difficulties") or [])
-            if isinstance(entry, dict)
-        ],
-        "assessment_tools": formative_tasks,
-    }
-    objective_ids_covered = _objectives_in(summative_tasks)
-    summative = {
-        "assessment_tools": summative_tasks,
-        "effectiveness_analysis": {
-            "learning_outcomes": {
-                "details": f"{len(summative_tasks)} summative assessment task(s) carrying "
-                               f"{_items_in(summative_tasks)} item(s), covering "
-                               f"{len(objective_ids_covered)} objective(s)."
-            },
-        },
-        "adoption_decision": {
-            "decision": "adopt" if summative_tasks else "pending",
-            "rationale": (
-                "Summative evidence exists for the covered objectives; proceed to pilot review."
-                if summative_tasks else
-                "No summative evidence was generated; adoption cannot be recommended yet."
-            ),
-        },
-    }
     improvement_plan = {
         **{k: v for k, v in improvement_doc.items() if k != "improvements"},
         "improvements": improvement_doc.get("improvements") or [],
     }
-    improvement_plan.setdefault("feedback_summary", "")
-    evaluation = {"formative": formative, "summative": summative, "improvement_plan": improvement_plan}
+    evaluation = _evaluation_from(assessment_tools, plan_data, improvement_plan)
 
     output = {
         "analysis": analysis,

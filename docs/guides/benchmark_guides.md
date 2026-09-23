@@ -619,6 +619,7 @@ activities / evaluation) có rỗng không. Quan trọng: output parse được 
 | `응답 길이: 0`                       | Model trả rỗng                | Kiểm pod log + cap completion (<think>)    |
 | `token_usage = 0` hàng loạt      | Accounting hỏng               | Sửa trước khi chạy tiếp — số token sai hết |
 | `token_usage = 0` ở **một số** agent | Agent đó dùng `LLMConfig` đã tách khỏi counter của run | Counter đi theo lineage của config: `runner/llm.py::uniform_config` mở scope bằng `new_token_scope()`, `copy_with()` chia sẻ lại. Chạy `pytest tests/test_runner_agents.py` |
+| `token_usage = 0` ở một agent tool-style (react-isd, addie, dick-carey, rpisd) trên **hầu hết** scenario, và dồn hết vào một scenario | Default config toàn tiến trình bị ghi đè khi chạy song song | Default config là context-scoped (`shared/llm/runtime.py`), pool nội bộ của agent phải là `ContextThreadPoolExecutor`. Chạy `pytest isd-agent-benchmark/shared/tests/test_default_llm_is_context_scoped.py` |
 | Model name metadata ≠ run dir    | Nhầm URL pod ↔ slot           | Loại run, kiểm `base_urls` trong experiment.toml |
 | `FAILED` trong log `judge llm`   | LLM judge chết giữa chừng     | Chạy lại đúng lệnh `judge llm`, hoặc `audit repair` (xem dưới) |
 | Pod EXITED giữa run              | OOM/crash server              | Xem RunPod console log, kiểm VRAM          |
