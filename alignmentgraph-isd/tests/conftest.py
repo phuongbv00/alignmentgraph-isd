@@ -106,7 +106,10 @@ _TASKS = [
      "minutes": 20 if timing != "summative" else 60,
      "weight_percent": 0 if timing != "summative" else 50}
     for m, module in enumerate(_DESIGN["course_modules"])
-    for t, timing in enumerate(_TIMINGS)]
+    for t, timing in enumerate(_TIMINGS)
+    # Within the course's task ceiling: one diagnostic task for the COURSE,
+    # before its first module, never one per module.
+    if not (m > 0 and timing == "diagnostic")]
 _TASK_OF = {(t["module_id"], t["timing"]): t["id"] for t in _TASKS}
 
 #: The blueprint as the plan carries it: ONE SET PER MODULE, each holding
@@ -118,8 +121,11 @@ _SETS = [{"module_id": module["id"],
 
 _ASSESSMENT_PLAN = {
     "assessment_plan": {
-        "lo_coverage_targets": {f"ILO-0{i}": ["diagnostic", "formative", "summative"]
-                                for i in range(1, 6)},
+        # Promised exactly what the tasks keep: the course's one diagnostic
+        # task sits in MOD-01, so only its objectives are promised that timing.
+        "lo_coverage_targets": {lo: sorted({t["timing"] for t in _TASKS
+                                            if t["module_id"] == _MODULE_OF_LO[lo]})
+                                for lo in (f"ILO-0{i}" for i in range(1, 6))},
         "sets": _SETS,
         "expected_evidence": {f"ILO-0{i}": "A working code artifact with justification." for i in range(1, 6)},
         "formative_methods": ["Weekly design critique with rubric", "Exit tickets after each module"],
@@ -161,8 +167,10 @@ def _assessment_tools() -> list[dict]:
             "question": f"Demonstrate mastery of {los[lo_idx]} in a realistic scenario.",
             "aligned_objective": los[lo_idx],
             "plan_category": categories[i % len(categories)],
-            "task_id": _TASK_OF[(_MODULE_OF_LO[los[lo_idx]],
-                                             categories[i % len(categories)])],
+            # A later module has no diagnostic task; its items file under the
+            # formative one (the commit stamps plan_category from the task).
+            "task_id": _TASK_OF.get((_MODULE_OF_LO[los[lo_idx]], categories[i % len(categories)]),
+                                    _TASK_OF[(_MODULE_OF_LO[los[lo_idx]], "formative")]),
             "required_cognitive_process": cognitive[lo_idx],
             "scoring_criteria": "Rubric scores correctness, design quality, and explanation against observable criteria (0-4 each).",
             "difficulty": ["easy", "medium", "hard"][i % 3],
@@ -226,7 +234,7 @@ _ACTIVITIES = {
         {"id": "TLA-03", "activity_name": "Design review", "duration": "60m",
          "description": "Critique a provided design against SOLID principles.", "materials_needed": "A design checklist and a sample design to critique.",
          "module_id": "MOD-02",
-         "aligned_objectives": ["ILO-04", "ILO-05"], "prepares_for_assessment": ["AT-04", "AT-05", "AT-09", "AT-10"],
+         "aligned_objectives": ["ILO-04", "ILO-05"], "prepares_for_assessment": ["AT-05", "AT-09", "AT-10"],
          "learner_cognitive_process": "evaluate", "prerequisite_activities": [2]},
     ],
 }

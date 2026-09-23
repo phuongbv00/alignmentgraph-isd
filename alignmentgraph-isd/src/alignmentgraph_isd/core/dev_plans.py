@@ -1276,20 +1276,39 @@ MODULES_UNKNOWN_LENGTH = 4
 #: plan is written. Nothing trims a longer blueprint — which task to drop is
 #: the designer's call, and a count over the ceiling is a finding about the
 #: model rather than something to hide.
-TASKS_PER_MODULE = 3
+#:
+#: The ceiling is stated as DEFAULTS rather than as the three timings, because
+#: three timings named beside "not every module needs all three" was read as a
+#: checklist (3.01 tasks per module, above): a module has ONE summative task;
+#: a module longer than ``FORMATIVE_MODULE_MINUTES`` may add ONE formative
+#: task; the course may open with ONE diagnostic task. A harness parameter
+#: (constructive alignment names no number of tasks), never a finding from the
+#: literature; the ``dev_plan`` event of the assessment stage records the
+#: planned count beside it so the tune slice can say how often it binds.
+FORMATIVE_MODULE_MINUTES = 180
 
 
-def task_ceiling(n_modules: int) -> int:
-    """How many assessment tasks this course's blueprint should carry.
+def task_ceiling(modules: list[dict] | None) -> int:
+    """How many assessment tasks this course's blueprint should carry, from
+    the modules the outcomes stage wrote: one summative per module, one
+    formative per module longer than ``FORMATIVE_MODULE_MINUTES`` (a module
+    stating no minutes gets none), and one diagnostic for the course.
 
     Bounded by ``MAX_SETS_HARD_CAP`` as well, because that is the ceiling on
     WORK SETS and the fan-out gives one set per task: a task past it is a task
-    no Developer is ever asked for. A module count of zero is "not written
-    yet" and does not bind.
+    no Developer is ever asked for. No modules is "not written yet" and does
+    not bind.
     """
-    if n_modules <= 0:
+    modules = [m for m in (modules or []) if isinstance(m, dict)]
+    if not modules:
         return MAX_SETS_HARD_CAP
-    return max(1, min(n_modules * TASKS_PER_MODULE, MAX_SETS_HARD_CAP))
+    return max(1, min(len(modules) + len(long_modules(modules)) + 1, MAX_SETS_HARD_CAP))
+
+
+def long_modules(modules: list[dict]) -> list[str]:
+    """The ids of the modules long enough for a formative task of their own."""
+    return [_bare(m.get("id")) for m in modules
+            if isinstance(m, dict) and _positive(m.get("minutes")) > FORMATIVE_MODULE_MINUTES]
 
 
 def module_ceiling(n_objectives: int, n_topics: int, hours: float) -> int:

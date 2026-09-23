@@ -503,12 +503,16 @@ def test_the_blueprint_has_a_ceiling_on_how_many_tasks_it_carries():
     TOLD, never enforced, like `MAX_OBJECTIVES`: the check hands it back while
     the plan is still the only thing written, and nothing trims the blueprint.
     """
-    assert dev_plans.task_ceiling(4) == 12
-    assert dev_plans.task_ceiling(1) == dev_plans.TASKS_PER_MODULE
+    short = [{"id": f"MOD-0{i}", "minutes": 90} for i in range(1, 5)]
+    long = [{"id": f"MOD-0{i}", "minutes": 240} for i in range(1, 5)]
+    assert dev_plans.task_ceiling(short) == 4 + 1, "one summative each, one diagnostic"
+    assert dev_plans.task_ceiling(long) == 4 + 4 + 1, "a long module may add a formative"
+    assert dev_plans.task_ceiling([{"id": "MOD-01"}]) == 2, "unstated minutes: no formative"
     # Bounded by the work-set cap too: a task past it reaches no Developer.
-    assert dev_plans.task_ceiling(9) == dev_plans.MAX_SETS_HARD_CAP
+    assert dev_plans.task_ceiling(long * 3) == dev_plans.MAX_SETS_HARD_CAP
     # No modules yet is "not written", not "zero allowed".
-    assert dev_plans.task_ceiling(0) == dev_plans.MAX_SETS_HARD_CAP
+    assert dev_plans.task_ceiling([]) == dev_plans.MAX_SETS_HARD_CAP
+    assert dev_plans.long_modules(short + long[:1]) == ["MOD-01"]
 
     def tasks(n: int) -> dict:
         timings = ("diagnostic", "formative", "summative")
@@ -516,18 +520,26 @@ def test_the_blueprint_has_a_ceiling_on_how_many_tasks_it_carries():
             {"id": f"AT-{i:02d}", "timing": timings[i % 3], "covers_objectives": ["ILO-01"]}
             for i in range(n)]}]}
 
-    def kinds(n: int) -> list[str]:
-        return [v.metadata.get("kind") for v in checks.blueprint_consistency_data(
-            "assessment_plan_0", tasks(n), modules={"MOD-01"}, objectives={"ILO-01"})]
+    def over(n: int, minutes: int) -> list:
+        return [v for v in checks.blueprint_consistency_data(
+            "assessment_plan_0", tasks(n), modules={"MOD-01"}, objectives={"ILO-01"},
+            module_data=[{"id": "MOD-01", "minutes": minutes}])
+            if v.metadata.get("kind") == "too_many_tasks"]
 
-    assert "too_many_tasks" not in kinds(3)
-    over = [v for v in checks.blueprint_consistency_data(
-        "assessment_plan_0", tasks(5), modules={"MOD-01"}, objectives={"ILO-01"})
-        if v.metadata.get("kind") == "too_many_tasks"]
-    assert len(over) == 1
-    assert over[0].metadata["task_count"] == 5 and over[0].metadata["ceiling"] == 3
-    # The hint names WHERE the crowding is, not just that there is some.
-    assert "MOD-01/diagnostic" in over[0].repair_hint
+    assert not over(2, 90), "a diagnostic and a summative fit a short module"
+    assert not over(3, 240), "a long module may carry all three timings"
+    short_three = over(3, 90)
+    assert len(short_three) == 1 and short_three[0].metadata["ceiling"] == 2
+    # The hint names WHAT is beyond the default, not just that something is.
+    assert "MOD-01/formative" in short_three[0].repair_hint
+    crowded = over(5, 240)
+    assert crowded[0].metadata["task_count"] == 5 and crowded[0].metadata["ceiling"] == 3
+    assert "MOD-01/diagnostic" in crowded[0].repair_hint
+    assert "2 diagnostic tasks" in crowded[0].repair_hint
+    # Without module documents, ids alone are judged as modules of unstated length.
+    assert [v.metadata["ceiling"] for v in checks.blueprint_consistency_data(
+        "assessment_plan_0", tasks(4), modules={"MOD-01"}, objectives={"ILO-01"})
+        if v.metadata.get("kind") == "too_many_tasks"] == [2]
 
 
 def test_the_ceiling_finding_is_handed_back_rather_than_repaired():

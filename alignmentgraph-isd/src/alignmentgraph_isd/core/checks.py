@@ -578,19 +578,26 @@ def blueprint_consistency(graph) -> list[Violation]:
     if plan_node is None:
         return []
     sep = graph.ELEMENT_SEP
+    module_nodes = graph.element_nodes(NodeType.MODULE)
     return blueprint_consistency_data(
         plan_node["id"], plan_node["data"],
-        modules={n["id"].split(sep, 1)[-1] for n in graph.element_nodes(NodeType.MODULE)},
-        objectives={n["id"].split(sep, 1)[-1] for n in graph.element_nodes(NodeType.OBJECTIVE)})
+        modules={n["id"].split(sep, 1)[-1] for n in module_nodes},
+        objectives={n["id"].split(sep, 1)[-1] for n in graph.element_nodes(NodeType.OBJECTIVE)},
+        module_data=[n["data"] for n in module_nodes])
 
 
 def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | None = None,
-                               objectives: set[str] | None = None) -> list[Violation]:
+                               objectives: set[str] | None = None,
+                               module_data: list[dict] | None = None) -> list[Violation]:
     """The core of :func:`blueprint_consistency`. Both promised-pairs halves
     read the plan alone, so the prose arm runs them too; the two existence
     halves need the other artifacts and run only when their id sets are
-    given."""
+    given. ``module_data`` (the module documents, with their minutes) sizes the
+    task ceiling; without it the ceiling is judged over ``modules`` as modules
+    of unstated length."""
     violations: list[Violation] = []
+    if module_data is None and modules is not None:
+        module_data = [{"id": m} for m in sorted(modules)]
     promised_pairs = dev_plans.plan_category_pairs((plan or {}).get("lo_coverage_targets"))
     promised = set(promised_pairs)
     for lo_id, timing in set_pairs(plan):
@@ -640,25 +647,33 @@ def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | 
     # repaired: which task to drop is a design judgment, and the harness
     # deciding to cancel an assessment is the line `repairs.REPORT_ONLY` draws.
     tasks = _sets(plan)
-    if modules is not None and tasks:
-        ceiling = dev_plans.task_ceiling(len(modules))
+    if module_data is not None and tasks:
+        ceiling = dev_plans.task_ceiling(module_data)
         if len(tasks) > ceiling:
+            long = set(dev_plans.long_modules(module_data))
             per_timing = collections.Counter(
-                (alignment.bare_ref(t.get("module_id", "")), t.get("timing"))
+                (alignment.bare_ref(t.get("module_id", "")), str(t.get("timing") or ""))
                 for t in tasks)
-            crowded = sorted(f"{module}/{timing}"
-                             for (module, timing), count in per_timing.items() if count > 1)
+            beyond = sorted(
+                f"{module}/{timing}" for (module, timing), count in per_timing.items()
+                if count > 1
+                or (timing == "formative" and module not in long)
+            )
+            diagnostics = sum(count for (_m, timing), count in per_timing.items()
+                              if timing == "diagnostic")
+            if diagnostics > 1:
+                beyond.append(f"{diagnostics} diagnostic tasks (the course opens with one)")
             violations.append(Violation(
                 node_id=node_id, edge_type="", violation_type="blueprint_consistency",
                 severity="warning",
                 message=(f"The blueprint carries {len(tasks)} assessment tasks, and this "
-                         f"course carries at most {ceiling} "
-                         f"({len(modules)} module{'' if len(modules) == 1 else 's'}, "
-                         f"at most one task per timing each)."),
-                repair_hint=("Drop the tasks the course does not need. "
-                             + (f"More than one task shares a timing at: "
-                                f"{', '.join(crowded)}." if crowded
-                                else "A module needs at most one task per timing.")),
+                         f"course carries at most {ceiling}: one summative task per module "
+                         f"({len(module_data)}), one formative task per module longer than "
+                         f"{dev_plans.FORMATIVE_MODULE_MINUTES} minutes ({len(long)}), and one "
+                         "diagnostic task for the course."),
+                repair_hint=("Drop or merge the tasks the course does not need. "
+                             + (f"Beyond that default at: {', '.join(beyond)}." if beyond
+                                else "Keep one summative task per module.")),
                 metadata={"kind": "too_many_tasks", "task_count": len(tasks),
                           "ceiling": ceiling},
             ))

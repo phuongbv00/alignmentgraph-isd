@@ -436,6 +436,12 @@ def _assessment_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dic
     named = dev_plans.name_sets_after(
         sets, "AS", lambda ws: next((i["id"] for i in ws.payload.get("sets") or []
                                      if i.get("id")), ws.module_id))
+    # How many tasks the blueprint planned against how many the course
+    # carries at most: the ceiling is TOLD, so this is where its compliance is
+    # measured (the tune slice reads it off the ``dev_plan`` event).
+    modules = course_modules(state)
+    stats = {**stats, "tasks_planned": len(blueprint),
+             "task_ceiling": dev_plans.task_ceiling(modules) if modules else None}
     return named, _derived_stats(stats)
 
 

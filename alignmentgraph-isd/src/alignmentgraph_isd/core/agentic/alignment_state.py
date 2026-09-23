@@ -180,17 +180,21 @@ def _task_ceiling(state, step) -> list[str]:
 
     The same split as :func:`_module_ceiling`: the RULE is in the stage's
     pinned prompt, the NUMBER depends on how many modules this course ended up
-    with, so it is stated here with every other per-run fact. Told, not
-    enforced (``dev_plans.TASKS_PER_MODULE``)."""
+    with and how long each runs, so it is stated here with every other per-run
+    fact. Told, not enforced (``dev_plans.FORMATIVE_MODULE_MINUTES``)."""
     docket = getattr(step, "docket", None) or {}
     if not docket.get("task_ceiling"):
         return []
-    modules = len(state.element_nodes(NodeType.MODULE))
+    modules = [n["data"] for n in state.element_nodes(NodeType.MODULE)]
     if not modules:
         return []
     ceiling = dev_plans.task_ceiling(modules)
-    return [f"assessment_tasks: at most {ceiling} for this course "
-            f"({modules} modules, at most one per timing each)"]
+    long = dev_plans.long_modules(modules)
+    return [f"assessment_tasks: at most {ceiling} for this course — one summative per module "
+            f"({len(modules)}), one formative only for a module longer than "
+            f"{dev_plans.FORMATIVE_MODULE_MINUTES} minutes ("
+            + (", ".join(long) if long else "none here")
+            + "), and one diagnostic for the whole course"]
 
 
 def _pool(state, node_type: str) -> tuple[list[dict], bool]:

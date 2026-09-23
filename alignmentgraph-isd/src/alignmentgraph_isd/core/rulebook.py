@@ -135,13 +135,13 @@ actually sit — a quiz, a practical, a project — and every field below belong
 ``module_id`` is the set's own, and must be the id of an existing module copied from your read
 of the design state: a module you did not read there does not exist.
 
-``timing`` is the vocabulary a task is chosen FROM, never a checklist to fill in: diagnostic
-(before the module), formative (during it) or summative (after it). Most modules need one or
-two of them, and one module has at most ONE task at any one timing. Write the tasks the course
-needs and no more — your read of the design state says how many this course carries at most,
-and each one costs the learners time and you a set of items to write. The course as a whole
-must have at least one summative task: a course that never grades what it set out to teach has
-no evidence that it worked.
+``timing`` is diagnostic (before the module), formative (during it) or summative (after it).
+The default is ONE task per module, its summative one — a module that never grades what it
+taught has no evidence that it worked. Add a formative task only to a module long enough to
+need a mid-course check (your read of the design state names which ones), and at most ONE
+diagnostic task for the whole course, before its first module. Your read of the design state
+says how many tasks this course carries at most; write those and no more, since each one costs
+the learners time and you a set of items to write.
 
 For each task state its ``format`` (quiz, practical, project, ...), its real scale in
 ``item_counts`` (item type -> how many the FULL task has, e.g. 20 multiple_choice and 3
