@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { Check, ChevronDown, Circle, CircleCheck, CircleSlash, CircleX, Copy, Loader2, Play, RotateCw, Square } from 'lucide-react'
+import { Check, Circle, CircleCheck, CircleSlash, CircleX, Copy, Loader2, Play, RotateCw, Settings, Square } from 'lucide-react'
 import type { RunStreamState } from '../state/useRunStream'
 import { phaseLabel } from '../lib/phaseTimeline'
-import { ARMS, DEFAULT_ARM, armOf, type Arm } from '../lib/arms'
+import { ARMS, armOf } from '../lib/arms'
+import {
+  DEFAULT_RUN_SETTINGS, MAX_WORKERS, MIN_WORKERS, armFor, armKey, clampWorkers, describe,
+  useRunSettings, type RunSettings,
+} from '../lib/runSettings'
 
 interface Props {
   stream: RunStreamState
   canRun: boolean
   runDisabledReason: string
-  onRun: (arm: Arm, fullDevelopment?: boolean, parallel?: boolean) => void
+  onRun: (settings: RunSettings) => void
   onCancel: () => void
   starting: boolean
 }
@@ -26,6 +30,7 @@ export function RunHeader({ stream, canRun, runDisabledReason, onRun, onCancel, 
   const active = stream.status === 'running' || stream.status === 'cancelling'
   const elapsed = useElapsed(active ? stream.startedAt : null)
   const arm = armOf(stream.stats.agent_mode, stream.stats.context_mode)
+  const [settings, setSettings] = useRunSettings()
 
   const progress = stream.phase && stream.phase.total
     ? Math.round(((stream.phase.index - 1) / stream.phase.total) * 100)
@@ -91,7 +96,7 @@ export function RunHeader({ stream, canRun, runDisabledReason, onRun, onCancel, 
               title={`${stream.stats.fanout_workers} of one family's Developers ran at once. `
                 + 'Wall time only — the graph and the artifacts are identical.'}
             >
-              parallel ×{stream.stats.fanout_workers}
+              worker×{stream.stats.fanout_workers}
             </span>
           )}
 
@@ -113,13 +118,17 @@ export function RunHeader({ stream, canRun, runDisabledReason, onRun, onCancel, 
               {stream.status === 'cancelling' ? 'Cancelling…' : 'Cancel'}
             </button>
           ) : (
-            <RunSplitButton
-              canRun={canRun}
-              starting={starting}
-              idle={stream.status === 'idle'}
-              disabledReason={runDisabledReason}
-              onRun={onRun}
-            />
+            <>
+              <RunButton
+                settings={settings}
+                canRun={canRun}
+                starting={starting}
+                idle={stream.status === 'idle'}
+                disabledReason={runDisabledReason}
+                onRun={onRun}
+              />
+              <RunSettingsMenu settings={settings} onChange={setSettings} />
+            </>
           )}
         </div>
       </div>
@@ -142,38 +151,57 @@ export function RunHeader({ stream, canRun, runDisabledReason, onRun, onCancel, 
 }
 
 /**
- * Run, as one control with two segments.
+ * Run, as it always was: one press starts a run under the current settings.
  *
- * The left segment is the run button as it always was and always starts the
- * DEFAULT arm; the caret opens the other three cells of the ablation matrix.
- * Split rather than a mode the button remembers: which arm a run used is a
- * property of that run, and a button whose meaning depended on an earlier
- * choice would make "Rerun" ambiguous exactly when two arms are being compared.
- *
- * Local to this file, like `RunIdChip`: one call site, and the props it needs
- * are the ones `RunHeader` already has.
+ * The settings sit in their own menu beside it rather than inside a menu of
+ * this button, because choosing a setting and starting a run are different
+ * acts — a menu whose items started runs made "pick an arm" and "go" the same
+ * click, and put tick boxes beside them that applied to nothing until one of
+ * those items was pressed. The tooltip names every setting that is not the
+ * default, since a setting behind a closed menu is one the reader cannot see.
  */
-function RunSplitButton({ canRun, starting, idle, disabledReason, onRun }: {
+function RunButton({ settings, canRun, starting, idle, disabledReason, onRun }: {
+  settings: RunSettings
   canRun: boolean
   starting: boolean
   idle: boolean
   disabledReason: string
-  onRun: (arm: Arm, fullDevelopment?: boolean, parallel?: boolean) => void
+  onRun: (settings: RunSettings) => void
+}) {
+  const arm = armFor(settings)
+  const changed = describe(settings)
+  return (
+    <button
+      className="btn small primary icon-label"
+      onClick={() => onRun(settings)}
+      disabled={!canRun || starting}
+      title={disabledReason || (changed.length === 0 ? arm.label : `${arm.label} — ${changed.join(', ')}`)}
+    >
+      {starting ? <Loader2 size={13} className="spin" /> : idle
+        ? <Play size={13} /> : <RotateCw size={13} />}
+      {starting ? 'Starting…' : idle ? 'Run' : 'Rerun'}
+    </button>
+  )
+}
+
+/**
+ * What the next run is started under, remembered in this browser.
+ *
+ * Remembering is safe where it would not be for the run itself: what a run WAS
+ * is recorded on that run and shown in its badges from the server's resolved
+ * values, so a setting changed here never relabels an earlier run. The dot on
+ * the closed menu says that something is not the default.
+ */
+function RunSettingsMenu({ settings, onChange }: {
+  settings: RunSettings
+  onChange: (next: RunSettings) => void
 }) {
   const [open, setOpen] = useState(false)
-  // Belongs to the OPEN menu and to nothing else: it applies to the arm picked
-  // from this menu and is gone when the menu closes, for the reason the arm is
-  // not remembered either — what a run was is a property of that run.
-  const [fullDevelopment, setFullDevelopment] = useState(false)
-  const [parallel, setParallel] = useState(false)
-  const options = [
-    ...(fullDevelopment ? ['full development'] : []),
-    ...(parallel ? ['parallel developers'] : []),
-  ]
   const wrap = useRef<HTMLDivElement>(null)
-  const caret = useRef<HTMLButtonElement>(null)
+  const trigger = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDivElement>(null)
-  const disabled = !canRun || starting
+  const changed = describe(settings)
+  const current = armFor(settings)
 
   useEffect(() => {
     if (!open) return
@@ -187,7 +215,7 @@ function RunSplitButton({ canRun, starting, idle, disabledReason, onRun }: {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setOpen(false)
-        caret.current?.focus()
+        trigger.current?.focus()
       }
     }
     document.addEventListener('pointerdown', onDown)
@@ -198,46 +226,27 @@ function RunSplitButton({ canRun, starting, idle, disabledReason, onRun }: {
     }
   }, [open])
 
-  // The menu is a way to start a run, so it closes when starting one stops
-  // being possible — a run begun in another window makes `canRun` false under
-  // an open menu.
-  useEffect(() => { if (disabled) setOpen(false) }, [disabled])
-  useEffect(() => { if (!open) setFullDevelopment(false) }, [open])
-
   // Focus the first item on open, which is also what makes Escape's
-  // return-to-caret well defined however the menu was opened.
+  // return-to-trigger well defined however the menu was opened.
   useEffect(() => {
-    if (open) menu.current?.querySelector('button')?.focus()
+    if (open) menu.current?.querySelector<HTMLElement>('.menu-item')?.focus()
   }, [open])
 
   const moveFocus = (event: ReactKeyboardEvent<HTMLDivElement>, delta: number) => {
-    const items = Array.from(menu.current?.querySelectorAll('button') ?? [])
+    // Inside the number field the arrows change the number.
+    if ((event.target as HTMLElement).tagName === 'INPUT') return
+    const items = Array.from(menu.current?.querySelectorAll<HTMLElement>('.menu-item') ?? [])
     if (items.length === 0) return
-    const at = items.indexOf(document.activeElement as HTMLButtonElement)
+    const at = items.indexOf(document.activeElement as HTMLElement)
     items[(at + delta + items.length) % items.length]?.focus()
     event.preventDefault()
   }
 
   return (
-    <div className="split" ref={wrap}>
+    <div className="menu-anchor" ref={wrap}>
       <button
-        className="btn small primary icon-label"
-        // The options live in the menu this button sits beside, and they are
-        // this button's too: ticking one and pressing Run applied nothing,
-        // because only picking an ARM from the menu carried them. The title
-        // names whatever is on, since a checkbox behind a closed menu is a
-        // setting the reader cannot see.
-        onClick={() => onRun(DEFAULT_ARM, fullDevelopment, parallel)}
-        disabled={disabled}
-        title={runTitle(disabledReason, DEFAULT_ARM, options)}
-      >
-        {starting ? <Loader2 size={13} className="spin" /> : idle
-          ? <Play size={13} /> : <RotateCw size={13} />}
-        {starting ? 'Starting…' : idle ? 'Run' : 'Rerun'}
-      </button>
-      <button
-        className="btn small primary split-caret"
-        ref={caret}
+        className="btn btn-icon small icon-label"
+        ref={trigger}
         onClick={() => setOpen((value) => !value)}
         onKeyDown={(event) => {
           if (event.key === 'ArrowDown') {
@@ -245,15 +254,13 @@ function RunSplitButton({ canRun, starting, idle, disabledReason, onRun }: {
             event.preventDefault()
           }
         }}
-        disabled={disabled}
-        title={disabledReason
-          || (options.length > 0 ? `On: ${options.join(', ')}` : 'Run under another ablation arm')}
-        data-options={options.length > 0 ? 'on' : undefined}
-        aria-label="Choose an ablation arm"
+        title={changed.length > 0 ? `Run settings — ${changed.join(', ')}` : 'Run settings'}
+        data-changed={changed.length > 0 ? 'on' : undefined}
+        aria-label="Run settings"
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <ChevronDown size={13} />
+        <Settings size={14} />
       </button>
 
       {open && (
@@ -267,52 +274,67 @@ function RunSplitButton({ canRun, starting, idle, disabledReason, onRun }: {
           }}
         >
           <div className="menu-label muted">Run under…</div>
-          {ARMS.map((arm) => (
-            <button
-              key={`${arm.agentMode}x${arm.contextMode}`}
-              role="menuitem"
-              className="menu-item"
-              onClick={() => {
-                // Closed first: `onRun` is async and flips `starting`, which
-                // disables the control this menu hangs off.
-                setOpen(false)
-                onRun(arm, fullDevelopment, parallel)
-              }}
-            >
-              {arm.label}
-            </button>
-          ))}
+          {ARMS.map((arm) => {
+            const selected = armKey(arm) === armKey(current)
+            return (
+              <button
+                key={armKey(arm)}
+                role="menuitemradio"
+                aria-checked={selected}
+                className="menu-item menu-radio"
+                onClick={() => onChange({ ...settings, armKey: armKey(arm) })}
+              >
+                <span className="menu-check">{selected && <Check size={12} />}</span>
+                {arm.label}
+              </button>
+            )
+          })}
+          <div className="menu-sep" role="separator" />
           <label
             className="menu-item"
             title="Write every artifact the design plans instead of a representative sample. Many more model calls."
           >
             <input
               type="checkbox"
-              checked={fullDevelopment}
-              onChange={(event) => setFullDevelopment(event.target.checked)}
+              checked={settings.fullDevelopment}
+              onChange={(event) => onChange({ ...settings, fullDevelopment: event.target.checked })}
             />{' '}
             Full development
           </label>
           <label
-            className="menu-item"
-            title="Run one family's Developers at the same time instead of one after another. Same graph, same calls, same artifacts — wall time only. Do not use on a shared or rate-limited endpoint: it buys HTTP 429s instead of time."
+            className="menu-item menu-number"
+            title={'How many of one family\'s Developers run at the same time; 1 runs them one after another. '
+              + 'Same graph, same calls, same artifacts — wall time only. A family has about one work set '
+              + 'per module, so more workers than modules buys nothing. Do not raise it on a shared or '
+              + 'rate-limited endpoint: it buys HTTP 429s instead of time.'}
           >
+            Developer workers
             <input
-              type="checkbox"
-              checked={parallel}
-              onChange={(event) => setParallel(event.target.checked)}
-            />{' '}
-            Parallel developers
+              type="number"
+              min={MIN_WORKERS}
+              max={MAX_WORKERS}
+              step={1}
+              value={settings.fanoutWorkers}
+              onChange={(event) =>
+                onChange({ ...settings, fanoutWorkers: clampWorkers(event.target.value) })}
+            />
           </label>
+          {changed.length > 0 && (
+            <>
+              <div className="menu-sep" role="separator" />
+              <button
+                role="menuitem"
+                className="menu-item muted"
+                onClick={() => onChange(DEFAULT_RUN_SETTINGS)}
+              >
+                Reset to defaults
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
   )
-}
-
-function runTitle(disabledReason: string, arm: Arm, options: string[] = []): string {
-  if (disabledReason) return disabledReason
-  return options.length === 0 ? arm.label : `${arm.label} — ${options.join(', ')}`
 }
 
 /**

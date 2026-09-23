@@ -436,30 +436,18 @@ a.btn:hover { background: #f1f5f9; }
 }
 .run-id:hover { background: #f1f5f9; color: var(--text); }
 
-/* ── the run control: one button, two segments ──────────────────────────── */
+/* ── the run controls: Run, and the settings it runs under ───────────────── */
 
-/* Two <button>s and not one with a nested control, because a button inside a
-   button is not valid HTML. They read as ONE control because the seam between
-   them is a single shared border rather than a gap. `relative` is what the
-   menu below is positioned against. */
-.split { position: relative; display: inline-flex; }
-.split > .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.split > .btn + .btn {
-  /* Collapse the two 1px borders into one line. */
-  margin-left: -1px;
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-}
-/* On `.btn.primary` the border colour IS the fill, so a `--border-strong` seam
-   would be invisible; it has to be drawn in the text colour instead. */
-.split > .btn.primary + .btn.primary { border-left-color: rgba(255, 255, 255, 0.45); }
-.split-caret { padding-left: 5px; padding-right: 5px; display: inline-flex; align-items: center; }
-/* A run option is chosen inside the menu and applies to the Run button beside it,
-   so the closed menu has to say that something is on. */
-.split-caret[data-options] { position: relative; }
-.split-caret[data-options]::after {
-  content: ''; position: absolute; top: 3px; right: 3px;
-  width: 5px; height: 5px; border-radius: 50%; background: currentColor;
+/* The run-settings button, anchored for the menu it opens. The dot says a
+   setting is not the default, since the menu that holds it is closed. Keyed on
+   the attribute rather than on the button's class, so restyling the button
+   cannot silently drop the dot. */
+.menu-anchor { position: relative; display: inline-flex; }
+.menu-anchor > .btn[data-changed] { position: relative; }
+.menu-anchor > .btn[data-changed]::after {
+  content: ''; position: absolute; top: -3px; right: -3px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--bad); box-shadow: 0 0 0 1.5px var(--panel);
 }
 
 /* A menu hung off a control — the app's only one. Below `.modal-backdrop`
@@ -489,6 +477,11 @@ a.btn:hover { background: #f1f5f9; }
   color: var(--text);
 }
 .menu-item:hover, .menu-item:focus-visible { background: var(--accent-soft); outline: none; }
+.menu-sep { height: 1px; margin: 4px 2px; background: var(--border); }
+.menu-radio { display: flex; align-items: center; gap: 6px; }
+.menu-check { width: 12px; display: inline-flex; flex: 0 0 auto; color: var(--accent); }
+.menu-number { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.menu-number input { width: 52px; padding: 2px 4px; font-size: 12px; }
 
 /* ── runs under a program, in the sidebar ───────────────────────────────── */
 

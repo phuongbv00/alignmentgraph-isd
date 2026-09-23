@@ -25,7 +25,7 @@ export const ARMS: Arm[] = [
     agentMode: 'multi',
     contextMode: 'graph',
     isDefault: true,
-    label: 'Multi-agent x Graph context (default)',
+    label: 'Multi-agent x Graph context',
   },
   {
     agentMode: 'multi',

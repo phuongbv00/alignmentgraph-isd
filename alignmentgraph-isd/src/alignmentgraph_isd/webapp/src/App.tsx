@@ -11,7 +11,7 @@ import { ProgramSidebar } from './components/ProgramSidebar'
 import { RunHeader } from './components/RunHeader'
 import { InspectorPanel } from './components/inspector/InspectorPanel'
 import { useRunStream } from './state/useRunStream'
-import type { Arm } from './lib/arms'
+import { toRunOptions, type RunSettings } from './lib/runSettings'
 import type {
   AgentContext, AlignmentGraphPayload, DeepAction, DeepTrajectory, Finding, Health, ProgramDetail, ProgramSummary, Selection,
 } from './api/types'
@@ -263,24 +263,14 @@ export default function App() {
     void refreshPrograms()
   }
 
-  const startRun = async (arm: Arm, fullDevelopment = false, parallel = false) => {
+  const startRun = async (settings: RunSettings) => {
     if (!activeId) return
     setStarting(true)
     setError('')
     try {
-      // The default arm sends no override at all: `HarnessRunConfig` owns those
-      // values, and posting a copy of them would be a second place they live.
-      // Same for the development mode: only a run that asks for the whole
-      // design to be written out says so.
-      const options = {
-        ...(arm.isDefault ? {} : { agent_mode: arm.agentMode, context_mode: arm.contextMode }),
-        ...(fullDevelopment ? { development_mode: 'full' as const } : {}),
-        // 4 is the widest any family here gets (one set per module), so it
-        // never queues and never asks the endpoint for more than the work.
-        ...(parallel ? { fanout_workers: 4 } : {}),
-      }
-      const { run_id } = await api.startRun(
-        activeId, Object.keys(options).length ? options : undefined)
+      // Only what differs from the default is sent (`toRunOptions`):
+      // `HarnessRunConfig` owns the defaults, and the default run posts no body.
+      const { run_id } = await api.startRun(activeId, toRunOptions(settings))
       setRunId(run_id)
       setTab('trajectory')
       void refreshPrograms()
@@ -370,8 +360,7 @@ export default function App() {
               stream={stream}
               canRun={canRun}
               runDisabledReason={runDisabledReason}
-              onRun={(arm, fullDevelopment, parallel) =>
-                void startRun(arm, fullDevelopment, parallel)}
+              onRun={(settings) => void startRun(settings)}
               onCancel={() => void cancelRun()}
               starting={starting}
             />
