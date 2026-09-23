@@ -69,6 +69,7 @@ def read(state, design_brief, step, *, submit_tool: str = "") -> StateView:
     lost to its turn ceiling. So it names the WRITE and nothing after it."""
     missing_lines, named = _missing(state, step)
     missing_lines += _module_ceiling(state, design_brief, step)
+    missing_lines += _task_ceiling(state, step)
     issues: list = []
     if not missing_parts(step, state):
         # Before every part has landed, a coverage "violation" and the gap
@@ -171,6 +172,25 @@ def _module_ceiling(state, design_brief, step) -> list[str]:
         lines.append(f"the modules' minutes together: about {int(hours * 60)} "
                      f"({hours:g} h of learner time)")
     return lines
+
+
+def _task_ceiling(state, step) -> list[str]:
+    """This run's assessment-task ceiling, while the blueprint is still to be
+    written.
+
+    The same split as :func:`_module_ceiling`: the RULE is in the stage's
+    pinned prompt, the NUMBER depends on how many modules this course ended up
+    with, so it is stated here with every other per-run fact. Told, not
+    enforced (``dev_plans.TASKS_PER_MODULE``)."""
+    docket = getattr(step, "docket", None) or {}
+    if not docket.get("task_ceiling"):
+        return []
+    modules = len(state.element_nodes(NodeType.MODULE))
+    if not modules:
+        return []
+    ceiling = dev_plans.task_ceiling(modules)
+    return [f"assessment_tasks: at most {ceiling} for this course "
+            f"({modules} modules, at most one per timing each)"]
 
 
 def _pool(state, node_type: str) -> tuple[list[dict], bool]:

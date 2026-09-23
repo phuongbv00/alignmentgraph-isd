@@ -14,6 +14,7 @@ violation to the family that owns it. See ``core/runner.py::_reconcile``.
 """
 from __future__ import annotations
 
+import collections
 import re
 from dataclasses import dataclass, field
 
@@ -586,7 +587,7 @@ def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | 
             violations.append(Violation(
                 node_id=node_id, edge_type="", violation_type="blueprint_consistency",
                 severity="warning",
-                message=(f"A set assesses {lo_id} at {timing} timing, but "
+                message=(f"A task assesses {lo_id} at {timing} timing, but "
                          f"lo_coverage_targets does not promise {lo_id} a {timing} item."),
                 repair_hint=f"Add \"{timing}\" to lo_coverage_targets[\"{lo_id}\"].",
                 metadata={"kind": "unpromised_pair", "lo_id": lo_id, "plan_category": timing},
@@ -609,10 +610,44 @@ def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | 
                 node_id=node_id, edge_type="", violation_type="blueprint_consistency",
                 severity="warning",
                 message=(f"lo_coverage_targets promises {lo_id} a {timing} item, but no "
-                         f"set assesses {lo_id} at {timing} timing."),
-                repair_hint=(f"Add a set with timing \"{timing}\" covering {lo_id}, "
+                         f"task assesses {lo_id} at {timing} timing."),
+                repair_hint=(f"Add a task with timing \"{timing}\" covering {lo_id}, "
                              f"or drop \"{timing}\" from lo_coverage_targets[\"{lo_id}\"]."),
                 metadata={"kind": "unassessed_pair", "lo_id": lo_id, "plan_category": timing},
+            ))
+    # How MANY tasks the blueprint carries. Every other family has a ceiling
+    # and this one had none: `sets` is one per module and says nothing about
+    # how many tasks a set lists, while the fan-out gives one work set per
+    # task, so the task count is what the Developer tier is sized off.
+    # MEASURED (run 69d754e4): 15 tasks against 4 modules, three of them for a
+    # module that did not exist; those reached no work set at all, nobody wrote
+    # their items, and C2 -- a core relation -- closed at 0.80.
+    #
+    # Reported on the plan, where the Designer can still act on it, and never
+    # repaired: which task to drop is a design judgment, and the harness
+    # deciding to cancel an assessment is the line `repairs.REPORT_ONLY` draws.
+    tasks = _sets(plan)
+    if modules is not None and tasks:
+        ceiling = dev_plans.task_ceiling(len(modules))
+        if len(tasks) > ceiling:
+            per_timing = collections.Counter(
+                (alignment.bare_ref(t.get("module_id", "")), t.get("timing"))
+                for t in tasks)
+            crowded = sorted(f"{module}/{timing}"
+                             for (module, timing), count in per_timing.items() if count > 1)
+            violations.append(Violation(
+                node_id=node_id, edge_type="", violation_type="blueprint_consistency",
+                severity="warning",
+                message=(f"The blueprint carries {len(tasks)} assessment tasks, and this "
+                         f"course carries at most {ceiling} "
+                         f"({len(modules)} module{'' if len(modules) == 1 else 's'}, "
+                         f"at most one task per timing each)."),
+                repair_hint=("Drop the tasks the course does not need. "
+                             + (f"More than one task shares a timing at: "
+                                f"{', '.join(crowded)}." if crowded
+                                else "A module needs at most one task per timing.")),
+                metadata={"kind": "too_many_tasks", "task_count": len(tasks),
+                          "ceiling": ceiling},
             ))
     # The blueprint has to reach the WHOLE course. P14 and C2 say the same
     # thing later, on the module and the objective — after the Developers
@@ -624,14 +659,14 @@ def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | 
     covered = {lo for lo, _timing in set_pairs(plan)}
     for kind, wanted, have, noun, hint in (
             ("module_without_set", modules, assessed, "module",
-             "Add a set whose module_id is this module."),
+             "Add a set for this module, with the tasks its learners sit."),
             ("objective_without_set", objectives, covered, "objective",
-             "List it in covers_objectives of a set of the module that serves it.")):
+             "List it in covers_objectives of a task of the module that serves it.")):
         for missing in sorted((wanted or set()) - have) if _sets(plan) else ():
             violations.append(Violation(
                 node_id=node_id, edge_type="", violation_type="blueprint_consistency",
                 severity="warning",
-                message=f"No set of the assessment plan assesses {noun} {missing}.",
+                message=f"No task of the assessment plan assesses {noun} {missing}.",
                 repair_hint=hint,
                 metadata={"kind": kind, "lo_id" if noun == "objective" else "module_id": missing},
             ))
@@ -642,7 +677,7 @@ def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | 
             violations.append(Violation(
                 node_id=node_id, edge_type="", violation_type="blueprint_consistency",
                 severity="warning",
-                message=f"Set {ins_id} names module {module!r}, which does not exist.",
+                message=f"Task {ins_id} sits in module {module!r}, which does not exist.",
                 repair_hint="Set module_id to the id of an existing module.",
                 metadata={"kind": "unknown_module", "task_id": ins_id},
             ))
@@ -652,7 +687,7 @@ def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | 
             violations.append(Violation(
                 node_id=node_id, edge_type="", violation_type="blueprint_consistency",
                 severity="warning",
-                message=(f"Set {ins_id} covers {', '.join(unknown)}, which "
+                message=(f"Task {ins_id} covers {', '.join(unknown)}, which "
                          f"{'is' if len(unknown) == 1 else 'are'} not an objective of this design."),
                 repair_hint="List only existing objective ids in covers_objectives.",
                 metadata={"kind": "unknown_objective", "task_id": ins_id,

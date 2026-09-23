@@ -110,6 +110,10 @@ def known_ids(state) -> dict[str, list[str]]:
         NodeType.MODULE: _element_ids(
             state, NodeType.MODULE, ("module", "course_modules")),
         NodeType.ASSESSMENT: [t.get("id") for t in dev_plans.plan_tasks(plan)],
+        NodeType.ACTIVITY: _element_ids(
+            state, NodeType.ACTIVITY, ("activity", "learning_activities")),
+        NodeType.MATERIAL: _element_ids(
+            state, NodeType.MATERIAL, ("material", "learner_materials")),
     }
     # An id we could not read is not an id to measure against: where a pool is
     # empty the check stands down rather than refusing everything.
@@ -521,6 +525,8 @@ SPECS: dict[str, FanoutSpec] = {
                 element_type=NodeType.ASSESSMENT, id_prefix="ATI",
                 doc_key=("assessment", "assessment_tools"),
                 parent_field="task_id",
+                ref_fields=(("task_id", NodeType.ASSESSMENT),
+                            ("aligned_objective", NodeType.OBJECTIVE)),
                 validate_items=assessment_item_errors),
         ),
         developer_reads=(NodeType.OBJECTIVE,),
@@ -564,7 +570,8 @@ SPECS: dict[str, FanoutSpec] = {
                 schema_key="learner_materials", id_field="id",
                 rules=rules.RULES_MATERIALS_UNIT,
                 element_type=NodeType.MATERIAL, id_prefix="MAT",
-                doc_key=("material", "learner_materials")),
+                doc_key=("material", "learner_materials"),
+                ref_fields=(("linked_module", NodeType.MODULE),)),
         ),
         developer_reads=(NodeType.MODULE, NodeType.ACTIVITY),
         render=dev_plans.render_material_set, plan_sets=_material_sets,
@@ -587,6 +594,16 @@ SPECS: dict[str, FanoutSpec] = {
                 rules=rules.RULES_SESSION_GUIDES_SET,
                 validate_items=session_guide_errors,
                 element_type=NodeType.SESSION_GUIDE, id_prefix="SG",
+                # No `ref_fields`. P10/P11 are secondary and report-only, and
+                # `material_ids` is optional because a session that hands out
+                # nothing is ordinary — but the deciding reason is that adding
+                # them changed what `single`+`prose` produced while `multi`
+                # passed unchanged, and a rule only one arm can break is a
+                # second variable sitting on the decomposition axis. The ids a
+                # guide may use are written out in its assignment, and
+                # `dev_plans.session_work_sets` divides them deterministically,
+                # so an unresolvable one is a P10/P11 gap that is reported
+                # rather than refused.
                 doc_key=("implementation_plan", "session_guides")),
         ),
         developer_reads=(NodeType.ACTIVITY, NodeType.MATERIAL),

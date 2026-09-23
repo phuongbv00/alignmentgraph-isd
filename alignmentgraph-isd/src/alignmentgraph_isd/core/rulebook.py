@@ -125,22 +125,30 @@ RULES_COURSE_MODULES = RULES_COURSE_MODULES % {
     "long": MAX_MODULES}
 
 RULES_ASSESSMENT_PLAN = """\
-``sets`` is the assessment blueprint: each set is one thing learners actually sit — a quiz, a
-practical, a project — module by module. Give each module the sets it needs at the moments it
-needs them — ``timing`` is diagnostic (before the module), formative (during it) or summative
-(after it); not every module needs all three, but the course as a whole must have at least one
-summative set — a course that never grades what it set out to teach has no evidence that it
-worked. For each set state its ``format`` (quiz, practical, project, ...), its real scale in
-``item_counts`` (item type -> how many the FULL set has, e.g. 20 multiple_choice and 3
+``sets`` is the assessment blueprint, ONE set per module: a set carries that module's
+``module_id`` and the ``assessment_tasks`` its learners sit. A TASK is the thing learners
+actually sit — a quiz, a practical, a project — and every field below belongs to the task.
+``module_id`` is the set's own, and must be the id of an existing module copied from your read
+of the design state: a module you did not read there does not exist.
+
+``timing`` is the vocabulary a task is chosen FROM, never a checklist to fill in: diagnostic
+(before the module), formative (during it) or summative (after it). Most modules need one or
+two of them, and one module has at most ONE task at any one timing. Write the tasks the course
+needs and no more — your read of the design state says how many this course carries at most,
+and each one costs the learners time and you a set of items to write. The course as a whole
+must have at least one summative task: a course that never grades what it set out to teach has
+no evidence that it worked.
+
+For each task state its ``format`` (quiz, practical, project, ...), its real scale in
+``item_counts`` (item type -> how many the FULL task has, e.g. 20 multiple_choice and 3
 short_answer — the true size, even though only a sample of those items is written out later),
 the ``covers_objectives`` it assesses (ids from that module's objectives), its ``minutes``, and its
-``weight_percent`` of the course grade (0 when ungraded; the graded sets add up to 100).
-``module_id`` must be the id of an existing module, copied from your read of the design state.
-Every objective must be covered by at least one set.
+``weight_percent`` of the course grade (0 when ungraded; the graded tasks add up to 100).
+Every objective must be covered by at least one task.
 lo_coverage_targets and expected_evidence must have one entry per learning objective given, and
-lo_coverage_targets must agree with the sets: an objective is promised a category exactly
-when a set with that ``timing`` covers it.
-formative_methods must each name a set and a cadence (e.g. "exit tickets after each
+lo_coverage_targets must agree with the tasks: an objective is promised a category exactly
+when a task with that ``timing`` covers it.
+formative_methods must each name a task and a cadence (e.g. "exit tickets after each
 module"), consistent with the formative intent above.
 pilot_data_plan.anticipated_difficulties must name at least two SPECIFIC areas, each anchored to
 BOTH the content module or session where learners would struggle AND the objective id affected
@@ -347,8 +355,8 @@ committed, so that two Developers working at the same time cannot name the same 
 ``session`` IS yours to write: YOUR ASSIGNED BLOCK states which session numbers are yours, and
 another developer holds the others.
 Every session guide must list the EXACT ids it delivers in ``activity_ids`` and hands out in
-``material_ids`` (e.g. "TLA-0101", "MAT-0103"), as ids only, drawn ONLY from YOUR ASSIGNED
-BLOCK, separate from the prose in ``activities``. Between your guides, every activity and every
+``material_ids``, as ids only, copied from YOUR ASSIGNED BLOCK and from nowhere else — an id
+you did not read there does not exist — separate from the prose in ``activities``. Between your guides, every activity and every
 material your block names must appear at least once — anything you leave out is something nobody
 scheduled.
 Write every guide out in full: the real objectives that session serves, what actually happens in

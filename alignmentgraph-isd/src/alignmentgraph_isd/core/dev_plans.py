@@ -1092,6 +1092,48 @@ MAX_MODULES = 6
 MODULES_UNKNOWN_LENGTH = 4
 
 
+#: How many assessment tasks ONE module carries. A PARAMETER OF THIS HARNESS,
+#: not a finding from the literature: it is the size of the ``timing``
+#: vocabulary itself — diagnostic before the module, formative during it,
+#: summative after — so a module that wants all three can have all three and a
+#: module wanting a second quiz at the same moment cannot.
+#:
+#: It is the ceiling every other family already had and this one did not.
+#: Objectives have ``rulebook.MAX_OBJECTIVES``, modules :func:`module_ceiling`,
+#: activities and session guides the module's ``minutes``, materials the
+#: module's media selections. Nesting the blueprint by module bounded the SETS
+#: at one per module and said nothing about how many tasks a set lists, and the
+#: task count is what the Developer tier is sized off: one work set per task.
+#:
+#: MEASURED over the 18 recorded runs that wrote modules, tasks per module
+#: averages 3.01 — the vocabulary read straight — with a tail at 5.7, 6.0 and
+#: 8.7 where the model wrote several tasks at one module's one timing. On run
+#: 69d754e4 the blueprint wrote 15 tasks against 4 modules, three of them for a
+#: module that did not exist; those three reached no work set, their tasks were
+#: written by nobody, and C2 -- a core relation -- closed at 0.80.
+#:
+#: TOLD, never enforced, for the reasons ``MAX_OBJECTIVES`` is not: as a rule
+#: in ``rulebook.RULES_ASSESSMENT_PLAN``, as this run's number in the
+#: assessment state read, and as a ``blueprint_consistency`` finding once the
+#: plan is written. Nothing trims a longer blueprint — which task to drop is
+#: the designer's call, and a count over the ceiling is a finding about the
+#: model rather than something to hide.
+TASKS_PER_MODULE = 3
+
+
+def task_ceiling(n_modules: int) -> int:
+    """How many assessment tasks this course's blueprint should carry.
+
+    Bounded by ``MAX_SETS_HARD_CAP`` as well, because that is the ceiling on
+    WORK SETS and the fan-out gives one set per task: a task past it is a task
+    no Developer is ever asked for. A module count of zero is "not written
+    yet" and does not bind.
+    """
+    if n_modules <= 0:
+        return MAX_SETS_HARD_CAP
+    return max(1, min(n_modules * TASKS_PER_MODULE, MAX_SETS_HARD_CAP))
+
+
 def module_ceiling(n_objectives: int, n_topics: int, hours: float) -> int:
     """``min(objectives, topics, by course length)``, never below 1. A count
     of zero is "not known yet" (the stage has not written them) and does not

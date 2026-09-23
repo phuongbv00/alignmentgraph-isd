@@ -1013,7 +1013,8 @@ STEPS: tuple[AgenticStep, ...] = (
         primary_type=NodeType.ASSESSMENT,
         readable_types=(NodeType.MODULE, NodeType.OBJECTIVE),
         relations=("C2",),
-        docket={"edges": ("C2",), "gaps": ("C2", "P14"), "plan_pairs": True},
+        docket={"edges": ("C2",), "gaps": ("C2", "P14"), "plan_pairs": True,
+                "task_ceiling": True},
         readable_docs=("analysis", "objective"),
         # The blueprint alone. How its writing is divided is not a decision
         # an instructional designer makes: one Developer writes one

@@ -350,3 +350,50 @@ def test_both_arms_are_handed_the_same_id_snapshot():
 
     assert "known_ids" in inspect.getsource(react.ReactLoop._validate)
     assert "known" in inspect.signature(fanout.output_errors).parameters
+
+
+def test_every_family_that_names_another_checks_that_it_exists():
+    """`activities` was the only family declaring `ref_fields`.
+
+    The check exists because a reference that resolves to nothing establishes
+    no edge, and an item is worse off than an activity: it names its PARENT, so
+    it is not merely unlinked but dropped at commit (`items_without_parent`).
+    MEASURED (run 69d754e4): 14 items named a task that did not exist and were
+    dropped, and of the 36 that did commit, 3 wrote `aligned_objective:
+    "evaluate"` — a Bloom verb where an objective id belongs — so C2, a core
+    relation, could not be established from them either.
+
+    `implementation` is deliberately absent: see its comment in `fanout.py`.
+    """
+    from alignmentgraph_isd.core.agentic import fanout
+
+    declared = {name: {field for field, _ in out.ref_fields}
+                for name, spec in fanout.SPECS.items() for out in spec.outputs}
+    assert declared["assessment"] == {"task_id", "aligned_objective"}
+    assert declared["content"] == {"linked_module"}
+    assert declared["activities"] == {"aligned_objectives", "prepares_for_assessment",
+                                      "module_id"}
+    assert declared["implementation"] == set()
+
+
+def test_an_item_naming_a_task_that_does_not_exist_is_refused():
+    """Refused while its author is still in the conversation, rather than
+    dropped silently at commit. Only when NOTHING in the field resolves, which
+    is exactly when the establisher reports a gap."""
+    from alignmentgraph_isd.core.agentic import fanout
+    from alignmentgraph_isd.core.alignment_graph import NodeType
+
+    known = {NodeType.ASSESSMENT: ["AT-01", "AT-02"], NodeType.OBJECTIVE: ["ILO-01"]}
+    ref = (("task_id", NodeType.ASSESSMENT), ("aligned_objective", NodeType.OBJECTIVE))
+    whole = {"item_id": "ATI-0101", "task_id": "AT-01", "aligned_objective": "ILO-01"}
+
+    assert fanout.reference_errors("assessment_tools", [whole], ref, known) == []
+    for field, bad in (("task_id", "AT-99"), ("aligned_objective", "evaluate")):
+        errors = fanout.reference_errors(
+            "assessment_tools", [{**whole, field: bad}], ref, known)
+        assert len(errors) == 1 and field in errors[0] and bad in errors[0]
+    # An empty pool stands the check down rather than charging the model for
+    # what the harness could not read.
+    assert fanout.reference_errors(
+        "assessment_tools", [{**whole, "task_id": "AT-99"}], ref,
+        {NodeType.ASSESSMENT: [], NodeType.OBJECTIVE: ["ILO-01"]}) == []

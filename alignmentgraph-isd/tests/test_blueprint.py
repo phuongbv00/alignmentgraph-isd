@@ -489,3 +489,56 @@ def test_a_self_named_wrapper_with_a_sibling_is_left_for_the_validator():
 
     assert out["assessment_plan"]["sets"][0]["assessment_tasks"] == wrapped
     assert reshaped == []
+
+
+def test_the_blueprint_has_a_ceiling_on_how_many_tasks_it_carries():
+    """Every other family had one and this one did not.
+
+    `sets` is one per module and says nothing about how many tasks a set
+    lists, while the fan-out gives one work set per task — so the task count is
+    what the Developer tier is sized off. MEASURED (run 69d754e4): 15 tasks
+    against 4 modules, three of them for a module that did not exist; those
+    reached no work set, nobody wrote their items, and C2 closed at 0.80.
+
+    TOLD, never enforced, like `MAX_OBJECTIVES`: the check hands it back while
+    the plan is still the only thing written, and nothing trims the blueprint.
+    """
+    assert dev_plans.task_ceiling(4) == 12
+    assert dev_plans.task_ceiling(1) == dev_plans.TASKS_PER_MODULE
+    # Bounded by the work-set cap too: a task past it reaches no Developer.
+    assert dev_plans.task_ceiling(9) == dev_plans.MAX_SETS_HARD_CAP
+    # No modules yet is "not written", not "zero allowed".
+    assert dev_plans.task_ceiling(0) == dev_plans.MAX_SETS_HARD_CAP
+
+    def tasks(n: int) -> dict:
+        timings = ("diagnostic", "formative", "summative")
+        return {"sets": [{"module_id": "MOD-01", "assessment_tasks": [
+            {"id": f"AT-{i:02d}", "timing": timings[i % 3], "covers_objectives": ["ILO-01"]}
+            for i in range(n)]}]}
+
+    def kinds(n: int) -> list[str]:
+        return [v.metadata.get("kind") for v in checks.blueprint_consistency_data(
+            "assessment_plan_0", tasks(n), modules={"MOD-01"}, objectives={"ILO-01"})]
+
+    assert "too_many_tasks" not in kinds(3)
+    over = [v for v in checks.blueprint_consistency_data(
+        "assessment_plan_0", tasks(5), modules={"MOD-01"}, objectives={"ILO-01"})
+        if v.metadata.get("kind") == "too_many_tasks"]
+    assert len(over) == 1
+    assert over[0].metadata["task_count"] == 5 and over[0].metadata["ceiling"] == 3
+    # The hint names WHERE the crowding is, not just that there is some.
+    assert "MOD-01/diagnostic" in over[0].repair_hint
+
+
+def test_the_ceiling_finding_is_handed_back_rather_than_repaired():
+    """Which task to drop is a design judgment. `repair_blueprint_pairs`
+    settles only the half a lookup settles (`unpromised_pair`); everything else
+    is returned so it reaches the Designer as an open issue."""
+    assert "blueprint_consistency" in repairs.OWNED_BY_FAMILY["assessment_designer"]
+    violation = checks.Violation(
+        node_id="assessment_plan_0", edge_type="",
+        violation_type="blueprint_consistency", message="too many",
+        metadata={"kind": "too_many_tasks"})
+    ctx = repairs.RepairContext(graph=AlignmentGraph(), store=None,
+                                trajectory=TrajectoryLogger(), actor=ORCHESTRATOR)
+    assert repairs.repair_blueprint_pairs(ctx, [violation]) == [violation]

@@ -522,8 +522,13 @@ def _session_guides_for_block(raw_prompt: str) -> list[dict] | None:
     if not match:
         return None
     numbers = [int(n) for n in match.group(2).replace(" ", "").split(",") if n]
-    activities = list(dict.fromkeys(re.findall(r"\bTLA-\d+\b", raw_prompt)))
-    materials = list(dict.fromkeys(re.findall(r"\bMAT-\d+\b", raw_prompt)))
+    # Read the ids out of the ASSIGNMENT and nowhere else, which is where a real
+    # Developer reads them. Scanning the whole prompt let this fixture pick up
+    # ids from a REJECTION it had just been sent, so it answered a refusal with
+    # the same refused id forever.
+    assignment = raw_prompt.split("=== YOUR ASSIGNMENT ===", 1)[-1]
+    activities = list(dict.fromkeys(re.findall(r"\bTLA-\d+\b", assignment)))
+    materials = list(dict.fromkeys(re.findall(r"\bMAT-\d+\b", assignment)))
     if not activities:
         return None
     # Never more guides than there are activities to put in them: a guide with
