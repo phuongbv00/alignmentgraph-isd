@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
@@ -98,16 +99,59 @@ def command(scenario_file: Path, job: Job) -> list[str]:
             "--no-run", "--use-llm", "--multi-judge"]
 
 
+#: The evaluator prints one line per finished LLM judge call when this is set:
+#: ``__EVAL_PROGRESS__ <done> <total> <agent_id> <judge_model>``.
+PROGRESS_ENV = "ISD_EVAL_PROGRESS"
+PROGRESS_MARK = "__EVAL_PROGRESS__"
+
+
+def progress_line(scenario: str, line: str) -> str | None:
+    """A progress marker as a log line, or None for any other output."""
+    if not line.startswith(PROGRESS_MARK):
+        return None
+    parts = line.rstrip("\n").split("\t")
+    if len(parts) < 3:
+        return None
+    detail = f" -- {parts[3]} / {parts[4]}" if len(parts) > 4 else ""
+    return f"  [{scenario}] LLM judge call {parts[1]}/{parts[2]}{detail}"
+
+
+def evaluate(cmd: list[str], env: dict[str, str], scenario: str) -> tuple[int, str]:
+    """Run the evaluator, echoing its progress as it goes.
+
+    Streamed rather than captured: one scenario is several LLM judge calls, and
+    captured output leaves the log silent for minutes, which reads as a hang.
+    Everything that is not a progress marker is kept for the error message.
+    """
+    proc = subprocess.Popen(cmd, env={**env, PROGRESS_ENV: "1"}, cwd=paths.bench_root(),
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    errors: list[str] = []
+    # Drained on its own thread, or a full stderr pipe blocks the child while
+    # this thread waits on stdout.
+    drain = threading.Thread(target=lambda: errors.extend(proc.stderr), daemon=True)
+    drain.start()
+    other: list[str] = []
+    for line in proc.stdout:
+        shown = progress_line(scenario, line)
+        if shown is not None:
+            print(shown, flush=True)
+        else:
+            other.append(line)
+    code = proc.wait()
+    drain.join()
+    return code, "".join(errors) or "".join(other)
+
+
 def judge_one(job: Job, scenario_root: Path, env: dict[str, str]) -> tuple[Job, str | None]:
     """Judge one scenario; returns an error message, or None on success."""
     scenario_file = rundirs.scenario_path(job.scenario_dir, job.run_dir, scenario_root)
     if scenario_file is None:
         return job, f"scenario file for {job.scenario_dir.name} not found under {scenario_root}"
-    done = subprocess.run(command(scenario_file, job), env=env, cwd=paths.bench_root(),
-                          capture_output=True, text=True, check=False)
-    if done.returncode != 0:
-        tail = (done.stderr or done.stdout or "").strip().splitlines()[-3:]
-        return job, f"evaluator exited {done.returncode}: {' | '.join(tail)}"
+    print(f"  [{job.scenario_dir.name}] judging {', '.join(job.agents)}", flush=True)
+    code, output = evaluate(command(scenario_file, job), env, job.scenario_dir.name)
+    if code != 0:
+        tail = output.strip().splitlines()[-3:]
+        return job, f"evaluator exited {code}: {' | '.join(tail)}"
     report_path = job.scenario_dir / REPORT
     if not report_path.exists():
         return job, "evaluator wrote no comparison_report.json"

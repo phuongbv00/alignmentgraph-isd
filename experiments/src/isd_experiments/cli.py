@@ -276,6 +276,13 @@ def show_help(topic: list[str]) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Line by line even when piped: a launched run writes through `tee`, where
+    # a block-buffered stdout holds a judge's whole log back for minutes.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(line_buffering=True)
+        except (AttributeError, ValueError):       # not a text stream
+            pass
     args = build_parser().parse_args(argv)
     if args.command == "help":
         # Before the config is touched: help must work on a broken checkout,

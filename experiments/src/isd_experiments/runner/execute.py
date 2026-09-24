@@ -89,7 +89,7 @@ class Progress:
                     for agent in scenario.get("agents", {}).values()]
         ok = sum(1 for o in outcomes if o)
         minutes = (time.time() - self.start) / 60
-        text = (f"\nRun complete: {self.completed} scenarios, {len(outcomes)} tasks, "
+        text = (f"\nGeneration complete: {self.completed} scenarios, {len(outcomes)} tasks, "
                 f"{ok} succeeded, {len(outcomes) - ok} failed, {minutes:.1f} min.\n"
                 f"Results: {results.get('output_dir')}\n")
         print(text, flush=True)

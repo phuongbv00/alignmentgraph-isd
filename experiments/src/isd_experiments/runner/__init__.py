@@ -35,6 +35,8 @@ def run_one(*, experiment: str, slot: str, tag: str, agents: list[str] | None = 
               f"  {paths.cli()} judge alignment {run_dir}")
         return 0
 
+    print("\nJudging the run: LLM judge, then alignment. The run is done when "
+          "this step says so.", flush=True)
     status = 0
     for name, score in (("llm", _judge_llm), ("alignment", _judge_alignment)):
         print(f"\n=== judge {name}: {run_dir.name}", flush=True)
@@ -51,6 +53,8 @@ def run_one(*, experiment: str, slot: str, tag: str, agents: list[str] | None = 
             status = 1
             print(f"judge {name} did not finish; finish it with:\n"
                   f"  {paths.cli()} judge {name} {run_dir}", file=sys.stderr)
+    print(f"\nRun complete: generated and judged{'' if not status else ' (with failures above)'}"
+          f" -- {run_dir}", flush=True)
     return status
 
 

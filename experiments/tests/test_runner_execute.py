@@ -136,10 +136,7 @@ class TestTheLlmJudgeOverARun:
 
         calls = []
 
-        class Done:
-            returncode, stdout, stderr = 0, "", ""
-
-        def fake_run(command, **kwargs):
+        def fake_evaluate(command, env, scenario):
             calls.append(command)
             out = Path(command[command.index("--output-dir") + 1])
             agents = command[command.index("--agents") + 1].split(",")
@@ -150,9 +147,9 @@ class TestTheLlmJudgeOverARun:
             (out / "comparison_report.json").write_text(json.dumps(
                 {"scenario": {"scenario_id": out.name},
                  "comparison": {"rankings": rankings}}), encoding="utf-8")
-            return Done()
+            return 0, ""
 
-        monkeypatch.setattr(llm.subprocess, "run", fake_run)
+        monkeypatch.setattr(llm, "evaluate", fake_evaluate)
         monkeypatch.setattr(llm, "load_credentials", lambda: None)
         return run_dir, llm, calls
 
@@ -201,3 +198,35 @@ class TestTheLlmJudgeOverARun:
         result = audit_run(run_dir, agents=["alignmentgraph-isd"], n_scenarios=2)
         assert not any("comparison_report" in r for r in result["red"]), result["red"]
         assert any("not judged yet" in i for i in result["info"])
+
+
+def test_the_evaluators_progress_markers_become_log_lines():
+    """One scenario is several LLM judge calls; the log shows each as it lands
+    instead of staying silent until the scenario is done."""
+    from isd_experiments.judge.llm import progress_line
+
+    line = "__EVAL_PROGRESS__\t3\t4\talignmentgraph-isd\topenai/gpt-4o-mini\n"
+    assert progress_line("S-001", line) == (
+        "  [S-001] LLM judge call 3/4 -- alignmentgraph-isd / openai/gpt-4o-mini")
+    assert progress_line("S-001", "[MultiJudge] Evaluating x...\n") is None
+
+
+def test_the_evaluator_is_streamed_with_progress_on(tmp_path, capsys):
+    """Run end to end on a stand-in evaluator: progress printed live, the rest
+    kept for the error message, the exit code passed through."""
+    import sys
+
+    from isd_experiments.judge.llm import evaluate
+
+    script = tmp_path / "fake_eval.py"
+    script.write_text(
+        "import os, sys\n"
+        "assert os.environ.get('ISD_EVAL_PROGRESS') == '1'\n"
+        "print('__EVAL_PROGRESS__\\t1\\t2\\tagent-a\\tjudge-x', flush=True)\n"
+        "print('ordinary output')\n"
+        "print('boom', file=sys.stderr)\n"
+        "sys.exit(3)\n", encoding="utf-8")
+    code, output = evaluate([sys.executable, str(script)], dict(os.environ), "S-9")
+    assert code == 3
+    assert "boom" in output
+    assert "[S-9] LLM judge call 1/2 -- agent-a / judge-x" in capsys.readouterr().out
