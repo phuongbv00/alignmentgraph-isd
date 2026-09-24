@@ -594,22 +594,24 @@ class TestDefaults:
     def test_scorer_defaults_match_protocol(self):
         """The declared arms line up with what the protocol measures.
 
-        This used to load the scoring script through importlib because its
-        filename began with a digit and could not be imported. It is now an
-        ordinary import -- and the arms it checks are configuration, so this
-        reads the config rather than a literal in a script.
+        Which arm is primary is configuration and may change, so nothing here
+        names one: the checks are what must hold for ANY declared primary.
         """
         from isd_experiments.alignment.presets import current
 
         arms = current()
+        for axis, table, key in (("encoder", arms.encoders, arms.primary_encoder),
+                                 ("Bloom", arms.bloom, arms.primary_bloom)):
+            assert key in table, f"the primary {axis} {key!r} is not declared"
+            # The primary owns the empty suffix, and no other arm on its axis
+            # may: the pair writes alignment_scores.json, the only artifact
+            # pooling reads into the alignment layer.
+            assert table[key].is_primary, axis
+            assert not any(a.is_primary for k, a in table.items() if k != key), axis
         primary = arms.encoder(arms.primary_encoder)
-        # Encoders are preset-only; the primary preset pins the model name.
-        assert primary.model == "nvidia/llama-embed-nemotron-8b"
-        # The primary owns the unsuffixed artifact, which is the only one
-        # pooling reads into the alignment layer.
         assert primary.artifact == "alignment_scores.json"
-        assert all(a.artifact != "alignment_scores.json"
-                   for k, a in arms.encoders.items() if k != arms.primary_encoder)
+        # Encoders are preset-only: the primary pins a model, not a default.
+        assert primary.model
 
         from isd_experiments.alignment.protocol import ALIGNMENT_SIGNALS
 
