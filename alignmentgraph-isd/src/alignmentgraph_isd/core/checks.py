@@ -236,24 +236,26 @@ def _concrete_collection_points(points: object) -> int:
 
 
 def duration_hours(design_brief: DesignBrief) -> float:
-    """Instructional hours in the brief's free-text duration, 0.0 when it
-    states none. A range ("2-4 weeks", "1-6 months") reads as its UPPER end:
-    the pattern matches the number next to the unit.
+    """The instructional hours the brief's duration carries at most, 0.0 when
+    it states none. A stated number of hours wins. A length given as calendar
+    time ("3 days", "2-4 weeks", "1-6 months" -- a range reads as its UPPER
+    end, the pattern matching the number next to the unit) is the course's
+    LENGTH, not its learner time, so it is turned into hours by
+    ``dev_plans.course_hours_ceiling``: a ceiling by band, never a timetable.
 
     The brief states its length in two fields that usually say the same thing
     ("3 days" and "3 days (18 hours)"), and one field may say it twice, so
-    nothing is ADDED across them: a stated number of hours wins, otherwise the
-    longest single reading does."""
-    readings: list[float] = []
+    nothing is ADDED across them: the longest single reading decides."""
+    days: list[float] = []
     for text in (design_brief.context.duration, design_brief.duration):
         found = re.findall(r"(\d+(?:\.\d+)?)\s*(hour|hr|h|day|d|week|w|month)",
                            str(text or "").lower())
         stated = [float(value) for value, unit in found if unit.startswith("h")]
         if stated:
             return max(stated)
-        per_unit = {"d": 6, "w": 30, "m": 120}   # ~6 instructional hours per day
-        readings += [float(value) * per_unit[unit[0]] for value, unit in found]
-    return max(readings, default=0.0)
+        per_unit = {"d": 1, "w": 7, "m": 30}
+        days += [float(value) * per_unit[unit[0]] for value, unit in found]
+    return dev_plans.course_hours_ceiling(max(days, default=0.0))
 
 
 # ══════════════════════ Outcome Designer's own checks ═══════════════════════
@@ -677,6 +679,42 @@ def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | 
                 metadata={"kind": "too_many_tasks", "task_count": len(tasks),
                           "ceiling": ceiling},
             ))
+    # A course that never grades what it set out to teach has no evidence
+    # that it worked -- the rule the plan is written under -- and nothing
+    # downstream can supply the task: the summative half of ADDIE Evaluation
+    # is built from summative tasks and reads ABSENT without one. MEASURED
+    # (tune-10, 2026-09-23): two runs of ten planned formative tasks only,
+    # and both LLM judges scored their summative evaluation absent.
+    if tasks and not any(str(t.get("timing") or "").strip().lower() == "summative"
+                         for t in tasks):
+        violations.append(Violation(
+            node_id=node_id, edge_type="", violation_type="blueprint_consistency",
+            severity="warning",
+            message=(f"None of the blueprint's {len(tasks)} assessment tasks is summative: "
+                     "the course never grades what it set out to teach."),
+            repair_hint=("Give each module's closing task timing 'summative', or add one "
+                         "summative task to the last module covering the objectives it "
+                         "graduates; keep lo_coverage_targets in step."),
+            metadata={"kind": "no_summative_task", "task_count": len(tasks)},
+        ))
+    # And a summative task of one item is not an instrument: the light
+    # development writes it at the floor anyway, and the plan is told so here
+    # while it is still the only thing written (same tune-10 runs: four of
+    # ten planned every summative task as ONE performance_task).
+    for task in tasks:
+        if (str(task.get("timing") or "").strip().lower() == "summative"
+                and 0 < dev_plans._set_total(task) < dev_plans.LIGHT_ITEMS_PER_TASK):
+            violations.append(Violation(
+                node_id=node_id, edge_type="", violation_type="blueprint_consistency",
+                severity="warning",
+                message=(f"Summative task {task.get('id') or '?'} plans "
+                         f"{dev_plans._set_total(task)} item(s); an instrument the course "
+                         f"grades on carries at least {dev_plans.LIGHT_ITEMS_PER_TASK}."),
+                repair_hint=("Raise the task's item_counts to at least "
+                             f"{dev_plans.LIGHT_ITEMS_PER_TASK} items across its types."),
+                metadata={"kind": "thin_summative_task", "task_id": str(task.get("id") or ""),
+                          "item_total": dev_plans._set_total(task)},
+            ))
     # The blueprint has to reach the WHOLE course. P14 and C2 say the same
     # thing later, on the module and the objective — after the Developers
     # have run, when it costs a re-dispatch round. Said here, on the plan, it
@@ -812,6 +850,29 @@ def evaluation_quality_data(node_id: str, data: dict) -> list[Violation]:
         and str(entry.get("area", "")).strip()
         and str(entry.get("first_revision", "")).strip()
     ]
+    # The summative half is scored on how the summative tasks are ADMINISTERED
+    # and what decides ADOPTION -- procedure and criteria the plan states,
+    # never results the run cannot have. Without them the aggregator can only
+    # count tasks, and both LLM judges scored that a one-line absence.
+    for key, fields in (("summative_evaluation_plan",
+                         ("administration", "effectiveness_analysis", "data_sources")),
+                        ("adoption_criteria",
+                         ("goal_attainment", "learner_satisfaction", "cost_efficiency",
+                          "decision_rule"))):
+        block = data.get(key)
+        block = block if isinstance(block, dict) else {}
+        thin = [f for f in fields if not _concrete(block.get(f))]
+        if thin:
+            violations.append(Violation(
+                node_id=node_id, edge_type="", violation_type="evaluation_quality",
+                severity="warning",
+                message=(f"assessment_plan.{key} is missing or thin: "
+                         f"{', '.join(thin)} not stated in words."),
+                repair_hint=(f"Fill assessment_plan.{key} ({', '.join(fields)}): the procedure "
+                             "and the criteria, said for a reader who sees only the "
+                             "evaluation -- never results, which a plan cannot have."),
+                metadata={"section": key},
+            ))
     if len(difficulties) < 2 or _concrete_collection_points(pilot.get("collection_points")) < 2:
         violations.append(Violation(
             node_id=node_id, edge_type="", violation_type="evaluation_quality", severity="warning",
@@ -897,10 +958,7 @@ def time_budget(graph) -> list[Violation]:
     for module in graph.element_nodes(NodeType.MODULE):
         data = module["data"]
         module_id = str(data.get("id") or "")
-        try:
-            budget = float(data.get("minutes") or 0)
-        except (TypeError, ValueError):
-            budget = 0.0
+        budget = dev_plans.module_minutes(data)
         mine = [a for a in activities
                 if alignment.bare_ref(a["data"].get("module_id", "")) == module_id]
         timed = [duration_minutes(a["data"].get("duration")) for a in mine]

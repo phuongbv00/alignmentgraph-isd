@@ -342,7 +342,9 @@ _LIGHT_NOTES = {
         "own level, in a type that can carry it — performance_task or short_answer for apply "
         "and above (add short_answer if the task's item_counts names neither), otherwise the "
         "task's most numerous type; fill the rest with the most numerous type that carries "
-        "the pair's level. Each item is written in full, as it would be administered."),
+        "the pair's level; a summative task always gets about "
+        f"{LIGHT_ITEMS_PER_TASK}, it is the instrument the course grades on. Each item is "
+        "written in full, as it would be administered."),
     "activity": (
         f"LIGHT DEVELOPMENT: write {LIGHT_ACTIVITIES_PER_OBJECTIVE} activity per objective, "
         "with learner_cognitive_process at that objective's own level, and never fewer than "
@@ -457,8 +459,18 @@ def light_item_assignment(task: dict | None, pairs, levels: dict) -> list[dict]:
         rows.append(row)
     if not rows:
         return rows
+    # A summative task is the instrument the course grades on, and one item
+    # is not an instrument a reviewer can judge: it always gets the light
+    # quota, whatever its pairs and whatever its own item_counts say — the
+    # plan is told the same floor (``RULES_ASSESSMENT_PLAN``,
+    # ``checks.blueprint_consistency`` kind ``thin_summative_task``). MEASURED
+    # (tune-10, 2026-09-23): four runs planned summative tasks of ONE
+    # performance_task and shipped one item each, and the rubric item that
+    # scores the instrument's completeness read 6.3 against 8.8.
     quota = (min(LIGHT_ITEMS_PER_TASK, _set_total(task) or LIGHT_ITEMS_PER_TASK)
              if task else len(mine))
+    if task and timing == "summative":
+        quota = max(quota, LIGHT_ITEMS_PER_TASK)
     for index in range(max(0, quota - len(rows))):
         rows.append(dict(rows[index % len(mine)]))
     return rows
@@ -488,7 +500,7 @@ def _module_brief(module: dict) -> dict:
     """What a work set carries of its module: enough to name it, to state its
     time, and to say which objectives it serves."""
     return {"id": _bare(module.get("id")), "title": str(module.get("title") or ""),
-            "minutes": module.get("minutes"),
+            "minutes": module_minutes(module) or module.get("minutes"),
             "objectives": [_bare(o) for o in (module.get("objectives") or []) if _bare(o)]}
 
 
@@ -950,7 +962,7 @@ def fit_time_budget(sets: list[WorkSet], modules: list[dict], stats: dict) -> No
     rather than being held to a number the harness made up."""
     planned = sum(int(ws.payload.get("expected_activities") or 1) for ws in sets)
     stats["planned_activities"] = planned
-    minutes_of = {m["id"]: _positive(m.get("minutes")) for m in modules}
+    minutes_of = {m["id"]: module_minutes(m) for m in modules}
     unbudgeted = 0
     for module_id in dict.fromkeys(ws.module_id for ws in sets):
         mine = [ws for ws in sets if ws.module_id == module_id]
@@ -1244,10 +1256,57 @@ def _activity_sets_by_module(sets: list[WorkSet], modules: list[dict],
 #: Designer — as a rule in ``rulebook.RULES_COURSE_MODULES`` and as this run's
 #: number in its state read — and never enforced, for the reasons
 #: ``MAX_OBJECTIVES`` is not.
-MODULES_BY_COURSE_HOURS = ((30, 3), (120, 4))
+MODULES_BY_COURSE_HOURS = ((12, 3), (24, 4))
 MAX_MODULES = 6
 #: The ceiling for a course whose length cannot be read off the brief.
 MODULES_UNKNOWN_LENGTH = 4
+
+#: The learner time a course of a given LENGTH carries at most, in instructional
+#: hours, by the length in days: within a week, within a month, longer. A
+#: PARAMETER OF THIS HARNESS. The briefs state their length as a band ("2-4
+#: weeks", "1-6 months") and never as hours, so read as calendar time at a
+#: full timetable a six-month band came to 720 hours and the modules were
+#: written to it -- 14,400 minutes each (tune-10, 2026-09-23) -- which put
+#: every time-bounded family out of reach of its bound. The model's own
+#: estimate of a module's minutes is kept where it is smaller; where the
+#: modules together exceed the ceiling they are scaled to it
+#: (:func:`effective_minutes`).
+COURSE_HOURS_BY_LENGTH_DAYS = ((7, 12), (31, 24))
+MAX_COURSE_HOURS = 48
+
+
+def course_hours_ceiling(days: float) -> float:
+    """The instructional hours a course of ``days`` calendar days carries at
+    most; 0.0 when the length is not known."""
+    if days <= 0:
+        return 0.0
+    return float(next((h for limit, h in COURSE_HOURS_BY_LENGTH_DAYS if days <= limit),
+                      MAX_COURSE_HOURS))
+
+
+def module_minutes(module: dict) -> float:
+    """A module's learner time as every time-bounded family reads it: the
+    minutes the course ceiling left it (``minutes_effective``, written by
+    ``fanout.cap_module_minutes``) when the modules together exceeded the
+    ceiling, otherwise the Outcome Designer's own ``minutes``."""
+    if not isinstance(module, dict):
+        return 0.0
+    capped = _positive(module.get("minutes_effective"))
+    return capped if capped else _positive(module.get("minutes"))
+
+
+def effective_minutes(modules: list[dict], ceiling_minutes: float) -> dict[str, int]:
+    """``module id -> minutes`` after the course ceiling: the model's own
+    numbers when they fit, and each scaled by the same factor when together
+    they exceed ``ceiling_minutes``. Empty when there is no ceiling or nothing
+    to scale, so a caller writes nothing."""
+    written = {_bare(m.get("id")): _positive(m.get("minutes"))
+               for m in modules if isinstance(m, dict) and m.get("id")}
+    total = sum(written.values())
+    if ceiling_minutes <= 0 or total <= ceiling_minutes:
+        return {}
+    scale = ceiling_minutes / total
+    return {mid: max(1, int(round(minutes * scale))) for mid, minutes in written.items()}
 
 
 #: How many assessment tasks ONE module carries. A PARAMETER OF THIS HARNESS,
@@ -1308,7 +1367,7 @@ def task_ceiling(modules: list[dict] | None) -> int:
 def long_modules(modules: list[dict]) -> list[str]:
     """The ids of the modules long enough for a formative task of their own."""
     return [_bare(m.get("id")) for m in modules
-            if isinstance(m, dict) and _positive(m.get("minutes")) > FORMATIVE_MODULE_MINUTES]
+            if isinstance(m, dict) and module_minutes(m) > FORMATIVE_MODULE_MINUTES]
 
 
 def module_ceiling(n_objectives: int, n_topics: int, hours: float) -> int:

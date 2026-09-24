@@ -35,7 +35,7 @@ import json
 from .. import dev_plans
 from ..brief import _format_design_brief
 from ..memory import Memory, new_agent_run_id
-from ..checks import serialize_violations
+from ..checks import duration_hours, serialize_violations
 from ..trajectory import ORCHESTRATOR
 from . import alignment_state, budget, fanout, repair_turn, tools
 from . import turn as turn_mod
@@ -731,6 +731,11 @@ class ReactLoop:
         else:
             before = {key: self.state.get(key) for key in _doc_keys(step)}
             step.commit_prose(self.state, self.trajectory, section)
+        if step.name == "outcomes" and fanout.course_modules(self.state):
+            # The same ceiling the multi arm applies after its outcomes stage:
+            # a harness fact about the course, not a choice of either arm.
+            fanout.cap_module_minutes(
+                self.state, duration_hours(self.design_brief) * 60, self.trajectory)
         if spec is not None:
             # The item lists a fan-out family's Developers would have produced
             # in the multi arm. One "set" because this agent chose its own

@@ -453,3 +453,45 @@ def test_both_arms_hold_a_submit_to_the_objectives_level_the_same_way():
     source = inspect.getsource(react.ReactLoop._validate)
     assert "objective_levels" in source and "committed_item_levels" in source
     assert "objective_levels" in inspect.getsource(fanout.set_step)
+
+
+def test_the_assessment_work_sets_event_records_the_task_ceiling():
+    """The task ceiling is told and never enforced, so its compliance is
+    measured here: how many tasks the blueprint planned beside the ceiling
+    this course was told (`dev_plans.task_ceiling`)."""
+    result = _run()
+    events = [e for e in result["trajectory"]["events"]
+              if e["action"] == "work_sets" and e["context"].get("phase") == "assessment"]
+    assert events, "no assessment work_sets event"
+    context = events[0]["context"]
+    assert context["tasks_planned"] >= 1
+    assert context["task_ceiling"] >= 1
+
+
+def test_module_minutes_are_held_to_the_courses_ceiling_on_either_substrate():
+    """The Outcome Designer's minutes stay on the modules; when together they
+    exceed what a course of the brief's length carries, each gains
+    ``minutes_effective`` and every time-bounded family reads that."""
+    from alignmentgraph_isd.core import dev_plans
+    from alignmentgraph_isd.core.agentic import fanout
+    from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
+    from alignmentgraph_isd.core.prose_store import ProseStore
+    from alignmentgraph_isd.core.trajectory import TrajectoryLogger
+
+    graph = AlignmentGraph()
+    for mid, minutes in (("MOD-01", 14400), ("MOD-02", 14400)):
+        graph.add_element_node(NodeType.MODULE, mid, {"id": mid, "title": mid, "minutes": minutes,
+                                                      "objectives": ["ILO-01"]})
+    written = fanout.cap_module_minutes(graph, 48 * 60, TrajectoryLogger())
+    assert written == {"MOD-01": 1440, "MOD-02": 1440}
+    data = graph.get_node(f"{NodeType.MODULE}{graph.ELEMENT_SEP}MOD-01")["data"]
+    assert data["minutes"] == 14400 and data["minutes_effective"] == 1440
+    assert dev_plans.module_minutes(data) == 1440
+    assert fanout.cap_module_minutes(graph, 10 ** 9, TrajectoryLogger()) == {}, "fits: nothing written"
+
+    store = ProseStore()
+    store.put("objective", {"course_modules": [
+        {"id": "MOD-01", "minutes": 14400}, {"id": "MOD-02", "minutes": 14400}]})
+    assert fanout.cap_module_minutes(store, 48 * 60, TrajectoryLogger()) == {
+        "MOD-01": 1440, "MOD-02": 1440}
+    assert [m["minutes_effective"] for m in store.items("objective", "course_modules")] == [1440, 1440]

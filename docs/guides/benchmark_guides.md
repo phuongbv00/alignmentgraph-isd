@@ -582,7 +582,7 @@ Diễn giải cần ghi trong paper:
 
 Cấu trúc results: `results/test_90_benchmark_<model>_r<N>_<ts>/test_90/<scenario_id>/` chứa `{agent}_output.json`,
 `{agent}_trajectory.json`, `{agent}_log.txt`, `comparison_report.json`; hệ đề xuất ghi thêm `{agent}_graph.json` (arm
-graph) hoặc `{agent}_prose.json` (arm prose) và `{agent}_violations.json` (violation ledger, cả hai substrate); summary ở `benchmark_summary.json` +
+graph) hoặc `{agent}_prose.json` (arm prose), `{agent}_violations.json` (violation ledger, cả hai substrate) và `{agent}_contexts.json` (mọi context đã publish — transcript từng agent, để đọc lại một call bất thường mà không phải chạy lại); summary ở `benchmark_summary.json` +
 `SUMMARY.md`.
 
 ### 6.1 Pre-flight

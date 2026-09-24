@@ -136,11 +136,23 @@ _ASSESSMENT = {
         "sets": [
             {"module_id": "MOD-01", "assessment_tasks": [
                 {"id": "AT-01", "timing": "summative", "format": "practical",
-                 "item_counts": {"performance_task": 1}, "covers_objectives": ["ILO-01"],
+                 "item_counts": {"performance_task": 3}, "covers_objectives": ["ILO-01"],
                  "minutes": 60, "weight_percent": 100}]}],
         "lo_coverage_targets": {"ILO-01": ["summative"]},
         "expected_evidence": {"ILO-01": "A working artifact."},
         "formative_methods": ["Weekly critique with rubric"],
+        "summative_evaluation_plan": {
+            "administration": "The practical is sat at the end of the course, in the lab, "
+                              "90 minutes, scored by the instructor with the rubric.",
+            "effectiveness_analysis": "Goal attainment is read as the share of learners at "
+                                      "or above the pass level per objective, weighted by "
+                                      "weight_percent.",
+            "data_sources": "The final practical (AT-01) and the end-of-course survey."},
+        "adoption_criteria": {
+            "goal_attainment": "at least 80% of learners at or above the pass level",
+            "learner_satisfaction": "a mean of 4 of 5 on the end-of-course survey",
+            "cost_efficiency": "instructor hours per learner within the pilot budget",
+            "decision_rule": "adopt when all three hold, revise when one fails, drop otherwise"},
         "pilot_data_plan": {
             "collection_points": [
                 {"when": "after module 1", "where": "Module 1 — Basics",

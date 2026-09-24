@@ -112,6 +112,18 @@ def test_evaluation_quality_silent_when_methods_and_pilot_data_declared():
     graph = AlignmentGraph()
     graph.add_node(NodeType.ASSESSMENT_PLAN, "assessment_plan_0", {
         "formative": ["Weekly critique"], "formative_methods": ["Exit tickets"],
+        "summative_evaluation_plan": {
+            "administration": "The practical is sat at the end of the course, in the lab, "
+                              "90 minutes, scored by the instructor with the rubric.",
+            "effectiveness_analysis": "Goal attainment is read as the share of learners at "
+                                      "or above the pass level per objective, weighted by "
+                                      "weight_percent.",
+            "data_sources": "The final practical (AT-01) and the end-of-course survey."},
+        "adoption_criteria": {
+            "goal_attainment": "at least 80% of learners at or above the pass level",
+            "learner_satisfaction": "a mean of 4 of 5 on the end-of-course survey",
+            "cost_efficiency": "instructor hours per learner within the pilot budget",
+            "decision_rule": "adopt when all three hold, revise when one fails, drop otherwise"},
         "pilot_data_plan": {
             "collection_points": [
                 {"when": "after module 1", "where": "Module 1 — Basics",

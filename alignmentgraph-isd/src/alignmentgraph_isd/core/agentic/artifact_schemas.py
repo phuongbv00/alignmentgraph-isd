@@ -276,7 +276,25 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
                 "detected_by": {"type": "string"}, "first_revision": {"type": "string"}},
                 ("area", "rationale", "detected_by", "first_revision"))),
         }, ("collection_points", "anticipated_difficulties")),
-    }, ("sets", "lo_coverage_targets", "pilot_data_plan")),
+        # The summative half of the evaluation, as PROCEDURE and CRITERIA the
+        # plan states -- never results, which a plan cannot have.
+        "summative_evaluation_plan": _obj({
+            "administration": {"type": "string",
+                               "description": "when, by whom and how the summative tasks are sat"},
+            "effectiveness_analysis": {"type": "string",
+                                       "description": "how goal attainment is read off the results"},
+            "data_sources": {"type": "string",
+                             "description": "which tasks (by title) and what else feed the analysis"},
+        }, ("administration", "effectiveness_analysis", "data_sources")),
+        "adoption_criteria": _obj({
+            "goal_attainment": {"type": "string"},
+            "learner_satisfaction": {"type": "string"},
+            "cost_efficiency": {"type": "string"},
+            "decision_rule": {"type": "string",
+                              "description": "what the criteria together decide: adopt, revise, or drop"},
+        }, ("goal_attainment", "learner_satisfaction", "cost_efficiency", "decision_rule")),
+    }, ("sets", "lo_coverage_targets", "pilot_data_plan", "summative_evaluation_plan",
+        "adoption_criteria")),
     #: Item schema — the fan-out's ``assessment_tools`` (assessment items).
     "assessment_tools": _obj({
         "type": _EVIDENCE, "question": {"type": "string"},

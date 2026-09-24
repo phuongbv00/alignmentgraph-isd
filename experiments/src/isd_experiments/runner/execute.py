@@ -13,6 +13,7 @@ kept exactly as the benchmark laid it out::
             <agent>_graph.json       the proposed system's graph dump, if any
             <agent>_prose.json       a prose arm's blackboard, if any
             <agent>_violations.json  the proposed system's violation ledger, if any
+            <agent>_contexts.json    every context it published (the transcripts), if any
             <agent>_log.txt
 
 Generation only. Scoring is `isd-exp judge llm` and `isd-exp judge alignment`,
@@ -150,6 +151,15 @@ def run_agent(agent_id: str, scenario_path: Path, output_dir: Path,
         # The violation ledger, on either substrate: every distinct finding and
         # what became of it. Written even when empty, so "no findings" and "an
         # agent that keeps no ledger" stay two different files on disk.
+        # Every context the proposed system published: what each agent was
+        # shown, turn by turn. The one record that can say WHY a call came back
+        # the way it did -- an argument-less submit, a reply that put the
+        # artifact in its text -- so it is kept with the run rather than lost
+        # with the process.
+        contexts = result.get("contexts")
+        if isinstance(contexts, list) and contexts:
+            with open(output_dir / f"{agent_id}_contexts.json", "w", encoding="utf-8") as fh:
+                json.dump(contexts, fh, ensure_ascii=False, indent=2, default=str)
         ledger = result.get("violations")
         if isinstance(ledger, list):
             with open(output_dir / f"{agent_id}_violations.json", "w", encoding="utf-8") as fh:

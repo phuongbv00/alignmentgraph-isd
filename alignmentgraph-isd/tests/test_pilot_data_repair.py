@@ -29,6 +29,18 @@ _BASE_PLAN = {
     "formative": ["Weekly critique"],
     "formative_methods": ["Weekly critique with rubric"],
     "lo_coverage_targets": {"ILO-01": ["formative"]},
+        "summative_evaluation_plan": {
+            "administration": "The practical is sat at the end of the course, in the lab, "
+                              "90 minutes, scored by the instructor with the rubric.",
+            "effectiveness_analysis": "Goal attainment is read as the share of learners at "
+                                      "or above the pass level per objective, weighted by "
+                                      "weight_percent.",
+            "data_sources": "The final practical (AT-01) and the end-of-course survey."},
+        "adoption_criteria": {
+            "goal_attainment": "at least 80% of learners at or above the pass level",
+            "learner_satisfaction": "a mean of 4 of 5 on the end-of-course survey",
+            "cost_efficiency": "instructor hours per learner within the pilot budget",
+            "decision_rule": "adopt when all three hold, revise when one fails, drop otherwise"},
 }
 
 

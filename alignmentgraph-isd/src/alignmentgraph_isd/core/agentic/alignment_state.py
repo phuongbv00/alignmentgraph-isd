@@ -162,15 +162,17 @@ def _module_ceiling(state, design_brief, step) -> list[str]:
     topics = len(state.element_nodes(NodeType.TOPIC))
     hours = checks.duration_hours(design_brief) if design_brief is not None else 0.0
     ceiling = dev_plans.module_ceiling(objectives, topics, hours)
-    length = f"about {hours:g} h" if hours else "length not stated"
+    length = f"at most {hours:g} h of learner time" if hours else "length not stated"
     lines = [f"course_modules: at most {ceiling} for this course "
              f"({objectives} objectives, {topics} topics, {length})"]
     if hours:
         # MEASURED (run b8576814): a 2-4 week course was given three modules
-        # of 40 minutes. The rule says the minutes add up to the course; this
-        # is the number they add up to.
-        lines.append(f"the modules' minutes together: about {int(hours * 60)} "
-                     f"({hours:g} h of learner time)")
+        # of 40 minutes; then (tune-10, 2026-09-23) a six-month band read as
+        # 720 h gave each module 14,400. The rule says the minutes add up to
+        # the course; this is the most they may add up to, and modules written
+        # past it are scaled to it.
+        lines.append(f"the modules' minutes together: at most {int(hours * 60)} "
+                     f"({hours:g} h is what a course of this length carries)")
     return lines
 
 

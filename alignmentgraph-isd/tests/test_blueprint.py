@@ -42,13 +42,44 @@ def _ctx(graph, trajectory) -> repairs.RepairContext:
 # ── how many modules ────────────────────────────────────────────────────────
 
 def test_the_module_ceiling_is_the_tightest_of_objectives_topics_and_course_length():
-    assert dev_plans.module_ceiling(5, 4, 20) == 3, "within a week"
-    assert dev_plans.module_ceiling(5, 5, 120) == 4, "up to a month"
-    assert dev_plans.module_ceiling(6, 9, 720) == dev_plans.MAX_MODULES
-    assert dev_plans.module_ceiling(2, 7, 720) == 2, "never more modules than objectives"
-    assert dev_plans.module_ceiling(6, 1, 720) == 1, "nor than topics"
+    assert dev_plans.module_ceiling(5, 4, 12) == 3, "within a week"
+    assert dev_plans.module_ceiling(5, 5, 24) == 4, "up to a month"
+    assert dev_plans.module_ceiling(6, 9, 48) == dev_plans.MAX_MODULES
+    assert dev_plans.module_ceiling(2, 7, 48) == 2, "never more modules than objectives"
+    assert dev_plans.module_ceiling(6, 1, 48) == 1, "nor than topics"
     assert dev_plans.module_ceiling(5, 5, 0) == dev_plans.MODULES_UNKNOWN_LENGTH
-    assert dev_plans.module_ceiling(0, 0, 20) == 3, "a count not written yet does not bind"
+    assert dev_plans.module_ceiling(0, 0, 12) == 3, "a count not written yet does not bind"
+
+
+def test_a_course_length_is_a_ceiling_on_its_hours_not_a_timetable():
+    """The briefs state a length band, never hours. Read as calendar time at a
+    full timetable, "1-6 months" came to 720 h and each module was written to
+    14,400 minutes (tune-10, 2026-09-23). The band is a ceiling by length, a
+    stated number of hours wins, and modules written past the ceiling are
+    scaled to it while the Outcome Designer's numbers stay on them."""
+    from alignmentgraph_isd.core import checks
+    from alignmentgraph_isd.core.brief import DesignBrief
+
+    def brief(duration: str) -> DesignBrief:
+        return DesignBrief.model_validate({
+            "id": "B", "title": "t", "learning_goals": ["g"],
+            "context": {"duration": duration}})
+
+    assert checks.duration_hours(brief("Short-term intensive (within 1 week)")) == 12
+    assert checks.duration_hours(brief("Mid-term course (2-4 weeks)")) == 24
+    assert checks.duration_hours(brief("Long-term course (1-6 months)")) == 48
+    assert checks.duration_hours(brief("3 days (18 hours)")) == 18, "stated hours win"
+    assert checks.duration_hours(brief("")) == 0.0
+
+    modules = [{"id": "MOD-01", "minutes": 14400}, {"id": "MOD-02", "minutes": 14400},
+               {"id": "MOD-03", "minutes": 7200}]
+    capped = dev_plans.effective_minutes(modules, 48 * 60)
+    assert sum(capped.values()) in (2880, 2881) and capped["MOD-01"] == capped["MOD-02"]
+    assert capped["MOD-03"] * 2 in (capped["MOD-01"], capped["MOD-01"] + 1, capped["MOD-01"] - 1)
+    assert dev_plans.effective_minutes([{"id": "MOD-01", "minutes": 600}], 48 * 60) == {}, (
+        "the model's own number is kept when it fits")
+    assert dev_plans.module_minutes({"minutes": 14400, "minutes_effective": 1440}) == 1440
+    assert dev_plans.module_minutes({"minutes": 600}) == 600
 
 
 def test_the_outcome_designer_is_told_this_course_s_ceiling_and_it_is_never_enforced():
@@ -159,7 +190,42 @@ def test_the_prose_arm_checks_both_halves_that_read_the_plan_alone():
     plan = {"sets": [_set("SET-01", "formative", ["ILO-01"], module="MOD-05")],
             "lo_coverage_targets": {"ILO-01": ["summative"]}}
     found = checks.blueprint_consistency_data("assessment_plan", plan)
-    assert [v.metadata["kind"] for v in found] == ["unpromised_pair", "unassessed_pair"]
+    assert [v.metadata["kind"] for v in found] == [
+        "unpromised_pair", "unassessed_pair", "no_summative_task"]
+
+
+def test_a_blueprint_with_no_summative_task_is_handed_back():
+    """The rule the plan is written under — a course that never grades what it
+    taught has no evidence that it worked — and the summative half of the
+    evaluation is built from summative tasks, so without one it reads
+    ABSENT. Reported on the plan while it is still the only thing written;
+    which task becomes summative is the Designer's."""
+    formative_only = {"sets": [_set("SET-01", "formative", ["ILO-01"]),
+                               _set("SET-02", "diagnostic", ["ILO-01"])],
+                      "lo_coverage_targets": {"ILO-01": ["formative", "diagnostic"]}}
+    kinds = [v.metadata["kind"] for v in checks.blueprint_consistency_data(
+        "assessment_plan", formative_only)]
+    assert kinds.count("no_summative_task") == 1
+    with_summative = {"sets": [_set("SET-01", "summative", ["ILO-01"])],
+                      "lo_coverage_targets": {"ILO-01": ["summative"]}}
+    assert "no_summative_task" not in [v.metadata["kind"] for v in
+                                       checks.blueprint_consistency_data("assessment_plan", with_summative)]
+    thin = {"sets": [dict(_set("SET-01", "summative", ["ILO-01"]),
+                          assessment_tasks=[{"id": "AT-01", "timing": "summative",
+                                             "covers_objectives": ["ILO-01"],
+                                             "item_counts": {"performance_task": 1}}])],
+            "lo_coverage_targets": {"ILO-01": ["summative"]}}
+    found = [v for v in checks.blueprint_consistency_data("assessment_plan", thin)
+             if v.metadata.get("kind") == "thin_summative_task"]
+    assert len(found) == 1 and found[0].metadata["item_total"] == 1
+    assert not checks.blueprint_consistency_data("assessment_plan", {"sets": []}), (
+        "an empty blueprint reports nothing, as every other kind does")
+    violation = checks.Violation(
+        node_id="assessment_plan_0", edge_type="", violation_type="blueprint_consistency",
+        message="none summative", metadata={"kind": "no_summative_task"})
+    ctx = repairs.RepairContext(graph=AlignmentGraph(), store=None,
+                                trajectory=TrajectoryLogger(), actor=ORCHESTRATOR)
+    assert repairs.repair_blueprint_pairs(ctx, [violation]) == [violation]
 
 
 # ── every item belongs to a set ─────────────────────────────────────

@@ -328,23 +328,27 @@ def _evaluation_from(assessment_tools: list, plan_data: dict, improvement_plan: 
         "assessment_tools": formative_tasks,
     }
     objective_ids = _objectives_in(summative_tasks)
+    coverage = (f"{len(summative_tasks)} summative assessment task(s) carrying "
+                f"{_items_in(summative_tasks)} item(s), covering {len(objective_ids)} objective(s).")
+    # The summative half is the Assessment Designer's PROCEDURE and CRITERIA
+    # (``summative_evaluation_plan``, ``adoption_criteria``), surfaced as the
+    # plan wrote them; what the harness adds is what it can count. No decision
+    # is taken here: a plan has no results, so ``status`` says so rather than
+    # a verdict nothing measured.
+    procedure = plan_data.get("summative_evaluation_plan")
+    criteria = plan_data.get("adoption_criteria")
     summative = {
         "assessment_tools": summative_tasks,
-        "effectiveness_analysis": {
-            "learning_outcomes": {
-                "details": f"{len(summative_tasks)} summative assessment task(s) carrying "
-                           f"{_items_in(summative_tasks)} item(s), covering "
-                           f"{len(objective_ids)} objective(s)."
-            },
-        },
-        "adoption_decision": {
-            "decision": "adopt" if summative_tasks else "pending",
-            "rationale": (
-                "Summative evidence exists for the covered objectives; proceed to pilot review."
-                if summative_tasks else
-                "No summative evidence was generated; adoption cannot be recommended yet."
-            ),
-        },
+        "effectiveness_analysis": _labelled({
+            **(procedure if isinstance(procedure, dict) else {}),
+            "coverage": coverage,
+        }, labels),
+        "adoption_decision": _labelled({
+            "criteria": criteria if isinstance(criteria, dict) else {},
+            "status": ("pending pilot: the criteria above decide once the summative tasks "
+                       "have been sat" if summative_tasks
+                       else "not decidable: no summative task was planned"),
+        }, labels),
     }
     improvement_plan = dict(improvement_plan)
     improvement_plan.setdefault("feedback_summary", "")

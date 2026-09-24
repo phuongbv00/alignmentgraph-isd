@@ -51,8 +51,9 @@ def test_a_light_set_assigns_one_item_per_pair_at_the_objectives_level():
     sets = _assessment("light")
     quiz, practical = sets
     assert [(ws.module_id, ws.payload["expected_items"]) for ws in sets] == [
-        ("MOD-01", dev_plans.LIGHT_ITEMS_PER_TASK), ("MOD-02", 2)], (
-        "a 45-item quiz gets its typical three; a 2-item practical is already smaller")
+        ("MOD-01", dev_plans.LIGHT_ITEMS_PER_TASK), ("MOD-02", dev_plans.LIGHT_ITEMS_PER_TASK)], (
+        "a 45-item quiz gets its typical three; a summative practical planned at two is "
+        "written at the floor the plan is told")
     assert {pair for ws in sets for pair in ws.pairs} == set(dev_plans.plan_category_pairs(TARGETS))
 
     rows = quiz.payload["assigned_items"]
@@ -65,7 +66,7 @@ def test_a_light_set_assigns_one_item_per_pair_at_the_objectives_level():
     assert by_pair[("ILO-02", "formative")]["type"] == "multiple_choice"
     assert by_pair[("ILO-02", "formative")]["level"] == "understand"
     assert rows[2]["objective"] == "ILO-01", "the filler cycles the pairs"
-    assert [r["type"] for r in practical.payload["assigned_items"]] == ["performance_task", "performance_task"]
+    assert [r["type"] for r in practical.payload["assigned_items"]] == ["performance_task"] * 3
 
     text = dev_plans.render_assessment_set(quiz)
     assert ("item 1: ILO-01 x formative — task SET-01 · short_answer · "
@@ -233,3 +234,22 @@ def test_the_output_says_at_what_scale_it_was_written(context_mode):
     assert scope["items_planned"] == sum(sum(t["item_counts"].values()) for t in tasks)
     assert f"{len(items)} of the {scope['items_planned']} assessment items" in scope["note"]
     assert "typical, reviewable slice" in scope["note"]
+
+
+def test_a_light_summative_task_always_gets_its_full_quota():
+    """A summative task is the instrument the course grades on; one item for a
+    one-objective task is not an instrument a reviewer can judge. Formative
+    and diagnostic tasks keep one item per pair."""
+    one_pair = [("ILO-03", "summative")]
+    practical = {"id": "SET-02", "timing": "summative", "format": "practical",
+                 "item_counts": {"performance_task": 5}, "covers_objectives": ["ILO-03"]}
+    rows = dev_plans.light_item_assignment(practical, one_pair, LEVELS)
+    assert len(rows) == dev_plans.LIGHT_ITEMS_PER_TASK
+    assert {r["objective"] for r in rows} == {"ILO-03"} and {r["level"] for r in rows} == {"create"}
+    quiz = {**practical, "id": "SET-01", "timing": "formative", "item_counts": {"multiple_choice": 1}}
+    assert len(dev_plans.light_item_assignment(quiz, [("ILO-03", "formative")], LEVELS)) == 1, (
+        "a formative task of one planned item writes one")
+    tiny = {**practical, "item_counts": {"performance_task": 1}}
+    assert len(dev_plans.light_item_assignment(tiny, one_pair, LEVELS)) == 3, (
+        "a summative task planned at one item is written at the floor the plan is told")
+    assert "a summative task always gets about" in dev_plans.development_note("light", "assessment")

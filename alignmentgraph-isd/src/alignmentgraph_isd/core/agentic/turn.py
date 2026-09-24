@@ -22,7 +22,7 @@ import json
 from dataclasses import dataclass
 from typing import NamedTuple
 
-from .. import dev_plans
+from .. import dev_plans, llm_io
 from . import budget, tools
 from .protocol import INVALID_TURN_NUDGE, REPEAT_UNCHANGED, turns_left_hint
 from .tools import unwrap_section
@@ -347,8 +347,28 @@ def note_submit_rejected(label: str, turn: ToolTurn, args: dict, errors: list[st
     trajectory.log_recovery_event(
         identity, "submit_rejected",
         f"{label} | raw={tools.arg_shape(turn.args)} | args={tools.arg_shape(args)}"
-        + (" | TRUNCATED" if turn.truncated else ""),
+        + (" | TRUNCATED" if turn.truncated else "") + reply_shape(turn.message),
         "; ".join(errors)[:200])
+
+
+def reply_shape(message) -> str:
+    """What the model's reply looked like, in numbers: how much content and
+    reasoning it carried, why it stopped, and how many tool calls LangChain
+    parsed or could not. Recorded beside a rejection so an argument-less call
+    can be told apart across a whole run -- a router that dropped the
+    arguments, a reply that put the artifact in its text, a cut-off -- without
+    saving the transcript. Empty for a turn built without a reply."""
+    if message is None:
+        return ""
+    content = getattr(message, "content", "") or ""
+    if not isinstance(content, str):
+        content = str(content)
+    extra = getattr(message, "additional_kwargs", None) or {}
+    reasoning = extra.get("reasoning_content") or ""
+    calls = len(getattr(message, "tool_calls", None) or [])
+    invalid = len(getattr(message, "invalid_tool_calls", None) or [])
+    return (f" | content={len(content)} reasoning={len(reasoning)} "
+            f"finish={llm_io.finish_reason(message) or '?'} calls={calls} invalid={invalid}")
 
 
 def note_dropped_args(unreadable: list[str], *, stats: dict, trajectory,

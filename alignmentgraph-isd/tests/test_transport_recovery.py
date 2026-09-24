@@ -693,3 +693,21 @@ def test_the_closing_bracket_goes_in_its_own_container_s_comma():
 
     text = '{"p": {"x": 1, "fm": ["fm": ["a"], "lo": 2}}'
     assert json.loads(close_unclosed_arrays(text)) == {"p": {"x": 1, "fm": ["a"], "lo": 2}}
+
+
+def test_a_rejected_submit_records_the_shape_of_the_reply():
+    """An argument-less submit has several causes — a router that dropped the
+    arguments, a reply that put the artifact in its text, a cut-off — and
+    only the reply's shape tells them apart across a run without saving the
+    transcript."""
+    from types import SimpleNamespace
+
+    from alignmentgraph_isd.core.agentic import turn as turn_mod
+
+    message = SimpleNamespace(
+        content='{"assessment_tools": []}', additional_kwargs={"reasoning_content": "hm"},
+        response_metadata={"finish_reason": "stop"}, tool_calls=[{"name": "submit"}],
+        invalid_tool_calls=[])
+    shape = turn_mod.reply_shape(message)
+    assert shape == " | content=24 reasoning=2 finish=stop calls=1 invalid=0"
+    assert turn_mod.reply_shape(None) == ""

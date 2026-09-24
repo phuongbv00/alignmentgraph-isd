@@ -147,7 +147,9 @@ For each task state its ``format`` (quiz, practical, project, ...), its real sca
 ``item_counts`` (item type -> how many the FULL task has, e.g. 20 multiple_choice and 3
 short_answer — the true size, even though not every one of them may be written out later),
 the ``covers_objectives`` it assesses (ids from that module's objectives), its ``minutes``, and its
-``weight_percent`` of the course grade (0 when ungraded; the graded tasks add up to 100).
+``weight_percent`` of the course grade (0 when ungraded; the graded tasks add up to 100). A
+summative task's item_counts total at least three: one performance prompt is one item of
+evidence, not an instrument.
 Every objective must be covered by at least one task.
 lo_coverage_targets and expected_evidence must have one entry per learning objective given, and
 lo_coverage_targets must agree with the tasks: an objective is promised a category exactly
@@ -159,6 +161,14 @@ of the evaluation alone can follow: ``when`` in the course, ``where`` (the modul
 its title), ``what`` data is collected and by which instrument (a quiz, an observation, a
 survey — name the task's title beside its id), and ``from_whom``. An id alone is not a
 collection point.
+summative_evaluation_plan and adoption_criteria state the summative half of the evaluation as
+PROCEDURE and CRITERIA, for a reader who sees only the evaluation: how the summative tasks are
+administered (when, by whom, how long, with what scoring), how goal attainment is analysed from
+their results (against weight_percent and the pass level, against a diagnostic baseline where
+one exists), which tasks by title feed it; and what decides adoption — the goal-attainment level
+that counts as success, how learner satisfaction is measured and the level expected, how cost
+per learner is weighed, and the rule that turns those three into adopt, revise or drop. Never
+write results: a plan has none.
 pilot_data_plan.anticipated_difficulties must name at least two SPECIFIC areas, each anchored to
 BOTH the content module or session where learners would struggle AND the objective id affected
 (e.g. "Module 3 (interactive content design) — ILO-02", never "general comprehension"), each

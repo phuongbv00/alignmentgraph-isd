@@ -170,6 +170,12 @@ class TrajectoryAction(StrEnum):
     #: after the last stage. See ``core/runner.py::_reconcile``.
     RECONCILE = "reconcile"
     WORK_SETS = "work_sets"
+    #: The modules' minutes together exceeded what a course of this length
+    #: carries, so each was scaled to the ceiling (``minutes_effective``); the
+    #: Outcome Designer's own numbers stay on the modules. Recorded because
+    #: every time-bounded family reads the scaled number, and a reader of the
+    #: output would otherwise see two figures with nothing to say why.
+    MODULE_MINUTES_CAPPED = "module_minutes_capped"
     #: A repair that must SUPPLY a missing artifact asked the model to write it
     #: and got nothing usable back, so it wrote nothing. Recorded because the
     #: alternative — a template that fills the hole — is invisible: the check
@@ -215,6 +221,7 @@ _RECOVERY_ACTIONS = frozenset({
     TrajectoryAction.BUDGET_EXHAUSTED,
     TrajectoryAction.RUN_STOPPED,
     TrajectoryAction.EXCESS_ARTIFACTS_TRIMMED,
+    TrajectoryAction.MODULE_MINUTES_CAPPED,
     TrajectoryAction.ITEMS_WITHOUT_PARENT,
     TrajectoryAction.TOOL_BINDING_UNAVAILABLE,
     TrajectoryAction.TOOL_CALL_MARKUP_RECOVERED,

@@ -50,7 +50,7 @@ from .alignment_graph import AlignmentGraph, NodeType
 from .alignment_graph.audit import GraphAuditor
 from ..config import HarnessRunConfig
 from .brief import DesignBrief
-from .checks import serialize_violations
+from .checks import duration_hours, serialize_violations
 from .memory import Memory, Plan
 from .outputs import (
     _collect_violations,
@@ -648,6 +648,10 @@ def _run_multi(config, memory, graph, store, trajectory, design_brief, *,
             # at a time (see fanout.py). Outside the `acting_as(identity)`
             # scope above because in the multi arm each set runs under its own
             # DEVELOPER identity, which is the axis at its second scale.
+            if step.name == "outcomes":
+                with trajectory.acting_as(ORCHESTRATOR):
+                    fanout.cap_module_minutes(
+                        state, duration_hours(design_brief) * 60, trajectory)
             if spec is not None:
                 set_stats = _run_fanout(
                     config, memory, trajectory, design_brief, step, spec,

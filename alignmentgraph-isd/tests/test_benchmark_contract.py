@@ -48,7 +48,7 @@ EVENT_ACTIONS = {
     "duplicate_element_dropped", "commit_did_not_land", "thinking_only_reply",
     "dropped_argument", "argument_reshaped", "tool_choice_downgraded",
     "read_of_assignment_id", "repair_declined", "run_stopped",
-    "excess_artifacts_trimmed",
+    "excess_artifacts_trimmed", "module_minutes_capped",
     "items_without_parent",
     "calls_not_executed", "repair_window_closed",
     # structured records

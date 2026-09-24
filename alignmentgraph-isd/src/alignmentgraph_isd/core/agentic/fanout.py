@@ -344,6 +344,40 @@ def _derived_stats(stats: dict) -> dict:
     return {**stats, "source": "deterministic", "fallback_used": False}
 
 
+def cap_module_minutes(state, ceiling_minutes: float, trajectory) -> dict[str, int]:
+    """Hold the modules' minutes together to the course's ceiling, on either
+    substrate, right after the outcomes stage writes them.
+
+    The Outcome Designer's own ``minutes`` are never rewritten: where the
+    modules together exceed the ceiling each gains ``minutes_effective``
+    (``dev_plans.effective_minutes``), which is what every time-bounded
+    family reads (``dev_plans.module_minutes``). Returns what was written,
+    empty when the modules fit."""
+    modules = course_modules(state)
+    capped = dev_plans.effective_minutes(modules, ceiling_minutes)
+    if not capped:
+        return {}
+    if hasattr(state, "element_nodes"):
+        for node in state.element_nodes(NodeType.MODULE):
+            mid = dev_plans._bare(node["data"].get("id"))
+            if mid in capped:
+                state.update_node(node["id"], {"minutes_effective": capped[mid]})
+    else:
+        doc = dict(state.get("objective") or {})
+        doc["course_modules"] = [
+            ({**m, "minutes_effective": capped[dev_plans._bare(m.get("id"))]}
+             if isinstance(m, dict) and dev_plans._bare(m.get("id")) in capped else m)
+            for m in (doc.get("course_modules") or [])]
+        state.put("objective", doc)
+        trajectory.log_doc_write("objective", doc)
+    written = sum(dev_plans._positive(m.get("minutes")) for m in modules)
+    trajectory.log_recovery_event(
+        ORCHESTRATOR, "module_minutes_capped",
+        f"{len(capped)} modules, {written:g} minutes written against {ceiling_minutes:g}",
+        ", ".join(f"{mid}={minutes}" for mid, minutes in capped.items()))
+    return capped
+
+
 def objective_levels(state) -> dict[str, str]:
     """``objective id -> its declared Bloom level``, identically on either
     substrate. What a light assignment reads to fix each item's and each

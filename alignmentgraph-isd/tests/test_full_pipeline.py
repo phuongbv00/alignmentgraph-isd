@@ -320,3 +320,22 @@ def test_assessment_items_ship_with_their_rubrics():
     prose_by_id = {t["item_id"]: t for t in prose_out["development"]["assessment_tools"]}
     assert prose_by_id["AT-01"]["rubric"][0]["id"] == "RC-01"
     assert "rubric" not in prose_by_id["AT-02"]
+
+
+def test_the_summative_evaluation_is_the_plans_procedure_and_criteria():
+    """The summative half is what the Assessment Designer planned — how the
+    tasks are administered, how attainment is analysed, what decides
+    adoption — never a verdict: a plan has no results, and the harness used to
+    write "adopt" for every run that had a summative task."""
+    config = HarnessRunConfig()
+    config.llm_factory = FakeChatModel
+    output = run_brief(load_brief("minimal_brief.json"), config)["addie_output"]
+    summative = output["evaluation"]["summative"]
+    analysis = summative["effectiveness_analysis"]
+    assert {"administration", "effectiveness_analysis", "data_sources", "coverage"} <= set(analysis)
+    assert "AT-01 (" in analysis["data_sources"], "a task named by id carries its label"
+    decision = summative["adoption_decision"]
+    assert set(decision["criteria"]) == {"goal_attainment", "learner_satisfaction",
+                                         "cost_efficiency", "decision_rule"}
+    assert decision["status"].startswith("pending pilot")
+    assert "decision" not in decision
