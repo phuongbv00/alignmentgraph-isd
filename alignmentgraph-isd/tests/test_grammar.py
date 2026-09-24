@@ -182,8 +182,23 @@ def test_the_assessment_plan_is_one_set_per_module_within_its_allowance():
         dev_plans.task_ceiling(list(vocab.modules))
     targets = plan["properties"]["lo_coverage_targets"]
     assert set(targets["properties"]) == {"ILO-01", "ILO-02"}
-    assert targets["required"] == ["ILO-01", "ILO-02"]
+    assert "required" not in targets and targets["minProperties"] == 1, (
+        "which objectives the plan promises stays the model's")
     assert targets["additionalProperties"] is False
+    # The task schema is declared once and every row refers to it, so the
+    # spec does not grow by a task schema per module.
+    assert plan["$defs"]["assessment_task"]["properties"]["covers_objectives"]["items"]["enum"] == \
+        ["ILO-01", "ILO-02"]
+    assert first["properties"]["assessment_tasks"]["items"] == {"$ref": "#/$defs/assessment_task"}
+    step = STEP_BY_NAME["assessment"]
+    params = tools.spec_parameters(
+        grammar.tighten_specs(tools.tool_specs(step), vocab), "submit_assessment_plan")
+    assert "assessment_task" in params["$defs"] and "$defs" not in params["properties"]["assessment_plan"]
+    many = grammar.Vocabulary(objectives=vocab.objectives, modules=tuple(
+        {"id": f"MOD-0{i}", "minutes": 200} for i in range(1, 6)))
+    base = json.dumps(tools.tool_specs(step))
+    tight = json.dumps(grammar.tighten_specs(tools.tool_specs(step), many))
+    assert len(tight) < 1.5 * len(base), (len(base), len(tight))
     assert targets["properties"]["ILO-01"]["items"]["enum"] == \
         ARTIFACT_SCHEMAS["assessment_plan"]["properties"]["lo_coverage_targets"][
             "additionalProperties"]["items"]["enum"]
@@ -235,7 +250,7 @@ def test_an_activity_block_fixes_module_objective_and_level_per_row():
     assert first["learner_cognitive_process"]["enum"] == ["analyze", "evaluate", "create"]
 
 
-def test_a_light_material_is_bounded_to_its_outline_and_its_module_s_media():
+def test_a_light_material_is_bound_to_its_module_s_media_and_never_to_a_length():
     state = _design("graph")
     specialists.commit_content(state, TrajectoryLogger(), {"media_selections": [
         {"id": "MS-01", "media_type": "slides", "for_modules": ["MOD-01"],
@@ -253,11 +268,9 @@ def test_a_light_material_is_bounded_to_its_outline_and_its_module_s_media():
     item = params["properties"]["learner_materials"]["items"]["properties"]
     assert item["linked_module"]["const"] == "MOD-01"
     assert item["type"]["enum"] == ["slides"]
-    assert item["content"]["maxLength"] == dev_plans.LIGHT_MATERIAL_OUTLINE_CHARS[1]
-    full = grammar.tighten_parameters(
-        tools.submit_parameters(fanout.set_step(fanout.SPECS["content"], unit, step, state)),
-        grammar.Vocabulary.of(state), work_set=unit, mode="full")
-    assert "maxLength" not in full["properties"]["learner_materials"]["items"]["properties"]["content"]
+    # The depth of a light material is TOLD, never decoded: a length bound is
+    # a hard stop mid-word.
+    assert "maxLength" not in item["content"]
 
 
 def test_a_session_guide_may_schedule_only_what_its_block_was_handed():
@@ -308,3 +321,36 @@ def test_the_base_specs_are_not_mutated_by_tightening():
     assert json.dumps(base, sort_keys=True) == before
     assert json.dumps(ARTIFACT_SCHEMAS, sort_keys=True) == json.dumps(
         tools.ARTIFACT_SCHEMAS, sort_keys=True)
+
+
+def test_the_decoder_schema_closes_every_object_but_an_open_map():
+    """Pass 2 decodes under closed objects, or a grammar that allows any key
+    allows a reply that never ends (four of five `operator_manual` passes ran
+    to the completion cap); the bound contract stays open."""
+    vocab = grammar.Vocabulary.of(_design("graph"))
+    bound = tools.spec_parameters(
+        grammar.tighten_specs(tools.tool_specs(STEP_BY_NAME["assessment"]), vocab),
+        "submit_assessment_plan")
+    assert bound["additionalProperties"] is True
+    closed = grammar.for_decoder(bound)
+    assert closed["additionalProperties"] is False
+    plan = closed["properties"]["assessment_plan"]
+    assert plan["additionalProperties"] is False
+    assert plan["properties"]["expected_evidence"]["additionalProperties"] == {"type": "string"}, (
+        "an open map keeps its value schema")
+    assert closed["$defs"]["assessment_task"]["additionalProperties"] is False
+    assert grammar.xgrammar_safe(closed) == []
+
+
+def test_the_bound_specs_come_out_of_the_transcript_budget():
+    """The specs go out with every request; a budget that ignored them let
+    the history fill the window the specs then overflowed."""
+    from alignmentgraph_isd import HarnessRunConfig
+    from alignmentgraph_isd.core.agentic.transcript import history_budget, specs_chars
+
+    config = HarnessRunConfig(llm_context_window=16384, llm_completion_reserve=8192)
+    specs = grammar.tighten_specs(tools.react_specs(STEPS, frozenset()),
+                                  grammar.Vocabulary.of(_design("graph")))
+    whole = history_budget(config)
+    assert history_budget(config, specs) == max(whole - specs_chars(specs), whole // 4)
+    assert history_budget(config, specs) < whole

@@ -175,14 +175,24 @@ def tighten_parameters(params: dict, vocab: Vocabulary, *, work_set=None,
     by :func:`artifact_property` and every object stamped open."""
     properties = dict(params.get("properties") or {})
     required = list(params.get("required") or [])
+    defs: dict = dict(params.get("$defs") or {})
     for key, prop in list(properties.items()):
         if key not in ARTIFACT_SCHEMAS:
             continue
         json_type = "array" if (prop or {}).get("type") == "array" else "object"
-        properties[key] = artifact_property(
+        tightened = artifact_property(
             key, json_type, key in required, vocab, work_set=work_set, mode=mode)
-    return _open({**params, "type": "object", "properties": properties,
-                  "required": required})
+        # A shared sub-schema is declared ONCE at the root, where `$ref`
+        # resolves it: the assessment plan names its task schema per module
+        # and a copy per module made the spec twice its size (measured: 10k
+        # characters for five modules against 4.5k declared), which is
+        # prompt the transcript then has to make room for.
+        defs.update(tightened.pop("$defs", {}) if isinstance(tightened, dict) else {})
+        properties[key] = tightened
+    out = {**params, "type": "object", "properties": properties, "required": required}
+    if defs:
+        out["$defs"] = defs
+    return _open(out)
 
 
 def artifact_property(key: str, json_type: str, is_required: bool, vocab: Vocabulary, *,
@@ -288,11 +298,14 @@ def _assessment_plan(base: dict, vocab: Vocabulary, work_set, mode: str) -> dict
         # ONE set per module, in course order, each holding at most the tasks
         # the module's allowance gives it — the ceiling the plan is told
         # (`checks.blueprint_consistency`, kind `too_many_tasks`), in the
-        # shape of the request.
+        # shape of the request. The task schema is written once, under
+        # `$defs` (hoisted to the root by `tighten_parameters`), and each
+        # row refers to it.
+        out["$defs"] = {"assessment_task": task_schema}
         rows = []
         for index, module in enumerate(vocab.modules):
             tasks = {**set_schema["properties"]["assessment_tasks"],
-                     "items": task_schema, "minItems": 1,
+                     "items": {"$ref": "#/$defs/assessment_task"}, "minItems": 1,
                      "maxItems": dev_plans.task_allowance(module, index)}
             rows.append(_with(set_schema,
                               module_id={**set_schema["properties"]["module_id"],
@@ -311,12 +324,17 @@ def _assessment_plan(base: dict, vocab: Vocabulary, work_set, mode: str) -> dict
     if vocab.objectives:
         # Keyed by the objectives that exist and nothing else: a key here that
         # names no objective is a promise about nothing (`plan_coverage`).
+        # NOT required per objective: a promise the decoder forces is one the
+        # blueprint does not keep — measured with every objective required,
+        # 39 `unassessed_pair` findings over ten runs, and the Designer's
+        # repair turns spent on them; which objectives the plan promises stays
+        # the model's, and `objective_without_set` reports the ones it leaves.
         timing = props["lo_coverage_targets"]["additionalProperties"]
         out["properties"]["lo_coverage_targets"] = {
             "type": "object",
             "description": props["lo_coverage_targets"].get("description", ""),
             "properties": {lo: {**timing, "minItems": 1} for lo in vocab.objectives},
-            "required": list(vocab.objectives),
+            "minProperties": 1,
             "additionalProperties": False,
         }
     return out
@@ -402,12 +420,11 @@ def _learner_materials(base: dict, vocab: Vocabulary, work_set, mode: str) -> di
         fixed["type"] = _ref(props["type"], types)
     if work_set and work_set.module_id:
         fixed["linked_module"] = {**props["linked_module"], "const": work_set.module_id}
-    if mode == "light":
-        # An outline a reviewer reads, not the learner's text: the depth the
-        # light mode states (`dev_plans.LIGHT_MATERIAL_OUTLINE_CHARS`), as a
-        # bound the decoder holds rather than a sentence the model weighs.
-        fixed["content"] = {**props["content"],
-                            "maxLength": dev_plans.LIGHT_MATERIAL_OUTLINE_CHARS[1]}
+    # A light material's DEPTH is told (`dev_plans.LIGHT_MATERIAL_OUTLINE_CHARS`,
+    # in the assignment's note) and never decoded: a `maxLength` on `content`
+    # is a hard stop the decoder enforces mid-word — measured, seven of ten
+    # runs shipped materials of exactly the cap, cut mid-sentence. `mode` is
+    # accepted so every builder has one signature.
     return _with(base, **fixed)
 
 
@@ -448,6 +465,30 @@ def _stated_count(key: str, work_set, vocab: Vocabulary) -> int:
     return 0
 
 
+def for_decoder(schema: object) -> object:
+    """The schema the CONSTRAINED PASS decodes under: every object CLOSED
+    (``additionalProperties: false``) except an open map, which keeps the
+    value schema it declares.
+
+    The bound tool's contract stays open — the ADDIE shape is a floor — but a
+    grammar that allows any key allows a reply that never ends: measured, four
+    of five passes on the implementation stage's ``operator_manual`` ran to
+    the 8,192-token completion cap and came back as nothing. Closed, the
+    object ends when its declared fields do. What a closed pass loses is a
+    key the model would have invented on THIS artifact; what pass 1 accepted
+    beside the declared fields is unaffected, since a pass rewrites only a
+    submit the validator refused."""
+    if isinstance(schema, dict):
+        out = {k: for_decoder(v) if k != "additionalProperties" else v
+               for k, v in schema.items()}
+        if out.get("type") == "object" and not isinstance(out.get("additionalProperties"), dict):
+            out["additionalProperties"] = False
+        return out
+    if isinstance(schema, list):
+        return [for_decoder(v) for v in schema]
+    return schema
+
+
 def _open(schema: object) -> object:
     """Every object without an ``additionalProperties`` of its own declared
     open, recursively. The ADDIE shape is a floor, not a mould
@@ -463,5 +504,5 @@ def _open(schema: object) -> object:
     return schema
 
 
-__all__ = ["Vocabulary", "artifact_property", "tighten_parameters", "tighten_specs",
-           "xgrammar_safe", "UNSUPPORTED_KEYWORDS"]
+__all__ = ["Vocabulary", "artifact_property", "for_decoder", "tighten_parameters",
+           "tighten_specs", "xgrammar_safe", "UNSUPPORTED_KEYWORDS"]

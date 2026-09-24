@@ -286,7 +286,12 @@ tả về SLM, không claim). Smoke trước freeze: gửi một `response_forma
 tới pod và kiểm tra JSON hợp lệ 10/10 với `thinking_token_budget` đã khai; `400` nhắc tới `response_format` ⇒ harness
 tự nhớ và tắt cho cả run (`structured_outputs_unavailable`).
 
-Trong paper: một đoạn ở Experimental Setup (điều kiện serving) + một câu ở Limitations. **Không phải đóng góp,
+Đo trên run 2B thứ hai (`..._20260924_165051`, sau khi có pass 2): rejection 51 → 5, 24 pass 2 (19 được nhận), trần task
+giữ 10/10, không còn task id trùng. Ba điều rút ra rồi sửa ngay: spec tool đã bind PHẢI trừ vào budget transcript
+(assessment stage vỡ cửa sổ 16k 12–13 lần/run khi spec siết lên 10k ký tự); `maxLength` trên `content` của material
+cắt giữa câu (7/10 run đúng 800 ký tự) nên độ sâu material chỉ TOLD; và pass 2 decode dưới object ĐÓNG
+(`grammar.for_decoder`), vì object mở cho phép trả lời không bao giờ kết thúc (4/5 pass `operator_manual` chạy hết
+8.192 token). Trong paper: một đoạn ở Experimental Setup (điều kiện serving) + một câu ở Limitations. **Không phải đóng góp,
 không phải trục ablation** — xem `docs/paper/claim-rules.md`.
 
 ### 3.4 Tạo pod + khai endpoint

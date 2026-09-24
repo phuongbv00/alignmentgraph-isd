@@ -23,7 +23,7 @@ from ..llm_io import (
     was_truncated,
 )
 from ..ratelimit import gate_for
-from .transcript import prompt_chars, ratio_for
+from .transcript import prompt_chars, ratio_for, specs_chars
 from .turn import ToolTurn
 
 
@@ -117,7 +117,7 @@ class AgenticLLM:
         if bound is None:
             return ToolTurn(binding_failed=True)
         try:
-            return self._invoke_tools(bound, messages)
+            return self._invoke_tools(bound, messages, tool_specs)
         except Exception as exc:  # noqa: BLE001 - every backend error is recorded below
             if choice == TOOL_CHOICE_DEFAULT and _rejects_tool_choice(exc):
                 # The backend will not force a call. Learned ONCE per run:
@@ -132,7 +132,7 @@ class AgenticLLM:
                 if bound is None:
                     return ToolTurn(binding_failed=True)
                 try:
-                    return self._invoke_tools(bound, messages)
+                    return self._invoke_tools(bound, messages, tool_specs)
                 except Exception as again:  # noqa: BLE001
                     exc = again
             if _is_truncation_error(exc):
@@ -328,7 +328,7 @@ class AgenticLLM:
         return time.time()
 
     def _account(self, result, messages: list[dict],
-                 started: float) -> tuple[str, list, bool]:
+                 started: float, specs: list | None = None) -> tuple[str, list, bool]:
         """Everything a model call must leave behind: its flattened content, its
         tool calls and whether it was cut — plus ``llm_finished``, the
         chars-per-token measurement, the ``llm_call`` action, the token totals
@@ -355,7 +355,12 @@ class AgenticLLM:
         # The tokenizer's own verdict on a prompt whose size we know: this is
         # what calibrates the transcript budget, and it arrives free with every
         # response.
-        ratio_for(self.config).observe(prompt_chars(messages), prompt_tokens)
+        # Over the WHOLE prompt — the bound specs go out with the messages and
+        # the tokens reported cover both — so the ratio the transcript budget
+        # converts with is the tokenizer's and not one biased low by the
+        # specs' tokens (``transcript.history_budget`` subtracts the specs
+        # itself, once).
+        ratio_for(self.config).observe(prompt_chars(messages) + specs_chars(specs), prompt_tokens)
         self.trajectory.log_action(
             "llm_call", agent=self.identity, duration_ms=duration_ms,
             prompt_chars=prompt_chars(messages), response_chars=len(content),
@@ -383,11 +388,11 @@ class AgenticLLM:
                 reasoning[:200])
         return content, calls, was_truncated(result)
 
-    def _invoke_tools(self, llm, messages: list[dict]) -> ToolTurn:
+    def _invoke_tools(self, llm, messages: list[dict], tool_specs: list | None = None) -> ToolTurn:
         started = self._begin(messages)
         with gate_for(self.config).hold():
             result = llm.invoke(messages)
-        content, calls, cut = self._account(result, messages, started)
+        content, calls, cut = self._account(result, messages, started, specs=tool_specs)
         if not calls:
             return ToolTurn(text=content, message=result, truncated=cut)
         # Raw here; the loop coerces against the SPEC it bound (only it knows

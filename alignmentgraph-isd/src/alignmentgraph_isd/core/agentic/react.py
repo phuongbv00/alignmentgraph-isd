@@ -199,7 +199,7 @@ class ReactLoop:
     def _history_budget(self) -> int:
         """Same derivation the multi arm uses — one budget for both arms, and
         re-read each turn so it tracks the measured token ratio."""
-        return history_budget(self.config)
+        return history_budget(self.config, getattr(self, "_live_specs", None))
 
     @property
     def graph_mode(self) -> bool:
@@ -547,7 +547,8 @@ class ReactLoop:
             # `ToolLoop._handle_submit`. `params` is already this tool's
             # tightened schema.
             passed = turn_mod.constrained_pass(
-                self.llm, self.messages, turn, artifact=step.name, schema=params,
+                self.llm, self.messages, turn, artifact=step.name,
+                schema=grammar.for_decoder(params),
                 errors=errors, params=params, validate=validate, stats=self.stats,
                 trajectory=self.trajectory, identity=self.identity)
             if passed is not None:

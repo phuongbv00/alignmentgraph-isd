@@ -371,7 +371,19 @@ def prompt_token_budget(config) -> int:
     return max(1024, window - reserve)
 
 
-def history_budget(config) -> int:
+def specs_chars(specs: list | None) -> int:
+    """Characters the bound tool specs add to every request. They go out with
+    every call and the model's window holds them beside the transcript, so a
+    budget that ignored them let the history fill the window the specs then
+    overflowed: measured, twelve and thirteen refused requests in one
+    assessment stage each ("maximum context length is 16384 tokens") once
+    the tightened specs reached 10k characters."""
+    if not specs:
+        return 0
+    return len(json.dumps(specs, ensure_ascii=False))
+
+
+def history_budget(config, specs: list | None = None) -> int:
     """The transcript budget in CHARACTERS, from the serving window when it is
     known and the historical constant otherwise.
 
@@ -385,8 +397,17 @@ def history_budget(config) -> int:
     """
     tokens = prompt_token_budget(config)
     if tokens <= 0:
+        # The historical constant is a TRANSCRIPT budget from before the
+        # window was known; it is kept as declared.
         return HISTORY_CHAR_BUDGET
-    return int(tokens * ratio_for(config).chars_per_token)
+    chars = int(tokens * ratio_for(config).chars_per_token)
+    # The specs are part of the prompt the window holds, so the history gets
+    # what they leave — never less than a floor that keeps a stage turn and an
+    # answer in play. The ratio this converts with is measured over the WHOLE
+    # prompt, specs included (``client.AgenticLLM._account``), so the specs
+    # are counted once, here, and not a second time through a ratio biased
+    # by their tokens.
+    return max(chars - specs_chars(specs), chars // 4)
 
 
 #: Marks the note compaction leaves in the conversation. A flag rather than a

@@ -912,3 +912,43 @@ def test_the_single_arm_s_rejected_submit_is_completed_the_same_way():
     assert model.structured_requests and model.structured_requests[0]["json_schema"]["name"] == "submit_outcomes"
     assert loop_.stats["constrained_passes"] >= 1
     assert [e["context"]["output_summary"] for e in _passes(trajectory)][0] == "accepted"
+
+
+def test_an_instalment_that_adds_nothing_is_completed_by_the_pass_over_the_whole_set():
+    """MEASURED (2B run, 2026-09-24): a Developer resent its one item four
+    times against "send ONE more DIFFERENT one", spent the set's budget and
+    the set was given up. The pass decodes the whole set under a schema that
+    states every row, the kept item is carried, and the set completes."""
+    from dataclasses import replace
+
+    from alignmentgraph_isd.core import dev_plans
+    from alignmentgraph_isd.core.agentic import fanout
+    from test_agentic_loop import STEP_BY_NAME, _harness, _loop, call, structured
+
+    def item(question):
+        return {"type": "short_answer", "question": question, "aligned_objective": "ILO-01",
+                "plan_category": "formative", "task_id": "AT-01",
+                "required_cognitive_process": "apply", "rubric": []}
+
+    work_set = dev_plans.WorkSet(set_id="AS-01", pairs=(("ILO-01", "formative"),),
+                                 payload={"expected_items": 2})
+    captured: dict = {}
+    dev = replace(fanout.set_step(fanout.SPECS["assessment"], work_set, STEP_BY_NAME["assessment"]),
+                  commit=lambda _state, _trajectory, section: captured.update(section))
+    model, config, graph, trajectory, brief = _harness([
+        call("submit_assessment_tools", {"assessment_tools": [item("Q1")]}),
+        call("submit_assessment_tools", {"assessment_tools": [item("Q1")]}),
+        structured({"assessment_tools": [item("Q1"), item("Q2")]}),
+    ])
+    loop_ = _loop(config, graph, trajectory, brief, dev)
+    loop_.run()
+
+    answers = [m["content"] for m in loop_.messages
+               if isinstance(m, dict) and m.get("role") == "tool"]
+    assert answers[0].startswith("KEPT: 1 of the 2")
+    assert answers[1].startswith("COMMITTED") and "written again under its schema" in answers[1]
+    assert [i["question"] for i in captured["assessment_tools"]] == ["Q1", "Q2"]
+    assert loop_.stats["constrained_passes"] == 1 and loop_.stats["submits_rejected"] == 0
+    assert not loop_.stats["gave_up"] and model.invocations == 3
+    schema = model.structured_requests[0]["json_schema"]["schema"]
+    assert schema["additionalProperties"] is False, "pass 2 decodes under closed objects"

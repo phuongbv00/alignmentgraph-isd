@@ -346,6 +346,13 @@ INVALID_TURN_NUDGE = (
     "the listed tools, or call submit with the complete artifact.")
 
 
+#: Why an instalment that adds nothing is put to the constrained pass: the
+#: schema it decodes under states the whole set, so the request says so.
+INSTALMENT_PASS_REASON = (
+    "what you sent repeats what is already kept. {owed} Write the WHOLE set, "
+    "every item DIFFERENT from the others, the kept one(s) included.")
+
+
 #: What the constrained pass asks. The call the model made is answered with
 #: this, then the model writes the artifact again with no tools bound and the
 #: artifact's schema enforced by the decoder. ONE wording for both arms.

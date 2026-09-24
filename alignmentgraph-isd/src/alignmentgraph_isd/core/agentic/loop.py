@@ -45,6 +45,7 @@ from . import turn as turn_mod
 from .client import AgenticLLM
 from .compaction import compact
 from .protocol import (
+    INSTALMENT_PASS_REASON,
     WORKFLOW_OVERVIEW,
     empty_stage_stats,
     landed_parts,
@@ -336,7 +337,7 @@ class ToolLoop:
 
     @property
     def _history_budget(self) -> int:
-        return history_budget(self.config)
+        return history_budget(self.config, getattr(self, "_live_specs", None))
 
     def _run(self) -> None:
         if step_done(self.step, self.state):
@@ -485,14 +486,14 @@ class ToolLoop:
         the same way."""
         bound = spec_parameters(self._live_specs, tool_name)
         if bound:
-            return bound
+            return grammar.for_decoder(bound)
         prop = (params.get("properties") or {}).get(artifact)
         if prop is None:
             return {}
-        return grammar.tighten_parameters(
+        return grammar.for_decoder(grammar.tighten_parameters(
             {"type": "object", "properties": {artifact: prop}, "required": [artifact]},
             grammar.Vocabulary.of(self.state, course_hours=duration_hours(self.design_brief)),
-            work_set=self.step.work_set, mode=self.config.development_mode)
+            work_set=self.step.work_set, mode=self.config.development_mode))
 
     def _handle_call(self, turn: ToolTurn, specs: list, stage_message: str) -> str:
         """One tool call, judged and answered. ``"return"`` ends the stage,
@@ -648,22 +649,47 @@ class ToolLoop:
             unreadable, stats=self.stats, trajectory=self.trajectory,
             identity=self.identity)
         owed = self.step.owes(section) if self.step.owes else ""
-        if owed:
+        if owed and turn_mod.keep_items(self._kept, section) > 0:
             # A valid INSTALMENT of a work set that states a count. Kept, and
             # the next submit is joined to it; refusing it made a model that
             # writes one item per call resend that one item until the set gave
             # up. An instalment that adds nothing is the one thing charged.
-            if turn_mod.keep_items(self._kept, section) > 0:
-                self._best.update(section)
+            self._best.update(section)
+            self._append_tool_turn(turn, owed)
+            return "continue"
+        if owed:
+            # Nothing new: before it is charged, pass 2 over the WHOLE set —
+            # its schema states every row and the count, which is what a
+            # model that only ever resends its one item cannot see from a
+            # sentence. Measured (2B run, 2026-09-24): four resends of one
+            # item, the budget spent, the set given up and regenerated.
+            passed = turn_mod.constrained_pass(
+                self.llm, self.messages, turn, artifact=artifact,
+                schema=self._pass_schema(turn.name, artifact, params),
+                errors=[INSTALMENT_PASS_REASON.format(owed=owed)], params=params,
+                validate=self._validate, stats=self.stats,
+                trajectory=self.trajectory, identity=self.identity)
+            whole = None
+            if passed is not None:
+                joined, _carried = turn_mod.carry_over(self._kept, passed[1])
+                whole, still, _unreadable = turn_mod.judge_submit(params, joined, self._validate)
+                if still or turn_mod.keep_items(self._kept, whole) <= 0:
+                    whole = None
+            if whole is None:
+                self._submit_attempts[artifact] = spent + 1
+                self._append_tool_turn(turn, (
+                    "NOTHING NEW: what you sent is already kept. " + owed))
+                if spent + 1 >= self.SUBMIT_BUDGET:
+                    self._give_up("submit budget spent", last_resort=self._best)
+                    return "return"
+                return "continue"
+            section = whole
+            self._best.update(section)
+            self._pending_note = turn_mod.constrained_note([owed])
+            owed = self.step.owes(section)
+            if owed:
                 self._append_tool_turn(turn, owed)
                 return "continue"
-            self._submit_attempts[artifact] = spent + 1
-            self._append_tool_turn(turn, (
-                "NOTHING NEW: what you sent is already kept. " + owed))
-            if spent + 1 >= self.SUBMIT_BUDGET:
-                self._give_up("submit budget spent", last_resort=self._best)
-                return "return"
-            return "continue"
         # Commit FIRST, then answer once. The answer depends on what
         # the commit left missing, and a step declared in parts is not
         # necessarily finished by an accepted submit.
