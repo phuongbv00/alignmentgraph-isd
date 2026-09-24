@@ -637,6 +637,22 @@ def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | 
                              f"or drop \"{timing}\" from lo_coverage_targets[\"{lo_id}\"]."),
                 metadata={"kind": "unassessed_pair", "lo_id": lo_id, "plan_category": timing},
             ))
+    # ONE id per task. The commit renames a repeat before it lands
+    # (``dev_plans.dedupe_task_ids``), so this fires on a plan that reached
+    # the check without that commit — an archived design, a baseline's shape —
+    # and says what the commit would have done.
+    tasks_by_id: dict[str, int] = collections.Counter(
+        alignment.bare_ref(t.get("id")) for t in _sets(plan))
+    for task_id, count in sorted(tasks_by_id.items()):
+        if count > 1:
+            violations.append(Violation(
+                node_id=node_id, edge_type="", violation_type="blueprint_consistency",
+                severity="warning",
+                message=(f"{count} assessment tasks share the id {task_id}: an item's "
+                         "task_id can name only one of them."),
+                repair_hint="Give every assessment task its own id (AT-01, AT-02, ...).",
+                metadata={"kind": "duplicate_task_id", "task_id": task_id, "count": count},
+            ))
     # How MANY tasks the blueprint carries. Every other family has a ceiling
     # and this one had none: `sets` is one per module and says nothing about
     # how many tasks a set lists, while the fan-out gives one work set per

@@ -227,16 +227,32 @@ def commit_assessment(graph, trajectory, parsed: dict) -> None:
     membership is then structural instead of an id a Developer has to get
     right. The Developer tier fills each task's ``items`` one work set at a
     time (``fanout._attach_to_parent``)."""
-    updates = _assessment_updates(parsed)
+    updates = _assessment_updates(parsed, trajectory)
     if updates:
         _merge_section(graph, trajectory, NodeType.ASSESSMENT_PLAN, updates)
         _decompose(graph, trajectory, NodeType.ASSESSMENT,
                    [{**task, "items": []} for task in dev_plans.plan_tasks(updates)])
 
 
-def _assessment_updates(parsed: dict) -> dict:
+def _assessment_updates(parsed: dict, trajectory=None) -> dict:
+    """The plan as submitted, with a REPEATED task id renamed to the next free
+    one (``dev_plans.dedupe_task_ids``) and each rename recorded. Settled at
+    the commit, on either substrate, before any item exists to name a task:
+    two tasks under one id are one element node and one ``task_id``, and the
+    grammar cannot refuse a repeat. Never a rejection — the plan is the
+    largest artifact of its stage and a refusal costs a whole re-emission."""
     plan = parsed.get("assessment_plan")
-    return dict(plan) if isinstance(plan, dict) else {}
+    if not isinstance(plan, dict):
+        return {}
+    plan, renamed = dev_plans.dedupe_task_ids(dict(plan))
+    if renamed and trajectory is not None:
+        # The actor is the scope's, as every commit-time event's is
+        # (`_log_duplicates`): the commit runs inside the agent's scope.
+        trajectory.log_recovery_event(
+            "", "duplicate_task_id_renamed",
+            "; ".join(f"{old} -> {new}" for old, new in renamed)[:200],
+            f"{len(renamed)} task id(s) the plan repeated")
+    return dict(plan)
 
 
 def _activities_updates(parsed: dict) -> dict:
@@ -372,7 +388,7 @@ def commit_outcomes_prose(store, trajectory, parsed: dict) -> None:
 
 
 def commit_assessment_prose(store, trajectory, parsed: dict) -> None:
-    updates = _assessment_updates(parsed)
+    updates = _assessment_updates(parsed, trajectory)
     if updates:
         _merge_document(store, trajectory, "assessment_plan", updates)
 
@@ -892,6 +908,11 @@ class AgenticStep:
     #: answers with this, and joins the next submit to it
     #: (``ToolLoop._handle_submit``) — an instalment, never a rejection.
     owes: Callable[[dict], str] | None = None
+    #: The work set a fan-out Developer step was cut from, or None for a stage
+    #: agent. What the per-run submit schema reads its fixed rows and stated
+    #: counts from (``grammar.artifact_property``); it changes no wording.
+    work_set: dev_plans.WorkSet | None = None
+
     def task_block(self) -> str:
         """Task + rules for the tool-loop prompt. No schema block: the
         artifact's field-level SHAPE (types, nesting, enums) lives in the

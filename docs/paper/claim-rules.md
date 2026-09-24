@@ -45,6 +45,10 @@ Cấm tuyệt đối, không có cách viết thay thế:
 - **Không claim novelty cho phép đo alignment.** Nó là measurement setup trong Experimental
   Design, văn phong "assemble/operationalize established criteria"; không có đề mục "protocol"
   trong Method, không đánh số đóng góp. Đóng góp vẫn đúng MỘT.
+- **Không gọi constrained decoding (pass 2 dưới schema per-run, `structured_outputs`) là
+  đóng góp, trục ablation hay "tối ưu cho SLM".** Nó là kỹ thuật có sẵn của serving stack
+  (vLLM/XGrammar), áp đồng nhất mọi arm và mọi nấc, được khai ở Experimental Setup như một
+  điều kiện serving; tỉ lệ pass 2 chỉ báo mô tả theo size, không kèm câu claim.
 - **Related Work không được claim đề xuất tốt hơn** trước khi có kết quả thực nghiệm.
 - **Conclusion không giới thiệu claim/kết quả mới** và không nới phạm vi model family.
 

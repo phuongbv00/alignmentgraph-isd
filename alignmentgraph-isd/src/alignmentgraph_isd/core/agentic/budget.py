@@ -163,3 +163,10 @@ SELF_VALIDATION_BUDGET = 2
 #: sentences, the countdown itself would be a second variable sitting on the
 #: ``agent_mode`` axis.
 TURNS_LEFT_WARNING = 3
+
+#: Constrained passes one rejected submit may trigger: the model is asked ONCE
+#: to write the artifact under its per-run schema (``turn.constrained_pass``).
+#: A second pass on the same rejection would decode under the same grammar
+#: from the same context and is not a different attempt; what a first pass
+#: cannot produce goes back to the agent as the rejection it always was.
+CONSTRAINED_PASSES_PER_SUBMIT = 1

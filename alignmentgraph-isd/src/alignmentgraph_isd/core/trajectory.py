@@ -89,6 +89,18 @@ class TrajectoryAction(StrEnum):
     #: The single arm's allowance for answering repair requests after its last
     #: stage landed ran out — the same number of turns a stage gets.
     REPAIR_WINDOW_CLOSED = "repair_window_closed"
+    #: A rejected submit was written again by the model under the artifact's
+    #: per-run schema, with no tools bound (``turn.constrained_pass``): what
+    #: was wrong with the call, and whether the pass was accepted. A transport
+    #: recovery on the agent's own artifact, so it is recorded under the
+    #: agent's identity; it is not a design step.
+    CONSTRAINED_PASS = "constrained_pass"
+    #: The backend refused the structured-output request itself, once per run;
+    #: every later rejection goes back to the agent unassisted.
+    STRUCTURED_OUTPUTS_UNAVAILABLE = "structured_outputs_unavailable"
+    #: A task id the plan repeated was given the next free one at commit
+    #: (``dev_plans.dedupe_task_ids``).
+    DUPLICATE_TASK_ID_RENAMED = "duplicate_task_id_renamed"
     #: A repair pass stopped early because it had proved it could not fix what
     #: was left: the same findings came back with nothing repaired in between.
     #: Recorded so a converged run does not read like a clean one.
@@ -206,6 +218,9 @@ _RECOVERY_ACTIONS = frozenset({
     TrajectoryAction.REPEATED_TOOL_CALL,
     TrajectoryAction.COMMIT_INVALID_SECTION,
     TrajectoryAction.DUPLICATE_SUBMIT,
+    TrajectoryAction.CONSTRAINED_PASS,
+    TrajectoryAction.STRUCTURED_OUTPUTS_UNAVAILABLE,
+    TrajectoryAction.DUPLICATE_TASK_ID_RENAMED,
     TrajectoryAction.BARE_ARTIFACT_WRAPPED,
     TrajectoryAction.COMMIT_DID_NOT_LAND,
     TrajectoryAction.THINKING_ONLY_REPLY,

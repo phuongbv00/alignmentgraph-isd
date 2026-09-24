@@ -39,8 +39,8 @@ from ..llm_io import parse_json_response
 from ..memory import Memory, new_agent_run_id
 from ..rag.planner import RetrievalPlanner
 from ..trajectory import ORCHESTRATOR
-from ..checks import serialize_violations
-from . import alignment_state, budget, repair_turn, tools
+from ..checks import duration_hours, serialize_violations
+from . import alignment_state, budget, grammar, repair_turn, tools
 from . import turn as turn_mod
 from .client import AgenticLLM
 from .compaction import compact
@@ -175,6 +175,9 @@ class ToolLoop:
         #: `test_every_published_context_belongs_to_a_tool_loop` exists to
         #: forbid.
         self._summariser = AgenticLLM(config, trajectory, ORCHESTRATOR)
+        #: Appended to the NEXT tool result, once: how a submit the constrained
+        #: pass completed is told to the agent whose call it answers.
+        self._pending_note = ""
         self.persona = persona or step.persona
         #: Which regen attempt this is. A stage that comes back empty is run
         #: again from a FRESH context, so each attempt is a different context
@@ -459,10 +462,37 @@ class ToolLoop:
             landed = set()
         open_now = tuple(key for key, _t, _r in self.step.submit_fields
                          if key not in landed and key not in closed)
-        self._live_specs = tools.tool_specs(
+        self._live_specs = self._tightened(tools.tool_specs(
             self.step, only=open_now, graph_mode=self.graph_mode,
-            retrieval_available=retrieval_available)
+            retrieval_available=retrieval_available))
         self._specs = merge_specs(self._specs, self._live_specs)
+
+    def _tightened(self, specs: list) -> list:
+        """The submit tools' parameters, with THIS design's vocabulary written
+        in (:mod:`grammar`): references as enums over the ids that exist, a
+        work set's fixed rows as constants, its stated count as bounds. Read
+        from the state at every binding, because the pools grow as the run
+        goes. The same function the single arm calls."""
+        return grammar.tighten_specs(
+            specs, grammar.Vocabulary.of(
+                self.state, course_hours=duration_hours(self.design_brief)),
+            work_set=self.step.work_set, mode=self.config.development_mode)
+
+    def _pass_schema(self, tool_name: str, artifact: str, params: dict) -> dict:
+        """The schema the constrained pass decodes under: the bound tool's own
+        tightened parameters, or — for an artifact whose tool is no longer
+        bound — the stage schema narrowed to that one artifact and tightened
+        the same way."""
+        bound = spec_parameters(self._live_specs, tool_name)
+        if bound:
+            return bound
+        prop = (params.get("properties") or {}).get(artifact)
+        if prop is None:
+            return {}
+        return grammar.tighten_parameters(
+            {"type": "object", "properties": {artifact: prop}, "required": [artifact]},
+            grammar.Vocabulary.of(self.state, course_hours=duration_hours(self.design_brief)),
+            work_set=self.step.work_set, mode=self.config.development_mode)
 
     def _handle_call(self, turn: ToolTurn, specs: list, stage_message: str) -> str:
         """One tool call, judged and answered. ``"return"`` ends the stage,
@@ -555,6 +585,20 @@ class ToolLoop:
         section, errors, unreadable = turn_mod.judge_submit(
             params, args, self._validate)
         artifact = self._artifact_of(turn.name, args)
+        if errors:
+            # Pass 2: the model writes the artifact again under its per-run
+            # schema, with no tools bound (`turn.constrained_pass`). Accepted,
+            # it is committed as this submit and costs no submit budget; the
+            # tool result says the arguments were completed. Refused, the
+            # rejection below is exactly what it was.
+            passed = turn_mod.constrained_pass(
+                self.llm, self.messages, turn, artifact=artifact,
+                schema=self._pass_schema(turn.name, artifact, params), errors=errors,
+                params=params, validate=self._validate, stats=self.stats,
+                trajectory=self.trajectory, identity=self.identity)
+            if passed is not None:
+                section, args, unreadable = passed
+                self._pending_note, errors = turn_mod.constrained_note(errors), []
         spent = self._submit_attempts.get(artifact, 0)
         if errors and spent < self.SUBMIT_BUDGET:
             self._submit_attempts[artifact] = spent = spent + 1
@@ -873,6 +917,7 @@ class ToolLoop:
         empty id after an assistant message with no ``tool_calls`` is
         malformed, and the single arm sends the history again."""
         self._ensure_assistant(turn)
+        observation, self._pending_note = observation + self._pending_note, ""
         if not turn.call_id:
             self.messages.append({"role": "user", "content": observation})
         else:

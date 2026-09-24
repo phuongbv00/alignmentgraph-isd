@@ -24,7 +24,12 @@ from typing import NamedTuple
 
 from .. import dev_plans, llm_io
 from . import budget, tools
-from .protocol import INVALID_TURN_NUDGE, REPEAT_UNCHANGED, turns_left_hint
+from .protocol import (
+    CONSTRAINED_PASS_REQUEST,
+    INVALID_TURN_NUDGE,
+    REPEAT_UNCHANGED,
+    turns_left_hint,
+)
 from .tools import unwrap_section
 
 
@@ -328,6 +333,94 @@ def judge_submit(params: dict, args: dict, validate) -> tuple[dict, list[str], l
         shape = tools.shape_errors(params, args, unreadable)
         errors = shape + [e for e in errors if e not in shape]
     return section, errors, unreadable
+
+
+def constrained_pass(llm, messages: list, turn: ToolTurn, *, artifact: str, schema: dict,
+                     errors: list[str], params: dict, validate, stats: dict,
+                     trajectory, identity: str) -> tuple[dict, dict, list[str]] | None:
+    """A rejected submit, written again by the model under the artifact's
+    per-run schema: ``(section, args, unreadable)`` when the pass is accepted,
+    ``None`` when it is not or could not be made.
+
+    Pass 1 is the tool call the agent chose to make; this is pass 2, made only
+    when the validator refused it, and it is the TRANSPORT's recovery, not the
+    agent's decision: the call the agent made is answered with what was wrong
+    (``protocol.CONSTRAINED_PASS_REQUEST``) and the model writes the arguments
+    again with no tools bound and the decoder holding the shape — the
+    references as enums over the ids that exist, a fixed assignment's rows as
+    constants, a stated count as bounds (:mod:`grammar`). The conversation the
+    pass sees is the agent's own, and the artifact is committed as the agent's
+    submit; nothing is published as a second context, and the pass is not a
+    turn of the meter (``budget.CONSTRAINED_PASSES_PER_SUBMIT`` bounds it).
+
+    ONE implementation, called identically by both loops. The alternative —
+    answering the rejection and asking the model to try again — was measured
+    to cost a turn and a share of the submit budget each time (2B run, 51
+    rejections, 21 of them argument-less), and it charged the model for a
+    failure that sits in the serving stack's tool-call parser (see
+    ``client.AgenticLLM.call_structured``). A recovery granted on one side of
+    the decomposition axis and withheld on the other would be a confound the
+    claim cannot survive, which is why neither loop composes its own.
+
+    What the pass returns is judged by the SAME validator the call was: a
+    grammar fixes structure and not semantics, and an artifact the decoder
+    shaped and the validator still refuses (a cross-field rule no schema can
+    say) goes back to the agent as the rejection it always was, counted as
+    ``constrained_pass_rejected``.
+    """
+    if llm is None or not schema or not llm.structured_outputs_available():
+        return None
+    declared = list((params.get("properties") or {}).keys()) or [artifact]
+    request = CONSTRAINED_PASS_REQUEST.format(
+        tool=turn.name, keys=", ".join(f'"{k}"' for k in declared),
+        errors="\n- ".join(errors))
+    history = list(messages)
+    if turn.message is not None or turn.call_id:
+        history.append(turn.message if turn.message is not None
+                       else {"role": "assistant", "content": turn.text or ""})
+    if turn.call_id:
+        history.append({"role": "tool", "tool_call_id": turn.call_id,
+                        "name": turn.name, "content": request})
+    else:
+        history.append({"role": "user", "content": request})
+    stats["constrained_passes"] = stats.get("constrained_passes", 0) + 1
+    raw = llm.call_structured(history, schema, turn.name)
+    parsed = llm_io.parse_json_response(raw, warn=False) if raw else {}
+    if not isinstance(parsed, dict) or not parsed:
+        stats["constrained_pass_rejected"] = stats.get("constrained_pass_rejected", 0) + 1
+        trajectory.log_recovery_event(
+            identity, "constrained_pass", f"{turn.name} | {'; '.join(errors)[:120]}",
+            "rejected: no artifact came back")
+        return None
+    if artifact in declared and not (set(parsed) & set(declared)):
+        # The artifact without its envelope: the schema asked for the key and
+        # a backend without a grammar may have answered with the value.
+        parsed = {artifact: parsed}
+    salvaged: list[str] = []
+    args = tools.coerce_args(params, parsed, salvaged=salvaged)
+    args = tools.reshape_args(params, args, reshaped=[], salvaged=salvaged)
+    section, still, unreadable = judge_submit(params, args, validate)
+    if still:
+        stats["constrained_pass_rejected"] = stats.get("constrained_pass_rejected", 0) + 1
+        trajectory.log_recovery_event(
+            identity, "constrained_pass", f"{turn.name} | {'; '.join(errors)[:120]}",
+            "rejected: " + "; ".join(still)[:160])
+        return None
+    trajectory.log_recovery_event(
+        identity, "constrained_pass", f"{turn.name} | {'; '.join(errors)[:120]}",
+        "accepted")
+    return section, args, unreadable
+
+
+#: What a tool result says when the artifact it answers was completed by the
+#: constrained pass. The agent is told, because the committed arguments are not
+#: the ones in its own call.
+CONSTRAINED_PASS_NOTE = (" (your call was not accepted as sent — {errors} — and the artifact was "
+                         "written again under its schema; what is committed is that version.)")
+
+
+def constrained_note(errors: list[str]) -> str:
+    return CONSTRAINED_PASS_NOTE.format(errors="; ".join(errors)[:160])
 
 
 def note_submit_rejected(label: str, turn: ToolTurn, args: dict, errors: list[str], *,

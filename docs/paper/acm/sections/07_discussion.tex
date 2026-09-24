@@ -53,7 +53,11 @@ deployment condition rather than a confound to apologise for, so the cap is deri
 from the checkable envelope in \Cref{sec:assumptions}, applied uniformly to every
 system, and failures and truncations are reported per system and size
 (\Cref{sec:robustness}). A higher-cap run remains a separate sensitivity, not a
-change to the condition. The only baseline-specific intervention was translating
+change to the condition. The grammar-constrained recovery of a rejected submit
+(\Cref{sec:assumptions}) is available to the proposed system alone, since the
+baselines run the benchmark's own harnesses; it removes structural failures of the
+serving stack's tool-call parser and not semantic ones, and its rate is reported
+rather than folded into the comparison. The only baseline-specific intervention was translating
 ReAct-ISD's prompt scaffolding into English; disclosing it permits an alternative
 translation while holding the method fixed. LLM judge drift and self-preference remain
 possible~\cite{panickssery2024llm}, mitigated by the no-LLM second instrument,

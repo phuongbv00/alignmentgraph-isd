@@ -37,7 +37,7 @@ from ..brief import _format_design_brief
 from ..memory import Memory, new_agent_run_id
 from ..checks import duration_hours, serialize_violations
 from ..trajectory import ORCHESTRATOR
-from . import alignment_state, budget, fanout, repair_turn, tools
+from . import alignment_state, budget, fanout, grammar, repair_turn, tools
 from . import turn as turn_mod
 from .client import AgenticLLM
 from .compaction import compact
@@ -150,6 +150,8 @@ class ReactLoop:
         #: `test_every_published_context_belongs_to_a_tool_loop` exists to
         #: forbid.
         self._summariser = AgenticLLM(config, trajectory, ORCHESTRATOR)
+        #: See ``ToolLoop._pending_note``.
+        self._pending_note = ""
         self.messages: list = []
         self.stats: dict = {
             **empty_stage_stats(),
@@ -403,7 +405,7 @@ class ReactLoop:
         done = self._done()
         if len(done) == len(STEPS):
             return
-        specs = tools.react_specs(STEPS, done, graph_mode=self.graph_mode)
+        specs = self._tightened(tools.react_specs(STEPS, done, graph_mode=self.graph_mode))
         self._specs = merge_specs(self._specs, specs)
         self.messages = [
             {"role": "system", "content": self._system_prompt()},
@@ -538,8 +540,19 @@ class ReactLoop:
             return "continue"
         args, carried = turn_mod.carry_over(self._kept, args)
         turn_mod.note_carried(carried, trajectory=self.trajectory, identity=self.identity)
-        section, errors, unreadable = turn_mod.judge_submit(
-            params, args, lambda parsed, _s=step: self._validate(_s, parsed))
+        validate = lambda parsed, _s=step: self._validate(_s, parsed)  # noqa: E731
+        section, errors, unreadable = turn_mod.judge_submit(params, args, validate)
+        if errors:
+            # Pass 2, exactly as the stage loop makes it: see
+            # `ToolLoop._handle_submit`. `params` is already this tool's
+            # tightened schema.
+            passed = turn_mod.constrained_pass(
+                self.llm, self.messages, turn, artifact=step.name, schema=params,
+                errors=errors, params=params, validate=validate, stats=self.stats,
+                trajectory=self.trajectory, identity=self.identity)
+            if passed is not None:
+                section, args, unreadable = passed
+                self._pending_note, errors = turn_mod.constrained_note(errors), []
         if errors:
             self._rejected[step.name] = self._rejected.get(step.name, 0) + 1
             turn_mod.note_submit_rejected(
@@ -578,7 +591,8 @@ class ReactLoop:
             self.stats["stage_order"].append(step.name)
         self._done_set = self._done()
         self._offer_contract()
-        self._live_specs = tools.react_specs(STEPS, self._done_set, graph_mode=self.graph_mode)
+        self._live_specs = self._tightened(
+            tools.react_specs(STEPS, self._done_set, graph_mode=self.graph_mode))
         self._specs = merge_specs(self._specs, self._live_specs)
         # Same in-loop repair the multi arm's stages get. It has to be
         # the same or the axis grows a second variable: one arm would
@@ -830,7 +844,17 @@ class ReactLoop:
                     f"(the {step.name} schema was here; that stage has been submitted. "
                     "Submit it again to add more — the schema comes back if anything is wrong.)")
 
+    def _tightened(self, specs: list) -> list:
+        """The submit tools' parameters with this design's vocabulary written
+        in — the same :mod:`grammar` call the stage loop makes; this agent
+        divides its own batches, so no work set."""
+        return grammar.tighten_specs(
+            specs, grammar.Vocabulary.of(
+                self.state, course_hours=duration_hours(self.design_brief)),
+            mode=self.config.development_mode)
+
     def _answer(self, turn, observation: str) -> None:
+        observation, self._pending_note = observation + self._pending_note, ""
         if turn.call_id:
             self._ensure_assistant(turn)
             self.messages.append({"role": "tool", "tool_call_id": turn.call_id,

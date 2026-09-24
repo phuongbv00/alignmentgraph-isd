@@ -243,7 +243,11 @@ def respec(messages: list, step, brief: str) -> str:
 #: Which agent-facing protocol a run spoke, recorded in
 #: ``metadata.run_config`` so that runs on either side of a change to the
 #: tools an agent is bound or to how a stage ends are never pooled by mistake.
-#: 6 = an assessment plan that states the summative procedure and the
+#: 7 = a rejected submit written again by the model under the artifact's
+#: per-run schema (references as enums over the ids that exist, a light
+#: assignment's rows as constants, stated counts as bounds), with no tools
+#: bound; the bound submit tools declare that schema too. 6 = an assessment
+#: plan that states the summative procedure and the
 #: adoption criteria in words, and modules whose minutes are held to what a
 #: course of the brief's length carries. 5 = the course's modules written by
 #: the outcomes stage and dividing every
@@ -255,7 +259,7 @@ def respec(messages: list, step, brief: str) -> str:
 #: each item's objective, type and cognitive level and each activity's
 #: objective and level, the mode states a material's depth, and the pilot
 #: data plan names its collection points in words.
-PROTOCOL_REV = 6
+PROTOCOL_REV = 7
 
 #: The answer to a repeated read whose result is unchanged — ONE wording for
 #: both arms, and only ever said when it is true (``turn.answer_read`` has
@@ -292,6 +296,12 @@ def empty_stage_stats() -> dict:
     difference is the compaction hook's failure rate on this model.
     ``repair_turns``: turns spent fixing the stage's OWN violations, kept
     apart so the decomposition axis is not read off a mixed turn count.
+    ``constrained_passes`` / ``constrained_pass_rejected``: how many rejected
+    submits were written again under the artifact's per-run schema
+    (``turn.constrained_pass``) and how many of those the validator still
+    refused. The first is the transport's recovery rate on this model — a
+    measurement about the model, reported by size — and the second is what
+    the grammar cannot reach.
     ``tool_errors``: tool calls that came back ERROR (13% of every tool
     result over runs 53042a0d/2559b22d), so the ceiling is read against
     turns that DID something.
@@ -307,6 +317,7 @@ def empty_stage_stats() -> dict:
             "args_salvaged": 0,
         "args_reshaped": 0, "truncated_turns": 0, "dropped_args": 0,
             "repair_turns": 0, "tool_errors": 0,
+            "constrained_passes": 0, "constrained_pass_rejected": 0,
             "n_sets": 0, "sets_gave_up": 0, "set_turns": 0,
             "set_submits_rejected": 0}
 
@@ -334,3 +345,13 @@ INVALID_TURN_NUDGE = (
     "Invalid turn: you must CALL A TOOL, not answer with text. Call one of "
     "the listed tools, or call submit with the complete artifact.")
 
+
+#: What the constrained pass asks. The call the model made is answered with
+#: this, then the model writes the artifact again with no tools bound and the
+#: artifact's schema enforced by the decoder. ONE wording for both arms.
+CONSTRAINED_PASS_REQUEST = (
+    "Your call to {tool} was not accepted:\n- {errors}\n"
+    "Write the arguments of {tool} again, as ONE JSON object whose top-level key(s) "
+    "are {keys}. Keep what was right in what you sent; fix only what is listed. "
+    "Write the JSON object and nothing else."
+)

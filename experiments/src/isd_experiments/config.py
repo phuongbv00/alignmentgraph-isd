@@ -229,6 +229,16 @@ class Generation:
     #: that pins its own in its constructor keeps it: that choice is part of
     #: the agent as the benchmark ships it.
     temperature: float | None = None
+    #: Whether a submit the proposed system's validator refuses is written
+    #: again by the model under the artifact's per-run schema, decoded with
+    #: the schema enforced by the endpoint (``response_format`` of kind
+    #: ``json_schema``). A transport recovery, declared here because it is a
+    #: property of how a call is made and must be one value for every arm
+    #: and every rung; the baselines make no such call. Needs an endpoint
+    #: whose structured-output backend compiles the schema (a self-hosted
+    #: server does; a router may not), which is one more reason the ladder
+    #: is self-hosted end to end.
+    structured_outputs: bool | None = None
 
 
 #: The two development modes the proposed system runs under; the adapter and
@@ -408,7 +418,8 @@ def _model(raw: dict) -> Model:
 
 
 #: [generation] keys, refused in [serving] with the move to make.
-GENERATION_KEYS = ("max_output_tokens", "streaming", "thinking_budget", "temperature")
+GENERATION_KEYS = ("max_output_tokens", "streaming", "thinking_budget", "temperature",
+                   "structured_outputs")
 
 
 def _positive_int(rest: dict, key: str, where: str, src: Path) -> int | None:
@@ -455,6 +466,10 @@ def _generation(raw: dict, serving: Serving, src: Path) -> Generation:
     if streaming is not None and not isinstance(streaming, bool):
         raise SystemExit(f"{src}: [generation].streaming must be true or false, "
                          f"got {streaming!r}.")
+    structured_outputs = rest.pop("structured_outputs", None)
+    if structured_outputs is not None and not isinstance(structured_outputs, bool):
+        raise SystemExit(f"{src}: [generation].structured_outputs must be true or false, "
+                         f"got {structured_outputs!r}.")
     temperature = rest.pop("temperature", None)
     if temperature is not None and (
             not isinstance(temperature, (int, float)) or isinstance(temperature, bool)
@@ -473,7 +488,8 @@ def _generation(raw: dict, serving: Serving, src: Path) -> Generation:
         )
     return Generation(max_output_tokens=max_output_tokens, streaming=streaming,
                       thinking_budget=thinking_budget,
-                      temperature=float(temperature) if temperature is not None else None)
+                      temperature=float(temperature) if temperature is not None else None,
+                      structured_outputs=structured_outputs)
 
 
 def _harness(raw: dict, src: Path) -> Harness:

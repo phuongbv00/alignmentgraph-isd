@@ -307,6 +307,15 @@ class TestGenerationSettings:
         with pytest.raises(SystemExit, match="no room for a prompt"):
             config.load(write(tmp_path, body))
 
+    def test_structured_outputs_is_a_boolean_posture(self, tmp_path):
+        """Declared like streaming: absent keeps the reader's default, a bool
+        is published as 1/0, anything else is refused."""
+        assert self._gen(tmp_path, "").generation.structured_outputs is None
+        assert self._gen(tmp_path, "structured_outputs = true").generation.structured_outputs is True
+        assert self._gen(tmp_path, "structured_outputs = false").generation.structured_outputs is False
+        with pytest.raises(SystemExit, match="structured_outputs"):
+            self._gen(tmp_path, 'structured_outputs = "yes"')
+
     def test_a_non_boolean_streaming_is_rejected(self, tmp_path):
         with pytest.raises(SystemExit, match="true or false"):
             self._gen(tmp_path, 'streaming = "yes"')
@@ -344,7 +353,8 @@ class TestGenerationSettings:
     @pytest.mark.parametrize("key, value", [("max_output_tokens", "8192"),
                                             ("streaming", "true"),
                                             ("thinking_budget", "0"),
-                                            ("temperature", "0.7")])
+                                            ("temperature", "0.7"),
+                                            ("structured_outputs", "true")])
     def test_a_generation_key_in_serving_is_refused_with_its_move(self, tmp_path, key, value):
         body = TWO_RUNG.replace('key_env = "MY_KEY"', f'key_env = "MY_KEY"\n{key} = {value}')
         with pytest.raises(SystemExit, match=r"belong\(s\) in \[generation\]"):

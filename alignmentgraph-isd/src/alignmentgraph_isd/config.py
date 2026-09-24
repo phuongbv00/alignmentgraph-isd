@@ -153,6 +153,22 @@ class HarnessRunConfig(BaseModel):
     # three items.
     development_mode: DevelopmentMode = "light"
 
+    # Whether a submit the validator refuses is written again by the model
+    # under the artifact's per-run schema, decoded with the schema enforced
+    # (``core/agentic/grammar.py``, ``turn.constrained_pass``). A TRANSPORT
+    # recovery, applied identically in both arms and on every rung: the
+    # serving stack's tool-call parser reconstructs a call from markup and
+    # enforces no schema, so on a small model the arguments arrive empty or
+    # name ids that do not exist, and a rejection then costs a turn and a
+    # share of the submit budget for a failure the decoder can hold shut.
+    # NOT an ablation axis and not a claimed contribution: every arm of one
+    # experiment runs under the same value (experiment.toml
+    # ``[generation].structured_outputs``), ``metadata.run_config`` records it,
+    # and ``metadata.autonomy`` counts the passes per stage. Off, a rejection
+    # goes straight back to the agent. A backend that refuses the request is
+    # remembered once per run (``_structured_outputs``).
+    structured_outputs: bool = True
+
     #: Lazily built by ``core.ratelimit.gate_for`` and shared by every agent in
     #: the run (they all receive this same config instance).
     _call_gate: Any = PrivateAttr(default=None)
@@ -162,5 +178,9 @@ class HarnessRunConfig(BaseModel):
     #: once a request under ``"required"`` was refused, ``""`` when
     #: ``bind_tools`` takes no such keyword at all.
     _tool_choice: Any = PrivateAttr(default=None)
+    #: Whether this run's backend accepts a structured-output request, learned
+    #: once by ``AgenticLLM.call_structured``: None until known, False once a
+    #: request was refused for its ``response_format``.
+    _structured_outputs: Any = PrivateAttr(default=None)
 
     model_config = {"arbitrary_types_allowed": True}

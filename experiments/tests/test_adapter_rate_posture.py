@@ -25,7 +25,7 @@ def _clean_env(monkeypatch):
     for name in ("BENCHMARK_RATE_LIMIT", "HARNESS_LLM_MAX_CONCURRENCY",
                  "HARNESS_LLM_MIN_INTERVAL", "HARNESS_REGEN_BACKOFF",
                  "HARNESS_REGEN_BUDGET", "BENCHMARK_DELAY", "HARNESS_FANOUT_WORKERS",
-                 "HARNESS_DEVELOPMENT_MODE"):
+                 "HARNESS_DEVELOPMENT_MODE", "AGENT_MODEL_STRUCTURED_OUTPUTS"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -93,6 +93,20 @@ def test_min_interval_is_off_unless_asked_for(monkeypatch):
 def test_regen_backoff_tracks_the_runners_delay(monkeypatch):
     monkeypatch.setenv("BENCHMARK_DELAY", "2.0")
     assert _regen_settings_from_env()["regen_backoff_seconds"] == 2.0
+
+
+def test_structured_outputs_is_the_package_default_unless_declared(monkeypatch):
+    """The one [generation] key the adapter reads itself, as the launcher
+    publishes it (1/0); a value it cannot apply RAISES, since the freeze
+    manifest records it."""
+    assert "structured_outputs" not in _regen_settings_from_env()
+    monkeypatch.setenv("AGENT_MODEL_STRUCTURED_OUTPUTS", "1")
+    assert _regen_settings_from_env()["structured_outputs"] is True
+    monkeypatch.setenv("AGENT_MODEL_STRUCTURED_OUTPUTS", "0")
+    assert _regen_settings_from_env()["structured_outputs"] is False
+    monkeypatch.setenv("AGENT_MODEL_STRUCTURED_OUTPUTS", "maybe")
+    with pytest.raises(ValueError, match="AGENT_MODEL_STRUCTURED_OUTPUTS"):
+        _regen_settings_from_env()
 
 
 def test_the_development_mode_is_the_package_default_unless_asked_for(monkeypatch):

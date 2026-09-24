@@ -332,6 +332,7 @@ matrix_write_manifest() {
     AGENT_MODEL_STREAMING="${_AGENT_MODEL_STREAMING:-}" \
     AGENT_MODEL_THINKING_BUDGET="${_AGENT_MODEL_THINKING_BUDGET:-}" \
     AGENT_MODEL_TEMPERATURE="${_AGENT_MODEL_TEMPERATURE:-}" \
+    AGENT_MODEL_STRUCTURED_OUTPUTS="${_AGENT_MODEL_STRUCTURED_OUTPUTS:-}" \
     HARNESS_FANOUT_WORKERS="${_HARNESS_FANOUT_WORKERS:-}" \
     HARNESS_DEVELOPMENT_MODE="${_HARNESS_DEVELOPMENT_MODE:-}" \
     python3 - "$manifest" <<'PYEOF'
@@ -395,6 +396,7 @@ manifest = {
         "streaming": os.environ.get("AGENT_MODEL_STREAMING", ""),
         "thinking_budget": os.environ.get("AGENT_MODEL_THINKING_BUDGET", ""),
         "temperature": os.environ.get("AGENT_MODEL_TEMPERATURE", ""),
+        "structured_outputs": os.environ.get("AGENT_MODEL_STRUCTURED_OUTPUTS", ""),
     },
     "harness": {
         "fanout_workers": os.environ.get("HARNESS_FANOUT_WORKERS", ""),

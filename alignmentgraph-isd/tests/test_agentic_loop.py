@@ -35,6 +35,15 @@ def batch(*calls: dict) -> dict:
     return {"__batch__": list(calls)}
 
 
+def structured(payload) -> dict:
+    """A scripted answer to the CONSTRAINED PASS: what the model writes when a
+    rejected submit is put to it again under the artifact's schema with no
+    tools bound. Consumed only by that call — a script that holds none leaves
+    the pass answered with nothing, so the rejection reaches the model's next
+    turn exactly as it would on a backend without the feature."""
+    return {"__structured__": payload}
+
+
 def call(name: str, args: dict) -> dict:
     """A scripted NATIVE tool call turn (what ``.tool_calls`` carries).
 
@@ -65,7 +74,9 @@ class ScriptedModel:
         self.invocations = 0
         self.bound_tools: list | None = None
 
-    def bind(self, **_kwargs) -> "ScriptedModel":
+    def bind(self, **kwargs) -> "ScriptedModel":
+        if "response_format" in kwargs:
+            return _ConstrainedScript(self, kwargs["response_format"])
         return self
 
     def bind_tools(self, specs) -> "ScriptedModel":
@@ -85,6 +96,11 @@ class ScriptedModel:
 
     def invoke(self, _messages) -> _Result:
         self.invocations += 1
+        # A `structured` marker belongs to a constrained pass; one the loop
+        # never made is skipped, not spoken as the model's next turn.
+        while self._responses and isinstance(self._responses[0], dict) \
+                and "__structured__" in self._responses[0]:
+            self._responses.pop(0)
         response = self._responses.pop(0) if self._responses else "{}"
         if isinstance(response, dict) and "__batch__" in response:
             return _Result(tool_calls=[
@@ -101,6 +117,24 @@ class ScriptedModel:
                                         "id": f"c{self.invocations}"}])
         return _Result(content=response if isinstance(response, str)
                        else json.dumps(response))
+
+
+class _ConstrainedScript:
+    """The scripted model bound for a constrained pass: answers the next
+    :func:`structured` marker, or nothing (the script is not consumed)."""
+
+    def __init__(self, model: ScriptedModel, response_format: dict) -> None:
+        self.model = model
+        self.response_format = response_format
+        model.structured_requests = getattr(model, "structured_requests", []) + [response_format]
+
+    def invoke(self, _messages) -> _Result:
+        responses = self.model._responses
+        if responses and isinstance(responses[0], dict) and "__structured__" in responses[0]:
+            payload = responses.pop(0)["__structured__"]
+            self.model.invocations += 1
+            return _Result(content=payload if isinstance(payload, str) else json.dumps(payload))
+        return _Result(content="")
 
 
 _ANALYSIS = {

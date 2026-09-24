@@ -51,6 +51,7 @@ EVENT_ACTIONS = {
     "excess_artifacts_trimmed", "module_minutes_capped",
     "items_without_parent",
     "calls_not_executed", "repair_window_closed",
+    "constrained_pass", "structured_outputs_unavailable", "duplicate_task_id_renamed",
     # structured records
     "repair", "node_add", "node_update", "doc_write", "validate", "check", "audit",
     "retrieval", "work_sets", "reconcile", "converge",
@@ -85,7 +86,7 @@ METADATA_KEYS = {
     "autonomy",
 }
 RUN_CONFIG_KEYS = {
-    "agent_mode", "context_mode", "development_mode",
+    "agent_mode", "context_mode", "development_mode", "structured_outputs",
     # The trim budget the stages ran under: it changes what a results dir
     # means, so it is self-describing.
     "max_turns", "submit_budget", "history_char_budget",

@@ -61,6 +61,7 @@ GENERATION_ENV = {
     "streaming": "AGENT_MODEL_STREAMING",
     "thinking_budget": "AGENT_MODEL_THINKING_BUDGET",
     "temperature": "AGENT_MODEL_TEMPERATURE",
+    "structured_outputs": "AGENT_MODEL_STRUCTURED_OUTPUTS",
 }
 
 #: The proposed system's run posture -> the variable its adapter reads. Not a

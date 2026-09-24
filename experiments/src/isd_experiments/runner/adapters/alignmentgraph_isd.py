@@ -103,6 +103,19 @@ def _regen_settings_from_env() -> dict[str, Any]:
             raise ValueError(
                 f"HARNESS_DEVELOPMENT_MODE must be 'light' or 'full', got {raw_mode!r}")
         settings["development_mode"] = mode
+    # ``AGENT_MODEL_STRUCTURED_OUTPUTS`` is the one [generation] key this
+    # adapter reads itself: whether a refused submit is written again under
+    # its schema (``HarnessRunConfig.structured_outputs``). ``shared/llm``
+    # leaves it alone because no baseline makes a structured-output call.
+    # ``1``/``0`` as the launcher publishes it; anything else RAISES, like the
+    # two harness postures above and for the same reason.
+    raw_structured = os.getenv("AGENT_MODEL_STRUCTURED_OUTPUTS")
+    if raw_structured:
+        flag = raw_structured.strip().lower()
+        if flag not in ("1", "0", "true", "false"):
+            raise ValueError(
+                f"AGENT_MODEL_STRUCTURED_OUTPUTS must be 1 or 0, got {raw_structured!r}")
+        settings["structured_outputs"] = flag in ("1", "true")
     interval = os.getenv("HARNESS_LLM_MIN_INTERVAL")
     if interval is not None:
         try:

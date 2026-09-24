@@ -468,6 +468,10 @@ def _run_one_set(config, memory, trajectory, design_brief, step, spec, work_set,
                                     loop.stats["compaction_summaries"]),
                                    ("args_reshaped",
                                     loop.stats["args_reshaped"]),
+                                   ("constrained_passes",
+                                    loop.stats["constrained_passes"]),
+                                   ("constrained_pass_rejected",
+                                    loop.stats["constrained_pass_rejected"]),
                                    ("assignment_reads",
                                     loop.stats["assignment_reads"])):
                     set_stats[key] = set_stats.get(key, 0) + value
@@ -728,6 +732,7 @@ def _metadata(config, trajectory, design_brief, *, single: bool, graph_mode: boo
             # Not an axis: how much of the planned scale was written out. Every
             # arm of one experiment runs under the same value.
             "development_mode": config.development_mode,
+            "structured_outputs": config.structured_outputs,
             "history_char_budget": history_budget(config),
             "max_turns": react.MAX_TURNS if single else ToolLoop.MAX_TURNS,
             "submit_budget": ToolLoop.SUBMIT_BUDGET,

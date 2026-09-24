@@ -21,6 +21,7 @@ max_output_tokens = 8192
 streaming = true
 thinking_budget = 512
 temperature = 0.7
+structured_outputs = true
 
 [harness]
 fanout_workers = 1

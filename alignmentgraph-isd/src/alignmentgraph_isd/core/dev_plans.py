@@ -1349,9 +1349,10 @@ FORMATIVE_MODULE_MINUTES = 180
 
 def task_ceiling(modules: list[dict] | None) -> int:
     """How many assessment tasks this course's blueprint should carry, from
-    the modules the outcomes stage wrote: one summative per module, one
-    formative per module longer than ``FORMATIVE_MODULE_MINUTES`` (a module
-    stating no minutes gets none), and one diagnostic for the course.
+    the modules the outcomes stage wrote: the sum of every module's
+    :func:`task_allowance` — one summative per module, one formative per
+    module longer than ``FORMATIVE_MODULE_MINUTES`` (a module stating no
+    minutes gets none), and one diagnostic for the course.
 
     Bounded by ``MAX_SETS_HARD_CAP`` as well, because that is the ceiling on
     WORK SETS and the fan-out gives one set per task: a task past it is a task
@@ -1361,7 +1362,67 @@ def task_ceiling(modules: list[dict] | None) -> int:
     modules = [m for m in (modules or []) if isinstance(m, dict)]
     if not modules:
         return MAX_SETS_HARD_CAP
-    return max(1, min(len(modules) + len(long_modules(modules)) + 1, MAX_SETS_HARD_CAP))
+    total = sum(task_allowance(m, i) for i, m in enumerate(modules))
+    return max(1, min(total, MAX_SETS_HARD_CAP))
+
+
+def task_allowance(module: dict, index: int) -> int:
+    """How many assessment tasks ONE module's set may list: its summative
+    task, a formative one when it is longer than ``FORMATIVE_MODULE_MINUTES``,
+    and the course's one diagnostic task on the FIRST module (``index`` 0),
+    where the course opens. The per-module half of :func:`task_ceiling`, and
+    what the per-run submit schema bounds each set's ``assessment_tasks`` to."""
+    allowance = 1
+    if isinstance(module, dict) and module_minutes(module) > FORMATIVE_MODULE_MINUTES:
+        allowance += 1
+    if index == 0:
+        allowance += 1
+    return allowance
+
+
+def dedupe_task_ids(plan: dict) -> tuple[dict, list[tuple[str, str]]]:
+    """The plan with every REPEATED task id renamed to the next free one, and
+    the ``(old, new)`` pairs, in plan order. The first task keeps its id.
+
+    Two tasks with one id are one node in the graph and one ``task_id`` for
+    every item that names them: MEASURED (run 2B, 2026-09-24) six tasks were
+    all ``AT-01`` and 53 items landed in one task. The grammar cannot refuse a
+    repeat (``uniqueItems`` is not compiled), so it is settled here, at the
+    commit, before any item exists to point at the wrong one; a plan whose ids
+    are already distinct is returned unchanged.
+    """
+    if not isinstance(plan, dict) or not isinstance(plan.get("sets"), list):
+        return plan, []
+    # Every id the plan uses anywhere is TAKEN: a repeat is renamed to one no
+    # task holds, not to one a later task will turn out to hold.
+    taken = {_bare(t.get("id")) for t in plan_tasks(plan) if _bare(t.get("id"))}
+    seen: set[str] = set()
+    renamed: list[tuple[str, str]] = []
+    sets = []
+    counter = 0
+    for entry in plan["sets"]:
+        if not isinstance(entry, dict) or not isinstance(entry.get("assessment_tasks"), list):
+            sets.append(entry)
+            continue
+        tasks = []
+        for task in entry["assessment_tasks"]:
+            if isinstance(task, dict) and _bare(task.get("id")) in seen:
+                old = str(task["id"])
+                counter += 1
+                new = f"AT-{counter:02d}"
+                while new in taken:
+                    counter += 1
+                    new = f"AT-{counter:02d}"
+                taken.add(new)
+                task = {**task, "id": new}
+                renamed.append((old, new))
+            if isinstance(task, dict) and _bare(task.get("id")):
+                seen.add(_bare(task["id"]))
+            tasks.append(task)
+        sets.append({**entry, "assessment_tasks": tasks})
+    if not renamed:
+        return plan, []
+    return {**plan, "sets": sets}, renamed
 
 
 def long_modules(modules: list[dict]) -> list[str]:

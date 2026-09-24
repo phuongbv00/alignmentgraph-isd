@@ -620,3 +620,40 @@ def test_the_ceiling_finding_is_handed_back_rather_than_repaired():
     ctx = repairs.RepairContext(graph=AlignmentGraph(), store=None,
                                 trajectory=TrajectoryLogger(), actor=ORCHESTRATOR)
     assert repairs.repair_blueprint_pairs(ctx, [violation]) == [violation]
+
+
+# ── one id per task ─────────────────────────────────────────────────────────
+
+def test_a_repeated_task_id_is_renamed_at_the_commit_on_both_substrates():
+    """MEASURED (2B run, 2026-09-24): six tasks all `AT-01`, and 53 items in
+    one task. Settled at the commit — the first keeps its id, each repeat gets
+    the next free one — and recorded; the grammar cannot refuse a repeat."""
+    plan = {"assessment_plan": {
+        "sets": [{"module_id": "MOD-01", "assessment_tasks": [
+                      _set("AT-01", "diagnostic", ["ILO-01"]),
+                      _set("AT-01", "summative", ["ILO-01"])]},
+                 {"module_id": "MOD-02", "assessment_tasks": [
+                      _set("AT-01", "summative", ["ILO-02"], module="MOD-02"),
+                      _set("AT-03", "formative", ["ILO-02"], module="MOD-02")]}],
+        "lo_coverage_targets": {"ILO-01": ["diagnostic", "summative"],
+                                "ILO-02": ["summative", "formative"]}}}
+    renamed, pairs = dev_plans.dedupe_task_ids(plan["assessment_plan"])
+    assert pairs == [("AT-01", "AT-02"), ("AT-01", "AT-04")]
+    assert [t["id"] for t in dev_plans.plan_tasks(renamed)] == ["AT-01", "AT-02", "AT-04", "AT-03"]
+    assert dev_plans.dedupe_task_ids(renamed) == (renamed, []), "distinct ids are left alone"
+
+    graph, store, trajectory = AlignmentGraph(), ProseStore(), TrajectoryLogger()
+    specialists.commit_assessment(graph, trajectory, plan)
+    specialists.commit_assessment_prose(store, trajectory, plan)
+    in_graph = sorted(n["data"]["id"] for n in graph.element_nodes(NodeType.ASSESSMENT))
+    in_prose = sorted(t["id"] for t in dev_plans.plan_tasks(store.get("assessment_plan")))
+    assert in_graph == in_prose == ["AT-01", "AT-02", "AT-03", "AT-04"]
+    events = [e for e in trajectory.recovery_events if e["action"] == "duplicate_task_id_renamed"]
+    assert len(events) == 2 and "AT-01 -> AT-02" in events[0]["context"]["input_summary"]
+
+    # A plan that reached the check without the commit says what it would do.
+    found = checks.blueprint_consistency_data("assessment_plan_0", plan["assessment_plan"])
+    dup = [v for v in found if v.metadata.get("kind") == "duplicate_task_id"]
+    assert [v.metadata["count"] for v in dup] == [3]
+    assert not [v for v in checks.blueprint_consistency_data("assessment_plan_0", renamed)
+                if v.metadata.get("kind") == "duplicate_task_id"]

@@ -44,6 +44,29 @@ def _rejects_tool_choice(exc: Exception) -> bool:
     return status in (400, 422) and "tool" in msg
 
 
+def _rejects_response_format(exc: Exception) -> bool:
+    """Whether a failed request was refused FOR its ``response_format`` — the
+    one failure answered by giving the feature up for the run."""
+    if _is_truncation_error(exc):
+        return False
+    msg = str(exc).lower()
+    if "response_format" in msg or "json_schema" in msg or "structured" in msg \
+            or "guided" in msg or "grammar" in msg:
+        return True
+    status = getattr(exc, "status_code", None)
+    return status in (400, 422) and "schema" in msg
+
+
+def _merged_extra_body(raw_llm, extra: dict) -> dict:
+    """``extra`` on top of what the model was CONSTRUCTED with. A bound
+    ``extra_body`` REPLACES the constructor's rather than merging into it, so
+    binding one to cap a summary would drop the thinking budget the factory
+    put there — and the compaction call would reason without a ceiling on the
+    one path that asked for the fewest tokens."""
+    base = getattr(raw_llm, "extra_body", None)
+    return {**(dict(base) if isinstance(base, dict) else {}), **extra}
+
+
 class AgenticLLM:
     """Model caller for the agentic arm: native tool calling, truncation
     salvage, trajectory accounting.
@@ -55,7 +78,10 @@ class AgenticLLM:
     agent never chooses to compact, so compaction is not an action in its
     protocol and must not be dressed as one; the accounting both paths share
     (``_begin``/``_account``) is what keeps the hook's price on the books.
-    Repairs never call the model at all.
+    Repairs never call the model at all. ``call_structured`` is the agent's
+    own artifact written a second time under its schema — the constrained
+    pass — and the third way into the model; it too books through
+    ``_begin``/``_account``.
 
     ``call_prose`` must never acquire ``response_format``: a summary written
     under ``response_format=json_object`` comes back as JSON, is rejected as
@@ -199,7 +225,8 @@ class AgenticLLM:
                     # and whichever the backend reads, the cap binds.
                     raw_llm = raw_llm.bind(
                         max_tokens=max_tokens,
-                        extra_body={"max_tokens": max_tokens, **(extra_body or {})})
+                        extra_body=_merged_extra_body(
+                            raw_llm, {"max_tokens": max_tokens, **(extra_body or {})}))
                 except Exception:  # noqa: BLE001 - a backend that cannot be bound
                     self.trajectory.log_recovery_event(
                         self.identity, "completion_cap_unbindable", "", str(max_tokens))
@@ -220,6 +247,71 @@ class AgenticLLM:
                 self.identity, "completion_cap_ignored", f"asked {max_tokens}",
                 f"served {completion}")
         return content
+
+    def call_structured(self, messages: list[dict], schema: dict, name: str) -> str:
+        """One model call with NO tools bound and the reply DECODED UNDER
+        ``schema``: the constrained pass (``turn.constrained_pass``).
+
+        The agent's own call, under the agent's identity — unlike
+        :meth:`call_prose`, which is the harness's. The artifact it produces is
+        the agent's artifact, written a second time with the decoder holding
+        the shape the tool-call parser did not: the serving stack's tool-call
+        parser reconstructs a call from markup and enforces no schema, and on
+        the small end of the ladder the arguments it hands over are empty or
+        name ids that do not exist (see ``grammar``). The request carries the
+        schema as ``response_format`` of kind ``json_schema``, which the
+        structured-output backend compiles to a grammar; ``strict`` says the
+        grammar is the contract.
+
+        Returns the reply's content, ``""`` on any failure. A backend that
+        refuses the request FOR its ``response_format`` is remembered once per
+        run (``structured_outputs_unavailable``) and every later call returns
+        ``""`` without leaving — the same shape as the ``tool_choice`` memo, so
+        an endpoint without the feature costs one refused request, not one per
+        rejected submit."""
+        if self.config.llm_factory is None or not self.structured_outputs_available():
+            return ""
+        raw_llm = self.config.llm_factory()
+        response_format = {"type": "json_schema",
+                           "json_schema": {"name": name, "schema": schema, "strict": True}}
+        try:
+            bound = raw_llm.bind(response_format=response_format)
+        except Exception as exc:  # noqa: BLE001 - a backend that cannot be bound
+            self._forget_structured_outputs(str(exc))
+            return ""
+        started = self._begin(messages)
+        try:
+            with gate_for(self.config).hold():
+                result = bound.invoke(messages)
+        except Exception as exc:  # noqa: BLE001 - every backend error is recorded below
+            self.trajectory.log_llm_call(0, 0)
+            if _rejects_response_format(exc):
+                self._forget_structured_outputs(str(exc))
+            else:
+                self.trajectory.log_recovery_event(self.identity, "llm_error", "", str(exc))
+            return ""
+        content, _calls, _cut = self._account(result, messages, started)
+        return content
+
+    def structured_outputs_available(self) -> bool:
+        """Whether this run still sends structured-output requests: the
+        config's posture, unless a refusal has been remembered. The loops ask
+        before making a pass, so a run with the feature off counts none."""
+        if not getattr(self.config, "structured_outputs", True):
+            return False
+        memo = getattr(self.config, "_structured_outputs", None)
+        if memo is None:
+            memo = getattr(self, "_structured_outputs_memo", None)
+        return memo is None or bool(memo)
+
+    def _forget_structured_outputs(self, why: str) -> None:
+        self.trajectory.log_recovery_event(
+            self.identity, "structured_outputs_unavailable", why[:120],
+            "every later rejected submit goes back to the agent")
+        try:
+            self.config._structured_outputs = False
+        except (AttributeError, ValueError):  # pragma: no cover - a bare stub config
+            self._structured_outputs_memo = False
 
     def _begin(self, messages: list[dict]) -> float:
         """Announce the call and start its clock.

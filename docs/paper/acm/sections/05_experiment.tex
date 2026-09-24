@@ -120,6 +120,19 @@ leaves on a single 12--16\,GB GPU, the deployment target this work claims. The
 claimed envelope. Whether an architecture completes within this limit is therefore a
 measured deployment property.
 
+Tool calls are native on every rung: the server parses the model's call markup into
+structured arguments before they reach any system~\cite{kwon2023vllm}. That parser
+enforces no argument schema, so on the small rungs a submitted artifact can arrive
+empty or name an identifier that does not exist. The proposed system answers such a
+rejection with one further model call in which the server's grammar-constrained
+decoder holds the artifact to its schema~\cite{dong2024xgrammar}; the schema is
+built per run from the design state, so a reference can only name an identifier the
+design holds, and the result is judged by the same validator as the original call.
+This is a serving-side recovery applied identically in every arm and on every rung,
+and the baselines do not use it because their harnesses are the benchmark's. We
+report the recovery rate per size as a descriptive property of the model, and make
+no claim about it.
+
 The proposed system plans every design at full scale---each assessment task
 states how many items it has---and writes out a typical slice of it: for every
 objective a task covers, one item at that objective's own cognitive level in a

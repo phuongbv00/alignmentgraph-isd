@@ -731,6 +731,13 @@ class _Result:
         self.additional_kwargs = {"reasoning_content": reasoning} if reasoning else {}
 
 
+class _NoStructuredOutput:
+    """What a fake bound for a constrained pass answers: nothing."""
+
+    def invoke(self, _messages):
+        return _Result(content="")
+
+
 class FakeChatModel:
     """Network-free chat model that returns canned, schema-valid JSON.
 
@@ -749,7 +756,11 @@ class FakeChatModel:
         self._tools_bound = False
         self._calls = 0
 
-    def bind(self, **_kwargs) -> "FakeChatModel":
+    def bind(self, **kwargs) -> "FakeChatModel":
+        if "response_format" in kwargs:
+            # The constrained pass: this fake has no grammar, so it answers
+            # nothing and the rejection reaches the model's next turn.
+            return _NoStructuredOutput()
         return self
 
     def bind_tools(self, specs, **_kwargs) -> "FakeChatModel":

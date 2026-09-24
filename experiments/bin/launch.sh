@@ -56,7 +56,7 @@ if [ "$DRY_RUN" = "1" ]; then
         echo "  judges  : off ($EXP_ROOT/isd-exp judge llm|alignment <run_dir> afterwards)"
     fi
     echo "  serving : window=${_AGENT_MODEL_CONTEXT_WINDOW:--}"
-    echo "  generate: max_out=${_AGENT_MODEL_MAX_OUTPUT_TOKENS:--} streaming=${_AGENT_MODEL_STREAMING:--} thinking=${_AGENT_MODEL_THINKING_BUDGET:--} temperature=${_AGENT_MODEL_TEMPERATURE:--}"
+    echo "  generate: max_out=${_AGENT_MODEL_MAX_OUTPUT_TOKENS:--} streaming=${_AGENT_MODEL_STREAMING:--} thinking=${_AGENT_MODEL_THINKING_BUDGET:--} temperature=${_AGENT_MODEL_TEMPERATURE:--} structured=${_AGENT_MODEL_STRUCTURED_OUTPUTS:--}"
     echo "  harness : fanout=${_HARNESS_FANOUT_WORKERS:--} development=${_HARNESS_DEVELOPMENT_MODE:--}"
     echo "  pool    : ${POOL_HINT:-(not pooled — ${EXPERIMENT} results never enter the paper)}"
     for slot in $_SLOTS_LIST; do

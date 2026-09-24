@@ -16,6 +16,7 @@ from conftest import add_assessment
 from alignmentgraph_isd.core import checks, dev_plans
 from alignmentgraph_isd.core.agentic import loop, specialists, tools
 from alignmentgraph_isd.core.agentic.specialists import STEPS
+from alignmentgraph_isd.core.alignment_graph import NodeType
 
 STEP_BY_NAME = {step.name: step for step in STEPS}
 
@@ -711,3 +712,203 @@ def test_a_rejected_submit_records_the_shape_of_the_reply():
     shape = turn_mod.reply_shape(message)
     assert shape == " | content=24 reasoning=2 finish=stop calls=1 invalid=0"
     assert turn_mod.reply_shape(None) == ""
+
+
+# ── the constrained pass ────────────────────────────────────────────────────
+# A rejected submit is written again by the model under the artifact's
+# per-run schema (`turn.constrained_pass`), with no tools bound. The scripted
+# model answers that call from a `structured(...)` marker and nothing else, so
+# a script that carries none is the case of a backend without the feature.
+
+def _rejected(trajectory) -> list:
+    return [e for e in trajectory.recovery_events if e["action"] == "submit_rejected"]
+
+
+def _passes(trajectory) -> list:
+    return [e for e in trajectory.recovery_events if e["action"] == "constrained_pass"]
+
+
+def test_an_argument_less_submit_is_completed_by_the_constrained_pass():
+    """MEASURED (2B run, 2026-09-24): 21 of 51 rejections were a `submit_*`
+    call whose arguments arrived as `{}` from the serving stack's tool-call
+    parser. The pass writes the artifact under its schema; it is committed
+    as this submit, costs no submit budget, and the tool result says so."""
+    from test_agentic_loop import _ANALYSIS, _OUTCOMES, STEP_BY_NAME, _harness, _loop, call, structured
+
+    step = STEP_BY_NAME["outcomes"]
+    model, config, graph, trajectory, brief = _harness([
+        call("submit_learning_objectives", {}),
+        structured({"learning_objectives": _OUTCOMES["learning_objectives"]}),
+        call("submit_course_modules", _OUTCOMES),
+    ])
+    specialists.commit_analysis(graph, trajectory, _ANALYSIS)
+
+    loop_ = _loop(config, graph, trajectory, brief, step)
+    loop_.run()
+
+    assert [n["data"]["id"] for n in graph.element_nodes(NodeType.OBJECTIVE)] == ["ILO-01"]
+    assert not _rejected(trajectory), "the pass answered it; nothing went back as a rejection"
+    assert [e["context"]["output_summary"] for e in _passes(trajectory)] == ["accepted"]
+    assert loop_.stats["constrained_passes"] == 1
+    assert loop_.stats["constrained_pass_rejected"] == 0
+    assert loop_.stats["submits_rejected"] == 0
+    # The request went out under the schema the tool was bound with, tightened
+    # with this design's vocabulary, and the tool result told the agent.
+    request = model.structured_requests[0]["json_schema"]
+    assert request["name"] == "submit_learning_objectives" and request["strict"] is True
+    assert "learning_objectives" in request["schema"]["properties"]
+    answered = [m for m in loop_.messages
+                if isinstance(m, dict) and m.get("role") == "tool"][0]["content"]
+    assert "written again under its schema" in answered
+    assert f"{step.identity}.design_outcomes_learning_objectives" in [
+        tc["tool"] for tc in trajectory.tool_calls]
+
+
+def test_a_pass_the_validator_still_refuses_goes_back_as_the_rejection_it_was():
+    """A grammar fixes structure, not semantics: what the pass returns is
+    judged by the same validator, and a refusal there is the ordinary
+    rejection, charged to the submit budget as before."""
+    from test_agentic_loop import _ANALYSIS, _OUTCOMES, STEP_BY_NAME, _harness, _loop, call, structured
+
+    step = STEP_BY_NAME["outcomes"]
+    _model, config, graph, trajectory, brief = _harness([
+        call("submit", {"learning_objectives": []}),
+        structured({"learning_objectives": []}),
+        call("submit", _OUTCOMES),
+    ])
+    specialists.commit_analysis(graph, trajectory, _ANALYSIS)
+
+    loop_ = _loop(config, graph, trajectory, brief, step)
+    loop_.run()
+
+    assert graph.element_nodes(NodeType.OBJECTIVE)
+    assert len(_rejected(trajectory)) == 1
+    assert [e["context"]["output_summary"][:8] for e in _passes(trajectory)] == ["rejected"]
+    assert loop_.stats["constrained_passes"] == loop_.stats["constrained_pass_rejected"] == 1
+
+
+def test_a_backend_without_the_feature_costs_one_refused_request_per_run():
+    """`response_format` refused once is remembered on the run's config: every
+    later rejection goes straight back to the agent, with no second request."""
+    from alignmentgraph_isd.core.agentic.client import AgenticLLM
+    from test_agentic_loop import _ANALYSIS, _OUTCOMES, STEP_BY_NAME, _harness, _loop, call
+
+    class _Refuses(Exception):
+        status_code = 400
+
+    step = STEP_BY_NAME["outcomes"]
+    model, config, graph, trajectory, brief = _harness([
+        call("submit", {"learning_objectives": []}),
+        call("submit", {"learning_objectives": []}),
+        call("submit", _OUTCOMES),
+    ])
+    binds: list = []
+
+    def refusing_bind(**kwargs):
+        binds.append(kwargs)
+        raise _Refuses("response_format json_schema is not supported")
+    model.bind = refusing_bind
+    specialists.commit_analysis(graph, trajectory, _ANALYSIS)
+
+    loop_ = _loop(config, graph, trajectory, brief, step)
+    loop_.run()
+
+    assert len(binds) == 1, "the second rejection did not try again"
+    assert config._structured_outputs is False
+    unavailable = [e for e in trajectory.recovery_events
+                   if e["action"] == "structured_outputs_unavailable"]
+    assert len(unavailable) == 1
+    assert len(_rejected(trajectory)) == 2
+    assert AgenticLLM(config, trajectory, step.identity).call_structured([], {"type": "object"}, "x") == ""
+
+
+def test_the_pass_is_off_when_the_run_says_so():
+    from test_agentic_loop import _ANALYSIS, _OUTCOMES, STEP_BY_NAME, _harness, _loop, call, structured
+
+    step = STEP_BY_NAME["outcomes"]
+    model, config, graph, trajectory, brief = _harness([
+        call("submit", {"learning_objectives": []}),
+        structured({"learning_objectives": _OUTCOMES["learning_objectives"]}),
+        call("submit", _OUTCOMES),
+    ])
+    config.structured_outputs = False
+    specialists.commit_analysis(graph, trajectory, _ANALYSIS)
+
+    loop_ = _loop(config, graph, trajectory, brief, step)
+    loop_.run()
+
+    assert not getattr(model, "structured_requests", [])
+    assert not _passes(trajectory) and len(_rejected(trajectory)) == 1
+    # The structured marker was never consumed by a pass; the model's next
+    # turn skipped it and the ordinary retry landed.
+    assert graph.element_nodes(NodeType.OBJECTIVE) and model.invocations == 2
+
+
+def test_both_arms_make_the_constrained_pass_the_same_way():
+    """Transport, not treatment: one implementation, called by both loops on
+    the rejection branch, and neither composes a request of its own."""
+    import inspect
+    from alignmentgraph_isd.core.agentic import loop as loop_mod, react as react_mod, turn as turn_mod
+
+    for module in (loop_mod, react_mod):
+        source = inspect.getsource(module)
+        assert "turn_mod.constrained_pass(" in source, module.__name__
+        assert "turn_mod.constrained_note(" in source, module.__name__
+        assert "call_structured" not in source, module.__name__
+        assert "CONSTRAINED_PASS_REQUEST" not in source, module.__name__
+    assert "CONSTRAINED_PASS_REQUEST" in inspect.getsource(turn_mod)
+
+
+def test_the_single_arm_s_rejected_submit_is_completed_the_same_way():
+    """The single arm binds its own tightened schema and makes the same
+    pass; `params` there is already the bound tool's tightened parameters."""
+    from alignmentgraph_isd import HarnessRunConfig
+    from alignmentgraph_isd.core.agentic import react
+    from alignmentgraph_isd.core.alignment_graph import AlignmentGraph
+    from alignmentgraph_isd.core.trajectory import TrajectoryLogger
+    from conftest import _Result, load_brief
+    from test_agentic_loop import _ANALYSIS, _OUTCOMES
+
+    class _Model:
+        def __init__(self) -> None:
+            self.turns = [("submit_outcomes", {}), ("submit_outcomes", _OUTCOMES)]
+            self.cursor = [0]
+            self.structured_requests: list = []
+
+        def bind(self, **kwargs):
+            if "response_format" in kwargs:
+                self.structured_requests.append(kwargs["response_format"])
+                outer = self
+
+                class _Pass:
+                    def invoke(self, _messages):
+                        return _Result(content=json.dumps(_OUTCOMES))
+                return _Pass()
+            return self
+
+        def bind_tools(self, specs, **_kwargs):
+            return self
+
+        def invoke(self, _messages):
+            i = self.cursor[0]
+            if i >= len(self.turns):
+                return _Result(content="nothing further")
+            name, args = self.turns[i]
+            self.cursor[0] = i + 1
+            return _Result(tool_calls=[{"name": name, "args": args, "id": f"c{i}"}])
+
+    model = _Model()
+    config = HarnessRunConfig(llm_factory=lambda: model)
+    graph, trajectory = AlignmentGraph(), TrajectoryLogger()
+    specialists.commit_analysis(graph, trajectory, _ANALYSIS)
+    loop_ = react.ReactLoop(config, graph, trajectory, load_brief("minimal_brief.json"))
+    loop_.max_turns = 3
+    try:
+        loop_.run()
+    except Exception:  # noqa: BLE001 - the rest of the stages are not this test's
+        pass
+
+    assert graph.element_nodes(NodeType.OBJECTIVE)
+    assert model.structured_requests and model.structured_requests[0]["json_schema"]["name"] == "submit_outcomes"
+    assert loop_.stats["constrained_passes"] >= 1
+    assert [e["context"]["output_summary"] for e in _passes(trajectory)][0] == "accepted"

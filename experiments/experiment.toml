@@ -43,11 +43,11 @@ key_env = "VLLM_API_KEY"
 
 [[serving.slots]]
 slot = "qwen9b"
-model = "qwen/qwen3.5-9b:nitro"
+model = "Qwen/Qwen3.5-9B"
 family = "Qwen3.5"
 display = "9B"
-base_urls = ["https://openrouter.ai/api/v1"]
-key_env = "OPENROUTER_API_KEY"
+base_urls = ["https://<POD_ID>-8000.proxy.runpod.net/v1"]
+key_env = "VLLM_API_KEY"
 
 # --- Generation: every call of every agent -----------------------------------
 # Applied identically to every agent and every rung (the fairness argument);
@@ -59,8 +59,17 @@ temperature = 0.7               # for agents that do not pin their own
 
 # Reasoning tokens allowed before the answer (0 = thinking off). A reply that
 # reasons past max_output_tokens returns no content and scores as a failure.
-# A router enforces only 0: a positive cap needs every rung self-hosted.
-thinking_budget = 0
+# A router enforces only 0: a positive cap needs every rung self-hosted, which
+# every rung above is. Short on purpose: a brief reasoning prefix helps a small
+# model's tool calls where a long one hurts them (see docs/guides §3.3).
+thinking_budget = 32
+
+# Whether a submit the proposed system's validator refuses is written again by
+# the model under that artifact's per-run schema, with the endpoint's decoder
+# holding the schema (response_format json_schema). A transport recovery, not
+# an ablation axis; the baselines make no such call. Needs a self-hosted
+# endpoint whose grammar backend compiles the schema.
+structured_outputs = true
 
 # --- The proposed system's run posture ---------------------------------------
 [harness]

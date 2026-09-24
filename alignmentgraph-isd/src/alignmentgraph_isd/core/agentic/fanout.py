@@ -541,7 +541,7 @@ def items_by_lo(state) -> dict[str, list[str]]:
     return by_lo
 
 
-def _constraints(state) -> list[dict]:
+def constraints(state) -> list[dict]:
     """The context constraints, which a material unit resolves for the media
     selections that declare ``respects_constraints``. Prose keeps them nested
     inside the analysis document rather than as their own element pool, which
@@ -550,6 +550,23 @@ def _constraints(state) -> list[dict]:
         return [n["data"] for n in state.element_nodes(NodeType.CONSTRAINT)]
     context = (state.get("analysis") or {}).get("context_analysis") or {}
     return [c for c in (context.get("constraints") or []) if isinstance(c, dict)]
+
+
+_constraints = constraints
+
+
+def topics(state) -> list[dict]:
+    """The task analysis's topics, from either substrate — nested inside the
+    analysis document on the blackboard, like the constraints."""
+    if hasattr(state, "element_nodes"):
+        return [n["data"] for n in state.element_nodes(NodeType.TOPIC)]
+    task = (state.get("analysis") or {}).get("task_analysis") or {}
+    return [t for t in (task.get("topics") or []) if isinstance(t, dict)]
+
+
+def media_selections(state) -> list[dict]:
+    """The content stage's media selections, from either substrate."""
+    return _element_data(state, NodeType.MEDIA_SELECTION, ("content", "media_selections"))
 
 
 def _element_data(state, node_type: str, doc: tuple[str, str]) -> list[dict]:
@@ -928,6 +945,7 @@ def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
         # the same pool as they finish, so the default guard would call this
         # set done before its Developer had spoken.
         done=lambda state, _sid=work_set.set_id: _sid in committed_set_ids(spec, state),
+        work_set=work_set,
     )
 
 

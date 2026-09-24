@@ -81,6 +81,7 @@ def config_fingerprint() -> dict:
             "streaming": cfg.generation.streaming,
             "thinking_budget": cfg.generation.thinking_budget,
             "temperature": cfg.generation.temperature,
+            "structured_outputs": cfg.generation.structured_outputs,
         },
         "harness": {
             "fanout_workers": cfg.harness.fanout_workers,

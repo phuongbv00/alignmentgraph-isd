@@ -208,8 +208,8 @@ AGENT_MODEL_STREAMING=1
 AGENT_MODEL_THINKING_BUDGET=0
 ```
 
-`thinking_budget = 0` vì ladder hiện có rung đi qua router: router chỉ tôn trọng trạng thái tắt, không tôn trọng trần, nên một số dương chỉ hợp lệ khi mọi rung đều self-host. Cả ba khai trong `[generation]` của `experiment.toml` (`max_output_tokens`, `streaming`, `thinking_budget`), cùng với
-`temperature`. Runner ghim chúng vào môi trường của process, đè lên `.env`. Pre-flight (mục 6.1) **fail** nếu `.env`
+`thinking_budget = 32` vì cả bốn nấc tự host (router chỉ tôn trọng trạng thái tắt, không tôn trọng trần): một đoạn suy nghĩ NGẮN giúp tool call của model nhỏ, đoạn dài làm hại. Cả ba khai trong `[generation]` của `experiment.toml` (`max_output_tokens`, `streaming`, `thinking_budget`), cùng với
+`temperature` và `structured_outputs` (mục 3.3b). Runner ghim chúng vào môi trường của process, đè lên `.env`. Pre-flight (mục 6.1) **fail** nếu `.env`
 cũng đặt chúng: hai nguồn cho một giới hạn phải đồng nhất trên mọi agent và mọi size chính là cách một so sánh mất luận
 điểm fairness trong im lặng. `shared/llm/factory.py` là nơi duy nhất đọc cả ba, nên "đồng nhất" là tính chất của code
 chứ không phải của kỷ luật.
@@ -265,6 +265,29 @@ nấc rồi khai `N`, hoặc khai `0` (tắt hẳn), vốn đồng nhất ở m�
 
 Con số cụ thể **chốt trên tune slice TRƯỚC `isd-exp freeze write` và không sửa lại sau khi thấy kết quả**, đúng như
 chính sách trần trajectory.
+
+### 3.3b Structured outputs — pass 2 dưới schema per-run
+
+Parser tool-call `qwen3_coder` (mục 3.2) **dựng lại lời gọi từ markup và không enforce schema nào**: nó bỏ qua
+`tool_choice` required/named (vllm#54808) và trả `{}` khi model quên đóng một `</parameter>` (vllm#57699). Đo trên
+run 2B `train_10_benchmark_Qwen3.5-2B_t1_20260924_125606`: 51 submit bị từ chối, 21 argument RỖNG (`content=""`,
+`tool_calls=[{args: {}}]`, `finish=tool_calls`), 30 sai id hoặc mức Bloom dưới objective. Đây là lỗi transport
+nhân với năng lực model, không sửa được bằng prompt.
+
+Harness đề xuất trả lời một submit bị từ chối bằng **một call nữa, không bind tool, với
+`response_format = json_schema` = schema per-run của artifact đó** (`core/agentic/grammar.py`,
+`turn.constrained_pass`): mọi tham chiếu là `enum` trên id đang tồn tại, mỗi hàng của assignment light là `const`,
+số lượng đã khai là `minItems`/`maxItems`. Kết quả đi qua đúng validator cũ; pass 2 hỏng thì rejection về agent như
+trước. Khai ở `[generation].structured_outputs` (publish `AGENT_MODEL_STRUCTURED_OUTPUTS`, adapter đọc, manifest
+ghi); baseline không gọi kiểu này vì harness của chúng là của benchmark. **Cần endpoint tự host** — backend
+xgrammar của vLLM compile schema, router thường không — thêm một lý do ladder tự host cả bốn nấc. Đọc
+`metadata.autonomy.<stage>.constrained_passes` / `constrained_pass_rejected` để lấy tỉ lệ pass 2 theo size (số mô
+tả về SLM, không claim). Smoke trước freeze: gửi một `response_format` có `enum`/`const`/`prefixItems`/`maxItems`
+tới pod và kiểm tra JSON hợp lệ 10/10 với `thinking_token_budget` đã khai; `400` nhắc tới `response_format` ⇒ harness
+tự nhớ và tắt cho cả run (`structured_outputs_unavailable`).
+
+Trong paper: một đoạn ở Experimental Setup (điều kiện serving) + một câu ở Limitations. **Không phải đóng góp,
+không phải trục ablation** — xem `docs/paper/claim-rules.md`.
 
 ### 3.4 Tạo pod + khai endpoint
 
