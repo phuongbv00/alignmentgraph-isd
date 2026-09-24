@@ -48,7 +48,9 @@ def world(tmp_path, monkeypatch):
             return {"addie_output": {"analysis": {"who": agent_id}},
                     "trajectory": {"steps": []},
                     "metadata": {},
-                    "graph": {"nodes": [1]} if agent_id == registry.PROPOSED else None}
+                    "graph": {"nodes": [1]} if agent_id == registry.PROPOSED else None,
+                    "violations": ([{"key": "C2|ILO-01", "outcome": "open"}]
+                                   if agent_id == registry.PROPOSED else None)}
         return ok
 
     monkeypatch.setattr(registry, "build", fake_build)
@@ -80,6 +82,7 @@ class TestTheRunDirectory:
             assert (scen / "alignmentgraph-isd_output.json").exists()
             assert (scen / "alignmentgraph-isd_trajectory.json").exists()
             assert (scen / "alignmentgraph-isd_graph.json").exists()
+            assert (scen / "alignmentgraph-isd_violations.json").exists()
             assert (scen / "alignmentgraph-isd_log.txt").exists()
             # A failure leaves a log and no output: the judges read exactly
             # that pair as "attempted, failed".

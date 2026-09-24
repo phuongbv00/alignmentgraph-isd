@@ -1,7 +1,7 @@
 {
   "generated_at": "2026-09-17T12:49:02",
   "config": {
-    "a0": "alignmentgraph-isd",
+    "reference": "alignmentgraph-isd",
     "arms": [
       "alignmentgraph-isd-single-prose",
       "alignmentgraph-isd-single-graph",
@@ -1421,7 +1421,7 @@
       ]
     }
   },
-  "a0_consistency": {
+  "reference_drift": {
     "definition": "A0 (full pipeline) as run inside TN2 vs A0 as run in the TN1 ladder: two separate executions, separate judge sessions, and different scenario counts (test_30 is a 30-scenario stratified subset of test_90). A non-zero delta is expected. It bounds how much of an arm delta could be session effect rather than treatment, and is context for the write-up — never an arm comparison.",
     "per_model": [
       {

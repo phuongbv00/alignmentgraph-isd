@@ -117,7 +117,7 @@ def arm_delta(model: dict, arm: str) -> dict:
 
 def gen_tab_ablation(pooled: dict) -> str:
     models = pooled["models"]
-    a0 = pooled["config"]["a0"]
+    a0 = pooled["config"]["reference"]
     arms = pooled["config"]["arms"]
 
     colspec = "@{}l" + "r@{\\hskip 4pt}r" * len(models) + "@{}"
@@ -376,7 +376,7 @@ def factorial_macros(pooled: dict, newcmd) -> None:
 
 def gen_macros(pooled: dict) -> str:
     models = pooled["models"]
-    a0 = pooled["config"]["a0"]
+    a0 = pooled["config"]["reference"]
     arms = pooled["config"]["arms"]
     out = [header_comment(
         pooled, "abl_macros.tex — headline ablation numbers (separate from stats_macros.tex)")]
@@ -418,7 +418,7 @@ def gen_macros(pooled: dict) -> str:
 
 def gen_stats_md(pooled: dict) -> str:
     models = pooled["models"]
-    a0 = pooled["config"]["a0"]
+    a0 = pooled["config"]["reference"]
     arms = pooled["config"]["arms"]
     L: list[str] = []
     L.append("# stats_ablation.md — ablation study, full numbers")
@@ -486,7 +486,7 @@ def gen_stats_md(pooled: dict) -> str:
 
     L.append("## A0 consistency check (pooling invariant, on total_score)")
     L.append("")
-    cons = pooled.get("a0_consistency", {})
+    cons = pooled.get("reference_drift", {})
     if cons.get("per_model"):
         L.append(cons.get("definition", ""))
         L.append("")
@@ -531,7 +531,7 @@ def gen_stats_md(pooled: dict) -> str:
                  "the component lowered the signal, positive = raised it); "
                  "flipped from the pooled JSON, which stores A0 − arm.")
         L.append("")
-        L.append("A FLAT PANEL of 7 signals, no primary endpoint and no "
+        L.append("A FLAT PANEL of signals, no primary endpoint and no "
                  "composite: every score is reported win or lose. The three "
                  "textual-correspondence signals are mean-max RECTIFIED cosine, "
                  "max(0, cos) on [0,1] — a scale choice, not a matching cutoff; "
@@ -703,8 +703,158 @@ def gen_stats_md(pooled: dict) -> str:
                          f"{v['verifier_events_mean']:.2f} | {v['repair_events_mean']:.2f} | "
                          f"{v['pct_scenario_runs_with_repair']:.0f}% |")
 
+    L += mechanism_md(pooled)
     return "\n".join(L) + "\n"
 
+
+
+# ── the mechanism readout (what each arm DID) ────────────────────────────────
+
+#: Columns of the mechanism table, per size: (header, reader over one arm's
+#: summary, format). A reader returning None prints "--"; that is the prose
+#: arms' coverage column by construction, since a prose run builds no graph.
+MECHANISM_COLUMNS = (
+    ("Ctx$\\times$", lambda a: (a.get("autonomy") or {}).get("context_growth_first_to_last"),
+     lambda v: f"{v:.1f}"),
+    ("Cut\\,\\%", lambda a: (a.get("autonomy") or {}).get("pct_stages_via_budget_exhaustion"),
+     lambda v: f"{v:.0f}"),
+    ("Core", lambda a: (a.get("relation_coverage") or {}).get("core_coverage_mean"),
+     lambda v: f"{v:.2f}"),
+    ("Open", lambda a: ((a.get("ledger") or {}).get("open_per_run") or {}).get("mean"),
+     lambda v: f"{v:.1f}"),
+)
+
+
+def _mechanism_by_label(pooled: dict) -> dict[str, dict]:
+    return {e["label"]: e.get("arms") or {} for e in pooled.get("mechanism") or []}
+
+
+def gen_tab_mechanism(pooled: dict) -> str:
+    """What each arm did, beside what it scored: the ablation's mechanism readout.
+
+    The factorial says whether an axis moved a score; this says whether the axis
+    did what it is defined as doing (context grows by stage in ``single``),
+    whether an arm was CUT by its turn ceiling (a ceiling inside the delta), how
+    much of the core triad it established, and how many findings it left open.
+    """
+    by_label = _mechanism_by_label(pooled)
+    if not any(by_label.values()):
+        return (header_comment(pooled, "tab_ablation_mechanism.tex — placeholder")
+                + "% No mechanism layer in pooled_ablation.json.\n")
+    models = pooled["models"]
+    a0 = pooled["config"]["reference"]
+    arms = pooled["config"]["arms"]
+    k = len(MECHANISM_COLUMNS)
+    colspec = "@{}l" + ("r" * k) * len(models) + "@{}"
+    lines = [header_comment(pooled, "tab_ablation_mechanism.tex — what each arm did")]
+    lines.append("\\begin{table*}[t]")
+    lines.append(
+        "  \\caption{What each ablation arm did, per model size. Ctx$\\times$: mean"
+        " prompt length of the last stage over the first; Cut: \\% of stages ended"
+        " by the turn ceiling; Core: mean coverage of the relations C2--C4"
+        " (graph arms only); Open: findings left open per run.}")
+    lines.append("  \\label{tab:ablation-mechanism}")
+    lines.append("  \\small")
+    lines.append(f"  \\begin{{tabular}}{{{colspec}}}")
+    lines.append("    \\toprule")
+    heads = " & ".join(
+        f"\\multicolumn{{{k}}}{{c}}{{{model_display(m['label'])}}}" for m in models)
+    lines.append(f"    & {heads} \\\\")
+    cmids = "".join(
+        f"\\cmidrule(lr){{{2 + k * i}-{1 + k * (i + 1)}}}" for i in range(len(models)))
+    lines.append(f"    {cmids}")
+    subs = " & ".join([h for h, _r, _f in MECHANISM_COLUMNS] * len(models))
+    lines.append(f"    Arm & {subs} \\\\")
+    lines.append("    \\midrule")
+    for arm in [a0] + arms:
+        name = ARM_DISPLAY.get(arm, arm)
+        cells = []
+        for m in models:
+            summary = by_label.get(m["label"], {}).get(arm) or {}
+            for _h, read, fmt in MECHANISM_COLUMNS:
+                v = read(summary)
+                cells.append("--" if not isinstance(v, (int, float)) or math.isnan(v)
+                             else fmt(v))
+        lines.append(f"    {name} & " + " & ".join(cells) + " \\\\")
+    lines.append("    \\bottomrule")
+    lines.append("  \\end{tabular}")
+    lines.append(
+        "  \\par\\smallskip\\footnotesize Open findings are not comparable across"
+        " context representations: the prose arms run only the within-artifact"
+        " checks. Per-stage series, per-relation coverage and open reasons:"
+        " stats\\_ablation.md.")
+    lines.append("\\end{table*}")
+    return "\n".join(lines) + "\n"
+
+
+def _fmt(v, spec: str = ".2f") -> str:
+    return format(v, spec) if isinstance(v, (int, float)) and not (
+        isinstance(v, float) and math.isnan(v)) else "--"
+
+
+def mechanism_md(pooled: dict) -> list[str]:
+    """The mechanism layer in full, for stats_ablation.md."""
+    L = ["", "## Mechanism (what each arm did, from the harness's own records)", ""]
+    entries = pooled.get("mechanism") or []
+    if not any(e.get("arms") for e in entries):
+        L.append("Absent — no `mechanism` layer in pooled_ablation.json.")
+        return L
+    L.append("Read from `*_trajectory.json` (`metadata.autonomy`), `*_graph.json` "
+             "(relation coverage; graph arms only) and `*_violations.json` (the "
+             "ledger). `cut` = % of stage runs ended by the turn ceiling "
+             "(`via_budget_exhaustion`): a stage that was cut has the ceiling inside "
+             "its delta. Ledger counts are NOT comparable across context "
+             "representations: the prose arms run only the within-artifact checks.")
+    for e in entries:
+        for arm, a in (e.get("arms") or {}).items():
+            L += ["", f"### {e['label']} / {ARM_DISPLAY.get(arm, arm)}", ""]
+            h = a.get("health") or {}
+            L.append(f"runs {h.get('n_runs')}, stopped {_fmt(h.get('pct_stopped'), '.0f')}%, "
+                     f"with errors {_fmt(h.get('pct_with_errors'), '.0f')}%, "
+                     f"ready_to_aggregate {_fmt(h.get('pct_ready_to_aggregate'), '.0f')}%")
+            au = a.get("autonomy")
+            if au:
+                L += ["", "| Stage | turns mean | turns max | context_len mean "
+                      "| history_dropped | compactions | gave up % | cut % |",
+                      "|---|---|---|---|---|---|---|---|"]
+                for stage, st in au["by_stage"].items():
+                    def m(f, key="mean"):
+                        return (st.get(f) or {}).get(key)
+                    L.append(f"| {stage} | {_fmt(m('turns_used'), '.1f')} "
+                             f"| {_fmt(m('turns_used', 'max'), '.0f')} "
+                             f"| {_fmt(m('context_len'), '.0f')} "
+                             f"| {_fmt(m('history_dropped'), '.1f')} "
+                             f"| {_fmt(m('compactions'), '.2f')} "
+                             f"| {_fmt(st.get('pct_gave_up'), '.0f')} "
+                             f"| {_fmt(st.get('pct_via_budget_exhaustion'), '.0f')} |")
+                L.append("")
+                L.append(f"context growth last/first {_fmt(au.get('context_growth_first_to_last'))}"
+                         f", peak {_fmt(au.get('peak_context_len'), '.0f')}")
+            cov = a.get("relation_coverage")
+            if cov:
+                rels = cov.get("relation_coverage_mean") or {}
+                L.append("")
+                L.append(f"coverage (n={cov['n_with_graph']}): core C2–C4 "
+                         f"{_fmt(cov.get('core_coverage_mean'))}, objectives aligned "
+                         f"{_fmt(cov.get('objectives_aligned_mean'))}, runs with the core "
+                         f"complete {_fmt(cov.get('pct_runs_core_complete'), '.0f')}%; "
+                         + ", ".join(f"{r} {_fmt(v)}" for r, v in rels.items()))
+            lg = a.get("ledger")
+            if lg:
+                pct = lg.get("pct_of_findings") or {}
+                why = lg.get("pct_of_open_by_reason") or {}
+                L.append("")
+                L.append(f"ledger (n={lg['n_with_ledger']}): findings/run "
+                         f"{_fmt((lg.get('findings_per_run') or {}).get('mean'), '.1f')}, "
+                         f"open/run {_fmt((lg.get('open_per_run') or {}).get('mean'), '.1f')}; "
+                         + ", ".join(f"{o} {_fmt(v, '.0f')}%" for o, v in pct.items())
+                         + "; open because " + ", ".join(
+                             f"{r} {_fmt(v, '.0f')}%" for r, v in why.items() if v)
+                         + f"; shown to an agent {_fmt(lg.get('pct_shown_to_agent'), '.0f')}%")
+                top = list((lg.get("open_by_type") or {}).items())[:8]
+                if top:
+                    L.append("open by type: " + ", ".join(f"{t} {n}" for t, n in top))
+    return L
 
 
 
@@ -714,6 +864,7 @@ def build(pooled: dict) -> dict[str, str]:
         "tab_ablation.tex": gen_tab_ablation(pooled),
         "tab_ablation_factorial.tex": gen_tab_factorial(pooled),
         "tab_ablation_factorial_full.tex": gen_tab_factorial_full(pooled),
+        "tab_ablation_mechanism.tex": gen_tab_mechanism(pooled),
         "abl_macros.tex": gen_macros(pooled),
         "stats_ablation.md": gen_stats_md(pooled),
     }

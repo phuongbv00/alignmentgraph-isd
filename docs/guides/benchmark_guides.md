@@ -85,6 +85,7 @@ chấm run đó.
 | `isd-exp judge llm <run-dir>` | chấm LLM judge (rubric ADDIE + trajectory) bằng evaluator của benchmark | 7.1 |
 | `isd-exp judge alignment <run-dir>` | chấm panel alignment (không LLM) trên mọi arm khai trong `experiment.toml`; `--primary-only` chỉ chấm arm chính | 7.2 |
 | `isd-exp trajectory rescore` | lớp diagnostic cap cao, chấm lại trajectory đã lưu *(chưa hiện thực)* | 5 GĐ1 |
+| `isd-exp pool tune` | chẩn đoán harness mỗi run dir tune → `pooled_tune.json` + `tune_diagnostics.csv` (mô tả, không suy luận) | 4.2 |
 | `isd-exp pool comparison` | pool run so sánh → `pooled_comparison.json` + thống kê | 8 |
 | `isd-exp pool ablation` | pool 4 arm → `pooled_ablation.json` + factorial + drift | 5.4 |
 | `isd-exp report tables` | bảng LLM judge + alignment, macro, `stats_summary.md` | 9 |
@@ -358,7 +359,31 @@ Một rung nhỏ nhất trên `train_10` = 20 generation. **Không tốn LLM jud
 chỉ sinh artifact. Muốn chấm thì chạy `judge llm` / `judge alignment` trên run dir đó sau (mục 7).
 
 Đọc gì: `gave_up`, coverage P10/P11, violation ledger, cost, và panel alignment (chạy local). Nếu bất thường thì sửa
-trước khi mở rộng ra đủ 4 rung.
+trước khi mở rộng ra đủ 4 rung. Tất cả những thứ đó có sẵn qua `pool tune` (mục 4.2).
+
+### 4.2 Đọc tune: `isd-exp pool tune`
+
+```bash
+./isd-exp pool tune                                    # mọi run dir của profile tune
+./isd-exp pool tune 'train_10_benchmark_*_t1_2026092*' # hoặc chọn bằng glob
+```
+
+Đọc run dir **dù đã chấm hay chưa** (điểm LLM judge / alignment được điền nếu có `comparison_report.json` /
+`alignment_scores.json`). **Mỗi run dir là một mục riêng**, không gộp theo model: các lần tune liên tiếp là các vòng
+hiệu chỉnh liên tiếp, cần đặt cạnh nhau chứ không lấy trung bình. Ghi ra `results/pooled_tune.json` và
+`results/tune_diagnostics.csv` (một dòng mỗi run × scenario × agent), in tóm tắt ra terminal:
+
+- **autonomy theo stage**: `turns_used` mean/p90/max so với trần (`run_config.max_turns`), % `gave_up`, % **cut**
+  (`via_budget_exhaustion` — stage bị trần turn cắt; trần cắt = trần nằm trong treatment), `context_len`,
+  `compactions`, `history_dropped`. Đây là số để chốt `STAGE_MAX_TURNS`/`DEVELOPER_MAX_TURNS` trước freeze.
+- **relation coverage** (từ `<agent>_graph.json`): từng relation, trung bình C2–C4, % run đủ lõi.
+- **violation ledger** (từ `<agent>_violations.json`): findings/run, open/run, % theo outcome, % open theo lý do
+  (`converged`/`budget`/`unowned`/`unseen`), % đã hiện cho agent, open theo loại.
+- **work sets** theo phase, **health** (% run dừng vì không có module, % có lỗi, % `ready_to_aggregate`), **cost**.
+- `run_config` liệt kê mọi giá trị đã thấy của các tham số hiệu chỉnh; một run dir trộn hai posture sẽ bị cảnh báo.
+
+Baseline chỉ có cost và điểm; mọi trường harness là `null` (không phải 0). Run sinh trước khi runner ghi
+`<agent>_violations.json` sẽ không có ledger.
 
 ## 5. Bench — TN1 (`test_90`) và TN2 (`test_30`)
 
@@ -534,6 +559,11 @@ cơ chế kia đã ngăn lỗi từ trước. `08` vì vậy sinh thêm hai kh�
 - **`verifier_activity`** — số lần verifier chạy / số lần **sửa** mỗi scenario, đọc từ `verifier_events` /
   `repair_events` trong trajectory. Đây là bằng chứng **cơ chế**: nó tách "thành phần không chạy" khỏi "chạy nhưng
   không còn việc để làm".
+- **`mechanism`** — mỗi arm đã *làm* gì, cùng bộ đọc với `pool tune` (`pool/diagnostics.py`): autonomy theo stage
+  (context tăng theo stage ở arm `single` = prediction đã đăng ký; % stage bị trần turn cắt), relation coverage
+  (chỉ arm graph — arm prose không có graph), violation ledger (ghi ở cả hai substrate nhưng **không so được giữa hai
+  `context_mode`**: arm prose chỉ chạy within-artifact check), và health. Artifact: `tab_ablation_mechanism.tex` +
+  section "Mechanism" trong `stats_ablation.md`.
 
 Artifact tương ứng: `tab_ablation_factorial.tex` (dẫn 1 tín hiệu chính) kèm `tab_ablation_factorial_full.tex`
 (bản đầy đủ 2×2 read trên toàn bộ 10 tín hiệu báo cáo, phụ lục), macro `\ablVerifCtxOn/Off*` + `\ablInteraction*` +
@@ -547,13 +577,14 @@ Diễn giải cần ghi trong paper:
 - Ở hai arm prose, mọi cơ chế cross-artifact (edge checks, docket, plan_coverage, routing, residual audit,
   aggregator coverage-net, `design.alignment_matrix`) **vắng theo thiết kế** — chênh lệch từ đó là **một phần của
   hiệu ứng đo được**, không phải bug. Regen loop + 5 within-artifact check + self-repair **bật ở mọi arm**.
-- `a0_consistency` giờ là **invariant check**: delta phải ~0. Khác 0 = hai lần pool đọc lệch nhau trên cùng dữ liệu →
+- `reference_drift` giờ là **invariant check**: delta phải ~0. Khác 0 = hai lần pool đọc lệch nhau trên cùng dữ liệu →
   lỗi cần sửa, không phải drift để giải thích.
 
 ## 6. Audit
 
 Cấu trúc results: `results/test_90_benchmark_<model>_r<N>_<ts>/test_90/<scenario_id>/` chứa `{agent}_output.json`,
-`{agent}_trajectory.json`, `{agent}_log.txt`, `comparison_report.json`; summary ở `benchmark_summary.json` +
+`{agent}_trajectory.json`, `{agent}_log.txt`, `comparison_report.json`; hệ đề xuất ghi thêm `{agent}_graph.json` (arm
+graph) hoặc `{agent}_prose.json` (arm prose) và `{agent}_violations.json` (violation ledger, cả hai substrate); summary ở `benchmark_summary.json` +
 `SUMMARY.md`.
 
 ### 6.1 Pre-flight

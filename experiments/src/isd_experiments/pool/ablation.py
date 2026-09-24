@@ -32,6 +32,7 @@ from ..config import current as current_config
 from ..runs import iter_scenario_dirs, load_run
 from ..stats import BOOT_SEED, N_BOOT, bootstrap_ci, rank_biserial, wilcoxon_signed_rank
 from ..util import mean as _mean
+from . import diagnostics
 from .comparison import discover
 from .llm_judge import compare_model, pool_model
 from .panel import pool_alignment
@@ -51,8 +52,9 @@ def expected_flags() -> dict[str, dict[str, str]]:
 
 
 #: LLM judge scores for the factorial readout. The ablation narrative is NOT led
-#: by the LLM judge -- coverage, the violation ledger, `gave_up`, context behaviour
-#: and the deterministic panel are the readout, and the LLM judge is a cross-check.
+#: by the LLM judge -- the mechanism layer (coverage, the violation ledger, `gave_up`,
+#: context behaviour) and the deterministic panel are the readout, and the LLM
+#: judge is a cross-check.
 FACTORIAL_LLM_JUDGE_SCORES = ("addie_median", "trajectory_score", "total_score")
 
 def check_arm_flags(run_dirs_by_model: dict[str, list[Path]],
@@ -327,113 +329,40 @@ def self_validation_activity(run_dirs_by_model: dict[str, list[Path]],
     return out
 
 
-#: The stage order the agentic control mode instructs, and therefore the
-#: STAGE POSITION the directional prediction is about. Taken from the package's
-#: step table order; kept here as a literal so a results dir written by an older
-#: package version still reads in the same order it was produced in.
-#:
-#: `rubrics` appears only in results dirs written while it was a stage of its
-#: own; it is kept in this tuple so those still read in order. Reading is driven
-#: by what a run ACTUALLY recorded (see `stages_of`), never by this tuple's
-#: length — a hardcoded count silently drops every arm as soon as the package's
-#: stage list differs from it.
-STAGE_ORDER = ("analysis", "outcomes", "assessment", "activities", "content",
-               "rubrics", "implementation")
+def mechanism_layer(run_dirs_by_model: dict[str, list[Path]],
+                    agents: list[str]) -> list[dict]:
+    """What each arm DID, per size: the readout the factorial is about.
 
+    The LLM judge and the panel score the deliverable; these read how it came to
+    be (see ``diagnostics``). Per arm, four summaries:
 
-def stages_of(autonomy: dict) -> tuple[str, ...]:
-    """The stages a run recorded, in instructed order, plus any this file has
-    never heard of (a newer package) appended so they are not lost."""
-    known = tuple(s for s in STAGE_ORDER if s in autonomy)
-    return known + tuple(s for s in autonomy if s not in STAGE_ORDER)
+    ``autonomy``           per-stage counters. The registered directional
+                           prediction is read here: context grows across stages
+                           in the ``single`` arms and does not in ``multi``.
+                           ``pct_via_budget_exhaustion`` is what the
+                           decomposition claim rests on -- an arm CUT by its
+                           ceiling has a ceiling inside its delta -- and
+                           ``history_dropped`` separates a model that degraded
+                           from one that hit the serving window.
+    ``relation_coverage``  mean coverage per relation. Graph substrate only: a
+                           prose run builds no graph, so its entry is None, and
+                           that absence is the auditability contrast.
+    ``ledger``             every finding and what became of it. Recorded on both
+                           substrates, but NOT comparable across ``context_mode``:
+                           prose runs only the within-artifact checks, so fewer
+                           findings there is fewer checks, not a better design.
+    ``health``             stopped runs, runs with errors, the aggregate gate.
 
-#: Per-stage counters carried by ``metadata.autonomy`` (core/runner.py).
-AUTONOMY_FIELDS = ("context_len", "turns_used", "submits_rejected", "repeated_calls",
-                   "history_dropped", "reads", "batched_calls")
-
-
-def autonomy_layer(run_dirs_by_model: dict[str, list[Path]],
-                   agents: list[str]) -> list[dict]:
-    """Per-stage autonomy series per arm per size.
-
-    This is where the registered directional prediction is read: context grows
-    across stages in the ``single`` arms and does not in ``multi``, and the
-    quality gap that goes with it should widen as the model shrinks.
-
-    Three things it must surface, because each turns the SAME arm delta into a
-    different claim:
-      * ``context_len`` by stage — the mechanism itself. If the single arm's
-        series is flat, the axis did not do what it is defined as doing.
-      * ``history_dropped`` by stage — whether the arm DEGRADED or hit the 16k
-        serving ceiling. High and early means a wall, and a wall is a property
-        of the serving configuration, not of decomposition.
-      * ``pct_gave_up`` by stage — how often a stage ended without submitting
-        its artifact. An arm that mostly gives up is not exercising the
-        mechanism the ablation is about, whatever it scores. ``sets_gave_up``
-        is the same fact one tier down, at the Developer work sets.
+    An arm with no harness records (run dirs from before the agentic executor)
+    reads None throughout rather than zeros.
     """
     out = []
     for label, dirs in run_dirs_by_model.items():
-        # Collected lazily: a run records whichever stages its package had, and
-        # pre-seeding from a literal is exactly how six-stage runs would vanish.
-        per_arm: dict[str, dict[str, dict[str, list[float]]]] = {a: {} for a in agents}
-
-        def bucket(agent: str, stage: str) -> dict[str, list[float]]:
-            return per_arm[agent].setdefault(
-                stage, {f: [] for f in (*AUTONOMY_FIELDS, "gave_up")})
-        for run_dir in dirs:
-            for _sid, scen_dir in iter_scenario_dirs(run_dir):
-                for a in agents:
-                    path = scen_dir / f"{a}_trajectory.json"
-                    if not path.exists():
-                        continue
-                    try:
-                        doc = json.loads(path.read_text(encoding="utf-8"))
-                    except (json.JSONDecodeError, OSError):
-                        continue
-                    autonomy = ((doc.get("metadata") or {}).get("autonomy") or {})
-                    for stage, stats in autonomy.items():
-                        if not isinstance(stats, dict):
-                            continue
-                        slot = bucket(a, stage)
-                        for field in AUTONOMY_FIELDS:
-                            value = stats.get(field)
-                            if isinstance(value, (int, float)):
-                                slot[field].append(float(value))
-                        slot["gave_up"].append(1.0 if stats.get("gave_up") else 0.0)
-        arms = {}
-        for a, by_stage in per_arm.items():
-            series = {}
-            for stage in stages_of(by_stage):
-                values = by_stage[stage]
-                if not values["context_len"]:
-                    continue
-                series[stage] = {
-                    "n": len(values["context_len"]),
-                    **{f: _mean(values[f]) for f in AUTONOMY_FIELDS},
-                    "pct_gave_up": 100.0 * _mean(values["gave_up"]),
-                }
-            if series:
-                ordered = tuple(series)
-                first, last = ordered[0], ordered[-1]
-                growth = (series[last]["context_len"] - series[first]["context_len"]
-                          if first in series and last in series else float("nan"))
-                arms[a] = {
-                    "by_stage": series,
-                    # The one-number summary of the mechanism: how much longer
-                    # the last stage's prompt is than the first's. Expected to
-                    # be large and positive for the single arms, ~0 for multi.
-                    "context_growth_first_to_last": growth,
-                    "peak_context_len": max(v["context_len"] for v in series.values()),
-                    "pct_stages_gave_up": _mean(
-                        [v["pct_gave_up"] for v in series.values()]),
-                }
-        # An empty layer means the run dirs predate metadata.autonomy; say so
-        # rather than reporting zeros.
+        cells = diagnostics.collect(dirs, agents)
+        arms = {a: diagnostics.summarize(by_sid, diagnostics.STAGE_ORDER)
+                for a, by_sid in cells.items() if by_sid}
         out.append({"label": label, "arms": arms,
-                    "note": ("" if arms else
-                             "no metadata.autonomy in these run dirs — produced "
-                             "before the agentic executor")})
+                    "note": ("" if arms else "no agent trajectories in these run dirs")})
     return out
 
 
@@ -503,7 +432,7 @@ def print_report(pooled: dict, a0: str, arms: list[str]) -> None:
     elif inter.get("note"):
         print(f"\n  H2 / capacity interaction: skipped — {inter['note']}")
 
-    cons = pooled.get("a0_consistency", {})
+    cons = pooled.get("reference_drift", {})
     for row in cons.get("per_model", []):
         if "delta" in row:
             band = row.get("within_2x_ladder_run_sd")
@@ -515,6 +444,13 @@ def print_report(pooled: dict, a0: str, arms: list[str]) -> None:
                 flag = "   <-- LARGER THAN 2x LADDER RUN SD, read arm deltas with care"
             print(f"\n  A0 drift [{row['label']}]: ablation−comparison "
                   f"Δ={row['delta']:+.2f}{flag}")
+    for entry in pooled.get("mechanism") or []:
+        if not entry.get("arms"):
+            continue
+        print(f"\n  mechanism [{entry['label']}]  (ctx growth last/first, % stages cut "
+              f"by the turn ceiling, core C2-C4 coverage, open findings/run)")
+        for arm, a in entry["arms"].items():
+            print("    " + diagnostics.one_line(arm, a))
     if pooled.get("alignment") is None:
         print(f"\n  (the alignment layer is absent — run "
               f"`{paths.cli()} judge alignment` on each "
@@ -606,10 +542,10 @@ def pool(run_dirs_by_model: dict[str, list[Path]], *,
         "token_usage": pool_tokens(run_dirs_by_model, agents),
         "factorial": factorial_layer(run_dirs_by_model, agents),
         "self_validation_activity": self_validation_activity(run_dirs_by_model, agents),
-        # Per-stage autonomy: the series the registered directional prediction is
-        # read off, plus the two guards that decide what an arm delta MEANS
-        # (history_dropped = a serving wall, gave_up = the loop produced nothing).
-        "autonomy": autonomy_layer(run_dirs_by_model, agents),
+        # What each arm DID: per-stage autonomy (the series the registered
+        # directional prediction is read off, and the guards that decide what an
+        # arm delta MEANS), relation coverage, the violation ledger, run health.
+        "mechanism": mechanism_layer(run_dirs_by_model, agents),
     }
 
 

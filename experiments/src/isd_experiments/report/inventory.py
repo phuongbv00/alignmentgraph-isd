@@ -87,6 +87,7 @@ INVENTORY: list[Spec] = [
     Spec("tab_ablation.tex", ABL_TABLES, "tex", "ablation"),
     Spec("tab_ablation_factorial.tex", ABL_TABLES, "tex", "ablation"),
     Spec("tab_ablation_factorial_full.tex", ABL_TABLES, "tex", "ablation"),
+    Spec("tab_ablation_mechanism.tex", ABL_TABLES, "tex", "ablation"),
     Spec("abl_macros.tex", ABL_TABLES, "tex", "ablation"),
     Spec("stats_ablation.md", ABL_TABLES, "note", "ablation"),
     Spec("fig_ablation", ABL_FIGURES, "figure", "ablation"),

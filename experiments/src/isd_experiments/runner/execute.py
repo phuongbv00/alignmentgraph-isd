@@ -12,6 +12,7 @@ kept exactly as the benchmark laid it out::
             <agent>_trajectory.json  trajectory + metadata (token_usage, time)
             <agent>_graph.json       the proposed system's graph dump, if any
             <agent>_prose.json       a prose arm's blackboard, if any
+            <agent>_violations.json  the proposed system's violation ledger, if any
             <agent>_log.txt
 
 Generation only. Scoring is `isd-exp judge llm` and `isd-exp judge alignment`,
@@ -146,6 +147,13 @@ def run_agent(agent_id: str, scenario_path: Path, output_dir: Path,
         if isinstance(prose_dump, dict) and prose_dump.get("documents"):
             with open(output_dir / f"{agent_id}_prose.json", "w", encoding="utf-8") as fh:
                 json.dump(prose_dump, fh, ensure_ascii=False, indent=2, default=str)
+        # The violation ledger, on either substrate: every distinct finding and
+        # what became of it. Written even when empty, so "no findings" and "an
+        # agent that keeps no ledger" stay two different files on disk.
+        ledger = result.get("violations")
+        if isinstance(ledger, list):
+            with open(output_dir / f"{agent_id}_violations.json", "w", encoding="utf-8") as fh:
+                json.dump(ledger, fh, ensure_ascii=False, indent=2, default=str)
 
         log_path.write_text(
             f"=== {agent_id} execution log ===\nScenario: {scenario_path}\n"

@@ -164,17 +164,17 @@ def build_parser() -> argparse.ArgumentParser:
     # ── pool ─────────────────────────────────────────────────────────────
     pool = sub.add_parser("pool", help="pool an experiment's scored runs into one JSON"
                           ).add_subparsers(dest="sub", required=True, metavar="<experiment>")
-    for name in ("comparison", "ablation"):
+    for name in ("tune", "comparison", "ablation"):
         pl = pool.add_parser(name, help=EXPERIMENTS[name])
         pl.add_argument("patterns", nargs="*", metavar="GLOB")
         pl.add_argument("--out", type=_p)
-        pl.add_argument("--agents", help="comma-separated roster override "
-                                         "(this fixes the Holm family size)")
+        pl.add_argument("--agents", help="comma-separated roster override" + (
+            "" if name == "tune" else " (this fixes the Holm family size)"))
         if name == "comparison":
             pl.add_argument("--encoders", default="")
             pl.add_argument("--auto-encoders", action="store_true")
             pl.add_argument("--auto-bloom", action="store_true")
-        else:
+        elif name == "ablation":
             pl.add_argument("--comparison-pooled", type=_p)
 
     # ── the manuscript's numbers ─────────────────────────────────────────
@@ -330,6 +330,12 @@ def _dispatch(args) -> int:
                        out=args.out, encoders=args.encoders,
                        auto_encoders=args.auto_encoders, auto_bloom=args.auto_bloom,
                        agents=args.agents.split(",") if args.agents else None)
+        return 0
+
+    if command == "pool" and sub == "tune":
+        from .pool import tune
+        tune.run(patterns=args.patterns or None, out=args.out,
+                 agents=args.agents.split(",") if args.agents else None)
         return 0
 
     if command == "pool" and sub == "ablation":

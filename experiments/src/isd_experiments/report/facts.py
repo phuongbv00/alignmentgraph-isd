@@ -205,7 +205,7 @@ def sec_provenance(lad, abl):
            for agent, state in (agents or {}).items() if state != "ok"]
     L.append(f"**Ablation arm flag check**: {'ALL OK' if not bad else 'PROBLEM -> ' + ', '.join(bad)} "
              "(verifies `metadata.run_config` matches the agent id each arm was registered under).\n")
-    cons = (abl.get("a0_consistency") or {}).get("per_model") or []
+    cons = (abl.get("reference_drift") or {}).get("per_model") or []
     if cons:
         L.append("**A0 pooling invariant** (ablation vs ladder, on `total_score`; must be ~0 - this "
                  "checks both poolings read the same data, it is NOT a drift measurement, and "
