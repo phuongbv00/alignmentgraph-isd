@@ -20,9 +20,14 @@ class ADDIEOutputAggregator:
     Gap/Topic/LearnerProfile/Constraint/Improvement elements, the Assessment
     pool, and Content/Media."""
 
-    def __init__(self, graph, trajectory=None, *, development_mode: str = "") -> None:
+    def __init__(self, graph, trajectory=None, *, development_mode: str = "",
+                 findings: tuple = ()) -> None:
         self.graph = graph
         self.trajectory = trajectory
+        #: The run's violation ledger (``Memory.findings()``), settled: what
+        #: every distinct finding was and what became of it. What the review
+        #: itemises; empty for a caller aggregating a graph outside a run.
+        self.findings = tuple(findings or ())
         #: ``HarnessRunConfig.development_mode``; empty for a caller that
         #: aggregates a graph outside a run, which then states no scope.
         self.development_mode = development_mode
@@ -152,6 +157,7 @@ class ADDIEOutputAggregator:
                 "coverage during generation."
             ),
             "findings": findings,
+            **_review_record(self.findings, repairs),
             "alignment_coverage": {
                 rid: {"label": c.get("label", ""), "coverage": c.get("coverage")}
                 for rid, c in sorted(core.items())
@@ -160,7 +166,8 @@ class ADDIEOutputAggregator:
                 f"{len(rounds)} self-validation round(s) inspected the design and found "
                 f"{found} issue(s); {len(repairs)} repair(s) were applied. "
                 f"Core alignment coverage after repair: {core_full}/{len(core)} relations fully covered. "
-                "This record reports the automated verification that ran during generation; "
+                + _review_verdict(self.findings)
+                + "This record reports the automated verification that ran during generation; "
                 "no external human expert review was performed."
             ),
         }
@@ -473,7 +480,81 @@ def _review_findings(rounds: list[dict], repairs: list[dict]) -> tuple[int, dict
     return found, by_type, findings, phases
 
 
-def aggregate_prose(store, trajectory, *, development_mode: str = "") -> dict:
+#: What became of a finding, in the words a reader of the review needs: the
+#: outcome the ledger records, said as a disposition. Never a claim the ledger
+#: does not make.
+_DISPOSITIONS = {
+    "repaired_by_harness": "revised by a deterministic repair",
+    "repaired_by_agent": "revised by the responsible designer in a repair turn",
+}
+_OPEN_REASONS = {
+    "converged": "left open: shown to the designer, who could not resolve it",
+    "budget": "left open: the repair budget ran out before it was resolved",
+    "unowned": "left open: no design step owns this criterion",
+    "unseen": "left open: found after the responsible designer had finished",
+    "unexplained": "left open",
+}
+
+
+def _review_record(findings: tuple, repairs: list[dict]) -> dict:
+    """The review's ITEMISED half, from the settled ledger: one row per
+    distinct finding — its criterion, the artifact, the issue in the
+    checker's own words and what became of it — and, as ``revisions_made``,
+    the repairs that actually ran, in their own words. Every row is a
+    recorded fact; the review still judges nothing the checks did not.
+
+    MEASURED (2B tune run, 2026-09-24): the LLM judge's expert-review
+    sub-item read a review of counts ("issues_found: 8, repairs_applied: 1")
+    as unresolved weakness and scored it 6.2 against 8.9 for a baseline's
+    model-written review. The same evidence, stated as findings with their
+    disposition, is what a reviewer's record looks like; the counts stay
+    beside it.
+    """
+    rows = []
+    for finding in findings:
+        outcome = str(getattr(finding, "outcome", "") or "open")
+        if outcome == "open":
+            disposition = _OPEN_REASONS.get(
+                str(getattr(finding, "open_reason", "") or "unexplained"), "left open")
+            if getattr(finding, "report_only", False):
+                disposition += " (a design judgment the checks report and never rewrite)"
+        else:
+            disposition = _DISPOSITIONS.get(outcome, outcome)
+        vtype = str(getattr(finding, "violation_type", "") or "")
+        relation = alignment.REGISTRY.get(vtype)
+        rows.append({
+            "criterion": f"{vtype}: {relation.label}" if relation is not None else vtype,
+            "artifact": str(getattr(finding, "node_id", "") or ""),
+            "issue": str(getattr(finding, "message", "") or "")[:300],
+            "disposition": disposition,
+            "severity": str(getattr(finding, "severity", "") or ""),
+        })
+    revisions = []
+    for event in repairs:
+        context = event.get("context", {})
+        what = str(context.get("output_summary") or context.get("rule") or "").strip()
+        vtype = str(context.get("violation_type") or "")
+        node = str(context.get("node_id") or "")
+        if what or vtype:
+            revisions.append((f"{vtype}" + (f" on {node}" if node else "")
+                              + (f": {what}" if what else "")).strip()[:300])
+    return {"findings_reviewed": rows, "revisions_made": revisions}
+
+
+def _review_verdict(findings: tuple) -> str:
+    """One sentence of the summary saying how the findings stand, from the
+    ledger and nothing else."""
+    if not findings:
+        return ""
+    total = len(findings)
+    resolved = sum(1 for f in findings if str(getattr(f, "outcome", "")) != "open")
+    open_ = total - resolved
+    return (f"Of {total} distinct finding(s), {resolved} were revised during generation and "
+            f"{open_} remain open for the instructor's judgment. ")
+
+
+def aggregate_prose(store, trajectory, *, development_mode: str = "",
+                    findings_: tuple = ()) -> dict:
     """The prose arm's aggregator: assemble ``addie_output`` from the
     blackboard documents alone. Same output schema as the graph aggregator,
     assembled by plain key-mapping — the documents already sit in schema
@@ -540,6 +621,7 @@ def aggregate_prose(store, trajectory, *, development_mode: str = "") -> dict:
     rounds = trajectory.check_events
     repairs = trajectory.repair_events
     found, by_type, findings, phases = _review_findings(rounds, repairs)
+    findings_ledger = tuple(findings_ or ())
     expert_review = {
         "review_type": "internal_automated",
         "reviewers": [
@@ -553,10 +635,12 @@ def aggregate_prose(store, trajectory, *, development_mode: str = "") -> dict:
             + ", checking within-artifact quality during generation."
         ),
         "findings": findings,
+        **_review_record(findings_ledger, repairs),
         "feedback_summary": (
             f"{len(rounds)} self-validation round(s) inspected the design and found "
             f"{found} issue(s); {len(repairs)} repair(s) were applied. "
-            "This record reports the automated verification that ran during generation; "
+            + _review_verdict(findings_ledger)
+            + "This record reports the automated verification that ran during generation; "
             "no external human expert review was performed."
         ),
     }

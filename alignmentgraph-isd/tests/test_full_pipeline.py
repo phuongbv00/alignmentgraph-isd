@@ -339,3 +339,54 @@ def test_the_summative_evaluation_is_the_plans_procedure_and_criteria():
                                          "cost_efficiency", "decision_rule"}
     assert decision["status"].startswith("pending pilot")
     assert "decision" not in decision
+
+
+def test_expert_review_states_each_finding_with_its_disposition():
+    """The review is judged as the expert-review sub-item and was read as a
+    table of unresolved counts. The same ledger, one row per distinct finding
+    with what became of it, and the repairs that ran as revisions — every
+    row a recorded fact, and the honesty clause unchanged."""
+    from alignmentgraph_isd.core.aggregate import ADDIEOutputAggregator, aggregate_prose
+    from alignmentgraph_isd.core.alignment_graph import AlignmentGraph
+    from alignmentgraph_isd.core.memory import Finding
+    from alignmentgraph_isd.core.prose_store import ProseStore
+    from alignmentgraph_isd.core.trajectory import TrajectoryLogger
+
+    trajectory = TrajectoryLogger()
+    trajectory.log_violations_result([
+        {"node_id": "objective:ILO-01", "type": "C2", "msg": "x", "severity": "error"}])
+    trajectory.log_repair_event("AssessmentDesignerAgent", "C4", "activity:TLA-01",
+                                ["prepares_for_assessment"], rule="repair_c4",
+                                output_summary="pointed TLA-01 at AT-01")
+    ledger = (
+        Finding(key="C2|objective:ILO-01", node_id="objective:ILO-01", edge_type="C2-assessed_by",
+                violation_type="C2", severity="error", repair_hint="", metadata={},
+                target_designer="assessment_designer",
+                messages=("objective:ILO-01 has no assessment item.",),
+                outcome="open", open_reason="budget"),
+        Finding(key="C4|activity:TLA-01", node_id="activity:TLA-01", edge_type="C4-prepares_for",
+                violation_type="C4", severity="error", repair_hint="", metadata={},
+                target_designer="activity_designer",
+                messages=("activity:TLA-01 has no resolvable prepares_for_assessment.",),
+                outcome="repaired_by_harness"),
+        Finding(key="time_budget|module:MOD-01", node_id="module:MOD-01", edge_type="",
+                violation_type="time_budget", severity="warning", repair_hint="", metadata={},
+                target_designer="activity_designer", messages=("MOD-01 runs 200 of 120 minutes.",),
+                outcome="open", open_reason="unseen", report_only=True),
+    )
+    review = ADDIEOutputAggregator(AlignmentGraph(), trajectory, findings=ledger) \
+        ._build_development()["expert_review"]
+
+    rows = {r["artifact"]: r for r in review["findings_reviewed"]}
+    assert rows["objective:ILO-01"]["criterion"].startswith("C2: ")
+    assert rows["objective:ILO-01"]["issue"] == "objective:ILO-01 has no assessment item."
+    assert rows["objective:ILO-01"]["disposition"].startswith("left open: the repair budget")
+    assert rows["activity:TLA-01"]["disposition"] == "revised by a deterministic repair"
+    assert "design judgment" in rows["module:MOD-01"]["disposition"]
+    assert review["revisions_made"] == ["C4 on activity:TLA-01: pointed TLA-01 at AT-01"]
+    assert "Of 3 distinct finding(s), 1 were revised" in review["feedback_summary"]
+    assert "no external human expert review" in review["feedback_summary"]
+    assert review["review_type"] == "internal_automated"
+
+    prose = aggregate_prose(ProseStore(), trajectory, findings_=ledger)
+    assert prose["development"]["expert_review"]["findings_reviewed"] == review["findings_reviewed"]

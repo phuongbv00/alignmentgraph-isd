@@ -486,6 +486,11 @@ class ReactLoop:
         left here is this arm's own policy, which is one conversation across
         six stages and a per-stage submit cap."""
         if not turn:
+            if turn.failed:
+                # The endpoint's turn, not the model's: refunded, not nudged.
+                # Same rule as the stage loop (`TurnMeter.endpoint_failed`).
+                self._meter.endpoint_failed()
+                return "continue"
             recovered = turn_mod.recover_call(
                 turn, stats=self.stats, trajectory=self.trajectory,
                 identity=self.identity)

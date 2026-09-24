@@ -52,6 +52,7 @@ EVENT_ACTIONS = {
     "items_without_parent",
     "calls_not_executed", "repair_window_closed",
     "constrained_pass", "structured_outputs_unavailable", "duplicate_task_id_renamed",
+    "llm_retry",
     # structured records
     "repair", "node_add", "node_update", "doc_write", "validate", "check", "audit",
     "retrieval", "work_sets", "reconcile", "converge",

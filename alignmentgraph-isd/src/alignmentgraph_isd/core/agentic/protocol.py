@@ -267,6 +267,11 @@ PROTOCOL_REV = 7
 REPEAT_UNCHANGED = ("You already called {name} with these arguments and the result has not "
                     "changed since the last call. Use what you have.")
 
+#: A read whose every id an earlier read in this conversation already
+#: answered, unchanged: nothing new would come back.
+READ_ALREADY_SHOWN = ("Every id in this read_node call ({ids}) is already shown above, "
+                     "unchanged, from your earlier reads. Use what you have.")
+
 
 def open_issues_pointer(stage: str, count: int, round_index: int, rounds: int) -> str:
     """The answer to a submit that completed a stage whose own checks still
@@ -316,7 +321,7 @@ def empty_stage_stats() -> dict:
             "context_len": 0, "batched_calls": 0, "markup_recovered": 0,
             "args_salvaged": 0,
         "args_reshaped": 0, "truncated_turns": 0, "dropped_args": 0,
-            "repair_turns": 0, "tool_errors": 0,
+            "repair_turns": 0, "tool_errors": 0, "endpoint_failures": 0,
             "constrained_passes": 0, "constrained_pass_rejected": 0,
             "n_sets": 0, "sets_gave_up": 0, "set_turns": 0,
             "set_submits_rejected": 0}

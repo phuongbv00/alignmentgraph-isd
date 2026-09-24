@@ -908,11 +908,13 @@ class MetaAgent:
             with trajectory.acting_as(ADDIEOutputAggregator.__name__):
                 try:
                     mode = config.development_mode
+                    ledger = memory.findings
                     addie_output = (
-                        ADDIEOutputAggregator(graph, trajectory,
-                                              development_mode=mode).aggregate()
+                        ADDIEOutputAggregator(graph, trajectory, development_mode=mode,
+                                              findings=ledger).aggregate()
                         if graph_mode else
-                        aggregate_prose(store, trajectory, development_mode=mode))
+                        aggregate_prose(store, trajectory, development_mode=mode,
+                                        findings_=ledger))
                 except Exception:  # noqa: BLE001 - aggregation failure must not lose the run
                     addie_output = empty_addie()
                 validation_errors = validate_addie(addie_output)

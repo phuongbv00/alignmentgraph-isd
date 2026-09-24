@@ -95,6 +95,10 @@ class TrajectoryAction(StrEnum):
     #: recovery on the agent's own artifact, so it is recorded under the
     #: agent's identity; it is not a design step.
     CONSTRAINED_PASS = "constrained_pass"
+    #: A request the endpoint did not answer (a connection error, a 5xx) sent
+    #: once more after a pause. Recorded so an endpoint's ramp-up is readable
+    #: apart from the model's mistakes.
+    LLM_RETRY = "llm_retry"
     #: The backend refused the structured-output request itself, once per run;
     #: every later rejection goes back to the agent unassisted.
     STRUCTURED_OUTPUTS_UNAVAILABLE = "structured_outputs_unavailable"
@@ -219,6 +223,7 @@ _RECOVERY_ACTIONS = frozenset({
     TrajectoryAction.COMMIT_INVALID_SECTION,
     TrajectoryAction.DUPLICATE_SUBMIT,
     TrajectoryAction.CONSTRAINED_PASS,
+    TrajectoryAction.LLM_RETRY,
     TrajectoryAction.STRUCTURED_OUTPUTS_UNAVAILABLE,
     TrajectoryAction.DUPLICATE_TASK_ID_RENAMED,
     TrajectoryAction.BARE_ARTIFACT_WRAPPED,

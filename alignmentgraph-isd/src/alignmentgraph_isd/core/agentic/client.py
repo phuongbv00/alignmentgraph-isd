@@ -44,6 +44,26 @@ def _rejects_tool_choice(exc: Exception) -> bool:
     return status in (400, 422) and "tool" in msg
 
 
+#: Seconds before the one retry of a request the endpoint did not answer.
+TRANSIENT_RETRY_DELAY = 5.0
+
+
+def _is_transient(exc: Exception) -> bool:
+    """Whether a failed request never reached the model: a connection error,
+    a timeout, or a 5xx from the proxy. The one failure a second identical
+    request answers — and the one that is the endpoint's, not the model's."""
+    if _is_truncation_error(exc):
+        return False
+    msg = str(exc).lower()
+    if any(word in msg for word in ("connection error", "connection reset", "timed out",
+                                    "timeout", "remote protocol", "server disconnected",
+                                    "temporarily unavailable", "bad gateway",
+                                    "gateway timeout", "service unavailable")):
+        return True
+    status = getattr(exc, "status_code", None)
+    return isinstance(status, int) and status >= 500
+
+
 def _rejects_response_format(exc: Exception) -> bool:
     """Whether a failed request was refused FOR its ``response_format`` — the
     one failure answered by giving the feature up for the run."""
@@ -119,6 +139,25 @@ class AgenticLLM:
         try:
             return self._invoke_tools(bound, messages, tool_specs)
         except Exception as exc:  # noqa: BLE001 - every backend error is recorded below
+            if _is_transient(exc):
+                # The request never reached the model. Sent ONCE more after a
+                # pause — MEASURED (2B run, 2026-09-24): twelve "Connection
+                # error" replies in ten runs, all in the first two minutes of a
+                # pod taking fifteen scenarios at once — and if it fails again
+                # the turn is the endpoint's (`ToolTurn.failed`), which the
+                # loop refunds rather than nudging the model for.
+                self.trajectory.log_llm_call(0, 0)
+                self.trajectory.log_recovery_event(
+                    self.identity, "llm_retry", str(exc)[:120],
+                    f"retrying once after {TRANSIENT_RETRY_DELAY:g}s")
+                time.sleep(TRANSIENT_RETRY_DELAY)
+                try:
+                    return self._invoke_tools(bound, messages, tool_specs)
+                except Exception as again:  # noqa: BLE001
+                    self.trajectory.log_llm_call(0, 0)
+                    self.trajectory.log_recovery_event(
+                        self.identity, "llm_error", "", str(again))
+                    return ToolTurn(failed=True)
             if choice == TOOL_CHOICE_DEFAULT and _rejects_tool_choice(exc):
                 # The backend will not force a call. Learned ONCE per run:
                 # the memo is on the config every agent shares, so no later

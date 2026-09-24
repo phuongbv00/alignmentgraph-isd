@@ -559,8 +559,13 @@ class ToolLoop:
 
         A model that answered with the bare artifact and got it right has done
         the work — accept it as an implicit submit rather than burning turns on
-        protocol pedantry (SLM tolerance). Anything else is an invalid turn.
+        protocol pedantry (SLM tolerance). Anything else is an invalid turn —
+        except a request the endpoint never answered, which is refunded and
+        sent again without a word to the model (``turn.endpoint_failed``).
         """
+        if turn.failed:
+            self._meter.endpoint_failed()
+            return "continue"
         # warn=False: the model was not asked for JSON on this turn, it was
         # asked to call a tool. A failed parse here is the ordinary case, not
         # something to shout about in the run log.

@@ -891,7 +891,7 @@ def _state_description(step) -> str:
                 "complete; the result's first line names it: the artifacts it builds on "
                 "(id, key fields, label), what its output must still close, and the open "
                 "issues in what you have committed to it. Takes no arguments. Call it when "
-                "a stage comes up, and again after each submit.")
+                "a stage comes up, and once more when every artifact of that stage is in.")
     closes = ", ".join(alignment.REGISTRY[rid].label
                        for rid in (step.docket or {}).get("gaps", ()))
     return (f"The alignment state of the {step.name} stage: the "
@@ -899,7 +899,9 @@ def _state_description(step) -> str:
             "fields, label), what your output must still close"
             + (f" ({closes})" if closes else "")
             + ", and the open issues in what you have committed. Takes no arguments. "
-              "Call it before you write, and again after each submit.")
+              "Call it before you write, and once more when every artifact of this stage "
+              "is in — not after each one; the tool result of a submit says what is still "
+              "needed.")
 
 
 def react_specs(steps: tuple, done: frozenset, *, graph_mode: bool = True,

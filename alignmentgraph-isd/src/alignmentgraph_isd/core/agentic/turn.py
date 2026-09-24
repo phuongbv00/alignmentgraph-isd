@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -27,6 +28,7 @@ from . import budget, tools
 from .protocol import (
     CONSTRAINED_PASS_REQUEST,
     INVALID_TURN_NUDGE,
+    READ_ALREADY_SHOWN,
     REPEAT_UNCHANGED,
     turns_left_hint,
 )
@@ -56,6 +58,12 @@ class ToolTurn:
     #: This call shares its assistant message with the call before it, so the
     #: message is already in the history and must not be appended again.
     sibling: bool = False
+    #: The request never reached the model (a connection error or a 5xx,
+    #: after the client's one retry): the endpoint's turn, not the model's,
+    #: refunded by the loop (``TurnMeter.endpoint_failed``) instead of
+    #: nudged for. An ordinary empty turn — the model answered with text —
+    #: keeps ``failed`` False and is charged as before.
+    failed: bool = False
     #: The backend refused ``bind_tools`` — not a model mistake, an endpoint
     #: one. Distinguished from an ordinary empty turn so the loop can stop
     #: immediately instead of spending its budget discovering it again.
@@ -139,6 +147,12 @@ class TurnMeter:
     def tool_error(self) -> None:
         """A tool call whose observation came back ERROR."""
         self._refund("tool_errors", budget.ERROR_ALLOWANCE)
+
+    def endpoint_failed(self) -> None:
+        """A request the endpoint did not answer, after the retry. Bounded by
+        the same allowance as a tool error, or an endpoint that is down would
+        never let the ceiling close the stage."""
+        self._refund("endpoint_failures", budget.ERROR_ALLOWANCE)
 
     def hint(self) -> str:
         """The countdown appended to an observation near the ceiling."""
@@ -493,6 +507,9 @@ class SeenCall(NamedTuple):
     digest of that result (what a repeat is compared against)."""
     call_id: str
     digest: str
+    #: For a ``read_node``: node id -> digest of the block rendered for it,
+    #: what a later read of a SUBSET of those ids is compared against.
+    blocks: dict = {}
 
 
 def observation_digest(observation: str) -> str:
@@ -538,10 +555,30 @@ def answer_read(seen: dict, turn: ToolTurn, args: dict, execute, *, meter: TurnM
         meter.read_was(useful=False)
         trajectory.log_recovery_event(
             identity, "repeated_tool_call", turn.name, str(args)[:100])
-        return _do_next(REPEAT_UNCHANGED.format(name=turn.name), meter, next_move), True
+        return (_do_next(REPEAT_UNCHANGED.format(name=turn.name), meter, next_move)
+                + meter.hint(), True)
+    blocks = _node_blocks(observation) if turn.name == "read_node" else {}
+    covered = _ids_already_shown(seen, turn.name, args, blocks=blocks)
+    if covered:
+        # Not the same call, but nothing new: every id was answered by an
+        # earlier read whose result is still in the context and unchanged.
+        # MEASURED (2B run, 2026-09-24): 17 of 46 Designer `read_node` calls
+        # re-read a subset of ids already shown, each a new call to the
+        # exact-repeat guard and a judge-visible entry. Refunded and counted
+        # fruitless like a repeat, so the binding withholds the reads after
+        # `budget.FRUITLESS_READS` of them.
+        meter.repeated()
+        meter.read_was(useful=False)
+        trajectory.log_recovery_event(
+            identity, "repeated_tool_call", turn.name,
+            f"ids already shown: {', '.join(covered)}"[:100])
+        # The countdown rides on a refused read too: a model that only reads
+        # is exactly the one that has to be told how many turns are left.
+        return (_do_next(READ_ALREADY_SHOWN.format(ids=", ".join(covered)), meter, next_move)
+                + meter.hint(), True)
     if prior is not None:
         stats["rereads_changed"] = stats.get("rereads_changed", 0) + 1
-    seen[key] = SeenCall(turn.call_id, digest)
+    seen[key] = SeenCall(turn.call_id, digest, blocks)
     stats["reads"] = stats.get("reads", 0) + 1
     failed = observation.startswith("ERROR")
     if failed:
@@ -554,6 +591,42 @@ def answer_read(seen: dict, turn: ToolTurn, args: dict, execute, *, meter: TurnM
     answered = observation + meter.hint()
     log_read(trajectory, identity, turn.name, args, answered, scope=scope)
     return answered, False
+
+
+_BLOCK_HEADER = re.compile(r"^\[([A-Z_]+):([^\]]+)\]$", re.MULTILINE)
+
+
+def _node_blocks(observation: str) -> dict[str, str]:
+    """``node id -> digest of its block`` over a ``read_node`` observation
+    (``tools.render_nodes``: one ``[TYPE:ID]`` header per node, the data
+    under it). An ERROR observation has no blocks."""
+    heads = list(_BLOCK_HEADER.finditer(observation))
+    blocks: dict[str, str] = {}
+    for index, head in enumerate(heads):
+        end = heads[index + 1].start() if index + 1 < len(heads) else len(observation)
+        blocks[head.group(2)] = observation_digest(observation[head.end():end].strip())
+    return blocks
+
+
+def _ids_already_shown(seen: dict, name: str, args: object, *, blocks: dict) -> list[str]:
+    """The ids of a ``read_node`` call when EVERY one of them was rendered,
+    byte for byte the same, by an earlier ``read_node`` still in ``seen``;
+    ``[]`` otherwise. Compared on CONTENT, the way the exact-repeat guard is:
+    a node a commit or a repair rewrote renders differently and the read is
+    answered as new, as the read → submit → re-read loop requires; a read
+    the compaction took is gone from ``seen`` and is answered as new too."""
+    if name != "read_node" or not isinstance(args, dict) or not blocks:
+        return []
+    wanted = [str(i) for i in (args.get("ids") or []) if str(i).strip()]
+    if not wanted or set(wanted) != set(blocks):
+        return []
+    shown: dict[str, str] = {}
+    for key, prior in seen.items():
+        if key.startswith("read_node:"):
+            shown.update(getattr(prior, "blocks", None) or {})
+    if all(shown.get(node_id) == blocks[node_id] for node_id in wanted):
+        return wanted
+    return []
 
 
 def _do_next(observation: str, meter: TurnMeter, next_move: str) -> str:

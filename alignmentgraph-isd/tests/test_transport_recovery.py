@@ -952,3 +952,89 @@ def test_an_instalment_that_adds_nothing_is_completed_by_the_pass_over_the_whole
     assert not loop_.stats["gave_up"] and model.invocations == 3
     schema = model.structured_requests[0]["json_schema"]["schema"]
     assert schema["additionalProperties"] is False, "pass 2 decodes under closed objects"
+
+
+# ── a read of ids already shown, a request the endpoint never answered ─────
+
+def test_a_read_of_ids_already_shown_unchanged_is_answered_with_a_pointer():
+    """MEASURED (2B run, 2026-09-24): 17 of 46 Designer `read_node` calls
+    re-read a subset of ids an earlier read had already answered, each a new
+    call to the exact-repeat guard. Refunded and counted fruitless like a
+    repeat; a node a commit rewrote renders differently and is answered as new."""
+    from test_agentic_loop import _ANALYSIS, _OUTCOMES, STEP_BY_NAME, _harness, _loop, call
+
+    step = STEP_BY_NAME["outcomes"]
+    model, config, graph, trajectory, brief = _harness([
+        call("read_node", {"ids": ["GAP-01", "TOP-01", "CON-01"]}),
+        call("read_node", {"ids": ["GAP-01", "TOP-01"]}),
+        call("read_node", {"ids": ["TOP-01"]}),
+        call("submit_learning_objectives", {"learning_objectives": _OUTCOMES["learning_objectives"]}),
+        call("read_node", {"ids": ["GAP-01"]}),
+        call("submit_course_modules", {"course_modules": _OUTCOMES["course_modules"]}),
+    ])
+    specialists.commit_analysis(graph, trajectory, _ANALYSIS)
+    loop_ = _loop(config, graph, trajectory, brief, step)
+    loop_.run()
+
+    answers = [m["content"] for m in loop_.messages
+               if isinstance(m, dict) and m.get("role") == "tool"]
+    assert answers[0].startswith("[GAP:GAP-01]")
+    assert answers[1].startswith("Every id in this read_node call (GAP-01, TOP-01) is already shown")
+    assert answers[2].startswith("Every id in this read_node call (TOP-01)")
+    # After the submit the gap is unchanged, so the read is still a pointer;
+    # a node a commit rewrote is answered anew
+    # (`test_a_repeat_after_a_commit_changed_the_state_is_answered_as_new`).
+    assert answers[4].startswith("Every id in this read_node call (GAP-01)")
+    repeats = [e for e in trajectory.recovery_events if e["action"] == "repeated_tool_call"]
+    assert len(repeats) == 3 and loop_.stats["repeated_calls"] == 3
+    visible = [tc["tool"] for tc in trajectory.tool_calls if "read_node" in tc["tool"]]
+    assert len(visible) == 1, "a refused read never reaches the judge-visible trace"
+    assert graph.element_nodes(NodeType.MODULE)
+
+
+def test_a_request_the_endpoint_never_answered_is_retried_once_then_refunded():
+    """Twelve "Connection error" replies in ten runs, all in a pod's first
+    two minutes: sent once more after a pause, and if that fails too the
+    turn is the endpoint's — refunded, and the model is not nudged for it."""
+    from alignmentgraph_isd.core.agentic import client as client_mod
+    from test_agentic_loop import _ANALYSIS, STEP_BY_NAME, ScriptedModel, _harness, _loop, call
+
+    class _Flaky(ScriptedModel):
+        def __init__(self, responses, fail_first: int) -> None:
+            super().__init__(responses)
+            self.fail_first = fail_first
+            self.attempts = 0
+
+        def bind_tools(self, specs, **_kwargs):
+            return super().bind_tools(specs)
+
+        def invoke(self, messages):
+            self.attempts += 1
+            if self.attempts <= self.fail_first:
+                raise ConnectionError("Connection error.")
+            return super().invoke(messages)
+
+    client_mod.TRANSIENT_RETRY_DELAY = 0.0
+    step = STEP_BY_NAME["analysis"]
+    model = _Flaky([call("submit", _ANALYSIS)], fail_first=1)
+    _m, config, graph, trajectory, brief = _harness([])
+    config.llm_factory = lambda: model
+    loop_ = _loop(config, graph, trajectory, brief, step)
+    loop_.run()
+    actions = [e["action"] for e in trajectory.recovery_events]
+    assert actions.count("llm_retry") == 1 and "llm_error" not in actions
+    assert graph.element_nodes(NodeType.GAP), "the retry carried the submit"
+    assert loop_.stats["endpoint_failures"] == 0
+
+    model = _Flaky([call("submit", _ANALYSIS)], fail_first=2)
+    _m, config, graph, trajectory, brief = _harness([])
+    config.llm_factory = lambda: model
+    loop_ = _loop(config, graph, trajectory, brief, step)
+    loop_.run()
+    actions = [e["action"] for e in trajectory.recovery_events]
+    assert actions.count("llm_retry") == 1 and actions.count("llm_error") == 1
+    assert "invalid_action" not in actions, "the endpoint's turn is not the model's mistake"
+    assert loop_.stats["endpoint_failures"] == 1
+    assert graph.element_nodes(NodeType.GAP), "the third request carried the submit"
+    assert not any(isinstance(m, dict) and m.get("role") == "user" and "tool" in m.get("content", "").lower()
+                   for m in loop_.messages[2:]), "no nudge was appended for the failed request"
