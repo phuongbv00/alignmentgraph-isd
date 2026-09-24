@@ -17,7 +17,15 @@ from pathlib import Path
 from .. import paths
 from ..config import LLM_JUDGE_SCORES
 from ..config import current as current_config
-from ..latex import fmt_num, fmt_p, header_comment, model_display, size_display, size_of_label, size_word
+from ..latex import (
+    fmt_num,
+    fmt_p,
+    header_comment,
+    model_display,
+    size_display,
+    size_of_label,
+    size_word,
+)
 
 PRODUCER = "isd-exp report ablation-tables"
 

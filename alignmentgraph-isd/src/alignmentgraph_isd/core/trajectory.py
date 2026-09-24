@@ -768,6 +768,8 @@ class TrajectoryLogger:
         oversized_splits: int = 0,
         dropped_pairs: int = 0,
         duplicate_pairs: int = 0,
+        tasks_planned: int | None = None,
+        task_ceiling: int | None = None,
         agent: str = "",
     ) -> None:
         """Record one family's dev-plan normalization result: how a fan-out's
@@ -791,20 +793,28 @@ class TrajectoryLogger:
         coverage targets never promised (discarded), ``duplicate_pairs`` the
         ones it named in two sets (kept once). Both are logged so a plan the
         harness silently reshaped cannot read as ``source: llm`` with nothing
-        dropped."""
+        dropped.
+
+        ``tasks_planned`` / ``task_ceiling`` are the assessment family's: how
+        many tasks the blueprint planned against the ceiling the course was
+        told. The ceiling is told and never enforced, so this event is where
+        its compliance is measured. Recorded only when stated, so the other
+        families' events are unchanged."""
+        blueprint = {k: v for k, v in (("tasks_planned", tasks_planned),
+                                       ("task_ceiling", task_ceiling)) if v is not None}
         self._record_event(
             TrajectoryAction.WORK_SETS, "work_sets_event", agent=agent,
             family=family, set_count=set_count, pair_count=pair_count, sets=sets,
             source=source, fallback_used=fallback_used, dropped_refs=dropped_refs,
             dropped_pairs=dropped_pairs, duplicate_pairs=duplicate_pairs,
-            appended_sets=appended_sets, oversized_splits=oversized_splits,
+            appended_sets=appended_sets, oversized_splits=oversized_splits, **blueprint,
         )
         self.log_action(
             TrajectoryAction.WORK_SETS, agent=agent,
             family=family, set_count=set_count, pair_count=pair_count, sets=sets,
             source=source, fallback_used=fallback_used, dropped_refs=dropped_refs,
             dropped_pairs=dropped_pairs, duplicate_pairs=duplicate_pairs,
-            appended_sets=appended_sets, oversized_splits=oversized_splits,
+            appended_sets=appended_sets, oversized_splits=oversized_splits, **blueprint,
         )
 
     def log_retrieval_event(

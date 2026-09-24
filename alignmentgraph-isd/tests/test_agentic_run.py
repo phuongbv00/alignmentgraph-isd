@@ -479,3 +479,17 @@ def test_the_tool_menu_cannot_disagree_with_the_binding():
             listed = {line.split(" ", 2)[1] for line in menu.splitlines() if line.startswith("- ")}
             assert listed == set(bound), (
                 f"{step.name} (graph={graph_mode}) menu {listed} vs binding {set(bound)}")
+
+
+def test_the_assessment_work_sets_event_records_the_task_ceiling():
+    """The task ceiling is told and never enforced, so its compliance is read
+    off this event -- by `isd-exp pool tune`, before the ceiling is frozen. The
+    other families state no blueprint and carry neither key."""
+    events = [e["context"] for e in _run()["trajectory"]["events"]
+              if e["action"] == "work_sets"]
+    first_assessment = next(ctx for ctx in events if ctx.get("phase") == "assessment")
+    assert isinstance(first_assessment.get("tasks_planned"), int)
+    assert isinstance(first_assessment.get("task_ceiling"), int)
+    for ctx in events:
+        if ctx.get("phase") != "assessment":
+            assert "tasks_planned" not in ctx and "task_ceiling" not in ctx, ctx.get("phase")

@@ -541,9 +541,7 @@ Mỗi run ghi `metadata.run_config` vào trajectory và script pool **hard-fail*
 Post-processing chạy **sau khi ladder xong** (consistency check cần `pooled_comparison.json`):
 
 ```bash
-./isd-exp pool ablation \
-    --auto-glob 'results/test_30_benchmark_*_a*' \
-    --ladder-pooled results/pooled_comparison.json          # → results/pooled_ablation.json
+./isd-exp pool ablation --comparison-pooled results/pooled_comparison.json   # → results/pooled_ablation.json
 ./isd-exp report ablation-tables
 ./isd-exp report ablation-figures
 ```
@@ -815,8 +813,7 @@ Validity evidence cho Bloom — chạy một lần, báo cả hai arm + κ giữ
 ## 8. Pool → thống kê RQ1 + RQ2
 
 ```bash
-./isd-exp pool comparison \
-    --auto-glob 'results/test_90_benchmark_*_r*' --auto-encoders --auto-bloom
+./isd-exp pool comparison --auto-encoders --auto-bloom   # mọi run dir của profile comparison
 ```
 
 Output `results/pooled_comparison.json` + report stdout. Gộp run/size (mean-of-runs; TN1 mặc định 1 run), rồi per-size: Wilcoxon paired
@@ -825,8 +822,10 @@ nghĩa ở A.2. RQ2 pool từ `alignment_scores.json` (A.3). Kèm section `token
 
 - `--auto-encoders` (hoặc `--encoders bgem3,granite,tfidf`) thêm khoá `alignment_sensitivity`. `pooled["alignment"]`
   **luôn** là encoder chính nên `09`/`10`/ablation không đổi gì.
-- Auto-glob nhóm dir theo tên model + run tag. Nếu nó vơ nhầm dir (run tune, run bỏ dở) thì dùng mapping tường minh
-  `--model <key>=dir1,dir2,dir3`.
+- Không truyền glob thì pool tự dựng glob từ profile (dataset + tag, ví dụ `test_90_benchmark_*_c*`) và nhóm dir theo
+  tên model. Nếu nó vơ nhầm dir (run bỏ dở, run lặp) thì truyền glob hẹp hơn làm đối số, ví dụ
+  `./isd-exp pool comparison 'test_90_benchmark_*_c1_2026*'`. Glob của `pool` và `report` tính **từ `results/`**, còn glob
+  của `judge llm|alignment` tính từ thư mục đang đứng (`results/...`).
 - Kiểm trước khi kết luận: CV giữa r1/r2/r3 của cùng (model, agent) quá lớn (>~20–30%) → soi run lệch. Trend theo size
   đảo chiều ở đâu → kiểm integrity chỗ đó trước khi coi là finding.
 
@@ -835,7 +834,7 @@ nghĩa ở A.2. RQ2 pool từ `alignment_scores.json` (A.3). Kèm section `token
 ```bash
 ./isd-exp report tables --pooled results/pooled_comparison.json
 ./isd-exp report sensitivity     # nếu có alignment_sensitivity
-./isd-exp report figures --runs-glob 'results/test_90_benchmark_*_r*'
+./isd-exp report figures --runs-glob 'test_90_benchmark_*_c1_*'
 cd .. && ./isd-exp report sync                                 # từ repo thesis
 ```
 

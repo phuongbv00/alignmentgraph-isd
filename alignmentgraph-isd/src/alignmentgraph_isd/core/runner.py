@@ -348,6 +348,8 @@ def _run_fanout(config, memory, trajectory, design_brief, step, spec, *,
             duplicate_pairs=stats_dev.get("duplicate_pairs", 0),
             appended_sets=stats_dev["appended_sets"],
             oversized_splits=stats_dev.get("oversized_splits", 0),
+            tasks_planned=stats_dev.get("tasks_planned"),
+            task_ceiling=stats_dev.get("task_ceiling"),
             agent=orchestrator)
         committed = fanout.committed_set_ids(spec, state)
         pending = [ws for ws in work_sets if ws.set_id not in committed]
