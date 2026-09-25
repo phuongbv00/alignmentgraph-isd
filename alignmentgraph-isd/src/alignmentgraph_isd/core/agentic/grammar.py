@@ -465,6 +465,15 @@ def _stated_count(key: str, work_set, vocab: Vocabulary) -> int:
     return 0
 
 
+#: The pass-2 decoder's backstops: the longest string and the longest list it
+#: may write where the schema states no bound of its own. Far past any
+#: artifact of the design (a full-mode material runs to ~5,000 characters, an
+#: item's rubric to 3-4 criteria), so they end a runaway and change nothing
+#: else.
+DECODER_MAX_STRING = 6000
+DECODER_MAX_ITEMS = 20
+
+
 def for_decoder(schema: object) -> object:
     """The schema the CONSTRAINED PASS decodes under: every object CLOSED
     (``additionalProperties: false``) except an open map, which keeps the
@@ -479,10 +488,23 @@ def for_decoder(schema: object) -> object:
     beside the declared fields is unaffected, since a pass rewrites only a
     submit the validator refused."""
     if isinstance(schema, dict):
-        out = {k: for_decoder(v) if k != "additionalProperties" else v
+        # An open map keeps its value schema, which is bounded like any other.
+        out = {k: (for_decoder(v) if k != "additionalProperties" or isinstance(v, dict) else v)
                for k, v in schema.items()}
         if out.get("type") == "object" and not isinstance(out.get("additionalProperties"), dict):
             out["additionalProperties"] = False
+        # And every string and every array BOUNDED. Closing the objects was
+        # not enough: MEASURED (tune-10, 2026-09-25), five passes still ran
+        # to the 8,192-token cap and came back as nothing — inside a string
+        # (a material's ``content``) or an open-ended list (a rubric, an
+        # option list) — and four of them cost their set. The bounds are far
+        # past what any artifact here writes; they exist so the decoder
+        # always has an end, not to shape the artifact, and the bound tool
+        # contract (pass 1) carries none of them.
+        if out.get("type") == "string" and not {"enum", "const", "maxLength"} & set(out):
+            out["maxLength"] = DECODER_MAX_STRING
+        if out.get("type") == "array" and "maxItems" not in out and out.get("items") is not False:
+            out["maxItems"] = DECODER_MAX_ITEMS
         return out
     if isinstance(schema, list):
         return [for_decoder(v) for v in schema]

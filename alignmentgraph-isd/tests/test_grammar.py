@@ -336,8 +336,9 @@ def test_the_decoder_schema_closes_every_object_but_an_open_map():
     assert closed["additionalProperties"] is False
     plan = closed["properties"]["assessment_plan"]
     assert plan["additionalProperties"] is False
-    assert plan["properties"]["expected_evidence"]["additionalProperties"] == {"type": "string"}, (
-        "an open map keeps its value schema")
+    value = plan["properties"]["expected_evidence"]["additionalProperties"]
+    assert value == {"type": "string", "maxLength": grammar.DECODER_MAX_STRING}, (
+        "an open map keeps its value schema, bounded like any other")
     assert closed["$defs"]["assessment_task"]["additionalProperties"] is False
     assert grammar.xgrammar_safe(closed) == []
 
@@ -354,3 +355,34 @@ def test_the_bound_specs_come_out_of_the_transcript_budget():
     whole = history_budget(config)
     assert history_budget(config, specs) == max(whole - specs_chars(specs), whole // 4)
     assert history_budget(config, specs) < whole
+
+
+
+def test_the_decoder_bounds_every_string_and_every_list_it_is_not_told_the_end_of():
+    """Closed objects still let a pass run to the completion cap inside one
+    string or one open list (five passes, tune-10 2026-09-25). The decoder
+    schema bounds both; the bound contract carries neither bound."""
+    vocab = grammar.Vocabulary.of(_design("graph"))
+    bound = tools.spec_parameters(
+        grammar.tighten_specs(tools.tool_specs(STEP_BY_NAME["assessment"]), vocab),
+        "submit_assessment_plan")
+    closed = grammar.for_decoder(bound)
+    open_strings, open_lists = [], []
+
+    def walk(node, path):
+        if isinstance(node, dict):
+            if node.get("type") == "string" and not {"enum", "const", "maxLength"} & set(node):
+                open_strings.append(path)
+            if node.get("type") == "array" and "maxItems" not in node and node.get("items") is not False:
+                open_lists.append(path)
+            for k, v in node.items():
+                walk(v, f"{path}/{k}")
+        elif isinstance(node, list):
+            for i, v in enumerate(node):
+                walk(v, f"{path}[{i}]")
+
+    walk(closed, "")
+    assert not open_strings and not open_lists, (open_strings[:3], open_lists[:3])
+    assert '"maxLength": %d' % grammar.DECODER_MAX_STRING not in json.dumps(bound), (
+        "the bound contract carries none of the decoder's backstops")
+    assert grammar.xgrammar_safe(closed) == []

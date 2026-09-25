@@ -73,6 +73,9 @@ def test_a_required_container_declares_its_floor():
                       and "additionalProperties" in prop
                       and prop.get("minProperties") != 1):
                     unfloored.append(where)
+                elif (prop.get("type") == "string" and "enum" not in prop
+                      and "const" not in prop and prop.get("minLength") != 1):
+                    unfloored.append(where)
     assert not unfloored, f"required containers with no non-empty floor: {unfloored}"
 
 

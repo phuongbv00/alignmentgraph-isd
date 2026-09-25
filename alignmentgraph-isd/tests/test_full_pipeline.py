@@ -377,15 +377,25 @@ def test_expert_review_states_each_finding_with_its_disposition():
     review = ADDIEOutputAggregator(AlignmentGraph(), trajectory, findings=ledger) \
         ._build_development()["expert_review"]
 
-    rows = {r["artifact"]: r for r in review["findings_reviewed"]}
-    assert rows["objective:ILO-01"]["criterion"].startswith("C2: ")
-    assert rows["objective:ILO-01"]["issue"] == "objective:ILO-01 has no assessment item."
-    assert rows["objective:ILO-01"]["disposition"].startswith("left open: the repair budget")
-    assert rows["activity:TLA-01"]["disposition"] == "revised by a deterministic repair"
-    assert "design judgment" in rows["module:MOD-01"]["disposition"]
+    rows = review["findings_reviewed"]
+    # Grouped by criterion and disposition, the open ones first.
+    assert [r["disposition"].startswith("left open") for r in rows] == [True, True, False]
+    c2 = next(r for r in rows if r["criterion"].startswith("C2: "))
+    assert c2 == {"criterion": c2["criterion"], "disposition": c2["disposition"], "count": 1,
+                  "artifacts": ["objective:ILO-01"],
+                  "example_issue": "objective:ILO-01 has no assessment item."}
+    assert c2["disposition"].startswith("left open: the repair budget")
+    c4 = next(r for r in rows if r["criterion"].startswith("C4: "))
+    assert c4["disposition"] == "revised by a deterministic repair"
+    tb = next(r for r in rows if r["criterion"] == "time budget")
+    assert "design judgment" in tb["disposition"]
     assert review["revisions_made"] == ["C4 on activity:TLA-01: pointed TLA-01 at AT-01"]
-    assert "Of 3 distinct finding(s), 1 were revised" in review["feedback_summary"]
-    assert "no external human expert review" in review["feedback_summary"]
+    summary = review["feedback_summary"]
+    assert "Of 3 distinct finding(s), 1 were revised" in summary
+    assert "For example: objective:ILO-01 has no assessment item. Method:" in summary
+    assert summary.index("Of 3") < summary.index("Method:"), "the verdict comes before the method"
+    assert "no external human expert review" in summary
+    assert list(review)[:4] == ["review_type", "reviewers", "feedback_summary", "findings_reviewed"]
     assert review["review_type"] == "internal_automated"
 
     prose = aggregate_prose(ProseStore(), trajectory, findings_=ledger)
@@ -411,3 +421,20 @@ def test_the_formative_block_names_its_instruments_and_never_copies_their_items(
                     "covers_objectives": ["ILO-01"], "item_count": 2,
                     "item_types": ["multiple_choice", "short_answer"]}]
     assert out["summative"]["assessment_tools"][0]["items"], "the summative items stay whole"
+
+
+
+def test_a_grouped_review_row_names_a_few_artifacts_and_counts_the_rest():
+    from alignmentgraph_isd.core.aggregate import REVIEW_ARTIFACTS_SHOWN, _review_record
+    from alignmentgraph_isd.core.memory import Finding
+
+    ledger = tuple(
+        Finding(key=f"C4|activity:TLA-0{i}", node_id=f"activity:TLA-0{i}", edge_type="",
+                violation_type="C4", severity="error", repair_hint="", metadata={},
+                target_designer="activity_designer", messages=(f"TLA-0{i} prepares for nothing.",),
+                outcome="open", open_reason="unseen")
+        for i in range(1, 9))
+    [row] = _review_record(ledger, [])["findings_reviewed"]
+    assert row["count"] == 8
+    assert row["artifacts"][:REVIEW_ARTIFACTS_SHOWN] == [f"activity:TLA-0{i}" for i in range(1, 6)]
+    assert row["artifacts"][-1] == "and 3 more"

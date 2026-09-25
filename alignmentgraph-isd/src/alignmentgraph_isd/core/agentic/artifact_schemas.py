@@ -83,6 +83,12 @@ def required_floor(prop: dict) -> dict:
         return prop | {"minItems": 1}
     if prop.get("type") == "object" and "additionalProperties" in prop:
         return prop | {"minProperties": 1}
+    if prop.get("type") == "string" and "enum" not in prop and "const" not in prop:
+        # An empty string is "missing or empty" to every validator here, and
+        # a grammar holding only "present" let the constrained pass write
+        # ``"materials_needed": ""`` twice and be refused twice (tune-10,
+        # 2026-09-25).
+        return prop | {"minLength": 1}
     return prop
 
 
