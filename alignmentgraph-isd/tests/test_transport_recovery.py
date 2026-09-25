@@ -1038,3 +1038,24 @@ def test_a_request_the_endpoint_never_answered_is_retried_once_then_refunded():
     assert graph.element_nodes(NodeType.GAP), "the third request carried the submit"
     assert not any(isinstance(m, dict) and m.get("role") == "user" and "tool" in m.get("content", "").lower()
                    for m in loop_.messages[2:]), "no nudge was appended for the failed request"
+
+
+def test_a_schema_keyword_written_as_a_field_is_dropped_and_reported():
+    """``{"topics": [...], "minItems": 1}``: the schema echoed back. MEASURED
+    (2B run, 2026-09-25): 84 such keys across ten outputs. Dropped wherever the
+    artifact declares no property of that name, reported as a reshape; a
+    declared property that happens to share the name is untouched."""
+    params = tools.submit_parameters(STEPS[0])            # analysis
+    args = {"task_analysis": {"topics": [{"id": "T1", "topic": "x"}], "minItems": 1,
+                              "additionalProperties": True, "prerequisites": ["y"]},
+            "$defs": {}}
+    reshaped: list = []
+    out = tools.reshape_args(params, args, reshaped=reshaped)
+    assert out == {"task_analysis": {"topics": [{"id": "T1", "topic": "x"}], "prerequisites": ["y"]}}
+    assert sorted(reshaped) == ["$defs (schema keyword dropped)",
+                                "task_analysis.additionalProperties (schema keyword dropped)",
+                                "task_analysis.minItems (schema keyword dropped)"]
+    # `required`/`properties` are keywords too, but a field the artifact
+    # DECLARES under such a name is the design's.
+    schema = {"type": "object", "properties": {"required": {"type": "string"}}}
+    assert tools.reshape_args(schema, {"required": "yes"}, reshaped=[]) == {"required": "yes"}

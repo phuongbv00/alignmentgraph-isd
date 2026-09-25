@@ -295,6 +295,22 @@ def _labelled(value, labels: dict[str, str]):
     return value
 
 
+def _instrument_row(task: dict, labels: dict[str, str]) -> dict:
+    """One assessment task as the evaluation phase names it: what instrument,
+    when, for which module and objectives, how many items -- never the items."""
+    items = task.get("items") if isinstance(task.get("items"), list) else []
+    return _labelled({
+        "id": task.get("id", ""),
+        "format": task.get("format", ""),
+        "timing": task.get("timing", ""),
+        "module_id": task.get("module_id", ""),
+        "covers_objectives": list(task.get("covers_objectives") or []),
+        "item_count": len(items),
+        "item_types": sorted({str(i.get("type") or "") for i in items if isinstance(i, dict)
+                              and i.get("type")}),
+    }, labels)
+
+
 def _evaluation_from(assessment_tools: list, plan_data: dict, improvement_plan: dict,
                      *, labels: dict[str, str] | None = None) -> dict:
     """The evaluation phase, from the assessment pool, the assessment plan and
@@ -308,7 +324,13 @@ def _evaluation_from(assessment_tools: list, plan_data: dict, improvement_plan: 
     The formative half of ADDIE Evaluation is scored on more than a list of
     sets: the rubric asks which areas learners struggled with, why, and what
     first-round revision follows -- the assessment plan's ``pilot_data_plan``,
-    surfaced here. The summative half's narrative is synthesized from the
+    surfaced here. Its formative INSTRUMENTS are named compactly (one row per
+    task: id, format, module, objectives, item count), not copied item by
+    item: the items are the development phase's and are scored there, and a
+    21,700-character copy beside a 350-character difficulty analysis had the
+    judge score the analysis absent (2B run, 2026-09-25, both judges). The
+    summative tasks stay whole, because sub-item 30 scores the summative
+    items themselves. The summative half's narrative is synthesized from the
     counts, because nothing in the design generates it: it reports what the
     summative tasks cover and nothing the run did not measure.
     """
@@ -332,7 +354,7 @@ def _evaluation_from(assessment_tools: list, plan_data: dict, improvement_plan: 
             for entry in (pilot.get("anticipated_difficulties") or [])
             if isinstance(entry, dict)
         ], labels),
-        "assessment_tools": formative_tasks,
+        "assessment_tools": [_instrument_row(task, labels) for task in formative_tasks],
     }
     objective_ids = _objectives_in(summative_tasks)
     coverage = (f"{len(summative_tasks)} summative assessment task(s) carrying "

@@ -611,6 +611,16 @@ def _only_text_field(item_schema: dict) -> str:
     return required[0] if (props.get(required[0]) or {}).get("type") == "string" else ""
 
 
+#: JSON Schema's own keywords. Written as a KEY of an artifact they are the
+#: schema echoed back, never a field of the design, and ``reshape_args`` drops
+#: them wherever the artifact does not declare a property of that name.
+SCHEMA_KEYWORDS = frozenset({
+    "minItems", "maxItems", "minProperties", "maxProperties", "additionalProperties",
+    "prefixItems", "$defs", "$ref", "$schema", "const", "enum", "minLength", "maxLength",
+    "required", "properties",
+})
+
+
 def reshape_args(parameters: dict, args: dict, *, reshaped: list,
                  salvaged: list | None = None) -> dict:
     """A scalar string where the schema declares an ARRAY OF STRINGS becomes
@@ -698,6 +708,16 @@ def reshape_args(parameters: dict, args: dict, *, reshaped: list,
             extra = (schema or {}).get("additionalProperties")
             out = {}
             for key, one in value.items():
+                if key in SCHEMA_KEYWORDS and key not in props:
+                    # The schema's own vocabulary, echoed as a field: a 2B
+                    # model shown ``"topics": {..., "minItems": 1}`` writes
+                    # ``{"topics": [...], "minItems": 1}`` — MEASURED, 84
+                    # such keys across the outputs of one tune run, none of
+                    # them a word of the design. Dropped and reported; the
+                    # shape stays a floor for every other undeclared key.
+                    reshaped.append(f"{path}.{key} (schema keyword dropped)" if path
+                                    else f"{key} (schema keyword dropped)")
+                    continue
                 sub = props.get(key) or (extra if isinstance(extra, dict) else None)
                 out[key] = walk(sub, one, f"{path}.{key}" if path else key) if sub else one
             return out

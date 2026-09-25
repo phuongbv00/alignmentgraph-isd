@@ -169,10 +169,12 @@ one exists), which tasks by title feed it; and what decides adoption — the goa
 that counts as success, how learner satisfaction is measured and the level expected, how cost
 per learner is weighed, and the rule that turns those three into adopt, revise or drop. Never
 write results: a plan has none.
-pilot_data_plan.anticipated_difficulties must name at least two SPECIFIC areas, each anchored to
-BOTH the content module or session where learners would struggle AND the objective id affected
-(e.g. "Module 3 (interactive content design) — ILO-02", never "general comprehension"), each
-with a rationale grounded in the learner profile and a first_revision that is concrete enough
+pilot_data_plan.anticipated_difficulties is the pilot's learner-feedback analysis and is read
+on its own: name at least two SPECIFIC areas, each anchored to BOTH the content module or
+session where learners would struggle AND the objective id affected (e.g. "Module 3
+(interactive content design) — ILO-02", never "general comprehension"), each with a rationale
+grounded in the learner profile, a ``detected_by`` that names the pilot data revealing it (which
+survey question, observation, or task result, from whom), and a first_revision concrete enough
 to act on without further analysis."""
 
 RULES_ASSESSMENT_ITEMS = """\

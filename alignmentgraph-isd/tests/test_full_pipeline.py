@@ -390,3 +390,24 @@ def test_expert_review_states_each_finding_with_its_disposition():
 
     prose = aggregate_prose(ProseStore(), trajectory, findings_=ledger)
     assert prose["development"]["expert_review"]["findings_reviewed"] == review["findings_reviewed"]
+
+
+def test_the_formative_block_names_its_instruments_and_never_copies_their_items():
+    """Sub-items 28/29 score the difficulty analysis and the revision; the
+    items are the development phase's. A 21,700-character copy beside a
+    350-character analysis had the judge score the analysis absent."""
+    from alignmentgraph_isd.core.aggregate import _evaluation_from
+
+    tasks = [{"id": "AT-01", "timing": "formative", "format": "quiz", "module_id": "MOD-01",
+              "covers_objectives": ["ILO-01"],
+              "items": [{"item_id": "Q1", "type": "multiple_choice", "question": "long " * 500},
+                        {"item_id": "Q2", "type": "short_answer", "question": "x"}]},
+             {"id": "AT-02", "timing": "summative", "format": "practical", "module_id": "MOD-01",
+              "covers_objectives": ["ILO-01"],
+              "items": [{"item_id": "P1", "type": "performance_task", "question": "build it"}]}]
+    out = _evaluation_from(tasks, {"pilot_data_plan": {}}, {})
+    row = out["formative"]["assessment_tools"]
+    assert row == [{"id": "AT-01", "format": "quiz", "timing": "formative", "module_id": "MOD-01",
+                    "covers_objectives": ["ILO-01"], "item_count": 2,
+                    "item_types": ["multiple_choice", "short_answer"]}]
+    assert out["summative"]["assessment_tools"][0]["items"], "the summative items stay whole"
