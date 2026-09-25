@@ -71,6 +71,17 @@ task_analysis.topics (the modules cluster them). Each needs at least one entry, 
 own id — write the finding IN the list, not only in a summary field beside it. A list left empty
 is not a short analysis, it is a design that stops there.
 
+Each part is read on its own by someone who never sees the others, so every field is written,
+in this order. needs_analysis: problem_definition (the problem, its causes and how the need was
+established), gaps (each with evidence), performance_analysis (the performance gap and why
+instruction is the answer), priority_matrix (which gap ids come first, second, last, and why the
+order). learner_analysis: target_audience, characteristics, prior_knowledge, motivation,
+challenges. context_analysis: environment (physical, organisational and technical), duration,
+resources, constraints. task_analysis: topics with subtopics (the sub-skills), prerequisites,
+entry_behaviors (what learners can already do at entry), initial_objectives (a draft, its
+critique, its revision), review_summary (how the task analysis and the goals fit together).
+improvement_plan: feedback_summary, improvements, next_iteration_goals.
+
 Every improvement in improvement_plan.improvements must set addresses_gap to an existing gap id
 from needs_analysis.gaps."""
 
@@ -241,8 +252,10 @@ Every activity belongs to ONE module: set ``module_id`` to the id of the module 
 Every activity must list ``aligned_objectives`` (existing ILO ids it practices, TLA = Teaching/
 Learning Activity) and ``prepares_for_assessment`` (ids of existing assessment TASKS it
 prepares learners for — the quiz, practical or project a learner sits, e.g. "AT-02", never an
-individual question). ``materials_needed`` is free text, NOT an id — describe what content/resource
-would help, a later step will source it. ``learner_cognitive_process`` must be one of:
+individual question). ``duration`` is the learner time the activity takes, in minutes (e.g.
+"45 minutes"): the module's minutes are what these add up to. ``materials_needed`` is free text,
+NOT an id — describe what content/resource would help, a later step will source it.
+``learner_cognitive_process`` must be one of:
 %(bloom_levels)s — and must be at or above the level of
 every objective it aligns to (an Apply+ objective needs a hands-on activity: lab, exercise,
 project, simulation — never only lecture/reading/video). ``prerequisite_activities`` lists
@@ -268,8 +281,10 @@ character from the ids you have been given — an objective id is ``ILO-003``, n
 and never the objective's sentence; an assessment task id is ``AT-02``, the quiz, practical or
 project a learner sits, never an individual question. Use only the objectives you were given to
 cover, and only the assessment tasks you were given.
-``materials_needed`` is free text, NOT an id — describe what content/resource would help, a
-later step will source it. ``learner_cognitive_process`` must be one of:
+``duration`` is the learner time the activity takes, in minutes (e.g. "45 minutes"): the
+module's minutes are what these add up to. ``materials_needed`` is free text, NOT an id —
+describe what content/resource would help, a later step will source it.
+``learner_cognitive_process`` must be one of:
 %(bloom_levels)s — and must be at or above the level of
 every objective it aligns to (an Apply+ objective needs a hands-on activity: lab, exercise,
 project, simulation — never only lecture/reading/video). ``prerequisite_activities`` may only
@@ -379,9 +394,9 @@ Every session guide must list the EXACT ids it delivers in ``activity_ids`` and 
 you did not read there does not exist — separate from the prose in ``activities``. Between your guides, every activity and every
 material your block names must appear at least once — anything you leave out is something nobody
 scheduled.
-Write every guide out in full: the real objectives that session serves, what actually happens in
-it, and notes an instructor could act on. ``activities`` is prose describing the session, never a
-list of ids."""
+Write every guide out in full: ``objectives`` names the real objective ids that session serves,
+``activities`` is prose describing what actually happens in it (never a list of ids), and
+``notes`` is what an instructor should watch for."""
 
 
 

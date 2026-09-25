@@ -335,8 +335,9 @@ def test_constraints_written_as_sentences_become_elements_and_topics_are_require
         {"id": "CON-01", "description": "Budget constraints"}, {"id": "c2", "description": "Time"}]
     assert reshaped == ["context_analysis.constraints[0]"]
 
-    assert specialists.validate_analysis({"task_analysis": {"task_overview": "x"}}) == [
-        "task_analysis.topics must be a non-empty list"]
+    errors = specialists.validate_analysis({"task_analysis": {"task_overview": "x"}})
+    assert "task_analysis.topics must be a non-empty list" in errors
+    assert "task_analysis.entry_behaviors: required field is missing or empty" in errors
 
 
 def test_the_blueprint_has_to_reach_every_module_and_every_objective():

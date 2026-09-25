@@ -243,7 +243,11 @@ def respec(messages: list, step, brief: str) -> str:
 #: Which agent-facing protocol a run spoke, recorded in
 #: ``metadata.run_config`` so that runs on either side of a change to the
 #: tools an agent is bound or to how a stage ends are never pooled by mistake.
-#: 7 = a rejected submit written again by the model under the artifact's
+#: 8 = every field a rubric sub-item reads is REQUIRED in the artifact
+#: contract (the analysis prose, the improvement plan's summary and goals, the
+#: plan's expected evidence and formative methods, the strategy model, an
+#: activity's duration and materials, a guide's objectives and prose) and
+#: held to at the submit. 7 = a rejected submit written again by the model under the artifact's
 #: per-run schema (references as enums over the ids that exist, a light
 #: assignment's rows as constants, stated counts as bounds), with no tools
 #: bound; the bound submit tools declare that schema too. 6 = an assessment
@@ -259,7 +263,7 @@ def respec(messages: list, step, brief: str) -> str:
 #: each item's objective, type and cognitive level and each activity's
 #: objective and level, the mode states a material's depth, and the pilot
 #: data plan names its collection points in words.
-PROTOCOL_REV = 7
+PROTOCOL_REV = 8
 
 #: The answer to a repeated read whose result is unchanged — ONE wording for
 #: both arms, and only ever said when it is true (``turn.answer_read`` has

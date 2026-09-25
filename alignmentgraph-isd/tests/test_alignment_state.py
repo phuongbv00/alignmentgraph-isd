@@ -38,6 +38,14 @@ def _designed_up_to_outcomes() -> tuple[AlignmentGraph, TrajectoryLogger]:
     return graph, trajectory
 
 
+def _thin_pilot() -> dict:
+    """A pilot data plan the validator accepts (one collection point is
+    non-empty) and ``evaluation_quality`` reports (it holds the plan to two)."""
+    pilot = copy.deepcopy(_ASSESSMENT["assessment_plan"]["pilot_data_plan"])
+    pilot["collection_points"] = pilot["collection_points"][:1]
+    return pilot
+
+
 def _plan(**over) -> dict:
     plan = copy.deepcopy(_ASSESSMENT["assessment_plan"])
     plan["lo_coverage_targets"] = {"ILO-01": ["formative", "summative"]}
@@ -84,7 +92,7 @@ def test_open_issues_appear_only_once_the_parts_have_landed_and_are_the_roles_ow
     before = alignment_state.read(graph, BRIEF, step)
     assert not before.shown and "(none)" in before.text
 
-    specialists.commit_assessment(graph, trajectory, _plan(formative_methods=[]))
+    specialists.commit_assessment(graph, trajectory, _plan(pilot_data_plan=_thin_pilot()))
     after = alignment_state.read(graph, BRIEF, step)
 
     assert {v.violation_type for v in after.shown} == {"evaluation_quality"}
@@ -143,7 +151,7 @@ def _assessment_run(script, **kwargs):
 def test_read_submit_reread_fix_is_one_loop_in_one_transcript():
     model, loop, trajectory, answers = _assessment_run([
         call("read_alignment_state", {}),
-        call("submit_assessment_plan", _plan(formative_methods=[])),
+        call("submit_assessment_plan", _plan(pilot_data_plan=_thin_pilot())),
         call("read_alignment_state", {}),
         call("submit_assessment_plan", _plan()),
     ])
@@ -170,7 +178,7 @@ def test_an_agent_that_reads_its_issues_and_submits_nothing_closes_the_stage_unc
     rests on neither arm having reached."""
     idle = [call("read_node", {"ids": ["ILO-01"], "n": i}) for i in range(10)]
     model, loop, trajectory, _answers = _assessment_run([
-        call("submit_assessment_plan", _plan(formative_methods=[])),
+        call("submit_assessment_plan", _plan(pilot_data_plan=_thin_pilot())),
         call("read_alignment_state", {}),
     ] + idle)
 
@@ -185,7 +193,7 @@ def test_an_agent_that_reads_its_issues_and_submits_nothing_closes_the_stage_unc
 def test_an_agent_that_never_rechecks_leaves_its_findings_unshown():
     """The pointer says THAT something is open. An agent that keeps submitting
     without looking spends its rounds, and the ledger says nobody showed it."""
-    resubmit = call("submit_assessment_plan", _plan(formative_methods=[]))
+    resubmit = call("submit_assessment_plan", _plan(pilot_data_plan=_thin_pilot()))
     _model, loop, trajectory, answers = _assessment_run(
         [resubmit] + [resubmit] * 6)
 
@@ -249,7 +257,7 @@ def test_the_loop_supersedes_on_a_new_read_and_never_on_a_refused_repeat():
         call("read_alignment_state", {}),                 # unchanged: refused, nothing stubbed
         # Leaves an issue open, so the stage keeps its repair turns and the
         # read below runs; a clean plan ends the stage on the spot.
-        call("submit_assessment_plan", _plan(formative_methods=[])),
+        call("submit_assessment_plan", _plan(pilot_data_plan=_thin_pilot())),
         call("read_alignment_state", {}),                 # changed: answered, the first is stubbed
     ])
     state = [a for a in answers if a["name"] == tools.STATE_TOOL]

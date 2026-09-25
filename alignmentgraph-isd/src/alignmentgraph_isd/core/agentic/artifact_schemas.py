@@ -126,6 +126,18 @@ _MEDIA = {"type": "string", "enum": list(rules.MEDIA_TYPES)}
 _PLAN_CATEGORY = {"type": "string", "enum": list(rules.PLAN_CATEGORIES)}
 
 
+# What is REQUIRED below is what the rubric READS. MEASURED over twenty 2B
+# outputs (tune-10, 2026-09-24/25): a small model writes the required fields
+# and only those — `priority_matrix` empty in 17, `prior_knowledge` in 19,
+# `initial_objectives` in 19, `review_summary` in 19, an activity's
+# `duration` in 111 of 210, a session guide's `objectives` in 113 of 150 —
+# while ten of the rubric's analysis sub-items map one to one onto exactly
+# those fields, and the LLM judge scored the analysis of two runs ABSENT with
+# the lists present. A field the judge scores is a field the contract must
+# demand (`required_floor`: non-empty), and the constrained pass writes it
+# when a submit leaves it out. Optional is what a design may genuinely lack:
+# a first activity's `prerequisite_activities`, a performance task's
+# `options`, a learner group's `learning_preferences`.
 ARTIFACT_SCHEMAS: dict[str, dict] = {
     # ── analysis (submitted piecemeal, one of these five per call) ─────────
     "needs_analysis": _obj({
@@ -145,7 +157,7 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
             "high": _ranked_gaps("addressed first"),
             "medium": _ranked_gaps("addressed once the high band is covered"),
             "low": _ranked_gaps("addressed only if time allows")}),
-    }, ("gaps",)),
+    }, ("problem_definition", "gaps", "performance_analysis", "priority_matrix")),
     "learner_analysis": _obj({
         "target_audience": {"type": "string"},
         "characteristics": _arr(),
@@ -153,7 +165,7 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
         "learning_preferences": _arr(),
         "motivation": {"type": "string"},
         "challenges": _arr(),
-    }),
+    }, ("target_audience", "characteristics", "prior_knowledge", "motivation", "challenges")),
     "context_analysis": _obj({
         "constraints": _arr_of(_obj({
             "id": {"type": "string"}, "description": {"type": "string"}},
@@ -161,7 +173,7 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
         "environment": {"type": "string"},
         "duration": {"type": "string"},
         "resources": _arr(),
-    }, ("constraints",)),
+    }, ("constraints", "environment", "duration", "resources")),
     "task_analysis": _obj({
         "topics": _arr_of(_obj({
             "id": {"type": "string"}, "topic": {"type": "string"},
@@ -172,7 +184,7 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
             "draft": {"type": "string"}, "critique": {"type": "string"},
             "revision": {"type": "string"}})),
         "review_summary": {"type": "string"},
-    }, ("topics",)),
+    }, ("topics", "prerequisites", "entry_behaviors", "initial_objectives", "review_summary")),
     "improvement_plan": _obj({
         "feedback_summary": {"type": "string"},
         "improvements": _arr_of(_obj({
@@ -182,7 +194,7 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
             "action": {"type": "string"}}, ("id", "addresses_gap", "action"))),
         "next_iteration_goals": _arr(),
         "feedback_loop": {"type": "string"},
-    }, ("improvements",)),
+    }, ("improvements", "feedback_summary", "next_iteration_goals")),
 
     # ── outcomes ─────────────────────────────────────────────────────────
     #: Item schema — ``learning_objectives`` is an ARRAY field.
@@ -293,8 +305,8 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
             "decision_rule": {"type": "string",
                               "description": "what the criteria together decide: adopt, revise, or drop"},
         }, ("goal_attainment", "learner_satisfaction", "cost_efficiency", "decision_rule")),
-    }, ("sets", "lo_coverage_targets", "pilot_data_plan", "summative_evaluation_plan",
-        "adoption_criteria")),
+    }, ("sets", "lo_coverage_targets", "expected_evidence", "formative_methods",
+        "pilot_data_plan", "summative_evaluation_plan", "adoption_criteria")),
     #: Item schema — the fan-out's ``assessment_tools`` (assessment items).
     "assessment_tools": _obj({
         "type": _EVIDENCE, "question": {"type": "string"},
@@ -322,14 +334,16 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
             "duration": {"type": "string"}, "resources": _arr()},
             ("event", "activity"))),
         "methods": _arr(), "rationale": {"type": "string"},
-    }, ("sequence",)),
+    }, ("model", "sequence")),
     "non_instructional_strategies": _obj({
         "motivation_strategies": _arr(), "self_directed_learning": _arr(),
         "support_strategies": _arr(),
     }),
     #: Item schema — the fan-out's ``learning_activities``.
     "learning_activities": _obj({
-        "activity_name": {"type": "string"}, "duration": {"type": "string"},
+        "activity_name": {"type": "string"},
+        "duration": {"type": "string",
+                     "description": "learner time this activity takes, in minutes, e.g. \"45 minutes\""},
         "description": {"type": "string"},
         "module_id": {"type": "string", "description": "the module this activity belongs to"},
         "materials_needed": {"type": "string",
@@ -339,8 +353,8 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
         "learner_cognitive_process": _BLOOM,
         "prerequisite_activities": {"type": "array", "items": {"type": "integer"},
             "description": "1-based positions of earlier activities in this same submission"},
-    }, ("activity_name", "description", "module_id", "aligned_objectives",
-        "learner_cognitive_process")),
+    }, ("activity_name", "duration", "description", "module_id", "materials_needed",
+        "aligned_objectives", "learner_cognitive_process")),
 
     # ── content ──────────────────────────────────────────────────────────
     #: Item schema — ``media_selections`` is an ARRAY field.
@@ -375,5 +389,5 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
         "activities": {"type": "array", "items": {"type": "string"},
             "description": "prose describing what happens in the session, not ids"},
         "activity_ids": _arr(), "material_ids": _arr(), "notes": {"type": "string"},
-    }, ("session", "activity_ids")),
+    }, ("session", "objectives", "activities", "activity_ids")),
 }

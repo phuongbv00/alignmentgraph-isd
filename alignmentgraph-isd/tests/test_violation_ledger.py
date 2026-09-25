@@ -297,13 +297,13 @@ def test_a_budget_stop_is_recorded_rather_than_silent():
     from alignmentgraph_isd.core.agentic.client import AgenticLLM
     from alignmentgraph_isd.core.agentic.loop import ToolLoop
     from alignmentgraph_isd.core.trajectory import TrajectoryLogger
-    from test_alignment_state import BRIEF, _OUTCOMES, _plan
+    from test_alignment_state import BRIEF, _OUTCOMES, _plan, _thin_pilot
     from test_agentic_loop import ScriptedModel, call
 
     step = {s.name: s for s in specialists.STEPS}["assessment"]
-    # A plan with no formative method, resubmitted unchanged for ever: the
-    # agent is shown the issue and never closes it.
-    deficient = call("submit_assessment_plan", _plan(formative_methods=[]))
+    # A plan with one collection point where the check wants two, resubmitted
+    # unchanged for ever: the agent is shown the issue and never closes it.
+    deficient = call("submit_assessment_plan", _plan(pilot_data_plan=_thin_pilot()))
     model = ScriptedModel([deficient] * 20)
     cfg = HarnessRunConfig(llm_factory=lambda: model)
     graph, trajectory = AlignmentGraph(), TrajectoryLogger()

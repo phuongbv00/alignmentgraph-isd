@@ -40,7 +40,7 @@ from ..alignment_graph import NodeType, alignment
 from ..checks import described_levels
 from ..trajectory import ORCHESTRATOR
 from . import tools
-from .specialists import STEPS, AgenticStep, missing_parts
+from .specialists import STEPS, AgenticStep, declared_required_errors, missing_parts
 
 
 @dataclass(frozen=True)
@@ -196,6 +196,12 @@ def output_errors(spec: "FanoutSpec", section: dict, known: dict | None = None, 
         if not isinstance(items, list):
             errors.append(f"{output.schema_key}: expected a list of items")
             continue
+        # The declared floor, per item — the fields the rubric reads (an
+        # activity's duration and materials, a guide's objectives and prose)
+        # were empty in half or more of the items while optional.
+        for index, item in enumerate(items):
+            errors += declared_required_errors(
+                output.schema_key, item, f"{output.schema_key}[{index}]")
         if output.validate_items is not None:
             errors += output.validate_items(items)
         if output.ref_fields and known:

@@ -97,10 +97,15 @@ def test_a_broken_container_does_not_also_report_the_field_inside_it():
 def test_a_wrong_typed_container_nobody_else_owns_is_still_reported_once():
     errors = specialists.validate_analysis({
         "needs_analysis": "a paragraph where an object belongs",
-        "improvement_plan": {"improvements": ["a"]},
-        "learner_analysis": {"a": 1},
-        "context_analysis": {"constraints": [{"id": "CON-01", "description": "c"}]},
-        "task_analysis": {"topics": [{"id": "TOP-01", "topic": "t"}]},
+        "improvement_plan": {"improvements": ["a"], "feedback_summary": "f",
+                             "next_iteration_goals": ["g"]},
+        "learner_analysis": {"target_audience": "a", "characteristics": ["c"],
+                             "prior_knowledge": "p", "motivation": "m", "challenges": ["x"]},
+        "context_analysis": {"constraints": [{"id": "CON-01", "description": "c"}],
+                             "environment": "e", "duration": "d", "resources": ["r"]},
+        "task_analysis": {"topics": [{"id": "TOP-01", "topic": "t"}], "prerequisites": ["p"],
+                          "entry_behaviors": ["e"], "initial_objectives": [{"draft": "d"}],
+                          "review_summary": "s"},
     })
     assert errors == ["needs_analysis must be a JSON object, got str"]
 
@@ -110,7 +115,13 @@ def test_a_missing_leaf_is_still_reported_when_its_container_is_sound():
             "sets": [{"id": "SET-01", "module_id": "MOD-01", "timing": "summative"}],
             "expected_evidence": {"ILO-01": "x"},
             "diagnostic": "d", "formative": "f", "summative": "s",
-            "formative_methods": ["a"]}
+            "formative_methods": ["a"],
+            "pilot_data_plan": {"collection_points": [{"when": "w", "where": "x", "what": "y",
+                                                       "from_whom": "z"}]},
+            "summative_evaluation_plan": {"administration": "a", "effectiveness_analysis": "e",
+                                          "data_sources": "d"},
+            "adoption_criteria": {"goal_attainment": "g", "learner_satisfaction": "l",
+                                  "cost_efficiency": "c", "decision_rule": "r"}}
     errors = specialists.validate_assessment({"assessment_plan": plan})
     assert errors == [
         "assessment_plan.pilot_data_plan.anticipated_difficulties must be a non-empty list"]
@@ -252,7 +263,8 @@ def test_an_unreadable_optional_argument_does_not_sink_the_submit():
     step = STEP_BY_NAME["activities"]
     params = tools.submit_parameters(step)
 
-    args = {"instructional_strategies": {"model": "Gagne", "sequence": []},
+    args = {"instructional_strategies": {"model": "Gagne", "sequence": [
+                {"event": "Gain attention", "activity": "Show a failing build"}]},
             "dev_plan": {"activity_blocks": [{"set_id": "B1", "module_id": "MOD-01",
                                               "objectives": ["ILO-01"]}]},
             "non_instructional_strategies": "{not json"}
@@ -928,7 +940,10 @@ def test_an_instalment_that_adds_nothing_is_completed_by_the_pass_over_the_whole
     def item(question):
         return {"type": "short_answer", "question": question, "aligned_objective": "ILO-01",
                 "plan_category": "formative", "task_id": "AT-01",
-                "required_cognitive_process": "apply", "rubric": []}
+                "required_cognitive_process": "apply", "rubric": [{"id": "R1", "description": "Answers the question", "evidence_type": "short_answer",
+                            "levels": {"excellent": "complete and correct with reasons given",
+                                       "satisfactory": "mostly correct, reasons partly given",
+                                       "needs_improvement": "incomplete or incorrect answer"}}]}
 
     work_set = dev_plans.WorkSet(set_id="AS-01", pairs=(("ILO-01", "formative"),),
                                  payload={"expected_items": 2})

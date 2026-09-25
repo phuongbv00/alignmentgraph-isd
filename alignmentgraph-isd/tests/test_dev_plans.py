@@ -796,7 +796,11 @@ def test_a_work_set_written_one_item_at_a_time_accumulates_and_a_repeat_adds_not
 
     def item(question, lo="ILO-01"):
         return {"question": question, "aligned_objective": lo, "plan_category": "formative",
-                "task_id": "AT-01"}
+                "task_id": "AT-01", "type": "short_answer", "required_cognitive_process": "apply",
+                "rubric": [{"id": "R1", "description": "Answers the question", "evidence_type": "short_answer",
+                            "levels": {"excellent": "complete and correct with reasons given",
+                                       "satisfactory": "mostly correct, reasons partly given",
+                                       "needs_improvement": "incomplete or incorrect answer"}}]}
 
     work_set = dev_plans.WorkSet(set_id="AS-01", pairs=(("ILO-01", "formative"),),
                                  payload={"expected_items": 3})

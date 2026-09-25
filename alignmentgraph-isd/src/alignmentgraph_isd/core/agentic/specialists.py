@@ -24,6 +24,7 @@ from .. import rulebook as rules
 from ..alignment_graph import NodeType, alignment
 from ..trajectory import ORCHESTRATOR
 from ..validation import validate_section
+from .artifact_schemas import ARTIFACT_SCHEMAS
 
 
 #: Blackboard documents whose ``commit_prose`` is ALREADY additive, so
@@ -556,6 +557,33 @@ def _require_list(parsed: dict, path: tuple[str, ...], errors: list[str]) -> Non
 _ANALYSIS_PARTS = tuple(_ANALYSIS_PART_NODE)
 
 
+#: Fields the HARNESS settles at commit rather than the model at submit, so a
+#: declared-required check never refuses them: an item's ``task_id`` and an
+#: activity's ``module_id`` are filled from the work set
+#: (``dev_plans.with_membership``, and refused by ``_names_its`` only when
+#: nothing can fill them), ``plan_category`` is stamped from the task's
+#: ``timing``, and a session guide's ``activity_ids`` has its own rule
+#: (``fanout.session_guide_errors``).
+HARNESS_SETTLED_FIELDS = frozenset({"task_id", "module_id", "plan_category", "activity_ids"})
+
+
+def declared_required_errors(key: str, artifact: object, where: str = "") -> list[str]:
+    """Every field ``artifact_schemas.ARTIFACT_SCHEMAS[key]`` declares REQUIRED
+    that ``artifact`` leaves out or empty — one error each, naming the field.
+
+    The schema is the contract the model is shown; this is the same contract
+    asked at the submit, so a field the rubric reads and the model skipped is
+    refused while the author is in the conversation and the constrained pass
+    can write it. ``required`` here means non-empty (``required_floor``)."""
+    schema = ARTIFACT_SCHEMAS.get(key) or {}
+    if not isinstance(artifact, dict):
+        return []
+    where = where or key
+    return [f"{where}.{field}: required field is missing or empty"
+            for field in schema.get("required", ())
+            if field not in HARNESS_SETTLED_FIELDS and artifact.get(field) in (None, "", [], {})]
+
+
 def validate_analysis(parsed: dict) -> list[str]:
     """Judge only the parts that ARRIVED.
 
@@ -595,6 +623,12 @@ def validate_analysis(parsed: dict) -> list[str]:
             continue
         if not isinstance(value, dict) or not value:
             errors.append(f"{key} must be a non-empty object")
+    # Every part is held to its declared floor: the ten analysis sub-items of
+    # the rubric read exactly the prose fields a small model skips when they
+    # are optional (see the note above ``ARTIFACT_SCHEMAS``).
+    for key in _ANALYSIS_PARTS:
+        if isinstance(parsed.get(key), dict) and parsed[key]:
+            errors += [e for e in declared_required_errors(key, parsed[key]) if e not in errors]
     return errors
 
 
@@ -649,6 +683,8 @@ def validate_assessment(parsed: dict) -> list[str]:
     if empty:
         return empty
     errors = validate_section("assessment_plan", parsed["assessment_plan"])
+    errors += [e for e in declared_required_errors("assessment_plan", parsed["assessment_plan"])
+               if e not in errors]
     # pilot_data_plan feeds the whole formative half of ADDIE Evaluation (the
     # aggregator surfaces it as evaluation.formative); a submit without it
     # zeroes two rubric items (measured on a 2B run). The shared
@@ -668,9 +704,10 @@ def validate_activities(parsed: dict) -> list[str]:
     errors: list[str] = []
     if not _arrived(parsed.get("instructional_strategies")):
         return errors
-    return errors + validate_section("activity_plan", {
+    return (errors + validate_section("activity_plan", {
         "instructional_strategies": parsed["instructional_strategies"],
-    })
+    }) + declared_required_errors("instructional_strategies",
+                                  parsed["instructional_strategies"]))
 
 
 def validate_content(parsed: dict) -> list[str]:

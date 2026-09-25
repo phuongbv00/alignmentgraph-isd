@@ -280,6 +280,7 @@ def _known():
 
 def _activity(**over):
     base = {"activity_name": "Lab", "description": "d", "module_id": "MOD-01",
+            "duration": "45 minutes", "materials_needed": "a worked example",
             "aligned_objectives": ["ILO-001"], "prepares_for_assessment": ["AT-001"],
             "learner_cognitive_process": "apply"}
     return {**base, **over}

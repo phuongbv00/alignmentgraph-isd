@@ -141,14 +141,23 @@ _ANALYSIS = {
     "needs_analysis": {
         "problem_definition": "Gap between current and desired OOP skill.",
         "gaps": [{"id": "GAP-01", "description": "No OOP modeling skill", "evidence": "Reviews"}],
+        "performance_analysis": "Instruction closes the gap; tooling does not.",
         "priority_matrix": {"high": ["GAP-01"], "medium": [], "low": []},
     },
-    "learner_analysis": {"target_audience": "Junior engineers"},
+    "learner_analysis": {"target_audience": "Junior engineers", "characteristics": ["Graduates"],
+                         "prior_knowledge": "Java syntax", "motivation": "High",
+                         "challenges": ["Abstraction"]},
     "context_analysis": {"constraints": [{"id": "CON-01", "description": "2-day schedule"}],
-                         "environment": "Classroom"},
-    "task_analysis": {"topics": [{"id": "TOP-01", "topic": "Encapsulation", "subtopics": []}]},
-    "improvement_plan": {"improvements": [
-        {"id": "IMP-01", "addresses_gap": "GAP-01", "action": "Add a guided lab."}]},
+                         "environment": "Classroom", "duration": "2 days", "resources": ["IDE"]},
+    "task_analysis": {"topics": [{"id": "TOP-01", "topic": "Encapsulation", "subtopics": []}],
+                      "prerequisites": ["Java syntax"], "entry_behaviors": ["Writes a class"],
+                      "initial_objectives": [{"draft": "Know OOP", "critique": "Not observable",
+                                              "revision": "Apply inheritance to a model"}],
+                      "review_summary": "Topics map onto the goals."},
+    "improvement_plan": {"feedback_summary": "Address the OOP gap.",
+                         "improvements": [
+                             {"id": "IMP-01", "addresses_gap": "GAP-01", "action": "Add a guided lab."}],
+                         "next_iteration_goals": ["Measure design quality"]},
 }
 
 _OUTCOMES = {
@@ -208,7 +217,11 @@ _ASSESSMENT = {
          "aligned_objective": "ILO-01", "plan_category": "summative",
          "task_id": "AT-01",
          "required_cognitive_process": "apply",
-         "scoring_criteria": "Rubric scores correctness 0-4."},
+         "scoring_criteria": "Rubric scores correctness 0-4.",
+         "rubric": [{"id": "R1", "description": "Answers the question", "evidence_type": "performance_task",
+                            "levels": {"excellent": "complete and correct with reasons given",
+                                       "satisfactory": "mostly correct, reasons partly given",
+                                       "needs_improvement": "incomplete or incorrect answer"}}]},
     ],
     "expert_review": {"reviewers": ["SME"], "review_criteria": ["Alignment"],
                       "feedback_summary": "Aligned."},
@@ -2487,7 +2500,10 @@ def test_a_developer_that_writes_one_item_per_call_finishes_its_set_in_instalmen
     def item(question):
         return {"type": "short_answer", "question": question, "aligned_objective": "ILO-01",
                 "plan_category": "formative", "task_id": "AT-01",
-                "required_cognitive_process": "apply", "rubric": []}
+                "required_cognitive_process": "apply", "rubric": [{"id": "R1", "description": "Answers the question", "evidence_type": "short_answer",
+                            "levels": {"excellent": "complete and correct with reasons given",
+                                       "satisfactory": "mostly correct, reasons partly given",
+                                       "needs_improvement": "incomplete or incorrect answer"}}]}
 
     work_set = dev_plans.WorkSet(set_id="AS-01", pairs=(("ILO-01", "formative"),),
                                  payload={"expected_items": 3})
