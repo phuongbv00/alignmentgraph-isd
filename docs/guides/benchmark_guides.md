@@ -807,7 +807,7 @@ miễn phí — chạy CPU, vector lấy từ cache:
 
 ```bash
 # cần checkpoint trước (một lần, vài phút GPU):
-python ./isd-exp bloom train --train ../EDM2022CLO/data/sample_full.csv \
+python ./isd-exp bloom train --train corpora/EDM2022CLO/data/sample_full.csv \
     --output-dir models/bloom-bert-edm2022
 ./isd-exp judge alignment --bloom-presets lexicon --embed-cache-only $RUNS
 ```
@@ -851,12 +851,18 @@ phát hiện nhiều bộ `(encoder, revision, bloom_classifier)`.
 Validity evidence cho Bloom — chạy một lần, báo cả hai arm + κ giữa chúng:
 
 ```bash
-./isd-exp bloom validate ../EDM2022CLO/data/sample_full.csv \
+./isd-exp bloom validate corpora/EDM2022CLO/data/sample_full.csv \
     --text-col Learning_outcome --label-cols Remember,Understand,Apply,Analyze,Evaluate,Create \
     --out results/generated/bloom_validation.md
 # thêm arm BERT: trỏ CSV vào held-out split cạnh checkpoint, KHÔNG dùng corpus đã train
 ./isd-exp bloom validate models/bloom-bert-edm2022/eval_split.csv \
-    --text-col text --label-col label --bloom-checkpoint models/bloom-bert-edm2022
+    --text-col text --label-col label --bloom-checkpoint models/bloom-bert-edm2022 \
+    --out results/generated/bloom_arms_validation.md
+# cả hai arm trên câu hỏi thi (thể loại classifier cũng gán cấp nhưng không được train)
+./isd-exp bloom validate \
+    corpora/bloom-classification-aied2026/data/{Gani_2023_collected-dataset-1200,Mohammed-and-Omar_2020_126,Sangodiah_2017_415,yahya-2012}_revised.csv \
+    --text-col QUESTION --label-col "BT LEVEL" --bloom-checkpoint models/bloom-bert-edm2022 \
+    --out results/generated/bloom_question_validation.md
 ```
 
 ## 8. Pool → thống kê RQ1 + RQ2
@@ -1189,10 +1195,12 @@ Chọn bằng bằng chứng chứ không phải khẩu vị, trên hai corpus c
 
 ### Bằng chứng hiệu lực
 
-Nguồn: **submodule `EDM2022CLO/`** (fork của [SteveLEEEEE/EDM2022CLO](https://github.com/SteveLEEEEE/EDM2022CLO), dataset
+Nguồn: **submodule `experiments/corpora/EDM2022CLO/`** (fork của [SteveLEEEEE/EDM2022CLO](https://github.com/SteveLEEEEE/EDM2022CLO), dataset
 + notebook đã release của Li et al. 2022, EDM) — 21 380 learning objective từ 5 558 khoá của một đại học Úc,
 **gán nhãn tay**, multi-label. Đúng genre với thứ protocol chấm (không phải câu hỏi thi). Clone kèm submodule:
-`git submodule update --init EDM2022CLO`.
+`git submodule update --init experiments/corpora/EDM2022CLO`. Bằng chứng trên câu hỏi thi dùng submodule
+`experiments/corpora/bloom-classification-aied2026/` (`git submodule update --init
+experiments/corpora/bloom-classification-aied2026`).
 
 | | |
 |---|---|

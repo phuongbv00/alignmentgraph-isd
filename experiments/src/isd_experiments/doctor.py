@@ -49,7 +49,8 @@ def run(*, fix: bool = False) -> int:
         return 1
 
     for name, path in (("harness package", paths.harness_root()),
-                       ("Bloom corpus", paths.edm_root())):
+                       ("Bloom corpus (objectives)", paths.edm_root()),
+                       ("Bloom corpus (exam questions)", paths.bloom_questions_root())):
         (c.ok if path.exists() else c.warn)(name, str(path))
 
     # 2. The packages a run imports. Runs are generated under THIS

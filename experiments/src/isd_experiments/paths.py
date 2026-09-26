@@ -13,8 +13,12 @@ Layout this assumes::
       experiments/                 <- exp_root()
       isd-agent-benchmark/         <- bench_root()   (git submodule)
       alignmentgraph-isd/          <- harness_root()
-      EDM2022CLO/                  <- edm_root()     (git submodule)
       docs/                        <- docs_root()
+
+    experiments/corpora/           the labelled Bloom corpora the experiment
+                                   reads and nothing else does (git submodules)
+      EDM2022CLO/                  <- edm_root()
+      bloom-classification-aied2026/ <- bloom_questions_root()
 
 Overrides, for a checkout that is laid out differently or a results volume
 somewhere else:
@@ -75,9 +79,21 @@ def harness_root() -> Path:
     return THESIS_ROOT / "alignmentgraph-isd"
 
 
+def corpora_root() -> Path:
+    """The labelled Bloom corpora, each a git submodule."""
+    return EXP_ROOT / "corpora"
+
+
 def edm_root() -> Path:
-    """EDM2022CLO -- the expert-labelled Bloom corpus, reference material."""
-    return THESIS_ROOT / "EDM2022CLO"
+    """EDM2022CLO -- the expert-labelled learning-objective corpus the Bloom
+    classifier is fine-tuned on and validated against."""
+    return corpora_root() / "EDM2022CLO"
+
+
+def bloom_questions_root() -> Path:
+    """The four human-labelled exam-question sets released with the AIED 2026
+    cross-dataset study -- the Bloom classifier's evidence on assessment items."""
+    return corpora_root() / "bloom-classification-aied2026"
 
 
 def docs_root() -> Path:

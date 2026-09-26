@@ -21,12 +21,12 @@ Public datasets that fit (download manually, any of):
   * the "Bloom's Taxonomy questions" datasets on Kaggle/GitHub
     (search: bloom taxonomy question classification dataset CSV).
 
-The two invocations that produce the shipped artifacts (run from the benchmark
-root; `--bloom-checkpoint` needs `transformers`, so use the venv interpreter):
+The invocations that produce the shipped artifacts (run from experiments/;
+`--bloom-checkpoint` needs `transformers`, so use the venv interpreter):
 
   # bloom_validation.md — lexicon only, full EDM2022CLO corpus (wide multi-label)
   ./isd-exp bloom validate \
-      ../EDM2022CLO/data/sample_full.csv --text-col Learning_outcome \
+      corpora/EDM2022CLO/data/sample_full.csv --text-col Learning_outcome \
       --label-cols Remember,Understand,Apply,Analyze,Evaluate,Create \
       --out results/generated/bloom_validation.md
 
@@ -40,7 +40,7 @@ root; `--bloom-checkpoint` needs `transformers`, so use the venv interpreter):
   # exam-question sets of the bloom-classification-aied2026 submodule, pooled:
   # the genre the classifier also levels (assessment items), not its training genre
   ./isd-exp bloom validate \
-      ../bloom-classification-aied2026/data/{Gani_2023_collected-dataset-1200,Mohammed-and-Omar_2020_126,Sangodiah_2017_415,yahya-2012}_revised.csv \
+      corpora/bloom-classification-aied2026/data/{Gani_2023_collected-dataset-1200,Mohammed-and-Omar_2020_126,Sangodiah_2017_415,yahya-2012}_revised.csv \
       --text-col QUESTION --label-col "BT LEVEL" \
       --bloom-checkpoint models/bloom-bert-edm2022 \
       --out results/generated/bloom_question_validation.md

@@ -2,8 +2,8 @@
 	path = isd-agent-benchmark
 	url = git@github.com:phuongbv00/isd-agent-benchmark.git
 [submodule "EDM2022CLO"]
-	path = EDM2022CLO
-	url = git@github.com:phuongbv00/EDM2022CLO.git
+	path = experiments/corpora/EDM2022CLO
+	url = git@github.com:SteveLEEEEE/EDM2022CLO.git
 [submodule "bloom-classification-aied2026"]
-	path = bloom-classification-aied2026
+	path = experiments/corpora/bloom-classification-aied2026
 	url = https://gitlab.com/zrasoulkhani/bloom-classification-aied2026.git
