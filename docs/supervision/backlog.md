@@ -39,6 +39,29 @@ Trạng thái: `[ ]` chưa làm, `[~]` đang làm, `[x]` xong, `[?]` chờ quy�
 - [~] **T12 — Expert validation tối thiểu.** 3–5 giảng viên/chuyên gia chấm 10–15 scenario theo rubric 4 trục: alignment, tính khả thi, tính sư phạm, mức cần chỉnh sửa. Reviewer có thể kiểm tra thông tin chuyên gia độc lập. Công cụ tại `isd-exp expert`; việc mời chuyên gia và thu phiếu do tác giả làm.
 - [x] **T13 — Tăng số lượng ablation.** Đã chốt trong nhận xét Sprint 1: ablation là 2x2 `agent_mode` × `context_mode` chạy trên `test_30` ở hai size, A0 chạy lại bên trong nó. Không dùng nguyên ladder cho ablation nữa.
 
+## Nhóm M — thiết kế đo lường sau tune-10 (phân tích 2026-09-26, chờ quyết cùng GVHD)
+
+Phân tích ngang sáu run tune-10 (4 run 2B, 2 run 9B; `isd-exp pool tune`) cho kết luận: khoảng cách LLM judge còn
+lại không nằm ở harness, và vá theo điểm judge trên `train_10` là overfit vào hai model judge trên chính tập tune.
+Harness đóng băng theo điểm judge; chỉ sửa khi bộ đếm tất định (`ATTENTION`) báo lỗi.
+
+- [?] **M1 — Trajectory báo theo từng judge.** Pooled 5 run: gemini-2.5-flash-lite chấm ours − react = −13.6,
+  gpt-4o-mini +1.5. Gemini cho react 100/100 ở 49/50 lần, với trace 5 lời gọi không tham số, không kết quả. Riêng
+  judge này kéo Total ~2 điểm. Đề xuất: bảng Trajectory tách judge; không kết luận gì về quy trình từ Trajectory
+  gộp.
+- [?] **M2 — Item thưởng bằng chứng bịa sau pilot.** Ta thua ổn định ở Dev2 (expert review), E1 (dữ liệu pilot),
+  E2 (kết quả tổng kết, quyết định chấp nhận); ngang hoặc hơn ở A2, D1–D3, I1–I2, E3. react-isd nêu trường kết quả
+  pilot và reviewer là người ở 10/10 output, dù chưa có pilot; hệ đề xuất 0/10 theo thiết kế. Đề xuất: khai báo
+  trước freeze một phân tích độ nhạy ADDIE loại Dev2/E1/E2, và báo số đếm `post-pilot claims` cạnh điểm ADDIE như
+  bằng chứng auditability. Cần thầy chốt có đưa vào paper không.
+- [?] **M3 — Claim khác biệt đặt ở panel, không ở LLM judge.** LLM judge ADDIE bão hoà ~82–85 cho cả hai hệ; panel
+  thắng 5/6 tín hiệu ở cả 5 run với cách biệt lớn (C3 0.77 vs 0.59, C4 0.75 vs 0.58, porter ~2×), riêng
+  `objective_cognitive_congruence` dao động. Hệ tốn 20–30× token và 10–15× thời gian so với react-isd. RQ1 nhiều
+  khả năng ra "cạnh tranh", RQ2 là nơi có khác biệt — khớp câu chuẩn trong `claim-rules.md`.
+- [?] **M4 — Quy tắc đánh giá thay đổi harness.** Một run tune-10 (se ~1.2) không phát hiện được thay đổi dưới ~3
+  điểm Total. Đánh giá bằng bộ đếm harness; chỉ dùng điểm judge khi |Δ| ≥ 2·se hoặc gộp nhiều run
+  (`pool tune --against`).
+
 ## Ràng buộc xuyên suốt
 
 - Số liệu trong paper luôn sinh tự động vào `docs/generated/` (`isd-exp report sync`); không gõ tay. Thư mục đó bị xoá 2026-09-17 vì còn là số của kiến trúc đã bỏ — nó được tạo lại khi chạy lại TN1/TN2.

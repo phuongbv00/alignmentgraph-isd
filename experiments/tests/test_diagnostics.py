@@ -191,3 +191,91 @@ class TestAblationPoolFeedsItsTables:
         arms = set(pooled_ablation["config"]["arms"]) | {pooled_ablation["config"]["reference"]}
         for entry in pooled_ablation["mechanism"]:
             assert set(entry["arms"]) == arms
+
+
+# ── reading a tune run without reading it by hand ───────────────────────────
+
+class TestHarnessCounters:
+    def test_each_event_lands_in_its_own_counter(self):
+        events = [
+            {"action": "constrained_pass", "context": {"output_summary": "accepted"}},
+            {"action": "constrained_pass",
+             "context": {"output_summary": "rejected: no artifact came back"}},
+            {"action": "constrained_pass", "context": {"output_summary": "rejected: x.y empty"}},
+            {"action": "submit_rejected",
+             "context": {"input_summary": "t attempt 1 | raw= | args= | content=0"}},
+            {"action": "submit_rejected",
+             "context": {"input_summary": "t attempt 1 | raw=a:list | args=a:list"}},
+            {"action": "agentic_gave_up", "context": {}},
+            {"action": "llm_error", "context": {
+                "output_summary": "Error code: 400 - This model's maximum context length is 16384"}},
+            {"action": "llm_error", "context": {
+                "output_summary": "Could not parse response content as the length limit was reached"}},
+            {"action": "llm_error", "context": {"output_summary": "Connection error."}},
+            {"action": "argument_reshaped", "context": {
+                "input_summary": "a.minItems (schema keyword dropped); b (schema keyword dropped)"}},
+        ]
+        c = diagnostics.harness_counts(events)
+        assert (c["passes"], c["pass_accepted"], c["pass_empty"], c["pass_refused"]) == (3, 1, 1, 1)
+        assert (c["rejected"], c["rejected_empty_args"]) == (2, 1)
+        assert (c["gave_up"], c["context_overflow"], c["completion_cap"], c["connection"]) == (1, 1, 1, 1)
+        assert c["schema_keywords_dropped"] == 2
+
+    def test_a_baseline_has_no_harness_record(self, run_dir):
+        assert diagnostics.read_cell(run_dir / "train_10" / "S-001", BASELINE)["harness"] is None
+        assert diagnostics.read_cell(run_dir / "train_10" / "S-001", PROPOSED)["harness"]["passes"] == 0
+
+
+class TestPostPilotClaims:
+    def test_a_plan_is_not_a_result_and_an_invented_pilot_is(self):
+        from isd_experiments.audit import fabrication
+
+        invented = {"evaluation": {
+            "formative": {"data_collection": {"learner_feedback": ["It was hard."],
+                                              "performance_data": {"m": "Task Completion Rate: 40%"}}},
+            "summative": {"adoption_decision": {"decision": "Adopt with minor revisions"}}},
+            "development": {"expert_review": {"reviewers": ["Subject Matter Expert (SME)"]}}}
+        planned = {"evaluation": {
+            "summative": {"adoption_decision": {
+                "criteria": {"goal_attainment": "at least 80% of learners at the pass level"},
+                "status": "pending pilot"}}},
+            "development": {"expert_review": {"reviewers": [
+                "Automated pedagogical self-validation suite (deterministic checks)"]}}}
+        assert fabrication.audit_output(invented) == {
+            "result_fields": 2, "human_reviewers": 1, "decision_taken": True}
+        assert fabrication.audit_output({"addie_output": planned}) == {
+            "result_fields": 0, "human_reviewers": 0, "decision_taken": False}, (
+            "a target stated as a percentage is a plan, not a result")
+
+
+class TestGapWithItsNoise:
+    @staticmethod
+    def _view(mine: float, theirs: float, *, g=(0.0, 0.0), o=(0.0, 0.0)) -> dict:
+        def agent(total, addie_g, addie_o):
+            return {"total_score": total, "addie_median": total, "trajectory_score": total,
+                    "judges": {"judge-a": {"addie": addie_g, "traj": total, "items": {"Dev2": addie_g}},
+                               "judge-b": {"addie": addie_o, "traj": total, "items": {"Dev2": addie_o}}}}
+        return {PROPOSED: agent(mine, *g), BASELINE: agent(theirs, *o)}
+
+    def test_a_gap_carries_its_standard_error_and_says_when_it_is_noise(self):
+        steady = {f"S{i}": self._view(80.0, 83.0 + (i % 2) * 0.2) for i in range(10)}
+        noisy = {f"S{i}": self._view(80.0 + (8 if i % 2 else -8), 81.0) for i in range(10)}
+        g = tune.paired_gap(steady, PROPOSED, BASELINE)["total_score"]
+        assert g["n"] == 10 and g["mean"] == pytest.approx(-3.1) and g["detected"]
+        n = tune.paired_gap(noisy, PROPOSED, BASELINE)["total_score"]
+        assert n["mean"] == pytest.approx(-1.0) and not n["detected"]
+
+    def test_the_gap_is_split_by_judge_and_by_item(self):
+        views = {f"S{i}": self._view(80.0, 80.0, g=(90.0, 70.0), o=(80.0, 80.0))
+                 for i in range(4)}
+        g = tune.paired_gap(views, PROPOSED, BASELINE)
+        assert g["addie@judge-a"]["mean"] == pytest.approx(10.0)
+        assert g["addie@judge-b"]["mean"] == pytest.approx(-10.0)
+        assert g["Dev2@judge-a"]["mean"] == pytest.approx(10.0)
+
+    def test_a_shift_between_runs_cancels_the_baselines_own_drift(self):
+        before = {f"S{i}": self._view(80.0, 84.0) for i in range(6)}
+        after = {f"S{i}": self._view(81.0, 85.0 + (0.1 if i % 2 else -0.1)) for i in range(6)}
+        shift = tune.gap_shift(before, after, PROPOSED, BASELINE)["total_score"]
+        assert shift["mean"] == pytest.approx(0.0, abs=1e-9), (
+            "both agents moved by one point: the gap did not move")

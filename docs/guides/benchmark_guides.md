@@ -413,6 +413,27 @@ hiệu chỉnh liên tiếp, cần đặt cạnh nhau chứ không lấy trung b
 Baseline chỉ có cost và điểm; mọi trường harness là `null` (không phải 0). Run sinh trước khi runner ghi
 `<agent>_violations.json` sẽ không có ledger.
 
+**Đọc một run tune mà không đọc tay** (2026-09-26). Mỗi run in thêm ba dòng, đọc theo thứ tự này:
+
+1. `harness:` + `ATTENTION:` — bộ đếm của chính harness, không cần LLM judge và không dao động theo judge: pass 2
+   (được nhận / về rỗng / bị từ chối), submit bị từ chối (và bao nhiêu không có argument), set bỏ cuộc, prompt tràn
+   cửa sổ, reply chạy hết cap, lỗi kết nối, trường required còn trống trong output. `ATTENTION: none` nghĩa là
+   harness khoẻ và không cần đọc gì thêm; một mục có tên ở đó là việc cần sửa.
+2. `gap … (mean±se)` — hiệu cặp theo scenario với sai số chuẩn, rồi tách theo **từng** LLM judge và theo từng item
+   rubric. Dấu `~` là **không phát hiện được** (|Δ| < 2·se). Đo trên sáu run tune-10 (2026-09-23..25): se của hiệu
+   Total là 0.9–1.4 điểm, baseline không đổi code tự dao động ~1 điểm, và hai judge bất đồng về agent nào tốt hơn ở
+   17/40 cặp scenario. **Một run n=10 không thấy được thay đổi dưới ~3 điểm Total**: đừng vá theo một item judge
+   thấp trong một run.
+3. `post-pilot claims:` — số output nêu điều chỉ có sau pilot (trường kết quả trong `evaluation`, reviewer là người,
+   quyết định chấp nhận đã ra). Đếm theo HÌNH DẠNG trường, không theo con số: một chỉ tiêu kế hoạch viết bằng phần
+   trăm không bị tính (`audit/fabrication.py`).
+
+So hai run (ví dụ trước/sau một thay đổi harness), với trôi dạt của baseline bị triệt tiêu:
+
+```bash
+./isd-exp pool tune 'train_10_benchmark_*' --against results/<run dir cũ>
+```
+
 ## 5. Bench — TN1 (`test_90`) và TN2 (`test_30`)
 
 ### 5.1 Quy mô

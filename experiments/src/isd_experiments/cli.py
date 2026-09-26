@@ -170,6 +170,10 @@ def build_parser() -> argparse.ArgumentParser:
         pl.add_argument("--out", type=_p)
         pl.add_argument("--agents", help="comma-separated roster override" + (
             "" if name == "tune" else " (this fixes the Holm family size)"))
+        if name == "tune":
+            pl.add_argument("--against", type=_p, metavar="RUN_DIR",
+                            help="an earlier tune run dir: report how each run's gap to the "
+                                 "baseline moved from it, the baseline's own drift cancelled")
         if name == "comparison":
             pl.add_argument("--encoders", default="")
             pl.add_argument("--auto-encoders", action="store_true")
@@ -335,7 +339,8 @@ def _dispatch(args) -> int:
     if command == "pool" and sub == "tune":
         from .pool import tune
         tune.run(patterns=args.patterns or None, out=args.out,
-                 agents=args.agents.split(",") if args.agents else None)
+                 agents=args.agents.split(",") if args.agents else None,
+                 against=args.against)
         return 0
 
     if command == "pool" and sub == "ablation":

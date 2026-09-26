@@ -142,6 +142,7 @@ def read_cell(scen_dir: Path, agent: str) -> Optional[dict]:
     work_sets = None
     events = ((doc.get("trajectory") or {}).get("events") or []) \
         if isinstance(doc.get("trajectory"), dict) else []
+    harness = harness_counts(events) if autonomy is not None else None
     for event in events:
         if isinstance(event, dict) and event.get("action") == "work_sets":
             ctx = event.get("context") or {}
@@ -186,12 +187,68 @@ def read_cell(scen_dir: Path, agent: str) -> Optional[dict]:
             md.get("repair_metrics"), dict) else None,
         "run_config": run_config,
         "autonomy": autonomy,
+        "harness": harness,
         "work_sets": work_sets,
         "relation_coverage": coverage,
         "objectives_aligned": aligned,
         "node_counts": node_counts,
         "ledger": ledger,
     }
+
+
+#: Why a model call failed, from the message the client recorded. The two that
+#: are the harness's to prevent: a prompt past the serving window, and a reply
+#: run to the completion cap. The third is the endpoint's.
+_ERROR_KINDS = (("context_overflow", "maximum context length"),
+                ("completion_cap", "length limit was reached"),
+                ("connection", "connection error"))
+
+
+def harness_counts(events: list) -> dict:
+    """What the harness did on the model's behalf, from one trajectory's events:
+    the counts a tune run is read for before any LLM judge has scored it.
+
+    ``pass_empty`` is a constrained pass that came back with nothing (the
+    decoder ran out, or the endpoint refused); ``pass_refused`` one the
+    validator still refused. ``rejected_empty_args`` is a submit that arrived
+    with no arguments at all -- the transport failure the constrained pass
+    exists for -- apart from every other rejection."""
+    out = {"passes": 0, "pass_accepted": 0, "pass_empty": 0, "pass_refused": 0,
+           "rejected": 0, "rejected_empty_args": 0, "gave_up": 0, "repeats_refused": 0,
+           "schema_keywords_dropped": 0,
+           **{kind: 0 for kind, _ in _ERROR_KINDS}}
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        action = event.get("action")
+        ctx = event.get("context") or {}
+        said = str(ctx.get("output_summary") or "")
+        asked = str(ctx.get("input_summary") or "")
+        if action == "constrained_pass":
+            out["passes"] += 1
+            if said == "accepted":
+                out["pass_accepted"] += 1
+            elif "no artifact came back" in said:
+                out["pass_empty"] += 1
+            else:
+                out["pass_refused"] += 1
+        elif action == "submit_rejected":
+            out["rejected"] += 1
+            if "| args= " in asked or asked.rstrip().endswith("| args="):
+                out["rejected_empty_args"] += 1
+        elif action == "agentic_gave_up":
+            out["gave_up"] += 1
+        elif action == "repeated_tool_call":
+            out["repeats_refused"] += 1
+        elif action == "argument_reshaped" and "schema keyword dropped" in asked:
+            out["schema_keywords_dropped"] += asked.count("schema keyword dropped")
+        elif action == "llm_error":
+            lowered = said.lower()
+            for kind, marker in _ERROR_KINDS:
+                if marker in lowered:
+                    out[kind] += 1
+                    break
+    return out
 
 
 def collect(run_dirs: list[Path], agents: list[str]) -> dict[str, dict[str, list[dict]]]:
