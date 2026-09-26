@@ -486,14 +486,23 @@ class ToolLoop:
         the same way."""
         bound = spec_parameters(self._live_specs, tool_name)
         if bound:
-            return grammar.for_decoder(bound)
+            return grammar.for_decoder(bound, budget_chars=self._pass_budget)
         prop = (params.get("properties") or {}).get(artifact)
         if prop is None:
             return {}
         return grammar.for_decoder(grammar.tighten_parameters(
             {"type": "object", "properties": {artifact: prop}, "required": [artifact]},
             grammar.Vocabulary.of(self.state, course_hours=duration_hours(self.design_brief)),
-            work_set=self.step.work_set, mode=self.config.development_mode))
+            work_set=self.step.work_set, mode=self.config.development_mode),
+            budget_chars=self._pass_budget)
+
+    @property
+    def _pass_budget(self) -> int:
+        """What one constrained pass may write: the completion cap the client
+        sends, in characters (``grammar.decoder_budget_chars``). The same
+        function the single arm calls."""
+        return grammar.decoder_budget_chars(
+            getattr(self.config, "llm_completion_reserve", 0) or 8192)
 
     def _handle_call(self, turn: ToolTurn, specs: list, stage_message: str) -> str:
         """One tool call, judged and answered. ``"return"`` ends the stage,

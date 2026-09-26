@@ -56,6 +56,7 @@ refused by the grammar.
 from __future__ import annotations
 
 import copy
+import json
 from dataclasses import dataclass, field
 
 from .. import dev_plans
@@ -465,50 +466,150 @@ def _stated_count(key: str, work_set, vocab: Vocabulary) -> int:
     return 0
 
 
-#: The pass-2 decoder's backstops: the longest string and the longest list it
-#: may write where the schema states no bound of its own. Far past any
-#: artifact of the design (a full-mode material runs to ~5,000 characters, an
-#: item's rubric to 3-4 criteria), so they end a runaway and change nothing
-#: else.
+#: The pass-2 decoder's backstops, before the budget: the longest string and
+#: the longest list it may write where the schema states no bound of its own.
 DECODER_MAX_STRING = 6000
 DECODER_MAX_ITEMS = 20
+#: What a backstop is never shrunk below: a string still holds a sentence, a
+#: list still holds four entries (or its own ``minItems``) — a multiple-choice
+#: item's options, a rubric's criteria.
+DECODER_MIN_STRING = 80
+DECODER_MIN_ITEMS = 4
+#: Characters per completion token the budget assumes. Pessimistic on purpose:
+#: the budget is what guarantees the decoder can END before the cap, and an
+#: estimate that is too generous is exactly the reply that never closes.
+DECODER_CHARS_PER_TOKEN = 2.5
+#: Share of the completion cap the artifact may take; the rest is the
+#: reasoning prefix and the JSON's own whitespace.
+DECODER_CAP_SHARE = 0.9
+#: How many entries an open map (``additionalProperties`` with a value
+#: schema) is assumed to hold. JSON Schema can bound it (``maxProperties``) but
+#: the grammar backend is not relied on for it, so the estimate carries it.
+DECODER_OPEN_MAP_ENTRIES = 12
 
 
-def for_decoder(schema: object) -> object:
+def decoder_budget_chars(completion_tokens: int) -> int:
+    """The characters one constrained pass may write, from the completion cap
+    the client sends."""
+    return int((completion_tokens or 8192) * DECODER_CAP_SHARE * DECODER_CHARS_PER_TOKEN)
+
+
+def worst_case_chars(schema: object, root: object | None = None) -> int:
+    """An upper bound on the serialized JSON a decoder may emit under
+    ``schema``: every string at its ``maxLength``, every list at its
+    ``maxItems``, every declared property present. Unbounded means a number far
+    past any cap, so an unbudgeted schema never passes for a budgeted one."""
+    root = schema if root is None else root
+    if not isinstance(schema, dict):
+        return 0
+    if "$ref" in schema:
+        name = str(schema["$ref"]).rsplit("/", 1)[-1]
+        return worst_case_chars(((root or {}).get("$defs") or {}).get(name, {}), root)
+    if "const" in schema:
+        return len(json.dumps(schema["const"], ensure_ascii=False))
+    if "enum" in schema:
+        return max((len(json.dumps(v, ensure_ascii=False)) for v in schema["enum"]), default=2)
+    kind = schema.get("type")
+    unbounded = 10 ** 9
+    if kind == "string":
+        return schema.get("maxLength", unbounded) + 2
+    if kind in ("integer", "number"):
+        return 16
+    if kind == "boolean":
+        return 5
+    if kind == "array":
+        prefix = schema.get("prefixItems")
+        fixed = sum(worst_case_chars(one, root) + 1 for one in prefix) if isinstance(prefix, list) else 0
+        if schema.get("items") is False:
+            return fixed + 2
+        rest = schema.get("maxItems", unbounded) - (len(prefix) if isinstance(prefix, list) else 0)
+        return fixed + max(rest, 0) * (worst_case_chars(schema.get("items") or {}, root) + 1) + 2
+    if kind == "object":
+        total = sum(len(json.dumps(k, ensure_ascii=False)) + 1 + worst_case_chars(v, root) + 1
+                    for k, v in (schema.get("properties") or {}).items())
+        extra = schema.get("additionalProperties")
+        if isinstance(extra, dict):
+            total += DECODER_OPEN_MAP_ENTRIES * (40 + worst_case_chars(extra, root))
+        elif extra is not False:
+            return unbounded
+        return total + 2
+    return unbounded
+
+
+def for_decoder(schema: object, *, budget_chars: int | None = None) -> object:
     """The schema the CONSTRAINED PASS decodes under: every object CLOSED
-    (``additionalProperties: false``) except an open map, which keeps the
-    value schema it declares.
+    (``additionalProperties: false``) except an open map, every string and
+    list with no bound of its own given one, and — with ``budget_chars`` —
+    those added bounds shrunk together until the WHOLE artifact fits the
+    completion cap (:func:`worst_case_chars` <= ``budget_chars``).
 
-    The bound tool's contract stays open — the ADDIE shape is a floor — but a
-    grammar that allows any key allows a reply that never ends: measured, four
-    of five passes on the implementation stage's ``operator_manual`` ran to
-    the 8,192-token completion cap and came back as nothing. Closed, the
-    object ends when its declared fields do. What a closed pass loses is a
-    key the model would have invented on THIS artifact; what pass 1 accepted
-    beside the declared fields is unaffected, since a pass rewrites only a
-    submit the validator refused."""
-    if isinstance(schema, dict):
-        # An open map keeps its value schema, which is bounded like any other.
-        out = {k: (for_decoder(v) if k != "additionalProperties" or isinstance(v, dict) else v)
-               for k, v in schema.items()}
-        if out.get("type") == "object" and not isinstance(out.get("additionalProperties"), dict):
-            out["additionalProperties"] = False
-        # And every string and every array BOUNDED. Closing the objects was
-        # not enough: MEASURED (tune-10, 2026-09-25), five passes still ran
-        # to the 8,192-token cap and came back as nothing — inside a string
-        # (a material's ``content``) or an open-ended list (a rubric, an
-        # option list) — and four of them cost their set. The bounds are far
-        # past what any artifact here writes; they exist so the decoder
-        # always has an end, not to shape the artifact, and the bound tool
-        # contract (pass 1) carries none of them.
-        if out.get("type") == "string" and not {"enum", "const", "maxLength"} & set(out):
-            out["maxLength"] = DECODER_MAX_STRING
-        if out.get("type") == "array" and "maxItems" not in out and out.get("items") is not False:
-            out["maxItems"] = DECODER_MAX_ITEMS
-        return out
-    if isinstance(schema, list):
-        return [for_decoder(v) for v in schema]
-    return schema
+    The bound tool's contract stays open and unbounded; this is what a
+    decoder needs to be able to END. MEASURED (tune-10, 2B): with objects left
+    open, four of five ``operator_manual`` passes ran to the 8,192-token cap
+    and came back as nothing (2026-09-24); with objects closed and each string
+    and list capped on its own, five more did (2026-09-25), because twenty
+    entries of six thousand characters in each of several fields is still an
+    artifact no cap can hold — the worst case of the three artifacts that failed
+    was 1.5x to 90x the cap. Budgeting the total is what makes an end certain.
+
+    Only bounds this function ADDED shrink, uniformly and never below
+    :data:`DECODER_MIN_STRING` or a list's own ``minItems``; a ``const``, an
+    ``enum``, a fixed row count and a bound the schema states itself are the
+    design's and stay. Where the design's own fixed part is larger than the
+    budget the floors hold and the schema is returned as small as it goes."""
+    added: list[dict] = []
+
+    def close(node: object) -> object:
+        if isinstance(node, dict):
+            out = {k: (close(v) if k != "additionalProperties" or isinstance(v, dict) else v)
+                   for k, v in node.items()}
+            if out.get("type") == "object" and not isinstance(out.get("additionalProperties"), dict):
+                out["additionalProperties"] = False
+            if out.get("type") == "string" and not {"enum", "const", "maxLength"} & set(out):
+                out["maxLength"] = DECODER_MAX_STRING
+                added.append(out)
+            if out.get("type") == "array" and "maxItems" not in out \
+                    and out.get("items") is not False:
+                out["maxItems"] = DECODER_MAX_ITEMS
+                added.append(out)
+            return out
+        if isinstance(node, list):
+            return [close(v) for v in node]
+        return node
+
+    closed = close(schema)
+    if not budget_chars:
+        return closed
+    # Strings and lists shrink TOGETHER, each toward its floor: shrinking
+    # strings alone left an assessment item's question at 80 characters while
+    # its rubric could still hold nine criteria; shrinking lists alone takes an
+    # item to one option. A string keeps a sentence and a list four entries.
+    # Last, and only where the design's own shape is larger than the cap (the
+    # single arm's one submit carrying a whole plan AND its items), a list of
+    # OBJECTS may go below four, never below its own ``minItems``; a list of
+    # strings — an item's options — keeps four.
+    def objects(n: dict) -> bool:
+        return isinstance(n.get("items"), dict) and n["items"].get("type") == "object"
+
+    def floor_of(node: dict, last: bool) -> int:
+        if node.get("type") == "string":
+            return DECODER_MIN_STRING
+        own = int(node.get("minItems") or 0)
+        return max(1, own) if last and objects(node) else max(DECODER_MIN_ITEMS, own)
+
+    for last in (False, True):
+        for _round in range(80):
+            if worst_case_chars(closed) <= budget_chars:
+                return closed
+            moved = False
+            for node in added:
+                key = "maxLength" if node.get("type") == "string" else "maxItems"
+                smaller = max(floor_of(node, last), int(node[key] * 0.85))
+                if smaller < node[key]:
+                    node[key], moved = smaller, True
+            if not moved:
+                break
+    return closed
 
 
 def _open(schema: object) -> object:
@@ -526,5 +627,6 @@ def _open(schema: object) -> object:
     return schema
 
 
-__all__ = ["Vocabulary", "artifact_property", "for_decoder", "tighten_parameters",
+__all__ = ["Vocabulary", "artifact_property", "decoder_budget_chars", "for_decoder",
+           "worst_case_chars", "tighten_parameters",
            "tighten_specs", "xgrammar_safe", "UNSUPPORTED_KEYWORDS"]

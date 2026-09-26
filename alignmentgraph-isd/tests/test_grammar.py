@@ -386,3 +386,72 @@ def test_the_decoder_bounds_every_string_and_every_list_it_is_not_told_the_end_o
     assert '"maxLength": %d' % grammar.DECODER_MAX_STRING not in json.dumps(bound), (
         "the bound contract carries none of the decoder's backstops")
     assert grammar.xgrammar_safe(closed) == []
+
+
+def test_every_constrained_pass_can_end_inside_the_completion_cap():
+    """The property the constrained pass depends on, checked on every schema
+    the harness can send: the longest artifact the decoder allows fits the
+    completion cap, so a pass can always END. MEASURED before the budget
+    (tune-10, 2B, 2026-09-25): five passes ran to the 8,192-token cap and came
+    back as nothing; the worst case of the three artifacts that failed was
+    1.5x to 90x the cap under per-field bounds alone."""
+    budget = grammar.decoder_budget_chars(8192)
+    state = _design("graph")
+    specialists.commit_content(state, TrajectoryLogger(), {"media_selections": [
+        {"id": "MS-01", "media_type": "slides", "for_modules": ["MOD-01"],
+         "respects_constraints": ["CON-01"]},
+        {"id": "MS-02", "media_type": "video", "for_modules": ["MOD-01"],
+         "respects_constraints": ["CON-01"]}]})
+    vocab = grammar.Vocabulary.of(state, course_hours=24)
+    schemas: list[tuple[str, dict]] = []
+    for step in STEPS:
+        for spec in grammar.tighten_specs(tools.tool_specs(step), vocab):
+            name = spec["function"]["name"]
+            if name.startswith("submit_"):
+                schemas.append((name, spec["function"]["parameters"]))
+        spec = fanout.SPECS.get(step.name)
+        if spec is None:
+            continue
+        parsed = {"assessment_plan": _ASSESSMENT["assessment_plan"],
+                  "modules": fanout.course_modules(state),
+                  "media_selections": fanout.media_selections(state)}
+        for mode in ("light", "full"):
+            for ws in spec.plan_sets(state, parsed, mode)[0]:
+                dev = fanout.set_step(spec, ws, step, state)
+                for dspec in grammar.tighten_specs(tools.tool_specs(dev), vocab,
+                                                   work_set=ws, mode=mode):
+                    if dspec["function"]["name"].startswith("submit_"):
+                        schemas.append((f"{ws.set_id}/{mode}", dspec["function"]["parameters"]))
+    for spec in grammar.tighten_specs(tools.react_specs(STEPS, frozenset()), vocab):
+        if spec["function"]["name"].startswith("submit_"):
+            schemas.append((f"single/{spec['function']['name']}", spec["function"]["parameters"]))
+    assert len(schemas) > 20
+    over = []
+    for name, params in schemas:
+        decoded = grammar.for_decoder(params, budget_chars=budget)
+        worst = grammar.worst_case_chars(decoded)
+        if worst > budget:
+            over.append((name, worst))
+        assert grammar.xgrammar_safe(decoded) == [], name
+    assert not over, f"passes that could still run past the cap ({budget} chars): {over}"
+
+
+def test_the_budget_shrinks_only_what_the_decoder_added():
+    """A `const`, an `enum`, a fixed row count and a bound the schema states
+    itself are the design's; only the backstops shrink, never below their
+    floors."""
+    schema = {"type": "object", "properties": {
+        "fixed": {"type": "string", "const": "AT-01"},
+        "own": {"type": "string", "maxLength": 300},
+        "free": {"type": "string"},
+        "rows": {"type": "array", "minItems": 2, "items": {"type": "string"}}},
+        "required": ["fixed"]}
+    small = grammar.for_decoder(schema, budget_chars=2000)
+    props = small["properties"]
+    assert props["fixed"] == {"type": "string", "const": "AT-01"}
+    assert props["own"]["maxLength"] == 300
+    assert grammar.DECODER_MIN_STRING <= props["free"]["maxLength"] < grammar.DECODER_MAX_STRING
+    assert props["rows"]["maxItems"] >= grammar.DECODER_MIN_ITEMS
+    assert grammar.worst_case_chars(small) <= 2000
+    unbudgeted = grammar.for_decoder(schema)
+    assert unbudgeted["properties"]["free"]["maxLength"] == grammar.DECODER_MAX_STRING

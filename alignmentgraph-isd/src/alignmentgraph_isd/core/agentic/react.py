@@ -553,7 +553,8 @@ class ReactLoop:
             # tightened schema.
             passed = turn_mod.constrained_pass(
                 self.llm, self.messages, turn, artifact=step.name,
-                schema=grammar.for_decoder(params),
+                schema=grammar.for_decoder(params, budget_chars=grammar.decoder_budget_chars(
+                    getattr(self.config, "llm_completion_reserve", 0) or 8192)),
                 errors=errors, params=params, validate=validate, stats=self.stats,
                 trajectory=self.trajectory, identity=self.identity)
             if passed is not None:
