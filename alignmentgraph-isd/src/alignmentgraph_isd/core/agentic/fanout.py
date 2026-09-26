@@ -32,12 +32,13 @@ import re
 
 import json
 from dataclasses import dataclass, replace
+from difflib import SequenceMatcher
 from typing import Callable
 
 from .. import dev_plans
 from .. import rulebook as rules
 from ..alignment_graph import NodeType, alignment
-from ..checks import described_levels
+from ..checks import _ALL_BLOOM_VERBS, described_levels
 from ..trajectory import ORCHESTRATOR
 from . import tools
 from .specialists import STEPS, AgenticStep, declared_required_errors, missing_parts
@@ -171,7 +172,8 @@ def reference_errors(list_key: str, items: list, ref_fields, known) -> list[str]
 
 def output_errors(spec: "FanoutSpec", section: dict, known: dict | None = None, *,
                   levels: dict[str, str] | None = None,
-                  committed_best: dict[str, int] | None = None) -> list[str]:
+                  committed_best: dict[str, int] | None = None,
+                  statements: dict[str, str] | None = None) -> list[str]:
     """Errors for whatever fan-out output a submit carries, in either arm.
 
     One implementation because the two arms submit the same artifacts by
@@ -186,7 +188,8 @@ def output_errors(spec: "FanoutSpec", section: dict, known: dict | None = None, 
     would be a second variable on the decomposition axis. ``levels`` and
     ``committed_best`` are the same kind of snapshot for
     :func:`item_level_errors` (:func:`objective_levels`,
-    :func:`committed_item_levels`).
+    :func:`committed_item_levels`), and ``statements`` for
+    :func:`item_restatement_errors` (:func:`objective_statements`).
     """
     errors: list[str] = []
     for output in spec.outputs:
@@ -208,6 +211,8 @@ def output_errors(spec: "FanoutSpec", section: dict, known: dict | None = None, 
             errors += reference_errors(output.schema_key, items, output.ref_fields, known)
         if levels and output.element_type == NodeType.ASSESSMENT:
             errors += item_level_errors(items, levels, committed_best)
+        if statements and output.element_type == NodeType.ASSESSMENT:
+            errors += item_restatement_errors(items, statements)
     return errors
 
 
@@ -454,6 +459,96 @@ def item_level_errors(items: list, levels: dict[str, str],
             f"reaches {name} — set one item's "
             f"required_cognitive_process to '{name}' in a type that carries it ({formats}), "
             "or write one that does")
+    return errors
+
+
+def objective_statements(state) -> dict[str, str]:
+    """``objective id -> its statement``, identically on either substrate.
+    What :func:`item_restatement_errors` compares a question against."""
+    return {
+        str(one["id"]): str(one.get("statement") or "").strip()
+        for one in _element_data(state, NodeType.OBJECTIVE, ("objective", "learning_objectives"))
+        if one.get("id")
+    }
+
+
+#: The two shares that together say a question IS its objective's sentence:
+#: the longest verbatim run of the objective's words inside the question, over
+#: the objective's length, and the question's content words that come from the
+#: objective, over the question's. Harness parameters, set on the tune slice
+#: (runs train_10_*_20260923..0925, 1,674 items): at (0.5, 0.6) the rule takes
+#: 70 of alignmentgraph-isd's 981 items and 1 of react-isd's 693, and every one
+#: read by hand was the objective copied with a clause appended; either share
+#: alone also took scenario-based questions that name the objective's topic.
+RESTATEMENT_RUN = 0.5
+RESTATEMENT_SHARE = 0.6
+#: An objective this short is mostly its topic, and a question about the
+#: topic would restate it by necessity.
+RESTATEMENT_MIN_WORDS = 4
+
+_LEARNER_LEAD = re.compile(
+    r"^\s*(?:the\s+)?(?:learners?|participants?|students?|trainees?|teachers?)\s+"
+    r"(?:will|can|should|are able to)\s+(?:be able to\s+)?", re.IGNORECASE)
+_WORD = re.compile(r"[a-z0-9][a-z0-9'-]*")
+_STOPWORDS = frozenset("""
+    about above across after against along among and any are around based been before being
+    between both but can could does each either every few following for from given has have
+    how into its many may might more most much must not other our over own per same should
+    some such than that the their them then there these they this those through toward under
+    upon using very was were what when where which who whom whose why will with within without
+    would your
+""".split())
+
+
+def _words(text: str) -> list[str]:
+    return _WORD.findall(text.lower())
+
+
+def _content_words(text: str) -> set[str]:
+    return {word for word in _words(text)
+            if len(word) >= 3 and word not in _STOPWORDS and word not in _ALL_BLOOM_VERBS}
+
+
+def restatement_shares(question: str, statement: str) -> tuple[float, float]:
+    """``(verbatim run over the objective, question words from the objective)``."""
+    objective = _words(_LEARNER_LEAD.sub("", statement))
+    asked = _words(question)
+    if not objective or not asked:
+        return 0.0, 0.0
+    run = SequenceMatcher(None, objective, asked, autojunk=False).find_longest_match(
+        0, len(objective), 0, len(asked)).size
+    content = _content_words(question)
+    shared = content & _content_words(" ".join(objective))
+    return run / len(objective), (len(shared) / len(content) if content else 0.0)
+
+
+def item_restatement_errors(items: list, statements: dict[str, str]) -> list[str]:
+    """A question that is its objective's own sentence measures nothing.
+
+    ``RULES_ASSESSMENT_ITEMS*`` already say never to restate an objective's
+    wording; this holds the submit to it, while the author is still in the
+    conversation. MEASURED on the tune slice: at 2B up to 26 of 58 objectives
+    had a best-matching item copied from the statement, several at cosine 0.99,
+    so the objective-assessment signal read the copy as correspondence. Refuses
+    only both at once — a long verbatim run AND a question made mostly of the
+    objective's words (see :data:`RESTATEMENT_RUN`) — so a case-based question
+    naming the objective's topic passes. Stated over the DESIGN, never over an
+    assignment, so both arms are held to it identically; an item naming no
+    objective with a readable statement is not judged."""
+    errors: list[str] = []
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            continue
+        lo = dev_plans._bare(str(item.get("aligned_objective") or ""))
+        statement = statements.get(lo, "")
+        if len(_words(_LEARNER_LEAD.sub("", statement))) < RESTATEMENT_MIN_WORDS:
+            continue
+        run, share = restatement_shares(str(item.get("question") or ""), statement)
+        if run >= RESTATEMENT_RUN and share >= RESTATEMENT_SHARE:
+            errors.append(
+                f"assessment_tools[{index}].question: restates {lo}'s own wording — write "
+                "the task the learner performs on the subject matter (a case, data, a "
+                "problem to solve), not the objective sentence")
     return errors
 
 
@@ -903,6 +998,7 @@ def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
     known = known_ids(state) if state is not None else {}
     levels = objective_levels(state) if state is not None else {}
     committed_best = committed_item_levels(state) if state is not None else {}
+    statements = objective_statements(state) if state is not None else {}
     whole = spec.render(work_set) + _resolved_references(work_set, state)
     assignment = _capped(whole)
     truncated = assignment != whole
@@ -914,7 +1010,8 @@ def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
         # Judged as it will be committed: a membership id the set itself
         # settles is filled in (``dev_plans.with_membership``), never refused.
         filled = {**parsed, primary: dev_plans.with_membership(work_set, primary, items)}
-        return output_errors(spec, filled, known, levels=levels, committed_best=committed_best)
+        return output_errors(spec, filled, known, levels=levels,
+                             committed_best=committed_best, statements=statements)
 
     def owes(section: dict) -> str:
         # Counted without repeats: what the commit's trim would drop as a

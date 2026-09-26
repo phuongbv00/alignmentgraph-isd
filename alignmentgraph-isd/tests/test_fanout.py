@@ -456,6 +456,53 @@ def test_both_arms_hold_a_submit_to_the_objectives_level_the_same_way():
     assert "objective_levels" in inspect.getsource(fanout.set_step)
 
 
+def test_a_question_that_restates_its_objective_is_refused_at_submit():
+    """Both shares must be high: the objective's words in one verbatim run AND
+    a question made mostly of them. A case-based question naming the same
+    topic passes, and so does any item whose objective is too short to be more
+    than its topic. The pairs are from the tune slice."""
+    from alignmentgraph_isd.core.agentic import fanout
+
+    statements = {
+        "ILO-01": "Evaluate integrated math-science models explaining the alignment "
+                  "between mathematical and scientific principles.",
+        "ILO-02": "Learners can improve control performance using Extended State "
+                  "Observer (ESO) and neural network-based parameter optimization",
+        "ILO-03": "Define tacitness",
+    }
+    copied = {**_item("ILO-01", "evaluate"), "question": (
+        "Evaluate integrated math-science models explaining the alignment between "
+        "mathematical and scientific principles using a real-world problem case.")}
+    case = {**_item("ILO-02", "apply"), "question": (
+        "Given a 6-DOF robotic manipulator in a simulated environment, you must implement "
+        "a disturbance rejection system that combines Extended State Observer (ESO) and "
+        "neural network-based parameter optimization; report the tracking error.")}
+    short = {**_item("ILO-03", "remember"), "question": "Define tacitness."}
+    errors = fanout.item_restatement_errors([copied, case, short], statements)
+    assert len(errors) == 1 and errors[0].startswith("assessment_tools[0].question")
+    assert "ILO-01" in errors[0]
+    assert not fanout.item_restatement_errors([copied], {}), "no statement, not judged"
+
+
+def test_both_arms_hold_a_submit_to_the_objectives_wording_the_same_way():
+    """`output_errors` runs the restatement rule for the assessment family
+    only, from one snapshot read on either substrate (`objective_statements`)."""
+    import inspect
+
+    from alignmentgraph_isd.core.agentic import fanout, react
+
+    statements = {"ILO-01": "Analyze how CRM and interaction simulation skills can be "
+                            "applied in collaborative customer support contexts."}
+    copied = {**_item("ILO-01", "analyze"), "question": (
+        "Analyze how CRM and interaction simulation skills can be applied in "
+        "collaborative customer support contexts, identifying practical integration points.")}
+    errors = fanout.output_errors(fanout.SPECS["assessment"],
+                                  {"assessment_tools": [copied]}, {}, statements=statements)
+    assert any("restates ILO-01" in e for e in errors)
+    assert "objective_statements" in inspect.getsource(react.ReactLoop._validate)
+    assert "objective_statements" in inspect.getsource(fanout.set_step)
+
+
 def test_the_assessment_work_sets_event_records_the_task_ceiling():
     """The task ceiling is told and never enforced, so its compliance is
     measured here: how many tasks the blueprint planned beside the ceiling

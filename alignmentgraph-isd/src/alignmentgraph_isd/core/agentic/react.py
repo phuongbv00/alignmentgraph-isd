@@ -375,7 +375,8 @@ class ReactLoop:
             errors += fanout.output_errors(
                 spec, present, fanout.known_ids(self.state),
                 levels=fanout.objective_levels(self.state),
-                committed_best=fanout.committed_item_levels(self.state))
+                committed_best=fanout.committed_item_levels(self.state),
+                statements=fanout.objective_statements(self.state))
         return errors
 
     def run(self) -> None:

@@ -243,7 +243,8 @@ def respec(messages: list, step, brief: str) -> str:
 #: Which agent-facing protocol a run spoke, recorded in
 #: ``metadata.run_config`` so that runs on either side of a change to the
 #: tools an agent is bound or to how a stage ends are never pooled by mistake.
-#: 8 = every field a rubric sub-item reads is REQUIRED in the artifact
+#: 9 = an assessment item whose question restates its objective's own sentence
+#: is refused at the submit. 8 = every field a rubric sub-item reads is REQUIRED in the artifact
 #: contract (the analysis prose, the improvement plan's summary and goals, the
 #: plan's expected evidence and formative methods, the strategy model, an
 #: activity's duration and materials, a guide's objectives and prose) and
@@ -263,7 +264,7 @@ def respec(messages: list, step, brief: str) -> str:
 #: each item's objective, type and cognitive level and each activity's
 #: objective and level, the mode states a material's depth, and the pilot
 #: data plan names its collection points in words.
-PROTOCOL_REV = 8
+PROTOCOL_REV = 9
 
 #: The answer to a repeated read whose result is unchanged — ONE wording for
 #: both arms, and only ever said when it is true (``turn.answer_read`` has
