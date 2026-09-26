@@ -106,13 +106,15 @@ from . import rundirs
 #: ``.suffix_to_bloom`` map the other way, for discovering which arms a
 #: results dir already holds on disk.
 #:
-#: Family B's primary is a 6-way BERT fine-tuned on the EDM2022CLO corpus of
-#: Li et al. (2022), which agrees with the released expert labels at kappa
-#: 0.926 on a held-out split against the lexicon's 0.650. The lexicon arm is
+#: Family B's primary is a 6-way BERT fine-tuned on learning objectives
+#: (EDM2022CLO, Li et al. 2022) and exam questions (Faraji et al. 2026), which
+#: agrees with the expert labels at kappa 0.918 and 0.730 on held-out rows of
+#: each, against the lexicon's 0.649 and 0.543. The lexicon arm is
 #: deterministic and traceable to Anderson & Krathwohl, and derived from the
 #: taxonomy rather than from labelled data, which is what makes it a real
 #: independence check for the 3 Bloom-derived panel signals (the two agree at
-#: only kappa 0.665, so neither is a mirror of the other).
+#: only kappa 0.667 on objectives and 0.620 on questions, so neither is a
+#: mirror of the other).
 #:
 #: Consequence worth knowing before a run: the primary Bloom arm needs a
 #: checkpoint on disk, so scoring is not zero-setup. Train it with

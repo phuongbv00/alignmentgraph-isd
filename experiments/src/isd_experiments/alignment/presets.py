@@ -93,9 +93,8 @@ class BloomArm:
     def checkpoint_path(self):
         """Absolute path to the checkpoint, or None for a rule-based arm.
 
-        Resolved against ``paths.models_dir()``. The old literal was the
-        relative string ``models/bloom-bert-edm2022``, which only worked when
-        the process happened to start in the benchmark root.
+        Resolved against ``paths.models_dir()``, so it does not depend on the
+        directory the process starts in.
         """
         return paths.models_dir() / self.checkpoint if self.checkpoint else None
 

@@ -140,7 +140,7 @@ tfidf    = { kind = "tfidf", model = "tfidf-char-ngram", suffix = "tfidf", macro
 
 # A missing checkpoint skips its arm; it never falls back to another.
 [judge.alignment.bloom]
-bertbloom = { kind = "transformer", checkpoint = "bloom-bert-edm2022", suffix = "", macro = "BertBloom", short = "BERT" }
+bertbloom = { kind = "transformer", checkpoint = "bloom-bert-objectives-and-questions", suffix = "", macro = "BertBloom", short = "BERT" }
 lexicon   = { kind = "lexicon", suffix = "lexicon", macro = "Lexicon", short = "lexicon" }
 
 # A correction of the primary configuration's family-A cosines, not a new

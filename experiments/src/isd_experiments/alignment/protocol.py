@@ -75,16 +75,20 @@ Design principles enforced here:
 Pluggable pieces:
 
 - :class:`BloomClassifier` protocol. The protocol's **primary** arm is
-  :class:`TransformerBloomClassifier` — a 6-way BERT fine-tuned on the
-  EDM2022CLO corpus of Li et al. (2022), loaded from a local checkpoint (it
-  never downloads), agreeing with the released expert labels at kappa 0.926 on
-  a held-out split. :class:`LexiconBloomClassifier` (English Bloom verb
-  lexicon, rule-based, offline, every level assignment traceable to Anderson &
-  Krathwohl, kappa 0.650) is the **sensitivity arm**. Family B feeds three of the
+  :class:`TransformerBloomClassifier` — a 6-way BERT fine-tuned on both genres
+  it levels: the learning objectives of EDM2022CLO (Li et al. 2022) and four
+  human-labelled exam-question sets (Faraji et al. 2026), loaded from a local
+  checkpoint (it never downloads). On held-out rows it agrees with the expert
+  labels at kappa 0.918 on objectives and 0.730 on questions.
+  :class:`LexiconBloomClassifier` (English Bloom verb lexicon, rule-based,
+  offline, every level assignment traceable to Anderson & Krathwohl, kappa
+  0.649 and 0.543 on the same rows, over what it classifies) is the
+  **sensitivity arm**. Family B feeds three of the
   panel signals, so it needs an independence check exactly as family A does,
   and a rule instrument derived from the taxonomy is the strongest possible
   check on a model trained from labelled data: the two agree at only kappa
-  0.665, so neither is a mirror of the other. They also differ by construction
+  0.667 on objectives and 0.620 on questions, so neither is a mirror of the
+  other. They also differ by construction
   in coverage — the lexicon abstains (83%), the transformer always argmaxes —
   which is declared, not hidden.
 
@@ -331,9 +335,9 @@ class LexiconBloomClassifier:
     Matches in noun position are rejected (see :data:`_NOUN_CONTEXT`).
 
     This is the **sensitivity** arm of the Bloom axis; the primary arm is
-    :class:`TransformerBloomClassifier`, which measures kappa 0.926 against
-    this one's 0.650 on a held-out split. What this arm buys, and why it is
-    kept: its level
+    :class:`TransformerBloomClassifier`, which measures kappa 0.918 on held-out
+    objectives and 0.730 on held-out exam questions against this one's 0.649
+    and 0.543. What this arm buys, and why it is kept: its level
     assignment stays traceable to Anderson & Krathwohl and is bit-wise
     deterministic, neither of which holds for a softmax argmax. Note the
     coverage asymmetry between them: this one abstains (``None``) on text with
@@ -392,21 +396,23 @@ class LexiconBloomClassifier:
 class TransformerBloomClassifier:
     """Bloom classifier backed by a locally fine-tuned sequence classifier.
 
-    The **primary arm** of the Bloom axis (kappa 0.926 vs the lexicon's 0.650
-    on a held-out split), but it does not replace the lexicon:
+    The **primary arm** of the Bloom axis (kappa 0.918 on held-out objectives
+    and 0.730 on held-out exam questions, against the lexicon's 0.649 and
+    0.543), but it does not replace the lexicon:
     the sweep's question is not "which classifier is more accurate" but "does
     the agent ranking depend on the choice of classifier at all". Two
     instruments derived from completely separate sources — the lexicon from
-    Anderson & Krathwohl's Table 5.1, this one from 21,380 human labels —
+    Anderson & Krathwohl's Table 5.1, this one from human labels —
     agreeing on the ranking is stronger evidence than either instrument alone at
     any kappa. The cost of leading with this one, which must be declared: a
     per-case level is not traceable to Anderson & Krathwohl, and family B is
     not bit-wise deterministic (a discrete argmax, so floating-point
     noise can flip a label rather than nudge a number).
 
-    Train one with ``isd-exp bloom train`` (default recipe: ``bert-base-uncased`` on the single-label subset of EDM2022CLO,
-    after Li et al. 2022). Loads a checkpoint from ``model_path`` only if it
-    already exists on disk; it never downloads.
+    Train one with ``isd-exp bloom train`` (``bert-base-uncased``, the recipe
+    of Li et al. 2022, on the single-label rows of every corpus it is given).
+    Loads a checkpoint from ``model_path`` only if it already exists on disk;
+    it never downloads.
 
     Unlike the lexicon this classifier **never abstains** — argmax always
     returns a level, so family-B denominators differ between the two arms by

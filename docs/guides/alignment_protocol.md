@@ -97,16 +97,24 @@ problem formulation trong paper.
    `webb_bloom_consistency` — cộng `sanity.*` ở tầng validity. Vì panel không có endpoint chính (§4), họ tín hiệu này
    phải có **trục sensitivity riêng**, y hệt encoder:
 
-    - **Arm chính = `TransformerBloomClassifier`** — κ **0,926** với nhãn chuyên gia trên held-out (lexicon: 0,650),
-      coverage 100%. Chọn theo **độ chính xác đo được**, và điều đó có giá: quyết định của nó không truy được về A&K
+    - **Arm chính = `TransformerBloomClassifier`**, checkpoint `models/bloom-bert-objectives-and-questions`, train gộp
+      trên objective EDM2022CLO và 4 bộ câu hỏi thi. Trên held-out: κ **0,918** với objective và **0,730** với câu
+      hỏi (lexicon: 0,649 và 0,543), coverage 100%. Chọn theo **độ chính xác đo được**, và điều đó có giá: quyết định của nó không truy được về A&K
       cho từng ca (xem mục 3, phần "cái mất").
     - **Arm sensitivity = `LexiconBloomClassifier`** — tất định, dẫn thẳng từ A&K, giải thích được từng quyết định.
       Đây là arm kiểm mạnh nhất có thể có cho một model học từ nhãn: nó dẫn từ **taxonomy**, không dẫn từ dữ liệu, nên
-      đồng thuận giữa hai arm (κ **0,665**, 73,5% raw) không phải đồng thuận rẻ tiền — hai instrument thật sự khác
-      nhau, không phải hai bản sao.
+      đồng thuận giữa hai arm (κ **0,667** trên objective, 73,6% raw; κ 0,620 trên câu hỏi) không phải đồng thuận rẻ
+      tiền — hai instrument thật sự khác nhau, không phải hai bản sao.
 
    Chi tiết cách train arm chính — `bert-base-uncased` fine-tune trên **corpus** EDM2022CLO
-   của Li et al. (2022). Bám sát **`createBERT`** trong `EDM2022 CLO.ipynb` — cùng base model, `max_length` 55,
+   của Li et al. (2022) **cộng** 4 bộ câu hỏi thi do người gán nhãn (`faraji2026crossdataset`), vì classifier gán
+   cấp cho cả objective lẫn item (xem §7). Lệnh: `isd-exp bloom train`; tập test của mỗi corpus do lệnh tự sinh từ corpus
+   (EDM2022CLO theo đúng cách chia của createBERT), nên không có file test tĩnh nào phải giữ. Checkpoint
+   được train trên GPU (MPS). Dữ liệu, các tập chia và công thức tái lập chính xác từ git, hai submodule corpus và
+   revision của `bert-base-uncased` ghi trong `training_record.json`. **Trọng số thì không tái lập từng bit**: hai lần
+   train trên MPS lệch κ tới ~0,02 và cho nhãn khác nhau ở 8–19% text của agent. Vì vậy checkpoint là validity
+   evidence phải giữ (MOVED, không train lại), và phải khai trong limitations. Train trên CPU (`--device cpu`) thì
+   trọng số trùng từng bit. Bám sát **`createBERT`** trong `EDM2022 CLO.ipynb` — cùng base model, `max_length` 55,
    batch 64, 3 epoch, warmup 5, weight decay 0,05, learning rate mặc định của transformers, early stopping
    patience 10, chọn best model theo macro F1, split hai tầng 20% test rồi 20% val với `random_state=666` — và
    **thay đúng một thứ: head**. Notebook của họ ra 6 model nhị phân độc lập (hoặc một model multi-label ngưỡng
@@ -364,12 +372,12 @@ bit-wise**, nên bổ trợ trực tiếp cho phần claim tái lập (mục 3):
 
 **Trục 3 — Bloom classifier (họ B).** Chấm lại bằng `LexiconBloomClassifier` (mục 3.4) →
 `alignment_scores.lexicon.json`, encoder giữ nguyên `nemotron`. Câu hỏi: *ba tín hiệu họ B có phải là thuộc tính của
-output, hay là đặc tính riêng của một checkpoint học từ nhãn của một trường?* Hai instrument dẫn xuất độc lập hoàn
-toàn — một từ 21 380 nhãn người, một từ A&K Table 5.1 — và **đo được là chúng khác nhau thật** (đồng thuận chỉ κ
-0,665), nên đây không phải đồng thuận rẻ tiền kiểu các encoder neural cùng học contrastive trên web corpus.
+output, hay là đặc tính riêng của một checkpoint học từ nhãn người?* Hai instrument dẫn xuất độc lập hoàn toàn — một
+từ nhãn người của hai corpus, một từ A&K Table 5.1 — và **đo được là chúng khác nhau thật** (đồng thuận chỉ κ 0,667
+trên objective và 0,620 trên câu hỏi), nên đây không phải đồng thuận rẻ tiền kiểu các encoder neural cùng học contrastive trên web corpus.
 
 Chi phí trục này gần bằng 0: Bloom chạy CPU, embedding lấy từ cache SQLite (`--embed-cache-only`), nên arm BERT
-**không cần dựng pod**. Chi phí thật chỉ là một lần fine-tune (~21k dòng, vài phút GPU).
+**không cần dựng pod**. Chi phí thật chỉ là một lần fine-tune (`isd-exp bloom train`, ~16,5k dòng, ~25 phút GPU).
 
 **Thống kê nào được báo.** Claim của paper là *MAS > từng đối sánh*, nên số liệu robustness đúng là **chiều so
 sánh theo cặp giữ nguyên qua các arm**, KHÔNG phải ρ Spearman của thứ tự đầy đủ 7 hệ — 5 hệ giữa bảng bám nhau quá
@@ -416,39 +424,36 @@ nhưng input đo lường (topic/Bloom/link) phải bắc cầu bằng bằng ch
 - **Bloom-vs-declared agreement** (`details.sanity.bloom_vs_declared_agreement`, kèm `sanity.classifier`) —
   calibration cho Bloom classifier của arm đang chấm. Key mang chữ "bloom" chứ không phải "lexicon" vì trục Bloom có
   hai arm (§6); cùng lý do, mức Bloom per-objective là `details.objectives[].bloom_level`.
-- **Benchmark cả hai Bloom arm trên EDM2022CLO** (`00_validate_bloom.py` — coverage/accuracy/κ/confusion cho từng arm,
-  cộng κ agreement giữa hai arm; English đại diện tốt vì corpus ~91% English). BERT báo số trên **held-out split**,
-  không báo số trên tập đã train — nếu không thì so sánh với lexicon là vô nghĩa. Kết quả đã đo: BERT κ 0,926 /
-  coverage 100% vs lexicon κ 0,650 / coverage 83,4% trên cùng 3 755 dòng held-out; artifact
-  `docs/generated/bloom_arms_validation.md`.
-- **Cả hai Bloom arm trên câu hỏi thi** (`results/generated/bloom_question_validation.md`, submodule
-  `bloom-classification-aied2026`). Classifier không chỉ gán cấp cho objective mà còn cho **item và activity**. Hai
-  thể loại này khác thể loại train, nên cần bằng chứng riêng. Corpus: 4 bộ câu hỏi do người gán nhãn đã công bố (Yahya
-  2012, Sangodiah 2017, Mohammed & Omar 2020, Gani 2023), gộp lại 2 341 câu. Bộ 1 838 câu do LLM sinh trong cùng repo
-  bị loại. Kết quả:
-    - `bertbloom`: κ **0,505** trên toàn bộ, 62,1% đúng. Trên chính 1 969 câu mà lexicon phân loại được: κ 0,552.
-    - `lexicon`: κ **0,568** trên 84,1% câu nó không abstain.
-    - Hai arm ngang nhau trên câu hỏi. Lợi thế lớn của BERT trên objective (κ 0,926 so với 0,649) **không mang sang
-      item**.
-    - Lỗi của BERT **lệch lên**: trung bình (dự đoán − nhãn) = +0,20 mức; 590 câu bị đặt cao hơn nhãn, 297 câu thấp
-      hơn. Trên held-out objective, độ lệch này là −0,01.
-  Hệ quả cho họ B: `objective_cognitive_congruence` và `webb_bloom_consistency` tính một item là đạt khi cấp của nó ≥
-  cấp objective. Item bị chấm cao hơn thực tế nên hai tín hiệu này bị thổi phồng. Mức thổi phồng là như nhau cho mọi
-  agent chỉ khi phân bố loại câu hỏi của các agent giống nhau. Điều đó chưa được kiểm, nên phải khai là
-  **differential bias tiềm năng**. Arm `lexicon` không có độ lệch này ở cùng mức, nên trục 3 là phép kiểm chính cho
-  rủi ro này. Activity vẫn **chưa có** bằng chứng validate nào.
-- **max_length của `bertbloom`**: train dùng 55, lúc chấm dùng 128. Held-out objective và corpus câu hỏi cho kết quả
-  gần như trùng nhau ở hai mức (κ lệch ≤ 0,003). Trên text tune, đổi sang 55 lật 3,5% nhãn item và 6% nhãn activity,
-  và không lật nhãn objective nào. Không có bằng chứng nào ưu tiên 55, nên giữ 128.
+- **Bloom classifier trên hai thể loại nó gán cấp** (`isd-exp bloom validate`; báo cáo
+  `results/generated/bloom_{objectives,questions}_validation.md`; bằng chứng giữ trong git ở
+  `experiments/tests/fixtures/bloom/`). Classifier gán cấp cho objective, item và activity, nên nó được train và chấm
+  trên hai corpus có nhãn người:
+    - EDM2022CLO (learning objective);
+    - 4 bộ câu hỏi thi đã công bố (Yahya 2012, Sangodiah 2017, Mohammed & Omar 2020, Gani 2023; 2 341 câu). Bộ 1 838 câu
+      do LLM sinh trong cùng repo bị loại.
+  Tập test của mỗi corpus do `isd-exp bloom train` sinh từ chính corpus đó (seed 666): 3 755 objective theo cách chia
+  của createBERT, và 464 câu hỏi phân tầng theo nguồn × nhãn. Không text nào của chúng nằm trong train/val
+  (13 229 / 3 309). Chỉ báo số trên tập held-out, vì báo trên tập đã train thì so sánh với lexicon vô nghĩa. Kết quả:
+    - objective: BERT κ **0,918** (93,4% đúng); lexicon κ 0,649 trên 83,5% câu nó phân loại được;
+    - câu hỏi: BERT κ **0,730** (79,1% đúng); lexicon κ 0,543 trên 84,7%;
+    - lỗi có dấu của BERT ≈ 0 trên cả hai (+0,01 mức). Điều này quan trọng vì congruence và Webb tính một item là đạt
+      khi cấp của nó ≥ cấp objective. Một classifier chấm item cao hơn thực tế sẽ thổi phồng cả hai tín hiệu;
+    - đồng thuận giữa hai arm: κ 0,667 trên objective, 0,620 trên câu hỏi.
+  **Độ biến thiên giữa các lần train (phải khai):** train lại cùng dữ liệu, cùng công thức trên MPS làm κ trên câu hỏi
+  lệch tới ~0,02. Trên text thật của agent (tune-10), hai lần train chỉ trùng nhãn ở 92% objective, 81% item và 85%
+  activity. Họ B vì thế phụ thuộc vào đúng checkpoint này, nên checkpoint là bằng chứng phải giữ. Activity **chưa có**
+  bằng chứng validate nào.
+- **max_length của `bertbloom`**: train dùng 55, lúc chấm dùng 128. Trên hai tập test, κ lệch ≤ 0,003 giữa hai mức, nên
+  giữ 128.
 - **Convergence với judge rubric** (corroboration RQ1) — hai instrument độc lập cơ chế.
 - **Expert study (Tier 3, để dành ETR&D)**: 2 chuyên gia blind code mẫu phân tầng theo thủ tục gốc, κ máy-vs-người —
   bước hoàn tất cây cầu validity, nằm ngoài phạm vi hiện tại.
 
 Limitations phải khai trong paper: classifier/encoder error có thể **differential** (ngôn ngữ, mức paraphrase, cách
 agent lặp objective) → **ranking cũng có thể đổi**, mitigation = 4 trục sensitivity; arm Bloom chính là một checkpoint
-học từ quy ước mã hoá của **một** trường, nên nó khớp corpus đó κ 0,926 nhưng chưa được validate trên objective do
-agent sinh ra. Trên câu hỏi thi do người gán nhãn, nó chỉ đạt κ 0,505 và lệch lên +0,20 mức. Nó không giải thích được
-từng quyết định (mục 3); protocol là operationalization tự động — không đo
+học từ quy ước mã hoá của một trường (objective) và của bốn bộ đề thi đã công bố (câu hỏi). Nó đạt κ 0,918 và 0,730 trên
+held-out của hai thể loại đó, nhưng chưa được validate trên objective hay câu hỏi do agent sinh ra, và **activity chưa
+có bằng chứng nào**. Nó không giải thích được từng quyết định (mục 3); protocol là operationalization tự động — không đo
 learning outcomes; **similarity không
 phải alignment** — 4 tín hiệu họ A đo textual correspondence, và cầu nối sang construct alignment nằm ở tầng bằng
 chứng trên, không nằm ở tên metric (§4) và bản thân cách đặt tên không mua validity; layer chính là failure=0 nên phải

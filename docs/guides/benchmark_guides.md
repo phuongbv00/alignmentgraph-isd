@@ -806,9 +806,23 @@ trục nào. Arm chính `bertbloom` cần checkpoint (train một lần, ~15 ph�
 miễn phí — chạy CPU, vector lấy từ cache:
 
 ```bash
-# cần checkpoint trước (một lần, vài phút GPU):
-python ./isd-exp bloom train --train corpora/EDM2022CLO/data/sample_full.csv \
-    --output-dir models/bloom-bert-edm2022
+# cần checkpoint trước (một lần, ~25 phút GPU). Cột được đọc từ header của TỪNG file (EDM dạng rộng, bộ câu hỏi
+# dạng QUESTION/BT LEVEL), nên các corpus khác định dạng gộp được trong một lệnh; --text-col/--label-col/--label-cols
+# chỉ dùng khi muốn ép. Lệnh ghi cạnh checkpoint: train/val/eval split, test_<corpus>.csv, held_out_metrics.json và
+# training_record.json. (--init <checkpoint> train tiếp từ một checkpoint có sẵn; held-out của nó được kế thừa.)
+# ARM CHÍNH `bertbloom`: train gộp từ bert-base trên cả hai corpus. Tập test của MỖI corpus do lệnh tự sinh từ
+# chính corpus đó (không lưu file tĩnh): EDM2022CLO theo đúng cách chia của createBERT (sklearn, phân tầng theo nhãn,
+# seed 666, 3 755 dòng — đúng tập test theo công thức của Li et al.), bộ câu hỏi theo (nguồn × nhãn), seed 666 (464 dòng). Chữ nào
+# nằm trong tập test đều bị loại khỏi train/val; model được chấm trên từng tập, ghi ra test_<corpus>.csv.
+# Mặc định train trên GPU (CUDA/MPS). Dữ liệu, các tập chia và công thức tái lập chính xác trên mọi thiết bị; TRỌNG
+# SỐ thì không: MPS không tất định kể cả khi bật chế độ deterministic của torch (đo: lệch sau 10 step; hai lần chạy đủ
+# lệch κ 0,02 và ~10% nhãn trên output agent). Cần train lại trùng từng bit thì dùng --device cpu (hai lần chạy trên
+# CPU cho trọng số giống hệt). Bản ghi training_record.json lưu device, số luồng, revision của bert-base-uncased và
+# sha256 của từng file corpus. MPS lệch ~10% nhãn giữa hai lần train, nên checkpoint là bằng chứng phải giữ (MOVED,
+# không train lại):
+./isd-exp bloom train corpora/EDM2022CLO/data/sample_full.csv \
+    corpora/bloom-classification-aied2026/data/{Gani_2023_collected-dataset-1200,Mohammed-and-Omar_2020_126,Sangodiah_2017_415,yahya-2012}_revised.csv \
+    --output-dir models/bloom-bert-objectives-and-questions
 ./isd-exp judge alignment --bloom-presets lexicon --embed-cache-only $RUNS
 ```
 
@@ -854,15 +868,13 @@ Validity evidence cho Bloom — chạy một lần, báo cả hai arm + κ giữ
 ./isd-exp bloom validate corpora/EDM2022CLO/data/sample_full.csv \
     --text-col Learning_outcome --label-cols Remember,Understand,Apply,Analyze,Evaluate,Create \
     --out results/generated/bloom_validation.md
-# thêm arm BERT: trỏ CSV vào held-out split cạnh checkpoint, KHÔNG dùng corpus đã train
-./isd-exp bloom validate models/bloom-bert-edm2022/eval_split.csv \
-    --text-col text --label-col label --bloom-checkpoint models/bloom-bert-edm2022 \
-    --out results/generated/bloom_arms_validation.md
-# cả hai arm trên câu hỏi thi (thể loại classifier cũng gán cấp nhưng không được train)
-./isd-exp bloom validate \
-    corpora/bloom-classification-aied2026/data/{Gani_2023_collected-dataset-1200,Mohammed-and-Omar_2020_126,Sangodiah_2017_415,yahya-2012}_revised.csv \
-    --text-col QUESTION --label-col "BT LEVEL" --bloom-checkpoint models/bloom-bert-edm2022 \
-    --out results/generated/bloom_question_validation.md
+# arm BERT chính trên tập test của từng corpus (lệnh train ghi chúng cạnh checkpoint), KHÔNG dùng dữ liệu đã train:
+./isd-exp bloom validate models/bloom-bert-objectives-and-questions/test_EDM2022CLO.csv \
+    --text-col text --label-col label --bloom-checkpoint models/bloom-bert-objectives-and-questions \
+    --out results/generated/bloom_objectives_validation.md
+./isd-exp bloom validate models/bloom-bert-objectives-and-questions/test_bloom-classification-aied2026.csv \
+    --text-col text --label-col label --bloom-checkpoint models/bloom-bert-objectives-and-questions \
+    --out results/generated/bloom_questions_validation.md
 ```
 
 ## 8. Pool → thống kê RQ1 + RQ2
@@ -1262,18 +1274,25 @@ Chi tiết bắt buộc khai:
   chính, điều đó nghĩa là cả lần chấm dừng lại, đúng như mong muốn (một artifact gắn nhãn `bertbloom` mà thực chất do
   lexicon chấm là kiểu hỏng tệ nhất).
 
-**Số đã đo (train 2026-07-29, cả hai arm trên cùng 3 755 dòng held-out — artifact:
-`results/generated/bloom_arms_validation.md`):**
+**Số đã đo.** Arm chính `bertbloom` là checkpoint `models/bloom-bert-objectives-and-questions`, train trên objective
+EDM2022CLO và 4 bộ câu hỏi thi của submodule `bloom-classification-aied2026`. Classifier gán cấp cho cả objective lẫn
+item, nên nó được train và chấm trên cả hai thể loại. Tập test của mỗi corpus do `isd-exp bloom train` sinh từ corpus:
+3 755 objective và 464 câu hỏi; không text nào của chúng nằm trong dữ liệu train. Artifact:
+`results/generated/bloom_{objectives,questions}_validation.md`; bằng chứng giữ trong git ở
+`experiments/tests/fixtures/bloom/`.
 
-| Arm | Coverage | Accuracy | κ vs gold |
-|---|---|---|---|
-| `bertbloom` (**chính**) | 100% | 94,1% | **0,926** |
-| lexicon (A&K, sweep) | 83,4% | 72,3% | 0,650 |
+| Arm | Objective: coverage / accuracy / κ | Câu hỏi: coverage / accuracy / κ |
+|---|---|---|
+| `bertbloom` (**chính**) | 100% / 93,4% / **0,918** | 100% / 79,1% / **0,730** |
+| lexicon (A&K, sweep) | 83,5% / 72,2% / 0,649 | 84,7% / 65,9% / 0,543 |
 
-Đồng thuận giữa hai arm (3 133 dòng cả hai phân loại được): **73,5% raw, κ 0,665**. Con số này mới là thứ đáng đọc —
-hai instrument **không phải bản sao của nhau**, nên nếu thứ hạng agent vẫn giữ khi đổi arm thì đó là robustness thật.
+Lỗi có dấu (dự đoán − nhãn) của `bertbloom` là +0,01 mức trên cả hai thể loại, tức không chấm item cao hơn thực tế.
 
-κ 0,650 của lexicon trên held-out khớp với 0,657 trên toàn corpus → split không lệch.
+Đồng thuận giữa hai arm (dòng cả hai phân loại được): **73,6% raw, κ 0,667** trên objective; **71,5% raw, κ 0,620**
+trên câu hỏi. Con số này mới là thứ đáng đọc — hai instrument **không phải bản sao của nhau**, nên nếu thứ hạng agent
+vẫn giữ khi đổi arm thì đó là robustness thật.
+
+κ 0,649 của lexicon trên held-out khớp với 0,657 trên toàn corpus → split không lệch.
 
 Hai câu reviewer chắc chắn hỏi, trả lời sẵn:
 
@@ -1282,8 +1301,8 @@ Hai câu reviewer chắc chắn hỏi, trả lời sẵn:
   không phải "hiểu Bloom hơn con người".
 - *"Sao vượt trần oracle 77,6%?"* — trần đó áp cho classifier **chỉ nhìn động từ dẫn đầu**; BERT đọc cả câu nên phân
   biệt được các ca cùng động từ khác cấp. Vượt trần là điều đúng phải xảy ra, không phải dấu hiệu rò rỉ.
-- Đã kiểm rò rỉ: corpus trùng lặp 0,6% dòng, và chỉ **1,1%** text held-out từng xuất hiện trong train pool → không
-  giải thích được κ 0,926.
+- Rò rỉ bị loại bằng cấu trúc: `isd-exp bloom train` khử trùng trước khi chia và loại khỏi train/val mọi text (so
+  không phân biệt hoa thường và khoảng trắng) nằm trong tập test của bất kỳ corpus nào.
 
 ### Pooling RQ2
 

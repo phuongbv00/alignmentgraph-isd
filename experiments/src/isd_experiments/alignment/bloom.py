@@ -6,8 +6,9 @@ Always benchmarks the rule-based lexicon
 axis's **sensitivity arm**, against a learning-outcome dataset carrying expert
 Bloom labels, reporting coverage, accuracy, adjacent accuracy, Cohen's kappa
 and the confusion matrix. With ``--bloom-checkpoint`` it additionally
-benchmarks the **primary** arm — a single 6-way softmax head fine-tuned on the
-EDM2022CLO corpus — on the same rows, and the two arms against each other.
+benchmarks a transformer arm — a single 6-way softmax head; the primary one is
+fine-tuned on learning objectives and exam questions together — on the same
+rows, and the two arms against each other.
 The scored corpus is English (measured 100% across all agents and model sizes)
 and the lexicon is English-only, so an English benchmark is the representative
 one; no network access is needed here — you download the CSV yourself.
@@ -30,20 +31,18 @@ The invocations that produce the shipped artifacts (run from experiments/;
       --label-cols Remember,Understand,Apply,Analyze,Evaluate,Create \
       --out results/generated/bloom_validation.md
 
-  # bloom_arms_validation.md — both arms, held-out split next to the checkpoint
+  # bloom_objectives_validation.md / bloom_questions_validation.md — both arms,
+  # the primary checkpoint (trained by `isd-exp bloom train`) on each corpus's
+  # test set, which the training run draws from the corpus and writes beside
+  # the checkpoint
   ./isd-exp bloom validate \
-      models/bloom-bert-edm2022/eval_split.csv --text-col text --label-col label \
-      --bloom-checkpoint models/bloom-bert-edm2022 \
-      --out results/generated/bloom_arms_validation.md
-
-  # bloom_question_validation.md — both arms, the four human-labelled
-  # exam-question sets of the bloom-classification-aied2026 submodule, pooled:
-  # the genre the classifier also levels (assessment items), not its training genre
+      models/bloom-bert-objectives-and-questions/test_EDM2022CLO.csv --text-col text --label-col label \
+      --bloom-checkpoint models/bloom-bert-objectives-and-questions \
+      --out results/generated/bloom_objectives_validation.md
   ./isd-exp bloom validate \
-      corpora/bloom-classification-aied2026/data/{Gani_2023_collected-dataset-1200,Mohammed-and-Omar_2020_126,Sangodiah_2017_415,yahya-2012}_revised.csv \
-      --text-col QUESTION --label-col "BT LEVEL" \
-      --bloom-checkpoint models/bloom-bert-edm2022 \
-      --out results/generated/bloom_question_validation.md
+      models/bloom-bert-objectives-and-questions/test_bloom-classification-aied2026.csv --text-col text --label-col label \
+      --bloom-checkpoint models/bloom-bert-objectives-and-questions \
+      --out results/generated/bloom_questions_validation.md
 """
 
 from __future__ import annotations
@@ -134,6 +133,29 @@ def _is_checkpoint_eval_split(csv_path: Path, checkpoint: Path | None) -> bool:
         )
     except OSError:
         return False
+
+
+def _inherited_held_out(csv_path: Path, checkpoint: Path | None) -> dict | None:
+    """The record's entry for CSV when ``training_record.json`` (written by
+    ``isd-exp bloom train``) lists it as a held-out split other than the
+    checkpoint's own ``eval_split.csv``: a fixed test split it was trained
+    against, or one inherited from its ``--init``. Either way no text of it
+    entered training, so it is out-of-sample for this checkpoint."""
+    if checkpoint is None:
+        return None
+    try:
+        record = json.loads((checkpoint / "training_record.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    root = paths.bench_root().parent
+    for entry in record.get("held_out_splits", []):
+        for base in (checkpoint, root):
+            try:
+                if (base / entry["path"]).resolve() == csv_path.resolve():
+                    return entry if entry["path"] != "eval_split.csv" else None
+            except OSError:
+                continue
+    return None
 
 
 def _provenance_line(args, n_rows: int, n_single: int, n_multi: int, held_out: bool) -> str:
@@ -230,7 +252,7 @@ def _transformer_arm_section(
         "|---|---|---|---|",
         f"| lexicon (Anderson & Krathwohl verb rules, sensitivity arm) | "
         f"{len(lex_pairs) / len(labeled):.1%} | {lex_acc:.1%} | {lex_kappa:.3f} |",
-        f"| transformer (BERT-base head fine-tuned on the EDM2022CLO corpus, PRIMARY) | "
+        f"| transformer ({_checkpoint_description(args.bloom_checkpoint)}) | "
         f"{b_cov:.1%} | {b_acc:.1%} | {b_kappa:.3f} |",
         "",
         f"- Transformer direction of error: mean (predicted - gold) = {b_bias:+.2f} "
@@ -250,7 +272,16 @@ def _transformer_arm_section(
         f"the leading token, such as the lexicon; it does not bound this arm, which "
         f"reads the whole text and scores above it ({b_acc:.1%}).",
     ]
-    if held_out:
+    inherited = _inherited_held_out(args.csv_path, args.bloom_checkpoint)
+    if inherited and not held_out:
+        lines.append(
+            "- Held-out status: this CSV is a held-out split listed in the checkpoint's "
+            "`training_record.json` (one corpus's test set, or one inherited from the "
+            "checkpoint it was continued from); none of its texts entered training, "
+            "so the transformer numbers above are OUT-OF-SAMPLE. Cross-check against "
+            f"`training_record.json`: n={inherited['n_held_out']}, accuracy "
+            f"{inherited['accuracy']:.1%}, kappa {inherited['cohen_kappa']:.3f}.")
+    elif held_out:
         recorded = _recorded_held_out_metrics(args.bloom_checkpoint)
         line = (
             "- Held-out status: this CSV **is** the checkpoint's own `eval_split.csv` "
@@ -272,6 +303,21 @@ def _transformer_arm_section(
             "to the checkpoint."
         )
     return lines
+
+
+def _checkpoint_description(checkpoint: Path) -> str:
+    """What the checkpoint under test was trained on, read from its own
+    ``training_record.json`` when ``isd-exp bloom train`` wrote one."""
+    try:
+        record = json.loads((checkpoint / "training_record.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return f"`{checkpoint.name}`, no training record"
+    sources = ", ".join(Path(s["path"]).stem for s in record.get("sources", []))
+    init = str(record.get("init", "?"))
+    # A checkpoint's own init is recorded as a path, a hub base model as its id.
+    how = ("continued from" if (paths.bench_root().parent / init).is_dir()
+           else "fine-tuned from")
+    return f"`{checkpoint.name}`: {how} `{Path(init).name}` on {sources}"
 
 
 def _recorded_held_out_metrics(checkpoint: Path) -> dict | None:

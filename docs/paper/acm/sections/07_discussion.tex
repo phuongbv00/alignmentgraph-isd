@@ -85,15 +85,17 @@ raised by a task that restates its objective, which improves correspondence with
 improving alignment; the objective--task overlap reported as validity evidence shows
 how much of $\sigma_{\mathrm{meas}}$ is shared wording, and the proposed system refuses
 such a task when it is submitted. The primary Bloom
-checkpoint is learned from one institution's coding
-convention~\cite{li2022bloomclassification}; its individual decisions are not
-traceable to Anderson--Krathwohl~\cite{anderson2001taxonomy}, and it has not been
-validated on machine-generated objectives. It also levels assessment tasks, a genre it
-was not trained on: on the four human-labelled exam-question sets released
-with~\cite{faraji2026crossdataset} its agreement with the labels drops to moderate, and its errors lean towards levels above
-the label (\TBD), which favours $\beta_{\mathrm{cong}}$ and $\beta_{\mathrm{webb}}$.
-The verb-lexicon arm, which agrees with those labels about as well, is the check on
-that bias. Activities remain unvalidated. Encoder and classifier error may be
+checkpoint is learned from the coding conventions of its training corpora, one
+institution's learning objectives~\cite{li2022bloomclassification} and four published
+exam-question sets~\cite{faraji2026crossdataset}; it is trained on both because it levels
+both, and its error is unbiased in direction on each (\TBD), which matters because
+$\beta_{\mathrm{cong}}$ and $\beta_{\mathrm{webb}}$ would favour a classifier that places
+tasks above their level. Its individual decisions are not
+traceable to Anderson--Krathwohl~\cite{anderson2001taxonomy}, it has not been validated
+on machine-generated objectives or tasks, and activities remain unvalidated. Retraining
+it on the same data with the same recipe on a GPU changed the level it assigns to a
+share of agent-written items and activities (\TBD), so the Family-B signals reported
+here belong to the released checkpoint rather than to the recipe alone. Encoder and classifier error may be
 differential across systems that paraphrase, repeat, or distribute content
 differently, which could change a ranking rather than merely add noise; the
 sensitivity star---independent neural lineages, a non-semantic floor, a

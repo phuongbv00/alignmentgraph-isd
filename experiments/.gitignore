@@ -1,6 +1,7 @@
-# Model checkpoints. The Bloom BERT head is 419 MB and is validity evidence,
-# not a cache: models/bloom-bert-edm2022/held_out_metrics.json carries the
-# kappa the paper cites. Ignored here, moved (never retrained) between machines.
+# Model checkpoints. The Bloom BERT head is ~420 MB and is validity evidence,
+# not a cache: models/bloom-bert-objectives-and-questions/held_out_metrics.json
+# carries the kappa the paper cites. Ignored here, moved (never retrained)
+# between machines; tests/fixtures/bloom/ keeps its record in git.
 models/
 
 # Experiment outputs: run dirs, pooled JSON, generated tables/figures.

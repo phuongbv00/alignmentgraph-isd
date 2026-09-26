@@ -67,8 +67,24 @@ def build_parser() -> argparse.ArgumentParser:
 
     bloom = sub.add_parser("bloom", help="the Bloom classifier arm").add_subparsers(
         dest="sub", required=True)
-    bt = bloom.add_parser("train", help="fine-tune the 6-way head")
-    bt.add_argument("--train", type=_p, required=True), bt.add_argument("--output-dir", type=_p)
+    bt = bloom.add_parser("train", help="fine-tune the 6-way head (split, train, evaluate)")
+    bt.add_argument("labels", type=_p, nargs="+", help="one or more labelled CSVs, pooled")
+    bt.add_argument("--output-dir", type=_p, required=True)
+    bt.add_argument("--init", default="bert-base-uncased",
+                    help="base model, or an existing checkpoint to continue")
+    bt.add_argument("--text-col", help="default: read off each CSV's header")
+    bt.add_argument("--label-col", help="default: read off each CSV's header")
+    bt.add_argument("--label-cols", help="six 0/1 columns, one per level, Remember..Create")
+    bt.add_argument("--test-fraction", type=float, default=0.2,
+                    help="held out from EACH corpus, drawn by that corpus's recipe")
+    bt.add_argument("--val-fraction", type=float, default=0.2)
+    bt.add_argument("--seed", type=int, default=666)
+    bt.add_argument("--epochs", type=float, default=3)
+    bt.add_argument("--lr", type=float, help="default: the transformers default, as the notebook")
+    bt.add_argument("--max-length", type=int, default=55)
+    bt.add_argument("--device", help="default: a GPU when there is one; cpu trains the "
+                    "same weights every run, a GPU does not")
+    bt.add_argument("--overwrite", action="store_true")
     bv = bloom.add_parser("validate", help="score an arm against expert labels")
     bv.add_argument("labels", type=_p, nargs="+", help="one or more labelled CSVs, pooled")
     bv.add_argument("--bloom-checkpoint", type=_p), bv.add_argument("--out", type=_p)
@@ -326,7 +342,14 @@ def _dispatch(args) -> int:
     if command == "bloom":
         from .alignment import bloom
         if sub == "train":
-            return bloom.train(train_csv=args.train, output_dir=args.output_dir)
+            from .alignment import bloom_train
+            return bloom_train.train(
+                labels=args.labels, output_dir=args.output_dir, init=args.init,
+                text_col=args.text_col, label_col=args.label_col, label_cols=args.label_cols,
+                test_fraction=args.test_fraction, val_fraction=args.val_fraction,
+                seed=args.seed, epochs=args.epochs, lr=args.lr, max_length=args.max_length,
+                device=args.device,
+                overwrite=args.overwrite)
         return bloom.validate(labels=args.labels, bloom_checkpoint=args.bloom_checkpoint,
                               out=args.out, text_col=args.text_col, label_col=args.label_col,
                               label_cols=args.label_cols, max_length=args.max_length)

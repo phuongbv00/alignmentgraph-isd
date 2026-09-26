@@ -163,7 +163,7 @@ def sec_reading_contract(lad, abl):
     L.append("- Cost ratios and token/quality economics -> `stats_cost.md`, `cost_macros.tex` "
              "(computed from run dirs, not from the pooled JSONs).")
     L.append("- Bloom classifier validity evidence -> `bloom_validation.md`, "
-             "`bloom_arms_validation.md`.")
+             "`bloom_objectives_validation.md`, `bloom_questions_validation.md`.")
     L.append("- Per-scenario values. Everything here is aggregated to (size, agent, measure).")
     L.append("- Figures. See `results/generated/figures/`.\n")
     return L

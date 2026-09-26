@@ -101,8 +101,8 @@ INVENTORY: list[Spec] = [
     # Bloom validity evidence. Needs a hand-trained checkpoint, so its absence
     # is a warning rather than a pipeline failure.
     Spec("bloom_validation.md", BLOOM, "note", "bloom"),
-    Spec("bloom_arms_validation.md", BLOOM, "note", "bloom"),
-    Spec("bloom_question_validation.md", BLOOM, "note", "bloom"),
+    Spec("bloom_objectives_validation.md", BLOOM, "note", "bloom"),
+    Spec("bloom_questions_validation.md", BLOOM, "note", "bloom"),
 ]
 
 

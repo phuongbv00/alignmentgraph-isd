@@ -280,8 +280,9 @@ Both instruments are version-pinned. The encoder maps each text span to $e_u$; t
 primary configuration uses Nemotron-8B, with alternative encoder arms in
 \Cref{tab:rq2-arms}. The Bloom classifier assigns an Anderson--Krathwohl level to
 each objective and assessment task; the primary configuration is a BERT checkpoint
-fine-tuned on an expert-labeled learning-objective
-corpus~\cite{li2022bloomclassification}, with a verb lexicon as the comparison arm.
+fine-tuned on both genres it levels, an expert-labeled learning-objective
+corpus~\cite{li2022bloomclassification} and four human-labeled exam-question
+sets~\cite{faraji2026crossdataset}, with a verb lexicon as the comparison arm.
 The checkpoint always returns an argmax whereas the lexicon may abstain, so Family-B
 denominators differ between the two Bloom arms. Sensitivity arms form a star around
 the primary configuration---each deviates on exactly one axis, not a grid---and are
@@ -328,7 +329,7 @@ cache, up to floating-point noise. Cost telemetry reads only
     Arm & Embedding encoder & Bloom classifier & Tested axis \\
     \midrule
     Primary & Nemotron-8B~\cite{babakhin2025nemotron} &
-    fine-tuned BERT~\cite{li2022bloomclassification} & --- \\
+    fine-tuned BERT~\cite{li2022bloomclassification,faraji2026crossdataset} & --- \\
     BGE-M3 & BGE-M3~\cite{chen2024m3embedding} & fine-tuned BERT & encoder lineage \\
     Granite & Granite-311M~\cite{awasthy2026granite} & fine-tuned BERT & encoder lineage \\
     TF--IDF & TF--IDF char $n$-gram & fine-tuned BERT & non-semantic floor \\

@@ -1,0 +1,142 @@
+{
+  "init": "bert-base-uncased",
+  "init_revision": "86b5e0934494bd15c9632b12f734a8a67f723594",
+  "sources": [
+    {
+      "path": "experiments/corpora/EDM2022CLO/data/sample_full.csv",
+      "sha256": "03e5b22fb2979a7bd4a3e7709d79b8a1914f01497cfd05a53a316fb901774c6e"
+    },
+    {
+      "path": "experiments/corpora/bloom-classification-aied2026/data/Gani_2023_collected-dataset-1200_revised.csv",
+      "sha256": "ee3508c39c08db5d5569af40f888ce5ff5a3cf331097d656b380af84da2d4e25"
+    },
+    {
+      "path": "experiments/corpora/bloom-classification-aied2026/data/Mohammed-and-Omar_2020_126_revised.csv",
+      "sha256": "139b1d2d9439d7cbc67ffd0227e3275bcde1f72a76ae46b3133cebb91a462bb8"
+    },
+    {
+      "path": "experiments/corpora/bloom-classification-aied2026/data/Sangodiah_2017_415_revised.csv",
+      "sha256": "03c32e5236bca3d17f2f26bc09f45cbf2d33a74de9264bdcd1a8d9f4e7d15eb9"
+    },
+    {
+      "path": "experiments/corpora/bloom-classification-aied2026/data/yahya-2012_revised.csv",
+      "sha256": "27043dc372d4fe680faebef91c17809b77f3f32c88a44d3ea1e2ab12c15dfb25"
+    }
+  ],
+  "columns": {
+    "experiments/corpora/EDM2022CLO/data/sample_full.csv": {
+      "text_col": "Learning_outcome",
+      "label_col": null,
+      "label_cols": "Remember,Understand,Apply,Analyze,Evaluate,Create"
+    },
+    "experiments/corpora/bloom-classification-aied2026/data/Gani_2023_collected-dataset-1200_revised.csv": {
+      "text_col": "QUESTION",
+      "label_col": "BT LEVEL",
+      "label_cols": null
+    },
+    "experiments/corpora/bloom-classification-aied2026/data/Mohammed-and-Omar_2020_126_revised.csv": {
+      "text_col": "QUESTION",
+      "label_col": "BT LEVEL",
+      "label_cols": null
+    },
+    "experiments/corpora/bloom-classification-aied2026/data/Sangodiah_2017_415_revised.csv": {
+      "text_col": "QUESTION",
+      "label_col": "BT LEVEL",
+      "label_cols": null
+    },
+    "experiments/corpora/bloom-classification-aied2026/data/yahya-2012_revised.csv": {
+      "text_col": "QUESTION",
+      "label_col": "BT LEVEL",
+      "label_cols": null
+    }
+  },
+  "rows": {
+    "read": 23721,
+    "multi_label": 2607,
+    "duplicate": 370,
+    "conflicting_label": 8,
+    "kept": 20736,
+    "in_parent_held_out": 0,
+    "in_test_split": 4198,
+    "kept_by_source": {
+      "sample_full": 14681,
+      "Gani_2023_collected-dataset-1200_revised": 948,
+      "Mohammed-and-Omar_2020_126_revised": 101,
+      "Sangodiah_2017_415_revised": 331,
+      "yahya-2012_revised": 477
+    }
+  },
+  "split": {
+    "test": {
+      "EDM2022CLO": "createBERT: scikit-learn train_test_split stratified on the level, single-label rows in file order, text stripped, not deduplicated",
+      "bloom-classification-aied2026": "stratified_split on (source, level) over the corpus's files, deduplicated"
+    },
+    "n_test_by_corpus": {
+      "EDM2022CLO": 3755,
+      "bloom-classification-aied2026": 464
+    },
+    "test_fraction": 0.2,
+    "val_fraction": 0.2,
+    "seed": 666,
+    "stratified_on": [
+      "source",
+      "label"
+    ],
+    "n_train": 13229,
+    "n_val": 3309,
+    "n_test": 4219
+  },
+  "recipe": {
+    "max_length": 55,
+    "batch_size": 64,
+    "epochs": 3,
+    "warmup_steps": 5,
+    "weight_decay": 0.05,
+    "eval_steps": 10,
+    "patience": 10,
+    "learning_rate": 5e-05,
+    "best_checkpoint": "checkpoint-510",
+    "best_val_macro_f1": 0.9160037979710821
+  },
+  "held_out_metrics": {
+    "n_held_out": 4219,
+    "accuracy": 0.9187011140080588,
+    "cohen_kappa": 0.8979805015400385,
+    "macro_f1": 0.9113440405680197,
+    "mean_signed_error": 0.006636643754444181
+  },
+  "held_out_splits": [
+    {
+      "path": "eval_split.csv",
+      "n_held_out": 4219,
+      "accuracy": 0.9187011140080588,
+      "cohen_kappa": 0.8979805015400385,
+      "macro_f1": 0.9113440405680197,
+      "mean_signed_error": 0.006636643754444181
+    },
+    {
+      "path": "test_EDM2022CLO.csv",
+      "corpus": "EDM2022CLO",
+      "n_held_out": 3755,
+      "accuracy": 0.9347536617842876,
+      "cohen_kappa": 0.9178624991585141,
+      "macro_f1": 0.9283190038284855,
+      "mean_signed_error": 0.006924101198402131
+    },
+    {
+      "path": "test_bloom-classification-aied2026.csv",
+      "corpus": "bloom-classification-aied2026",
+      "n_held_out": 464,
+      "accuracy": 0.7887931034482759,
+      "cohen_kappa": 0.7272667294439412,
+      "macro_f1": 0.7762995803688418,
+      "mean_signed_error": 0.004310344827586207
+    }
+  ],
+  "device": "mps",
+  "torch_num_threads": 8,
+  "versions": {
+    "transformers": "5.17.0",
+    "torch": "2.14.0"
+  }
+}
