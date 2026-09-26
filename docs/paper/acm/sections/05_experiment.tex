@@ -285,7 +285,16 @@ corpus~\cite{li2022bloomclassification}, with a verb lexicon as the comparison a
 The checkpoint always returns an argmax whereas the lexicon may abstain, so Family-B
 denominators differ between the two Bloom arms. Sensitivity arms form a star around
 the primary configuration---each deviates on exactly one axis, not a grid---and are
-run on a subset rather than over the whole ladder.
+run on a subset rather than over the whole ladder. One axis swaps no instrument: an
+encoder places unrelated texts of one domain well above zero, and that floor differs
+between systems with different writing styles. The baseline-corrected arm therefore
+replaces each Family-A signal of scenario $s$ by
+\[
+  \mathrm{sim}(S_s,T_s) - \frac{1}{n-1}\sum_{s'\neq s}\mathrm{sim}(S_s,T_{s'}),
+\]
+where $s'$ ranges over the same system's other scenarios in the same run, so each
+system is corrected by its own baseline; the correction has no parameter and lies on
+$[-1,1]$.
 
 The panel is reported flat, with no primary endpoint, for two reasons: constructive
 alignment has several facets, and any composite would impose weights with no
@@ -294,19 +303,23 @@ called ``precision''; \emph{alignment signal} is the collective term for the pan
 values, while the construct itself lives in \Cref{eq:aligned}. The interpretation
 rule is pre-specified: a size shows an alignment advantage over a comparison system
 when at least four of the six signals are significantly positive after within-signal
-Holm correction and none is significantly negative; the reversed pattern indicates a
+Holm correction, at least one of them in each family, and none is significantly
+negative; the reversed pattern indicates a
 disadvantage, and every other pattern---including five positive with one
 significantly negative---is reported as mixed, with the losing side named. This is
 not a composite: nothing is summed or normalized, and each signal keeps its own $p$.
 We therefore claim only measurable signals of constructive alignment; the
 measurement does not validate the construct, and that bridge needs the expert layer
-below. Scoring runs offline on saved outputs, uses no LLM, and has no stochastic
+below. As validity evidence the measurement also records, for each objective, the
+content-word overlap between the objective and its best-matching assessment task: a
+task that restates its objective reads as close correspondence to any encoder, so
+this overlap shows how much of $\sigma_{\mathrm{meas}}$ is shared wording. Scoring runs offline on saved outputs, uses no LLM, and has no stochastic
 component; results are reproducible given pinned encoder revisions and the embedding
 cache, up to floating-point noise. Cost telemetry reads only
 \texttt{metadata.token\_usage}.
 
 \begin{table}[t]
-  \caption{Instrument configurations: the primary configuration and four sensitivity
+  \caption{Instrument configurations: the primary configuration and five sensitivity
   arms (a star---each arm deviates from the primary on exactly one axis).}
   \label{tab:rq2-arms}
   \small
@@ -319,6 +332,7 @@ cache, up to floating-point noise. Cost telemetry reads only
     BGE-M3 & BGE-M3~\cite{chen2024m3embedding} & fine-tuned BERT & encoder lineage \\
     Granite & Granite-311M~\cite{awasthy2026granite} & fine-tuned BERT & encoder lineage \\
     TF--IDF & TF--IDF char $n$-gram & fine-tuned BERT & non-semantic floor \\
+    Contrast & Nemotron-8B, own $-$ foreign & fine-tuned BERT & baseline correction \\
     Lexicon & Nemotron-8B & verb lexicon~\cite{anderson2001taxonomy} &
     Bloom classifier \\
     \bottomrule

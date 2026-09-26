@@ -23,8 +23,8 @@ def resolve_sensitivity_arms(
 ) -> list[tuple[str, str]]:
     """[(arm key, artifact suffix)] for the sweep arms to pool.
 
-    Covers BOTH sensitivity axes: encoders (family A) and Bloom classifiers
-    (family B). Family B is not optional decoration -- half the panel signals
+    Covers every sensitivity axis: encoders and the baseline correction
+    (family A) and Bloom classifiers (family B). Family B is not optional decoration -- half the panel signals
     are Bloom-derived, so leaving it out would mean those are checked by no
     axis at all.
 
@@ -41,7 +41,8 @@ def resolve_sensitivity_arms(
     arm outside the registry is still picked up.
     """
     reg = arms or current()
-    suffix_to_key = {**reg.suffix_to_encoder, **reg.suffix_to_bloom}
+    suffix_to_key = {**reg.suffix_to_encoder, **reg.suffix_to_bloom,
+                     **reg.suffix_to_baseline}
     out: list[tuple[str, str]] = []
     seen: set[str] = set()
 
@@ -54,7 +55,7 @@ def resolve_sensitivity_arms(
         key = raw.strip()
         if not key:
             continue
-        arm = reg.encoders.get(key) or reg.bloom.get(key)
+        arm = reg.encoders.get(key) or reg.bloom.get(key) or reg.baseline.get(key)
         add(key, arm.suffix if arm else key)
 
     if auto_bloom:
@@ -64,6 +65,10 @@ def resolve_sensitivity_arms(
     if auto_encoders:
         # The fixed design first: never-scored arms must still be reported.
         for key, arm in reg.encoders.items():
+            add(key, arm.suffix)
+        # The baseline correction is a family-A axis: an encoder sweep that
+        # left it out would report family A checked by one axis fewer.
+        for key, arm in reg.baseline.items():
             add(key, arm.suffix)
         found: set[str] = set()
         for dirs in run_dirs_by_model.values():

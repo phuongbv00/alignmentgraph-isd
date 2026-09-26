@@ -35,6 +35,15 @@ root; `--bloom-checkpoint` needs `transformers`, so use the venv interpreter):
       models/bloom-bert-edm2022/eval_split.csv --text-col text --label-col label \
       --bloom-checkpoint models/bloom-bert-edm2022 \
       --out results/generated/bloom_arms_validation.md
+
+  # bloom_question_validation.md — both arms, the four human-labelled
+  # exam-question sets of the bloom-classification-aied2026 submodule, pooled:
+  # the genre the classifier also levels (assessment items), not its training genre
+  ./isd-exp bloom validate \
+      ../bloom-classification-aied2026/data/{Gani_2023_collected-dataset-1200,Mohammed-and-Omar_2020_126,Sangodiah_2017_415,yahya-2012}_revised.csv \
+      --text-col QUESTION --label-col "BT LEVEL" \
+      --bloom-checkpoint models/bloom-bert-edm2022 \
+      --out results/generated/bloom_question_validation.md
 """
 
 from __future__ import annotations
@@ -129,13 +138,15 @@ def _is_checkpoint_eval_split(csv_path: Path, checkpoint: Path | None) -> bool:
 
 def _provenance_line(args, n_rows: int, n_single: int, n_multi: int, held_out: bool) -> str:
     """Corpus + split + row counts. The backbone of the validity claim."""
-    rel = _repo_relative(args.csv_path)
-    known_corpus = "edm2022" in rel.lower().replace("-", "")
+    rels = [_repo_relative(p) for p in args.csv_paths]
+    rel = ", ".join(f"`{r}`" for r in rels)
+    known_corpus = len(rels) == 1 and "edm2022" in rels[0].lower().replace("-", "")
     corpus = (
         "EDM2022CLO, the 21,380 expert-labelled learning objectives released by "
         "Li et al. (EDM 2022)"
         if known_corpus
-        else f"the labelled set supplied as `{args.csv_path.name}`"
+        else "the labelled set(s) " + ", ".join(f"`{p.name}`" for p in args.csv_paths)
+        + (", pooled" if len(rels) > 1 else "")
     )
     if held_out:
         split = (
@@ -147,7 +158,7 @@ def _provenance_line(args, n_rows: int, n_single: int, n_multi: int, held_out: b
     else:
         split = "the full labelled set as supplied, with no split held back"
     return (
-        f"- Provenance: corpus = {corpus}; split = {split}. Measured file: `{rel}` "
+        f"- Provenance: corpus = {corpus}; split = {split}. Measured file(s): {rel} "
         f"({n_rows} labelled rows: {n_single} single-label, {n_multi} multi-label)."
     )
 
@@ -184,7 +195,8 @@ def _transformer_arm_section(
         TransformerBloomClassifier,
     )
 
-    bert = TransformerBloomClassifier(str(args.bloom_checkpoint))
+    bert = (TransformerBloomClassifier(str(args.bloom_checkpoint), max_length=args.max_length)
+            if args.max_length else TransformerBloomClassifier(str(args.bloom_checkpoint)))
     bert_pairs, both = [], []
     for text, gold in labeled:
         pred_b = bert.classify(str(text))
@@ -198,6 +210,10 @@ def _transformer_arm_section(
              if bert_pairs else float("nan"))
     b_kappa = cohen_kappa(bert_pairs) if bert_pairs else float("nan")
     arm_kappa = cohen_kappa(both) if both else float("nan")
+    b_bias = (sum(p - g for g, p in bert_pairs) / len(bert_pairs)
+              if bert_pairs else float("nan"))
+    b_over = sum(1 for g, p in bert_pairs if p > g)
+    b_under = sum(1 for g, p in bert_pairs if p < g)
     arm_agree = (sum(1 for a, b in both if a == b) / len(both)
                  if both else float("nan"))
     lex_acc = (sum(1 for g, p in lex_pairs if g == p) / len(lex_pairs)
@@ -206,8 +222,9 @@ def _transformer_arm_section(
         "",
         "## Bloom axis — transformer (primary arm) vs lexicon (sensitivity arm)",
         "",
-        f"Checkpoint under test: `{_repo_relative(args.bloom_checkpoint)}`. Both arms "
-        f"scored on the same {len(labeled)} single-label rows.",
+        f"Checkpoint under test: `{_repo_relative(args.bloom_checkpoint)}`, truncating "
+        f"at {bert._max_length} tokens. Both arms scored on the same {len(labeled)} "
+        "single-label rows.",
         "",
         "| arm | coverage | accuracy | kappa vs gold |",
         "|---|---|---|---|",
@@ -216,6 +233,10 @@ def _transformer_arm_section(
         f"| transformer (BERT-base head fine-tuned on the EDM2022CLO corpus, PRIMARY) | "
         f"{b_cov:.1%} | {b_acc:.1%} | {b_kappa:.3f} |",
         "",
+        f"- Transformer direction of error: mean (predicted - gold) = {b_bias:+.2f} "
+        f"levels; {b_over} rows placed above their gold level, {b_under} below. A "
+        "systematic sign matters for family B, whose congruence and consistency count "
+        "an assessment item at or above its objective's level.",
         f"- Arm-vs-arm agreement (rows both classify, n={len(both)}): "
         f"{arm_agree:.1%} raw, kappa {arm_kappa:.3f}. The arms are far from "
         "interchangeable, which is what makes the sensitivity axis informative.",
@@ -264,22 +285,15 @@ def _recorded_held_out_metrics(checkpoint: Path) -> dict | None:
     return data if all(k in data for k in keys) else None
 
 
-def validate(*, labels=None, checkpoint=None, out=None, csv_path=None, label_col='label', label_cols=None, text_col='question') -> int:
-    # Several helpers below take the whole options bag rather than a long
-    # parameter list, which is the right shape for them -- an encoder spec is
-    # resolved from a dozen interacting flags. Rebuilding one here keeps those
-    # helpers untouched while the CLI passes ordinary keyword arguments.
-    args = SimpleNamespace(**{k: v for k, v in locals().items() if k != "args"})
-
-    if not csv_path.exists():
-        raise SystemExit(f"Not found: {csv_path} (download a labeled "
-                         "Bloom dataset first — see the module docstring).")
-    with csv_path.open(encoding="utf-8-sig", newline="") as f:
+def _read_labelled(path: Path, text_col: str, label_col: str,
+                   label_cols: str | None) -> list[tuple[str, frozenset]]:
+    """``(text, gold levels)`` rows of one labelled CSV."""
+    with path.open(encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f)
         fields = reader.fieldnames or []
         if text_col not in fields:
             raise SystemExit(
-                f"Column {text_col!r} not in CSV (has: {fields}). "
+                f"Column {text_col!r} not in {path.name} (has: {fields}). "
                 "Use --text-col."
             )
         if label_cols:
@@ -299,7 +313,7 @@ def validate(*, labels=None, checkpoint=None, out=None, csv_path=None, label_col
         else:
             if label_col not in fields:
                 raise SystemExit(
-                    f"Column {label_col!r} not in CSV (has: {fields}). "
+                    f"Column {label_col!r} not in {path.name} (has: {fields}). "
                     "Use --label-col, or --label-cols for wide multi-label data."
                 )
             multi = [
@@ -307,6 +321,30 @@ def validate(*, labels=None, checkpoint=None, out=None, csv_path=None, label_col
                 for r in reader
             ]
 
+    return multi
+
+
+def validate(*, labels=None, bloom_checkpoint=None, out=None, label_col='label',
+             label_cols=None, text_col='question', max_length=None) -> int:
+    """Score the lexicon arm, and with ``bloom_checkpoint`` the transformer
+    arm too, against the expert labels in the CSV ``labels``.
+
+    ``max_length`` is the transformer's truncation length; unset, it is the
+    classifier's own default, the one the alignment judge scores with."""
+    if not labels:
+        raise SystemExit("bloom validate needs a labelled CSV as its argument.")
+    csv_paths = [Path(p) for p in (labels if isinstance(labels, (list, tuple)) else [labels])]
+    csv_path, checkpoint = csv_paths[0], bloom_checkpoint
+    # The helpers below read the options off one bag.
+    args = SimpleNamespace(csv_path=csv_path, csv_paths=csv_paths,
+                           bloom_checkpoint=checkpoint, max_length=max_length)
+
+    for path in csv_paths:
+        if not path.exists():
+            raise SystemExit(f"Not found: {path} (download a labeled "
+                             "Bloom dataset first — see the module docstring).")
+    multi = [row for path in csv_paths
+             for row in _read_labelled(path, text_col, label_col, label_cols)]
     multi = [(t, g) for t, g in multi if g and str(t).strip()]
     if not multi:
         raise SystemExit("No usable labeled rows found.")
@@ -365,7 +403,7 @@ def validate(*, labels=None, checkpoint=None, out=None, csv_path=None, label_col
         if multi_scored else float("nan")
     )
 
-    held_out = _is_checkpoint_eval_split(csv_path, checkpoint)
+    held_out = len(csv_paths) == 1 and _is_checkpoint_eval_split(csv_path, checkpoint)
     title = (
         "# Bloom axis validation — transformer (primary arm) vs lexicon (sensitivity arm)"
         if checkpoint

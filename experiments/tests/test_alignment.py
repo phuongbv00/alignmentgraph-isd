@@ -19,6 +19,7 @@ from isd_experiments.alignment.protocol import (
     extract_assessment_items,
     extract_declared_links,
     extract_objectives,
+    lexical_overlap,
     normalize_declared_level,
     reaggregate,
 )
@@ -262,6 +263,27 @@ class TestLanguageAndValidation:
     def test_no_declared_links_is_undefined(self):
         score = evaluate(ALIGNED_OUTPUT)
         assert score.details["validation"]["declared_link_agreement"] is None
+
+    def test_lexical_overlap_separates_a_copied_item_from_a_task(self):
+        """The diagnostic reads shared WORDING: an item that is its objective's
+        sentence scores near 1, a task on the same subject far lower, and a
+        shared Bloom verb counts for nothing."""
+        objective = ("Evaluate integrated math-science models explaining the alignment "
+                     "between mathematical and scientific principles.")
+        copied = objective[:-1] + " using a real-world problem case."
+        task = ("A teacher proposes a lesson linking projectile motion to quadratic "
+                "functions. Judge whether the lesson's model is sound and justify it.")
+        assert lexical_overlap(objective, copied) > 0.6
+        assert lexical_overlap(objective, task) < 0.2
+        assert lexical_overlap("Evaluate the pendulum model", "Evaluate the pendulum model") == 1.0
+        assert lexical_overlap("Evaluate stuff", "evaluating") == 0.0
+
+    def test_lexical_overlap_is_recorded_per_objective_and_as_a_mean(self):
+        score = evaluate(ALIGNED_OUTPUT)
+        per_objective = [d["best_item_lexical_overlap"] for d in score.details["objectives"]]
+        assert all(0.0 <= v <= 1.0 for v in per_objective)
+        mean = score.details["validation"]["objective_item_lexical_overlap"]
+        assert mean == pytest.approx(sum(per_objective) / len(per_objective))
 
 
 # ---------------------------------------------------------------------------
@@ -818,3 +840,47 @@ class TestCATriadCoverage:
         score = evaluate(ALIGNED_OUTPUT)
         assert "evaluation" not in score.counts
         assert not any("evaluation" in k for k in score.porter)
+
+
+class TestContrast:
+    """The baseline-corrected arm: own-scenario minus the same agent's
+    foreign-scenario mean-max, per triad edge."""
+
+    @staticmethod
+    def _sets(obj, asm, act):
+        import numpy as np
+        return {"objectives": np.array(obj, dtype=float),
+                "assessment": np.array(asm, dtype=float),
+                "activities": np.array(act, dtype=float)}
+
+    def test_own_minus_the_mean_of_the_other_scenarios(self):
+        from isd_experiments.alignment.contrast import contrast_scores
+
+        e1, e2, e3 = [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]
+        sets = {
+            "s1": self._sets([e1], [e1], [e1]),
+            "s2": self._sets([e2], [e2], [e1]),
+            "s3": self._sets([e3], [e1], [e3]),
+        }
+        out = contrast_scores(sets)
+        # s1: own C2 = 1; foreign = mean(meanmax(e1, e2), meanmax(e1, e1)) = 0.5
+        assert out["s1"]["objective_assessment_similarity"] == pytest.approx(0.5)
+        assert out["s1"]["details"]["objective_assessment_similarity"] == {
+            "own": 1.0, "foreign": 0.5, "n_foreign": 2}
+        # s3: own C2 = 0 (e3 vs e1); foreign = mean(0 vs e1, 0 vs e2) = 0
+        assert out["s3"]["objective_assessment_similarity"] == pytest.approx(0.0)
+        # s2 C4: own activity e1 vs item e2 = 0; foreign = mean(e1.e1, e1.e1) = 1
+        assert out["s2"]["activity_assessment_similarity"] == pytest.approx(-1.0)
+
+    def test_an_absent_set_floors_and_a_lone_scenario_is_undefined(self):
+        from isd_experiments.alignment.contrast import contrast_scores
+
+        e1 = [1.0, 0.0]
+        empty = {"objectives": [], "assessment": [], "activities": []}
+        import numpy as np
+        empty = {k: np.zeros((0, 2)) for k in empty}
+        out = contrast_scores({"s1": self._sets([e1], [e1], [e1]), "s2": empty})
+        assert out["s2"]["objective_assessment_similarity"] == 0.0
+        assert any("no objectives" in n for n in out["s2"]["notes"])
+        lone = contrast_scores({"s1": self._sets([e1], [e1], [e1])})
+        assert lone["s1"]["objective_assessment_similarity"] is None

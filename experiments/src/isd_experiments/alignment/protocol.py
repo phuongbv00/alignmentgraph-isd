@@ -238,6 +238,19 @@ for _level, _verbs in _EN_VERB_LEXICON.items():
         _seen_verbs[_verb] = _level
 del _seen_verbs, _level, _verbs, _verb
 
+#: Every lexicon verb in the inflected forms :func:`_en_inflections` matches,
+#: as plain words — what :func:`lexical_overlap` leaves out.
+_SEEN_VERB_FORMS = frozenset(
+    form
+    for verbs in _EN_VERB_LEXICON.values()
+    for verb in verbs
+    for form in (
+        [verb, verb + "s", verb + "es", verb + "ed", verb + "ing"]
+        + ([verb[:-1] + suffix for suffix in ("es", "ed", "ing", "ies", "ied", "ying")]
+           if verb.endswith(("e", "y")) else [])
+    )
+)
+
 # A determiner, possessive or "of" immediately before a match means the word is
 # being used as a noun or a participial adjective ("the design", "their plan",
 # "a test", "the proposed solution"), not as the performed action. Measured on
@@ -700,7 +713,9 @@ def _encode_with_cache(
             "cache_only."
         )
 
-    for idx, embedded in compute_chunks(pending):
+    # Nothing to compute means nothing to load: a local encoder loads its
+    # weights on the first chunk it is asked for.
+    for idx, embedded in (compute_chunks(pending) if pending else ()):
         for i, vec in zip(idx, embedded):
             vectors[i] = vec
             dim = dim or len(vec)
@@ -830,6 +845,42 @@ def _l2_normalize(vectors: list[list[float]]) -> list[list[float]]:
         norm = math.sqrt(sum(x * x for x in vec))
         out.append([x / norm for x in vec] if norm else list(vec))
     return out
+
+
+#: Function words left out of :func:`lexical_overlap`, so it counts the words
+#: that say what a text is about. The Bloom verbs of the lexicon are left out
+#: too: an item that asks the learner to "analyze" what the objective says to
+#: analyze shares a demand, not wording.
+_OVERLAP_STOPWORDS = frozenset("""
+    about above across after against along among and any are around based been before being
+    between both but can could does each either every few following for from given has have
+    how into its many may might more most much must not other our over own per same should
+    some such than that the their them then there these they this those through toward under
+    upon using very was were what when where which who whom whose why will with within without
+    would your learner learners participant participants student students able
+""".split())
+_OVERLAP_WORD = re.compile(r"[a-z0-9][a-z0-9'-]*")
+
+
+def _content_words(text: str) -> set[str]:
+    return {
+        word for word in _OVERLAP_WORD.findall((text or "").lower())
+        if len(word) >= 3 and word not in _OVERLAP_STOPWORDS and word not in _SEEN_VERB_FORMS
+    }
+
+
+def lexical_overlap(a: str, b: str) -> float:
+    """Jaccard of the two texts' content words, on [0, 1].
+
+    A validity DIAGNOSTIC, never a panel signal: an assessment item that
+    copies its objective's sentence reads as near-perfect correspondence to
+    every encoder, so the mean overlap of the objective/best-item pairs says
+    how much of an agent's objective_assessment_similarity is shared wording.
+    Measured on the tune slice (bge-m3), it correlates r = 0.85-0.87 with that
+    signal per scenario. Continuous, no threshold."""
+    left, right = _content_words(a), _content_words(b)
+    union = left | right
+    return len(left & right) / len(union) if union else 0.0
 
 
 def _cosine_unit(a: Sequence[float], b: Sequence[float]) -> float:
@@ -1311,7 +1362,8 @@ class AlignmentEvaluator:
       is scored whenever activities and assessment items both exist.
 
     ``details`` additionally carries per-objective best-match info (audit
-    trail) and ``validation`` (declared-link agreement — validity evidence).
+    trail) and ``validation`` (declared-link agreement and the objective/item
+    lexical overlap — validity evidence).
     There is NO composite scalar and NO threshold.
     """
 
@@ -1481,6 +1533,10 @@ class AlignmentEvaluator:
         score.details["validation"] = self._declared_link_validation(
             addie_output, objectives, assessments, sim
         )
+        overlaps = [d["best_item_lexical_overlap"] for d in obj_details
+                    if d["best_item_lexical_overlap"] is not None]
+        score.details["validation"]["objective_item_lexical_overlap"] = (
+            sum(overlaps) / len(overlaps) if overlaps else None)
         return score
 
     # -- internals ----------------------------------------------------------
@@ -1612,6 +1668,10 @@ class AlignmentEvaluator:
                     "best_item": assessments[best_j] if best_j is not None else None,
                     "best_similarity": round(row[best_j], 4) if best_j is not None else None,
                     "best_item_level": best_item_level,
+                    "best_item_lexical_overlap": (
+                        round(lexical_overlap(objective["text"], assessments[best_j]), 4)
+                        if best_j is not None else None
+                    ),
                     "best_activity": (
                         activities[best_a] if best_a is not None else None
                     ),

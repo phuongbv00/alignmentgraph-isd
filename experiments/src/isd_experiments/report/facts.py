@@ -511,6 +511,39 @@ def sec_panel_tables(lad):
                              f"{pval(r.get('p_holm'))} | {pval(pp)} | "
                              f"{num(r.get('rank_biserial_r'))} | {verdict(pp)} |")
                 L.append("")
+    L += sec_panel_validity(lad)
+    return L
+
+
+#: Validity evidence the scorer records per agent: it measures the instrument
+#: on each agent's output, never the agent, and is no panel signal.
+PANEL_VALIDITY = (
+    ("details.validation.objective_item_lexical_overlap",
+     "content-word Jaccard of each objective and its best-matching item "
+     "(high = the item shares the objective's wording, which every encoder reads "
+     "as correspondence)"),
+    ("details.validation.declared_link_agreement",
+     "share of the agent's declared item->objective links that similarity matching reproduces"),
+)
+
+
+def sec_panel_validity(lad):
+    models = (lad.get("alignment") or {}).get("models") or {}
+    present = [(key, what) for key, what in PANEL_VALIDITY
+               if any(key in metrics for agents in models.values() for metrics in agents.values())]
+    if not present:
+        return []
+    L = ["### Validity evidence per agent (not panel signals)\n"]
+    for key, what in present:
+        L.append(f"- `{key.rsplit('.', 1)[-1]}`: {what}.")
+    L.append("")
+    L.append("| Size | Agent | " + " | ".join(f"`{k.rsplit('.', 1)[-1]}`" for k, _ in present) + " |")
+    L.append("|---|---|" + "---|" * len(present))
+    for size, agents in models.items():
+        for agent, metrics in sorted(agents.items()):
+            cells = [num((metrics.get(key) or {}).get("mean")) for key, _ in present]
+            L.append(f"| {size} | `{agent}` | " + " | ".join(cells) + " |")
+    L.append("")
     return L
 
 
@@ -718,9 +751,11 @@ def sec_sensitivity(lad):
         for k, v in summary.items():
             L.append(f"| {k} | {num(v, 4) if isinstance(v, float) else v} |")
         L.append("")
-    L.append("The star is 3 axes, NOT a grid: each arm deviates from the primary configuration "
-             "on exactly ONE axis. An encoder swap cannot move a Bloom level and a Bloom swap "
-             "cannot move a cosine, so read each arm's own `axis` and `agreement_metric`.\n")
+    L.append("The star is NOT a grid: each arm deviates from the primary configuration on "
+             "exactly ONE axis (encoder, baseline correction, or Bloom classifier). An encoder "
+             "swap cannot move a Bloom level and a Bloom swap cannot move a cosine, so read each "
+             "arm's own `axis` and `agreement_metric`. The baseline-corrected arm reports "
+             "own-scenario minus foreign-scenario similarity, on [-1, 1].\n")
     return L
 
 

@@ -29,9 +29,9 @@ không claim kế thừa validity của Porter/Webb/QM sang implementation — v
 ## 2. Nền lý thuyết
 
 Khung Biggs–Tang (constructive alignment: ILO — hoạt động dạy học — đánh giá) làm nền; các tiêu chí review kiểu Quality
-Matters rubric làm nguồn operationalize: (i) objective measurable; (ii) assessment đo đúng objective; (iii) activity
-phục vụ objective; (iv) cognitive demand tương thích. Map thẳng vào predicate `aligned(o)` 3 vế
-(measures/supports/evaluates) của problem formulation trong paper.
+Matters rubric làm nguồn operationalize: (i) assessment đo đúng objective; (ii) activity phục vụ objective;
+(iii) cognitive demand tương thích. Map thẳng vào predicate `aligned(o)` 3 vế (measures/supports/evaluates) của
+problem formulation trong paper.
 
 ## 3. Pipeline (đúng runtime, không hứa quá)
 
@@ -268,9 +268,14 @@ thuộc vào việc đọc profile, mà đọc profile không có quy tắc thì
 thuận. Vì vậy quy tắc quyết định được chốt trước, áp dụng như nhau cho mọi cặp so sánh và mọi size:
 
 > Kết luận **có lợi thế alignment** so với một đối sánh tại một size khi: **≥4/6 tín hiệu định hướng** dương có ý nghĩa
-> sau Holm (trong-tín-hiệu), **và không tín hiệu định hướng nào âm có ý nghĩa**. Ngược dấu thì kết luận ngược. Mọi hình
+> sau Holm (trong-tín-hiệu), **trong đó mỗi họ có ít nhất một tín hiệu**, **và không tín hiệu định hướng nào âm có ý
+> nghĩa**. Ngược dấu thì kết luận ngược. Mọi hình
 > dạng khác — kể cả "5 dương, 1 âm có ý nghĩa" — được báo là **hỗn hợp**, và phải mô tả đúng vế thua, không được gộp
 > thành một câu "vượt trội".
+
+Vế "mỗi họ ít nhất một" có lý do riêng. Ba tín hiệu họ A dùng chung một encoder, nên chỉ riêng họ A cộng một tín
+hiệu họ B đã đủ 4/6. Không có vế này thì câu "không họ nào một mình gánh construct" chỉ là mô tả thiết kế, không phải
+điều kiện của kết luận.
 
 Mẫu số là **6 = toàn bộ panel**: sau khi tín hiệu không đơn nghĩa ra khỏi panel, mọi tín hiệu panel đều đơn hướng nên
 không còn tín hiệu nào bị loại khỏi phép đếm (`NON_DIRECTIONAL_SIGNALS` rỗng theo cấu trúc). Quy tắc này **không phải
@@ -330,14 +335,14 @@ chính cái panel.
 - Macros LaTeX: `alignmentHarnessSim*`, `alignmentHarnessSimCILo/Hi*`, `alignmentSimPHolmMax*`, `alignmentSimDiDVsBaseline*` — tên
   macro luôn bám tên metric; để hai thứ lệch nhau là cách chắc chắn nhất để prose nói sai về số.
 
-## 6. Sensitivity — ba trục, mỗi trục một câu hỏi khác nhau
+## 6. Sensitivity — bốn trục, mỗi trục một câu hỏi khác nhau
 
 Instrument là **chiều được sweep** như kích thước mô hình: cùng một tập run được chấm lại bằng từng arm, rồi
 `07_pool_ladder_runs.py --auto-encoders --auto-bloom` gộp thành `alignment_sensitivity` và tính mức đồng thuận với
 cấu hình chính.
 
 **Thiết kế star, KHÔNG phải grid.** Cấu hình chính = (encoder `nemotron` + Bloom `bertbloom`); mỗi arm lệch **đúng một
-chiều** khỏi nó. Tổng cộng 5 arm (1 chính + 3 encoder + 1 Bloom), không phải 4×2 = 8. Grid không mua thêm câu trả lời
+chiều** khỏi nó. Tổng cộng 6 arm (1 chính + 3 encoder + 1 baseline + 1 Bloom), không phải một grid. Grid không mua thêm câu trả lời
 nào cho câu hỏi đang hỏi ("thứ hạng có phụ thuộc lựa chọn instrument không") mà nhân đôi chi phí và diện tích cần
 kiểm.
 
@@ -370,6 +375,25 @@ Chi phí trục này gần bằng 0: Bloom chạy CPU, embedding lấy từ cach
 sánh theo cặp giữ nguyên qua các arm**, KHÔNG phải ρ Spearman của thứ tự đầy đủ 7 hệ — 5 hệ giữa bảng bám nhau quá
 sát nên thứ tự giữa chúng vốn không phân giải được, và paper chưa bao giờ claim thứ tự đó.
 
+**Trục 4 — Hiệu chỉnh mức nền (họ A).** → `alignment_scores.contrast.json` (`alignment/contrast.py`, khai báo ở
+`[judge.alignment.baseline]`). Trục này không đổi instrument nào. Nó đọc cache embedding của encoder chính và thay ba
+tín hiệu họ A của scenario *s* bằng `own − foreign`:
+
+- `own` = mean-max của chính scenario *s*;
+- `foreign` = trung bình mean-max của objective (hoặc activity) ở *s* so với item (hoặc activity) của **các scenario
+  khác, cùng agent, cùng run**.
+
+Họ B được chép nguyên từ file chính, nên arm chỉ lệch đúng một trục. Câu hỏi: *thứ hạng có sống sót khi trừ đi phần
+similarity mà encoder cho mọi text cùng miền, bất kể có liên quan hay không?*
+
+Lý do có trục này là số đo trên tune-10 (bge-m3): objective của một agent so với item nó viết cho scenario **khác**
+vẫn đạt mean-max 0,51–0,58. Như vậy hơn nửa thang [0, 1] là sàn. Sàn này còn khác nhau giữa các agent: agent viết
+theo một template quen thuộc thì gần với item "lạ" của chính nó hơn. Trừ theo từng agent nghĩa là mỗi hệ được hiệu
+chỉnh bằng mức nền của chính nó. Phép trừ không có tham số, và giá trị nằm trên [−1, 1].
+
+Trục này **không** khử được việc item chép objective: một item chép lại là đặc thù cho đúng scenario đó, nên vẫn sống
+sót qua phép trừ. Chép objective được xử lý ở §7 (chẩn đoán trùng từ) và ở phía sinh.
+
 *(Không có trục threshold sensitivity: endpoint liên tục nên không tồn tại tham số nào để "chọn cho đẹp".)*
 
 ## 7. Validity evidence & limitations
@@ -380,6 +404,15 @@ nhưng input đo lường (topic/Bloom/link) phải bắc cầu bằng bằng ch
 - **Declared-link agreement** (`details.validation.declared_link_agreement`): % link objective↔item mà similarity
   matching tái tạo đúng link agent tự khai (`aligned_objective`) — convergent evidence cho khâu matching (link tự khai
   không bao giờ dùng để chấm).
+- **Độ trùng từ objective–item** (`details.validation.objective_item_lexical_overlap`, và
+  `details.objectives[].best_item_lexical_overlap` cho từng objective): Jaccard của từ nội dung giữa objective và item
+  gần nó nhất, sau khi bỏ stopword và động từ Bloom của lexicon. Giá trị liên tục, không ngưỡng, và không phải tín
+  hiệu panel. Lý do: một item chép lại câu objective được **mọi** encoder đọc là tương ứng gần hoàn hảo. Đo trên
+  tune-10, độ trùng này tương quan r = 0,85–0,87 với `objective_assessment_similarity` theo scenario. Ở 2B có run tới
+  26/58 objective có item gần như chép nguyên văn (react-isd 3/44); ở 9B là 0. Tỉ lệ chép tăng khi model nhỏ đi, nên
+  nó chạm vào biến độc lập của RQ1. Phía sinh, harness từ chối item chép objective ngay lúc submit
+  (`fanout.item_restatement_errors`, `PROTOCOL_REV` 9); chẩn đoán này là cách đọc lại mức còn sót trên output của
+  **mọi** hệ. Báo theo agent trong `facts.md` §4.
 - **Bloom-vs-declared agreement** (`details.sanity.bloom_vs_declared_agreement`, kèm `sanity.classifier`) —
   calibration cho Bloom classifier của arm đang chấm. Key mang chữ "bloom" chứ không phải "lexicon" vì trục Bloom có
   hai arm (§6); cùng lý do, mức Bloom per-objective là `details.objectives[].bloom_level`.
@@ -388,14 +421,34 @@ nhưng input đo lường (topic/Bloom/link) phải bắc cầu bằng bằng ch
   không báo số trên tập đã train — nếu không thì so sánh với lexicon là vô nghĩa. Kết quả đã đo: BERT κ 0,926 /
   coverage 100% vs lexicon κ 0,650 / coverage 83,4% trên cùng 3 755 dòng held-out; artifact
   `docs/generated/bloom_arms_validation.md`.
+- **Cả hai Bloom arm trên câu hỏi thi** (`results/generated/bloom_question_validation.md`, submodule
+  `bloom-classification-aied2026`). Classifier không chỉ gán cấp cho objective mà còn cho **item và activity**. Hai
+  thể loại này khác thể loại train, nên cần bằng chứng riêng. Corpus: 4 bộ câu hỏi do người gán nhãn đã công bố (Yahya
+  2012, Sangodiah 2017, Mohammed & Omar 2020, Gani 2023), gộp lại 2 341 câu. Bộ 1 838 câu do LLM sinh trong cùng repo
+  bị loại. Kết quả:
+    - `bertbloom`: κ **0,505** trên toàn bộ, 62,1% đúng. Trên chính 1 969 câu mà lexicon phân loại được: κ 0,552.
+    - `lexicon`: κ **0,568** trên 84,1% câu nó không abstain.
+    - Hai arm ngang nhau trên câu hỏi. Lợi thế lớn của BERT trên objective (κ 0,926 so với 0,649) **không mang sang
+      item**.
+    - Lỗi của BERT **lệch lên**: trung bình (dự đoán − nhãn) = +0,20 mức; 590 câu bị đặt cao hơn nhãn, 297 câu thấp
+      hơn. Trên held-out objective, độ lệch này là −0,01.
+  Hệ quả cho họ B: `objective_cognitive_congruence` và `webb_bloom_consistency` tính một item là đạt khi cấp của nó ≥
+  cấp objective. Item bị chấm cao hơn thực tế nên hai tín hiệu này bị thổi phồng. Mức thổi phồng là như nhau cho mọi
+  agent chỉ khi phân bố loại câu hỏi của các agent giống nhau. Điều đó chưa được kiểm, nên phải khai là
+  **differential bias tiềm năng**. Arm `lexicon` không có độ lệch này ở cùng mức, nên trục 3 là phép kiểm chính cho
+  rủi ro này. Activity vẫn **chưa có** bằng chứng validate nào.
+- **max_length của `bertbloom`**: train dùng 55, lúc chấm dùng 128. Held-out objective và corpus câu hỏi cho kết quả
+  gần như trùng nhau ở hai mức (κ lệch ≤ 0,003). Trên text tune, đổi sang 55 lật 3,5% nhãn item và 6% nhãn activity,
+  và không lật nhãn objective nào. Không có bằng chứng nào ưu tiên 55, nên giữ 128.
 - **Convergence với judge rubric** (corroboration RQ1) — hai instrument độc lập cơ chế.
 - **Expert study (Tier 3, để dành ETR&D)**: 2 chuyên gia blind code mẫu phân tầng theo thủ tục gốc, κ máy-vs-người —
   bước hoàn tất cây cầu validity, nằm ngoài phạm vi hiện tại.
 
 Limitations phải khai trong paper: classifier/encoder error có thể **differential** (ngôn ngữ, mức paraphrase, cách
-agent lặp objective) → **ranking cũng có thể đổi**, mitigation = 3 trục sensitivity; arm Bloom chính là một checkpoint
+agent lặp objective) → **ranking cũng có thể đổi**, mitigation = 4 trục sensitivity; arm Bloom chính là một checkpoint
 học từ quy ước mã hoá của **một** trường, nên nó khớp corpus đó κ 0,926 nhưng chưa được validate trên objective do
-agent sinh ra — và không giải thích được từng quyết định (mục 3); protocol là operationalization tự động — không đo
+agent sinh ra. Trên câu hỏi thi do người gán nhãn, nó chỉ đạt κ 0,505 và lệch lên +0,20 mức. Nó không giải thích được
+từng quyết định (mục 3); protocol là operationalization tự động — không đo
 learning outcomes; **similarity không
 phải alignment** — 4 tín hiệu họ A đo textual correspondence, và cầu nối sang construct alignment nằm ở tầng bằng
 chứng trên, không nằm ở tên metric (§4) và bản thân cách đặt tên không mua validity; layer chính là failure=0 nên phải
@@ -413,6 +466,9 @@ chứng trên, không nằm ở tên metric (§4) và bản thân cách đặt t
   việc fine-tune BERT trên learning objective (thiết kế classifier của ta khác họ, xem mục 3.4). Kèm dòng BERT/LLM
   Bloom nói chung: fine-tuned BERT for MOOCs (IRRODL); BloomLLM 2024 (Springer).
 - Item–standards alignment bằng LM/embeddings (precedent): arXiv 2510.05129 (2025).
+- **Validate Bloom trên câu hỏi**: `faraji2026crossdataset`. Đây là bài AIED 2026, LNCS, trang 198–207, DOI
+  10.1007/978-3-032-29760-0_22, metadata đã kiểm qua Crossref. Bài này phát hành 4 bộ câu hỏi dùng ở §7 trong repo
+  của nó; repo đó là submodule `bloom-classification-aied2026`. Đã có trong `references.bib`.
 - **Related-work contrast — các họ quantification khác cho CA/alignment** (thêm 2026-08-30, deep-research xác nhận gap):
   cả ba đều KHÔNG đo trọn tam giác Biggs bằng panel tự động deterministic, nên trích để khoanh gap chứ không phải để
   kế thừa phương pháp.

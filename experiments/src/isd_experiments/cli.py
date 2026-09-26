@@ -70,8 +70,13 @@ def build_parser() -> argparse.ArgumentParser:
     bt = bloom.add_parser("train", help="fine-tune the 6-way head")
     bt.add_argument("--train", type=_p, required=True), bt.add_argument("--output-dir", type=_p)
     bv = bloom.add_parser("validate", help="score an arm against expert labels")
-    bv.add_argument("labels", type=_p, nargs="?")
+    bv.add_argument("labels", type=_p, nargs="+", help="one or more labelled CSVs, pooled")
     bv.add_argument("--bloom-checkpoint", type=_p), bv.add_argument("--out", type=_p)
+    bv.add_argument("--text-col", default="question")
+    bv.add_argument("--label-col", default="label")
+    bv.add_argument("--label-cols", help="six 0/1 columns, one per level, Remember..Create")
+    bv.add_argument("--max-length", type=int,
+                    help="transformer truncation length (default: the classifier's own)")
 
     # ── freeze ───────────────────────────────────────────────────────────
     fr = sub.add_parser("freeze", help="record the version an experiment ran on").add_subparsers(
@@ -322,8 +327,9 @@ def _dispatch(args) -> int:
         from .alignment import bloom
         if sub == "train":
             return bloom.train(train_csv=args.train, output_dir=args.output_dir)
-        return bloom.validate(labels=args.labels, checkpoint=args.bloom_checkpoint,
-                              out=args.out)
+        return bloom.validate(labels=args.labels, bloom_checkpoint=args.bloom_checkpoint,
+                              out=args.out, text_col=args.text_col, label_col=args.label_col,
+                              label_cols=args.label_cols, max_length=args.max_length)
 
     if command == "run":
         return _run(args)

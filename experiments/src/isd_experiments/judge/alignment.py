@@ -63,6 +63,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from .. import paths
+from ..alignment.contrast import score_contrast_run
 from ..alignment.presets import current as declared_arms
 
 # Endpoints are declared in experiment.toml, but the KEY they authenticate
@@ -940,6 +941,51 @@ def score_run(run_dir: Path, args, spec: EncoderSpec, base_encoder=None):
     return rows
 
 
+def score_baseline_arms(args, specs: list[EncoderSpec], run_dirs: list[Path]) -> list[dict]:
+    """The baseline-corrected arms (``alignment/contrast.py``), after the
+    instrument arms, since each reads the primary configuration's artifact
+    and its encoder's embedding cache.
+
+    Part of the whole star, so any selection narrows it away, exactly as it
+    narrows away the encoder and Bloom arms it does not name. A primary
+    encoder whose IDF is fitted per call (TF-IDF) has no space shared across
+    scenarios to compare in, so it is skipped with a reason rather than
+    scored."""
+    baseline = declared_arms().baseline
+    narrowed = (args.primary_only or args.all_encoders or args.encoder_presets
+                or args.encoder_preset or args.bloom_presets or args.bloom_preset)
+    if not baseline or narrowed or args.reaggregate:
+        return []
+    primary = next((s for s in specs if not s.suffix), None)
+    if primary is None or not primary.available:
+        print("\n=== baseline arm(s) SKIPPED — the primary configuration is not runnable")
+        return []
+    if primary.kind == "tfidf":
+        print("\n=== baseline arm(s) SKIPPED — a TF-IDF primary fits its IDF per output, "
+              "so no two scenarios share a vector space")
+        return []
+    rows: list[dict] = []
+    agents_filter = rundirs.agent_filter(args.agents)
+    for key, arm in baseline.items():
+        print(f"\n=== arm [{key}] own - foreign over {primary.label} -> {arm.artifact}")
+        for run_dir in run_dirs:
+            encoder = build_encoder(primary, run_dir, args)
+            scenario_dirs = rundirs.scenario_dirs(run_dir)
+            if args.limit is not None:
+                scenario_dirs = scenario_dirs[: args.limit]
+            per_agent = score_contrast_run(
+                scenario_dirs, encoder, primary_name=primary.scores_name,
+                out_name=arm.artifact, arm_key=key, agent_ids=agents_filter)
+            summary = summarize(per_agent)
+            print_table(summary)
+            write_csv(run_dir / f"alignment_summary.{arm.suffix}.csv", summary)
+            for agent_id, n, means in summary:
+                rows.append({"arm": key, "encoder": primary.key, "bloom": primary.bloom_key,
+                             "model": primary.model, "suffix": arm.suffix,
+                             "run_dir": run_dir.name, "agent_id": agent_id, "n": n, **means})
+    return rows
+
+
 def print_scope(specs: list[EncoderSpec], run_dirs: list[Path],
                 only: set[str] | None, limit: int | None) -> None:
     """What a real invocation would judge. No endpoint is contacted."""
@@ -1049,6 +1095,8 @@ def run(*,
                                    "suffix": spec.suffix, "run_dir": run_dir.name,
                                    "agent_id": agent_id, "n": n, **means})
         scored.append(spec)
+
+    sweep_rows += score_baseline_arms(args, specs, run_dirs)
 
     # Unconditional: an invocation that scored nothing still leaves a
     # header-only roster, which is a truthful record of "this run covered no

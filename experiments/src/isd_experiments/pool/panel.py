@@ -549,12 +549,14 @@ def pool_alignment_sensitivity(models: list[dict],
     """
     if not arms:
         return None
-    bloom_keys = set(arm_registry().bloom)
+    registry = arm_registry()
+    bloom_keys, baseline_keys = set(registry.bloom), set(registry.baseline)
     primary_maps = (primary_pooled or {}).get("_align_maps") or {}
     encoders = []
     for key, suffix in arms:
         scores_filename = f"alignment_scores.{suffix}.json" if suffix else "alignment_scores.json"
-        axis = "bloom" if key in bloom_keys else "encoder"
+        axis = ("bloom" if key in bloom_keys
+                else "baseline" if key in baseline_keys else "encoder")
         # Each axis is judged on a signal it can actually move (see
         # BLOOM_SUMMARY_SIGNAL).
         arm_metric = bloom_metric if axis == "bloom" else metric
@@ -618,11 +620,12 @@ def pool_alignment_sensitivity(models: list[dict],
     return {
         "definition": (
             "Instrument as a swept dimension: the SAME runs re-scored by each "
-            "arm. This is a 3-axis STAR, not an encoder-only sweep — arms vary "
-            "either the ENCODER (compared on "
-            f"'{metric}') or the BLOOM CLASSIFIER (compared on "
-            f"'{bloom_metric}'), because a Bloom swap cannot move a cosine and "
-            "an encoder swap cannot move a Bloom level. Read each arm's 'axis' "
+            "arm. This is a STAR, not an encoder-only sweep — arms vary "
+            "the ENCODER or apply the BASELINE correction (own minus the same "
+            f"agent's foreign scenarios; both compared on '{metric}') or vary the "
+            f"BLOOM CLASSIFIER (compared on '{bloom_metric}'), because a Bloom "
+            "swap cannot move a cosine and an encoder swap cannot move a Bloom "
+            "level. Read each arm's 'axis' "
             "and 'agreement_metric' rather than assuming one signal. "
             f"'{primary_key}' owns the unsuffixed artifact and stays in "
             "pooled['alignment']; the arms here are read from "

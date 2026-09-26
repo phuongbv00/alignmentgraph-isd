@@ -5,6 +5,10 @@ Two mechanically independent families, each with its own sensitivity axis:
 * **correspondence** -- text encoders (``EncoderArm``)
 * **cognitive demand** -- Bloom classifiers (``BloomArm``)
 
+plus a third axis on family A that swaps no instrument at all: a baseline
+correction of the primary encoder's cosines (``BaselineArm``, see
+``alignment/contrast.py``).
+
 The sweep is a STAR, not a grid: every arm deviates from the primary
 configuration on exactly one axis, so a difference it shows is attributable to
 that axis.
@@ -21,7 +25,7 @@ pooling reads into the alignment layer. Every other arm writes
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 
 from .. import config, paths
@@ -102,11 +106,32 @@ class BloomArm:
 
 
 @dataclass(frozen=True)
+class BaselineArm:
+    """A correction applied to the PRIMARY configuration's family-A signals.
+
+    It swaps no instrument, so it has no model and is never primary: it reads
+    the primary encoder's embedding cache and writes
+    ``alignment_scores.<suffix>.json``."""
+
+    key: str
+    kind: str          # "own_minus_foreign"
+    suffix: str
+    display: str = ""
+    short: str = ""
+    macro: str = ""
+
+    @property
+    def artifact(self) -> str:
+        return f"alignment_scores.{self.suffix}.json"
+
+
+@dataclass(frozen=True)
 class Arms:
     encoders: dict[str, EncoderArm]
     bloom: dict[str, BloomArm]
     primary_encoder: str
     primary_bloom: str
+    baseline: dict[str, BaselineArm] = field(default_factory=dict)
 
     def encoder(self, key: str) -> EncoderArm:
         try:
@@ -136,6 +161,10 @@ class Arms:
     @property
     def suffix_to_bloom(self) -> dict[str, str]:
         return {a.suffix: k for k, a in self.bloom.items() if a.suffix}
+
+    @property
+    def suffix_to_baseline(self) -> dict[str, str]:
+        return {a.suffix: k for k, a in self.baseline.items()}
 
     def star(self) -> list[tuple[str, str]]:
         """The sensitivity star as (encoder key, bloom key) pairs.
@@ -171,6 +200,19 @@ def _load(exp_config) -> Arms:
                         macro=body.get("macro", key.title()))
         for key, body in raw.get("bloom", {}).items()
     }
+    baseline = {
+        key: BaselineArm(key=key, kind=body["kind"], suffix=body.get("suffix", key),
+                         display=body.get("display", key), short=body.get("short", key),
+                         macro=body.get("macro", key.title()))
+        for key, body in raw.get("baseline", {}).items()
+    }
+    for key, arm in baseline.items():
+        if arm.kind != "own_minus_foreign":
+            raise SystemExit(f"{exp_config.source}: [judge.alignment.baseline.{key}] "
+                             f"has unknown kind {arm.kind!r}; the one kind is own_minus_foreign.")
+        if not arm.suffix:
+            raise SystemExit(f"{exp_config.source}: [judge.alignment.baseline.{key}] needs a "
+                             f"non-empty suffix; {PRIMARY_ARTIFACT} belongs to the primary.")
     if not encoders or not bloom:
         raise SystemExit(
             f"{exp_config.source}: [judge.alignment.encoders] and [judge.alignment.bloom] "
@@ -186,9 +228,16 @@ def _load(exp_config) -> Arms:
                 f"found {owners or 'none'}."
             )
 
+    suffixes = [a.suffix for table in (encoders, bloom, baseline)
+                for a in table.values() if a.suffix]
+    clashing = sorted({s for s in suffixes if suffixes.count(s) > 1})
+    if clashing:
+        raise SystemExit(f"{exp_config.source}: arm suffix(es) {clashing} declared twice; "
+                         "two arms would write one artifact.")
     arms = Arms(encoders=encoders, bloom=bloom,
                 primary_encoder=raw.get("primary_encoder", ""),
-                primary_bloom=raw.get("primary_bloom", ""))
+                primary_bloom=raw.get("primary_bloom", ""),
+                baseline=baseline)
     # The declared primary must be the arm that owns the empty suffix, or the
     # artifact pooling reads would come from an arm nobody called primary.
     for name, key, table in (("encoder", arms.primary_encoder, encoders),
@@ -209,17 +258,19 @@ def current() -> Arms:
 
 
 def display_names() -> dict[str, str]:
-    """Arm key -> table label, across both axes."""
+    """Arm key -> table label, across every axis."""
     arms = current()
     return {**{k: a.display for k, a in arms.encoders.items()},
-            **{k: a.display for k, a in arms.bloom.items()}}
+            **{k: a.display for k, a in arms.bloom.items()},
+            **{k: a.display for k, a in arms.baseline.items()}}
 
 
 def short_names() -> dict[str, str]:
-    """Arm key -> figure/inline label, across both axes."""
+    """Arm key -> figure/inline label, across every axis."""
     arms = current()
     return {**{k: a.short for k, a in arms.encoders.items()},
-            **{k: a.short for k, a in arms.bloom.items()}}
+            **{k: a.short for k, a in arms.bloom.items()},
+            **{k: a.short for k, a in arms.baseline.items()}}
 
 
 def macro_words() -> dict[str, str]:
@@ -231,4 +282,5 @@ def macro_words() -> dict[str, str]:
     """
     arms = current()
     return {**{k: a.macro for k, a in arms.encoders.items()},
-            **{k: a.macro for k, a in arms.bloom.items()}}
+            **{k: a.macro for k, a in arms.bloom.items()},
+            **{k: a.macro for k, a in arms.baseline.items()}}

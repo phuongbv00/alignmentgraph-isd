@@ -49,12 +49,13 @@ from .tables import PANEL_DISPLAY
 #: wins over this; it is only the fallback for the primary reference row).
 AXES = (
     ("encoder", "EncoderAxis", "Encoder axis", "metric"),
+    ("baseline", "BaselineAxis", "Baseline-corrected axis", "metric"),
     ("bloom", "BloomAxis", "Bloom-classifier axis", "metric_bloom_axis"),
 )
 
 #: Quantity token in the per-cell macro names, so the level macro says which
 #: signal it holds and the two axes cannot collide on the primary arm.
-AXIS_QUANTITY = {"encoder": "Sim", "bloom": "Cong"}
+AXIS_QUANTITY = {"encoder": "Sim", "baseline": "Spec", "bloom": "Cong"}
 
 #: Macro name for "how many instruments this axis compared". Named per axis
 #: because "5 encoders" would mislabel the design: 4 encoders + 2 Bloom
@@ -62,6 +63,9 @@ AXIS_QUANTITY = {"encoder": "Sim", "bloom": "Cong"}
 AXIS_COUNT_MACRO = {
     "encoder": ("alignmentSensNumEncoders",
                 "encoder arms compared, including the primary encoder"),
+    "baseline": ("alignmentSensNumBaselineArms",
+                 "baseline-corrected arms compared, including the primary "
+                 "configuration they correct"),
     "bloom": ("alignmentSensNumBloomClassifiers",
               "Bloom classifiers compared, including the primary (its encoder "
               "is the primary encoder, unchanged)"),
@@ -86,8 +90,11 @@ def arm_display(key: str, axis: str) -> str:
     return table.get(key, key)
 
 
-def signal_note(metric: str) -> str:
+def signal_note(metric: str, axis: str = "") -> str:
     """What the operation actually is, for macro comments and notes."""
+    if axis == "baseline" and metric.endswith("_similarity"):
+        return (" (own-scenario minus the same agent's foreign-scenario mean-max "
+                "rectified cosine, on [-1,1])")
     if metric.endswith("_similarity"):
         return " (mean-max rectified cosine max(0,cos) on [0,1])"
     return ""
@@ -139,7 +146,7 @@ def _primary_row(pooled: dict, sens: dict, axis: str, metric: str,
     align = pooled["alignment"]
     proposed = pooled["config"]["proposed"]
     baselines = pooled["config"]["baselines"]
-    key = (sens["primary_encoder"] if axis == "encoder"
+    key = (sens["primary_encoder"] if axis in ("encoder", "baseline")
            else (align.get("bloom_classifier") or "primary"))
     cells = _cells(align.get("models"), None, metric, labels, proposed, baselines)
     ranks = _primary_ranks(align, labels, metric, [proposed] + baselines, proposed)
@@ -361,7 +368,7 @@ def gen_macros(pooled: dict, blocks: list[dict]) -> str:
         newcmd(macro, str(n_rows), desc)
         newcmd(f"alignmentSensSignal{tok}", block["metric_display"],
                f"{axis_name} signal ({block['metric']})"
-               f"{signal_note(block['metric'])}")
+               f"{signal_note(block['metric'], block['axis'])}")
     newcmd("alignmentSensPrimaryName",
            arm_names().get(sens["primary_encoder"], sens["primary_encoder"]),
            "primary encoder display name")
@@ -409,9 +416,14 @@ def gen_macros(pooled: dict, blocks: list[dict]) -> str:
     # ── per-arm, per-size cells
     for block in blocks:
         metric, q = block["metric"], AXIS_QUANTITY.get(block["axis"], "Level")
-        note = signal_note(metric)
+        note = signal_note(metric, block["axis"])
         for row in block["rows"]:
             if "skipped" in row:
+                continue
+            # The baseline axis's reference row is the primary ENCODER's, whose
+            # cells the encoder axis already defines; a second copy would
+            # redefine the same macros.
+            if row.get("is_primary") and block["axis"] == "baseline":
                 continue
             w = arm_word(row["key"])
             where = f"arm {row['key']}, {block['name'].lower()}"
@@ -475,7 +487,7 @@ def gen_stats_md(pooled: dict, blocks: list[dict]) -> str:
         s = axis_summary(block)
         out += [
             f"## {block['name']} — signal `{block['metric']}`"
-            f"{signal_note(block['metric'])}",
+            f"{signal_note(block['metric'], block['axis'])}",
             "",
             f"- sweep arms: {s['n_arms']} (skipped: {s['n_skipped']}); the primary "
             "row is the reference the arms are compared against.",

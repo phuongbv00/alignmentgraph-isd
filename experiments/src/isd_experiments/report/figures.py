@@ -381,8 +381,7 @@ def fig_alignment_forest(pooled: dict, outdir: Path, written: list[Path]) -> boo
         "failure=0 layer", fontsize=8)
     fig.text(0.5, -0.06,
              "Paired per-scenario delta with bootstrap 95% CI; filled marker: "
-             "within-signal Holm-adjusted p < 0.05. † Asm→Obj is non-directional "
-             "and excluded from the directional count.",
+             "within-signal Holm-adjusted p < 0.05.",
              ha="center", va="top", fontsize=6.5, color="#555555")
     fig.tight_layout()
     save(fig, outdir, "fig_alignment_forest", written)

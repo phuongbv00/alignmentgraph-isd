@@ -80,15 +80,25 @@ not on what the signals are named. The two instrument families are also not full
 independent: $\beta_{\mathrm{cong}}$ pairs an objective with an assessment task by
 cosine before comparing Bloom levels, so it shares the embedding step with Family A,
 and only $\beta_{\mathrm{port}}$ and $\beta_{\mathrm{webb}}$ are free of similarity
-entirely. Triangulation claims therefore rest on those two. The primary Bloom
+entirely. Triangulation claims therefore rest on those two. Family A is also
+raised by a task that restates its objective, which improves correspondence without
+improving alignment; the objective--task overlap reported as validity evidence shows
+how much of $\sigma_{\mathrm{meas}}$ is shared wording, and the proposed system refuses
+such a task when it is submitted. The primary Bloom
 checkpoint is learned from one institution's coding
 convention~\cite{li2022bloomclassification}; its individual decisions are not
 traceable to Anderson--Krathwohl~\cite{anderson2001taxonomy}, and it has not been
-validated on machine-generated objectives. Encoder and classifier error may be
+validated on machine-generated objectives. It also levels assessment tasks, a genre it
+was not trained on: on the four human-labelled exam-question sets released
+with~\cite{faraji2026crossdataset} its agreement with the labels drops to moderate, and its errors lean towards levels above
+the label (\TBD), which favours $\beta_{\mathrm{cong}}$ and $\beta_{\mathrm{webb}}$.
+The verb-lexicon arm, which agrees with those labels about as well, is the check on
+that bias. Activities remain unvalidated. Encoder and classifier error may be
 differential across systems that paraphrase, repeat, or distribute content
 differently, which could change a ranking rather than merely add noise; the
-sensitivity star---independent neural lineages, a non-semantic floor, and a
-classifier substitution---reduces this threat without removing it
+sensitivity star---independent neural lineages, a non-semantic floor, a
+baseline correction, and a classifier substitution---reduces this threat without
+removing it
 (\Cref{sec:sensitivity}). Pinned revisions and cached embeddings reproduce the
 reported signals up to floating-point noise, not bit for bit. Finally, the panel
 measures properties of a document, not learning: it says nothing about what students

@@ -143,6 +143,12 @@ tfidf    = { kind = "tfidf", model = "tfidf-char-ngram", suffix = "tfidf", macro
 bertbloom = { kind = "transformer", checkpoint = "bloom-bert-edm2022", suffix = "", macro = "BertBloom", short = "BERT" }
 lexicon   = { kind = "lexicon", suffix = "lexicon", macro = "Lexicon", short = "lexicon" }
 
+# A correction of the primary configuration's family-A cosines, not a new
+# instrument: own-scenario minus the same agent's other scenarios in the same
+# run (alignment/contrast.py). Reads the primary encoder's embedding cache.
+[judge.alignment.baseline]
+contrast  = { kind = "own_minus_foreign", suffix = "contrast", macro = "Contrast", short = "own-foreign" }
+
 # --- Experiments -------------------------------------------------------------
 # `slots` = "all" or a list of slot ids; `tags` = one run per tag, per slot.
 
