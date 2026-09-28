@@ -95,6 +95,10 @@ class TrajectoryAction(StrEnum):
     #: recovery on the agent's own artifact, so it is recorded under the
     #: agent's identity; it is not a design step.
     CONSTRAINED_PASS = "constrained_pass"
+    #: A rejected submit NOT sent to the constrained pass: every error is one
+    #: no decoder can fix, or the pass's prompt would not fit the window. The
+    #: rejection goes back to the agent as it always did.
+    CONSTRAINED_PASS_SKIPPED = "constrained_pass_skipped"
     #: A request the endpoint did not answer (a connection error, a 5xx) sent
     #: once more after a pause. Recorded so an endpoint's ramp-up is readable
     #: apart from the model's mistakes.
@@ -223,6 +227,7 @@ _RECOVERY_ACTIONS = frozenset({
     TrajectoryAction.COMMIT_INVALID_SECTION,
     TrajectoryAction.DUPLICATE_SUBMIT,
     TrajectoryAction.CONSTRAINED_PASS,
+    TrajectoryAction.CONSTRAINED_PASS_SKIPPED,
     TrajectoryAction.LLM_RETRY,
     TrajectoryAction.STRUCTURED_OUTPUTS_UNAVAILABLE,
     TrajectoryAction.DUPLICATE_TASK_ID_RENAMED,

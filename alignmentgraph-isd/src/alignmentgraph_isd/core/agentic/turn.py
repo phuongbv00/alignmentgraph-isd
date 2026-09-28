@@ -28,11 +28,13 @@ from . import budget, tools
 from .protocol import (
     CONSTRAINED_PASS_REQUEST,
     INVALID_TURN_NUDGE,
+    ITEM_RESTATES_OBJECTIVE,
     READ_ALREADY_SHOWN,
     REPEAT_UNCHANGED,
     turns_left_hint,
 )
 from .tools import unwrap_section
+from .transcript import history_budget, message_size, trim_history
 
 
 @dataclass
@@ -349,6 +351,32 @@ def judge_submit(params: dict, args: dict, validate) -> tuple[dict, list[str], l
     return section, errors, unreadable
 
 
+#: Rejections a decoder cannot fix, as patterns built FROM the wording that
+#: states them, so the two cannot drift apart. A grammar holds the shape of an
+#: artifact — which ids exist, how many rows, which levels — and nothing about
+#: what a question says; over one of these alone a pass is a second full
+#: completion that writes the same thing again. MEASURED (2B tune run
+#: 2026-09-26): 17 passes over a restated question, 3 accepted, 8 restated it
+#: again and 6 ran to the completion cap.
+_GRAMMAR_CANNOT_FIX = tuple(
+    re.compile(".*".join(re.escape(part) for part in re.split(r"\{[a-z_]+\}", wording)))
+    for wording in (ITEM_RESTATES_OBJECTIVE,))
+
+
+def grammar_cannot_fix(errors: list[str]) -> bool:
+    """Whether EVERY error is one no decoder can fix. A mixed list still gets
+    the pass: the structural errors in it are what the pass is for."""
+    return bool(errors) and all(
+        any(p.fullmatch(e) for p in _GRAMMAR_CANNOT_FIX) for e in errors)
+
+
+def _skip_pass(stats: dict, trajectory, identity: str, turn: ToolTurn,
+               errors: list[str], why: str) -> None:
+    stats["constrained_pass_skipped"] = stats.get("constrained_pass_skipped", 0) + 1
+    trajectory.log_recovery_event(
+        identity, "constrained_pass_skipped", f"{turn.name} | {'; '.join(errors)[:120]}", why)
+
+
 def constrained_pass(llm, messages: list, turn: ToolTurn, *, artifact: str, schema: dict,
                      errors: list[str], params: dict, validate, stats: dict,
                      trajectory, identity: str) -> tuple[dict, dict, list[str]] | None:
@@ -380,9 +408,21 @@ def constrained_pass(llm, messages: list, turn: ToolTurn, *, artifact: str, sche
     grammar fixes structure and not semantics, and an artifact the decoder
     shaped and the validator still refuses (a cross-field rule no schema can
     say) goes back to the agent as the rejection it always was, counted as
-    ``constrained_pass_rejected``.
+    ``constrained_pass_rejected``. Two cases are not sent at all, each logged
+    ``constrained_pass_skipped``: a rejection no decoder can fix
+    (:func:`grammar_cannot_fix`), and a prompt that does not fit the window.
+
+    The pass's prompt is the agent's conversation PLUS the rejected call and
+    the request, sent with the schema in place of the tools, so it is trimmed
+    here to the history budget with the schema counted — a copy, never the
+    agent's own messages. MEASURED (2B tune run 2026-09-26): a work set whose
+    rejected call carried the whole item set sent three passes past a 16,384
+    window, each refused with HTTP 400.
     """
     if llm is None or not schema or not llm.structured_outputs_available():
+        return None
+    if grammar_cannot_fix(errors):
+        _skip_pass(stats, trajectory, identity, turn, errors, "grammar cannot fix")
         return None
     declared = list((params.get("properties") or {}).keys()) or [artifact]
     request = CONSTRAINED_PASS_REQUEST.format(
@@ -397,6 +437,11 @@ def constrained_pass(llm, messages: list, turn: ToolTurn, *, artifact: str, sche
                         "name": turn.name, "content": request})
     else:
         history.append({"role": "user", "content": request})
+    budget = history_budget(getattr(llm, "config", None), [schema])
+    history, _dropped = trim_history(history, budget)
+    if sum(message_size(m) for m in history) > budget:
+        _skip_pass(stats, trajectory, identity, turn, errors, "prompt past window")
+        return None
     stats["constrained_passes"] = stats.get("constrained_passes", 0) + 1
     raw = llm.call_structured(history, schema, turn.name)
     parsed = llm_io.parse_json_response(raw, warn=False) if raw else {}

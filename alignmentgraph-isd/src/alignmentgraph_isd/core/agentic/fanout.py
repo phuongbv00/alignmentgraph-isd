@@ -41,6 +41,7 @@ from ..alignment_graph import NodeType, alignment
 from ..checks import _ALL_BLOOM_VERBS, described_levels
 from ..trajectory import ORCHESTRATOR
 from . import tools
+from .protocol import ITEM_RESTATES_OBJECTIVE
 from .specialists import STEPS, AgenticStep, declared_required_errors, missing_parts
 
 
@@ -545,10 +546,7 @@ def item_restatement_errors(items: list, statements: dict[str, str]) -> list[str
             continue
         run, share = restatement_shares(str(item.get("question") or ""), statement)
         if run >= RESTATEMENT_RUN and share >= RESTATEMENT_SHARE:
-            errors.append(
-                f"assessment_tools[{index}].question: restates {lo}'s own wording — write "
-                "the task the learner performs on the subject matter (a case, data, a "
-                "problem to solve), not the objective sentence")
+            errors.append(ITEM_RESTATES_OBJECTIVE.format(index=index, lo=lo))
     return errors
 
 

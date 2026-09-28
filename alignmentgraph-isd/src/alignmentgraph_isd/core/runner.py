@@ -472,6 +472,8 @@ def _run_one_set(config, memory, trajectory, design_brief, step, spec, work_set,
                                     loop.stats["constrained_passes"]),
                                    ("constrained_pass_rejected",
                                     loop.stats["constrained_pass_rejected"]),
+                                   ("constrained_pass_skipped",
+                                    loop.stats["constrained_pass_skipped"]),
                                    ("assignment_reads",
                                     loop.stats["assignment_reads"])):
                     set_stats[key] = set_stats.get(key, 0) + value

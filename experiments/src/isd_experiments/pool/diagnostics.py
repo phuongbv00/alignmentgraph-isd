@@ -210,10 +210,11 @@ def harness_counts(events: list) -> dict:
 
     ``pass_empty`` is a constrained pass that came back with nothing (the
     decoder ran out, or the endpoint refused); ``pass_refused`` one the
-    validator still refused. ``rejected_empty_args`` is a submit that arrived
+    validator still refused; ``pass_skipped`` a rejection never sent to a pass
+    (no decoder can fix it, or its prompt would not fit the window). ``rejected_empty_args`` is a submit that arrived
     with no arguments at all -- the transport failure the constrained pass
     exists for -- apart from every other rejection."""
-    out = {"passes": 0, "pass_accepted": 0, "pass_empty": 0, "pass_refused": 0,
+    out = {"passes": 0, "pass_accepted": 0, "pass_empty": 0, "pass_refused": 0, "pass_skipped": 0,
            "rejected": 0, "rejected_empty_args": 0, "gave_up": 0, "repeats_refused": 0,
            "schema_keywords_dropped": 0,
            **{kind: 0 for kind, _ in _ERROR_KINDS}}
@@ -232,6 +233,8 @@ def harness_counts(events: list) -> dict:
                 out["pass_empty"] += 1
             else:
                 out["pass_refused"] += 1
+        elif action == "constrained_pass_skipped":
+            out["pass_skipped"] += 1
         elif action == "submit_rejected":
             out["rejected"] += 1
             if "| args= " in asked or asked.rstrip().endswith("| args="):

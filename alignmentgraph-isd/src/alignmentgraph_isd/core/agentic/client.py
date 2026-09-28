@@ -48,6 +48,33 @@ def _rejects_tool_choice(exc: Exception) -> bool:
 TRANSIENT_RETRY_DELAY = 5.0
 
 
+def _cut_reply_shape(exc: Exception) -> str:
+    """What a structured reply cut at the completion cap looked like: its
+    length, its share of whitespace, its longest run of one character, and its
+    tail. Empty for any other failure.
+
+    The decoder budget (``grammar.for_decoder``) bounds every string and list,
+    and passes still ran to the cap; the one thing it cannot bound is the
+    whitespace a JSON grammar allows between tokens, so these numbers are
+    what tells a whitespace loop from a string the budget missed. The cut
+    reply travels on the exception (``openai.LengthFinishReasonError``)."""
+    completion = getattr(exc, "completion", None)
+    try:
+        content = completion.choices[0].message.content or ""
+    except (AttributeError, IndexError, TypeError):
+        return ""
+    if not content:
+        return " | cut reply: empty"
+    space = sum(ch.isspace() for ch in content) / len(content)
+    run, longest, char = 1, 1, content[0]
+    for prev, ch in zip(content, content[1:]):
+        run = run + 1 if ch == prev else 1
+        if run > longest:
+            longest, char = run, ch
+    return (f" | cut reply: content_chars={len(content)} whitespace={space:.2f} "
+            f"longest_run={longest}x{char!r} tail={content[-120:]!r}")
+
+
 def _is_transient(exc: Exception) -> bool:
     """Whether a failed request never reached the model: a connection error,
     a timeout, or a 5xx from the proxy. The one failure a second identical
@@ -327,7 +354,8 @@ class AgenticLLM:
             if _rejects_response_format(exc):
                 self._forget_structured_outputs(str(exc))
             else:
-                self.trajectory.log_recovery_event(self.identity, "llm_error", "", str(exc))
+                self.trajectory.log_recovery_event(
+                    self.identity, "llm_error", "", str(exc) + _cut_reply_shape(exc))
             return ""
         content, _calls, _cut = self._account(result, messages, started)
         return content

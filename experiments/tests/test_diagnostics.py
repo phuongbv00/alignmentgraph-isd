@@ -202,6 +202,8 @@ class TestHarnessCounters:
             {"action": "constrained_pass",
              "context": {"output_summary": "rejected: no artifact came back"}},
             {"action": "constrained_pass", "context": {"output_summary": "rejected: x.y empty"}},
+            {"action": "constrained_pass_skipped",
+             "context": {"output_summary": "grammar cannot fix"}},
             {"action": "submit_rejected",
              "context": {"input_summary": "t attempt 1 | raw= | args= | content=0"}},
             {"action": "submit_rejected",
@@ -217,6 +219,7 @@ class TestHarnessCounters:
         ]
         c = diagnostics.harness_counts(events)
         assert (c["passes"], c["pass_accepted"], c["pass_empty"], c["pass_refused"]) == (3, 1, 1, 1)
+        assert c["pass_skipped"] == 1
         assert (c["rejected"], c["rejected_empty_args"]) == (2, 1)
         assert (c["gave_up"], c["context_overflow"], c["completion_cap"], c["connection"]) == (1, 1, 1, 1)
         assert c["schema_keywords_dropped"] == 2

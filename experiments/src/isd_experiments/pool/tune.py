@@ -388,7 +388,8 @@ def print_report(doc: dict) -> None:
             hh = s.get("harness")
             if hh:
                 print(f"      harness: passes {hh.get('passes', 0):.0f} (ok {hh.get('pass_accepted', 0):.0f}"
-                      f", empty {hh.get('pass_empty', 0):.0f}, refused {hh.get('pass_refused', 0):.0f})"
+                      f", empty {hh.get('pass_empty', 0):.0f}, refused {hh.get('pass_refused', 0):.0f}"
+                      f", skipped {hh.get('pass_skipped', 0):.0f})"
                       f"  rejected {hh.get('rejected', 0):.0f} (no args {hh.get('rejected_empty_args', 0):.0f})"
                       f"  gave_up {hh.get('gave_up', 0):.0f}  overflow {hh.get('context_overflow', 0):.0f}"
                       f"  cap {hh.get('completion_cap', 0):.0f}  conn {hh.get('connection', 0):.0f}"

@@ -243,8 +243,10 @@ def respec(messages: list, step, brief: str) -> str:
 #: Which agent-facing protocol a run spoke, recorded in
 #: ``metadata.run_config`` so that runs on either side of a change to the
 #: tools an agent is bound or to how a stage ends are never pooled by mistake.
-#: 9 = an assessment item whose question restates its objective's own sentence
-#: is refused at the submit. 8 = every field a rubric sub-item reads is REQUIRED in the artifact
+#: 10 = a rejection the constrained pass cannot fix (a question restating its
+#: objective) goes straight back to the agent, and the pass's own prompt is
+#: trimmed to the window with its schema counted. 9 = an assessment item whose
+#: question restates its objective's own sentence is refused at the submit. 8 = every field a rubric sub-item reads is REQUIRED in the artifact
 #: contract (the analysis prose, the improvement plan's summary and goals, the
 #: plan's expected evidence and formative methods, the strategy model, an
 #: activity's duration and materials, a guide's objectives and prose) and
@@ -264,7 +266,7 @@ def respec(messages: list, step, brief: str) -> str:
 #: each item's objective, type and cognitive level and each activity's
 #: objective and level, the mode states a material's depth, and the pilot
 #: data plan names its collection points in words.
-PROTOCOL_REV = 9
+PROTOCOL_REV = 10
 
 #: The answer to a repeated read whose result is unchanged — ONE wording for
 #: both arms, and only ever said when it is true (``turn.answer_read`` has
@@ -311,7 +313,9 @@ def empty_stage_stats() -> dict:
     (``turn.constrained_pass``) and how many of those the validator still
     refused. The first is the transport's recovery rate on this model — a
     measurement about the model, reported by size — and the second is what
-    the grammar cannot reach.
+    the grammar cannot reach. ``constrained_pass_skipped``: rejections that
+    were never sent to a pass, because no decoder can fix them or the prompt
+    would not fit the window.
     ``tool_errors``: tool calls that came back ERROR (13% of every tool
     result over runs 53042a0d/2559b22d), so the ceiling is read against
     turns that DID something.
@@ -328,6 +332,7 @@ def empty_stage_stats() -> dict:
         "args_reshaped": 0, "truncated_turns": 0, "dropped_args": 0,
             "repair_turns": 0, "tool_errors": 0, "endpoint_failures": 0,
             "constrained_passes": 0, "constrained_pass_rejected": 0,
+            "constrained_pass_skipped": 0,
             "n_sets": 0, "sets_gave_up": 0, "set_turns": 0,
             "set_submits_rejected": 0}
 
@@ -372,3 +377,15 @@ CONSTRAINED_PASS_REQUEST = (
     "are {keys}. Keep what was right in what you sent; fix only what is listed. "
     "Write the JSON object and nothing else."
 )
+
+
+#: The rejection of an assessment item whose question is its objective's own
+#: sentence (``fanout.item_restatement_errors``). A constant because the
+#: constrained pass recognises it (``turn.grammar_cannot_fix``): a decoder
+#: holds the shape of an artifact and cannot hold "not the objective's
+#: wording", so a pass over this rejection alone is a second full completion
+#: that writes the same copy again.
+ITEM_RESTATES_OBJECTIVE = (
+    "assessment_tools[{index}].question: restates {lo}'s own wording — write "
+    "the task the learner performs on the subject matter (a case, data, a "
+    "problem to solve), not the objective sentence")

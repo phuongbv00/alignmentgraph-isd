@@ -926,6 +926,149 @@ def test_the_single_arm_s_rejected_submit_is_completed_the_same_way():
     assert [e["context"]["output_summary"] for e in _passes(trajectory)][0] == "accepted"
 
 
+class _PassLLM:
+    """What `turn.constrained_pass` asks of the client, and what it sent."""
+
+    def __init__(self, config, reply: str = "") -> None:
+        self.config, self.reply, self.sent = config, reply, []
+
+    def structured_outputs_available(self) -> bool:
+        return True
+
+    def call_structured(self, messages, schema, name):
+        self.sent.append(list(messages))
+        return self.reply
+
+
+def _pass(llm, messages, errors, trajectory, stats):
+    from alignmentgraph_isd.core.agentic import turn as turn_mod
+
+    params = {"type": "object", "properties": {"assessment_tools": {"type": "array"}}}
+    turn = turn_mod.ToolTurn(name="submit_assessment_tools", call_id="c9",
+                             message={"role": "assistant", "content": "", "tool_calls": []})
+    return turn_mod.constrained_pass(
+        llm, messages, turn, artifact="assessment_tools", schema=params, errors=errors,
+        params=params, validate=lambda section: [], stats=stats,
+        trajectory=trajectory, identity="AssessmentDeveloperAgent")
+
+
+def _skipped(trajectory) -> list:
+    return [e["context"]["output_summary"] for e in trajectory.recovery_events
+            if e["action"] == "constrained_pass_skipped"]
+
+
+def test_a_rejection_no_decoder_can_fix_goes_straight_back_to_the_agent():
+    """MEASURED (2B tune run 2026-09-26): 17 passes over a question that
+    restated its objective — 3 accepted, 8 restated it again, 6 ran to the
+    completion cap. A grammar holds shape, not wording, so the pass is not
+    made; a list with a structural error in it still gets one."""
+    from alignmentgraph_isd import HarnessRunConfig
+    from alignmentgraph_isd.core.agentic import fanout
+    from alignmentgraph_isd.core.trajectory import TrajectoryLogger
+
+    restates = fanout.ITEM_RESTATES_OBJECTIVE.format(index=1, lo="ILO-05")
+    config = HarnessRunConfig(llm_factory=lambda: None)
+
+    llm, trajectory, stats = _PassLLM(config), TrajectoryLogger(), {}
+    assert _pass(llm, [{"role": "system", "content": "s"}], [restates], trajectory, stats) is None
+    assert not llm.sent
+    assert _skipped(trajectory) == ["grammar cannot fix"]
+    assert stats["constrained_pass_skipped"] == 1 and "constrained_passes" not in stats
+
+    llm, trajectory, stats = _PassLLM(config), TrajectoryLogger(), {}
+    _pass(llm, [{"role": "system", "content": "s"}],
+          [restates, "assessment_tools[0].aligned_objective: names nothing"], trajectory, stats)
+    assert len(llm.sent) == 1 and not _skipped(trajectory)
+
+
+def test_the_restatement_rejection_is_the_one_the_pass_recognises():
+    """The recogniser is built from the wording the rejection is written in,
+    so the two cannot drift apart."""
+    from alignmentgraph_isd.core.agentic import fanout, turn as turn_mod
+
+    statements = {"ILO-01": "Learners will analyze the causes of network latency in LAN setups"}
+    items = [{"aligned_objective": "ILO-01",
+              "question": "Analyze the causes of network latency in LAN setups and explain."}]
+    errors = fanout.item_restatement_errors(items, statements)
+    assert errors and turn_mod.grammar_cannot_fix(errors)
+    assert not turn_mod.grammar_cannot_fix([])
+
+
+def test_the_pass_prompt_is_trimmed_to_the_window_with_its_schema_counted():
+    """MEASURED (2B tune run 2026-09-26): three passes of one work set sent
+    past a 16,384 window and refused with HTTP 400. The pass's prompt is cut
+    to the history budget, schema counted, on a copy; the rejected call and
+    the request always go."""
+    from alignmentgraph_isd import HarnessRunConfig
+    from alignmentgraph_isd.core.agentic.transcript import history_budget, message_size
+    from alignmentgraph_isd.core.trajectory import TrajectoryLogger
+
+    config = HarnessRunConfig(llm_factory=lambda: None, llm_context_window=4096,
+                              llm_completion_reserve=2048)
+    messages = [{"role": "system", "content": "s"}] + [
+        {"role": "user" if i % 2 else "tool", "content": "x" * 900, "tool_call_id": f"t{i}"}
+        for i in range(12)]
+    before = list(messages)
+    llm, trajectory = _PassLLM(config), TrajectoryLogger()
+    _pass(llm, messages, ["assessment_tools must be a non-empty list"], trajectory, {})
+
+    sent = llm.sent[0]
+    schema = {"type": "object", "properties": {"assessment_tools": {"type": "array"}}}
+    assert sum(message_size(m) for m in sent) <= history_budget(config, [schema])
+    assert sent[0] == messages[0]
+    assert sent[-2]["role"] == "assistant" and sent[-1]["tool_call_id"] == "c9"
+    assert messages == before, "the agent's own conversation is not touched"
+
+
+def test_a_pass_whose_prompt_cannot_fit_is_not_sent():
+    from alignmentgraph_isd import HarnessRunConfig
+    from alignmentgraph_isd.core.trajectory import TrajectoryLogger
+
+    config = HarnessRunConfig(llm_factory=lambda: None, llm_context_window=4096,
+                              llm_completion_reserve=2048)
+    llm, trajectory, stats = _PassLLM(config), TrajectoryLogger(), {}
+    _pass(llm, [{"role": "system", "content": "s" * 20000}],
+          ["assessment_tools must be a non-empty list"], trajectory, stats)
+    assert not llm.sent
+    assert _skipped(trajectory) == ["prompt past window"]
+    assert stats["constrained_pass_skipped"] == 1
+
+
+def test_a_pass_cut_at_the_cap_records_what_the_cut_reply_looked_like():
+    """Every pass that ran to the cap on the 2B tune run left only the
+    usage line. The cut reply travels on the exception; its length, its
+    whitespace, its longest run and its tail are what tell a whitespace loop
+    from a string the decoder budget missed."""
+    from types import SimpleNamespace
+
+    from alignmentgraph_isd import HarnessRunConfig
+    from alignmentgraph_isd.core.agentic.client import AgenticLLM
+    from alignmentgraph_isd.core.trajectory import TrajectoryLogger
+
+    class _Cut(Exception):
+        def __init__(self) -> None:
+            super().__init__("Could not parse response content as the length limit was reached")
+            self.completion = SimpleNamespace(choices=[SimpleNamespace(
+                message=SimpleNamespace(content='{"assessment_tools": [' + "\n" * 500))])
+
+    class _Model:
+        def bind(self, **_kwargs):
+            return self
+
+        def invoke(self, _messages):
+            raise _Cut()
+
+    config = HarnessRunConfig(llm_factory=lambda: _Model())
+    trajectory = TrajectoryLogger()
+    assert AgenticLLM(config, trajectory, "AssessmentDeveloperAgent").call_structured(
+        [{"role": "user", "content": "x"}], {"type": "object"}, "submit_x") == ""
+    said = [e["context"]["output_summary"] for e in trajectory.recovery_events
+            if e["action"] == "llm_error"][0]
+    assert said.startswith("Could not parse response content as the length limit was reached")
+    assert "content_chars=522" in said and "longest_run=500x'\\n'" in said
+    assert "whitespace=0.96" in said
+
+
 def test_an_instalment_that_adds_nothing_is_completed_by_the_pass_over_the_whole_set():
     """MEASURED (2B run, 2026-09-24): a Developer resent its one item four
     times against "send ONE more DIFFERENT one", spent the set's budget and
