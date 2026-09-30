@@ -159,6 +159,20 @@ class TestPoolTune:
         assert read[2]["open_types"] == "C4:3"
         assert read[1]["turns_used_analysis"] == ""
 
+    def test_the_panel_is_read_from_the_named_encoder_artifact(self, run_dir):
+        scen = run_dir / "train_10" / "S-001"
+        sig = tune.PANEL[0]
+        _write(scen / "alignment_scores.bgem3.json", {"agents": {PROPOSED: {sig: 0.42}}})
+        try:
+            primary, _ = tune.pool({"qwen3.5-9b": [run_dir]}, [PROPOSED])
+            sweep, rows = tune.pool({"qwen3.5-9b": [run_dir]}, [PROPOSED],
+                                    "alignment_scores.bgem3.json")
+        finally:
+            (scen / "alignment_scores.bgem3.json").unlink()
+        assert primary["config"]["panel_artifact"] == "alignment_scores.json"
+        assert sweep["config"]["panel_artifact"] == "alignment_scores.bgem3.json"
+        assert rows[0][sig] == 0.42
+
 
 @pytest.fixture(scope="module")
 def pooled_ablation(tmp_path_factory):

@@ -25,6 +25,12 @@ beside the next.
 It reads a run whether or not it has been judged: scores are filled in where
 ``comparison_report.json`` / ``alignment_scores.json`` exist and left blank
 where they do not.
+
+The alignment signals come from the PRIMARY encoder's artifact unless
+``encoder`` names another declared arm. The primary is served, and a tune slice
+may be scored without its endpoint (the arm is skipped as unreachable), so
+``--encoder bgem3`` reads ``alignment_scores.bgem3.json`` instead. The pooled
+document records which artifact the panel was read from.
 """
 
 from __future__ import annotations
@@ -35,6 +41,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .. import paths
+from ..alignment import presets
 from ..alignment.protocol import ALIGNMENT_SIGNALS
 from ..config import LLM_JUDGE_SCORES
 from ..config import current as current_config
@@ -53,7 +60,8 @@ CALIBRATED = ("max_turns", "submit_budget", "regen_budget", "development_mode",
 PANEL = tuple(sig for sig, _family in ALIGNMENT_SIGNALS)
 
 
-def _scores(scen_dir: Path, agent: str) -> dict:
+def _scores(scen_dir: Path, agent: str,
+            panel_artifact: str = presets.PRIMARY_ARTIFACT) -> dict:
     """LLM judge scores and alignment signals for one cell, where judged."""
     out: dict = {}
     report = diagnostics.load_json(scen_dir / "comparison_report.json")
@@ -62,7 +70,7 @@ def _scores(scen_dir: Path, agent: str) -> dict:
             if r.get("agent_id") == agent:
                 for score in LLM_JUDGE_SCORES:
                     out[score] = diagnostics.number(r.get(score))
-    align = diagnostics.load_json(scen_dir / "alignment_scores.json")
+    align = diagnostics.load_json(scen_dir / panel_artifact)
     if isinstance(align, dict):
         sc = (align.get("agents") or {}).get(agent) or {}
         for sig in PANEL:
@@ -283,7 +291,8 @@ def run_health(cells: dict[str, list[dict]], outputs: list[Path]) -> dict:
     return totals
 
 
-def pool(run_dirs_by_model: dict[str, list[Path]], agents: list[str]) -> tuple[dict, list[dict]]:
+def pool(run_dirs_by_model: dict[str, list[Path]], agents: list[str],
+         panel_artifact: str = presets.PRIMARY_ARTIFACT) -> tuple[dict, list[dict]]:
     """(pooled document, CSV rows). Pure: no printing, no writing."""
     entries, rows = [], []
     ordered = sorted(((label, d) for label, dirs in run_dirs_by_model.items() for d in dirs),
@@ -304,7 +313,8 @@ def pool(run_dirs_by_model: dict[str, list[Path]], agents: list[str]) -> tuple[d
                 if cell is None:
                     continue
                 cells[a].setdefault(sid, []).append(cell)
-                row = _row(label, run_dir, sid, a, cell, _scores(scen_dir, a))
+                row = _row(label, run_dir, sid, a, cell,
+                           _scores(scen_dir, a, panel_artifact))
                 agent_rows[a].append(row)
                 rows.append(row)
         per_agent = {}
@@ -334,6 +344,7 @@ def pool(run_dirs_by_model: dict[str, list[Path]], agents: list[str]) -> tuple[d
                         "freeze; never enters the paper, carries no inference"),
             "cut": ("pct_via_budget_exhaustion = % of stage runs ended by the turn "
                     "ceiling; a ceiling that cuts is inside the treatment"),
+            "panel_artifact": panel_artifact,
         },
         "runs": entries,
     }
@@ -352,6 +363,7 @@ def print_report(doc: dict) -> None:
     print("\n" + "=" * 78)
     print("TUNE DIAGNOSTICS")
     print("=" * 78)
+    print(f"alignment signals from {doc['config'].get('panel_artifact')}")
     for entry in doc["runs"]:
         print(f"\n[{entry['run_dir']}]")
         for agent, s in entry["agents"].items():
@@ -469,12 +481,14 @@ def print_shifts(doc: dict) -> None:
 
 def run(*, patterns: list[str] | None = None, out: Path | None = None,
         agents: list[str] | None = None, quiet: bool = False,
-        against: Path | None = None) -> Path:
+        against: Path | None = None, encoder: str | None = None) -> Path:
     """Discover, pool, report and write. Returns the JSON path."""
     profile = current_config().profile("tune")
     roster = agents or list(profile.agents)
     run_dirs_by_model = discover(patterns or [default_glob(profile)], profile)
-    doc, rows = pool(run_dirs_by_model, roster)
+    artifact = (presets.current().encoder(encoder).artifact if encoder
+                else presets.PRIMARY_ARTIFACT)
+    doc, rows = pool(run_dirs_by_model, roster, artifact)
     if against is not None:
         add_shifts(doc, against)
     for entry in doc["runs"]:

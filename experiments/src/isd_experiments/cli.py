@@ -195,6 +195,9 @@ def build_parser() -> argparse.ArgumentParser:
             pl.add_argument("--against", type=_p, metavar="RUN_DIR",
                             help="an earlier tune run dir: report how each run's gap to the "
                                  "baseline moved from it, the baseline's own drift cancelled")
+            pl.add_argument("--encoder", metavar="PRESET",
+                            help="read the alignment signals of this encoder arm instead of "
+                                 "the primary (e.g. bgem3 when the primary's endpoint is off)")
         if name == "comparison":
             pl.add_argument("--encoders", default="")
             pl.add_argument("--auto-encoders", action="store_true")
@@ -369,7 +372,7 @@ def _dispatch(args) -> int:
         from .pool import tune
         tune.run(patterns=args.patterns or None, out=args.out,
                  agents=args.agents.split(",") if args.agents else None,
-                 against=args.against)
+                 against=args.against, encoder=args.encoder)
         return 0
 
     if command == "pool" and sub == "ablation":
