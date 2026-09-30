@@ -27,11 +27,11 @@ key_env = "VLLM_API_KEY"
 
 [[serving.slots]]
 slot = "qwen2b"
-model = "Qwen/Qwen3.5-2B:featherless-ai"
+model = "Qwen/Qwen3.5-2B"
 family = "Qwen3.5"
 display = "2B"
-base_urls = ["https://router.huggingface.co/v1"]
-key_env = "HF_TOKEN"
+base_urls = ["https://ypta7biqobebe1-8000.proxy.runpod.net/v1"]
+key_env = "VLLM_API_KEY"
 
 [[serving.slots]]
 slot = "qwen4b"
@@ -103,8 +103,10 @@ fanout_workers = 6
 #   implementation    once
 #
 # Uniform across arms and rungs, not an ablation axis; recorded in
-# metadata.run_config and the freeze manifest. Fixed before `freeze write`.
-development_mode = "light"
+# metadata.run_config and the freeze manifest. Fixed before `freeze write`,
+# from a light-vs-full comparison on the same tune scenarios (Sprint 2 review:
+# light may carry the main claim only once shown representative of full).
+development_mode = "full"
 
 # --- Judges ------------------------------------------------------------------
 # Score a finished run: `isd-exp judge llm|alignment`, or `run --judge`.
@@ -156,7 +158,7 @@ contrast  = { kind = "own_minus_foreign", suffix = "contrast", macro = "Contrast
 # Calibration only; never enters the paper (own tag namespace, no manifest).
 title = "TUNE - cost and budget calibration"
 dataset = "train_10"
-slots = ["qwen9b"]
+slots = ["qwen2b"]
 tags = ["t1"]
 rate_limit = "turbo"
 session_prefix = "tune"
