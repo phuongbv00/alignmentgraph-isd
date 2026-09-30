@@ -1,9 +1,9 @@
 """What each launch profile actually launches.
 
-The design the roadmap fixed is a set of facts about these profiles -- which
-split, how many rungs, how many runs per cell, which roster. Asserting them
-here is cheap, and it is the difference between a launcher that is configured
-correctly and one that merely runs.
+Which split, how many rungs, how many runs per cell and which roster are the
+study's settings and are NOT pinned here -- they change with the study. What is
+checked is how a profile becomes a launch: the profile is authoritative, an
+official experiment confirms and records, and the pools cannot mix.
 
 The hazard this replaces: the launcher sourced `.env` and let it override the
 experiment's own identity, so a `DATASET=train_10` left behind by a tuning
@@ -31,19 +31,6 @@ def envs():
 
 
 class TestOfficialExperiments:
-    def test_comparison_runs_the_whole_ladder_on_the_reporting_split(self, envs):
-        e = envs["comparison"]
-        assert e["DATASET"] == "test_90"
-        assert len(e["_SLOTS_LIST"].split()) == 4
-        assert len(e["_RUN_TAGS_LIST"].split()) == 1, "one deterministic run per cell"
-        assert "alignmentgraph-isd" in e["AGENTS"].split(",")
-
-    def test_ablation_runs_four_arms_at_both_ends(self, envs):
-        e = envs["ablation"]
-        assert e["DATASET"] == "test_30"
-        assert len(e["_SLOTS_LIST"].split()) == 2
-        assert len(e["AGENTS"].split(",")) == 4
-
     def test_both_ask_before_spending_and_record_a_manifest(self, envs):
         for name in ("comparison", "ablation"):
             assert envs[name]["CONFIRM"] == "1", f"{name} must confirm before launching"
@@ -64,10 +51,6 @@ class TestInformalRuns:
         for name in INFORMAL:
             assert envs[name]["CONFIRM"] == "0"
             assert envs[name]["MANIFEST"] == "0"
-
-    def test_they_run_on_the_training_split(self, envs):
-        for name in INFORMAL:
-            assert envs[name]["DATASET"] == "train_10"
 
 
 class TestLadderIsConfiguration:

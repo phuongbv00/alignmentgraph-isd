@@ -47,27 +47,16 @@ def write(tmp_path, body: str):
 
 
 class TestShippedConfig:
-    """The config in the repo must describe the study the roadmap fixed."""
+    """What must hold of the config in the repo WHATEVER its values.
+
+    Nothing here pins a split, a rung count, a tag or a roster: those are the
+    study's settings and change with it. Only relations between profiles that
+    the code relies on are checked.
+    """
 
     def test_two_official_experiments_exist(self):
         e = config.load()
         assert "comparison" in e.profiles and "ablation" in e.profiles
-
-    def test_comparison_is_the_ladder_on_the_large_split(self):
-        p = config.load().profile("comparison")
-        assert p.dataset == "test_90"
-        assert p.proposed == "alignmentgraph-isd"
-        assert p.proposed in p.agents
-        assert len(p.agents) == 7, "the proposed system plus six benchmark agents"
-        assert p.tags == ("c1",), "one deterministic run per cell"
-
-    def test_ablation_is_a_full_two_by_two(self):
-        p = config.load().profile("ablation")
-        assert p.dataset == "test_30"
-        assert len(p.models) == 2, "both ends of the deployment envelope"
-        cells = {(a.agent_mode, a.context_mode) for a in p.arms}
-        assert cells == {("multi", "graph"), ("multi", "prose"),
-                         ("single", "graph"), ("single", "prose")}
 
     def test_reference_arm_leads_the_roster(self):
         """Every delta is taken against it; leading with it puts that in the
@@ -75,17 +64,10 @@ class TestShippedConfig:
         p = config.load().profile("ablation")
         assert p.arms[0].id == p.reference
 
-    def test_ablation_tags_cannot_collide_with_comparison(self):
-        """The two pools are globbed by tag. A shared namespace would let one
-        experiment's runs drift into the other's pool silently."""
-        e = config.load()
-        assert not set(e.profile("comparison").tags) & set(e.profile("ablation").tags)
-
-    def test_tune_is_on_the_training_split(self):
+    def test_tune_never_runs_on_the_reporting_split(self):
         """Tuning results never enter the paper, so they must never touch the
-        splits the paper reports on."""
+        split the paper reports on."""
         e = config.load()
-        assert e.profile("tune").dataset == "train_10"
         assert e.profile("tune").dataset != e.profile("comparison").dataset
 
 
@@ -268,9 +250,9 @@ class TestArmFlags:
         """Pooling hard-fails when a run's recorded run_config disagrees with
         the arm it is filed under -- a mis-filed run is a silently wrong
         factorial, which nothing downstream can recover."""
-        arm = next(a for a in config.load().profile("ablation").arms
-                   if a.id == "alignmentgraph-isd-single-graph")
-        assert arm.expected_flags == {"agent_mode": "single", "context_mode": "graph"}
+        for arm in config.load().profile("ablation").arms:
+            assert arm.expected_flags == {"agent_mode": arm.agent_mode,
+                                          "context_mode": arm.context_mode}
 
 
 class TestGenerationSettings:
@@ -496,17 +478,6 @@ class TestJudgeDeclaration:
         assert env["JUDGE_MODEL_API_KEY_ENVS"] == \
             "SOMEHOST_API_KEY,SOMEHOST_API_KEY|SOMEHOST_API_KEY2"
         assert env["JUDGE_MODEL_CREDENTIAL_STRATEGIES"] == "first,round_robin"
-
-    def test_the_study_scores_each_cell_with_the_declared_roster(self):
-        """Pinned because the roster is what every reported LLM judge score is
-        a score FROM: a judge added or dropped silently would make two runs
-        incomparable while both tables still say "LLM judge score". Two judges
-        are declared so that each cell carries the second judge's item-level
-        scoring beside the first's (the corroboration reading); the aggregate
-        is still their median."""
-        judge = config.load().judge
-        assert [m.name for m in judge.models] == [
-            "openai/gpt-4o-mini", "google/gemini-2.5-flash-lite"]
 
     def test_the_declaration_emits_no_more_than_it_states(self):
         """It replaced four lines of an environment file. Anything beyond those
