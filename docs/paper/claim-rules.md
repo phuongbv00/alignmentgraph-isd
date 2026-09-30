@@ -7,12 +7,16 @@
 
 **Nguồn thẩm quyền**, theo thứ tự:
 
-1. Nhận xét sau Sprint 1 của GVHD và lộ trình thực nghiệm, nhận 2026-09-10, lưu ở
+1. Nhận xét Sprint 2 của GVHD, nhận 2026-09-28, lưu ở
+   `docs/supervision/feedbacks/sprint2_20260928/` (`Nx_Sprint2_định_hướng.docx`). File này
+   thay thế thiết kế thí nghiệm của Sprint 1 (giao thức thống nhất, các gate) và thắng khi hai
+   nhận xét lệch nhau.
+2. Nhận xét sau Sprint 1 và lộ trình thực nghiệm, nhận 2026-09-10, lưu ở
    `docs/supervision/feedbacks/sprint1_20260828_0908/` (`Nhan_xet_ĐG_Sprint1_Q2.docx`,
-   `Lo_trinh_TN.docx`) — hai file này quyết định định vị, mức claim và thiết kế thí nghiệm.
-   Khi có nhận xét sprint mới thì thêm thư mục mới cạnh nó và cập nhật mục này.
-2. Master claim rule của GVHD 2026-08-17 (đã gộp vào bảng dưới).
-3. `docs/guides/alignment_protocol.md` — spec canonical của phép đo alignment (mức claim RQ2).
+   `Lo_trinh_TN.docx`) — định vị và mức claim.
+   Khi có nhận xét sprint mới thì thêm thư mục mới cạnh chúng và cập nhật mục này.
+3. Master claim rule của GVHD 2026-08-17 (đã gộp vào bảng dưới).
+4. `docs/guides/alignment_protocol.md` — spec canonical của phép đo alignment (mức claim RQ2).
 
 ## 1. Đơn vị so sánh là HỆ TÁC TỬ, không phải model
 
@@ -28,11 +32,21 @@ model thương mại mạnh.
 | "vượt trội toàn diện", "tốt nhất mọi chỉ số" | Nhiều instrument, kết quả không ủng hộ | *"Competitive, robust, and more auditable under the tested SLM setting."* |
 | "đo được đầy đủ constructive alignment" | Panel chỉ đo measurable signals, chưa validate construct | *"Measures explicit signals related to constructive alignment."* |
 | "verifier cải thiện chất lượng" | Verifier là safety net + audit, chưa chứng minh tăng score | *"Verifier provides repair backstop and audit evidence."* |
-| "hệ rẻ hơn baseline", mọi biến thể của claim tiết kiệm chi phí | Cost hiện cao hơn react-isd 15–55 lần | *"The method trades additional cost for explicit state and auditability."* |
+| "hệ rẻ hơn baseline", mọi biến thể của claim tiết kiệm chi phí | Cost cao hơn react-isd nhiều lần (tune Sprint 2: khoảng 12×) | Câu cost ở §4, nguyên văn. |
+| "chi phí được bù đắp bởi alignment/auditability" | Chưa có đánh giá người dùng nào chứng minh | Đặt cost cạnh alignment signals, traceability và auditability, không kết luận chiều nào thắng. |
+| "tương đương" / "không khác biệt" vì chênh lệch nằm trong biên nhiễu 10,8 điểm | 10,8 là số mô tả của Sprint 1, không phải ngưỡng kiểm định | Paired effect size + CI + multiplicity correction đã định trước. |
+| "chất lượng chương trình ADDIE hoàn chỉnh" khi output sinh ở `light` | `light` chỉ phát triển một lát cắt đại diện | Claim giới hạn rõ, và chỉ sau khi so light–full chứng minh tính đại diện. |
+| "số agent gây ra…", "graph gây ra…" từ ablation | Mỗi trục ablation là một bundle cơ chế | *"The multi-agent bundle / the graph substrate bundle"*, kèm danh sách thành phần của bundle. |
+| Mức giảm token/thời gian giữa các sprint là nhờ thuật toán | Thinking bị tắt cùng lúc; cách đo token và kiến trúc cũng đổi | Không báo before–after giữa các sprint như một so sánh tương đương. |
 | "kết quả giữ cho mọi SLM" | Mới thiết kế trên Qwen ladder | *"Observed on the Qwen3.5 0.8B–9B ladder."* |
 
 Cấm tuyệt đối, không có cách viết thay thế:
 
+- **Gọi một run là "deterministic".** Generation dùng temperature 0,7; mỗi ô TN1 là một lần
+  sinh, không phải một giá trị tất định. Bootstrap theo scenario không thay cho biến thiên giữa
+  các lần sinh.
+- **Dùng dữ liệu dở của lần chạy chính thức bị gián đoạn (Sprint 2)** làm kết quả hoặc làm căn
+  cứ chọn tham số.
 - **Dùng số của sprint làm kết quả.** Số sprint đo trên một scenario thuộc `train_30`; chúng chỉ
   vào phụ lục kỹ thuật của luận văn, không bao giờ vào Results của paper. Nếu cần nhắc quá trình
   phát triển thì viết định tính, đúng câu của GVHD: *"The harness was stabilized before the
@@ -81,6 +95,15 @@ Tính tất định của phép đo (§Measures):
 > *"quy trình chấm không dùng LLM và không có thành phần ngẫu nhiên; kết quả tái lập được nhờ
 > pin phiên bản encoder và cache embedding"*
 
+Cost (Results/Limitations), nhận từ GVHD 2026-09-28:
+
+> *"AlignmentGraph-ISD incurs substantial computational overhead relative to lightweight
+> workflow-based baselines. We report this cost alongside its measurable alignment signals,
+> structural traceability, and auditability, without interpreting the approach as
+> computationally more efficient."*
+
+Báo kèm: số tuyệt đối, tỷ lệ so với ReAct-ISD, số call và thời gian.
+
 Câu evaluation của abstract — phép đo alignment không được đứng thành câu phương pháp riêng:
 
 > *"We evaluate it with ISD-Agent-Bench and a deterministic, no-LLM alignment-score
@@ -98,9 +121,10 @@ Mức tất định được phép claim: *reproducible up to floating-point noi
   kế*, không bằng chỉ thị.
 - **Ô nào trung bình trên tập scenario không đầy đủ thì phải có footnote `n`.**
 - **Trần trajectory của judge**: evaluator chỉ đưa 20 tool call đầu, react-isd ~5 call nên được
-  thấy trọn, hệ phân rã 150–350 call nên chỉ thấy phần đầu. Đây là bất lợi cơ học, phải nói
-  trước; chính sách hai lớp (cap 20 benchmark-comparable + cap 120 diagnostic) chốt trước
-  `test_90` và không đổi sau khi thấy kết quả.
+  thấy trọn, hệ phân rã vài chục call trở lên nên chỉ thấy phần đầu. Đây là bất lợi cơ học, phải
+  nói trước; chính sách hai lớp (cap 20 benchmark-comparable + cap 120 diagnostic, chấm offline
+  từ trajectory đã lưu) chốt trước `test_90` và không đổi sau khi thấy kết quả. Vì vậy Total
+  không được là thước đo duy nhất; hai lớp trajectory báo song song.
 - **Trần token suy luận trên toàn ladder**: ladder serve với thinking bật, và phần suy nghĩ
   tiêu chung ngân sách completion với câu trả lời — nên một reply nghĩ vượt 8192 token không
   bao giờ đóng khối `</think>`, bị xếp là suy nghĩ từ đầu đến cuối, và trả về `content` rỗng mà
@@ -127,6 +151,30 @@ Mức tất định được phép claim: *reproducible up to floating-point noi
   judge không nhạy với alignment, đúng lý do RQ2 tồn tại; (nghịch) instrument duy nhất tách được
   các arm lại chung construct với thiết kế bị ablate — đó là mô tả của thiếu discriminant
   validity. Dự đoán phân biệt phải phát biểu TRƯỚC khi kiểm.
+- **Coverage C2–C4 = 1,00 là structural compliance**, không phải pedagogical validity. Harness
+  cưỡng chế một số tiêu chí ngay lúc submit: một objective phải có item ở mức Bloom khai báo
+  bằng hoặc cao hơn nó (`fanout.item_level_errors`), một item không được chép lại câu của
+  objective. Các tín hiệu panel đo cùng khía cạnh đó (congruence, Webb–Bloom, C2 similarity)
+  vì vậy một phần là **phép kiểm hệ tuân thủ ràng buộc của chính nó**, không phải xác nhận độc
+  lập về chất lượng giáo dục. Phải khai rõ, và đặt đánh giá chuyên gia (ẩn danh, cùng mẫu cho
+  mọi hệ) làm bằng chứng độc lập.
+- **Thành phần của từng bundle ablation.** `agent_mode` đổi cùng lúc: ranh giới ngữ cảnh, số
+  persona, fan-out, Developer tier, re-dispatch và thời điểm repair. `context_mode` đổi toàn
+  bộ máy alignment (graph, state read, routing, audit). Liệt kê trong Method, và chỉ suy luận
+  về bundle.
+- **Thinking, temperature, decoding và backend được khóa đồng nhất** cho mọi hệ và mọi nấc,
+  và metadata backend (endpoint, engine, model revision) được lưu cùng run. Nấc nào đi qua
+  router phải được nêu.
+- **Hai LLM judge chấm toàn bộ output TN1**, mỗi judge lưu điểm riêng, cách gộp chốt trước.
+  Với hai judge, median bằng trung bình cộng và không loại được bias. Phải khai đã xác minh cả
+  hai judge nhận đủ output dài (chunking) và không chấm nội dung dài thành "vắng mặt".
+- **Scope phát triển (`development_mode`) của output được chấm**, và bằng chứng so light–full
+  trên cùng scenario (đặc biệt rubric item 12, 17, 19, 22, 30) nếu claim dựa trên light.
+- **Repeat của A0/ReAct-ISD không phải thiết kế lặp cân bằng.** Bảng bảy hệ dùng bộ run chung;
+  phân tích repeat làm riêng và chỉ nói về độ ổn định của hai hệ đó. Không coi ba lần sinh cùng
+  một scenario là ba scenario độc lập.
+- **Failure policy**: failure = 0 là layer chính (đã định trước); complete-case là sensitivity;
+  fail rate và nguyên nhân báo riêng.
 - **Repair không bao giờ viết nội dung giảng dạy.** Việc gỡ các repair sinh artifact/cạnh giả
   (một activity "Guided practice for ILO-01", một module gán bừa vào activity đầu tiên) làm residual
   violation tăng; đó là số trở nên trung thực, không phải regression — và là ví dụ nên đưa vào

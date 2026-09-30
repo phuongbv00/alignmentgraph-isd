@@ -1,6 +1,6 @@
 # Backlog hoàn thiện manuscript Q2
 
-Backlog canonical cho các việc phải làm trước khi nộp Q2. Nguồn: góp ý của GVHD 2026-08-17 (`Góp_ý_Phương.docx`) và nhận xét sau Sprint 1 nhận 2026-09-10 (`feedbacks/sprint1_20260828_0908/`). Khi hai nguồn lệch nhau thì nhận xét Sprint 1 thắng — nó chốt lại cả thiết kế thí nghiệm.
+Backlog canonical cho các việc phải làm trước khi nộp Q2. Nguồn: góp ý của GVHD 2026-08-17 (`Góp_ý_Phương.docx`), nhận xét sau Sprint 1 nhận 2026-09-10 (`feedbacks/sprint1_20260828_0908/`) và nhận xét Sprint 2 nhận 2026-09-28 (`feedbacks/sprint2_20260928/`). Khi các nguồn lệch nhau thì nguồn mới hơn thắng; nhận xét Sprint 2 thay thế thiết kế thí nghiệm của Sprint 1.
 
 Trạng thái: `[ ]` chưa làm, `[~]` đang làm, `[x]` xong, `[?]` chờ quyết định.
 
@@ -36,8 +36,42 @@ Trạng thái: `[ ]` chưa làm, `[~]` đang làm, `[x]` xong, `[?]` chờ quy�
 
 ### Bằng chứng bổ sung
 
-- [~] **T12 — Expert validation tối thiểu.** 3–5 giảng viên/chuyên gia chấm 10–15 scenario theo rubric 4 trục: alignment, tính khả thi, tính sư phạm, mức cần chỉnh sửa. Reviewer có thể kiểm tra thông tin chuyên gia độc lập. Công cụ tại `isd-exp expert`; việc mời chuyên gia và thu phiếu do tác giả làm.
+- [~] **T12 — Expert validation tối thiểu.** 3–5 giảng viên/chuyên gia chấm 10–15 scenario theo rubric 4 trục: alignment, tính khả thi, tính sư phạm, mức cần chỉnh sửa. Reviewer có thể kiểm tra thông tin chuyên gia độc lập. Công cụ tại `isd-exp expert`; việc mời chuyên gia và thu phiếu do tác giả làm. Tiêu chí đã đổi theo nhận xét Sprint 2, xem S17.
 - [x] **T13 — Tăng số lượng ablation.** Đã chốt trong nhận xét Sprint 1: ablation là 2x2 `agent_mode` × `context_mode` chạy trên `test_30` ở hai size, A0 chạy lại bên trong nó. Không dùng nguyên ladder cho ablation nữa.
+
+## Nhóm S — nhận xét Sprint 2 (2026-09-28), theo gate
+
+Thầy chưa phê duyệt chạy lại TN1/TN2. Chỉ chạy chính thức sau khi đạt Gate 1 và Gate 2. Sau freeze không thêm tính năng, không tối ưu theo kết quả test. Chi tiết: `feedbacks/sprint2_20260928/README.md`.
+
+### Gate 1 — hoàn tất protocol (chỉ dùng `train_10`)
+
+- [x] **S1 — Quy đổi thời lượng khoá học.** Band độ dài thành trần giờ học (`dev_plans.course_hours_ceiling`, `fanout.cap_module_minutes`), 2026-09-24. Cần báo lại thầy vì báo cáo Sprint 2 chưa có.
+- [x] **S2 — Kế hoạch evaluation/summative.** `summative_evaluation_plan`, `adoption_criteria`, finding `no_summative_task`/`thin_summative_task`, 2026-09-24. Cũng cần báo lại thầy.
+- [ ] **S3 — Đọc trajectory của hai scenario điểm thấp** trong tune đợt 2 và ghi nguyên nhân.
+- [~] **S4 — Tune light và full trên cùng scenario.** Quyết định 2026-09-29: chạy `full` trước (`[harness].development_mode = "full"`) để đo tốc độ và chi phí, rồi chạy `light` trên cùng scenario. So từng rubric item, đặc biệt 12, 17, 19, 22, 30. Kết quả quyết định scope của TN1 và mức claim (xem `claim-rules.md` §2).
+- [ ] **S5 — Tune thêm 0.8B và 4B** (hiện mới có 2B và 9B; 9B đi qua router).
+- [ ] **S6 — Tune đủ bốn arm ablation** trên `train_10`. Working tree đang tạm để `[experiment.ablation]` ở `train_10`/`qwen9b` cho việc này; phải trả về `test_30` + `qwen08b`/`qwen4b` trước freeze.
+- [ ] **S7 — Chốt output cap, thinking budget, temperature, decoding** và lưu metadata backend cùng run. `thinking_budget = 32` chỉ hợp lệ khi mọi nấc đều tự host; nếu không thì posture duy nhất hợp lệ là `0`.
+- [ ] **S8 — Xác minh hai LLM judge nhận đủ output dài** (chunking) và không chấm nội dung dài thành "vắng mặt". Đối chiếu lại các ca ABSENT đã gặp ở tune-10.
+- [ ] **S9 — Hiện thực `isd-exp trajectory rescore`** (cap 120, chấm offline từ trajectory đã lưu). Hiện hàm vẫn raise.
+- [ ] **S10 — Định nghĩa cost** sẽ báo: token tuyệt đối, tỷ lệ so với ReAct-ISD, số call, thời gian.
+- [ ] **S11 — Commit và đóng băng `PROTOCOL_REV`.** Code đang ở rev 10; báo cáo cho thầy phải dùng số thật, và cam kết không đổi sau Gate 1.
+
+### Gate 2 — freeze và preflight
+
+- [ ] **S12 — Run design TN1**: một run chung cho bảy hệ (`c1`), cộng hai repeat độc lập **chỉ cho A0 và ReAct-ISD** ở cả 4 size × 90 scenario. Runner hiện chưa có cách chạy thêm tag cho riêng hai agent — cần thiết kế (ví dụ một profile riêng cho repeat).
+- [ ] **S13 — Run design TN2**: 0.8B và 4B × 4 arm × `test_30` × 3 run (`a1`–`a3`).
+- [ ] **S14 — Kế hoạch phân tích viết trước**: so sánh ghép cặp theo scenario, effect size, CI, Holm; phân tích repeat làm riêng; failure = 0 là layer chính, complete-case là sensitivity; ba nguồn biến thiên (generation / judge chấm lại cùng output / scenario) được tách.
+- [ ] **S15 — Chốt judge roster** (GPT-4o-mini + Gemini 2.5 Flash-Lite, full TN1, điểm từng judge lưu riêng, cách gộp chốt trước, cache theo hash output) và sáu tín hiệu panel. Encoder chính là `nemotron` (quyết định 2026-09-29): khi TN thì phải có pod embed; khi tune thì bỏ qua nó — `judge alignment` tự skip arm không có endpoint, và `isd-exp pool tune --encoder bgem3` đọc panel của `bgem3`.
+- [ ] **S16 — Smoke test** cache/resume, chấm offline, chuyển backend; kiểm split disjoint; `freeze write` + `audit preflight` + ước lượng chi phí.
+
+### Gate 4 — expert validation
+
+- [ ] **S17 — Tiêu chí chuyên gia theo nhận xét Sprint 2**: constructive alignment, feasibility, audit usefulness, thời gian sửa (T12 cũ thiếu hai tiêu chí sau). 3–5 chuyên gia, ẩn danh, mẫu phân tầng, cùng mẫu cho mọi hệ. `isd-exp expert aggregate` vẫn chưa hiện thực.
+
+### Gate 5 — manuscript
+
+- [ ] **S18 — Áp các luật mới trong `claim-rules.md`** (cost nguyên văn, structural compliance, bundle ablation, không "tương đương" theo biên 10,8, không "deterministic", scope light/full) và đồng bộ với 17 quan hệ (3 core, 14 phụ).
 
 ## Nhóm M — thiết kế đo lường sau tune-10 (phân tích 2026-09-26, chờ quyết cùng GVHD)
 
@@ -45,7 +79,7 @@ Phân tích ngang sáu run tune-10 (4 run 2B, 2 run 9B; `isd-exp pool tune`) cho
 lại không nằm ở harness, và vá theo điểm judge trên `train_10` là overfit vào hai model judge trên chính tập tune.
 Harness đóng băng theo điểm judge; chỉ sửa khi bộ đếm tất định (`ATTENTION`) báo lỗi.
 
-- [?] **M1 — Trajectory báo theo từng judge.** Pooled 5 run: gemini-2.5-flash-lite chấm ours − react = −13.6,
+- [x] **M1 — Trajectory báo theo từng judge.** Thầy chốt 2026-09-28: lưu điểm từng judge riêng, cách gộp chốt trước (S15). Pooled 5 run: gemini-2.5-flash-lite chấm ours − react = −13.6,
   gpt-4o-mini +1.5. Gemini cho react 100/100 ở 49/50 lần, với trace 5 lời gọi không tham số, không kết quả. Riêng
   judge này kéo Total ~2 điểm. Đề xuất: bảng Trajectory tách judge; không kết luận gì về quy trình từ Trajectory
   gộp.
@@ -54,7 +88,7 @@ Harness đóng băng theo điểm judge; chỉ sửa khi bộ đếm tất đị
   pilot và reviewer là người ở 10/10 output, dù chưa có pilot; hệ đề xuất 0/10 theo thiết kế. Đề xuất: khai báo
   trước freeze một phân tích độ nhạy ADDIE loại Dev2/E1/E2, và báo số đếm `post-pilot claims` cạnh điểm ADDIE như
   bằng chứng auditability. Cần thầy chốt có đưa vào paper không.
-- [?] **M3 — Claim khác biệt đặt ở panel, không ở LLM judge.** LLM judge ADDIE bão hoà ~82–85 cho cả hai hệ; panel
+- [?] **M3 — Claim khác biệt đặt ở panel, không ở LLM judge.** Lưu ý thêm từ Sprint 2: C2–C4 = 1,00 chỉ là structural compliance, và phần panel trùng tiêu chí harness cưỡng chế lúc submit phải khai là phép kiểm tuân thủ ràng buộc. LLM judge ADDIE bão hoà ~82–85 cho cả hai hệ; panel
   thắng 5/6 tín hiệu ở cả 5 run với cách biệt lớn (C3 0.77 vs 0.59, C4 0.75 vs 0.58, porter ~2×), riêng
   `objective_cognitive_congruence` dao động. Hệ tốn 20–30× token và 10–15× thời gian so với react-isd. RQ1 nhiều
   khả năng ra "cạnh tranh", RQ2 là nơi có khác biệt — khớp câu chuẩn trong `claim-rules.md`.
