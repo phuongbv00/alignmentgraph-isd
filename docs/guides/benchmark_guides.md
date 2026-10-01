@@ -596,6 +596,7 @@ Post-processing chạy **sau khi ladder xong** (consistency check cần `pooled_
 
 ```bash
 ./isd-exp pool ablation --comparison-pooled results/pooled_comparison.json   # → results/pooled_ablation.json
+./isd-exp pool ablation --encoder bgem3 'train_10_benchmark_*_a1_*'       # tune: đọc panel của arm bgem3 khi chưa chấm nemotron
 ./isd-exp report ablation-tables
 ./isd-exp report ablation-figures
 ```
@@ -618,7 +619,9 @@ cơ chế kia đã ngăn lỗi từ trước. `08` vì vậy sinh thêm hai kh�
   ledger (ghi ở cả hai substrate nhưng **không so được giữa hai
   `context_mode`**: arm prose chỉ chạy within-artifact check), và health. Artifact: `tab_ablation_process.tex` +
   section "Process measures" trong `stats_ablation.md`. Không có lệnh `judge` riêng: các số này được đọc lúc
-  `pool ablation` / `pool tune` từ file run đã ghi, tất định và không gọi model.
+  `pool ablation` / `pool tune` từ file run đã ghi, tất định và không gọi model. Arm single ghi một bản autonomy
+  `design` cho cả run kèm `context_len_by_stage` / `turns_by_stage`; pool tách nó thành từng stage để đọc được
+  "context tăng theo vị trí stage" giống arm multi.
 
 Artifact tương ứng: `tab_ablation_factorial.tex` (dẫn 1 tín hiệu chính) kèm `tab_ablation_factorial_full.tex`
 (bản đầy đủ 2×2 read trên toàn bộ 10 tín hiệu báo cáo, phụ lục), macro `\ablVerifCtxOn/Off*` + `\ablInteraction*` +

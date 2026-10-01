@@ -356,3 +356,41 @@ class TestTriadReferences:
         cells = diagnostics.collect([run_dir], [PROPOSED])[PROPOSED]
         st = diagnostics.summarize(cells, diagnostics.STAGE_ORDER)["triad_references"]
         assert st["n_runs"] == 1 and st["objectives_closed_triad"] == 0.5
+
+
+class TestSingleArmStages:
+    """The single arm reports one record for the run; its per-stage numbers
+    are what the registered prediction (context grows with stage position) is
+    read off, so they become stage entries like the multi arm's."""
+
+    def test_the_design_record_is_split_into_its_stages(self, tmp_path):
+        scen = tmp_path / "S"
+        _write(scen / f"{PROPOSED}_trajectory.json", {"metadata": {"autonomy": {"design": {
+            "context_len": 9000, "turns_used": 30, "via_budget_exhaustion": True,
+            "context_len_by_stage": {"analysis": 3000, "outcomes": 6000, "assessment": 9000},
+            "turns_by_stage": {"analysis": 10, "outcomes": 8, "assessment": 12}}}}})
+        cells = {"S": [diagnostics.read_cell(scen, PROPOSED)]}
+        au = diagnostics.summarize(cells, diagnostics.STAGE_ORDER)["autonomy"]
+        assert list(au["by_stage"])[:3] == ["analysis", "outcomes", "assessment"]
+        assert au["context_growth_first_to_last"] == 3.0
+        assert au["by_stage"]["outcomes"]["turns_used"]["mean"] == 8.0
+        # The run-level flags stay on the run, not on any one stage.
+        assert au["by_stage"]["design"]["pct_via_budget_exhaustion"] == 100.0
+        assert "context_len" not in au["by_stage"]["design"]
+
+
+def test_pool_ablation_reads_the_named_encoder_arm(tmp_path):
+    """A tune slice scored while the primary's endpoint was off has only the
+    sensitivity arms' artifacts; `--encoder` points the pool at one of them."""
+    from isd_experiments.pool import ablation
+
+    run = tmp_path / "R"
+    scen = run / "train_10" / "S-001"
+    _write(scen / "comparison_report.json", {"comparison": {"rankings": [
+        {"agent_id": PROPOSED, "total_score": 80.0}]}})
+    _write(scen / "alignment_scores.bgem3.json",
+           {"agents": {PROPOSED: {"porter_mean": 0.4}}})
+    primary = ablation.per_scenario_maps([run], [PROPOSED])
+    bgem3 = ablation.per_scenario_maps([run], [PROPOSED], "alignment_scores.bgem3.json")
+    assert primary["porter_mean"][PROPOSED] == {}
+    assert bgem3["porter_mean"][PROPOSED] == {"S-001": 0.4}

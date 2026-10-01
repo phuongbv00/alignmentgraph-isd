@@ -357,6 +357,21 @@ def test_a_single_run_writes_the_items_its_plans_ask_for():
         assert result["metadata"]["autonomy"]["design"]["abandoned_stages"] == []
 
 
+def test_the_single_arm_reports_context_per_stage():
+    """The registered prediction is that context grows with stage position in
+    single and not in multi. The multi arm reports one record per stage; the
+    single arm's one record has to carry the same series or the prediction
+    cannot be read off it."""
+    result = run_brief(load_brief("minimal_brief.json"), HarnessRunConfig(
+        llm_factory=lambda: FakeChatModel(), agent_mode="single"))
+    design = result["metadata"]["autonomy"]["design"]
+    by_stage = design["context_len_by_stage"]
+    assert set(by_stage) == {s.name for s in STEPS}
+    assert all(v > 0 for v in by_stage.values())
+    assert max(by_stage.values()) == design["context_len"]
+    assert set(design["turns_by_stage"]) == set(by_stage)
+
+
 def test_the_prose_merge_reads_the_keys_the_commits_actually_write():
     """`_doc_keys` used to return the FAMILY name ("outcome_designer"), which is
     not a document key ("objective"). The additive merge therefore read a key

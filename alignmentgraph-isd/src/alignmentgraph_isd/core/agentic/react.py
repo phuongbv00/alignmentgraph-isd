@@ -162,6 +162,12 @@ class ReactLoop:
             # they were closed. Separate from `stage_order`, which records
             # what was WRITTEN.
             "abandoned_stages": [],
+            # Per stage, the same two numbers the multi arm's per-stage records
+            # carry -- the largest prompt sent and the turns spent while that
+            # stage was the current one -- so "context grows with stage
+            # position in single and not in multi" is read off both arms the
+            # same way. One record for the whole run cannot show it.
+            "context_len_by_stage": {}, "turns_by_stage": {},
         }
         #: Batch counter, so each additive submit's items get a distinct
         #: `plan_set` tag and `remap_and_tag` renames rather than overwrites
@@ -487,6 +493,11 @@ class ReactLoop:
             self._publish(live=True)
             self.stats["context_len"] = max(
                 self.stats["context_len"], prompt_chars(self.messages))
+            current = self._state_step().name
+            by_stage = self.stats["context_len_by_stage"]
+            by_stage[current] = max(by_stage.get(current, 0), prompt_chars(self.messages))
+            turns = self.stats["turns_by_stage"]
+            turns[current] = turns.get(current, 0) + 1
 
             turn = self.llm.call_tools(
                 self.messages, turn_mod.withhold_reads(self._live_specs, self._meter))

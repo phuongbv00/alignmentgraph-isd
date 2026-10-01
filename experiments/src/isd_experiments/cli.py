@@ -204,6 +204,9 @@ def build_parser() -> argparse.ArgumentParser:
             pl.add_argument("--auto-bloom", action="store_true")
         elif name == "ablation":
             pl.add_argument("--comparison-pooled", type=_p)
+            pl.add_argument("--encoder", metavar="PRESET",
+                            help="read the alignment signals of this encoder arm instead of "
+                                 "the primary (e.g. bgem3 when the primary's endpoint is off)")
 
     # ── the manuscript's numbers ─────────────────────────────────────────
     rep = sub.add_parser("report", help="generate tables, figures and notes").add_subparsers(
@@ -378,7 +381,7 @@ def _dispatch(args) -> int:
     if command == "pool" and sub == "ablation":
         from .pool import ablation
         ablation.run(patterns=args.patterns or None, out=args.out,
-                     comparison_pooled=args.comparison_pooled)
+                     comparison_pooled=args.comparison_pooled, encoder=args.encoder)
         return 0
 
     if command == "freeze":

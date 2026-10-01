@@ -27,6 +27,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .. import paths, schema
+from ..alignment import presets
 from ..alignment.protocol import ALIGNMENT_SIGNALS
 from ..config import current as current_config
 from ..runs import iter_scenario_dirs, load_run
@@ -211,7 +212,8 @@ def _paired(diffs: list[float]) -> dict:
             "rank_biserial_r": rank_biserial(diffs)}
 
 
-def per_scenario_maps(run_dirs: list[Path], agents: list[str]) -> dict:
+def per_scenario_maps(run_dirs: list[Path], agents: list[str],
+                      scores_filename: str = presets.PRIMARY_ARTIFACT) -> dict:
     """signal -> agent -> {scenario: mean over runs}.
 
     One pass over the run dirs picks up both the LLM judge fields (from
@@ -224,7 +226,7 @@ def per_scenario_maps(run_dirs: list[Path], agents: list[str]) -> dict:
     }
     panel_signals = [sig for sig, _f in ALIGNMENT_SIGNALS]
     for run_dir in run_dirs:
-        for sid, payload in load_run(run_dir).items():
+        for sid, payload in load_run(run_dir, scores_filename).items():
             for a in agents:
                 r = (payload.get("rankings") or {}).get(a) or {}
                 for sig in FACTORIAL_LLM_JUDGE_SCORES:
@@ -374,13 +376,14 @@ def process_layer(run_dirs_by_model: dict[str, list[Path]],
 
 
 def factorial_layer(run_dirs_by_model: dict[str, list[Path]],
-                    agents: list[str]) -> dict:
+                    agents: list[str],
+                    scores_filename: str = presets.PRIMARY_ARTIFACT) -> dict:
     missing = [a for a in factorial_cells().values() if a not in agents]
     if missing:
         return {"skipped": f"arms missing from this pool: {missing}"}
     measures: dict[str, dict] = {sig: {"per_model": []} for sig in FACTORIAL_MEASURES}
     for label, dirs in run_dirs_by_model.items():
-        maps = per_scenario_maps(dirs, agents)
+        maps = per_scenario_maps(dirs, agents, scores_filename)
         for sig in FACTORIAL_MEASURES:
             measures[sig]["per_model"].append(
                 {"label": label, **factorial_effects(maps[sig])})
@@ -459,9 +462,10 @@ def print_report(pooled: dict, a0: str, arms: list[str]) -> None:
         for arm, a in entry["arms"].items():
             print("    " + diagnostics.one_line(arm, a))
     if pooled.get("alignment") is None:
-        print(f"\n  (the alignment layer is absent — run "
-              f"`{paths.cli()} judge alignment` on each "
-              f"run dir, then re-pool.)")
+        print(f"\n  (the alignment layer is absent: no "
+              f"{pooled['config'].get('panel_artifact')} — run "
+              f"`{paths.cli()} judge alignment` on each run dir and re-pool, or "
+              f"name a scored arm with --encoder.)")
 
 
 #: Reading direction for the size interaction, stated once so nobody re-derives
@@ -489,8 +493,14 @@ INTERACTION_NOTE = (
 def pool(run_dirs_by_model: dict[str, list[Path]], *,
          reference: str | None = None,
          arms: list[str] | None = None,
-         comparison_pooled: Path | None = None) -> dict:
-    """Build the pooled ablation document. Pure: no printing, no writing."""
+         comparison_pooled: Path | None = None,
+         scores_filename: str = presets.PRIMARY_ARTIFACT) -> dict:
+    """Build the pooled ablation document. Pure: no printing, no writing.
+
+    ``scores_filename`` is the alignment artifact the panel and the factorial
+    read: the primary encoder's unless another declared arm is named, for a
+    tune slice scored while the primary's endpoint was off. The document
+    records which one it read (``config.panel_artifact``)."""
     from .inference import interaction_tests
 
     profile = current_config().profile("ablation")
@@ -539,15 +549,17 @@ def pool(run_dirs_by_model: dict[str, list[Path]], *,
             "primary_failure_policy": "complete_case",
             "holm_family": f"{len(arm_ids)} arm comparisons within each model size",
             "size_order": [m["label"] for m in models],
+            "panel_artifact": scores_filename,
         },
         "flag_check": flag_check,
         "models": models,
         "interaction": interaction,
         "interaction_by_score": interaction_by_score,
         "reference_drift": consistency,
-        "alignment": pool_alignment(models, run_dirs_by_model, agents, ref, arm_ids),
+        "alignment": pool_alignment(models, run_dirs_by_model, agents, ref, arm_ids,
+                                    scores_filename=scores_filename),
         "token_usage": pool_tokens(run_dirs_by_model, agents),
-        "factorial": factorial_layer(run_dirs_by_model, agents),
+        "factorial": factorial_layer(run_dirs_by_model, agents, scores_filename),
         "self_validation_activity": self_validation_activity(run_dirs_by_model, agents),
         # What each arm DID: per-stage autonomy (the series the registered
         # directional prediction is read off, and the guards that decide what an
@@ -558,7 +570,7 @@ def pool(run_dirs_by_model: dict[str, list[Path]], *,
 
 def run(*, patterns: list[str] | None = None, out: Path | None = None,
         reference: str | None = None, comparison_pooled: Path | None = None,
-        quiet: bool = False) -> Path:
+        encoder: str | None = None, quiet: bool = False) -> Path:
     """Discover, pool, report and write. Returns the output path."""
     profile = current_config().profile("ablation")
     default = [f"{profile.dataset}_benchmark_*_"
@@ -569,8 +581,10 @@ def run(*, patterns: list[str] | None = None, out: Path | None = None,
         for label, dirs in run_dirs_by_model.items():
             print(f"model {label!r}: {len(dirs)} run(s)")
 
+    artifact = (presets.current().encoder(encoder).artifact if encoder
+                else presets.PRIMARY_ARTIFACT)
     pooled = pool(run_dirs_by_model, reference=reference,
-                  comparison_pooled=comparison_pooled)
+                  comparison_pooled=comparison_pooled, scores_filename=artifact)
 
     if not quiet:
         print_report(pooled, pooled["config"]["reference"], pooled["config"]["arms"])

@@ -121,6 +121,28 @@ def summarize_ledger(findings: list) -> dict:
             "shown_to_agent": shown, "report_only": report_only}
 
 
+def _split_single_record(raw: dict, autonomy: dict) -> dict:
+    """The single arm's one ``design`` record, split into its stages.
+
+    That arm walks every stage in one loop and reports one record, so a stage
+    series -- the reading of the registered prediction that context grows with
+    stage position -- needs the per-stage numbers it keeps beside the totals
+    (``context_len_by_stage``, ``turns_by_stage``). They become per-stage
+    entries like the multi arm's; the run-level ``context_len`` and
+    ``turns_used`` leave the ``design`` entry, which would otherwise read as
+    one more stage at the end of the series. The flags (``via_budget_exhaustion``,
+    ``gave_up``) stay on it: they are facts about the run."""
+    design = raw.get("design")
+    if not isinstance(design, dict) or not isinstance(design.get("context_len_by_stage"), dict):
+        return autonomy
+    turns = design.get("turns_by_stage") if isinstance(design.get("turns_by_stage"), dict) else {}
+    out = {stage: {"context_len": ctx, **({"turns_used": turns[stage]} if stage in turns else {})}
+           for stage, ctx in design["context_len_by_stage"].items()}
+    out["design"] = {k: v for k, v in autonomy.get("design", {}).items()
+                     if k not in ("context_len", "turns_used")}
+    return out
+
+
 def read_cell(scen_dir: Path, agent: str) -> Optional[dict]:
     """One (scenario, agent) record, or None when the agent left no trajectory."""
     doc = load_json(scen_dir / f"{agent}_trajectory.json")
@@ -138,6 +160,7 @@ def read_cell(scen_dir: Path, agent: str) -> Optional[dict]:
                     if f in stats}
             for stage, stats in md["autonomy"].items() if isinstance(stats, dict)
         }
+        autonomy = _split_single_record(md["autonomy"], autonomy)
 
     work_sets = None
     events = ((doc.get("trajectory") or {}).get("events") or []) \
