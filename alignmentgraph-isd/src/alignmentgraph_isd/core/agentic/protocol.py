@@ -250,7 +250,9 @@ def respec(messages: list, step, brief: str) -> str:
 #: Which agent-facing protocol a run spoke, recorded in
 #: ``metadata.run_config`` so that runs on either side of a change to the
 #: tools an agent is bound or to how a stage ends are never pooled by mistake.
-#: 11 = the single arm finishes a fan-out stage only once its item lists
+#: 12 = the single arm binds only the current stage's submit, and a request
+#: the serving window refuses is refunded and answered with a harder trim
+#: instead of a nudge (both arms). 11 = the single arm finishes a fan-out stage only once its item lists
 #: exist, and closes a stage that spent its submit cap so the run moves on;
 #: the prose arm's activity Developers are handed TASK ids for C4; a key
 #: fused onto a declared field's name is read as that field. 10 = a rejection the constrained pass cannot fix (a question restating its
@@ -276,7 +278,7 @@ def respec(messages: list, step, brief: str) -> str:
 #: each item's objective, type and cognitive level and each activity's
 #: objective and level, the mode states a material's depth, and the pilot
 #: data plan names its collection points in words.
-PROTOCOL_REV = 11
+PROTOCOL_REV = 12
 
 #: The answer to a repeated read whose result is unchanged — ONE wording for
 #: both arms, and only ever said when it is true (``turn.answer_read`` has

@@ -337,7 +337,9 @@ class ToolLoop:
 
     @property
     def _history_budget(self) -> int:
-        return history_budget(self.config, getattr(self, "_live_specs", None))
+        meter = getattr(self, "_meter", None)
+        return turn_mod.squeezed(
+            history_budget(self.config, getattr(self, "_live_specs", None)), meter)
 
     def _run(self) -> None:
         if step_done(self.step, self.state):
@@ -405,6 +407,11 @@ class ToolLoop:
             self._bind(retrieval_available)
             self._live_specs = turn_mod.withhold_reads(self._live_specs, self._meter)
             turn = self.llm.call_tools(self.messages, self._live_specs)
+            if turn.overflowed:
+                # See ``ReactLoop._run``: one rule for both arms.
+                self._meter.context_overflowed()
+                continue
+            self._meter.request_fit()
             if turn.binding_failed:
                 # No tool loop is possible against this endpoint. Going round
                 # the budget would spend MAX_TURNS x 6 stages of requests to

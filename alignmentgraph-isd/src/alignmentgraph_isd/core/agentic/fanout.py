@@ -1124,9 +1124,42 @@ def missing_outputs(stage: str, state) -> tuple[str, ...]:
     if spec is None:
         return ()
     graph = hasattr(state, "element_nodes")
-    return tuple(
-        output.schema_key for output in spec.outputs
-        if not (_pool(state, output) if graph else state.items(*output.doc_key)))
+    owed: list[str] = []
+    for output in spec.outputs:
+        pool = _pool(state, output) if graph else state.items(*output.doc_key)
+        if not pool:
+            owed.append(output.schema_key)
+            continue
+        uncovered = _units_without(stage, state, pool)
+        if uncovered:
+            owed.append(f"{output.schema_key} for {', '.join(uncovered)}")
+    return tuple(owed)
+
+
+def _units_without(stage: str, state, pool: list) -> list[str]:
+    """The units of the design a stage's lists leave without any artifact:
+    an assessment task no item sits in, a module no activity or material is
+    written for. The multi arm writes one work set per such unit, so a single
+    arm closed on the first artifact would write a fraction of what its plan
+    asks for and be compared with one that wrote all of it."""
+    if stage == "assessment":
+        plan = _section_doc(state, NodeType.ASSESSMENT_PLAN, "assessment_plan")
+        wanted = [dev_plans._bare(t.get("id")) for t in dev_plans.plan_tasks(plan)
+                  if t.get("id")]
+        if hasattr(state, "element_nodes"):
+            held = {dev_plans._bare(n["data"].get("id") or n["id"])
+                    for n in state.element_nodes(NodeType.ASSESSMENT)
+                    if n["data"].get("items")}
+        else:
+            held = {dev_plans._bare(str(one.get("task_id") or "").rsplit(":", 1)[-1])
+                    for one in pool if isinstance(one, dict)}
+        return [t for t in wanted if t not in held]
+    field_name = {"activities": "module_id", "content": "linked_module"}.get(stage)
+    if field_name is None:
+        return []
+    held = {dev_plans._bare(one.get(field_name)) for one in pool if isinstance(one, dict)}
+    return [str(m["id"]) for m in course_modules(state)
+            if m.get("id") and dev_plans._bare(m["id"]) not in held]
 
 
 def _pool(state, output: SetOutput) -> list[dict]:

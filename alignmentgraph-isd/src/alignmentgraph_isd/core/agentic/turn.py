@@ -37,6 +37,22 @@ from .tools import unwrap_section
 from .transcript import history_budget, message_size, trim_history
 
 
+#: How far an overflow narrows the transcript: each refused request halves
+#: what the next one may carry, at most this many times in a row.
+SQUEEZE_STEPS = 3
+
+
+def squeezed(history_chars: int, meter) -> int:
+    """The transcript budget after ``meter.squeeze`` refused requests in a row.
+
+    The budget is derived from the window minus the completion reserve, the
+    bound schemas and a measured chars-per-token ratio; a request the window
+    still refuses means that estimate was short, and the next one is sent
+    with half the history, then a quarter, then an eighth."""
+    level = getattr(meter, "squeeze", 0) or 0
+    return max(1, history_chars >> level)
+
+
 @dataclass
 class ToolTurn:
     """One model turn under native tool calling.
@@ -66,6 +82,10 @@ class ToolTurn:
     #: nudged for. An ordinary empty turn — the model answered with text —
     #: keeps ``failed`` False and is charged as before.
     failed: bool = False
+    #: The request was refused for exceeding the serving window. The
+    #: harness's to prevent (it sizes the transcript), so it is refunded and
+    #: answered with a harder trim, never with a nudge to the model.
+    overflowed: bool = False
     #: The backend refused ``bind_tools`` — not a model mistake, an endpoint
     #: one. Distinguished from an ordinary empty turn so the loop can stop
     #: immediately instead of spending its budget discovering it again.
@@ -112,6 +132,8 @@ class TurnMeter:
         self.turn_no = 0
         #: Consecutive reads that bought nothing; see ``budget.FRUITLESS_READS``.
         self.fruitless = 0
+        #: Requests in a row the serving window refused; see :func:`squeezed`.
+        self.squeeze = 0
 
     @property
     def reads_withheld(self) -> bool:
@@ -149,6 +171,26 @@ class TurnMeter:
     def tool_error(self) -> None:
         """A tool call whose observation came back ERROR."""
         self._refund("tool_errors", budget.ERROR_ALLOWANCE)
+
+    def context_overflowed(self) -> None:
+        """A request the window refused. Refunded within the error allowance,
+        and the next transcript is trimmed to a smaller share of its budget
+        (:func:`squeezed`) until a request fits again.
+
+        MEASURED (run a1 20261001_101147): 419 such refusals across the
+        single arms, 270 in one run, each answered "you must CALL A TOOL" —
+        a nudge that made the next request longer still."""
+        self.squeeze = min(self.squeeze + 1, SQUEEZE_STEPS)
+        # The loop goes straight to the next request without spending a turn;
+        # past the allowance each one is charged, or a transcript the squeeze
+        # cannot bring under the window would never let the ceiling close.
+        self.stats["context_overflows"] = self.stats.get("context_overflows", 0) + 1
+        if self.stats["context_overflows"] > budget.ERROR_ALLOWANCE:
+            self.turn_no += 1
+
+    def request_fit(self) -> None:
+        """A request the window accepted: the transcript budget is whole again."""
+        self.squeeze = 0
 
     def endpoint_failed(self) -> None:
         """A request the endpoint did not answer, after the retry. Bounded by

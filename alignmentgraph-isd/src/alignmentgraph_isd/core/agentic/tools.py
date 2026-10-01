@@ -957,7 +957,7 @@ def _state_description(step) -> str:
 
 
 def react_specs(steps: tuple, done: frozenset, *, graph_mode: bool = True,
-                retrieval_available: bool = False) -> list[dict]:
+                retrieval_available: bool = False, current: str | None = None) -> list[dict]:
     """Tools for the ONE agent that runs the whole brief itself.
 
     Two differences from :func:`tool_specs`, both of which are what makes the
@@ -965,10 +965,17 @@ def react_specs(steps: tuple, done: frozenset, *, graph_mode: bool = True,
 
     * the read allowlists are the UNION over every step, because this agent is
       not scoped to a stage — it decides what to look at;
-    * there is one ``submit_<stage>`` per stage NOT yet complete, so the agent
-      chooses what to work on and in what order. The menu shrinks as stages
-      land: that is state being reported, not the harness steering. When the
-      menu is empty the job is done, which is also the loop's exit condition.
+    * the submit it binds is the CURRENT stage's (``current``: the first not
+      complete in the instructed order, or the one under repair), exactly as a
+      stage loop binds its own stage's submits. The stage order is instructed
+      and fixed in both arms; what this agent decides is how a stage runs.
+      Every open stage's submit at once was MEASURED (run a1 20261001_101147)
+      at ~19.5k characters of schema, ~6.5k of the 8,192 prompt tokens the
+      window leaves, before one message: 419 requests over the window across
+      the single arms, 270 in one run that never left analysis. Without
+      ``current`` every open stage is offered — the shape of the menu a
+      caller describes the whole job with. When nothing is open the job is
+      done, which is also the loop's exit condition.
 
     A submit is ADDITIVE and may be called again for the same stage: that is
     what lets the agent split a large family across several calls instead of
@@ -991,7 +998,7 @@ def react_specs(steps: tuple, done: frozenset, *, graph_mode: bool = True,
     from .fanout import SPECS as _FANOUT
 
     for step in steps:
-        if step.name in done:
+        if (step.name != current) if current is not None else (step.name in done):
             continue
         # A fan-out family's stage submit carries only the PLAN, because in the
         # multi arm its items come from Developers. This agent has no

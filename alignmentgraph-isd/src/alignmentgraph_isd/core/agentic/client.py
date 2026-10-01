@@ -75,6 +75,19 @@ def _cut_reply_shape(exc: Exception) -> str:
             f"longest_run={longest}x{char!r} tail={content[-120:]!r}")
 
 
+#: How an OpenAI-compatible server words a prompt that does not fit
+#: (vLLM: "This model's maximum context length is 16384 tokens. However, you
+#: requested ..."; OpenAI: code ``context_length_exceeded``).
+_CONTEXT_OVERFLOW_MARKERS = ("maximum context length", "context_length_exceeded")
+
+
+def _is_context_overflow(exc: Exception) -> bool:
+    """Whether a request was refused because the prompt plus the completion
+    reserve exceed the serving window — the harness's sizing, not the model."""
+    text = str(exc).lower()
+    return any(marker in text for marker in _CONTEXT_OVERFLOW_MARKERS)
+
+
 def _is_transient(exc: Exception) -> bool:
     """Whether a failed request never reached the model: a connection error,
     a timeout, or a 5xx from the proxy. The one failure a second identical
@@ -166,6 +179,13 @@ class AgenticLLM:
         try:
             return self._invoke_tools(bound, messages, tool_specs)
         except Exception as exc:  # noqa: BLE001 - every backend error is recorded below
+            if _is_context_overflow(exc):
+                # Recorded exactly as before (an `llm_error` carrying the
+                # server's message), and handed back flagged so the loop trims
+                # instead of telling the model it failed to call a tool.
+                self.trajectory.log_llm_call(0, 0)
+                self.trajectory.log_recovery_event(self.identity, "llm_error", "", str(exc))
+                return ToolTurn(overflowed=True)
             if _is_transient(exc):
                 # The request never reached the model. Sent ONCE more after a
                 # pause — MEASURED (2B run, 2026-09-24): twelve "Connection

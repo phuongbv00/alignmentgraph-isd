@@ -84,14 +84,14 @@ MAX_TURNS = budget.STAGE_MAX_TURNS * len(STEPS) * budget.SINGLE_ARM_TURN_FACTOR
 _PROTOCOL = """\
 You do this work by CALLING TOOLS. Every turn is a tool call — never prose.
 
-The stages are listed above in the order they must be done. YOU decide which to
-work on next, how much to read first, and when each one is finished.
+The stages are listed above in the order they must be done, one at a time. YOU
+decide how much to read first, how to write each one, and when it is finished.
 
 Three rules that matter:
 - The stage you are on is stated in a turn of its own, with its schema and its
   rules. The next stage arrives the same way when this one is done.
-- A submit_<stage> tool appears only while that stage is still incomplete. When
-  a stage's tool disappears, that stage is done. When none are left, so are you.
+- Only the stage you are on has its submit_<stage> tool. When that stage is
+  done its tool is replaced by the next stage's. When none is left, you are done.
 - A submit ADDS to what that stage already holds; it does not replace it. A
   stage needing many items is meant to be submitted across SEVERAL calls, a
   handful at a time. One call cannot hold them all — it will be cut off.
@@ -213,12 +213,23 @@ class ReactLoop:
     @property
     def _history_budget(self) -> int:
         """Same derivation the multi arm uses — one budget for both arms, and
-        re-read each turn so it tracks the measured token ratio."""
-        return history_budget(self.config, getattr(self, "_live_specs", None))
+        re-read each turn so it tracks the measured token ratio; narrowed
+        after a request the window refused (``turn.squeezed``)."""
+        meter = getattr(self, "_meter", None)
+        return turn_mod.squeezed(
+            history_budget(self.config, getattr(self, "_live_specs", None)), meter)
 
     @property
     def graph_mode(self) -> bool:
         return hasattr(self.state, "element_nodes")
+
+    def _bound_specs(self) -> list[dict]:
+        """The tools bound this turn: every read, and the CURRENT stage's submit
+        (``tools.react_specs``), tightened to this design's vocabulary."""
+        return self._tightened(tools.react_specs(
+            STEPS, self._done_set, graph_mode=self.graph_mode,
+            current=self._state_step().name if len(self._done_set) < len(STEPS)
+            or self._repairing else None))
 
     def _done(self) -> frozenset:
         """Stages no longer open: the finished ones and the closed ones."""
@@ -262,10 +273,10 @@ class ReactLoop:
         """One stage's task, schema and rules — the same block the multi arm's
         specialist gets, composed here for the one stage that is current.
 
-        Pushed by the harness when the stage comes up, not fetched by a tool.
-        What that costs this arm is the freedom to jump to a stage out of
-        turn, which `react_specs` still allows; what it buys is that the
-        contract can never be missing when the stage is being written."""
+        Pushed by the harness when the stage comes up, not fetched by a tool,
+        so the contract can never be missing when the stage is being written.
+        The binding matches it: only the current stage's submit is offered
+        (``tools.react_specs``)."""
         step = _STEP_BY_NAME.get(name)
         if step is None:
             return (f"ERROR: no stage named {name!r}. The stages are: "
@@ -305,10 +316,9 @@ class ReactLoop:
         The current stage is the first not yet done, in the instructed ADDIE
         order — which both arms are given identically
         (``loop.WORKFLOW_OVERVIEW``), so this is the harness restating an order
-        the agent was already told, not choosing one for it. What it does take
-        away is submitting a stage out of turn without its schema;
-        ``react_specs`` still offers every incomplete stage's submit, and the
-        contract for one further down arrives when its turn comes.
+        the agent was already told, not choosing one for it. The binding
+        follows the same stage (``_bound_specs``), and the contract for one
+        further down arrives when its turn comes.
 
         Called once before the first model turn and again after each commit, so
         exactly one stage's contract is live at a time. `_compact` releases a
@@ -437,16 +447,17 @@ class ReactLoop:
         done = self._done()
         if len(done) == len(STEPS):
             return
-        specs = self._tightened(tools.react_specs(STEPS, done, graph_mode=self.graph_mode))
+        self._done_set = done
+        specs = self._bound_specs()
         self._specs = merge_specs(self._specs, specs)
         self.messages = [
             {"role": "system", "content": self._system_prompt()},
             {"role": "user", "content": _PROTOCOL.format(
-                menu=_menu(STEPS, done, graph_mode=self.graph_mode),
+                menu=_menu(STEPS, done, graph_mode=self.graph_mode,
+                           current=self._state_step().name),
                 max_turns=self.MAX_TURNS,
                 state_rule=_STATE_RULE if self.graph_mode else "")},
         ]
-        self._done_set = done
         self._offer_contract()
         self._live_specs = specs
         self._seen_calls: dict[str, turn_mod.SeenCall] = {}   # see forget_compacted_calls
@@ -476,6 +487,11 @@ class ReactLoop:
                         self.identity, "repair_window_closed",
                         f"{budget.STAGE_MAX_TURNS} turn(s) after the last stage landed", "")
                     return
+            # Rebound every turn: the current stage moves on a commit, on a
+            # repair pointer and when a repair round closes, and the bound
+            # submit is that stage's.
+            self._live_specs = self._bound_specs()
+            self._specs = merge_specs(self._specs, self._live_specs)
             self.messages, dropped = trim_history(self.messages, self._history_budget)
             self.compacted.extend(dropped)
             self.stats["history_dropped"] += len(dropped)
@@ -501,6 +517,13 @@ class ReactLoop:
 
             turn = self.llm.call_tools(
                 self.messages, turn_mod.withhold_reads(self._live_specs, self._meter))
+            if turn.overflowed:
+                # The request was over the serving window: the endpoint's
+                # refusal, not the model's turn. Refunded, never nudged, and
+                # the next request is trimmed harder (``turn.squeeze``).
+                self._meter.context_overflowed()
+                continue
+            self._meter.request_fit()
             outcome = turn_mod.spend_queue(
                 turn, meter=self._meter, handle=self._dispatch,
                 unexecuted=self._answer_unexecuted,
@@ -561,6 +584,14 @@ class ReactLoop:
         step = _STEP_BY_NAME.get(turn.name[len("submit_"):])
         if step is None:
             self._answer(turn, f"ERROR: no such stage in {turn.name!r}.")
+            return "continue"
+        if turn.name not in tools.tool_names(self._live_specs):
+            # Only reachable through a recovered call: the binding offers the
+            # current stage's submit alone.
+            now = self._state_step().name
+            self._answer(turn, (f"ERROR: {step.name} is not the stage you are on. The "
+                                f"stages go in order; the current one is {now}: "
+                                f"call submit_{now}."))
             return "continue"
         # A submit to a stage that already has artifacts is ACCEPTED —
         # that is the agent adding a second batch, which is the whole
@@ -643,8 +674,7 @@ class ReactLoop:
             return "return" if len(self._done_set) == len(STEPS) else "continue"
         self._done_set = self._done()
         self._offer_contract()
-        self._live_specs = self._tightened(
-            tools.react_specs(STEPS, self._done_set, graph_mode=self.graph_mode))
+        self._live_specs = self._bound_specs()
         self._specs = merge_specs(self._specs, self._live_specs)
         # Same in-loop repair the multi arm's stages get. It has to be
         # the same or the axis grows a second variable: one arm would
@@ -709,8 +739,7 @@ class ReactLoop:
             self._repairing = None
         self._done_set = self._done()
         self._offer_contract()
-        self._live_specs = self._tightened(
-            tools.react_specs(STEPS, self._done_set, graph_mode=self.graph_mode))
+        self._live_specs = self._bound_specs()
         self._specs = merge_specs(self._specs, self._live_specs)
 
     def _closed_note(self, step) -> str:
@@ -1030,8 +1059,8 @@ def _submit_for(specs: list, args) -> str | None:
     return matches[0] if len(matches) == 1 else None
 
 
-def _menu(steps, done: frozenset, *, graph_mode: bool) -> str:
-    specs = tools.react_specs(steps, done, graph_mode=graph_mode)
+def _menu(steps, done: frozenset, *, graph_mode: bool, current: str | None = None) -> str:
+    specs = tools.react_specs(steps, done, graph_mode=graph_mode, current=current)
     return "\n".join(f"- {spec['function']['name']} — {spec['function']['description']}"
                      for spec in specs)
 

@@ -116,11 +116,19 @@ def test_a_submit_adds_to_a_stage_rather_than_replacing_it():
     several calls, so a second submit must ADD."""
     from test_agentic_loop import _ANALYSIS, _ASSESSMENT, _OUTCOMES
 
+    import copy
+
     # The PLAN travels with the first batch: its tasks are what an item is
-    # filed inside, so a batch arriving before them has nowhere to land.
-    first = dict(_ASSESSMENT)
+    # filed inside, so a batch arriving before them has nowhere to land. Two
+    # tasks and items for one: the stage still owes the other, so it stays
+    # open for the second batch.
+    first = copy.deepcopy(_ASSESSMENT)
+    tasks = first["assessment_plan"]["sets"][0]["assessment_tasks"]
+    tasks.append(dict(tasks[0], id="AT-02", timing="formative", weight_percent=0))
+    first["assessment_plan"]["lo_coverage_targets"] = {"ILO-01": ["summative", "formative"]}
     second = {"assessment_tools": [
-        dict(_ASSESSMENT["assessment_tools"][0], item_id="AT-99", question="A second batch.")]}
+        dict(_ASSESSMENT["assessment_tools"][0], item_id="AT-99", task_id="AT-02",
+             plan_category="formative", question="A second batch.")]}
     loop, graph, _t, _m = _loop([
         ("submit_analysis", _ANALYSIS),
         ("submit_outcomes", _OUTCOMES),
@@ -263,10 +271,13 @@ def test_one_stage_cannot_consume_the_whole_run():
     loop, graph, trajectory, _m = _loop([("submit_analysis", _ANALYSIS)] * over)
     loop.run()
 
-    assert loop.stats["submits_per_stage"]["analysis"] == react.ReactLoop.SUBMIT_CAP
+    # Once analysis is finished its submit is no longer bound -- the current
+    # stage's is -- so every resubmit after the first is refused, not counted.
+    assert loop.stats["submits_per_stage"]["analysis"] == 1
+    assert "submit_analysis" not in tools.tool_names(loop._live_specs)
     # ...and the refusal is actionable, not a silent drop.
     told = _said(loop)
-    assert "another stage" in told
+    assert "the current one is outcomes: call submit_outcomes" in told
 
 
 def test_a_stage_that_keeps_being_rejected_hits_the_same_cap():
@@ -476,3 +487,67 @@ def test_both_arms_answer_a_repeat_through_the_one_guard():
         assert "You already made" not in source and "You already called" not in source, (
             f"{owner.__name__} words its own refusal")
     assert "result has not changed since the last call" in protocol.REPEAT_UNCHANGED
+
+
+def test_only_the_current_stage_submit_is_bound():
+    """MEASURED FAILURE (run a1 20261001_101147): every open stage's submit at
+    once was ~19.5k characters of schema, ~6.5k of the 8,192 prompt tokens the
+    window leaves, and the single arms sent 419 requests over the window. The
+    stage order is instructed and fixed in both arms, so the binding carries
+    the current stage's submit the way a stage loop carries its own."""
+    names = tools.tool_names(tools.react_specs(STEPS, frozenset(), current="analysis"))
+    assert [n for n in names if n.startswith("submit_")] == ["submit_analysis"]
+    # A stage under repair is current even though it is finished.
+    names = tools.tool_names(tools.react_specs(
+        STEPS, frozenset({"analysis"}), current="analysis"))
+    assert [n for n in names if n.startswith("submit_")] == ["submit_analysis"]
+
+
+class _OverflowsFirst(_Scripted):
+    """Refuses the first ``n`` requests the way vLLM refuses a prompt that
+    does not fit, then answers the script."""
+
+    def __init__(self, turns, n):
+        super().__init__(turns)
+        self._refusals = [n]
+
+    def invoke(self, messages):
+        if self._refusals[0] > 0:
+            self._refusals[0] -= 1
+            raise RuntimeError(
+                "Error code: 400 - This model's maximum context length is 16384 tokens. "
+                "However, you requested 8192 output tokens and your prompt contains at "
+                "least 8193 input tokens")
+        return super().invoke(messages)
+
+
+def test_a_request_over_the_window_is_trimmed_not_blamed_on_the_model():
+    """The window refusing a request is the harness's sizing, not the model
+    failing to call a tool: it is not nudged, not charged within the error
+    allowance, and the next request carries a narrower transcript."""
+    from test_agentic_loop import _ANALYSIS
+
+    from alignmentgraph_isd.core.agentic import turn as turn_mod
+
+    model = _OverflowsFirst([("submit_analysis", _ANALYSIS)], n=2)
+    config = HarnessRunConfig(llm_factory=lambda: model)
+    loop = react.ReactLoop(config, AlignmentGraph(), TrajectoryLogger(),
+                           load_brief("minimal_brief.json"))
+    loop.run()
+
+    assert loop.stats["context_overflows"] == 2
+    assert loop.stats["submits_per_stage"]["analysis"] == 1
+    # The refusals are not answered with a nudge: the first thing the agent
+    # is told after its protocol turn is the answer to its submit. (Nudges
+    # later in the run answer the script running out, not the window.)
+    told = _said(loop)
+    assert told.index("COMMITTED") < told.find("must CALL A TOOL") or \
+        "must CALL A TOOL" not in told
+    # Every refusal halves what the next request may carry; a request that
+    # fits restores it.
+    meter = turn_mod.TurnMeter({}, max_turns=10)
+    meter.context_overflowed()
+    meter.context_overflowed()
+    assert turn_mod.squeezed(8000, meter) == 2000
+    meter.request_fit()
+    assert turn_mod.squeezed(8000, meter) == 8000
