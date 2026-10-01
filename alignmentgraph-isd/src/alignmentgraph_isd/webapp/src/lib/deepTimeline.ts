@@ -87,6 +87,7 @@ const KIND_OF: Record<string, WorkKind> = {
   repair_declined: 'error',
   calls_not_executed: 'error',
   repair_window_closed: 'error',
+  stage_abandoned: 'error',
   // Not an error: the loop managing its own window. Its RATE is a measurement
   // (the `agent_mode` axis's price), so it gets a beat of its own rather than
   // a red one.

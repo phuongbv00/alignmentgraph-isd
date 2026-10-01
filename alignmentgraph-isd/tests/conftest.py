@@ -980,7 +980,7 @@ _EVENT_ACTIONS = {
         "commit_invalid_section", "agentic_fallback", "agentic_gave_up", "budget_exhausted",
         "tool_binding_unavailable", "tool_call_markup_recovered", "repair_unfilled",
     "duplicate_submit", "bare_artifact_wrapped", "context_compacted",
-    "calls_not_executed", "repair_window_closed", "commit_did_not_land",
+    "calls_not_executed", "repair_window_closed", "stage_abandoned", "commit_did_not_land",
         "thinking_only_reply",
     "duplicate_element_dropped",
         "dropped_argument", "repair",

@@ -50,7 +50,7 @@ EVENT_ACTIONS = {
     "read_of_assignment_id", "repair_declined", "run_stopped",
     "excess_artifacts_trimmed", "module_minutes_capped",
     "items_without_parent",
-    "calls_not_executed", "repair_window_closed",
+    "calls_not_executed", "repair_window_closed", "stage_abandoned",
     "constrained_pass", "constrained_pass_skipped", "structured_outputs_unavailable",
     "duplicate_task_id_renamed",
     "llm_retry",

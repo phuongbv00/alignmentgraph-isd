@@ -706,6 +706,7 @@ def reshape_args(parameters: dict, args: dict, *, reshaped: list,
         if kind == "object" and isinstance(value, dict):
             props = (schema or {}).get("properties") or {}
             extra = (schema or {}).get("additionalProperties")
+            value = _unfuse_keys(props, value, path, reshaped)
             out = {}
             for key, one in value.items():
                 if key in SCHEMA_KEYWORDS and key not in props:
@@ -728,6 +729,37 @@ def reshape_args(parameters: dict, args: dict, *, reshaped: list,
     args = _unwrap_self_named(parameters, args, salvaged)
     args = _fold_siblings(parameters, args, reshaped)
     return walk({"type": "object", **(parameters or {})}, args, "")
+
+
+def _unfuse_keys(props: dict, value: dict, path: str, reshaped: list) -> dict:
+    """``{"prepares_for_assessment_at": ["AT-01"]}`` means the declared
+    ``prepares_for_assessment``.
+
+    A small model fuses text onto a field name — a suffix, an id, a schema
+    word — and the value beside it is the field's. MEASURED (run a1
+    20261001_101147, activity Developers): of 138 graph-arm submits 88 carried
+    the C4 list under such a key and 4 under the declared one, so the model's
+    own reference was dropped and the deterministic net had to write C4 in its
+    place for 130 of 163 activities.
+
+    Renamed only when it can be nothing else: the declared field is absent,
+    is declared an array and the value is a list, the key starts with that
+    field's name, and exactly one stray key and one declared field match.
+    Whether the ids in it exist is still the reference check's to say."""
+    out = dict(value)
+    for name, sub in props.items():
+        if name in value or (sub or {}).get("type") != "array":
+            continue
+        fused = [key for key in value
+                 if key not in props and key.startswith(name)
+                 and isinstance(value[key], list)
+                 and sum(key.startswith(other) for other in props) == 1]
+        if len(fused) != 1:
+            continue
+        key = fused[0]
+        out[name] = out.pop(key)
+        reshaped.append(f"{path}.{key} -> {name}" if path else f"{key} -> {name}")
+    return out
 
 
 def _fold_siblings(parameters: dict, args: dict, reshaped: list) -> dict:

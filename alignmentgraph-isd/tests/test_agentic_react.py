@@ -292,6 +292,71 @@ def test_a_stage_that_keeps_being_rejected_hits_the_same_cap():
     assert "another stage" in told
 
 
+def test_a_capped_stage_is_closed_and_the_run_moves_on():
+    """MEASURED FAILURE (run a1 20261001_101147): at the cap the agent was told
+    to leave the stage while the harness kept that stage current — its
+    contract re-offered, the state read still on it — and 13 of 20 single-arm
+    runs spent their turn ceiling resubmitting one stage. A closed stage leaves
+    the menu, stops being current, and the next stage's contract is offered."""
+    over = react.ReactLoop.SUBMIT_CAP + 6
+    loop, _g, trajectory, _m = _loop([("submit_analysis", {})] * over)
+    loop.run()
+
+    assert loop.stats["abandoned_stages"] == ["analysis"]
+    assert any(e["action"] == "stage_abandoned" for e in trajectory.recovery_events)
+    assert "analysis" in loop._done_set and "analysis" not in loop._finished()
+    assert "submit_analysis" not in tools.tool_names(loop._live_specs)
+    assert loop._state_step().name == "outcomes"
+    told = _said(loop)
+    assert STAGE_BRIEF_HEADER.format(stage="outcomes") in told
+    assert "repaired for you" not in told
+
+
+def test_a_finished_stage_is_never_recorded_as_abandoned():
+    """The cap refuses further submits to a stage that is complete; it does
+    not turn written work into an abandoned stage."""
+    from test_agentic_loop import _ANALYSIS
+
+    loop, _g, _t, _m = _loop([("submit_analysis", _ANALYSIS)] * (react.ReactLoop.SUBMIT_CAP + 4))
+    loop.run()
+
+    assert loop.stats["abandoned_stages"] == []
+    assert "analysis" in loop._finished()
+
+
+def test_a_fanout_stage_owes_its_items_not_just_its_plan():
+    """MEASURED FAILURE (run a1 20261001_101147): the single arm finished a
+    fan-out stage the moment its plan landed, its submit left the menu, and 20
+    of 20 single-arm runs shipped no assessment item. This agent has no
+    Developers, so the item lists are part of what the stage owes — on both
+    substrates."""
+    from alignmentgraph_isd.core.agentic import fanout
+
+    for graph_mode in (True, False):
+        loop, _s, _t, _m = _loop([], graph_mode=graph_mode)
+        by_name = {s.name: s for s in STEPS}
+        for stage, items in (("assessment", "assessment_tools"),
+                             ("activities", "learning_activities"),
+                             ("content", "learner_materials"),
+                             ("implementation", "session_guides")):
+            assert fanout.missing_outputs(stage, loop.state) == (items,)
+            assert items in loop._owed(by_name[stage])
+        assert fanout.missing_outputs("analysis", loop.state) == ()
+
+
+def test_a_single_run_writes_the_items_its_plans_ask_for():
+    """End to end, both substrates: every fan-out family has artifacts."""
+    for context_mode in ("graph", "prose"):
+        result = run_brief(load_brief("minimal_brief.json"), HarnessRunConfig(
+            llm_factory=lambda: FakeChatModel(), agent_mode="single",
+            context_mode=context_mode))
+        dev = result["addie_output"]["development"]
+        items = [i for t in dev["assessment_tools"] for i in (t.get("items") or [t])]
+        assert items, context_mode
+        assert dev["learner_materials"], context_mode
+        assert result["metadata"]["autonomy"]["design"]["abandoned_stages"] == []
+
+
 def test_the_prose_merge_reads_the_keys_the_commits_actually_write():
     """`_doc_keys` used to return the FAMILY name ("outcome_designer"), which is
     not a document key ("objective"). The additive merge therefore read a key

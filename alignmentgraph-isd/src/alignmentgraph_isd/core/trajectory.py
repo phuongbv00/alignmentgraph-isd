@@ -89,6 +89,9 @@ class TrajectoryAction(StrEnum):
     #: The single arm's allowance for answering repair requests after its last
     #: stage landed ran out — the same number of turns a stage gets.
     REPAIR_WINDOW_CLOSED = "repair_window_closed"
+    #: The single arm closed a stage that spent ``SUBMIT_CAP`` without
+    #: finishing, so the run moves on to the next one (``ReactLoop._close_stage``).
+    STAGE_ABANDONED = "stage_abandoned"
     #: A rejected submit was written again by the model under the artifact's
     #: per-run schema, with no tools bound (``turn.constrained_pass``): what
     #: was wrong with the call, and whether the pass was accepted. A transport
@@ -237,6 +240,7 @@ _RECOVERY_ACTIONS = frozenset({
     TrajectoryAction.CONTEXT_COMPACTED,
     TrajectoryAction.CALLS_NOT_EXECUTED,
     TrajectoryAction.REPAIR_WINDOW_CLOSED,
+    TrajectoryAction.STAGE_ABANDONED,
     TrajectoryAction.CONVERGE,
     TrajectoryAction.DUPLICATE_ELEMENT_DROPPED,
     TrajectoryAction.AGENTIC_FALLBACK,

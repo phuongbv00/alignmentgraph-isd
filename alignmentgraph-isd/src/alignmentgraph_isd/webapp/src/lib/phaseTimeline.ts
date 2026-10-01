@@ -108,7 +108,7 @@ const RECOVERY_ACTIONS = new Set([
   'agentic_fallback',
   // Added 2026-09-05 with the batched-call execution and the single arm's
   // post-completion allowance.
-  'calls_not_executed', 'repair_window_closed',
+  'calls_not_executed', 'repair_window_closed', 'stage_abandoned',
   // Two members of `_RECOVERY_ACTIONS` are deliberately NOT here: `repair`
   // has its own case in absorb(), and `repair_unfilled` can no longer be
   // emitted (no repair calls the model since 2026-09-03).

@@ -158,6 +158,10 @@ class ReactLoop:
             # The two numbers that separate "worked out of order" from "never
             # split the work" — different failures with identical output.
             "stage_order": [], "submits_per_stage": {},
+            # Stages closed at SUBMIT_CAP without completing, in the order
+            # they were closed. Separate from `stage_order`, which records
+            # what was WRITTEN.
+            "abandoned_stages": [],
         }
         #: Batch counter, so each additive submit's items get a distinct
         #: `plan_set` tag and `remap_and_tag` renames rather than overwrites
@@ -189,6 +193,11 @@ class ReactLoop:
         self._idle = 0
         self._state_view = None
         self._state_reads: dict[str, int] = {}
+        #: Stages closed at ``SUBMIT_CAP`` without completing (``_close_stage``).
+        #: Counted as done for everything that decides what is CURRENT — the
+        #: contract offered, the state read, the menu, the end of the run — and
+        #: never as written.
+        self._abandoned: set[str] = set()
 
     def _submit_attempts(self, stage: str) -> int:
         """Turns this stage has spent on submitting, accepted or not."""
@@ -206,7 +215,21 @@ class ReactLoop:
         return hasattr(self.state, "element_nodes")
 
     def _done(self) -> frozenset:
-        return frozenset(s.name for s in STEPS if step_done(s, self.state))
+        """Stages no longer open: the finished ones and the closed ones."""
+        return self._finished() | frozenset(self._abandoned)
+
+    def _finished(self) -> frozenset:
+        return frozenset(s.name for s in STEPS
+                         if step_done(s, self.state)
+                         and not fanout.missing_outputs(s.name, self.state))
+
+    def _owed(self, step) -> tuple[str, ...]:
+        """What ``step`` still owes: its declared artifacts, and — because this
+        agent has no Developers — the item lists a fan-out stage plans.
+        Without the second half a stage closed the moment its plan landed and
+        its submit left the menu: MEASURED (run a1 20261001_101147), 0
+        assessment items in 20 of 20 single-arm runs."""
+        return missing_parts(step, self.state) + fanout.missing_outputs(step.name, self.state)
 
     def _system_prompt(self) -> str:
         """Persona, the stage list, and the scenario. NOT every stage's schema.
@@ -303,9 +326,10 @@ class ReactLoop:
         one conversation across all six stages, so the spec for work already
         written is exactly what crowds out the work still to do."""
         step = _STEP_BY_NAME.get(stage)
-        if step is None or not missing_parts(step, self.state):
+        if step is None or step.name in self._abandoned or not self._owed(step):
             return None
-        return with_progress(self.stage_brief(stage), step, self.state)
+        return with_progress(self.stage_brief(stage), step, self.state,
+                             also_owed=fanout.missing_outputs(step.name, self.state))
 
     def _respec(self, step) -> str:
         """The stage's schema, re-attached to a rejection when it has fallen out
@@ -327,7 +351,8 @@ class ReactLoop:
         one appends the fan-out output rules, because this agent writes both
         halves); the rule for when to re-attach it does not."""
         return respec(self.messages, step,
-                      with_progress(self.stage_brief(step.name), step, self.state))
+                      with_progress(self.stage_brief(step.name), step, self.state,
+                                    also_owed=fanout.missing_outputs(step.name, self.state)))
 
     def _state_step(self):
         """The stage `read_alignment_state` reports on: the one under repair
@@ -474,7 +499,7 @@ class ReactLoop:
 
         self.stats["via_budget_exhaustion"] = True
         self.trajectory.log_recovery_event(
-            self.identity, "budget_exhausted", f"{len(self._done())}/{len(STEPS)} stages", "")
+            self.identity, "budget_exhausted", f"{len(self._finished())}/{len(STEPS)} stages", "")
 
     def _handle_call(self, turn) -> str:
         """One tool call, judged and answered. ``"return"`` ends the run (every
@@ -538,12 +563,10 @@ class ReactLoop:
         # without completing is a disagreement between the validator and
         # the self._done_set-guard, and accepting it forever turns that
         # disagreement into the whole run.
-        if self._submit_attempts(step.name) >= self.SUBMIT_CAP:
-            self._answer(turn, (
-                f"You have submitted {step.name} {self.SUBMIT_CAP} times and it is still "
-                "incomplete. Leave it and work on another stage; what is missing will be "
-                "repaired for you."))
-            return "continue"
+        if step.name in self._abandoned or self._submit_attempts(step.name) >= self.SUBMIT_CAP:
+            self._close_stage(step)
+            self._answer(turn, self._closed_note(step))
+            return "return" if len(self._done_set) == len(STEPS) else "continue"
         args, carried = turn_mod.carry_over(self._kept, args)
         turn_mod.note_carried(carried, trajectory=self.trajectory, identity=self.identity)
         validate = lambda parsed, _s=step: self._validate(_s, parsed)  # noqa: E731
@@ -570,6 +593,11 @@ class ReactLoop:
                    "below never arrived in full. Do not rewrite everything — send a "
                    "SHORTER submit: fewer items, shorter prose, required fields "
                    "first.\n" if turn.truncated else "")
+            if self._submit_attempts(step.name) >= self.SUBMIT_CAP:
+                self._close_stage(step)
+                self._answer(turn, "SUBMIT REJECTED:\n- " + "\n- ".join(errors)
+                             + "\n" + self._closed_note(step))
+                return "return" if len(self._done_set) == len(STEPS) else "continue"
             self._answer(turn, cut + "SUBMIT REJECTED — fix these and submit again:\n- "
                                + "\n- ".join(errors)
                                + turn_mod.keep_fields(self._kept, section)
@@ -597,6 +625,11 @@ class ReactLoop:
             self.stats["submits_per_stage"].get(step.name, 0) + 1)
         if not self.stats["stage_order"] or self.stats["stage_order"][-1] != step.name:
             self.stats["stage_order"].append(step.name)
+        if (step.name not in self._finished()
+                and self._submit_attempts(step.name) >= self.SUBMIT_CAP):
+            self._close_stage(step)
+            self._answer(turn, self._closed_note(step))
+            return "return" if len(self._done_set) == len(STEPS) else "continue"
         self._done_set = self._done()
         self._offer_contract()
         self._live_specs = self._tightened(
@@ -636,10 +669,53 @@ class ReactLoop:
                 ", ".join(sorted({v.violation_type for v in fixable}))[:200])
         if self._repairing == step.name:
             self._repairing = None
-        self._answer(turn, _committed_note(step, self._done_set, self.state))
+        self._answer(turn, _committed_note(step, self._done_set, self._owed(step)))
         if len(self._done_set) == len(STEPS):
             return "return"
         return "continue"
+
+    def _close_stage(self, step) -> None:
+        """Take a stage that has spent ``SUBMIT_CAP`` without finishing out of
+        play: off the menu, no longer the current stage, its contract no
+        longer offered. What it committed stays committed.
+
+        Telling the agent to leave a stage while the harness keeps offering
+        that stage's contract as "RESUMING … still needs" is two instructions
+        no model can satisfy at once: MEASURED (run a1 20261001_101147), 13 of
+        20 single-arm runs spent their turn ceiling resubmitting one stage,
+        209 `submit_analysis` calls in one of them. A FINISHED stage is never
+        closed — its further submits are refused, and it stays written."""
+        if step.name in self._abandoned or step.name in self._finished():
+            return
+        self._abandoned.add(step.name)
+        owed = self._owed(step)
+        self.stats["abandoned_stages"].append(step.name)
+        self.trajectory.log_recovery_event(
+            self.identity, "stage_abandoned",
+            f"{step.name}: {self._submit_attempts(step.name)} submit(s)",
+            f"still owed: {', '.join(owed)}"[:200])
+        if self._repairing == step.name:
+            self._repairing = None
+        self._done_set = self._done()
+        self._offer_contract()
+        self._live_specs = self._tightened(
+            tools.react_specs(STEPS, self._done_set, graph_mode=self.graph_mode))
+        self._specs = merge_specs(self._specs, self._live_specs)
+
+    def _closed_note(self, step) -> str:
+        """The answer to a submit the cap refuses, saying where to go next."""
+        left = [s.name for s in STEPS if s.name not in self._done_set]
+        if step.name in self._finished():
+            head = (f"{step.name} is already complete and has had its {self.SUBMIT_CAP} "
+                    "submits; nothing more is accepted for it.")
+        else:
+            owed = self._owed(step)
+            head = (f"{step.name} is CLOSED after {self._submit_attempts(step.name)} submits "
+                    f"with what it holds" + (f" ({', '.join(owed)} left missing)" if owed else "")
+                    + ". Do not submit it again.")
+        if not left:
+            return head + " Every other stage is complete."
+        return head + f" Go on to another stage: {left[0]}."
 
     def _handle_read(self, turn, args: dict) -> str:
         """One read, through the guard both arms share (``turn.answer_read``)."""
@@ -836,7 +912,7 @@ class ReactLoop:
         # characters); keeping the spec for finished work crowds out the work
         # still to do. If the agent adds another batch and gets it wrong,
         # `_respec` puts the schema back exactly where the error is.
-        if missing_parts(step, self.state):
+        if self._owed(step):
             # The stage is not finished — the agent still has parts to write
             # from this schema, and taking it away mid-artifact is the exact
             # failure `_respec` exists to undo.
@@ -912,11 +988,10 @@ def _doc_keys(step) -> tuple[str, ...]:
                  if k not in ADDITIVE_PROSE_DOC_KEYS)
 
 
-def _committed_note(step, done: frozenset, state) -> str:
+def _committed_note(step, done: frozenset, parts: tuple[str, ...]) -> str:
     # Name the PARTS a parts-based step is still missing, not just "more":
     # the multi arm's loop says exactly that after each instalment, and an
     # agent told less here would be running a different instruction.
-    parts = missing_parts(step, state) if state is not None else ()
     if parts and step.name not in done:
         left = [s.name for s in STEPS if s.name not in done]
         return (f"COMMITTED to {step.name}, which still needs: {', '.join(parts)}. "

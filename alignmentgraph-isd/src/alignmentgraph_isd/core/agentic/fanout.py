@@ -630,7 +630,15 @@ def items_by_lo(state) -> dict[str, list[str]]:
     and read it — the read cost ``_resolved_references`` exists to remove."""
     by_lo: dict[str, list[str]] = {}
     for task in _element_data(state, NodeType.ASSESSMENT, ("assessment", "assessment_tools")):
-        task_id = str(task.get("id") or task.get("item_id") or "")
+        if "items" in task:
+            task_id = str(task.get("id") or "")
+        else:
+            # The blackboard keeps the QUESTIONS flat, each naming its task;
+            # the key is that task, never the question's own `item_id`, or the
+            # prose arm's activity Developers are handed ids `known_ids`
+            # refuses. MEASURED with question ids (run a1 20261001_101147):
+            # 0 of 117 prose activities kept a C4 reference, 15 sets given up.
+            task_id = str(task.get("task_id") or "").rsplit(":", 1)[-1]
         if not task_id:
             continue
         for one in (task.get("items") or [task]):
@@ -1103,6 +1111,22 @@ def committed_set_ids(spec: FanoutSpec, state) -> set[str]:
     key, field_name = primary.doc_key
     return {i.get("plan_set") for i in state.items(key, field_name)
             if isinstance(i, dict) and i.get("plan_set")}
+
+
+def missing_outputs(stage: str, state) -> tuple[str, ...]:
+    """The Developer-tier lists of ``stage`` the state holds none of yet.
+
+    Empty for a stage that has no fan-out. The multi arm never asks: its
+    Developers write these after the stage loop has closed. The single arm
+    writes them itself, inside the stage, so a stage it walks is finished only
+    when they exist — the plan alone leaves the work it plans unwritten."""
+    spec = SPECS.get(stage)
+    if spec is None:
+        return ()
+    graph = hasattr(state, "element_nodes")
+    return tuple(
+        output.schema_key for output in spec.outputs
+        if not (_pool(state, output) if graph else state.items(*output.doc_key)))
 
 
 def _pool(state, output: SetOutput) -> list[dict]:

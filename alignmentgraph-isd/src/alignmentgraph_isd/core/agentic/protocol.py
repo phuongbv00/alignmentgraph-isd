@@ -71,7 +71,8 @@ def landed_parts(step, state) -> tuple[str, ...]:
     return tuple(key for key, _type, _required in step.submit_fields if view.get(key))
 
 
-def still_needed(step, state, closed: tuple[str, ...] = ()) -> str:
+def still_needed(step, state, closed: tuple[str, ...] = (),
+                 also_owed: tuple[str, ...] = ()) -> str:
     """What this stage already holds and what it still owes, from the STATE.
 
     ONE renderer, so the sentence cannot drift between the place a stage OPENS
@@ -86,6 +87,10 @@ def still_needed(step, state, closed: tuple[str, ...] = ()) -> str:
     X until the turn ceiling ends the stage. A closed part is named as
     closed instead, so the sentence and the loop's own rule agree.
 
+    ``also_owed`` names what the stage owes beyond its declared artifacts —
+    the single arm's Developer-tier lists (``fanout.missing_outputs``), which
+    that arm writes inside the stage and the multi arm never does.
+
     Without it a stage re-run from a fresh context opens byte-identically to
     its first attempt, listing all six of `implementation`'s artifacts however
     many are committed, so the retry re-issues every read and re-sends finished
@@ -94,8 +99,9 @@ def still_needed(step, state, closed: tuple[str, ...] = ()) -> str:
     never restarts a stage and gets the same sentence from `_committed_note`.
     """
     landed = landed_parts(step, state)
-    left = tuple(p for p in missing_parts(step, state) if p not in closed)
-    shut = tuple(p for p in closed if p in missing_parts(step, state))
+    owed = missing_parts(step, state) + tuple(also_owed)
+    left = tuple(p for p in owed if p not in closed)
+    shut = tuple(p for p in closed if p in owed)
     if not landed or not (left or shut):
         return ""
     parts = []
@@ -108,7 +114,8 @@ def still_needed(step, state, closed: tuple[str, ...] = ()) -> str:
     return " ".join(parts)
 
 
-def with_progress(brief: str, step, state, closed: tuple[str, ...] = ()) -> str:
+def with_progress(brief: str, step, state, closed: tuple[str, ...] = (),
+                  also_owed: tuple[str, ...] = ()) -> str:
     """A stage's contract, RE-attached, plus what the state says it still owes.
 
     On a first issue this is the identity function — nothing is committed,
@@ -129,7 +136,7 @@ def with_progress(brief: str, step, state, closed: tuple[str, ...] = ()) -> str:
     The sentence is `still_needed`'s, so a stage OPENING, a submit being
     answered and a contract coming BACK all say the same thing.
     """
-    resuming = still_needed(step, state, closed)
+    resuming = still_needed(step, state, closed, also_owed)
     if not resuming:
         return brief
     # Said TWICE: straight after the stage marker and again at the end. At
@@ -243,7 +250,10 @@ def respec(messages: list, step, brief: str) -> str:
 #: Which agent-facing protocol a run spoke, recorded in
 #: ``metadata.run_config`` so that runs on either side of a change to the
 #: tools an agent is bound or to how a stage ends are never pooled by mistake.
-#: 10 = a rejection the constrained pass cannot fix (a question restating its
+#: 11 = the single arm finishes a fan-out stage only once its item lists
+#: exist, and closes a stage that spent its submit cap so the run moves on;
+#: the prose arm's activity Developers are handed TASK ids for C4; a key
+#: fused onto a declared field's name is read as that field. 10 = a rejection the constrained pass cannot fix (a question restating its
 #: objective) goes straight back to the agent, and the pass's own prompt is
 #: trimmed to the window with its schema counted. 9 = an assessment item whose
 #: question restates its objective's own sentence is refused at the submit. 8 = every field a rubric sub-item reads is REQUIRED in the artifact
@@ -266,7 +276,7 @@ def respec(messages: list, step, brief: str) -> str:
 #: each item's objective, type and cognitive level and each activity's
 #: objective and level, the mode states a material's depth, and the pilot
 #: data plan names its collection points in words.
-PROTOCOL_REV = 10
+PROTOCOL_REV = 11
 
 #: The answer to a repeated read whose result is unchanged — ONE wording for
 #: both arms, and only ever said when it is true (``turn.answer_read`` has

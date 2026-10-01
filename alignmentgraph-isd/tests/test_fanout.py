@@ -543,3 +543,62 @@ def test_module_minutes_are_held_to_the_courses_ceiling_on_either_substrate():
     assert fanout.cap_module_minutes(store, 48 * 60, TrajectoryLogger()) == {
         "MOD-01": 1440, "MOD-02": 1440}
     assert [m["minutes_effective"] for m in store.items("objective", "course_modules")] == [1440, 1440]
+
+
+def test_c4_task_ids_are_the_same_on_both_substrates():
+    """MEASURED FAILURE (run a1 20261001_101147): on the blackboard the
+    assessment family is a flat list of QUESTIONS, and the activity
+    Developers were handed their `item_id`s as the tasks to prepare for —
+    ids the submit check refuses, so 0 of 117 prose activities kept a C4
+    reference. Both substrates must hand over the task the question is in."""
+    from conftest import add_assessment
+
+    from alignmentgraph_isd.core.agentic import fanout
+    from alignmentgraph_isd.core.alignment_graph import AlignmentGraph
+    from alignmentgraph_isd.core.prose_store import ProseStore
+
+    graph = AlignmentGraph()
+    add_assessment(graph, {"item_id": "ATI-0101", "aligned_objective": "LO-01"},
+                   {"item_id": "ATI-0102", "aligned_objective": "LO-02"}, task="AT-01")
+    add_assessment(graph, {"item_id": "ATI-0201", "aligned_objective": "LO-01"}, task="AT-02")
+    store = ProseStore()
+    store.put("assessment", {"assessment_tools": [
+        {"item_id": "ATI-0101", "aligned_objective": "LO-01", "task_id": "AT-01"},
+        {"item_id": "ATI-0102", "aligned_objective": "LO-02", "task_id": "assessment:AT-01"},
+        {"item_id": "ATI-0201", "aligned_objective": "LO-01", "task_id": "AT-02"},
+    ]})
+
+    expected = {"LO-01": ["AT-01", "AT-02"], "LO-02": ["AT-01"]}
+    assert fanout.items_by_lo(graph) == expected
+    assert fanout.items_by_lo(store) == expected
+
+
+def test_a_key_fused_onto_a_declared_field_is_read_as_that_field():
+    """MEASURED (run a1 20261001_101147): 88 of 138 activity submits carried
+    the C4 list under keys such as `prepares_for_assessment_at`, so the
+    model's own reference was dropped. Renamed only when nothing else fits."""
+    from alignmentgraph_isd.core.agentic import tools
+
+    params = {"type": "object", "properties": {"learning_activities": {
+        "type": "array", "items": {"type": "object", "properties": {
+            "activity_name": {"type": "string"},
+            "prepares_for_assessment": {"type": "array", "items": {"type": "string"}}}}}}}
+    reshaped: list = []
+    out = tools.reshape_args(params, {"learning_activities": [
+        {"activity_name": "a", "prepares_for_assessment_at": ["AT-01"]},
+        {"activity_name": "b", "prepares_for_assessment": ["AT-02"],
+         "prepares_for_assessment_x": ["AT-09"]},
+        {"activity_name": "c", "prepares_for_assessment_minItems": 1},
+        {"activity_name": "d", "prepares_for_assessment_a": ["AT-01"],
+         "prepares_for_assessment_b": ["AT-02"]},
+    ]}, reshaped=reshaped)["learning_activities"]
+
+    assert out[0] == {"activity_name": "a", "prepares_for_assessment": ["AT-01"]}
+    # The declared field is present: nothing is overwritten.
+    assert out[1]["prepares_for_assessment"] == ["AT-02"]
+    # Not a list: left for the validator.
+    assert "prepares_for_assessment" not in out[2]
+    # Two candidates: ambiguous, left alone.
+    assert "prepares_for_assessment" not in out[3]
+    assert reshaped == ["learning_activities[0].prepares_for_assessment_at -> "
+                        "prepares_for_assessment"]
