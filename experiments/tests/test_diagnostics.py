@@ -196,14 +196,14 @@ class TestAblationPoolFeedsItsTables:
     def test_the_tables_read_what_the_pool_writes(self, pooled_ablation):
         from isd_experiments.report import ablation_tables
         written = ablation_tables.build(pooled_ablation)
-        assert "tab_ablation_mechanism.tex" in written
-        assert "Mechanism" in written["stats_ablation.md"]
+        assert "tab_ablation_process.tex" in written
+        assert "Process measures" in written["stats_ablation.md"]
 
-    def test_the_mechanism_layer_covers_every_size_and_arm(self, pooled_ablation):
+    def test_the_process_layer_covers_every_size_and_arm(self, pooled_ablation):
         labels = {m["label"] for m in pooled_ablation["models"]}
-        assert {e["label"] for e in pooled_ablation["mechanism"]} == labels
+        assert {e["label"] for e in pooled_ablation["process"]} == labels
         arms = set(pooled_ablation["config"]["arms"]) | {pooled_ablation["config"]["reference"]}
-        for entry in pooled_ablation["mechanism"]:
+        for entry in pooled_ablation["process"]:
             assert set(entry["arms"]) == arms
 
 
@@ -296,3 +296,63 @@ class TestGapWithItsNoise:
         shift = tune.gap_shift(before, after, PROPOSED, BASELINE)["total_score"]
         assert shift["mean"] == pytest.approx(0.0, abs=1e-9), (
             "both agents moved by one point: the gap did not move")
+
+
+def _design(*, nested: bool, repaired: bool = False) -> dict:
+    """Two objectives; ILO-01 closes its triad, ILO-02 is practised only."""
+    items = [{"item_id": "Q1", "aligned_objective": "ILO-01",
+              "required_cognitive_process": "apply"}]
+    tools = ([{"id": "AT-01", "items": items}] if nested
+             else [dict(items[0], task_id="assessment:AT-01")])
+    return {"addie_output": {
+        "design": {
+            "learning_objectives": [{"id": "ILO-01", "level": "apply"},
+                                    {"id": "ILO-02", "level": "evaluate"}],
+            "learning_activities": [
+                {"id": "TLA-1", "aligned_objectives": ["ILO-01"],
+                 "learner_cognitive_process": "apply",
+                 "prepares_for_assessment": ["AT-01"], "repaired": repaired},
+                {"id": "TLA-2", "aligned_objectives": ["ILO-02"],
+                 "learner_cognitive_process": "understand",
+                 "prepares_for_assessment": ["Q1"]}],
+        },
+        "development": {"assessment_tools": tools},
+    }}
+
+
+class TestTriadReferences:
+    """The triad's references read off the deliverable, the same way on both
+    substrates -- the graph arm nests items in tasks, the prose blackboard's
+    items name their task -- so the two arms can be compared at all."""
+
+    @pytest.mark.parametrize("nested", [True, False])
+    def test_the_same_design_reads_the_same_on_either_shape(self, nested):
+        doc = _design(nested=nested)["addie_output"]
+        st = diagnostics.read_triad_references(doc)
+        assert st["objectives_assessed"] == 0.5
+        assert st["objectives_practised"] == 1.0
+        # TLA-2 names a QUESTION, not a task: not a C4 reference.
+        assert st["activities_prepare"] == 0.5
+        assert st["objectives_closed_triad"] == 0.5
+        assert st["objectives_item_level_met"] == 0.5
+        assert st["objectives_activity_level_met"] == 0.5
+
+    def test_what_the_repair_net_wrote_is_split_out(self):
+        st = diagnostics.read_triad_references(_design(nested=True, repaired=True)["addie_output"])
+        assert st["activities_prepare"] == 0.5
+        assert st["activities_prepare_unrepaired"] == 0.0
+        assert st["activities_repaired"] == 0.5
+
+    def test_no_objective_ids_is_not_measured(self):
+        assert diagnostics.read_triad_references({"design": {"learning_objectives": [
+            {"statement": "x"}]}}) is None
+
+    def test_it_reaches_the_pool_and_a_baseline_stays_none(self, run_dir):
+        scen = run_dir / "train_10" / "S-001"
+        _write(scen / f"{PROPOSED}_output.json", _design(nested=True))
+        _write(scen / f"{BASELINE}_output.json", _design(nested=True))
+        assert diagnostics.read_cell(scen, PROPOSED)["triad_references"]["n_objectives"] == 2
+        assert diagnostics.read_cell(scen, BASELINE)["triad_references"] is None
+        cells = diagnostics.collect([run_dir], [PROPOSED])[PROPOSED]
+        st = diagnostics.summarize(cells, diagnostics.STAGE_ORDER)["triad_references"]
+        assert st["n_runs"] == 1 and st["objectives_closed_triad"] == 0.5

@@ -52,8 +52,9 @@ def expected_flags() -> dict[str, dict[str, str]]:
 
 
 #: LLM judge scores for the factorial readout. The ablation narrative is NOT led
-#: by the LLM judge -- the mechanism layer (coverage, the violation ledger, `gave_up`,
-#: context behaviour) and the deterministic panel are the readout, and the LLM
+#: by the LLM judge -- the process measures (coverage, triad references, the
+#: violation ledger, `gave_up`, context behaviour) and the deterministic panel are
+#: the readout, and the LLM
 #: judge is a cross-check.
 FACTORIAL_LLM_JUDGE_SCORES = ("addie_median", "trajectory_score", "total_score")
 
@@ -329,12 +330,12 @@ def self_validation_activity(run_dirs_by_model: dict[str, list[Path]],
     return out
 
 
-def mechanism_layer(run_dirs_by_model: dict[str, list[Path]],
+def process_layer(run_dirs_by_model: dict[str, list[Path]],
                     agents: list[str]) -> list[dict]:
     """What each arm DID, per size: the readout the factorial is about.
 
     The LLM judge and the panel score the deliverable; these read how it came to
-    be (see ``diagnostics``). Per arm, four summaries:
+    be (see ``diagnostics``). Per arm, five summaries:
 
     ``autonomy``           per-stage counters. The registered directional
                            prediction is read here: context grows across stages
@@ -347,6 +348,12 @@ def mechanism_layer(run_dirs_by_model: dict[str, list[Path]],
     ``relation_coverage``  mean coverage per relation. Graph substrate only: a
                            prose run builds no graph, so its entry is None, and
                            that absence is the auditability contrast.
+    ``triad_references``   the triad's references as the deliverable carries
+                           them, read off ``addie_output`` on BOTH substrates,
+                           with the share the repair net wrote split out
+                           (``*_unrepaired``). The graph-vs-prose reading of
+                           "are the parts joined"; structural compliance, not
+                           quality.
     ``ledger``             every finding and what became of it. Recorded on both
                            substrates, but NOT comparable across ``context_mode``:
                            prose runs only the within-artifact checks, so fewer
@@ -444,10 +451,10 @@ def print_report(pooled: dict, a0: str, arms: list[str]) -> None:
                 flag = "   <-- LARGER THAN 2x LADDER RUN SD, read arm deltas with care"
             print(f"\n  A0 drift [{row['label']}]: ablation−comparison "
                   f"Δ={row['delta']:+.2f}{flag}")
-    for entry in pooled.get("mechanism") or []:
+    for entry in pooled.get("process") or []:
         if not entry.get("arms"):
             continue
-        print(f"\n  mechanism [{entry['label']}]  (ctx growth last/first, % stages cut "
+        print(f"\n  process [{entry['label']}]  (ctx growth last/first, % stages cut "
               f"by the turn ceiling, core C2-C4 coverage, open findings/run)")
         for arm, a in entry["arms"].items():
             print("    " + diagnostics.one_line(arm, a))
@@ -545,7 +552,7 @@ def pool(run_dirs_by_model: dict[str, list[Path]], *,
         # What each arm DID: per-stage autonomy (the series the registered
         # directional prediction is read off, and the guards that decide what an
         # arm delta MEANS), relation coverage, the violation ledger, run health.
-        "mechanism": mechanism_layer(run_dirs_by_model, agents),
+        "process": process_layer(run_dirs_by_model, agents),
     }
 
 

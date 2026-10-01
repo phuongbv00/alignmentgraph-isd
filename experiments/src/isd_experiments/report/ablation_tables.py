@@ -16,6 +16,7 @@ from pathlib import Path
 
 from .. import paths
 from ..config import LLM_JUDGE_SCORES
+from ..pool.diagnostics import TRIAD_REFERENCE_FIELDS
 from ..config import current as current_config
 from ..latex import (
     fmt_num,
@@ -711,57 +712,61 @@ def gen_stats_md(pooled: dict) -> str:
                          f"{v['verifier_events_mean']:.2f} | {v['repair_events_mean']:.2f} | "
                          f"{v['pct_scenario_runs_with_repair']:.0f}% |")
 
-    L += mechanism_md(pooled)
+    L += process_md(pooled)
     return "\n".join(L) + "\n"
 
 
 
-# ── the mechanism readout (what each arm DID) ────────────────────────────────
+# ── the process measures (what each arm DID) ─────────────────────────────────
 
-#: Columns of the mechanism table, per size: (header, reader over one arm's
+#: Columns of the process table, per size: (header, reader over one arm's
 #: summary, format). A reader returning None prints "--"; that is the prose
 #: arms' coverage column by construction, since a prose run builds no graph.
-MECHANISM_COLUMNS = (
+PROCESS_COLUMNS = (
     ("Ctx$\\times$", lambda a: (a.get("autonomy") or {}).get("context_growth_first_to_last"),
      lambda v: f"{v:.1f}"),
     ("Cut\\,\\%", lambda a: (a.get("autonomy") or {}).get("pct_stages_via_budget_exhaustion"),
      lambda v: f"{v:.0f}"),
     ("Core", lambda a: (a.get("relation_coverage") or {}).get("core_coverage_mean"),
      lambda v: f"{v:.2f}"),
+    ("Triad", lambda a: (a.get("triad_references") or {}).get("objectives_closed_triad"),
+     lambda v: f"{v:.2f}"),
     ("Open", lambda a: ((a.get("ledger") or {}).get("open_per_run") or {}).get("mean"),
      lambda v: f"{v:.1f}"),
 )
 
 
-def _mechanism_by_label(pooled: dict) -> dict[str, dict]:
-    return {e["label"]: e.get("arms") or {} for e in pooled.get("mechanism") or []}
+def _process_by_label(pooled: dict) -> dict[str, dict]:
+    return {e["label"]: e.get("arms") or {} for e in pooled.get("process") or []}
 
 
-def gen_tab_mechanism(pooled: dict) -> str:
-    """What each arm did, beside what it scored: the ablation's mechanism readout.
+def gen_tab_process(pooled: dict) -> str:
+    """What each arm did, beside what it scored: the ablation's process measures.
 
     The factorial says whether an axis moved a score; this says whether the axis
     did what it is defined as doing (context grows by stage in ``single``),
     whether an arm was CUT by its turn ceiling (a ceiling inside the delta), how
     much of the core triad it established, and how many findings it left open.
     """
-    by_label = _mechanism_by_label(pooled)
+    by_label = _process_by_label(pooled)
     if not any(by_label.values()):
-        return (header_comment(pooled, "tab_ablation_mechanism.tex — placeholder")
-                + "% No mechanism layer in pooled_ablation.json.\n")
+        return (header_comment(pooled, "tab_ablation_process.tex — placeholder")
+                + "% No process layer in pooled_ablation.json.\n")
     models = pooled["models"]
     a0 = pooled["config"]["reference"]
     arms = pooled["config"]["arms"]
-    k = len(MECHANISM_COLUMNS)
+    k = len(PROCESS_COLUMNS)
     colspec = "@{}l" + ("r" * k) * len(models) + "@{}"
-    lines = [header_comment(pooled, "tab_ablation_mechanism.tex — what each arm did")]
+    lines = [header_comment(pooled, "tab_ablation_process.tex — what each arm did")]
     lines.append("\\begin{table*}[t]")
     lines.append(
         "  \\caption{What each ablation arm did, per model size. Ctx$\\times$: mean"
         " prompt length of the last stage over the first; Cut: \\% of stages ended"
         " by the turn ceiling; Core: mean coverage of the relations C2--C4"
-        " (graph arms only); Open: findings left open per run.}")
-    lines.append("  \\label{tab:ablation-mechanism}")
+        " (graph arms only); Triad: share of objectives whose references close"
+        " the triad in the delivered design (every arm); Open: findings left open"
+        " per run.}")
+    lines.append("  \\label{tab:ablation-process}")
     lines.append("  \\small")
     lines.append(f"  \\begin{{tabular}}{{{colspec}}}")
     lines.append("    \\toprule")
@@ -771,7 +776,7 @@ def gen_tab_mechanism(pooled: dict) -> str:
     cmids = "".join(
         f"\\cmidrule(lr){{{2 + k * i}-{1 + k * (i + 1)}}}" for i in range(len(models)))
     lines.append(f"    {cmids}")
-    subs = " & ".join([h for h, _r, _f in MECHANISM_COLUMNS] * len(models))
+    subs = " & ".join([h for h, _r, _f in PROCESS_COLUMNS] * len(models))
     lines.append(f"    Arm & {subs} \\\\")
     lines.append("    \\midrule")
     for arm in [a0] + arms:
@@ -779,7 +784,7 @@ def gen_tab_mechanism(pooled: dict) -> str:
         cells = []
         for m in models:
             summary = by_label.get(m["label"], {}).get(arm) or {}
-            for _h, read, fmt in MECHANISM_COLUMNS:
+            for _h, read, fmt in PROCESS_COLUMNS:
                 v = read(summary)
                 cells.append("--" if not isinstance(v, (int, float)) or math.isnan(v)
                              else fmt(v))
@@ -800,15 +805,16 @@ def _fmt(v, spec: str = ".2f") -> str:
         isinstance(v, float) and math.isnan(v)) else "--"
 
 
-def mechanism_md(pooled: dict) -> list[str]:
-    """The mechanism layer in full, for stats_ablation.md."""
-    L = ["", "## Mechanism (what each arm did, from the harness's own records)", ""]
-    entries = pooled.get("mechanism") or []
+def process_md(pooled: dict) -> list[str]:
+    """The process layer in full, for stats_ablation.md."""
+    L = ["", "## Process measures (what each arm did, from the harness's own records)", ""]
+    entries = pooled.get("process") or []
     if not any(e.get("arms") for e in entries):
-        L.append("Absent — no `mechanism` layer in pooled_ablation.json.")
+        L.append("Absent — no `process` layer in pooled_ablation.json.")
         return L
     L.append("Read from `*_trajectory.json` (`metadata.autonomy`), `*_graph.json` "
-             "(relation coverage; graph arms only) and `*_violations.json` (the "
+             "(relation coverage; graph arms only), `*_output.json` (triad "
+             "references; every arm) and `*_violations.json` (the "
              "ledger). `cut` = % of stage runs ended by the turn ceiling "
              "(`via_budget_exhaustion`): a stage that was cut has the ceiling inside "
              "its delta. Ledger counts are NOT comparable across context "
@@ -847,6 +853,12 @@ def mechanism_md(pooled: dict) -> list[str]:
                          f"{_fmt(cov.get('objectives_aligned_mean'))}, runs with the core "
                          f"complete {_fmt(cov.get('pct_runs_core_complete'), '.0f')}%; "
                          + ", ".join(f"{r} {_fmt(v)}" for r, v in rels.items()))
+            tri = a.get("triad_references")
+            if tri:
+                L.append("")
+                L.append(f"triad references (n={tri['n_runs']}): "
+                         + ", ".join(f"{f} {_fmt(tri.get(f))}"
+                                     for f in (*TRIAD_REFERENCE_FIELDS, "activities_repaired")))
             lg = a.get("ledger")
             if lg:
                 pct = lg.get("pct_of_findings") or {}
@@ -872,7 +884,7 @@ def build(pooled: dict) -> dict[str, str]:
         "tab_ablation.tex": gen_tab_ablation(pooled),
         "tab_ablation_factorial.tex": gen_tab_factorial(pooled),
         "tab_ablation_factorial_full.tex": gen_tab_factorial_full(pooled),
-        "tab_ablation_mechanism.tex": gen_tab_mechanism(pooled),
+        "tab_ablation_process.tex": gen_tab_process(pooled),
         "abl_macros.tex": gen_macros(pooled),
         "stats_ablation.md": gen_stats_md(pooled),
     }

@@ -88,6 +88,9 @@ def _row(label: str, run_dir: Path, sid: str, agent: str, cell: dict,
     cov = cell.get("relation_coverage") or {}
     for rel in diagnostics.CORE_RELATIONS:
         row[f"coverage_{rel}"] = cov.get(rel)
+    triad = cell.get("triad_references") or {}
+    for f in diagnostics.TRIAD_REFERENCE_FIELDS:
+        row[f"triad_{f}"] = triad.get(f)
     lg = cell.get("ledger") or {}
     row["findings"] = lg.get("n_findings")
     row["open"] = (lg.get("by_outcome") or {}).get("open") if lg else None

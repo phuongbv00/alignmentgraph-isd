@@ -73,6 +73,11 @@ Cấm tuyệt đối, không có cách viết thay thế:
   các cụm ghép ("LLM judge prompts", "LLM judge drift", "the second LLM judge").
   Giá trị đo bằng code tự xây = **"alignment signal(s)"**, không gọi là "alignment score(s)".
   Tập hợp vẫn gọi là "alignment panel"; hiệu chỉnh Holm trong một tín hiệu = "within-signal".
+- Hai instrument trên là **outcome measures** (chấm sản phẩm). Ablation có thêm instrument thứ ba,
+  **"process measures"**: đo quá trình tạo ra thiết kế (autonomy theo stage, % stage bị trần turn
+  cắt, relation coverage, triad references, violation ledger). Không gọi là score hay signal, không
+  đặt ngang hàng outcome: triad references là **structural compliance**, không phải chất lượng sư
+  phạm. % stage bị cắt là điều kiện để đọc kết quả `agent_mode` (treatment fidelity).
 - Tên từng tín hiệu đặt theo **phép toán nó tính**, không theo construct nó phục vụ — nên hậu tố
   là `*_similarity`, và chữ "alignment" chỉ đứng ở tên protocol và ở các vế của `aligned(o)`.
 - RQ2 dừng ở **"measurable signals of constructive alignment"**, không phải "đo được alignment".

@@ -405,6 +405,11 @@ hiệu chỉnh liên tiếp, cần đặt cạnh nhau chứ không lấy trung b
   (`via_budget_exhaustion` — stage bị trần turn cắt; trần cắt = trần nằm trong treatment), `context_len`,
   `compactions`, `history_dropped`. Đây là số để chốt `STAGE_MAX_TURNS`/`DEVELOPER_MAX_TURNS` trước freeze.
 - **relation coverage** (từ `<agent>_graph.json`): từng relation, trung bình C2–C4, % run đủ lõi.
+- **triad references** (từ `<agent>_output.json`, cả hai substrate, `diagnostics.read_triad_references`): tỉ lệ
+  objective có item trỏ tới (C2), có activity trỏ tới (C3), tỉ lệ activity trỏ tới task có thật (C4), tỉ lệ
+  objective khép kín tam giác (activity thực hành nó chuẩn bị cho task chứa item đánh giá nó), tỉ lệ đạt mức Bloom
+  của item/activity; mỗi tỉ lệ có bản `_unrepaired` (chỉ đếm artifact không mang cờ `repaired` — cận dưới của phần
+  model tự viết). Cột CSV `triad_*`. Là structural compliance, không phải chất lượng sư phạm.
 - **violation ledger** (từ `<agent>_violations.json`): findings/run, open/run, % theo outcome, % open theo lý do
   (`converged`/`budget`/`unowned`/`unseen`), % đã hiện cho agent, open theo loại.
 - **work sets** theo phase, **health** (% run dừng vì không có module, % có lỗi, % `ready_to_aggregate`), **cost**.
@@ -606,11 +611,14 @@ cơ chế kia đã ngăn lỗi từ trước. `08` vì vậy sinh thêm hai kh�
 - **`verifier_activity`** — số lần verifier chạy / số lần **sửa** mỗi scenario, đọc từ `verifier_events` /
   `repair_events` trong trajectory. Đây là bằng chứng **cơ chế**: nó tách "thành phần không chạy" khỏi "chạy nhưng
   không còn việc để làm".
-- **`mechanism`** — mỗi arm đã *làm* gì, cùng bộ đọc với `pool tune` (`pool/diagnostics.py`): autonomy theo stage
+- **`process`** (process measures) — mỗi arm đã *làm* gì, cùng bộ đọc với `pool tune` (`pool/diagnostics.py`): autonomy theo stage
   (context tăng theo stage ở arm `single` = prediction đã đăng ký; % stage bị trần turn cắt), relation coverage
-  (chỉ arm graph — arm prose không có graph), violation ledger (ghi ở cả hai substrate nhưng **không so được giữa hai
-  `context_mode`**: arm prose chỉ chạy within-artifact check), và health. Artifact: `tab_ablation_mechanism.tex` +
-  section "Mechanism" trong `stats_ablation.md`.
+  (chỉ arm graph — arm prose không có graph), triad references (đọc từ `addie_output` trên cả hai substrate,
+  nên là cách so graph với prose về "các phần có nối với nhau không", kèm phần do repair net viết), violation
+  ledger (ghi ở cả hai substrate nhưng **không so được giữa hai
+  `context_mode`**: arm prose chỉ chạy within-artifact check), và health. Artifact: `tab_ablation_process.tex` +
+  section "Process measures" trong `stats_ablation.md`. Không có lệnh `judge` riêng: các số này được đọc lúc
+  `pool ablation` / `pool tune` từ file run đã ghi, tất định và không gọi model.
 
 Artifact tương ứng: `tab_ablation_factorial.tex` (dẫn 1 tín hiệu chính) kèm `tab_ablation_factorial_full.tex`
 (bản đầy đủ 2×2 read trên toàn bộ 10 tín hiệu báo cáo, phụ lục), macro `\ablVerifCtxOn/Off*` + `\ablInteraction*` +

@@ -5,7 +5,7 @@ the other half of a run directory -- what the harness recorded about how the
 deliverable came to be -- and turns it into one flat record per (scenario,
 agent). Two consumers read it:
 
-* ``pool ablation``, where these are the mechanism readout the factorial is
+* ``pool ablation``, where these are the process measures the factorial is
   about (does context grow by stage in ``single``? does a stage end because it
   was CUT? which relations does each arm establish? which findings stay open,
   and why?);
@@ -167,6 +167,14 @@ def read_cell(scen_dir: Path, agent: str) -> Optional[dict]:
                           if isinstance(o, dict) and o.get("aligned")) / len(objectives)
         node_counts = (graph.get("metadata") or {}).get("node_counts_by_type")
 
+    # Only for an agent whose harness keeps records: a baseline writes no ids
+    # to resolve, and reading its output as "nothing joined" would be a zero
+    # standing in for "not measured".
+    triad = None
+    if autonomy is not None:
+        output = _output_of(scen_dir, agent)
+        triad = read_triad_references(output) if output else None
+
     ledger = None
     findings = load_json(scen_dir / f"{agent}_violations.json")
     if isinstance(findings, list):
@@ -192,8 +200,144 @@ def read_cell(scen_dir: Path, agent: str) -> Optional[dict]:
         "relation_coverage": coverage,
         "objectives_aligned": aligned,
         "node_counts": node_counts,
+        "triad_references": triad,
         "ledger": ledger,
     }
+
+
+#: Bloom's six, low to high: an objective's level is MET when some artifact
+#: referencing it sits at or above it.
+BLOOM_ORDER = ("remember", "understand", "apply", "analyze", "evaluate", "create")
+
+#: The fields of ``read_triad_references``, in the order they are reported.
+TRIAD_REFERENCE_FIELDS = (
+    "objectives_assessed", "objectives_practised", "activities_prepare",
+    "objectives_closed_triad", "objectives_item_level_met",
+    "objectives_activity_level_met",
+    "objectives_assessed_unrepaired", "objectives_practised_unrepaired",
+    "activities_prepare_unrepaired")
+
+
+def _bare(ref) -> str:
+    """``assessment:AT-01`` and ``at-01`` are the same id."""
+    return str(ref or "").rsplit(":", 1)[-1].strip().upper()
+
+
+def _refs(value) -> set[str]:
+    values = value if isinstance(value, list) else [value]
+    return {_bare(v) for v in values if isinstance(v, (str, int)) and _bare(v)}
+
+
+def _level(text) -> int:
+    word = str(text or "").strip().lower()
+    return BLOOM_ORDER.index(word) if word in BLOOM_ORDER else -1
+
+
+def read_triad_references(output: dict) -> Optional[dict]:
+    """The core triad's references as the DELIVERABLE carries them.
+
+    Read off ``addie_output`` alone, by one implementation for every arm, so
+    it means the same thing on the graph and on the prose substrate — unlike
+    ``relation_coverage``, which only a graph run has. Each rate is the share
+    of objectives (or activities) whose references name something that
+    exists in the same output:
+
+    ``objectives_assessed`` (C2)   an item names the objective;
+    ``objectives_practised`` (C3)  an activity names the objective;
+    ``activities_prepare`` (C4)    the activity names an assessment task that exists;
+    ``objectives_closed_triad``    an activity practising the objective prepares
+                                   for a task holding an item that assesses it;
+    ``*_level_met``                the highest referencing item / activity is at or
+                                   above the objective's Bloom level.
+
+    ``*_unrepaired`` counts only references on artifacts the harness's
+    deterministic repair did not touch (no ``repaired`` flag): a LOWER bound on
+    what the model wrote itself, since the flag marks the artifact, not the
+    field. The gap between a rate and its ``_unrepaired`` twin is how much of
+    that rate the repair net wrote.
+
+    Structural compliance, never pedagogical quality (docs/paper/claim-rules.md):
+    a reference that resolves says the parts are joined, not that they fit.
+    None when the output names no objective by id."""
+    design = output.get("design") or {}
+    development = output.get("development") or {}
+    objectives = {_bare(o.get("id")): _level(o.get("level"))
+                  for o in (design.get("learning_objectives") or [])
+                  if isinstance(o, dict) and _bare(o.get("id"))}
+    if not objectives:
+        return None
+
+    tasks = [t for t in (development.get("assessment_tools") or []) if isinstance(t, dict)]
+    nested = any("items" in t for t in tasks)
+    items = ([dict(i, _task=_bare(t.get("id"))) for t in tasks
+              for i in (t.get("items") or []) if isinstance(i, dict)] if nested
+             else [dict(t, _task=_bare(t.get("task_id"))) for t in tasks])
+    task_ids = ({_bare(t.get("id")) for t in tasks if _bare(t.get("id"))} if nested
+                else {i["_task"] for i in items if i["_task"]})
+    activities = [a for a in (design.get("learning_activities")
+                              or development.get("learning_activities") or [])
+                  if isinstance(a, dict)]
+
+    def measured(pool):
+        """objective -> [(level, repaired, task)] of the items naming it."""
+        out: dict[str, list] = {}
+        for one in pool:
+            for lo in _refs(one.get("aligned_objective")) & objectives.keys():
+                out.setdefault(lo, []).append(
+                    (_level(one.get("required_cognitive_process")),
+                     bool(one.get("repaired")), one.get("_task")))
+        return out
+
+    assessed = measured(items)
+    practised: dict[str, list] = {}
+    for act in activities:
+        prep = _refs(act.get("prepares_for_assessment")) & task_ids
+        for lo in _refs(act.get("aligned_objectives") or act.get("aligned_objective")) \
+                & objectives.keys():
+            practised.setdefault(lo, []).append(
+                (_level(act.get("learner_cognitive_process")), bool(act.get("repaired")), prep))
+
+    n = len(objectives)
+
+    def share(hits) -> float:
+        return sum(1 for lo in objectives if hits(lo)) / n
+
+    def closed(lo) -> bool:
+        tasks_assessing = {task for _l, _r, task in assessed.get(lo, [])}
+        return any(prep & tasks_assessing for _l, _r, prep in practised.get(lo, []))
+
+    def met(table, lo) -> bool:
+        return objectives[lo] >= 0 and any(lvl >= objectives[lo] for lvl, _r, _x in table.get(lo, []))
+
+    preparing = [a for a in activities if _refs(a.get("prepares_for_assessment")) & task_ids]
+    unrepaired = [a for a in activities if not a.get("repaired")]
+    return {
+        "n_objectives": n, "n_items": len(items), "n_tasks": len(task_ids),
+        "n_activities": len(activities),
+        "objectives_assessed": share(lambda lo: lo in assessed),
+        "objectives_practised": share(lambda lo: lo in practised),
+        "activities_prepare": len(preparing) / len(activities) if activities else None,
+        "objectives_closed_triad": share(closed),
+        "objectives_item_level_met": share(lambda lo: met(assessed, lo)),
+        "objectives_activity_level_met": share(lambda lo: met(practised, lo)),
+        "objectives_assessed_unrepaired": share(
+            lambda lo: any(not r for _l, r, _t in assessed.get(lo, []))),
+        "objectives_practised_unrepaired": share(
+            lambda lo: any(not r for _l, r, _p in practised.get(lo, []))),
+        "activities_prepare_unrepaired": (
+            sum(1 for a in unrepaired if _refs(a.get("prepares_for_assessment")) & task_ids)
+            / len(activities) if activities else None),
+        "activities_repaired": (sum(1 for a in activities if a.get("repaired")) / len(activities)
+                                if activities else None),
+    }
+
+
+def _output_of(scen_dir: Path, agent: str) -> Optional[dict]:
+    doc = load_json(scen_dir / f"{agent}_output.json")
+    if not isinstance(doc, dict):
+        return None
+    inner = doc.get("addie_output")
+    return inner if isinstance(inner, dict) else doc
 
 
 #: Why a model call failed, from the message the client recorded. The two that
@@ -357,6 +501,19 @@ def coverage_summary(records: list[dict]) -> Optional[dict]:
             "pct_runs_core_complete": 100.0 * perfect_core / len(graphed)}
 
 
+def triad_references_summary(records: list[dict]) -> Optional[dict]:
+    """Mean of each ``read_triad_references`` rate over the runs that have one, on
+    either substrate -- the reading of the triad that does not need a graph."""
+    read = [r["triad_references"] for r in records if r.get("triad_references") is not None]
+    if not read:
+        return None
+    out: dict = {"n_runs": len(read)}
+    for field in (*TRIAD_REFERENCE_FIELDS, "activities_repaired"):
+        vals = [one[field] for one in read if isinstance(one.get(field), (int, float))]
+        out[field] = _mean(vals) if vals else None
+    return out
+
+
 def _rel_key(rel: str) -> tuple:
     head, digits = rel[:1], rel[1:]
     return (head != "C", int(digits) if digits.isdigit() else 999, rel)
@@ -430,6 +587,7 @@ def summarize(by_scenario: dict[str, list[dict]], stage_order: tuple[str, ...]) 
         "cost": cost_summary(records),
         "autonomy": autonomy_summary(records, stage_order),
         "relation_coverage": coverage_summary(records),
+        "triad_references": triad_references_summary(records),
         "ledger": ledger_summary(records),
         "work_sets": work_set_summary(records),
     }
@@ -441,12 +599,14 @@ def one_line(agent: str, summary: dict) -> str:
         return format(v, spec) if isinstance(v, (int, float)) else "--"
     au = summary.get("autonomy") or {}
     cov = summary.get("relation_coverage") or {}
+    st = summary.get("triad_references") or {}
     lg = summary.get("ledger") or {}
     cost = summary.get("cost") or {}
     return (f"{agent:<36} ctx x{fmt(au.get('context_growth_first_to_last'), '.1f'):>5} "
             f"cut {fmt(au.get('pct_stages_via_budget_exhaustion'), '.0f'):>3}% "
             f"gave_up {fmt(au.get('pct_stages_gave_up'), '.0f'):>3}% "
             f"core {fmt(cov.get('core_coverage_mean'), '.2f'):>4} "
+            f"triad {fmt(st.get('objectives_closed_triad'), '.2f'):>4} "
             f"open/run {fmt((lg.get('open_per_run') or {}).get('mean'), '.1f'):>4} "
             f"tok {fmt((cost.get('total_tokens') or {}).get('mean'), ',.0f'):>9} "
             f"s {fmt((cost.get('seconds') or {}).get('mean'), '.0f'):>5}")
