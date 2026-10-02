@@ -134,7 +134,7 @@ LLM_API_KEY=...                  # Bearer token của server vLLM (khớp RunPod
 
 # --- LLM judge (cố định mọi giai đoạn) ---
 JUDGE_MODEL_PROVIDER=openrouter
-JUDGE_MODEL_NAMES=openai/gpt-4o-mini,google/gemini-2.5-flash-lite
+JUDGE_MODEL_NAMES=openai/gpt-6-luna,google/gemini-3.1-flash-lite,deepseek/deepseek-v4.1-flash
 JUDGE_MODEL_BASE_URL=https://openrouter.ai/api/v1
 JUDGE_MODEL_API_KEY_ENV=OPENROUTER_API_KEY
 

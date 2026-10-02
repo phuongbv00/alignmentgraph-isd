@@ -143,6 +143,7 @@ class TestTheLlmJudgeOverARun:
         from isd_experiments.judge import llm
 
         calls = []
+        judges = [{"model": m.name, "addie_score": 50.0} for m in cfg.judge.models]
 
         def fake_evaluate(command, env, scenario):
             calls.append(command)
@@ -150,7 +151,7 @@ class TestTheLlmJudgeOverARun:
             agents = command[command.index("--agents") + 1].split(",")
             rankings = [{"agent_id": a, "rank": i + 1, "total_score": 50.0,
                          "addie_median": 50.0, "trajectory_score": 50.0,
-                         "phase_scores": {"analysis": 1}, "judges": []}
+                         "phase_scores": {"analysis": 1}, "judges": judges}
                         for i, a in enumerate(agents)]
             (out / "comparison_report.json").write_text(json.dumps(
                 {"scenario": {"scenario_id": out.name},
@@ -191,6 +192,19 @@ class TestTheLlmJudgeOverARun:
         assert calls == []
         llm.run(run_dirs=[str(run_dir)], overwrite=True)
         assert len(calls) == len(SCENARIOS)
+
+    def test_a_report_from_another_roster_is_judged_again(self, judged):
+        """Kept, it would be pooled beside rows the declared roster scored."""
+        run_dir, llm, calls = judged
+        llm.run(run_dirs=[str(run_dir)])
+        stale = run_dir / "tiny_split" / SCENARIOS[0] / "comparison_report.json"
+        report = json.loads(stale.read_text(encoding="utf-8"))
+        for row in report["comparison"]["rankings"]:
+            row["judges"] = row["judges"][:-1]
+        stale.write_text(json.dumps(report), encoding="utf-8")
+        calls.clear()
+        llm.run(run_dirs=[str(run_dir)])
+        assert [Path(c[c.index("--output-dir") + 1]).name for c in calls] == [SCENARIOS[0]]
 
     def test_a_dry_run_spends_nothing(self, judged):
         run_dir, llm, calls = judged

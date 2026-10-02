@@ -27,6 +27,7 @@ import json
 import subprocess
 import sys
 import threading
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
@@ -53,8 +54,14 @@ class Job:
     reason: str | None
 
 
-def report_gaps(scenario_dir: Path, agents: tuple[str, ...]) -> str | None:
-    """Why the scenario's report does not already judge these agents, or None."""
+def report_gaps(scenario_dir: Path, agents: tuple[str, ...],
+                roster: tuple[str, ...] = ()) -> str | None:
+    """Why the scenario's report does not already judge these agents, or None.
+
+    ``roster`` is the declared LLM judge models. A row scored by any other set
+    of models is not judged: kept, it would be pooled beside rows scored by the
+    declared roster, and the median of two judges is not the median of three.
+    """
     path = scenario_dir / REPORT
     if not path.exists():
         return "not judged"
@@ -70,11 +77,17 @@ def report_gaps(scenario_dir: Path, agents: tuple[str, ...]) -> str | None:
                   if any(rows[a].get(k) in (None, {}, "") for k in REQUIRED_METRICS)]
     if incomplete:
         return f"missing metrics for {', '.join(incomplete)}"
+    if roster:
+        for agent in agents:
+            models = [str(j.get("model")) for j in rows[agent].get("judges") or []]
+            if Counter(models) != Counter(roster):
+                return (f"judged by another LLM judge roster "
+                        f"({', '.join(sorted(models)) or 'none recorded'})")
     return None
 
 
 def plan(run_dirs: list[Path], only: set[str] | None, overwrite: bool,
-         limit: int | None) -> list[Job]:
+         limit: int | None, roster: tuple[str, ...] = ()) -> list[Job]:
     jobs = []
     for run_dir in run_dirs:
         dirs = rundirs.scenario_dirs(run_dir)
@@ -84,7 +97,8 @@ def plan(run_dirs: list[Path], only: set[str] | None, overwrite: bool,
             agents = tuple(rundirs.produced_agents(scenario_dir, only))
             if not agents:
                 continue
-            reason = "overwrite" if overwrite else report_gaps(scenario_dir, agents)
+            reason = ("overwrite" if overwrite
+                      else report_gaps(scenario_dir, agents, roster))
             jobs.append(Job(run_dir, scenario_dir, agents, reason))
     return jobs
 
@@ -191,7 +205,8 @@ def run(*, run_dirs: list[str] | tuple[str, ...] = (), agents: str = "",
     """
     resolved = rundirs.resolve(run_dirs)
     scenario_root = (scenario_root or paths.scenarios_dir()).resolve()
-    jobs = plan(resolved, rundirs.agent_filter(agents), overwrite, limit)
+    roster = tuple(m.name for m in current_config().judge.models)
+    jobs = plan(resolved, rundirs.agent_filter(agents), overwrite, limit, roster)
     print_scope(jobs)
     pending = [j for j in jobs if j.reason]
     if dry_run or not pending:

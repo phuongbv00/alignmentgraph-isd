@@ -170,9 +170,26 @@ Mức tất định được phép claim: *reproducible up to floating-point noi
 - **Thinking, temperature, decoding và backend được khóa đồng nhất** cho mọi hệ và mọi nấc,
   và metadata backend (endpoint, engine, model revision) được lưu cùng run. Nấc nào đi qua
   router phải được nêu.
-- **Hai LLM judge chấm toàn bộ output TN1**, mỗi judge lưu điểm riêng, cách gộp chốt trước.
-  Với hai judge, median bằng trung bình cộng và không loại được bias. Phải khai đã xác minh cả
-  hai judge nhận đủ output dài (chunking) và không chấm nội dung dài thành "vắng mặt".
+- **Ba LLM judge chấm toàn bộ output TN1**: GPT-6 Luna, Gemini 3.1 Flash-Lite và DeepSeek-V4.1-Flash,
+  ba hãng khác nhau, không hãng nào là của agent (Qwen). Mỗi judge lưu điểm riêng, gộp bằng median
+  của ba (chốt trước). Median của ba loại được một judge lệch; với hai judge thì median chỉ bằng trung
+  bình cộng.
+  - Khai roster thay cặp mặc định của ISD-Agent-Bench (GPT-4o-mini + Gemini 2.5 Flash-Lite). Lý do
+    được phép viết: cặp mặc định chấm hẹp (độ lệch giữa scenario nhỏ) và GPT-4o-mini yếu khi chấm
+    output dài (LongJudgeBench).
+  - Lý do chọn từng judge phải đúng phạm vi bằng chứng: LongJudgeBench đo DeepSeek-V4-Flash (bản
+    trước của V4.1-Flash), phải nói rõ là bản trước. GPT-6 Luna và Gemini 3.1 Flash-Lite **không có**
+    benchmark judge công bố; không được viết như thể có.
+  - Không được biện minh roster bằng kết quả so sánh agent. Tune đã được chấm bằng cả hai roster và
+    thứ hạng thay đổi theo roster; phải khai điều này, và nên báo roster mặc định của benchmark như
+    một lớp sensitivity.
+  - Reasoning của cả ba judge bị tắt (evaluator gửi `reasoning.enabled=false`). GPT-6 Luna không
+    nhận `temperature`, nên judge này không tất định; báo độ dao động khi chấm lại.
+  - Ba judge lệch nhau nhiều về mức điểm tuyệt đối (trên tune: độ lệch chuẩn giữa judge khoảng 12
+    điểm); báo con số này cùng điểm median.
+  - Phải khai đã xác minh cả ba judge nhận đủ output dài và không chấm nội dung dài thành "vắng mặt"
+    (trên tune: 25/26 mục bị đánh ABSENT là vắng thật trong output).
+  - Cần thầy duyệt việc đổi roster (Sprint 2 chốt hai judge GPT-4o-mini và Gemini 2.5 Flash-Lite).
 - **Scope phát triển (`development_mode`) của output được chấm**, và bằng chứng so light–full
   trên cùng scenario (đặc biệt rubric item 12, 17, 19, 22, 30) nếu claim dựa trên light.
 - **Repeat của A0/ReAct-ISD không phải thiết kế lặp cân bằng.** Bảng bảy hệ dùng bộ run chung;

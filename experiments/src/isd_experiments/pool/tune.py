@@ -129,7 +129,8 @@ def _score_summary(rows: list[dict]) -> dict:
 
 # ── reading a tune run without reading it by hand ───────────────────────────
 #
-# A tune-10 run is ten paired scenarios scored by two LLM judges. MEASURED over
+# A tune-10 run is ten paired scenarios scored by every LLM judge of the roster
+# (two when this was measured). MEASURED over
 # six runs (2026-09-23..25): the paired gap between two agents has a standard
 # error of 0.9-1.4 Total points, a baseline whose code did not change moved
 # 84.7-85.8, and the two LLM judges disagreed on which agent was better in 17 of

@@ -112,14 +112,17 @@ development_mode = "full"
 # Score a finished run: `isd-exp judge llm|alignment`, or `run --judge`.
 
 # The benchmark's LLM judge. Only key variable NAMES belong here; a key value
-# is refused.
+# is refused. Three judges of three vendors, none the agents' own, so that the
+# median drops one judge's outlier where the median of two is only their mean.
+# (The benchmark's own default pair is gpt-4o-mini + gemini-2.5-flash-lite.)
 [judge.llm]
 provider = "openrouter"
 base_url = "https://openrouter.ai/api/v1"
 key_env = "OPENROUTER_API_KEY"
 models = [  # in the order the evaluator reports them
-    { name = "openai/gpt-4o-mini" },
-    { name = "google/gemini-2.5-flash-lite" },
+    { name = "openai/gpt-6-luna" },
+    { name = "google/gemini-3.1-flash-lite" },
+    { name = "deepseek/deepseek-v4.1-flash" },
 ]
 
 # The alignment panel. Every arm below is scored by default: the primary pair
