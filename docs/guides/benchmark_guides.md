@@ -932,6 +932,10 @@ nghĩa ở A.2. RQ2 pool từ `alignment_scores.json` (A.3). Kèm section `token
   tên model. Nếu nó vơ nhầm dir (run bỏ dở, run lặp) thì truyền glob hẹp hơn làm đối số, ví dụ
   `./isd-exp pool comparison 'test_90_benchmark_*_c1_2026*'`. Glob của `pool` và `report` tính **từ `results/`**, còn glob
   của `judge llm|alignment` tính từ thư mục đang đứng (`results/...`).
+- **Roster LLM judge được kiểm trước khi pool** (`pool/rosters.py`, dùng chung cho `pool comparison` và `pool ablation`):
+  ô (scenario, agent) nào ghi một roster khác `[judge.llm]` thì pool **dừng** và liệt kê ô đó — chạy lại
+  `judge llm` trên glob ấy rồi pool lại. Report không ghi judge thì không kiểm được: chỉ cảnh báo. Thiếu
+  `alignment_scores.json` của arm chính ở một run dir thì pool in cảnh báo kèm các arm đang có.
 - Kiểm trước khi kết luận: CV giữa r1/r2/r3 của cùng (model, agent) quá lớn (>~20–30%) → soi run lệch. Trend theo size
   đảo chiều ở đâu → kiểm integrity chỗ đó trước khi coi là finding.
 

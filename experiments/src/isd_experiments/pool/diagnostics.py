@@ -206,7 +206,10 @@ def read_cell(scen_dir: Path, agent: str) -> Optional[dict]:
         ledger = summarize_ledger(findings)
 
     run_config = md.get("run_config") if isinstance(md.get("run_config"), dict) else None
+    design = (md.get("autonomy") or {}).get("design") if isinstance(md.get("autonomy"), dict) else None
+    abandoned = (design.get("abandoned_stages") if isinstance(design, dict) else None) or []
     return {
+        "abandoned_stages": [s for s in abandoned if isinstance(s, str)],
         "prompt_tokens": number(tu.get("prompt_tokens")),
         "completion_tokens": number(tu.get("completion_tokens")),
         "total_tokens": number(tu.get("total_tokens")),
@@ -338,6 +341,10 @@ def read_triad_references(output: dict) -> Optional[dict]:
     unrepaired = [a for a in activities if not a.get("repaired")]
     return {
         "n_objectives": n, "n_items": len(items), "n_tasks": len(task_ids),
+        # The same question written more than once counts once: a design whose
+        # items are one question repeated is not a design with that many items.
+        "n_distinct_items": len({" ".join(str(i.get("question") or "").lower().split())
+                                 for i in items if str(i.get("question") or "").strip()}),
         "n_activities": len(activities),
         "objectives_assessed": share(lambda lo: lo in assessed),
         "objectives_practised": share(lambda lo: lo in practised),

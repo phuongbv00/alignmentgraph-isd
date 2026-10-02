@@ -14,7 +14,9 @@ from pathlib import Path
 from .. import paths, runs, schema
 from ..config import LLM_JUDGE_SCORES, Profile
 from ..config import current as current_config
+from ..alignment.presets import PRIMARY_ARTIFACT
 from ..stats import BOOT_SEED, N_BOOT
+from . import rosters
 from .arms import resolve_sensitivity_arms
 from .inference import failure_tests, interaction_tests
 from .llm_judge import compare_model, pool_model
@@ -148,6 +150,12 @@ def run(*, experiment: str = "comparison", patterns: list[str] | None = None,
             print(f"model {label!r}: {len(dirs)} run(s)")
             for d in dirs:
                 print(f"  - {d}")
+
+    all_dirs = [d for dirs in run_dirs_by_model.values() for d in dirs]
+    rosters.require_declared_roster(all_dirs, list(agents or profile.agents), quiet=quiet)
+    if not quiet:
+        rosters.warn_missing_artifact(all_dirs, PRIMARY_ARTIFACT,
+                                      flag="'judge alignment --primary-only' first")
 
     arms = resolve_sensitivity_arms(run_dirs_by_model, explicit=encoders,
                                     auto_encoders=auto_encoders, auto_bloom=auto_bloom)

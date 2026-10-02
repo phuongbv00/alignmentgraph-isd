@@ -33,7 +33,7 @@ from ..config import current as current_config
 from ..runs import iter_scenario_dirs, load_run
 from ..stats import BOOT_SEED, N_BOOT, bootstrap_ci, rank_biserial, wilcoxon_signed_rank
 from ..util import mean as _mean
-from . import diagnostics
+from . import diagnostics, rosters
 from .comparison import discover
 from .llm_judge import compare_model, pool_model
 from .panel import pool_alignment
@@ -583,6 +583,11 @@ def run(*, patterns: list[str] | None = None, out: Path | None = None,
 
     artifact = (presets.current().encoder(encoder).artifact if encoder
                 else presets.PRIMARY_ARTIFACT)
+    all_dirs = [d for dirs in run_dirs_by_model.values() for d in dirs]
+    rosters.require_declared_roster(
+        all_dirs, [a.id for a in profile.arms] + [profile.reference or ""], quiet=quiet)
+    if not quiet:
+        rosters.warn_missing_artifact(all_dirs, artifact, flag="--encoder <arm>")
     pooled = pool(run_dirs_by_model, reference=reference,
                   comparison_pooled=comparison_pooled, scores_filename=artifact)
 

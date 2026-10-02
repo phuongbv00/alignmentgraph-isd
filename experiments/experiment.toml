@@ -30,7 +30,7 @@ slot = "qwen2b"
 model = "Qwen/Qwen3.5-2B"
 family = "Qwen3.5"
 display = "2B"
-base_urls = ["https://qi40ib65xxu4bu-8000.proxy.runpod.net/v1"]
+base_urls = ["https://ikiarxtb7cppzc-8000.proxy.runpod.net/v1"]
 key_env = "VLLM_API_KEY"
 
 [[serving.slots]]

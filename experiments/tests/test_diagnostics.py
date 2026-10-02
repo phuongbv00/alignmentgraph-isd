@@ -283,6 +283,30 @@ class TestReadingTheReport:
         doc, _ = tune.pool({"m": [run_dir]}, [PROPOSED])
         assert "no_c4_references" in doc["runs"][0]["agents"][PROPOSED]["harness"]["attention"]
 
+    def test_an_arm_whose_items_are_one_question_repeated_is_named(self, run_dir):
+        repeated = [{"question": "Same?", "aligned_objective": "ILO-01"}] * 6
+        for sid, items in (("S-001", repeated), ("S-002", [])):
+            _write(run_dir / "train_10" / sid / f"{PROPOSED}_output.json", {"addie_output": {
+                "design": {"learning_objectives": [{"id": "ILO-01", "level": "apply"}]},
+                "development": {"assessment_tools": [{"id": "AT-01", "items": items}]}}})
+        doc, _ = tune.pool({"m": [run_dir]}, [PROPOSED])
+        s = doc["runs"][0]["agents"][PROPOSED]
+        assert s["items"]["runs_with_repeated_items"] == 1
+        assert s["items"]["runs_without_items"] == 1
+        assert {"repeated_items", "no_assessment_items"} <= set(s["harness"]["attention"])
+
+    def test_a_missing_panel_artifact_names_the_arms_that_are_there(self, run_dir, capsys):
+        _write(run_dir / "train_10" / "S-001" / "alignment_scores.bgem3.json", {"agents": {}})
+        doc, _ = tune.pool({"m": [run_dir]}, [PROPOSED])
+        assert doc["runs"][0]["panel_missing"] == ["bgem3"]
+        tune.print_report(doc)
+        assert "--encoder" in capsys.readouterr().out
+
+    def test_one_scenario_says_the_items_cannot_be_separated(self, capsys):
+        g = tune.paired_gap({"S1": TestGapWithItsNoise._view(80.0, 70.0)}, PROPOSED, BASELINE)
+        tune._print_gap("gap", g)
+        assert "not computable (n=1" in capsys.readouterr().out
+
     def test_a_comparison_run_reads_one_line_per_baseline_and_rungs_side_by_side(
             self, tmp_path, capsys):
         others = ["b1", "b2", "b3"]
@@ -562,3 +586,28 @@ def test_pool_ablation_reads_the_named_encoder_arm(tmp_path):
     bgem3 = ablation.per_scenario_maps([run], [PROPOSED], "alignment_scores.bgem3.json")
     assert primary["porter_mean"][PROPOSED] == {}
     assert bgem3["porter_mean"][PROPOSED] == {"S-001": 0.4}
+
+
+class TestThePaperPoolsRefuseAnotherRoster:
+    """``pool comparison`` / ``pool ablation`` feed the paper: a cell scored by
+    another LLM judge roster than the declared one stops them."""
+
+    def test_a_cell_judged_by_another_roster_stops_the_pool(self, run_dir):
+        from isd_experiments.pool import rosters
+        _report(run_dir / "train_10" / "S-001", {PROPOSED: 80.0}, judges=("old-a", "old-b"))
+        with pytest.raises(SystemExit, match="another LLM judge roster"):
+            rosters.require_declared_roster([run_dir], [PROPOSED])
+
+    def test_the_declared_roster_and_an_unrecorded_one_pass(self, run_dir, capsys):
+        from isd_experiments.pool import rosters
+        _report(run_dir / "train_10" / "S-001", {PROPOSED: 80.0}, judges=rosters.declared())
+        _write(run_dir / "train_10" / "S-002" / "comparison_report.json", {"comparison": {
+            "rankings": [{"agent_id": PROPOSED, "total_score": 1.0, "judges": []}]}})
+        rosters.require_declared_roster([run_dir], [PROPOSED])
+        assert "record no LLM judge" in capsys.readouterr().out
+
+    def test_an_absent_arm_is_never_a_baseline(self, run_dir):
+        doc, _ = tune.pool({"m": [run_dir]}, [PROPOSED, "alignmentgraph-isd-single-prose",
+                                              BASELINE])
+        assert set(doc["runs"][0]["gaps"]) == {f"{PROPOSED} - {BASELINE}",
+                                               f"alignmentgraph-isd-single-prose - {BASELINE}"}

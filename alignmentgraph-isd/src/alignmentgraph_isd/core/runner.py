@@ -96,6 +96,9 @@ def _phase(trajectory: TrajectoryLogger, phase: str, index: int, total: int):
 
 
 #: What one stage cost, as ``metadata.autonomy`` reports it on both arms.
+#: ``llm_calls`` counts every REQUEST, a failed one included (each is a
+#: ``trajectory.log_llm_call``), so a stage's calls can exceed the answered
+#: calls the runner's token counter reports; the tokens are the same tokens.
 SPEND_FIELDS = ("llm_calls", "prompt_tokens", "completion_tokens")
 
 

@@ -450,6 +450,32 @@ def _run_roster(run_dir: Path) -> list[str]:
     return [a for a in cfg.get("agents") or [] if isinstance(a, str)]
 
 
+#: A run whose items are fewer than this share distinct questions is flagged:
+#: the count the LLM judge and the panel read is then mostly repetition.
+REPEATED_ITEMS_SHARE = 0.5
+
+
+def _item_counts(by_scenario: dict[str, list[dict]]) -> dict:
+    """Items per run and how many of them are distinct questions, off the
+    deliverable; a run with no item, or mostly repeats, is named."""
+    reads = [rec["triad_references"] for recs in by_scenario.values() for rec in recs
+             if isinstance(rec.get("triad_references"), dict)]
+    items = [r.get("n_items") or 0 for r in reads]
+    distinct = [r.get("n_distinct_items", r.get("n_items")) or 0 for r in reads]
+    return {"n_runs": len(reads),
+            "items_mean": _mean([float(x) for x in items]) if items else None,
+            "distinct_mean": _mean([float(x) for x in distinct]) if distinct else None,
+            "runs_without_items": sum(1 for n in items if n == 0),
+            "runs_with_repeated_items": sum(
+                1 for n, k in zip(items, distinct) if n and k / n < REPEATED_ITEMS_SHARE)}
+
+
+def _proposed_ids() -> set[str]:
+    """Every agent id the proposed system's adapter answers to."""
+    from ..runner.agents import proposed_cells
+    return set(proposed_cells(current_config()))
+
+
 def _reference(proposed: list[str]) -> str:
     """The arm every other arm is read against: the ablation's declared
     reference when it ran here, else the first agent with harness records."""
@@ -627,15 +653,31 @@ def pool(run_dirs_by_model: dict[str, list[Path]], agents: list[str] | None,
             if summary.get("autonomy"):
                 summary["harness"] = run_health(cells[a], outputs[a])
                 tr = summary.get("triad_references") or {}
+                attention = summary["harness"]["attention"]
                 if tr.get("activities_prepare") == 0:
                     # Activities exist and not one names an assessment task: C4
                     # cannot be read on this arm at all, whatever its score says.
-                    summary["harness"]["attention"].append("no_c4_references")
+                    attention.append("no_c4_references")
+                summary["items"] = _item_counts(cells[a])
+                if summary["items"]["runs_without_items"]:
+                    attention.append("no_assessment_items")
+                if summary["items"]["runs_with_repeated_items"]:
+                    attention.append("repeated_items")
+                abandoned: dict[str, int] = {}
+                for recs in cells[a].values():
+                    for rec in recs:
+                        for st in rec.get("abandoned_stages") or []:
+                            abandoned[st] = abandoned.get(st, 0) + 1
+                summary["abandoned_stages"] = abandoned
             summary["missing_scenarios"] = [sid for sid in scenario_ids if sid not in cells[a]]
             summary["judge_reliability"] = _judge_reliability(views, a)
             summary["findings_by_stage"] = _stage_findings_summary(stage_findings[a])
             per_agent[a] = summary
-        proposed = [a for a in per_agent if (per_agent[a].get("autonomy"))]
+        # Proposed = an id the adapter answers to, whether or not it produced
+        # anything: an arm that failed everywhere is a failed arm, never a
+        # baseline the others are measured against.
+        known = _proposed_ids()
+        proposed = [a for a in per_agent if a in known or per_agent[a].get("autonomy")]
         gaps = arm_gaps = fact = {}
         if not mixed_roster:
             gaps = {f"{p} - {b}": paired_gap(views, p, b)
@@ -647,7 +689,13 @@ def pool(run_dirs_by_model: dict[str, list[Path]], agents: list[str] | None,
                         for p in proposed if p != ref}
             cells_2x2 = _arm_cells(list(per_agent))
             fact = factorial(views, cells_2x2) if cells_2x2 else {}
+        artifacts = sorted({p.name for _sid, sd in diagnostics.scenario_dirs(run_dir)
+                            for p in sd.glob("alignment_scores*.json")})
+        names = _arm_names()
+        panel_missing = (None if panel_artifact in artifacts or not artifacts
+                         else [names.get(a, a) for a in artifacts])
         entries.append({"run_dir": run_dir.name, "model": label,
+                        "panel_missing": panel_missing,
                         "n_scenarios": len(scenario_ids), "roster": agents,
                         "posture": _posture(run_dir),
                         "judge_rosters": {" + ".join(r): n for r, n in rosters.items()},
@@ -695,7 +743,10 @@ def _print_gap(title: str, g: dict) -> None:
         if all(x and x.get("detected") for x in per) and len(
                 {x["mean"] > 0 for x in per}) == 1:
             detected.append(f"{item} " + "/".join(f"{x['mean']:+.1f}" for x in per))
-    if models:
+    n = (g.get("total_score") or {}).get("n", 0)
+    if models and n < 2:
+        print(f"      items every LLM judge separates: not computable (n={n}, no standard error)")
+    elif models:
         print("      items every LLM judge separates: " + (", ".join(detected) or "none"))
     if any(sig in g for sig in PANEL):
         print("      alignment: " + "  ".join(
@@ -720,6 +771,11 @@ def print_report(doc: dict) -> None:
     print("TUNE DIAGNOSTICS")
     print("=" * 78)
     print(f"alignment signals from {doc['config'].get('panel_artifact')}")
+    for entry in doc["runs"]:
+        if entry.get("panel_missing"):
+            print(f"  ! {entry['run_dir']}: no scenario has {doc['config'].get('panel_artifact')}"
+                  f"; arms present: {', '.join(entry['panel_missing']) or 'none'}"
+                  " -- pass --encoder <arm> to read one of them")
     for entry in doc["runs"]:
         print(f"\n[{entry['run_dir']}]  {entry.get('n_scenarios', '?')} scenarios")
         posture = entry.get("posture") or {}
@@ -761,8 +817,9 @@ def print_report(doc: dict) -> None:
             if au:
                 ceiling = "/".join(str(c) for c in
                                    (s.get("run_config") or {}).get("max_turns") or ["?"])
-                print(f"      turns by stage (mean/p90/max, ceiling {ceiling}), "
-                      f"% gave up, % cut, Developer sets gave up per run:")
+                print(f"      turns by stage (mean/p90/max, ceiling {ceiling}; the stage's own "
+                      f"loop), % gave up, % cut, then requests (failed ones included) and tokens "
+                      f"of the WHOLE stage (Developers included), Developer sets gave up per run:")
                 for stage, st in au["by_stage"].items():
                     t = st.get("turns_used") or {}
                     if not t.get("n"):
@@ -823,9 +880,18 @@ def print_report(doc: dict) -> None:
                       f"  required_empty {hh.get('required_empty', '--')}")
                 if hh.get("stage_abandoned") or hh.get("repair_window_closed") or hh.get(
                         "budget_exhausted"):
+                    ab = s.get("abandoned_stages") or {}
                     print(f"      loop ends: stage_abandoned {hh.get('stage_abandoned', 0):.0f}"
-                          f"  repair_window_closed {hh.get('repair_window_closed', 0):.0f}"
+                          + (" (" + ", ".join(f"{st} {n}" for st, n in ab.items()) + ")"
+                             if ab else "")
+                          + f"  repair_window_closed {hh.get('repair_window_closed', 0):.0f}"
                           f"  budget_exhausted {hh.get('budget_exhausted', 0):.0f}")
+                it = s.get("items") or {}
+                if it.get("n_runs"):
+                    print(f"      assessment items per run {it['items_mean']:.1f} "
+                          f"({it['distinct_mean']:.1f} distinct questions)  "
+                          f"runs with none {it['runs_without_items']}  "
+                          f"runs mostly repeats {it['runs_with_repeated_items']}")
                 print("      ATTENTION: " + (", ".join(hh["attention"]) if hh.get("attention")
                                              else "none"))
             fb = s.get("fabrication") or {}
@@ -877,23 +943,27 @@ def _print_across(doc: dict) -> None:
         for p in (*(e.get("gaps") or {}), *(e.get("arm_gaps") or {})):
             if p not in pairs:
                 pairs.append(p)
-    heads = [f"{e['model']}:{e['run_dir'][-15:]}" for e in runs]
+    # model + MMDD_HHMM: two runs of one model a day apart stay apart.
+    heads = [f"{e['model']}:{e['run_dir'][-11:-2]}" for e in runs]
     # Columns judged by another LLM judge roster than the first are marked: a
     # gap is a difference within one roster, and two rosters' gaps are not
     # the same quantity.
     first = next(iter(runs[0].get("judge_rosters") or {}), None)
     other = [bool(e.get("judge_rosters")) and next(iter(e["judge_rosters"])) != first
              for e in runs]
-    heads = [h[:23] + ("*" if o else "") for h, o in zip(heads, other)]
+    heads = [h + ("*" if o else "") for h, o in zip(heads, other)]
+    width = max(14, *(len(h) + 2 for h in heads))
     for score, label in (("total_score", "Total"), ("addie_median", "ADDIE")):
         print(f"\n{label} gap by run dir (mean±se):")
-        print(f"  {'pair':<52}" + "".join(f"{h:>26}" for h in heads))
+        print(f"  {'pair':<52}" + "".join(f"{h:>{width}}" for h in heads))
         for p in pairs:
             cells = []
             for e in runs:
                 g = (e.get("gaps") or {}).get(p) or (e.get("arm_gaps") or {}).get(p)
                 cells.append(_fmt_gap((g or {}).get(score)))
-            print(f"  {p:<52}" + "".join(f"{c:>26}" for c in cells))
+            if all(c == "--" for c in cells):
+                continue
+            print(f"  {p:<52}" + "".join(f"{c:>{width}}" for c in cells))
     if any(other):
         print(f"  * judged by another LLM judge roster than {first!r}: do not compare "
               "across the columns")
