@@ -160,7 +160,7 @@ contrast = { kind = "own_minus_foreign", suffix = "contrast", macro = "Contrast"
 [experiment.tune]
 # Calibration only; never enters the paper (own tag namespace, no manifest).
 title = "TUNE - cost and budget calibration"
-dataset = "train_1"
+dataset = "train_10"
 slots = ["qwen2b"]
 tags = ["t1"]
 rate_limit = "turbo"
