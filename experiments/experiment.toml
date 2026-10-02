@@ -166,7 +166,15 @@ tags = ["t1"]
 rate_limit = "turbo"
 session_prefix = "tune"
 confirm = false
-agents = ["alignmentgraph-isd", "react-isd"]
+# The reference, the three other ablation arms (ids from [experiment.ablation])
+# and the strongest baseline, all in one run on train_10.
+agents = [
+    "alignmentgraph-isd",
+    "alignmentgraph-isd-multi-prose",
+    "alignmentgraph-isd-single-graph",
+    "alignmentgraph-isd-single-prose",
+    "react-isd",
+]
 
 [experiment.comparison]
 title = "COMPARISON - proposed system vs baselines across model scale"
@@ -190,11 +198,8 @@ agents = [
 # 2x2 decomposition x substrate. The reference arm runs here too, so every
 # delta comes from one run.
 title = "ABLATION - decomposition x substrate"
-# TODO: TUNING the four arms (Gate 1). Restore the official setting before freeze:
-# dataset = "test_30"
-# slots = ["qwen08b", "qwen4b"]          # both ends of the deployment envelope
-dataset = "train_10"
-slots = ["qwen2b"]
+dataset = "test_30"
+slots = ["qwen08b", "qwen4b"]          # both ends of the deployment envelope
 tags = ["a1"]
 rate_limit = "turbo"
 session_prefix = "ablation"
