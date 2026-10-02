@@ -30,7 +30,7 @@ slot = "qwen2b"
 model = "Qwen/Qwen3.5-2B"
 family = "Qwen3.5"
 display = "2B"
-base_urls = ["https://<POD_ID>-8000.proxy.runpod.net/v1"]
+base_urls = ["https://qi40ib65xxu4bu-8000.proxy.runpod.net/v1"]
 key_env = "VLLM_API_KEY"
 
 [[serving.slots]]
@@ -160,14 +160,14 @@ contrast = { kind = "own_minus_foreign", suffix = "contrast", macro = "Contrast"
 [experiment.tune]
 # Calibration only; never enters the paper (own tag namespace, no manifest).
 title = "TUNE - cost and budget calibration"
-dataset = "train_10"
+dataset = "train_1"
 slots = ["qwen2b"]
 tags = ["t1"]
 rate_limit = "turbo"
 session_prefix = "tune"
 confirm = false
 # The reference, the three other ablation arms (ids from [experiment.ablation])
-# and the strongest baseline, all in one run on train_10.
+# and the strongest baseline, all in one run on the tune dataset.
 agents = [
     "alignmentgraph-isd",
     "alignmentgraph-isd-multi-prose",

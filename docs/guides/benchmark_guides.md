@@ -394,7 +394,14 @@ trước khi mở rộng ra đủ 4 rung. Tất cả những thứ đó có sẵ
 ```bash
 ./isd-exp pool tune                                    # mọi run dir của profile tune
 ./isd-exp pool tune 'train_10_benchmark_*_t1_2026092*' # hoặc chọn bằng glob
+./isd-exp pool tune --experiment ablation              # run dir của comparison/ablation, cùng bộ chẩn đoán
+./isd-exp pool tune --against results/<run_dir_cũ>     # gap đã dịch chuyển bao nhiêu so với lần trước
 ```
+
+Mỗi run dir được đọc với **roster nó được launch** (`benchmark_summary.json`), nên cùng một lệnh đọc được run
+tune, comparison và ablation. Đọc run comparison/ablation ở đây là **chẩn đoán harness**, không phải kết quả gộp
+(kết quả là `pool comparison` / `pool ablation`); với `--experiment` khác `tune` file ra là
+`pooled_tune.<experiment>.json`.
 
 Đọc run dir **dù đã chấm hay chưa** (điểm LLM judge / alignment được điền nếu có `comparison_report.json` /
 `alignment_scores.json`). **Mỗi run dir là một mục riêng**, không gộp theo model: các lần tune liên tiếp là các vòng
@@ -414,6 +421,27 @@ hiệu chỉnh liên tiếp, cần đặt cạnh nhau chứ không lấy trung b
   (`converged`/`budget`/`unowned`/`unseen`), % đã hiện cho agent, open theo loại.
 - **work sets** theo phase, **health** (% run dừng vì không có module, % có lỗi, % `ready_to_aggregate`), **cost**.
 - `run_config` liệt kê mọi giá trị đã thấy của các tham số hiệu chỉnh; một run dir trộn hai posture sẽ bị cảnh báo.
+- **posture** của run dir (`pinned_env`: thinking budget, max output, temperature, structured outputs, development
+  mode, fanout) và **roster LLM judge**. Run dir chấm bằng hai roster thì **không tính gap** (không bao giờ gộp hai
+  roster) — chấm lại bằng một roster.
+- mỗi agent: `n/N` scenario và danh sách **MISSING**; số scenario LLM judge bất đồng cao (`high_disagreement`),
+  độ rộng khoảng điểm giữa các judge.
+- **gap ghép cặp theo scenario** (mean±se, `~` = trong nhiễu 2 se) trên Total/ADDIE/Traj, từng judge, rubric item
+  mọi judge cùng tách được, **và 6 alignment signal**: từng hệ đề xuất so với từng baseline, từng arm ablation so
+  với `reference`, và khi có đủ 4 ô thì bảng **2×2** (hai main effect + interaction, multi/graph trừ single/prose).
+  `--against` tính độ dịch của mọi gap đó.
+- **finding theo stage sở hữu** (open/all mỗi run): đọc dự đoán chất lượng giảm theo vị trí stage ở arm single.
+  Substrate prose chỉ chạy check trong artifact nên số của arm prose thấp hơn theo cấu tạo — đọc trong một arm.
+- **alignment theo arm** của panel (mọi `alignment_scores*.json` có mặt: encoder, Bloom, contrast).
+- **chi phí theo stage**: số call và token mỗi stage, cả hai arm đo cùng một cách (hiệu tổng chi tiêu của run giữa
+  hai ranh giới stage; arm single ghi `spend_by_stage`). Chỉ có ở run sinh sau khi harness ghi trường này.
+- nhiều baseline (run comparison) thì mỗi cặp một dòng; chi tiết theo judge/item nằm trong JSON. Có từ hai run
+  dir trở lên thì in thêm bảng **gap theo run dir** (Total, ADDIE) — các rung của comparison hoặc các lần tune
+  liên tiếp; cột chấm bằng roster khác cột đầu được đánh `*`.
+- ATTENTION `no_c4_references`: arm có activity nhưng không activity nào trỏ tới task — C4 không đọc được.
+- bộ đếm harness thêm `stage_abandoned` (single đóng stage ở `SUBMIT_CAP`), `repair_window_closed`,
+  `budget_exhausted`; bảng stage thêm số set Developer bỏ cuộc; dòng work set in `tasks_planned` so với
+  `task_ceiling`.
 
 Baseline chỉ có cost và điểm; mọi trường harness là `null` (không phải 0). Run sinh trước khi runner ghi
 `<agent>_violations.json` sẽ không có ledger.

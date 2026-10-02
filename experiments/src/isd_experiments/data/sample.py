@@ -227,6 +227,9 @@ PRESETS = {
     # its results never enter the paper, and at n=10 no panel comparison could
     # reach significance under the Holm family anyway.
     "tune-10":     ("train", "train_10", 1, [], 10),
+    # One scenario OF train_10, for a smoke run of the harness before the
+    # tune slice: drawn from it, so its result sits beside a tune run's.
+    "tune-1":      ("train_10", "train_1", 1, [], 1),
     # The ablation split must not overlap the tuning split: tuning results
     # never enter the paper, and a scenario seen during tuning is no longer
     # held out.

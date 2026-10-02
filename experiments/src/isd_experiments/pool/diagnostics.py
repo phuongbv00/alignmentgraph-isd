@@ -51,7 +51,7 @@ AUTONOMY_FIELDS = ("context_len", "turns_used", "submits_rejected", "repeated_ca
                    "history_dropped", "reads", "batched_calls", "compactions",
                    "compaction_summaries", "tool_errors", "truncated_turns",
                    "repair_turns", "set_turns", "set_submits_rejected", "sets_gave_up",
-                   "n_sets")
+                   "n_sets", "llm_calls", "prompt_tokens", "completion_tokens")
 
 #: Per-stage booleans, reported as a percentage of stage runs.
 AUTONOMY_FLAGS = ("gave_up", "via_budget_exhaustion")
@@ -127,7 +127,7 @@ def _split_single_record(raw: dict, autonomy: dict) -> dict:
     That arm walks every stage in one loop and reports one record, so a stage
     series -- the reading of the registered prediction that context grows with
     stage position -- needs the per-stage numbers it keeps beside the totals
-    (``context_len_by_stage``, ``turns_by_stage``). They become per-stage
+    (``context_len_by_stage``, ``turns_by_stage``, ``spend_by_stage``). They become per-stage
     entries like the multi arm's; the run-level ``context_len`` and
     ``turns_used`` leave the ``design`` entry, which would otherwise read as
     one more stage at the end of the series. The flags (``via_budget_exhaustion``,
@@ -136,7 +136,9 @@ def _split_single_record(raw: dict, autonomy: dict) -> dict:
     if not isinstance(design, dict) or not isinstance(design.get("context_len_by_stage"), dict):
         return autonomy
     turns = design.get("turns_by_stage") if isinstance(design.get("turns_by_stage"), dict) else {}
-    out = {stage: {"context_len": ctx, **({"turns_used": turns[stage]} if stage in turns else {})}
+    spend = design.get("spend_by_stage") if isinstance(design.get("spend_by_stage"), dict) else {}
+    out = {stage: {"context_len": ctx, **({"turns_used": turns[stage]} if stage in turns else {}),
+                   **(spend.get(stage) if isinstance(spend.get(stage), dict) else {})}
            for stage, ctx in design["context_len_by_stage"].items()}
     out["design"] = {k: v for k, v in autonomy.get("design", {}).items()
                      if k not in ("context_len", "turns_used")}
@@ -380,10 +382,14 @@ def harness_counts(events: list) -> dict:
     validator still refused; ``pass_skipped`` a rejection never sent to a pass
     (no decoder can fix it, or its prompt would not fit the window). ``rejected_empty_args`` is a submit that arrived
     with no arguments at all -- the transport failure the constrained pass
-    exists for -- apart from every other rejection."""
+    exists for -- apart from every other rejection. ``stage_abandoned`` is a
+    single-arm stage closed at ``SUBMIT_CAP`` unfinished, ``repair_window_closed``
+    the single arm's repair allowance running out, ``budget_exhausted`` a loop
+    ended by its turn ceiling."""
     out = {"passes": 0, "pass_accepted": 0, "pass_empty": 0, "pass_refused": 0, "pass_skipped": 0,
            "rejected": 0, "rejected_empty_args": 0, "gave_up": 0, "repeats_refused": 0,
-           "schema_keywords_dropped": 0,
+           "schema_keywords_dropped": 0, "stage_abandoned": 0, "repair_window_closed": 0,
+           "budget_exhausted": 0,
            **{kind: 0 for kind, _ in _ERROR_KINDS}}
     for event in events:
         if not isinstance(event, dict):
@@ -408,6 +414,8 @@ def harness_counts(events: list) -> dict:
                 out["rejected_empty_args"] += 1
         elif action == "agentic_gave_up":
             out["gave_up"] += 1
+        elif action in ("stage_abandoned", "repair_window_closed", "budget_exhausted"):
+            out[action] += 1
         elif action == "repeated_tool_call":
             out["repeats_refused"] += 1
         elif action == "argument_reshaped" and "schema keyword dropped" in asked:

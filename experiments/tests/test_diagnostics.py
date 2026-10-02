@@ -174,6 +174,157 @@ class TestPoolTune:
         assert rows[0][sig] == 0.42
 
 
+def _report(scen: Path, scores: dict[str, float], *, judges=("judge-a", "judge-b"),
+            disagree: bool = False) -> None:
+    """A comparison_report.json scoring each agent the same under every judge."""
+    _write(scen / "comparison_report.json", {"comparison": {"rankings": [
+        {"agent_id": a, "total_score": v, "addie_median": v, "trajectory_score": v,
+         "high_disagreement": disagree, "score_range": f"{v - 2}-{v + 2}",
+         "judges": [{"model": j, "addie_score": v, "trajectory_score": v} for j in judges]}
+        for a, v in scores.items()]}})
+
+
+class TestPoolTuneReadsEveryExperiment:
+    """One pool over a tune, a comparison or an ablation run dir: each read with
+    the roster it was launched with, judged by one LLM judge roster only."""
+
+    def test_a_run_dir_is_read_with_the_roster_it_was_launched_with(self, run_dir):
+        _write(run_dir / "benchmark_summary.json", {"config": {
+            "agents": [PROPOSED], "rate_limit": "turbo",
+            "pinned_env": {"AGENT_MODEL_THINKING_BUDGET": "32"}}})
+        doc, _ = tune.pool({"m": [run_dir]}, None)
+        entry = doc["runs"][0]
+        assert entry["roster"] == [PROPOSED] and list(entry["agents"]) == [PROPOSED]
+        assert entry["posture"] == {"thinking_budget": "32", "rate_limit": "turbo"}
+
+    def test_a_missing_scenario_is_named(self, run_dir):
+        (run_dir / "train_10" / "S-002" / f"{BASELINE}_trajectory.json").unlink()
+        doc, _ = tune.pool({"m": [run_dir]}, [PROPOSED, BASELINE])
+        assert doc["runs"][0]["agents"][BASELINE]["missing_scenarios"] == ["S-002"]
+        assert doc["runs"][0]["agents"][PROPOSED]["missing_scenarios"] == []
+
+    def test_two_judge_rosters_are_never_pooled_into_one_gap(self, run_dir):
+        _report(run_dir / "train_10" / "S-001", {PROPOSED: 80.0, BASELINE: 78.0})
+        _report(run_dir / "train_10" / "S-002", {PROPOSED: 80.0, BASELINE: 78.0},
+                judges=("judge-a", "judge-c"))
+        doc, _ = tune.pool({"m": [run_dir]}, [PROPOSED, BASELINE])
+        entry = doc["runs"][0]
+        assert entry["mixed_roster"] and entry["gaps"] == {}
+
+    def test_two_agents_judged_by_different_rosters_in_one_scenario_are_mixed(self, run_dir):
+        # A+B for one agent, A+C for the other, in EVERY scenario: a union over
+        # the scenario would read one roster, A+B+C.
+        for sid in ("S-001", "S-002"):
+            scen = run_dir / "train_10" / sid
+            _report(scen, {PROPOSED: 80.0}, judges=("judge-a", "judge-b"))
+            doc = json.loads((scen / "comparison_report.json").read_text())
+            _report(scen, {BASELINE: 78.0}, judges=("judge-a", "judge-c"))
+            other = json.loads((scen / "comparison_report.json").read_text())
+            doc["comparison"]["rankings"] += other["comparison"]["rankings"]
+            _write(scen / "comparison_report.json", doc)
+        doc, _ = tune.pool({"m": [run_dir]}, [PROPOSED, BASELINE])
+        entry = doc["runs"][0]
+        assert entry["mixed_roster"] and entry["gaps"] == {}
+        assert "total_score" not in entry["agents"][PROPOSED]["scores"], (
+            "two rosters' scores are not pooled into one mean either")
+
+    def test_an_agent_that_failed_everywhere_stays_as_zero_of_n(self, run_dir):
+        _write(run_dir / "benchmark_summary.json", {"scenarios": {"train_10": {
+            "S-001": {}, "S-002": {}, "S-003": {}}}})
+        doc, _ = tune.pool({"m": [run_dir]}, [PROPOSED, BASELINE, "never-ran"])
+        entry = doc["runs"][0]
+        assert entry["n_scenarios"] == 3, "a scenario where every agent failed still counts"
+        assert entry["agents"]["never-ran"]["n_scenarios"] == 0
+        assert entry["agents"]["never-ran"]["missing_scenarios"] == ["S-001", "S-002", "S-003"]
+        assert entry["agents"][PROPOSED]["missing_scenarios"] == ["S-003"]
+
+    def test_a_shift_across_two_judge_rosters_is_not_computed(self, tmp_path, run_dir):
+        earlier = tmp_path / "train_10_benchmark_qwen3.5-9b_t1_20251231_000000"
+        for root, judges in ((earlier, ("judge-a", "judge-c")), (run_dir, ("judge-a", "judge-b"))):
+            for sid in ("S-001", "S-002"):
+                scen = root / "train_10" / sid
+                _scenario(scen)
+                _report(scen, {PROPOSED: 80.0, BASELINE: 70.0}, judges=judges)
+        doc, _ = tune.pool({"m": [run_dir]}, [PROPOSED, BASELINE])
+        tune.add_shifts(doc, earlier)
+        sv = doc["runs"][0]["shift_vs"]
+        assert sv["pairs"] == {} and "another LLM judge roster" in sv["skipped"]
+
+    def test_the_gap_covers_the_alignment_signals_too(self, run_dir):
+        sig = tune.PANEL[0]
+        for i, sid in enumerate(("S-001", "S-002")):
+            scen = run_dir / "train_10" / sid
+            _report(scen, {PROPOSED: 80.0 + i, BASELINE: 78.0}, disagree=bool(i))
+            _write(scen / "alignment_scores.json",
+                   {"agents": {PROPOSED: {sig: 0.8}, BASELINE: {sig: 0.5 + i / 10}}})
+        doc, _ = tune.pool({"m": [run_dir]}, [PROPOSED, BASELINE])
+        g = doc["runs"][0]["gaps"][f"{PROPOSED} - {BASELINE}"]
+        assert g[sig]["mean"] == pytest.approx(0.25)
+        assert g["total_score"]["mean"] == pytest.approx(2.5)
+        rel = doc["runs"][0]["agents"][PROPOSED]["judge_reliability"]
+        assert rel["high_disagreement"] == 1 and rel["range_mean"] == pytest.approx(4.0)
+
+    def test_findings_are_charged_to_the_stage_their_family_writes(self, run_dir):
+        scen = run_dir / "train_10" / "S-001"
+        _write(scen / f"{PROPOSED}_violations.json", [
+            {"type": "C2", "outcome": "open", "first_family": "assessment_designer"},
+            {"type": "C3", "outcome": "repaired_by_agent", "first_family": "activity_designer"}])
+        assert tune._findings_by_stage(scen, PROPOSED) == {
+            "open": {"assessment": 1}, "all": {"assessment": 1, "activities": 1}}
+
+
+class TestReadingTheReport:
+    def test_an_arm_with_no_c4_reference_is_named(self, run_dir):
+        for sid in ("S-001", "S-002"):
+            _write(run_dir / "train_10" / sid / f"{PROPOSED}_output.json", {"addie_output": {
+                "design": {"learning_objectives": [{"id": "ILO-01", "level": "apply"}],
+                           "learning_activities": [{"aligned_objectives": ["ILO-01"]}]},
+                "development": {"assessment_tools": [{"id": "AT-01", "items": []}]}}})
+        doc, _ = tune.pool({"m": [run_dir]}, [PROPOSED])
+        assert "no_c4_references" in doc["runs"][0]["agents"][PROPOSED]["harness"]["attention"]
+
+    def test_a_comparison_run_reads_one_line_per_baseline_and_rungs_side_by_side(
+            self, tmp_path, capsys):
+        others = ["b1", "b2", "b3"]
+        dirs = []
+        for k, stamp in enumerate(("20260101_000000", "20260102_000000")):
+            root = tmp_path / f"test_90_benchmark_m{k}_c1_{stamp}"
+            for sid in ("S-001", "S-002"):
+                scen = root / "test_90" / sid
+                _scenario(scen)
+                for b in others:
+                    _write(scen / f"{b}_trajectory.json", {"metadata": {}})
+                _report(scen, {PROPOSED: 80.0 + k, **{b: 70.0 for b in others}})
+            dirs.append(root)
+        doc, _ = tune.pool({"m0": [dirs[0]], "m1": [dirs[1]]}, [PROPOSED, *others])
+        tune.print_report(doc)
+        out = capsys.readouterr().out
+        assert "gaps to each baseline" in out
+        assert "Total gap by run dir" in out and "+11.0" in out
+
+
+class TestFactorial:
+    CELLS = {("multi", "graph"): "mg", ("single", "graph"): "sg",
+             ("multi", "prose"): "mp", ("single", "prose"): "sp"}
+
+    def test_main_effects_and_interaction_read_off_the_four_cells(self):
+        # decomposition +10 under graph, +4 under prose; graph +2 under multi, -4 under single
+        views = {f"S{i}": {"mg": {"total_score": 80.0 + i}, "sg": {"total_score": 70.0 + i},
+                           "mp": {"total_score": 78.0 + i}, "sp": {"total_score": 74.0 + i}}
+                 for i in range(3)}
+        f = tune.factorial(views, self.CELLS)["total_score"]
+        assert f["decomposition|graph"]["mean"] == pytest.approx(10.0)
+        assert f["decomposition|prose"]["mean"] == pytest.approx(4.0)
+        assert f["decomposition"]["mean"] == pytest.approx(7.0)
+        assert f["substrate"]["mean"] == pytest.approx((2.0 - 4.0) / 2)
+        assert f["interaction"]["mean"] == pytest.approx(6.0)
+
+    def test_a_scenario_missing_a_cell_is_left_out(self):
+        views = {"S1": {"mg": {"total_score": 1.0}, "sg": {"total_score": 1.0},
+                        "mp": {"total_score": 1.0}}}
+        assert tune.factorial(views, self.CELLS) == {}
+
+
 @pytest.fixture(scope="module")
 def pooled_ablation(tmp_path_factory):
     from isd_experiments.pool import ablation
@@ -237,6 +388,12 @@ class TestHarnessCounters:
         assert (c["rejected"], c["rejected_empty_args"]) == (2, 1)
         assert (c["gave_up"], c["context_overflow"], c["completion_cap"], c["connection"]) == (1, 1, 1, 1)
         assert c["schema_keywords_dropped"] == 2
+
+    def test_the_single_arms_loop_ends_are_counted(self):
+        c = diagnostics.harness_counts([{"action": "stage_abandoned", "context": {}},
+                                        {"action": "repair_window_closed", "context": {}},
+                                        {"action": "budget_exhausted", "context": {}}])
+        assert (c["stage_abandoned"], c["repair_window_closed"], c["budget_exhausted"]) == (1, 1, 1)
 
     def test_a_baseline_has_no_harness_record(self, run_dir):
         assert diagnostics.read_cell(run_dir / "train_10" / "S-001", BASELINE)["harness"] is None
@@ -377,6 +534,17 @@ class TestSingleArmStages:
         # The run-level flags stay on the run, not on any one stage.
         assert au["by_stage"]["design"]["pct_via_budget_exhaustion"] == 100.0
         assert "context_len" not in au["by_stage"]["design"]
+
+    def test_what_each_stage_cost_lands_on_that_stage(self, tmp_path):
+        scen = tmp_path / "S"
+        _write(scen / f"{PROPOSED}_trajectory.json", {"metadata": {"autonomy": {"design": {
+            "context_len_by_stage": {"analysis": 3000, "outcomes": 6000},
+            "spend_by_stage": {"analysis": {"llm_calls": 4, "prompt_tokens": 9000,
+                                            "completion_tokens": 1000}}}}}})
+        au = diagnostics.summarize({"S": [diagnostics.read_cell(scen, PROPOSED)]},
+                                   diagnostics.STAGE_ORDER)["autonomy"]
+        assert au["by_stage"]["analysis"]["prompt_tokens"]["mean"] == 9000.0
+        assert "prompt_tokens" not in au["by_stage"]["outcomes"]
 
 
 def test_pool_ablation_reads_the_named_encoder_arm(tmp_path):
