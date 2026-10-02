@@ -1526,7 +1526,8 @@ def test_a_compacted_stage_brief_is_put_back_not_just_announced():
     brief = stage_brief_block(step)
     messages = [{"role": "system", "content": "S"},
                 {"role": "tool", "name": "stage_brief", "content": brief}]
-    messages += [{"role": "tool", "content": f"obs{i}" + "x" * 900} for i in range(20)]
+    # Over the budget whatever the brief's own length, so the trim takes it.
+    messages += [{"role": "tool", "content": f"obs{i}" + "x" * 900} for i in range(24)]
 
     kept, dropped = trim_history(messages, budget=20000)
     assert "implementation" not in brief_stages(kept), "the brief must have gone"

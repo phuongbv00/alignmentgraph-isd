@@ -60,6 +60,7 @@ from .specialists import (
     missing_parts,
     step_done,
     commit_as_harness,
+    view_as_harness,
 )
 from .tools import merge_specs, spec_parameters
 from .transcript import (
@@ -230,10 +231,29 @@ class ReactLoop:
     def _bound_specs(self) -> list[dict]:
         """The tools bound this turn: every read, and the CURRENT stage's submit
         (``tools.react_specs``), tightened to this design's vocabulary."""
+        current = (self._state_step() if len(self._done_set) < len(STEPS)
+                   or self._repairing else None)
         return self._tightened(tools.react_specs(
             STEPS, self._done_set, graph_mode=self.graph_mode,
-            current=self._state_step().name if len(self._done_set) < len(STEPS)
-            or self._repairing else None))
+            current=current.name if current is not None else None,
+            open_fields=self._open_fields(current) if current is not None else None))
+
+    def _open_fields(self, step) -> tuple[str, ...]:
+        """The artifacts of ``step`` its submit still offers: what it owes
+        (``_owed``, the item lists by their key) and any optional artifact not
+        yet written. What has landed is not offered again — a repair is the
+        one time it is, through the empty tuple ``react_specs`` reads as
+        "everything, nothing required"."""
+        owed = {entry.split(" for ", 1)[0] for entry in self._owed(step)}
+        if not owed:
+            return ()
+        declared = tuple(key for key, _type, _required in step.submit_fields)
+        spec = fanout.SPECS.get(step.name)
+        declared += tuple(o.schema_key for o in spec.outputs) if spec is not None else ()
+        landed = view_as_harness(step, self.state)
+        optional = tuple(key for key, _type, required in step.submit_fields
+                         if not required and key not in owed and not landed.get(key))
+        return tuple(key for key in declared if key in owed) + optional
 
     def _done(self) -> frozenset:
         """Stages no longer open: the finished ones and the closed ones."""

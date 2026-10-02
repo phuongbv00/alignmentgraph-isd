@@ -957,7 +957,8 @@ def _state_description(step) -> str:
 
 
 def react_specs(steps: tuple, done: frozenset, *, graph_mode: bool = True,
-                retrieval_available: bool = False, current: str | None = None) -> list[dict]:
+                retrieval_available: bool = False, current: str | None = None,
+                open_fields: tuple[str, ...] | None = None) -> list[dict]:
     """Tools for the ONE agent that runs the whole brief itself.
 
     Two differences from :func:`tool_specs`, both of which are what makes the
@@ -982,7 +983,16 @@ def react_specs(steps: tuple, done: frozenset, *, graph_mode: bool = True,
     trying to fit it under one 8192-token completion. The rule is stated in the
     prompt too — an affordance the agent is not told about is not an option it
     has, and any output lost for want of it would be our design failing, not
-    the agent choosing."""
+    the agent choosing.
+
+    ``open_fields`` narrows the current stage's submit to the artifacts it
+    still has to write, the first of them (or every required one) REQUIRED;
+    an empty tuple — a finished stage under repair — offers every artifact
+    and requires none. Offered whole, the plan stays required after it has
+    landed, so every further call has to write it again before it can reach
+    the items: MEASURED (run t1 20261002_134550), every fan-out stage of both
+    single arms re-sent its plan until ``SUBMIT_CAP`` closed it, 0 assessment
+    items in 20 of 20 runs."""
     read_types: tuple[str, ...] = ()
     read_relations: tuple[str, ...] = ()
     read_docs: tuple[str, ...] = ()
@@ -1006,14 +1016,37 @@ def react_specs(steps: tuple, done: frozenset, *, graph_mode: bool = True,
         # them. That is the axis, not a shortcut — "single agent" means one
         # agent does the work, including the part multi delegates.
         spec = _FANOUT.get(step.name)
-        params = (submit_parameters(step) if spec is None else _parameters_from(
-            tuple(step.submit_fields)
-            + tuple((o.schema_key, "array", False) for o in spec.outputs)))
+        fields = tuple(step.submit_fields) + (
+            () if spec is None
+            else tuple((o.schema_key, "array", False) for o in spec.outputs))
+        if open_fields is not None:
+            fields = _still_open(fields, open_fields)
+        params = _parameters_from(fields)
         specs.append(_fn(
             f"submit_{step.name}",
             f"Submit {step.name} artifacts. You may call this again to add more.",
             params))
     return specs
+
+
+def _still_open(fields: tuple, open_fields: tuple[str, ...]) -> tuple:
+    """``fields`` narrowed to the ``open_fields`` keys, in THEIR order — what
+    is owed first, then what is optional and not yet written.
+
+    What is offered is REQUIRED where the stage requires it, and otherwise the
+    first offered artifact is: one artifact per call, the next one owed. With
+    nothing open every field is offered and none required, since a repair
+    submits only what changes."""
+    if not open_fields:
+        return tuple((key, json_type, False) for key, json_type, _req in fields)
+    by_key = {f[0]: f for f in fields}
+    kept = tuple(by_key[key] for key in open_fields if key in by_key)
+    if not kept:
+        return tuple((key, json_type, False) for key, json_type, _req in fields)
+    if not any(req for _key, _type, req in kept):
+        first = kept[0]
+        kept = ((first[0], first[1], True),) + kept[1:]
+    return kept
 
 
 @dataclass(frozen=True)

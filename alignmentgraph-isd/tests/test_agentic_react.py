@@ -617,3 +617,46 @@ def test_a_plan_only_resubmit_does_not_multiply_the_items_on_prose():
         loop._commit(by_name["assessment"],
                      {"assessment_plan": copy.deepcopy(_ASSESSMENT["assessment_plan"])})
     assert len(items()) == first
+
+
+def _submit_params(loop, name):
+    loop._done_set = loop._done()           # what `run` keeps current each turn
+    return tools.spec_parameters(loop._bound_specs(), name)
+
+
+def test_a_landed_artifact_is_not_offered_again_and_the_next_owed_is_required():
+    """MEASURED FAILURE (run t1 20261002_134550): the fan-out stages' submit
+    kept the PLAN required after it had landed, so every further call had to
+    write it again; the 2B model did, and nothing else, until ``SUBMIT_CAP``
+    closed the stage. 0 assessment items in 20 of 20 single-arm runs, and
+    analysis resent ``needs_analysis`` eight times. Both substrates."""
+    from test_agentic_loop import _ANALYSIS, _ASSESSMENT, _OUTCOMES
+
+    for graph_mode in (True, False):
+        loop, state, trajectory, _m = _loop([], graph_mode=graph_mode)
+        commit = {s.name: s.commit if graph_mode else s.commit_prose for s in STEPS}
+
+        commit["analysis"](state, trajectory, {"needs_analysis": _ANALYSIS["needs_analysis"]})
+        params = _submit_params(loop, "submit_analysis")
+        assert "needs_analysis" not in params["properties"], graph_mode
+        assert params["required"] == ["learner_analysis"], graph_mode
+
+        rest = {k: v for k, v in _ANALYSIS.items() if k != "needs_analysis"}
+        commit["analysis"](state, trajectory, rest)
+        commit["outcomes"](state, trajectory, _OUTCOMES)
+        params = _submit_params(loop, "submit_assessment")
+        assert params["required"] == ["assessment_plan"], graph_mode
+
+        commit["assessment"](state, trajectory, {"assessment_plan": _ASSESSMENT["assessment_plan"]})
+        params = _submit_params(loop, "submit_assessment")
+        assert list(params["properties"]) == ["assessment_tools"], graph_mode
+        assert params["required"] == ["assessment_tools"], graph_mode
+
+
+def test_a_finished_stage_under_repair_offers_everything_and_requires_nothing():
+    """A repair submits only what changes, so no artifact may be forced."""
+    names = tools.react_specs(STEPS, frozenset({"assessment"}), current="assessment",
+                              open_fields=())
+    params = tools.spec_parameters(names, "submit_assessment")
+    assert set(params["properties"]) == {"assessment_plan", "assessment_tools"}
+    assert params["required"] == []

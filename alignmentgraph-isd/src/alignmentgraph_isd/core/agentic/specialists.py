@@ -982,8 +982,8 @@ class AgenticStep:
         return (
             "\n\nONE ARTIFACT PER CALL. This stage has "
             f"{len(parts)} of them: {', '.join(parts)}.\n"
-            "Each has its own submit tool, named after it. Write one artifact, "
-            "submit it with its own tool, then move to the next — a submit ADDS "
+            "Write one artifact, submit it on its own, then move to the next — "
+            "a submit ADDS "
             "to what you have already committed and never replaces it, so never "
             "resend one you have already sent. After each submit you are told "
             "which artifacts are still missing; the stage is finished when none "
