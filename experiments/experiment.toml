@@ -30,7 +30,7 @@ slot = "qwen2b"
 model = "Qwen/Qwen3.5-2B"
 family = "Qwen3.5"
 display = "2B"
-base_urls = ["https://ypta7biqobebe1-8000.proxy.runpod.net/v1"]
+base_urls = ["https://<POD_ID>-8000.proxy.runpod.net/v1"]
 key_env = "VLLM_API_KEY"
 
 [[serving.slots]]
@@ -119,7 +119,7 @@ development_mode = "full"
 provider = "openrouter"
 base_url = "https://openrouter.ai/api/v1"
 key_env = "OPENROUTER_API_KEY"
-models = [  # in the order the evaluator reports them
+models = [# in the order the evaluator reports them
     { name = "openai/gpt-6-luna" },
     { name = "google/gemini-3.1-flash-lite" },
     { name = "deepseek/deepseek-v4.1-flash" },
@@ -138,21 +138,21 @@ primary_encoder = "nemotron"
 primary_bloom = "bertbloom"
 
 [judge.alignment.encoders]
-nemotron = { kind = "api",   model = "nvidia/llama-embed-nemotron-8b", suffix = "", macro = "Nemotron", short = "Nemotron", base_urls = ["https://<POD_ID>-8000.proxy.runpod.net/v1"] }
-bgem3    = { kind = "local", model = "BAAI/bge-m3", suffix = "bgem3", macro = "BgeMThree", short = "bge-m3" }
-granite  = { kind = "local", model = "ibm-granite/granite-embedding-311m-multilingual-r2", suffix = "granite", macro = "Granite", short = "granite" }
-tfidf    = { kind = "tfidf", model = "tfidf-char-ngram", suffix = "tfidf", macro = "Tfidf", short = "TF-IDF" }
+nemotron = { kind = "api", model = "nvidia/llama-embed-nemotron-8b", suffix = "", macro = "Nemotron", short = "Nemotron", base_urls = ["https://<POD_ID>-8000.proxy.runpod.net/v1"] }
+bgem3 = { kind = "local", model = "BAAI/bge-m3", suffix = "bgem3", macro = "BgeMThree", short = "bge-m3" }
+granite = { kind = "local", model = "ibm-granite/granite-embedding-311m-multilingual-r2", suffix = "granite", macro = "Granite", short = "granite" }
+tfidf = { kind = "tfidf", model = "tfidf-char-ngram", suffix = "tfidf", macro = "Tfidf", short = "TF-IDF" }
 
 # A missing checkpoint skips its arm; it never falls back to another.
 [judge.alignment.bloom]
 bertbloom = { kind = "transformer", checkpoint = "bloom-bert-objectives-and-questions", suffix = "", macro = "BertBloom", short = "BERT" }
-lexicon   = { kind = "lexicon", suffix = "lexicon", macro = "Lexicon", short = "lexicon" }
+lexicon = { kind = "lexicon", suffix = "lexicon", macro = "Lexicon", short = "lexicon" }
 
 # A correction of the primary configuration's family-A cosines, not a new
 # instrument: own-scenario minus the same agent's other scenarios in the same
 # run (alignment/contrast.py). Reads the primary encoder's embedding cache.
 [judge.alignment.baseline]
-contrast  = { kind = "own_minus_foreign", suffix = "contrast", macro = "Contrast", short = "own-foreign" }
+contrast = { kind = "own_minus_foreign", suffix = "contrast", macro = "Contrast", short = "own-foreign" }
 
 # --- Experiments -------------------------------------------------------------
 # `slots` = "all" or a list of slot ids; `tags` = one run per tag, per slot.
@@ -171,7 +171,7 @@ agents = ["alignmentgraph-isd", "react-isd"]
 [experiment.comparison]
 title = "COMPARISON - proposed system vs baselines across model scale"
 dataset = "test_90"
-slots = "all"
+slots = ["qwen08b", "qwen2b", "qwen4b", "qwen9b"]
 tags = ["c1"]
 rate_limit = "turbo"
 session_prefix = "comparison"
@@ -190,15 +190,18 @@ agents = [
 # 2x2 decomposition x substrate. The reference arm runs here too, so every
 # delta comes from one run.
 title = "ABLATION - decomposition x substrate"
-dataset = "test_30"
-slots = ["qwen08b", "qwen4b"]          # both ends of the deployment envelope
+# TODO: TUNING the four arms (Gate 1). Restore the official setting before freeze:
+# dataset = "test_30"
+# slots = ["qwen08b", "qwen4b"]          # both ends of the deployment envelope
+dataset = "train_10"
+slots = ["qwen2b"]
 tags = ["a1"]
 rate_limit = "turbo"
 session_prefix = "ablation"
 reference = "alignmentgraph-isd"
-arms = [  # reference first
-    { id = "alignmentgraph-isd",              agent_mode = "multi",  context_mode = "graph" },
-    { id = "alignmentgraph-isd-multi-prose",  agent_mode = "multi",  context_mode = "prose" },
+arms = [# reference first
+    { id = "alignmentgraph-isd", agent_mode = "multi", context_mode = "graph" },
+    { id = "alignmentgraph-isd-multi-prose", agent_mode = "multi", context_mode = "prose" },
     { id = "alignmentgraph-isd-single-graph", agent_mode = "single", context_mode = "graph" },
     { id = "alignmentgraph-isd-single-prose", agent_mode = "single", context_mode = "prose" },
 ]
