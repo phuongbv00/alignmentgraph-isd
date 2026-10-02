@@ -590,3 +590,30 @@ def test_a_turns_cost_is_charged_to_the_stage_it_prepares():
 
     body = inspect.getsource(react.ReactLoop._turns)
     assert body.index("_book_spend") < body.index("trim_history") < body.index("compact(")
+
+
+def test_a_plan_only_resubmit_does_not_multiply_the_items_on_prose():
+    """single x prose re-merges a document's lists after each commit. A submit
+    that re-sends the plan and no items leaves the item list alone, so it must
+    not be joined to itself: MEASURED on run train_1 20261002_130041, one item
+    and seven plan-only submits shipped 64 copies of it."""
+    import copy
+
+    from test_agentic_loop import _ANALYSIS, _ASSESSMENT, _OUTCOMES
+
+    loop, store, _t, _m = _loop([], graph_mode=False)
+    by_name = {s.name: s for s in STEPS}
+    for name, payload in (("analysis", _ANALYSIS), ("outcomes", _OUTCOMES)):
+        loop._commit(by_name[name], copy.deepcopy(payload))
+
+    def items():
+        return [i for doc in [store.get(k) for k in react._doc_keys(by_name["assessment"])]
+                if isinstance(doc, dict) for i in doc.get("assessment_tools") or []]
+
+    loop._commit(by_name["assessment"], copy.deepcopy(_ASSESSMENT))
+    first = len(items())
+    assert first > 0
+    for _ in range(6):
+        loop._commit(by_name["assessment"],
+                     {"assessment_plan": copy.deepcopy(_ASSESSMENT["assessment_plan"])})
+    assert len(items()) == first

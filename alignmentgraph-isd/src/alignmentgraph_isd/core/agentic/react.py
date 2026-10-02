@@ -921,8 +921,17 @@ class ReactLoop:
                 continue
             merged = dict(new)
             for field, previous in old.items():
-                if isinstance(previous, list) and isinstance(new.get(field), list):
-                    merged[field] = previous + new[field]
+                fresh = new.get(field)
+                if not (isinstance(previous, list) and isinstance(fresh, list)):
+                    continue
+                # Only a list the commit REPLACED is joined back to what it
+                # held. One it left alone -- a submit that re-sent the plan and
+                # no items -- already starts with ``previous``, and joining it
+                # again doubled the family on every such submit (MEASURED, run
+                # train_1 20261002_130041: one item, seven plan-only submits,
+                # 64 copies).
+                if fresh[:len(previous)] != previous:
+                    merged[field] = previous + fresh
             if merged != new:
                 self.state.put(key, merged)
                 self.trajectory.log_doc_write(key, merged)
