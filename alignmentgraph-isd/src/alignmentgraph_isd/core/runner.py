@@ -95,6 +95,15 @@ def _phase(trajectory: TrajectoryLogger, phase: str, index: int, total: int):
                 "phase": phase, "index": index, "total": total, "duration_ms": duration_ms})
 
 
+#: What one stage cost, as ``metadata.autonomy`` reports it on both arms.
+SPEND_FIELDS = ("llm_calls", "prompt_tokens", "completion_tokens")
+
+
+def _spend_since(trajectory, mark: tuple[int, int, int]) -> dict:
+    """The calls and tokens spent since ``mark`` (a ``trajectory.spent()``)."""
+    return dict(zip(SPEND_FIELDS, (now - then for now, then in zip(trajectory.spent(), mark))))
+
+
 def _merge_stats(carried: dict, fresh: dict) -> dict:
     """Accumulate one stage's loop stats across its regen attempts.
 
@@ -622,6 +631,7 @@ def _run_multi(config, memory, graph, store, trajectory, design_brief, *,
 
     for index, step in enumerate(STEPS, start=1):
         identity = step.identity
+        mark = trajectory.spent()
         with _phase(trajectory, step.name, index, phase_total):
             llm = AgenticLLM(config, trajectory, identity)
             spec = fanout.SPECS.get(step.name)
@@ -690,6 +700,10 @@ def _run_multi(config, memory, graph, store, trajectory, design_brief, *,
                                graph_mode=graph_mode, memory=memory,
                                trajectory=trajectory, ctx=ctx, identity=identity,
                                phase=step.name)
+            # Everything the stage cost: its Designer, its Developers, the
+            # re-dispatch and any compaction -- the stage boundary is the one
+            # the single arm's record is split at too (``ReactLoop``).
+            stats.update(_spend_since(trajectory, mark))
             autonomy[step.name] = stats
             task_attempts[step.name] = task_attempts.get(step.name, 0) + 1
         if step.name == "outcomes" and _stopped_without_modules(

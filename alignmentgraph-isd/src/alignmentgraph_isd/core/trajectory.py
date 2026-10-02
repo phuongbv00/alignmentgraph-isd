@@ -598,6 +598,13 @@ class TrajectoryLogger:
         self._record_event(action, "node_edit", node_id=node_id,
                            node_type=node_type)
 
+    def spent(self) -> tuple[int, int, int]:
+        """``(llm_calls, prompt_tokens, completion_tokens)`` so far: what a stage
+        cost is the difference of two of these, taken around it."""
+        with self._counter_lock:
+            return (self.llm_calls, self.token_usage["prompt_tokens"],
+                    self.token_usage["completion_tokens"])
+
     def log_llm_call(self, prompt_tokens: int = 0, completion_tokens: int = 0) -> None:
         # See ``_counter_lock``.
         with self._counter_lock:

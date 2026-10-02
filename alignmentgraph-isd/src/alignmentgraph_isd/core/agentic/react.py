@@ -168,6 +168,10 @@ class ReactLoop:
             # position in single and not in multi" is read off both arms the
             # same way. One record for the whole run cannot show it.
             "context_len_by_stage": {}, "turns_by_stage": {},
+            # And what each stage cost while it was the current one, read the
+            # way the multi arm's record is: calls and tokens spent between
+            # two stage boundaries, compaction and constrained passes included.
+            "spend_by_stage": {},
         }
         #: Batch counter, so each additive submit's items get a distinct
         #: `plan_set` tag and `remap_and_tag` renames rather than overwrites
@@ -477,9 +481,33 @@ class ReactLoop:
         # answers a repair request with reads runs to MAX_TURNS — measured on
         # the test fixture once P10/P11 became owned: 131 turns of the same
         # read after every stage was done. Same number as a stage gets, so the
-        # arms are held to one allowance.
+        # arms are held to one allowance (``_turns``).
+        self._spend_mark = self.trajectory.spent()
+        self._spend_stage = self._state_step().name
+        try:
+            self._turns()
+        finally:
+            self._book_spend(None)
+
+    def _book_spend(self, stage: str | None) -> None:
+        """Charge what was spent since the last boundary to the stage that was
+        current then, and open a new interval for ``stage``. Called at the TOP
+        of every turn, before the trim and the compaction that prepare it, so
+        what the turn costs is charged to the stage it is for -- the multi
+        arm's boundary sits before a stage's first piece of work too."""
+        now = self.trajectory.spent()
+        if self._spend_stage is not None:
+            slot = self.stats["spend_by_stage"].setdefault(
+                self._spend_stage, {"llm_calls": 0, "prompt_tokens": 0, "completion_tokens": 0})
+            for key, a, b in zip(("llm_calls", "prompt_tokens", "completion_tokens"),
+                                 now, self._spend_mark):
+                slot[key] += a - b
+        self._spend_mark, self._spend_stage = now, stage
+
+    def _turns(self) -> None:
         closing = 0
         while not self._meter.exhausted:
+            self._book_spend(self._state_step().name)
             if len(self._done_set) == len(STEPS):
                 closing += 1
                 if closing > budget.STAGE_MAX_TURNS:

@@ -551,3 +551,42 @@ def test_a_request_over_the_window_is_trimmed_not_blamed_on_the_model():
     assert turn_mod.squeezed(8000, meter) == 2000
     meter.request_fit()
     assert turn_mod.squeezed(8000, meter) == 8000
+
+
+def test_both_arms_report_what_each_stage_cost_and_it_adds_up():
+    """The cost of a stage is read the same way on both arms: the run's calls
+    and tokens between two stage boundaries. Every call the run made is charged
+    to exactly one stage, so the stages add up to the run's own total."""
+    for agent_mode in ("multi", "single"):
+        result = run_brief(load_brief("minimal_brief.json"), HarnessRunConfig(
+            llm_factory=lambda: FakeChatModel(), agent_mode=agent_mode))
+        autonomy = result["metadata"]["autonomy"]
+        per_stage = (autonomy["design"]["spend_by_stage"] if agent_mode == "single"
+                     else {name: rec for name, rec in autonomy.items()})
+        assert set(per_stage) == {s.name for s in STEPS}, agent_mode
+        assert all(rec["llm_calls"] > 0 for rec in per_stage.values()), agent_mode
+        total = result["metadata"]["token_usage"]
+        assert sum(rec["llm_calls"] for rec in per_stage.values()) == total["llm_calls"], agent_mode
+
+
+def test_a_turns_cost_is_charged_to_the_stage_it_prepares():
+    """The boundary sits at the TOP of a turn, before the trim and the
+    compaction that prepare it: a fold made for the outcomes turn is outcomes'
+    cost, not analysis's, and nothing spent before the first turn is dropped."""
+    import inspect
+
+    loop, _g, trajectory, _m = _loop([])
+    spent = [(0, 0, 0)]
+    trajectory.spent = lambda: spent[0]
+    loop.stats["spend_by_stage"] = {}
+    loop._spend_mark, loop._spend_stage = spent[0], "analysis"
+    spent[0] = (2, 100, 10)            # the analysis turns
+    loop._book_spend("outcomes")
+    spent[0] = (3, 160, 30)            # a compaction, then the outcomes turn
+    loop._book_spend(None)
+    assert loop.stats["spend_by_stage"] == {
+        "analysis": {"llm_calls": 2, "prompt_tokens": 100, "completion_tokens": 10},
+        "outcomes": {"llm_calls": 1, "prompt_tokens": 60, "completion_tokens": 20}}
+
+    body = inspect.getsource(react.ReactLoop._turns)
+    assert body.index("_book_spend") < body.index("trim_history") < body.index("compact(")
