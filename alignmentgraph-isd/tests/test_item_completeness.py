@@ -83,6 +83,9 @@ def test_repair_reformats_a_keyless_item_as_short_answer():
     item = task["items"][0]
     assert item["type"] == "short_answer"
     assert item.get("repaired") is True
+    # The type is what was rewritten; the item's C2 reference is still the
+    # model's, and the process measures read it per field.
+    assert item.get("repaired_fields") == ["type"]
     assert item_completeness_items(alignment.assessment_items(graph)) == []
     # the repair is on the record
     assert ctx.trajectory.repair_events

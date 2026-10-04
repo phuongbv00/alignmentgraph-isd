@@ -108,6 +108,9 @@ def test_c4_repair_prunes_dangling_refs_and_links_a_real_item():
     activity = graph.get_node("activity:TLA-01")["data"]
     prep = activity["prepares_for_assessment"]
     assert prep == ["AT-01"], f"expected pruned+repaired list, got {prep}"
+    # Only the C4 reference was the net's; the activity's C3 reference is
+    # still the model's, which is what the process measures read.
+    assert activity["repaired_fields"] == ["prepares_for_assessment"]
 
 
 def test_c4_repair_never_appends_activity_ids_and_dedups_across_rounds():
@@ -119,6 +122,11 @@ def test_c4_repair_never_appends_activity_ids_and_dedups_across_rounds():
             _Violation("C4", "assessment:AT-01"),
             _Violation("C4", "activity:TLA-01"),
         ])
+    hosts = [n for n in graph.element_nodes(NodeType.ACTIVITY)
+             if "AT-01" in (n["data"].get("prepares_for_assessment") or [])]
+    # The host a task-side repair appends to carries the mark too.
+    assert hosts and all("prepares_for_assessment" in (n["data"].get("repaired_fields") or [])
+                         for n in hosts)
     for node in graph.element_nodes(NodeType.ACTIVITY):
         prep = node["data"].get("prepares_for_assessment") or []
         assert prep.count("AT-01") <= 1, f"{node['id']}: duplicated item ref: {prep}"

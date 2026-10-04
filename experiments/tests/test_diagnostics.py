@@ -524,6 +524,21 @@ class TestTriadReferences:
         assert st["activities_prepare_unrepaired"] == 0.0
         assert st["activities_repaired"] == 0.5
 
+    def test_a_repair_of_one_field_does_not_disown_the_others(self):
+        """MEASURED (run t1 20261002_134550): the net re-pointed 63% of the
+        graph arm's activities for C4 and touched no ``aligned_objectives``,
+        yet C3 read 0.41 unrepaired against 0.97 — the flag marked the
+        activity, not the field. ``repaired_fields`` says which."""
+        doc = _design(nested=True, repaired=True)["addie_output"]
+        doc["design"]["learning_activities"][0]["repaired_fields"] = ["prepares_for_assessment"]
+        item = doc["development"]["assessment_tools"][0]["items"][0]
+        item.update(repaired=True, repaired_fields=["type"])
+        st = diagnostics.read_triad_references(doc)
+        assert st["objectives_practised_unrepaired"] == 1.0
+        assert st["objectives_assessed_unrepaired"] == 0.5
+        assert st["activities_prepare_unrepaired"] == 0.0
+        assert st["activities_repaired"] == 0.5
+
     def test_no_objective_ids_is_not_measured(self):
         assert diagnostics.read_triad_references({"design": {"learning_objectives": [
             {"statement": "x"}]}}) is None

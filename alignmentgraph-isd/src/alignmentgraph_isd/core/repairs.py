@@ -66,6 +66,20 @@ class RepairContext:
         return self.graph is not None
 
 
+def _mark_repaired(artifact: dict, *fields: str) -> None:
+    """Flag ``artifact`` as touched by the net, and say WHICH of its fields.
+
+    ``repaired`` alone marks the artifact, so a reader asking whether the
+    model wrote one reference had to count every artifact the net touched for
+    any reason as not the model's: a C4 re-point made an activity's C3
+    reference read as repaired, and a keyless item reformatted as
+    ``short_answer`` made its C2 reference read the same way.
+    ``repaired_fields`` is what the process measures read instead."""
+    artifact["repaired"] = True
+    artifact["repaired_fields"] = sorted(
+        set(artifact.get("repaired_fields") or ()) | set(fields))
+
+
 def _log_repair(ctx: RepairContext, node_id: str, *, violation_type: str = "",
                 repaired_fields: list[str] | None = None, rule: str = "",
                 input_summary: str = "", output_summary: str = "") -> None:
@@ -442,7 +456,7 @@ def repair_assessment_coverage(ctx: RepairContext, violations: list) -> None:
                 question = str(item.get("question", "")).lower()
                 item["aligned_objective"] = next(
                     (lo for lo in lo_map if lo.lower() in question), next(iter(lo_map), aligned))
-                item["repaired"] = True
+                _mark_repaired(item, "aligned_objective")
                 touched = True
         # The item's ``plan_category`` is stamped FROM this, so the timing is
         # the one place it can be wrong and the one place to fix it.
@@ -490,7 +504,9 @@ def repair_item_completeness(ctx: RepairContext, violations: list) -> None:
         doc = ctx.store.get("assessment") or {}
         pool = {str(t.get("item_id", "")): dict(t)
                 for t in (doc.get("assessment_tools") or []) if isinstance(t, dict)}
-    updates_by_id = {iid: {"type": "short_answer", "repaired": True}
+    updates_by_id = {iid: {"type": "short_answer", "repaired": True,
+                           "repaired_fields": sorted(
+                               set(pool[iid].get("repaired_fields") or ()) | {"type"})}
                      for iid in wanted if iid in pool}
     if not updates_by_id:
         return
@@ -585,6 +601,7 @@ def repair_activity_coverage(ctx: RepairContext, violations: list) -> None:
             prep = host.setdefault("prepares_for_assessment", [])
             if isinstance(prep, list) and bare in assessment_ids and bare not in prep:
                 prep.append(bare)
+                _mark_repaired(host, "prepares_for_assessment")
                 repaired_ids.append(ref)
                 touched.add(str(host.get("id")))
         elif ref.startswith(f"{NodeType.ACTIVITY}{sep}"):
@@ -603,7 +620,7 @@ def repair_activity_coverage(ctx: RepairContext, violations: list) -> None:
                                 assessment_ids[0])
                     prep.append(pick)
                 act["prepares_for_assessment"] = prep
-                act["repaired"] = True
+                _mark_repaired(act, "prepares_for_assessment")
                 repaired_ids.append(ref)
                 touched.add(str(act.get("id")))
 

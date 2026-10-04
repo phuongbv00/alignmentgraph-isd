@@ -261,6 +261,18 @@ def _level(text) -> int:
     return BLOOM_ORDER.index(word) if word in BLOOM_ORDER else -1
 
 
+def _model_wrote(artifact: dict, field: str) -> bool:
+    """Whether ``field`` of ``artifact`` is still as the model wrote it.
+
+    Read off ``repaired_fields`` when the repair net recorded them, so a C4
+    re-point does not make the same activity's C3 reference read as repaired;
+    an output written before they were recorded falls back to the artifact's
+    ``repaired`` flag, which makes the rate a lower bound."""
+    if "repaired_fields" in artifact:
+        return field not in (artifact.get("repaired_fields") or ())
+    return not artifact.get("repaired")
+
+
 def read_triad_references(output: dict) -> Optional[dict]:
     """The core triad's references as the DELIVERABLE carries them.
 
@@ -278,11 +290,10 @@ def read_triad_references(output: dict) -> Optional[dict]:
     ``*_level_met``                the highest referencing item / activity is at or
                                    above the objective's Bloom level.
 
-    ``*_unrepaired`` counts only references on artifacts the harness's
-    deterministic repair did not touch (no ``repaired`` flag): a LOWER bound on
-    what the model wrote itself, since the flag marks the artifact, not the
-    field. The gap between a rate and its ``_unrepaired`` twin is how much of
-    that rate the repair net wrote.
+    ``*_unrepaired`` counts only references the harness's deterministic repair
+    did not write (``_model_wrote``: per field where the output records it, per
+    artifact — a lower bound — where it does not). The gap between a rate and
+    its ``_unrepaired`` twin is how much of that rate the repair net wrote.
 
     Structural compliance, never pedagogical quality (docs/paper/claim-rules.md):
     a reference that resolves says the parts are joined, not that they fit.
@@ -313,7 +324,7 @@ def read_triad_references(output: dict) -> Optional[dict]:
             for lo in _refs(one.get("aligned_objective")) & objectives.keys():
                 out.setdefault(lo, []).append(
                     (_level(one.get("required_cognitive_process")),
-                     bool(one.get("repaired")), one.get("_task")))
+                     not _model_wrote(one, "aligned_objective"), one.get("_task")))
         return out
 
     assessed = measured(items)
@@ -323,7 +334,8 @@ def read_triad_references(output: dict) -> Optional[dict]:
         for lo in _refs(act.get("aligned_objectives") or act.get("aligned_objective")) \
                 & objectives.keys():
             practised.setdefault(lo, []).append(
-                (_level(act.get("learner_cognitive_process")), bool(act.get("repaired")), prep))
+                (_level(act.get("learner_cognitive_process")),
+                 not _model_wrote(act, "aligned_objectives"), prep))
 
     n = len(objectives)
 
@@ -338,7 +350,7 @@ def read_triad_references(output: dict) -> Optional[dict]:
         return objectives[lo] >= 0 and any(lvl >= objectives[lo] for lvl, _r, _x in table.get(lo, []))
 
     preparing = [a for a in activities if _refs(a.get("prepares_for_assessment")) & task_ids]
-    unrepaired = [a for a in activities if not a.get("repaired")]
+    unrepaired = [a for a in activities if _model_wrote(a, "prepares_for_assessment")]
     return {
         "n_objectives": n, "n_items": len(items), "n_tasks": len(task_ids),
         # The same question written more than once counts once: a design whose
@@ -359,7 +371,9 @@ def read_triad_references(output: dict) -> Optional[dict]:
         "activities_prepare_unrepaired": (
             sum(1 for a in unrepaired if _refs(a.get("prepares_for_assessment")) & task_ids)
             / len(activities) if activities else None),
-        "activities_repaired": (sum(1 for a in activities if a.get("repaired")) / len(activities)
+        "activities_repaired": (sum(1 for a in activities
+                                    if not _model_wrote(a, "prepares_for_assessment"))
+                                / len(activities)
                                 if activities else None),
     }
 
