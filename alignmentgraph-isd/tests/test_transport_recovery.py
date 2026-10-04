@@ -461,18 +461,22 @@ def test_reshaping_recurses_through_objects_array_items_and_additional_propertie
     plan = tools.submit_parameters(STEP_BY_NAME["assessment"])
     reshaped: list[str] = []
     args = tools.reshape_args(plan, {"assessment_plan": {
-        "lo_coverage_targets": {"ILO-01": "formative"},
         "formative_methods": "Weekly critique",
         "pilot_data_plan": {"collection_points": [
                                 {"when": "after lab 1", "where": "Module 1", "what": "lab log",
                                  "from_whom": "learners"}],
                             "anticipated_difficulties": []}}}, reshaped=reshaped)
     ap = args["assessment_plan"]
-    assert ap["lo_coverage_targets"] == {"ILO-01": ["formative"]}
     assert ap["formative_methods"] == ["Weekly critique"]
     assert ap["pilot_data_plan"]["collection_points"][0]["what"] == "lab log", (
         "an array of objects is left as written")
-    assert "assessment_plan.lo_coverage_targets.ILO-01" in reshaped
+    # A map whose values are lists, reached through ``additionalProperties``.
+    by_key = {"type": "object", "properties": {"m": {
+        "type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}}}}
+    reshaped = []
+    args = tools.reshape_args(by_key, {"m": {"ILO-01": "formative"}}, reshaped=reshaped)
+    assert args["m"] == {"ILO-01": ["formative"]}
+    assert "m.ILO-01" in reshaped
 
     items = tools.submit_parameters(fanout.set_step(
         fanout.SPECS["assessment"], dev_plans.WorkSet(set_id="S1"), STEP_BY_NAME["assessment"]))

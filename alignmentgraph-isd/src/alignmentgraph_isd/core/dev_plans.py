@@ -620,10 +620,9 @@ def set_pairs(blueprint) -> list[tuple[str, str]]:
     objective a set covers, at that set's ``timing``. Bare ids
     and valid categories only, first-seen order, no repeats.
 
-    ONE reader, shared with ``checks.set_pairs``: the check reports a
-    promised pair these do not cover (``unassessed_pair``) and this decides
-    what the fan-out divides, so a pair the two disagreed about would be
-    called assessed and still reach no Developer."""
+    ONE reader, shared with ``checks.set_pairs`` and with
+    :func:`coverage_targets_from`: what the fan-out divides, what the plan is
+    held to and what ``plan_coverage`` asks the items for are the same pairs."""
     pairs: list[tuple[str, str]] = []
     for one in (blueprint or []):
         if not isinstance(one, dict):
@@ -638,16 +637,31 @@ def set_pairs(blueprint) -> list[tuple[str, str]]:
     return pairs
 
 
+def coverage_targets_from(plan: dict) -> dict[str, list[str]]:
+    """``lo_coverage_targets`` DERIVED from the plan's tasks: each objective a
+    task covers, at that task's ``timing``.
+
+    The plan used to state it twice — per task in ``sets`` and per objective
+    here — and the model kept the two apart: MEASURED (run t1 20261002_134550),
+    about twelve pairs promised against five and a half the tasks assess, in
+    both multi arms, so one over-promise surfaced as ``unassessed_pair`` before
+    the fan-out and again as ``plan_coverage`` after it. The harness writes it
+    from the tasks at the commit, and ``plan_coverage`` then asks only whether
+    the Developers wrote an item for every pair the tasks plan."""
+    targets: dict[str, list[str]] = {}
+    for lo_id, timing in set_pairs(plan_tasks(plan)):
+        targets.setdefault(lo_id, []).append(timing)
+    return targets
+
+
 def _assessment_ground_truth_pairs(lo_ids, coverage_targets,
                                    blueprint=None) -> list[tuple[str, str]]:
     """What the fan-out divides: the pairs the INSTRUMENTS assess.
 
-    ``lo_coverage_targets`` is the model's PROMISE, not the work. The two are
-    held together by ``checks.blueprint_consistency``, which reports a promise
-    no set keeps (``unassessed_pair``) while the plan is still the only
-    thing written and the Designer can add the set.
+    ``lo_coverage_targets`` is derived from the same tasks at the commit
+    (:func:`coverage_targets_from`); an archived plan carries the model's own.
 
-    Reading the promise HERE instead made such a pair a work set of its own
+    Reading such a promise HERE instead made such a pair a work set of its own
     with no set in it, and ``render_assessment_set`` drops the whole
     "set each item's ``set_id`` to one of these ids" block for a set
     that lists none — so its Developer was shown no set and reached for

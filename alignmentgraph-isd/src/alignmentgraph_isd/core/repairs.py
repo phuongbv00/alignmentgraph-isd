@@ -174,11 +174,6 @@ REPORT_ONLY: frozenset[str] = frozenset({
 #: salvage runs only in the reconciliation pass, after every loop has closed.
 STRUCTURAL: frozenset[str] = frozenset({
     "bloom", "C4", "P5", "evidence_alignment",
-    # Both are a lookup when they are fixable at all: a pair a set
-    # promises is added to `lo_coverage_targets`, an item is pointed at the ONE
-    # set its own objective and category identify. What a lookup cannot
-    # settle is handed back and reaches the agent.
-    "blueprint_consistency",
 })
 
 
@@ -355,60 +350,14 @@ def _repair_assessment_family(ctx: RepairContext, violations: list) -> list:
     # Designer as a repair turn in its own loop.
     coverage = [v for v in violations if v.violation_type in ("C2", "P3")]
     completeness = [v for v in violations if v.violation_type == "item_completeness"]
-    blueprint = [v for v in violations if v.violation_type == "blueprint_consistency"]
     if completeness:
         repair_item_completeness(ctx, completeness)
     if coverage:
         repair_assessment_coverage(ctx, coverage)
-    # The blueprint first: an item is matched to a set by the pairs
-    # the plan promises, so those have to be complete before the lookup runs.
-    unsettled = repair_blueprint_pairs(ctx, blueprint) if blueprint else []
-    handled = coverage + completeness + blueprint
-    return [v for v in violations if v not in handled] + unsettled
-
-
-def repair_blueprint_pairs(ctx: RepairContext, violations: list) -> list:
-    """``blueprint_consistency``, the half a lookup settles: a pair an
-    set promises is ADDED to ``lo_coverage_targets``. Nothing is
-    decided — the plan already says the set assesses that objective at
-    that timing, and this writes the same fact where the rest of the harness
-    reads it. A set naming a module or an objective that does not
-    exist is returned: which one it meant is the Designer's to say."""
-    fixable = [v for v in violations if v.metadata.get("kind") == "unpromised_pair"]
-    rest = [v for v in violations if v not in fixable]
-    if not fixable:
-        return rest
-    if ctx.graph_mode:
-        node_id = ctx.graph.section_id(NodeType.ASSESSMENT_PLAN)
-        plan = dict((ctx.graph.get_node(node_id) or {}).get("data") or {})
-    else:
-        node_id = "assessment_plan"
-        plan = dict(ctx.store.get("assessment_plan") or {})
-    raw = plan.get("lo_coverage_targets")
-    targets = {k: list(v) if isinstance(v, list) else [v]
-               for k, v in (raw.items() if isinstance(raw, dict) else ())}
-    # Keyed the way the model keyed it (it may have namespaced the id), so the
-    # pair lands in the entry it already wrote for that objective.
-    key_of = {alignment.bare_ref(key): key for key in targets}
-    added: list[str] = []
-    for violation in fixable:
-        lo_id = str(violation.metadata.get("lo_id") or "")
-        category = str(violation.metadata.get("plan_category") or "")
-        entry = targets.setdefault(key_of.setdefault(lo_id, lo_id), [])
-        if category and category not in entry:
-            entry.append(category)
-            added.append(f"{lo_id} x {category}")
-    if not added:
-        return rest
-    if ctx.graph_mode:
-        ctx.graph.update_node(node_id, {"lo_coverage_targets": targets})
-    else:
-        ctx.store.put("assessment_plan", {**plan, "lo_coverage_targets": targets})
-    _log_repair(ctx, node_id, violation_type="blueprint_consistency",
-                repaired_fields=["lo_coverage_targets"], rule="repair_blueprint_pairs",
-                input_summary="; ".join(v.message for v in fixable)[:200],
-                output_summary=f"Promised what the sets already assess: {', '.join(added)}.")
-    return rest
+    # `blueprint_consistency` has no lookup half: what it reports is the
+    # Designer's to settle, and it is returned.
+    handled = coverage + completeness
+    return [v for v in violations if v not in handled]
 
 
 def repair_assessment_coverage(ctx: RepairContext, violations: list) -> None:

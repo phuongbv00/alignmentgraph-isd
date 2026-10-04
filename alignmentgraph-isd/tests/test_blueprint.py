@@ -133,24 +133,33 @@ def test_modules_accumulate_the_same_way_on_both_substrates():
 
 # ── the blueprint agrees with itself ────────────────────────────────────────
 
-def test_a_pair_a_set_promises_is_added_to_the_coverage_targets():
-    plan = {"sets": [_set("SET-01", "formative", ["ILO-01", "objective:ILO-02"]),
-                            # keeps the ONE summative promise, so the plan is
-                            # inconsistent in the direction this test is about
-                            # and in no other.
-                            _set("SET-02", "summative", ["ILO-01"])],
-            "lo_coverage_targets": {"objective:ILO-01": ["summative"]}}
-    graph, trajectory = _design(plan, []), TrajectoryLogger()
-    found = checks.blueprint_consistency(graph)
-    assert [(v.metadata["lo_id"], v.metadata["plan_category"]) for v in found] == [
-        ("ILO-01", "formative"), ("ILO-02", "formative")]
+def test_the_coverage_targets_are_derived_from_the_tasks_at_the_commit():
+    """The plan used to say when each objective is assessed twice, per task
+    and per objective, and the model kept the two apart: MEASURED (run t1
+    20261002_134550), about twelve pairs promised against five and a half the
+    tasks assess, in both multi arms. The harness now writes
+    ``lo_coverage_targets`` from the tasks, on both substrates, and a value the
+    model wrote anyway is not kept beside them."""
+    submitted = {"assessment_plan": {
+        "sets": [{"module_id": "MOD-01", "assessment_tasks": [
+            _set("AT-01", "formative", ["ILO-01", "objective:ILO-02"]),
+            _set("AT-02", "summative", ["ILO-01"])]}],
+        "lo_coverage_targets": {"ILO-01": ["diagnostic"], "ILO-09": ["summative"]}}}
+    graph, store, trajectory = AlignmentGraph(), ProseStore(), TrajectoryLogger()
+    specialists.commit_assessment(graph, trajectory, submitted)
+    specialists.commit_assessment_prose(store, trajectory, submitted)
+    expected = {"ILO-01": ["formative", "summative"], "ILO-02": ["formative"]}
+    assert graph.get_node("assessment_plan_0")["data"]["lo_coverage_targets"] == expected
+    assert store.get("assessment_plan")["lo_coverage_targets"] == expected
 
-    assert repairs.repair("assessment_designer", found, _ctx(graph, trajectory)) == []
-    targets = graph.get_node("assessment_plan_0")["data"]["lo_coverage_targets"]
-    assert targets == {"objective:ILO-01": ["summative", "formative"], "ILO-02": ["formative"]}, (
-        "added to the entry the model already wrote, under the key it used")
+
+def test_a_plan_whose_targets_disagree_with_its_tasks_reports_no_pair():
+    """An archived plan carries the model's own targets; the blueprint check no
+    longer compares them with the tasks, since a run never holds two."""
+    plan = {"sets": [_set("SET-01", "summative", ["ILO-01", "ILO-02"])],
+            "lo_coverage_targets": {"ILO-01": ["summative", "diagnostic"]}}
+    graph = _design(plan, [])
     assert checks.blueprint_consistency(graph) == []
-    assert [e["context"]["rule"] for e in trajectory.repair_events] == ["repair_blueprint_pairs"]
 
 
 def test_a_set_naming_nothing_real_is_handed_back_not_guessed():
@@ -166,32 +175,11 @@ def test_a_set_naming_nothing_real_is_handed_back_not_guessed():
     assert not trajectory.repair_events
 
 
-def test_a_promise_no_set_can_keep_is_handed_back_before_the_fanout():
-    """The work-set planner divides the INSTRUMENTS, so this pair would reach
-    no Developer. Nothing read it until now: it surfaced only as
-    ``plan_coverage`` once the Developers had run and no agent was left."""
-    plan = {"sets": [_set("SET-01", "summative", ["ILO-01", "ILO-02"])],
-            "lo_coverage_targets": {"ILO-01": ["summative", "diagnostic"],
-                                    "ILO-02": ["summative"]}}
-    graph, trajectory = _design(plan, []), TrajectoryLogger()
-    found = [v for v in checks.blueprint_consistency(graph)
-             if v.metadata["kind"] == "unassessed_pair"]
-    assert [(v.metadata["lo_id"], v.metadata["plan_category"]) for v in found] == [
-        ("ILO-01", "diagnostic")]
-    assert ":" not in found[0].node_id, (
-        "anchored on the plan, so the pre-tier element filter does not withhold it")
-
-    assert repairs.repair("assessment_designer", found, _ctx(graph, trajectory)) == found, (
-        "no lookup settles it — writing the set is the Designer's")
-    assert not trajectory.repair_events
-
-
-def test_the_prose_arm_checks_both_halves_that_read_the_plan_alone():
+def test_the_prose_arm_checks_what_reads_the_plan_alone():
     plan = {"sets": [_set("SET-01", "formative", ["ILO-01"], module="MOD-05")],
             "lo_coverage_targets": {"ILO-01": ["summative"]}}
     found = checks.blueprint_consistency_data("assessment_plan", plan)
-    assert [v.metadata["kind"] for v in found] == [
-        "unpromised_pair", "unassessed_pair", "no_summative_task"]
+    assert [v.metadata["kind"] for v in found] == ["no_summative_task"]
 
 
 def test_a_blueprint_with_no_summative_task_is_handed_back():
@@ -225,7 +213,7 @@ def test_a_blueprint_with_no_summative_task_is_handed_back():
         message="none summative", metadata={"kind": "no_summative_task"})
     ctx = repairs.RepairContext(graph=AlignmentGraph(), store=None,
                                 trajectory=TrajectoryLogger(), actor=ORCHESTRATOR)
-    assert repairs.repair_blueprint_pairs(ctx, [violation]) == [violation]
+    assert repairs.repair("assessment_designer", [violation], ctx) == [violation]
 
 
 # ── every item belongs to a set ─────────────────────────────────────
@@ -235,10 +223,11 @@ def _item(item_id: str, lo: str, category: str, set_id: str) -> dict:
             "task_id": set_id}
 
 
-def test_both_checks_are_owned_and_structural():
+def test_the_blueprint_check_is_owned_and_handed_back():
+    """No lookup half is left: what it reports is the Designer's to settle."""
     for kind in ("blueprint_consistency",):
         assert repairs.OWNER_BY_VIOLATION[kind] == "assessment_designer"
-        assert kind in repairs.STRUCTURAL and kind not in repairs.REPORT_ONLY
+        assert kind not in repairs.STRUCTURAL and kind not in repairs.REPORT_ONLY
     assert {"P7", "P12", "P13", "P14"} <= repairs.REPORT_ONLY
     assert HarnessRunConfig().agent_mode == "multi"
 
@@ -473,8 +462,8 @@ def test_the_fanout_divides_the_sets_and_never_the_promise():
     It would be a set with no set in it, and ``render_assessment_set``
     drops the whole "set each item's set_id to one of these ids" block
     for such a set — so its Developer is shown no set and reaches for
-    the set's own header id. ``unassessed_pair`` is what reports the pair,
-    while the Designer can still add the set.
+    the set's own header id. Only an archived plan can carry such a promise:
+    a run's targets are derived from the tasks.
     """
     modules = [{"id": "MOD-01", "title": "M", "minutes": 60, "objectives": ["ILO-01"]}]
     plan = {"sets": [_set("SET-01", "summative", ["ILO-01"])],
@@ -489,9 +478,6 @@ def test_the_fanout_divides_the_sets_and_never_the_promise():
     assert all(ws.payload.get("sets") for ws in sets), (
         "a set-less set shows its Developer no set_id to write"
     )
-    assert [v.metadata["kind"] for v in checks.blueprint_consistency_data(
-        "assessment_plan", plan, modules={"MOD-01"}, objectives={"ILO-01"})
-    ] == ["unassessed_pair"], "and it IS reported, on the plan, to its author"
 
 
 def test_a_plan_with_no_sets_still_divides_by_the_promise():
@@ -610,9 +596,8 @@ def test_the_blueprint_has_a_ceiling_on_how_many_tasks_it_carries():
 
 
 def test_the_ceiling_finding_is_handed_back_rather_than_repaired():
-    """Which task to drop is a design judgment. `repair_blueprint_pairs`
-    settles only the half a lookup settles (`unpromised_pair`); everything else
-    is returned so it reaches the Designer as an open issue."""
+    """Which task to drop is a design judgment: it is returned so it reaches
+    the Designer as an open issue."""
     assert "blueprint_consistency" in repairs.OWNED_BY_FAMILY["assessment_designer"]
     violation = checks.Violation(
         node_id="assessment_plan_0", edge_type="",
@@ -620,7 +605,7 @@ def test_the_ceiling_finding_is_handed_back_rather_than_repaired():
         metadata={"kind": "too_many_tasks"})
     ctx = repairs.RepairContext(graph=AlignmentGraph(), store=None,
                                 trajectory=TrajectoryLogger(), actor=ORCHESTRATOR)
-    assert repairs.repair_blueprint_pairs(ctx, [violation]) == [violation]
+    assert repairs.repair("assessment_designer", [violation], ctx) == [violation]
 
 
 # ── one id per task ─────────────────────────────────────────────────────────

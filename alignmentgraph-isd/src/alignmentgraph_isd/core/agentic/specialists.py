@@ -246,6 +246,12 @@ def _assessment_updates(parsed: dict, trajectory=None) -> dict:
     if not isinstance(plan, dict):
         return {}
     plan, renamed = dev_plans.dedupe_task_ids(dict(plan))
+    # The harness's, never the model's: derived from the tasks whenever they
+    # arrive (``dev_plans.coverage_targets_from``), and a value the model wrote
+    # anyway is not kept beside them as a second statement of the same fact.
+    plan.pop("lo_coverage_targets", None)
+    if dev_plans.plan_tasks(plan):
+        plan["lo_coverage_targets"] = dev_plans.coverage_targets_from(plan)
     if renamed and trajectory is not None:
         # The actor is the scope's, as every commit-time event's is
         # (`_log_duplicates`): the commit runs inside the agent's scope.

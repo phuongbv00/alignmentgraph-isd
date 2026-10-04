@@ -570,12 +570,13 @@ def set_pairs(plan: dict) -> list[tuple[str, str]]:
 
 
 def blueprint_consistency(graph) -> list[Violation]:
-    """The assessment plan says WHEN each objective is assessed twice — per
-    set (``sets``) and per objective (``lo_coverage_targets``,
-    which P3, ``plan_coverage`` and the work-set planner read) — and the two
-    must agree in BOTH directions, or a set exists that no item will
-    ever be asked for, or a promise exists that no set can keep.
-    Also: a set must name a module and objectives that exist."""
+    """The blueprint's own soundness: one id per task, a task count the course
+    carries, a summative task, no one-item summative task, and every module and
+    objective assessed by some task — each told to the Designer while the plan
+    is the only thing written. When each objective is assessed is said once,
+    per task; ``lo_coverage_targets`` is derived from it at the commit
+    (``dev_plans.coverage_targets_from``), so there is no second statement to
+    disagree with."""
     plan_node = graph.get_node(graph.section_id(NodeType.ASSESSMENT_PLAN))
     if plan_node is None:
         return []
@@ -591,52 +592,14 @@ def blueprint_consistency(graph) -> list[Violation]:
 def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | None = None,
                                objectives: set[str] | None = None,
                                module_data: list[dict] | None = None) -> list[Violation]:
-    """The core of :func:`blueprint_consistency`. Both promised-pairs halves
-    read the plan alone, so the prose arm runs them too; the two existence
-    halves need the other artifacts and run only when their id sets are
-    given. ``module_data`` (the module documents, with their minutes) sizes the
-    task ceiling; without it the ceiling is judged over ``modules`` as modules
-    of unstated length."""
+    """The core of :func:`blueprint_consistency`. What reads the plan alone
+    runs on the prose arm too; the existence halves need the other artifacts
+    and run only when their id sets are given. ``module_data`` (the module
+    documents, with their minutes) sizes the task ceiling; without it the
+    ceiling is judged over ``modules`` as modules of unstated length."""
     violations: list[Violation] = []
     if module_data is None and modules is not None:
         module_data = [{"id": m} for m in sorted(modules)]
-    promised_pairs = dev_plans.plan_category_pairs((plan or {}).get("lo_coverage_targets"))
-    promised = set(promised_pairs)
-    for lo_id, timing in set_pairs(plan):
-        if objectives is not None and lo_id not in objectives:
-            continue    # reported below; promising it would promise nothing real
-        if (lo_id, timing) not in promised:
-            violations.append(Violation(
-                node_id=node_id, edge_type="", violation_type="blueprint_consistency",
-                severity="warning",
-                message=(f"A task assesses {lo_id} at {timing} timing, but "
-                         f"lo_coverage_targets does not promise {lo_id} a {timing} item."),
-                repair_hint=f"Add \"{timing}\" to lo_coverage_targets[\"{lo_id}\"].",
-                metadata={"kind": "unpromised_pair", "lo_id": lo_id, "plan_category": timing},
-            ))
-    # The other direction, and the one nothing read. The work-set planner
-    # divides the INSTRUMENTS, so a promised pair no set covers reaches
-    # no Developer at all: it is an item nobody will be asked for. Said here it
-    # costs the Designer one turn while the plan is the only thing written;
-    # unsaid it surfaces as `plan_coverage` after the Developers have run, when
-    # no agent is left to write the set. The two are both reported on
-    # purpose — different nodes, different remedies: this one says the
-    # blueprint is short, that one says the promise went unrealised, and fixing
-    # this one before the fan-out is what stops that one from ever firing.
-    assessed_pairs = set(set_pairs(plan))
-    for lo_id, timing in (promised_pairs if _sets(plan) else ()):
-        if objectives is not None and lo_id not in objectives:
-            continue    # a promise for an objective that does not exist
-        if (lo_id, timing) not in assessed_pairs:
-            violations.append(Violation(
-                node_id=node_id, edge_type="", violation_type="blueprint_consistency",
-                severity="warning",
-                message=(f"lo_coverage_targets promises {lo_id} a {timing} item, but no "
-                         f"task assesses {lo_id} at {timing} timing."),
-                repair_hint=(f"Add a task with timing \"{timing}\" covering {lo_id}, "
-                             f"or drop \"{timing}\" from lo_coverage_targets[\"{lo_id}\"]."),
-                metadata={"kind": "unassessed_pair", "lo_id": lo_id, "plan_category": timing},
-            ))
     # ONE id per task. The commit renames a repeat before it lands
     # (``dev_plans.dedupe_task_ids``), so this fires on a plan that reached
     # the check without that commit — an archived design, a baseline's shape —
@@ -710,7 +673,7 @@ def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | 
                      "the course never grades what it set out to teach."),
             repair_hint=("Give each module's closing task timing 'summative', or add one "
                          "summative task to the last module covering the objectives it "
-                         "graduates; keep lo_coverage_targets in step."),
+                         "graduates."),
             metadata={"kind": "no_summative_task", "task_count": len(tasks)},
         ))
     # And a summative task of one item is not an instrument: the light

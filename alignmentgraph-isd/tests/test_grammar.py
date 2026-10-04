@@ -140,8 +140,8 @@ def test_an_empty_pool_leaves_the_field_as_declared():
         ARTIFACT_SCHEMAS["assessment_tools"]["properties"]["aligned_objective"]
     plan = grammar.artifact_property("assessment_plan", "object", True, vocab)
     assert "prefixItems" not in plan["properties"]["sets"]
-    assert "additionalProperties" in plan["properties"]["lo_coverage_targets"]
-    assert plan["properties"]["lo_coverage_targets"]["additionalProperties"] is not False
+    assert "lo_coverage_targets" not in plan["properties"], (
+        "the harness writes it from the tasks; it is never asked for")
 
 
 # ── what it says ────────────────────────────────────────────────────────────
@@ -180,11 +180,6 @@ def test_the_assessment_plan_is_one_set_per_module_within_its_allowance():
     assert second["properties"]["assessment_tasks"]["maxItems"] == 2
     assert sum(dev_plans.task_allowance(m, i) for i, m in enumerate(vocab.modules)) == \
         dev_plans.task_ceiling(list(vocab.modules))
-    targets = plan["properties"]["lo_coverage_targets"]
-    assert set(targets["properties"]) == {"ILO-01", "ILO-02"}
-    assert "required" not in targets and targets["minProperties"] == 1, (
-        "which objectives the plan promises stays the model's")
-    assert targets["additionalProperties"] is False
     # The task schema is declared once and every row refers to it, so the
     # spec does not grow by a task schema per module.
     assert plan["$defs"]["assessment_task"]["properties"]["covers_objectives"]["items"]["enum"] == \
@@ -199,9 +194,6 @@ def test_the_assessment_plan_is_one_set_per_module_within_its_allowance():
     base = json.dumps(tools.tool_specs(step))
     tight = json.dumps(grammar.tighten_specs(tools.tool_specs(step), many))
     assert len(tight) < 1.5 * len(base), (len(base), len(tight))
-    assert targets["properties"]["ILO-01"]["items"]["enum"] == \
-        ARTIFACT_SCHEMAS["assessment_plan"]["properties"]["lo_coverage_targets"][
-            "additionalProperties"]["items"]["enum"]
 
 
 def test_a_light_assignment_becomes_constants_and_a_count_becomes_bounds():

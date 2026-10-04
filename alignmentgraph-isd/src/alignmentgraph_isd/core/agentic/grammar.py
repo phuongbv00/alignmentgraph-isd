@@ -322,22 +322,6 @@ def _assessment_plan(base: dict, vocab: Vocabulary, work_set, mode: str) -> dict
                                            vocab.module_ids),
                 assessment_tasks={**set_schema["properties"]["assessment_tasks"],
                                   "items": task_schema})}}
-    if vocab.objectives:
-        # Keyed by the objectives that exist and nothing else: a key here that
-        # names no objective is a promise about nothing (`plan_coverage`).
-        # NOT required per objective: a promise the decoder forces is one the
-        # blueprint does not keep — measured with every objective required,
-        # 39 `unassessed_pair` findings over ten runs, and the Designer's
-        # repair turns spent on them; which objectives the plan promises stays
-        # the model's, and `objective_without_set` reports the ones it leaves.
-        timing = props["lo_coverage_targets"]["additionalProperties"]
-        out["properties"]["lo_coverage_targets"] = {
-            "type": "object",
-            "description": props["lo_coverage_targets"].get("description", ""),
-            "properties": {lo: {**timing, "minItems": 1} for lo in vocab.objectives},
-            "minProperties": 1,
-            "additionalProperties": False,
-        }
     return out
 
 

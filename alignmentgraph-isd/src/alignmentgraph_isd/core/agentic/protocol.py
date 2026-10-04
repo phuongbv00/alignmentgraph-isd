@@ -250,7 +250,8 @@ def respec(messages: list, step, brief: str) -> str:
 #: Which agent-facing protocol a run spoke, recorded in
 #: ``metadata.run_config`` so that runs on either side of a change to the
 #: tools an agent is bound or to how a stage ends are never pooled by mistake.
-#: 14 = an activity that names no assessment task is refused while the design
+#: 15 = the assessment plan's lo_coverage_targets is written by the harness
+#: from its tasks, never asked of the model. 14 = an activity that names no assessment task is refused while the design
 #: has one, and the prose arm's activity Developers are shown the tasks they
 #: prepare for with their questions. 13 = the single arm's submit offers only the artifacts its stage still
 #: owes, the next of them required, so a landed plan is never re-sent; the
@@ -282,7 +283,7 @@ def respec(messages: list, step, brief: str) -> str:
 #: each item's objective, type and cognitive level and each activity's
 #: objective and level, the mode states a material's depth, and the pilot
 #: data plan names its collection points in words.
-PROTOCOL_REV = 14
+PROTOCOL_REV = 15
 
 #: The answer to a repeated read whose result is unchanged — ONE wording for
 #: both arms, and only ever said when it is true (``turn.answer_read`` has

@@ -225,8 +225,9 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
     # optional and named by no rule, so a model leaves them empty and any
     # establisher reading them cannot fire (see
     # `alignment._promised_categories`). The plan states its categories ONCE,
-    # in `lo_coverage_targets`, per objective; an optional second place to say
-    # the same thing only invites a small model to guess.
+    # per task (`timing` x `covers_objectives`); `lo_coverage_targets` is the
+    # same fact per objective, and the harness writes it from the tasks at the
+    # commit (`dev_plans.coverage_targets_from`) rather than asking for it.
     #
     # `sets` is the BLUEPRINT, ONE SET PER MODULE: everything a learner sits
     # for that module, as a list of assessment TASKS — a quiz before it, a
@@ -272,9 +273,6 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
                 ("id", "timing", "format", "item_counts", "covers_objectives"))),
             },
             ("module_id", "assessment_tasks"))),
-        "lo_coverage_targets": {"type": "object",
-            "description": "objective id -> list of plan categories covering it",
-            "additionalProperties": {"type": "array", "items": _PLAN_CATEGORY}},
         "expected_evidence": {"type": "object",
             "description": "objective id -> what evidence would demonstrate mastery of it",
             "additionalProperties": {"type": "string"}},
@@ -311,7 +309,7 @@ ARTIFACT_SCHEMAS: dict[str, dict] = {
             "decision_rule": {"type": "string",
                               "description": "what the criteria together decide: adopt, revise, or drop"},
         }, ("goal_attainment", "learner_satisfaction", "cost_efficiency", "decision_rule")),
-    }, ("sets", "lo_coverage_targets", "expected_evidence", "formative_methods",
+    }, ("sets", "expected_evidence", "formative_methods",
         "pilot_data_plan", "summative_evaluation_plan", "adoption_criteria")),
     #: Item schema — the fan-out's ``assessment_tools`` (assessment items).
     "assessment_tools": _obj({

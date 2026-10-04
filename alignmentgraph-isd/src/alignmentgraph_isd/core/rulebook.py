@@ -162,9 +162,7 @@ the ``covers_objectives`` it assesses (ids from that module's objectives), its `
 summative task's item_counts total at least three: one performance prompt is one item of
 evidence, not an instrument.
 Every objective must be covered by at least one task.
-lo_coverage_targets and expected_evidence must have one entry per learning objective given, and
-lo_coverage_targets must agree with the tasks: an objective is promised a category exactly
-when a task with that ``timing`` covers it.
+expected_evidence must have one entry per learning objective given.
 formative_methods must each name a task and a cadence (e.g. "exit tickets after each
 module"), consistent with the formative intent above.
 pilot_data_plan.collection_points must name at least two points, each said in WORDS a reader
@@ -191,7 +189,7 @@ to act on without further analysis."""
 RULES_ASSESSMENT_ITEMS = """\
 Every item belongs to ONE set of the assessment plan: put that task's id in ``task_id``, and
 ``plan_category`` must be that set's ``timing``.
-Every (objective, plan_category) pair the assessment plan's lo_coverage_targets names needs at
+Every (objective, plan_category) pair the assessment plan's tasks cover needs at
 least one item, and there is no filler beyond what the sets' ``item_counts`` state. Do not aim for a round number of items -- a plan covering three
 objectives in two categories needs six items, not ten. required_cognitive_process must be one of:
 %(bloom_levels)s — and must be honestly achievable by the
@@ -214,7 +212,7 @@ RULES_ASSESSMENT_ITEMS = RULES_ASSESSMENT_ITEMS % {"bloom_levels": ", ".join(BLO
 
 #: Per-assignment rewrite of RULES_ASSESSMENT_ITEMS: a Developer sees only
 #: the sets it was assigned, not the whole plan, so the count/filler rule is
-#: scoped to its assignment instead of the plan's full lo_coverage_targets.
+#: scoped to its assignment instead of every pair the plan's tasks cover.
 RULES_ASSESSMENT_ITEMS_SET = """\
 Do NOT write an id for the artifacts you produce — ids are assigned when your assignment is
 committed, so that two Developers working at the same time cannot name the same thing.
