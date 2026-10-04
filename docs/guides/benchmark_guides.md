@@ -741,8 +741,8 @@ lượng. Không có nó thì H-S chỉ được phát biểu về structural co
 trên chúng, verdict theo quy tắc trên, và các phép phụ: triad do model tự viết, layer complete-case, độ dốc
 `phase_scores`. `stats_ablation.md` in nó ở mục "Registered tests". `primary_failure_policy` của pool là `zero`.
 Pool chạy trên ít hơn hai size thì chỉ làm được một phần họ kiểm định. Khi đó cả terminal lẫn báo cáo ghi
-**INCOMPLETE**, và các verdict đó không phải phân tích đã đăng ký. Việc còn lại trước freeze:
-`[experiment.ablation].tags` trong `experiments/experiment.toml` phải là `["a1", "a2", "a3"]`.
+**INCOMPLETE**, và các verdict đó không phải phân tích đã đăng ký. `[experiment.ablation].tags` là
+`["a1", "a2", "a3"]`, nên `isd-exp run ablation` chạy ba run độc lập mỗi ô.
 
 ## 6. Audit
 
