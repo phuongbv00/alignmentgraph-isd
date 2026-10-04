@@ -374,6 +374,13 @@ class TestAblationPoolFeedsItsTables:
         assert "tab_ablation_process.tex" in written
         assert "Process measures" in written["stats_ablation.md"]
 
+    def test_the_registered_tests_reach_the_pool_and_the_report(self, pooled_ablation):
+        from isd_experiments.report import ablation_tables
+        reg = pooled_ablation["registered"]
+        assert len(reg["family"]) == 6 and reg["failure_policy"] == "zero"
+        assert pooled_ablation["config"]["primary_failure_policy"] == "zero"
+        assert "Registered tests" in ablation_tables.build(pooled_ablation)["stats_ablation.md"]
+
     def test_the_process_layer_covers_every_size_and_arm(self, pooled_ablation):
         labels = {m["label"] for m in pooled_ablation["models"]}
         assert {e["label"] for e in pooled_ablation["process"]} == labels

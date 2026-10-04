@@ -98,11 +98,12 @@ def n_clause(entries: list[dict]) -> str:
 
 # ── helpers over the pooled structure ────────────────────────────────────────
 
-def comparison_row(model: dict, arm: str) -> dict:
-    """complete_case comparison row (A0 − arm) for one arm, or {}."""
+def comparison_row(model: dict, arm: str, policy: str = "zero") -> dict:
+    """Comparison row (A0 − arm) for one arm under ``policy``, or {}. The
+    default is the registered primary layer, failure = 0."""
     for row in (model.get("comparisons", {}).get("by_score", {})
                 .get("addie_median", {}).get("policies", {})
-                .get("complete_case", [])):
+                .get(policy, [])):
         if row.get("baseline") == arm:
             return row
     return {}
@@ -124,6 +125,56 @@ def arm_delta(model: dict, arm: str) -> dict:
 
 # ── outputs ──────────────────────────────────────────────────────────────────
 
+def registered_section(pooled: dict) -> list[str]:
+    """The tests the ablation concludes from, as registered (benchmark_guides §5.5)."""
+    reg = pooled.get("registered") or {}
+    if not reg.get("family"):
+        return []
+    L = ["## Registered tests", "",
+         "Direction: **multi − single** (decomposition) and **graph − prose** "
+         "(substrate), main effect over the other axis; H-C = effect at the "
+         "smallest size − at the largest. Failure = 0, scenario as the unit. "
+         f"Holm over the {sum(1 for r in reg['family'] if 'p_holm' in r)} of these that "
+         "could be run, and no others. Verdict: supported = "
+         "p_holm < 0.05 with the predicted (positive) sign; contrary = p_holm < "
+         "0.05, negative; otherwise not detected.", "",
+         "| Test | Measure | Δ | CI95 | r_rb | n | p_holm | Verdict |",
+         "|---|---|---|---|---|---|---|---|"]
+    if not reg.get("complete"):
+        L[4:4] = ["**Incomplete: not every registered test could be run on these run "
+                  "dirs, so these verdicts are not the registered analysis.**", ""]
+    for r in reg["family"]:
+        if not r.get("n"):
+            L.append(f"| {r['test']} | {r['measure']} | — | — | — | 0 | — | {r['verdict']} |")
+            continue
+        lo, hi = r["ci95"]
+        L.append(f"| {r['test']} | {r['measure']} | {fmt_num(r['mean_diff'], 3)} "
+                 f"| [{fmt_num(lo, 3)}, {fmt_num(hi, 3)}] | {fmt_num(r['rank_biserial_r'], 2)} "
+                 f"| {r['n']} | {r['p_holm']:.3g} | {r['verdict']} |")
+    L.append("")
+    L.append("Secondary, outside the family: the substrate effect on the triad the "
+             "model wrote itself (references the repair net did not write), the "
+             "complete-case layer of both tests, and the slope of the "
+             "multi − single gap over the ADDIE phases (positive = the single arm "
+             "falls further behind the later the phase).")
+    L.append("")
+    L.append("| Size | Reading | Δ | CI95 | n | p_raw |")
+    L.append("|---|---|---|---|---|---|")
+    for size, sec in (reg.get("secondary") or {}).items():
+        for name, row in (("substrate, model-written triad", sec.get("substrate|model_written")),
+                          ("decomposition, complete-case", sec.get("decomposition|complete_case")),
+                          ("substrate, complete-case", sec.get("substrate|complete_case")),
+                          ("phase slope (per phase)", (sec.get("phase_slope") or {}).get("slope"))):
+            if not row or not row.get("n"):
+                L.append(f"| {size} | {name} | — | — | 0 | — |")
+                continue
+            lo, hi = row["ci95"]
+            L.append(f"| {size} | {name} | {fmt_num(row['mean_diff'], 3)} "
+                     f"| [{fmt_num(lo, 3)}, {fmt_num(hi, 3)}] | {row['n']} | {row['p_raw']:.3g} |")
+    L.append("")
+    return L
+
+
 def gen_tab_ablation(pooled: dict) -> str:
     models = pooled["models"]
     a0 = pooled["config"]["reference"]
@@ -134,7 +185,7 @@ def gen_tab_ablation(pooled: dict) -> str:
     lines.append("\\begin{table*}[t]")
     lines.append(
         "  \\caption{Ablation across model sizes. Each cell: mean ADDIE"
-        " (/100, complete-case) and $\\Delta$ = arm $-$ A0 (negative = removal"
+        " (/100, failure = 0) and $\\Delta$ = arm $-$ A0 (negative = removal"
         " lowered ADDIE, positive = raised it). Wilcoxon, Holm over the"
         f" {len(arms)} arms per size.}}")
     lines.append("  \\label{tab:ablation}")
@@ -408,7 +459,7 @@ def gen_macros(pooled: dict) -> str:
             d = arm_delta(m, arm)
             if not d:
                 continue
-            sig_note = ("on addie_median (ADDIE rubric /100, complete-case; "
+            sig_note = ("on addie_median (ADDIE rubric /100, failure = 0; "
                         "NEGATIVE = removing the component lowered ADDIE)")
             newcmd(f"ablDelta{word}{w}", fmt_num(d["delta"]),
                    f"{arm} minus A0 {sig_note} @ {m['label']} "
@@ -455,7 +506,9 @@ def gen_stats_md(pooled: dict) -> str:
              f"Holm family: {pooled['config'].get('holm_family')}.")
     L.append("")
 
-    L.append("## Per-size means and paired deltas (ADDIE, complete-case)")
+    L.extend(registered_section(pooled))
+
+    L.append("## Per-size means and paired deltas (ADDIE, failure = 0)")
     L.append("")
     L.append("Direction in this section: **arm − A0** on `addie_median` "
              "(negative = removing the component lowered ADDIE, positive = "

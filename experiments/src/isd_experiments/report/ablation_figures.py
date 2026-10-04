@@ -176,12 +176,14 @@ def fig_ablation_components(pooled: dict, outdir: Path, written: list[Path]) -> 
 
 
 def arm_rows(pooled: dict, arm: str) -> dict[str, dict]:
-    """label -> complete_case comparison row (stored direction: A0 − arm)."""
+    """label -> comparison row under the pool's primary failure policy
+    (stored direction: A0 − arm)."""
+    policy = (pooled.get("config") or {}).get("primary_failure_policy") or "zero"
     out = {}
     for m in pooled["models"]:
         for row in (m.get("comparisons", {}).get("by_score", {})
                     .get("addie_median", {}).get("policies", {})
-                    .get("complete_case", [])):
+                    .get(policy, [])):
             if row.get("baseline") == arm and row.get("n"):
                 out[m["label"]] = row
     return out

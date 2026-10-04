@@ -33,7 +33,7 @@ from ..config import current as current_config
 from ..runs import iter_scenario_dirs, load_run
 from ..stats import BOOT_SEED, N_BOOT, bootstrap_ci, rank_biserial, wilcoxon_signed_rank
 from ..util import mean as _mean
-from . import diagnostics, rosters
+from . import diagnostics, registered, rosters
 from .comparison import discover
 from .llm_judge import compare_model, pool_model
 from .panel import pool_alignment
@@ -406,6 +406,14 @@ def factorial_layer(run_dirs_by_model: dict[str, list[Path]],
     }
 
 
+def registered_layer(run_dirs_by_model: dict[str, list[Path]], agents: list[str]) -> dict:
+    """The tests the ablation concludes from (``registered``), or why they were not run."""
+    missing = [a for a in factorial_cells().values() if a not in agents]
+    if missing:
+        return {"skipped": f"arms missing from this pool: {missing}"}
+    return registered.analyse(run_dirs_by_model, factorial_cells())
+
+
 def print_report(pooled: dict, a0: str, arms: list[str]) -> None:
     print("\n" + "=" * 78)
     print("ABLATION POOLING — contribution = A0 − arm (positive: component helps)")
@@ -419,7 +427,7 @@ def print_report(pooled: dict, a0: str, arms: list[str]) -> None:
                   f"nCC={s.get('n_scenarios_complete', 0):3d}  "
                   f"missing={s.get('n_scenarios_any_missing', 0)}")
         rows = (model["comparisons"]["by_score"]["addie_median"]
-                ["policies"]["complete_case"])
+                ["policies"][pooled["config"]["primary_failure_policy"]])
         for r in rows:
             if r.get("n"):
                 lo, hi = r["ci95"]
@@ -428,6 +436,8 @@ def print_report(pooled: dict, a0: str, arms: list[str]) -> None:
                       f"p_holm={r.get('p_holm', float('nan')):.2g}")
             else:
                 print(f"    A0 − {r['baseline']:<34} (no shared scenarios)")
+    if (pooled.get("registered") or {}).get("family"):
+        registered.print_family(pooled["registered"])
     inter = pooled.get("interaction", {})
     if inter.get("per_baseline"):
         print("\n  H2 / capacity interaction (DiD on addie_median; delta = A0 - arm;")
@@ -546,8 +556,13 @@ def pool(run_dirs_by_model: dict[str, list[Path]], *,
             "design": ("all arms in one run per size, so they share each scenario's "
                        "LLM judge session; the reference arm is re-run here rather than "
                        "taken from the comparison experiment"),
-            "primary_failure_policy": "complete_case",
-            "holm_family": f"{len(arm_ids)} arm comparisons within each model size",
+            # The registered analysis (``registered``, benchmark_guides §5.5)
+            # is what the ablation concludes from; the arm-vs-reference rows are
+            # secondary and keep their own per-size Holm.
+            "primary_failure_policy": "zero",
+            "holm_family": ("the six registered tests (H-D and H-S at each size, H-C per "
+                            "axis); arm-vs-reference rows: "
+                            f"{len(arm_ids)} comparisons within each model size, secondary"),
             "size_order": [m["label"] for m in models],
             "panel_artifact": scores_filename,
         },
@@ -560,6 +575,7 @@ def pool(run_dirs_by_model: dict[str, list[Path]], *,
                                     scores_filename=scores_filename),
         "token_usage": pool_tokens(run_dirs_by_model, agents),
         "factorial": factorial_layer(run_dirs_by_model, agents, scores_filename),
+        "registered": registered_layer(run_dirs_by_model, agents),
         "self_validation_activity": self_validation_activity(run_dirs_by_model, agents),
         # What each arm DID: per-stage autonomy (the series the registered
         # directional prediction is read off, and the guards that decide what an

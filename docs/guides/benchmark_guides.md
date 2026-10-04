@@ -736,15 +736,13 @@ về bundle, kèm câu nói rằng phần chênh do repair net viết.
 riêng về độ nhất quán giữa objective, activity và assessment. Đây là bằng chứng duy nhất nối H-S với chất
 lượng. Không có nó thì H-S chỉ được phát biểu về structural compliance.
 
-**Việc công cụ phải làm trước freeze.** Tính đến ngày viết mục này, `pool ablation` chưa làm đủ:
-1. Paired test, CI và DiD cho `objectives_closed_triad` và dạng `_unrepaired` của nó. Hiện chỉ có trung bình.
-2. `primary_failure_policy` đang là `complete_case`. Phải đổi sang failure = 0.
-3. Họ Holm đang là "3 arm comparisons within each model size". Phải đổi sang đúng 6 phép ở trên.
-4. Độ dốc theo vị trí phase từ `phase_scores` chưa được tính.
-5. `[experiment.ablation].tags` trong `experiments/experiment.toml` đang là `["a1"]`. Phải là
-   `["a1", "a2", "a3"]`.
-6. DiD theo size hiện tính trên từng arm so với A0 (`interaction_tests`). H-C cần DiD trên main effect
-   của từng trục.
+**Công cụ.** Phân tích đăng ký nằm trong `experiments/src/isd_experiments/pool/registered.py`, được
+`isd-exp pool ablation` gọi và ghi vào khối `registered` của `pooled_ablation.json`. Khối này có đúng 6 phép, Holm
+trên chúng, verdict theo quy tắc trên, và các phép phụ: triad do model tự viết, layer complete-case, độ dốc
+`phase_scores`. `stats_ablation.md` in nó ở mục "Registered tests". `primary_failure_policy` của pool là `zero`.
+Pool chạy trên ít hơn hai size thì chỉ làm được một phần họ kiểm định. Khi đó cả terminal lẫn báo cáo ghi
+**INCOMPLETE**, và các verdict đó không phải phân tích đã đăng ký. Việc còn lại trước freeze:
+`[experiment.ablation].tags` trong `experiments/experiment.toml` phải là `["a1", "a2", "a3"]`.
 
 ## 6. Audit
 
