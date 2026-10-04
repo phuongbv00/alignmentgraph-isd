@@ -39,6 +39,8 @@ model thương mại mạnh.
 | "số agent gây ra…", "graph gây ra…" từ ablation | Mỗi trục ablation là một bundle cơ chế | *"The multi-agent bundle / the graph substrate bundle"*, kèm danh sách thành phần của bundle. |
 | Mức giảm token/thời gian giữa các sprint là nhờ thuật toán | Thinking bị tắt cùng lúc; cách đo token và kiến trúc cũng đổi | Không báo before–after giữa các sprint như một so sánh tương đương. |
 | "kết quả giữ cho mọi SLM" | Mới thiết kế trên Qwen ladder | *"Observed on the Qwen3.5 0.8B–9B ladder."* |
+| Kết luận TN2 từ một measure, một phép thử hay một chiều dự đoán khác với bản đăng ký | Chọn measure sau khi thấy kết quả là post-hoc | Theo đúng `docs/guides/benchmark_guides.md` §5.5: measure chính, họ Holm 6 phép, quy tắc ủng hộ / ngược / không phát hiện. Mọi lần đổi sau freeze ghi ngày và khai. |
+| "graph cải thiện chất lượng thiết kế" từ `objectives_closed_triad` | Triad references là structural compliance, và phần lớn do repair net viết | *"The graph substrate bundle yields more structurally closed objective–activity–assessment triads"*, kèm dạng `_unrepaired`. Nối với chất lượng chỉ qua đánh giá chuyên gia. |
 
 Cấm tuyệt đối, không có cách viết thay thế:
 
@@ -118,6 +120,11 @@ Mức tất định được phép claim: *reproducible up to floating-point noi
 *bit-wise deterministic* (Bloom là argmax rời rạc).
 
 ## 5. Bắt buộc phải khai
+
+- **Measure chính của trục substrate (H-S) được chốt ở giai đoạn tune, sau khi đã thấy dữ liệu tune.**
+  Lý do là LLM judge chấm từng phase ADDIE riêng rẽ nên không nhìn thấy liên kết xuyên artifact, và
+  panel không đọc id liên kết. Phải khai cả lý do lẫn thời điểm chốt (2026-10-05, trước freeze), cùng
+  kết quả outcome của trục này dù không ủng hộ.
 
 - **Cơ chế failure theo từng hệ**, không gộp một câu: `baseline` hỏng vì `LengthFinishReasonError`
   đúng tại `completion_tokens = 8192`; EduPlanner hỏng vì lỗi parse schema.

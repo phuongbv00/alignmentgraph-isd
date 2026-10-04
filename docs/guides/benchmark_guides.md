@@ -23,7 +23,7 @@
                                                  loop đến khi chốt                │
                                                                                   ▼
 [8] pool ◄── [7] judge llm + alignment ◄── [6] audit ◄── [5] run: TN1 test_90  4 size × 1 run × 7 agent
-     │        (--judge nối 5 và 7)                         TN2 test_30  2 size × 1 run × 4 arm
+     │        (--judge nối 5 và 7)                         TN2 test_30  2 size × 3 run × 4 arm
      ▼
 [9] gen tables + figures ─► [10] teardown
 ```
@@ -36,15 +36,15 @@
 | Agent | 7 hệ (6 baseline + hệ đề xuất) | 4 arm (A0 + 3) |
 | Size | 0.8B / 2B / 4B / 9B | 0.8B / 4B |
 | Dataset | `test_90` | `test_30` |
-| Run/ô | 1 | 1 |
-| Tag | `r1` | `a1` |
+| Run/ô | 1 (+2 repeat cho A0, ReAct-ISD) | 3 run độc lập |
+| Tag | `r1` (repeat `r2`,`r3`) | `a1`, `a2`, `a3` |
 | Launcher | `isd-exp run comparison` | `isd-exp run ablation` |
 
 **A0 chạy LẠI trong TN2**, không mượn từ TN1: LLM judge session, scenario set và dải size đều khác,
 nên delta arm−A0 chỉ sạch khi hai vế đến từ cùng một run. Trước 2026-09-10 các arm chạy chung
 trong ladder (10 agent một run) — mọi mô tả kiểu đó trong tài liệu cũ đã hết hiệu lực.
 
-**1 run mỗi ô, không phải 3.** Bất định ước lượng theo SCENARIO (paired Wilcoxon + bootstrap trên
+**TN1: 1 run mỗi ô, không phải 3.** Bất định ước lượng theo SCENARIO (paired Wilcoxon + bootstrap trên
 90 cặp), không theo run. Lặp chỉ dùng cho *targeted repeat* — vài ô quyết định, báo riêng với n
 riêng: `./isd-exp run comparison --tags r2,r3 --slots qwen08b,qwen4b --agents ...`.
 
@@ -471,8 +471,8 @@ So hai run (ví dụ trước/sau một thay đổi harness), với trôi dạt 
 
 ### 5.1 Quy mô
 
-TN1: 4 size × 1 run × 7 agent × 90 scenario ≈ **2 520 agent generation**. TN2: 2 size × 1 run × 4 arm
-× 30 scenario = **240 generation**. Mỗi scenario sau đó được LLM judge chấm một lần cho mọi agent của nó
+TN1: 4 size × 1 run × 7 agent × 90 scenario ≈ **2 520 agent generation**. TN2: 2 size × 3 run × 4 arm
+× 30 scenario = **720 generation** (Sprint 2, `docs/supervision/feedbacks/sprint2_20260928/`). Mỗi scenario sau đó được LLM judge chấm một lần cho mọi agent của nó
 (`judge llm`, mục 7.1), bằng roster khai trong `[judge.llm]`. Một run đơn ở rate `turbo` mất vài giờ; TN1 chạy 4 size
 song song.
 
@@ -566,8 +566,9 @@ Cap thực tế được ghi vào `metadata.run_config.llm_max_concurrency` nên
 ./isd-exp run ablation --judge
 ```
 
-**Có benchmark run riêng (đổi 2026-09-10).** TN2 = 4 arm × 2 size (0.8B, 4B) × `test_30`, 1 run
-mỗi ô, tag `a1`. Bốn arm nằm trong **cùng một run** mỗi size nên chia chung LLM judge
+**Có benchmark run riêng (đổi 2026-09-10).** TN2 = 4 arm × 2 size (0.8B, 4B) × `test_30`, 3 run
+độc lập mỗi ô, tag `a1`, `a2`, `a3` (Sprint 2). Đơn vị phân tích vẫn là scenario: điểm của một ô là
+trung bình ba run, không coi ba run là ba scenario. Bốn arm nằm trong **cùng một run** mỗi size nên chia chung LLM judge
 session per scenario → delta arm-vs-A0 không dính LLM judge drift.
 
 **A0 chạy lại trong TN2, không lấy từ TN1.** LLM judge session, scenario set và dải size đều khác, nên
@@ -665,6 +666,85 @@ Diễn giải cần ghi trong paper:
   hiệu ứng đo được**, không phải bug. Regen loop + 5 within-artifact check + self-repair **bật ở mọi arm**.
 - `reference_drift` giờ là **invariant check**: delta phải ~0. Khác 0 = hai lần pool đọc lệch nhau trên cùng dữ liệu →
   lỗi cần sửa, không phải drift để giải thích.
+
+### 5.5 TN2 — đăng ký trước (chốt trước Gate 2)
+
+Mục này chốt **giả thuyết, measure chính, chiều dự đoán, phép thử và quy tắc kết luận** của TN2
+trước khi chạy. Viết ngày 2026-10-05, ở giai đoạn tune, sau khi đã đọc tune run
+`train_10_benchmark_Qwen3.5-2B_t1_20261002_134550` (rev 12). Sau freeze không đổi nội dung mục này. Nếu
+buộc phải đổi thì ghi ngày, lý do và phạm vi ảnh hưởng ngay dưới mục, và paper phải khai lần đổi đó.
+
+**Ba giả thuyết.** Mỗi giả thuyết có chiều dự đoán. Phép thử vẫn là hai phía.
+
+| Mã | Giả thuyết | Measure chính | Hiệu ứng đọc | Dự đoán |
+|---|---|---|---|---|
+| H-D | Bundle multi-agent tốt hơn bundle single-agent | `addie_median` (LLM judge, median của roster) | main effect decomposition = trung bình hai simple effect (multi − single ở graph và ở prose) | dương |
+| H-S | Bundle graph substrate tốt hơn bundle prose | `objectives_closed_triad` (process measure, đọc từ `addie_output`) | main effect substrate = trung bình hai simple effect (graph − prose ở multi và ở single) | dương |
+| H-C | Hai hiệu ứng trên lớn hơn ở model nhỏ | measure chính của từng trục | DiD theo size: hiệu ứng ở 0.8B trừ hiệu ứng ở 4B, mỗi trục một phép | dương (khung multi/graph − single/prose) |
+
+**Vì sao measure chính của H-S là process measure, không phải LLM judge score.** Cơ chế mà bundle graph
+thêm vào là liên kết xuyên artifact: activity trỏ tới task, task chứa item đo đúng objective. ISD-Agent-Bench
+đưa cho LLM judge từng phase ADDIE riêng rẽ (`_extract_phase_outputs`), nên LLM judge không nhìn thấy liên
+kết này. Alignment panel đo độ tương đồng văn bản và không đọc id liên kết. Vì vậy chọn LLM judge làm measure
+chính cho H-S là chọn một instrument không đo construct của trục. Lý do này được viết ra sau khi đã thấy tune
+(graph và prose hoà trên LLM judge), và paper phải khai đúng như vậy.
+
+`objectives_closed_triad` là **structural compliance**, không phải chất lượng sư phạm (`claim-rules.md`).
+Nó được báo ở hai dạng. Dạng chính đọc deliverable cuối, tức tính cả phần repair net viết, vì repair xuyên
+artifact là một thành phần của bundle graph. Dạng phụ bắt buộc là phần model tự viết (`*_unrepaired`,
+đọc theo `repaired_fields`). Nếu dạng chính ủng hộ H-S mà dạng phụ không ủng hộ, kết luận chỉ được phát biểu
+về bundle, kèm câu nói rằng phần chênh do repair net viết.
+
+**Measure phụ (báo đủ, không dùng để kết luận giả thuyết).**
+- Cả hai trục: `trajectory_score`, `total_score`, sáu alignment signal, cost (token, call, thời gian).
+- H-D, dự đoán cơ chế: điểm phase ADDIE (`phase_scores`) của single giảm theo vị trí phase còn multi thì không,
+  và khoảng cách này rộng hơn ở 0.8B. Đọc bằng độ dốc của (multi − single) theo thứ tự phase.
+- H-S, dự đoán cơ chế: áp lực context (số lần overflow, compaction, token prompt mỗi stage) ở prose cao hơn
+  graph, và cao hơn nữa ở 0.8B.
+- H-S, outcome: `addie_median` và panel. Báo cùng kết quả của H-S nhưng không phải phép thử của H-S.
+
+**Thống kê.**
+- Đơn vị là scenario (n = 30 mỗi size). Điểm của một ô trên một scenario là trung bình ba run. Không coi
+  ba run là ba scenario.
+- Mỗi hiệu ứng: paired Wilcoxon signed-rank hai phía, bootstrap CI 95% (10 000 lần, seed 42), effect size
+  rank-biserial r.
+- Họ kiểm định chính có 6 phép: H-D ở 0.8B và 4B, H-S ở 0.8B và 4B, H-C cho trục decomposition và cho trục
+  substrate. Hiệu chỉnh Holm trên đúng 6 phép này, α = 0,05.
+- Interaction decomposition × substrate (đã có trong `factorial`) báo không hiệu chỉnh, vì là contrast
+  cấu trúc của thiết kế. Dự đoán đã có từ trước: decomposition có lợi hơn khi đi cùng graph.
+- Failure policy chính: output hỏng tính điểm 0 (layer triển khai, theo Sprint 2). Complete-case là
+  sensitivity. Báo riêng tỉ lệ fail và nguyên nhân theo từng ô.
+
+**Quy tắc kết luận.**
+- **Ủng hộ:** p Holm < 0,05 và dấu khớp dự đoán.
+- **Ngược dự đoán:** p Holm < 0,05 và dấu ngược. Báo như kết quả, không giải thích lại thành ủng hộ.
+- **Không phát hiện:** mọi trường hợp còn lại. Không viết "tương đương" hay "không khác biệt"; báo effect size
+  và CI.
+- H-C chỉ có hai điểm size, nên chỉ được phát biểu là "lớn hơn ở 0.8B so với 4B", không phải một xu hướng
+  theo size.
+
+**Điều kiện treatment fidelity.** Không thoả thì không đọc kết quả của trục đó, và báo lý do.
+- Không stage nào bị trần turn cắt ở cả hai arm của một simple effect (`via_budget_exhaustion`).
+- Arm single không có stage bị đóng ở `SUBMIT_CAP` khi còn nợ artifact (`stage_abandoned`), không có run
+  dừng vì thiếu module (`run_stopped`).
+- Mọi run của TN2 cùng một `protocol_rev`, cùng `development_mode`, và cờ của từng arm khớp agent id
+  (`flag_check`).
+- `gave_up`, `constrained_pass` và overflow báo theo ô. Một ô có tỉ lệ bất thường so với tune phải giải
+  trình trước khi đọc.
+
+**Bằng chứng độc lập.** Chuyên gia chấm ẩn danh một mẫu phân tầng, cùng mẫu cho cả bốn arm, có tiêu chí
+riêng về độ nhất quán giữa objective, activity và assessment. Đây là bằng chứng duy nhất nối H-S với chất
+lượng. Không có nó thì H-S chỉ được phát biểu về structural compliance.
+
+**Việc công cụ phải làm trước freeze.** Tính đến ngày viết mục này, `pool ablation` chưa làm đủ:
+1. Paired test, CI và DiD cho `objectives_closed_triad` và dạng `_unrepaired` của nó. Hiện chỉ có trung bình.
+2. `primary_failure_policy` đang là `complete_case`. Phải đổi sang failure = 0.
+3. Họ Holm đang là "3 arm comparisons within each model size". Phải đổi sang đúng 6 phép ở trên.
+4. Độ dốc theo vị trí phase từ `phase_scores` chưa được tính.
+5. `[experiment.ablation].tags` trong `experiments/experiment.toml` đang là `["a1"]`. Phải là
+   `["a1", "a2", "a3"]`.
+6. DiD theo size hiện tính trên từng arm so với A0 (`interaction_tests`). H-C cần DiD trên main effect
+   của từng trục.
 
 ## 6. Audit
 
