@@ -375,6 +375,12 @@ def _learning_activities(base: dict, vocab: Vocabulary, work_set, mode: str):
         "prepares_for_assessment": _ref_list(props["prepares_for_assessment"], task_ids),
         "module_id": _ref(props["module_id"], vocab.module_ids),
     }
+    if task_ids:
+        # Required whenever there is a task to name (``fanout.required_refs``):
+        # a pass that may leave it empty writes it empty.
+        common["prepares_for_assessment"] = {**common["prepares_for_assessment"], "minItems": 1}
+        base = {**base, "required": list(dict.fromkeys(
+            [*(base.get("required") or ()), "prepares_for_assessment"]))}
     rows = [r for r in ((work_set.payload.get("assigned_activities") if work_set else None) or [])
             if isinstance(r, dict)]
     if not rows:

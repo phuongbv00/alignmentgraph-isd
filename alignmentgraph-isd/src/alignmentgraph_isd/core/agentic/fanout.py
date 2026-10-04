@@ -37,6 +37,7 @@ from typing import Callable
 
 from .. import dev_plans
 from .. import rulebook as rules
+from ..aggregate import _tasks_with_items as _join_tasks
 from ..alignment_graph import NodeType, alignment
 from ..checks import _ALL_BLOOM_VERBS, described_levels
 from ..trajectory import ORCHESTRATOR
@@ -85,6 +86,11 @@ class SetOutput:
     #: references ANOTHER family by id. Declarative, because the check is one
     #: rule over all of them: the id must name something that exists.
     ref_fields: tuple[tuple[str, str], ...] = ()
+    #: The ``ref_fields`` every item must NAME something in, whenever the
+    #: design holds anything of that type to name. Conditional rather than a
+    #: schema ``required``, because a design with no such element leaves the
+    #: field nothing it could hold.
+    required_refs: tuple[str, ...] = ()
 
 
 def _section_doc(state, node_type: str, doc_key: str) -> dict:
@@ -171,6 +177,34 @@ def reference_errors(list_key: str, items: list, ref_fields, known) -> list[str]
     return errors
 
 
+def missing_reference_errors(output: "SetOutput", items: list, known) -> list[str]:
+    """An item that leaves a ``required_refs`` field EMPTY while the design
+    holds something it could name.
+
+    ``reference_errors`` judges a reference that is there; this is the one
+    that is not. MEASURED (run t1 20261002_134550): the rule told every
+    activity to list ``prepares_for_assessment`` and nothing held it to that —
+    of the activity Developers' submits, 169 of 175 (graph) and 70 of 76
+    (prose) arrived without the field, mostly under a fused key whose value
+    was not a list, and C4 was then written by the deterministic net on one
+    arm and not at all on the other."""
+    errors: list[str] = []
+    for field, node_type in output.ref_fields:
+        pool = (known or {}).get(node_type)
+        if field not in output.required_refs or not pool:
+            continue
+        for index, item in enumerate(items):
+            if not isinstance(item, dict):
+                continue
+            raw = item.get(field)
+            if any(str(one or "").strip() for one in (raw if isinstance(raw, list) else [raw])):
+                continue
+            errors.append(
+                f"{output.schema_key}[{index}].{field}: required — name at least one "
+                f"{node_type} by id: {', '.join(sorted(pool)[:8])}")
+    return errors
+
+
 def output_errors(spec: "FanoutSpec", section: dict, known: dict | None = None, *,
                   levels: dict[str, str] | None = None,
                   committed_best: dict[str, int] | None = None,
@@ -210,6 +244,7 @@ def output_errors(spec: "FanoutSpec", section: dict, known: dict | None = None, 
             errors += output.validate_items(items)
         if output.ref_fields and known:
             errors += reference_errors(output.schema_key, items, output.ref_fields, known)
+            errors += missing_reference_errors(output, items, known)
         if levels and output.element_type == NodeType.ASSESSMENT:
             errors += item_level_errors(items, levels, committed_best)
         if statements and output.element_type == NodeType.ASSESSMENT:
@@ -796,7 +831,8 @@ SPECS: dict[str, FanoutSpec] = {
                 validate_items=_names_its("module_id", "learning_activities", "module"),
                 ref_fields=(("aligned_objectives", NodeType.OBJECTIVE),
                             ("prepares_for_assessment", NodeType.ASSESSMENT),
-                            ("module_id", NodeType.MODULE))),
+                            ("module_id", NodeType.MODULE)),
+                required_refs=("prepares_for_assessment",)),
         ),
         developer_reads=(NodeType.OBJECTIVE, NodeType.ASSESSMENT),
         render=dev_plans.render_activity_set, plan_sets=_activity_sets,
@@ -977,8 +1013,17 @@ def _resolve(state, label: str, node_type: str, doc: tuple[str, str],
         nodes = [n for n in state.element_nodes(node_type)
                  if dev_plans._bare(n["data"].get(id_field, "")) in wanted]
     else:
+        # The blackboard keeps ``assessment_tools`` as a flat list of QUESTIONS
+        # keyed by ``item_id``, so the tasks an activity set names are the
+        # plan's, each with the questions that name it — what the graph arm's
+        # task node holds. Read as a flat pool, no task matched and the prose
+        # arm's activity Developers were never shown what a task asks
+        # (MEASURED, run t1 20261002_134550: the block was absent from every
+        # prose assignment).
+        pool = (_tasks_with_items(state) if node_type == NodeType.ASSESSMENT
+                else state.items(*doc))
         nodes = [{"type": str(node_type), "id": f"{node_type}:{i.get(id_field)}", "data": i}
-                 for i in state.items(*doc)
+                 for i in pool
                  if isinstance(i, dict) and dev_plans._bare(i.get(id_field, "")) in wanted]
     if not nodes:
         return ""
@@ -987,6 +1032,17 @@ def _resolve(state, label: str, node_type: str, doc: tuple[str, str],
                 else "\n".join(json.dumps(n["data"], ensure_ascii=False)[:tools.NODE_CHAR_CAP]
                                 for n in nodes))
     return f"\n\n{label}:\n{rendered}" if rendered.strip() else ""
+
+
+def _tasks_with_items(store) -> list[dict]:
+    """The plan's assessment tasks off the blackboard, each carrying the
+    questions that name it — the aggregator's join, so the assignment and the
+    deliverable read the same document."""
+    plan = _section_doc(store, NodeType.ASSESSMENT_PLAN, "assessment_plan")
+    if not dev_plans.plan_tasks(plan):
+        return []
+    return _join_tasks(plan, [i for i in store.items("assessment", "assessment_tools")
+                       if isinstance(i, dict)])
 
 
 def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,

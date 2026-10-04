@@ -2529,3 +2529,32 @@ def test_a_developer_that_writes_one_item_per_call_finishes_its_set_in_instalmen
     assert not loop.stats["gave_up"]
     assert [i["question"] for i in captured["assessment_tools"]] == ["Q1", "Q2", "Q3"], (
         "what the driver commits is the whole pile, in the order it was written")
+
+
+def test_a_prose_activity_developer_is_shown_the_task_and_its_questions():
+    """The graph arm's assignment renders the task node, items inside. The
+    blackboard keeps its questions flat, keyed by ``item_id``, so the same
+    lookup found no task and the block was absent from every prose assignment
+    (MEASURED, run t1 20261002_134550) — a difference sitting on the
+    ``context_mode`` axis rather than on the machinery it ablates."""
+    from alignmentgraph_isd.core import dev_plans
+    from alignmentgraph_isd.core.agentic import fanout
+    from alignmentgraph_isd.core.prose_store import ProseStore
+
+    store = ProseStore()
+    trajectory = TrajectoryLogger()
+    specialists.commit_outcomes_prose(store, trajectory, _OUTCOMES)
+    specialists.commit_assessment_prose(store, trajectory, _ASSESSMENT)
+    question = _ASSESSMENT["assessment_tools"][0]["question"]
+    fanout.commit_sets(
+        fanout.SPECS["assessment"], store, trajectory,
+        [dev_plans.WorkSet(set_id="AS-01")],
+        [{"set_id": "AS-01", **_ASSESSMENT}])
+
+    work_set = dev_plans.WorkSet(set_id="AB-01", objectives=("ILO-01",),
+                                 payload={"assessment_task_ids": ["AT-01"]})
+    intro = fanout.set_step(fanout.SPECS["activities"], work_set,
+                            STEP_BY_NAME["activities"], store).intro
+    assert "The assessment tasks your set prepares learners for" in intro
+    assert '"practical"' in intro
+    assert question in intro

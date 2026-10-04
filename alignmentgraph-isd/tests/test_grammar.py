@@ -455,3 +455,36 @@ def test_the_budget_shrinks_only_what_the_decoder_added():
     assert grammar.worst_case_chars(small) <= 2000
     unbudgeted = grammar.for_decoder(schema)
     assert unbudgeted["properties"]["free"]["maxLength"] == grammar.DECODER_MAX_STRING
+
+
+@pytest.mark.parametrize("substrate", ["graph", "prose"])
+def test_an_activity_must_name_a_task_whenever_the_design_has_one(substrate):
+    """MEASURED (run t1 20261002_134550): 169 of 175 graph-arm and 70 of 76
+    prose-arm activity submits arrived without ``prepares_for_assessment``,
+    which the rules ask of every activity and nothing held them to. The submit
+    refuses it, and the pass that rewrites a refused submit must write it —
+    the same way on both substrates."""
+    state = _design(substrate)
+    known = fanout.known_ids(state)
+    activity = {"activity_name": "Lab", "duration": "45 minutes", "description": "Build it.",
+                "module_id": "MOD-01", "materials_needed": "IDE",
+                "aligned_objectives": ["ILO-01"], "learner_cognitive_process": "apply"}
+    errors = fanout.output_errors(fanout.SPECS["activities"],
+                                  {"learning_activities": [activity]}, known)
+    assert any("prepares_for_assessment: required" in e for e in errors)
+    named = dict(activity, prepares_for_assessment=["AT-01"])
+    assert not fanout.output_errors(fanout.SPECS["activities"],
+                                    {"learning_activities": [named]}, known)
+    # A design with no task leaves it nothing to name: not refused.
+    assert not fanout.missing_reference_errors(
+        fanout.SPECS["activities"].outputs[0], [activity],
+        {**known, NodeType.ASSESSMENT: []})
+
+    item = grammar.tighten_parameters(
+        tools.submit_parameters(fanout.set_step(
+            fanout.SPECS["activities"], dev_plans.WorkSet(set_id="AB-MOD-01"),
+            STEP_BY_NAME["activities"], state)),
+        grammar.Vocabulary.of(state))["properties"]["learning_activities"]["items"]
+    assert "prepares_for_assessment" in item["required"]
+    assert item["properties"]["prepares_for_assessment"]["minItems"] == 1
+    assert item["properties"]["prepares_for_assessment"]["items"]["enum"] == ["AT-01"]
