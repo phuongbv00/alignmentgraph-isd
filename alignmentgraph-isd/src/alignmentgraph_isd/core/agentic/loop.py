@@ -46,6 +46,7 @@ from .client import AgenticLLM
 from .compaction import compact
 from .protocol import (
     INSTALMENT_PASS_REASON,
+    PROMPT_EXCEEDS_WINDOW,
     WORKFLOW_OVERVIEW,
     empty_stage_stats,
     landed_parts,
@@ -410,6 +411,10 @@ class ToolLoop:
             if turn.overflowed:
                 # See ``ReactLoop._run``: one rule for both arms.
                 self._meter.context_overflowed()
+                if self._meter.cannot_fit:
+                    self.stats["prompt_exceeds_window"] = True
+                    self._give_up(PROMPT_EXCEEDS_WINDOW, last_resort=self._best or None)
+                    return
                 continue
             self._meter.request_fit()
             if turn.binding_failed:

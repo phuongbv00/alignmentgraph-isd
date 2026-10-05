@@ -42,6 +42,7 @@ from . import turn as turn_mod
 from .client import AgenticLLM
 from .compaction import compact
 from .protocol import (
+    PROMPT_EXCEEDS_WINDOW,
     STAGE_BRIEF_HEADER,
     WORKFLOW_OVERVIEW,
     brief_stages,
@@ -253,6 +254,16 @@ class ReactLoop:
         landed = view_as_harness(step, self.state)
         optional = tuple(key for key, _type, required in step.submit_fields
                          if not required and key not in owed and not landed.get(key))
+        # The stage's own artifacts first, its item lists only once those have
+        # landed: an item names a task, a material a media selection, a guide
+        # the activities — none of which exist until the plan does. Offered
+        # together, the plan's schema and the items' tightened one were over
+        # the serving window before any message (MEASURED, run t1
+        # 20261005_205508: ~7.5k of the 8,192 prompt tokens in `tools` alone,
+        # and three runs resent one refused request 270-280 times).
+        own = tuple(key for key, _type, _required in step.submit_fields if key in owed)
+        if own:
+            return own + optional
         return tuple(key for key in declared if key in owed) + optional
 
     def _done(self) -> frozenset:
@@ -570,6 +581,17 @@ class ReactLoop:
                 # refusal, not the model's turn. Refunded, never nudged, and
                 # the next request is trimmed harder (``turn.squeeze``).
                 self._meter.context_overflowed()
+                if self._meter.cannot_fit:
+                    # What no trim reaches is over the window: the stage
+                    # cannot be written here, so it is closed and the run
+                    # moves on — the stage loop's give-up, one stage wide.
+                    self.stats["prompt_exceeds_window"] = True
+                    self.trajectory.log_recovery_event(
+                        self.identity, "agentic_gave_up", PROMPT_EXCEEDS_WINDOW, current)
+                    self._close_stage(_STEP_BY_NAME[current])
+                    self._meter.request_fit()
+                    if len(self._done_set) == len(STEPS):
+                        return
                 continue
             self._meter.request_fit()
             outcome = turn_mod.spend_queue(

@@ -250,6 +250,10 @@ def respec(messages: list, step, brief: str) -> str:
 #: Which agent-facing protocol a run spoke, recorded in
 #: ``metadata.run_config`` so that runs on either side of a change to the
 #: tools an agent is bound or to how a stage ends are never pooled by mistake.
+#: 16 = the assessment plan is judged at the submit as it will be committed
+#: (its coverage targets derived, never asked for), the single arm offers a
+#: stage's own artifacts before its item lists, and a stage whose smallest
+#: transcript the window still refuses ends instead of resending it.
 #: 15 = the assessment plan's lo_coverage_targets is written by the harness
 #: from its tasks, never asked of the model. 14 = an activity that names no assessment task is refused while the design
 #: has one, and the prose arm's activity Developers are shown the tasks they
@@ -283,11 +287,15 @@ def respec(messages: list, step, brief: str) -> str:
 #: each item's objective, type and cognitive level and each activity's
 #: objective and level, the mode states a material's depth, and the pilot
 #: data plan names its collection points in words.
-PROTOCOL_REV = 15
+PROTOCOL_REV = 16
 
 #: The answer to a repeated read whose result is unchanged — ONE wording for
 #: both arms, and only ever said when it is true (``turn.answer_read`` has
 #: just re-derived the result and compared it).
+#: Why a stage ended when the window refused even its smallest transcript
+#: (``turn.TurnMeter.cannot_fit``): the same words in both arms' records.
+PROMPT_EXCEEDS_WINDOW = "the prompt exceeds the serving window"
+
 REPEAT_UNCHANGED = ("You already called {name} with these arguments and the result has not "
                     "changed since the last call. Use what you have.")
 
@@ -319,6 +327,9 @@ def empty_stage_stats() -> dict:
     ``via_budget_exhaustion``: whether the TURN CEILING is what ended the
     stage. Reported for BOTH arms because the ``agent_mode`` claim rests on
     neither arm having been CUT by its budget.
+    ``prompt_exceeds_window``: whether the stage ended because the window
+    refused even its smallest transcript (``turn.TurnMeter.cannot_fit``) — a
+    serving limit, never read as the model failing to act.
     ``compactions`` / ``compaction_summaries``: how often the window filled
     (``single`` reaches this constantly, ``multi`` barely — the axis showing
     its own mechanism) and how many of those folds the model delivered; the
@@ -342,7 +353,7 @@ def empty_stage_stats() -> dict:
     return {"turns_used": 0, "submits_rejected": 0, "repeated_calls": 0,
             "history_dropped": 0, "gave_up": False, "reads": 0, "assignment_reads": 0,
             "rereads_changed": 0, "state_reads": 0, "blind_submits": 0,
-            "via_budget_exhaustion": False,
+            "via_budget_exhaustion": False, "prompt_exceeds_window": False,
             "compactions": 0, "compaction_summaries": 0,
             "context_len": 0, "batched_calls": 0, "markup_recovered": 0,
             "args_salvaged": 0,

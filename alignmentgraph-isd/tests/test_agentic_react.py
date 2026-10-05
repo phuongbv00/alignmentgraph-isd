@@ -646,6 +646,10 @@ def test_a_landed_artifact_is_not_offered_again_and_the_next_owed_is_required():
         commit["outcomes"](state, trajectory, _OUTCOMES)
         params = _submit_params(loop, "submit_assessment")
         assert params["required"] == ["assessment_plan"], graph_mode
+        # The items name tasks the plan has not declared yet, so their schema
+        # is not offered beside it: the two together were over the window
+        # before any message (run t1 20261005_205508).
+        assert list(params["properties"]) == ["assessment_plan"], graph_mode
 
         commit["assessment"](state, trajectory, {"assessment_plan": _ASSESSMENT["assessment_plan"]})
         params = _submit_params(loop, "submit_assessment")
@@ -660,3 +664,48 @@ def test_a_finished_stage_under_repair_offers_everything_and_requires_nothing():
     params = tools.spec_parameters(names, "submit_assessment")
     assert set(params["properties"]) == {"assessment_plan", "assessment_tools"}
     assert params["required"] == []
+
+
+def test_a_prompt_no_trim_can_fit_ends_the_stage_instead_of_resending_it():
+    """MEASURED (run t1 20261005_205508): three single-arm runs resent one
+    8,193-token request 270-280 times until the turn ceiling closed the run.
+    Once the squeeze is at its floor and the window still refuses, the part no
+    trim reaches is over the window and sending it again changes nothing."""
+    from alignmentgraph_isd.core.agentic import turn as turn_mod
+    from alignmentgraph_isd.core.agentic.protocol import PROMPT_EXCEEDS_WINDOW
+
+    meter = turn_mod.TurnMeter({}, max_turns=10)
+    for _ in range(turn_mod.SQUEEZE_STEPS):
+        meter.context_overflowed()
+    assert not meter.cannot_fit, "the squeeze has not reached its floor yet"
+    meter.context_overflowed()
+    assert meter.cannot_fit
+    meter.request_fit()
+    assert not meter.cannot_fit
+
+    endless = 10 ** 6
+    model = _OverflowsFirst([], n=endless)
+    config = HarnessRunConfig(llm_factory=lambda: model)
+    trajectory = TrajectoryLogger()
+    loop = react.ReactLoop(config, AlignmentGraph(), trajectory, load_brief("minimal_brief.json"))
+    loop.run()
+    sent = endless - model._refusals[0]
+    # Bounded by the stages, a few requests each — not by the 288-turn ceiling.
+    assert sent < 2 * len(STEPS) * (turn_mod.SQUEEZE_STEPS + 1), sent
+    assert loop.stats["prompt_exceeds_window"]
+    assert any(e["action"] == "agentic_gave_up"
+               and PROMPT_EXCEEDS_WINDOW in e["context"].get("input_summary", "")
+               for e in trajectory.to_dict()["events"])
+
+
+def test_the_multi_arm_gives_a_stage_up_the_same_way():
+    from alignmentgraph_isd.core.agentic import turn as turn_mod
+
+    endless = 10 ** 6
+    model = _OverflowsFirst([], n=endless)
+    result = run_brief(load_brief("minimal_brief.json"),
+                       HarnessRunConfig(llm_factory=lambda: model))
+    analysis = result["metadata"]["autonomy"]["analysis"]
+    assert analysis["prompt_exceeds_window"] and analysis["gave_up"]
+    # Every attempt the regen loop makes stops at the floor, not the ceiling.
+    assert analysis["turns_used"] <= turn_mod.SQUEEZE_STEPS + 1

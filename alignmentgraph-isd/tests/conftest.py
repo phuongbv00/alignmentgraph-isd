@@ -121,11 +121,9 @@ _SETS = [{"module_id": module["id"],
 
 _ASSESSMENT_PLAN = {
     "assessment_plan": {
-        # Promised exactly what the tasks keep: the course's one diagnostic
-        # task sits in MOD-01, so only its objectives are promised that timing.
-        "lo_coverage_targets": {lo: sorted({t["timing"] for t in _TASKS
-                                            if t["module_id"] == _MODULE_OF_LO[lo]})
-                                for lo in (f"ILO-0{i}" for i in range(1, 6))},
+        # No `lo_coverage_targets`: the model is never asked for it, and the
+        # commit derives it from the tasks. A double that sends it anyway
+        # exercises a path no real run takes (run t1 20261005_205508).
         "sets": _SETS,
         "expected_evidence": {f"ILO-0{i}": "A working code artifact with justification." for i in range(1, 6)},
         "formative_methods": ["Weekly design critique with rubric", "Exit tickets after each module"],

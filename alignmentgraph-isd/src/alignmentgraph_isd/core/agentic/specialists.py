@@ -688,8 +688,16 @@ def validate_assessment(parsed: dict) -> list[str]:
     empty = _nothing_arrived(parsed, ("assessment_plan",))
     if empty:
         return empty
-    errors = validate_section("assessment_plan", parsed["assessment_plan"])
-    errors += [e for e in declared_required_errors("assessment_plan", parsed["assessment_plan"])
+    # Judged as it will be COMMITTED: ``lo_coverage_targets`` is the harness's,
+    # derived from the tasks (``_assessment_updates``), so the model is never
+    # asked for it. MEASURED (run t1 20261005_205508): judged as submitted,
+    # every plan was refused for that one field, the Assessment Designer read
+    # its state until the turn ceiling, and the stage was cut in 10 of 10 runs
+    # on both multi arms.
+    plan = _assessment_updates(parsed) or parsed["assessment_plan"]
+    errors = [e for e in validate_section("assessment_plan", plan)
+              if "lo_coverage_targets" not in e]
+    errors += [e for e in declared_required_errors("assessment_plan", plan)
                if e not in errors]
     # pilot_data_plan feeds the whole formative half of ADDIE Evaluation (the
     # aggregator surfaces it as evaluation.formative); a submit without it

@@ -132,8 +132,10 @@ class TurnMeter:
         self.turn_no = 0
         #: Consecutive reads that bought nothing; see ``budget.FRUITLESS_READS``.
         self.fruitless = 0
-        #: Requests in a row the serving window refused; see :func:`squeezed`.
+        #: How far the transcript is being squeezed; see :func:`squeezed`.
         self.squeeze = 0
+        #: Requests in a row the serving window refused (``cannot_fit``).
+        self.overflows_in_a_row = 0
 
     @property
     def reads_withheld(self) -> bool:
@@ -181,6 +183,7 @@ class TurnMeter:
         single arms, 270 in one run, each answered "you must CALL A TOOL" —
         a nudge that made the next request longer still."""
         self.squeeze = min(self.squeeze + 1, SQUEEZE_STEPS)
+        self.overflows_in_a_row += 1
         # The loop goes straight to the next request without spending a turn;
         # past the allowance each one is charged, or a transcript the squeeze
         # cannot bring under the window would never let the ceiling close.
@@ -191,6 +194,18 @@ class TurnMeter:
     def request_fit(self) -> None:
         """A request the window accepted: the transcript budget is whole again."""
         self.squeeze = 0
+        self.overflows_in_a_row = 0
+
+    @property
+    def cannot_fit(self) -> bool:
+        """The window refused even the smallest transcript the squeeze allows.
+
+        What is left is the part no trim reaches — the system turn, the stage's
+        contract and the bound schemas — so sending it again changes nothing.
+        MEASURED (run t1 20261005_205508): three single-arm runs resent one
+        8,193-token request 270-280 times until the turn ceiling closed the
+        run. Both loops end the stage instead (``protocol.PROMPT_EXCEEDS_WINDOW``)."""
+        return self.overflows_in_a_row > SQUEEZE_STEPS
 
     def endpoint_failed(self) -> None:
         """A request the endpoint did not answer, after the retry. Bounded by

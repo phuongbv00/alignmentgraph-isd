@@ -643,3 +643,17 @@ def test_a_repeated_task_id_is_renamed_at_the_commit_on_both_substrates():
     assert [v.metadata["count"] for v in dup] == [3]
     assert not [v for v in checks.blueprint_consistency_data("assessment_plan_0", renamed)
                 if v.metadata.get("kind") == "duplicate_task_id"]
+
+
+def test_a_plan_without_coverage_targets_is_accepted_at_the_submit():
+    """The model is never asked for ``lo_coverage_targets``; the commit writes
+    it. MEASURED (run t1 20261005_205508): the submit still demanded it, every
+    plan was refused, and the assessment stage was cut at its turn ceiling in
+    10 of 10 runs on both multi arms."""
+    from test_agentic_loop import _ASSESSMENT
+
+    plan = {k: v for k, v in _ASSESSMENT["assessment_plan"].items()
+            if k != "lo_coverage_targets"}
+    assert specialists.validate_assessment({"assessment_plan": plan}) == []
+    step = STEP["assessment"]
+    assert step.validate({"assessment_plan": plan}) == []
