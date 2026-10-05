@@ -226,7 +226,7 @@ DETECTION_SE = 2.0
 #: named on the report's attention line.
 ATTENTION = ("gave_up", "pass_empty", "context_overflow", "completion_cap",
              "required_empty", "stopped", "stage_abandoned", "repair_window_closed",
-             "budget_exhausted")
+             "budget_exhausted", "prompt_exceeds_window")
 
 #: What the per-scenario gap is computed on: the three LLM judge scores.
 GAP_SCORES = ("total_score", "addie_median", "trajectory_score")
@@ -879,13 +879,15 @@ def print_report(doc: dict) -> None:
                       f"  cap {hh.get('completion_cap', 0):.0f}  conn {hh.get('connection', 0):.0f}"
                       f"  required_empty {hh.get('required_empty', '--')}")
                 if hh.get("stage_abandoned") or hh.get("repair_window_closed") or hh.get(
-                        "budget_exhausted"):
+                        "budget_exhausted") or hh.get("prompt_exceeds_window"):
                     ab = s.get("abandoned_stages") or {}
                     print(f"      loop ends: stage_abandoned {hh.get('stage_abandoned', 0):.0f}"
                           + (" (" + ", ".join(f"{st} {n}" for st, n in ab.items()) + ")"
                              if ab else "")
                           + f"  repair_window_closed {hh.get('repair_window_closed', 0):.0f}"
-                          f"  budget_exhausted {hh.get('budget_exhausted', 0):.0f}")
+                          f"  budget_exhausted {hh.get('budget_exhausted', 0):.0f}"
+                          f"  prompt_exceeds_window {hh.get('prompt_exceeds_window', 0):.0f}"
+                          f"  user_turn_restored {hh.get('user_turn_restored', 0):.0f}")
                 it = s.get("items") or {}
                 if it.get("n_runs"):
                     print(f"      assessment items per run {it['items_mean']:.1f} "

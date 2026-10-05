@@ -406,11 +406,13 @@ def harness_counts(events: list) -> dict:
     exists for -- apart from every other rejection. ``stage_abandoned`` is a
     single-arm stage closed at ``SUBMIT_CAP`` unfinished, ``repair_window_closed``
     the single arm's repair allowance running out, ``budget_exhausted`` a loop
-    ended by its turn ceiling."""
+    ended by its turn ceiling, ``prompt_exceeds_window`` a stage ended because
+    the window refused even its smallest transcript, and ``user_turn_restored``
+    a request a trim had left with no user turn."""
     out = {"passes": 0, "pass_accepted": 0, "pass_empty": 0, "pass_refused": 0, "pass_skipped": 0,
            "rejected": 0, "rejected_empty_args": 0, "gave_up": 0, "repeats_refused": 0,
            "schema_keywords_dropped": 0, "stage_abandoned": 0, "repair_window_closed": 0,
-           "budget_exhausted": 0,
+           "budget_exhausted": 0, "prompt_exceeds_window": 0, "user_turn_restored": 0,
            **{kind: 0 for kind, _ in _ERROR_KINDS}}
     for event in events:
         if not isinstance(event, dict):
@@ -435,6 +437,10 @@ def harness_counts(events: list) -> dict:
                 out["rejected_empty_args"] += 1
         elif action == "agentic_gave_up":
             out["gave_up"] += 1
+            if "exceeds the serving window" in asked:
+                out["prompt_exceeds_window"] += 1
+        elif action == "user_turn_restored":
+            out["user_turn_restored"] += 1
         elif action in ("stage_abandoned", "repair_window_closed", "budget_exhausted"):
             out[action] += 1
         elif action == "repeated_tool_call":

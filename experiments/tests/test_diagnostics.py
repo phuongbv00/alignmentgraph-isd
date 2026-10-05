@@ -633,3 +633,14 @@ class TestThePaperPoolsRefuseAnotherRoster:
                                               BASELINE])
         assert set(doc["runs"][0]["gaps"]) == {f"{PROPOSED} - {BASELINE}",
                                                f"alignmentgraph-isd-single-prose - {BASELINE}"}
+
+
+def test_the_harness_counts_name_a_stage_the_window_ended_and_a_restored_user_turn():
+    counts = diagnostics.harness_counts([
+        {"action": "agentic_gave_up",
+         "context": {"input_summary": "the prompt exceeds the serving window"}},
+        {"action": "agentic_gave_up", "context": {"input_summary": "turn budget exhausted"}},
+        {"action": "user_turn_restored", "context": {}}])
+    assert counts["gave_up"] == 2
+    assert counts["prompt_exceeds_window"] == 1
+    assert counts["user_turn_restored"] == 1
