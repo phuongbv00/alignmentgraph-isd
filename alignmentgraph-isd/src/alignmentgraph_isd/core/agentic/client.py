@@ -23,7 +23,7 @@ from ..llm_io import (
     was_truncated,
 )
 from ..ratelimit import gate_for
-from .transcript import prompt_chars, ratio_for, specs_chars
+from .transcript import ensure_user_turn, prompt_chars, ratio_for, specs_chars
 from .turn import ToolTurn
 
 
@@ -171,6 +171,7 @@ class AgenticLLM:
             self.trajectory.log_recovery_event(
                 self.identity, "llm_error", "", "llm_factory not set — cannot call LLM")
             return ToolTurn()
+        self._ensure_user_turn(messages)
         raw_llm = self.config.llm_factory()
         choice = self._tool_choice()
         bound = self._bind(raw_llm, tool_specs, choice)
@@ -365,6 +366,7 @@ class AgenticLLM:
         except Exception as exc:  # noqa: BLE001 - a backend that cannot be bound
             self._forget_structured_outputs(str(exc))
             return ""
+        self._ensure_user_turn(messages)
         started = self._begin(messages)
         try:
             with gate_for(self.config).hold():
@@ -399,6 +401,13 @@ class AgenticLLM:
             self.config._structured_outputs = False
         except (AttributeError, ValueError):  # pragma: no cover - a bare stub config
             self._structured_outputs_memo = False
+
+    def _ensure_user_turn(self, messages: list[dict]) -> None:
+        """``transcript.ensure_user_turn``, recorded when it fires."""
+        if ensure_user_turn(messages):
+            self.trajectory.log_recovery_event(
+                self.identity, "user_turn_restored", "",
+                "the trim left the request no user turn")
 
     def _begin(self, messages: list[dict]) -> float:
         """Announce the call and start its clock.

@@ -484,6 +484,31 @@ def forget_compacted_calls(seen_calls: dict, dropped: list) -> None:
         del seen_calls[key]
 
 
+#: The user turn a request gets when a trim has left it none. Neutral on
+#: purpose: it restates nothing and asks for nothing the system turn and the
+#: conversation do not already carry.
+CONTINUE_TURN = "Continue the work the instructions above and the conversation so far describe."
+
+
+def ensure_user_turn(messages: list) -> bool:
+    """Give ``messages`` a user turn, in place, if a trim left it none.
+
+    ``trim_history`` may drop the stage turn, and before any compaction there
+    is no note — so a request can reach the endpoint as the system turn plus
+    assistant and tool messages only, which the serving chat template refuses
+    outright (HTTP 400 "No user query found in messages"). MEASURED (run t1
+    20261005_205508): 31 such refusals, most on the constrained pass, whose
+    transcript is trimmed hardest. The turn goes right after the system turn,
+    INTO the list the caller holds, so the transcript published is the one
+    sent. Returns whether one was added."""
+    if any(isinstance(m, dict) and m.get("role") == "user" for m in messages):
+        return False
+    at = 1 if messages and isinstance(messages[0], dict) \
+        and messages[0].get("role") == "system" else 0
+    messages.insert(at, {"role": "user", "content": CONTINUE_TURN})
+    return True
+
+
 def trim_history(messages: list, budget: int = HISTORY_CHAR_BUDGET,
                  low_water: float = TRIM_LOW_WATER) -> tuple[list, list]:
     """Drop the OLDEST tool observations once the history exceeds ``budget``,

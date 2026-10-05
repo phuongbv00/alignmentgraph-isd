@@ -250,6 +250,8 @@ def respec(messages: list, step, brief: str) -> str:
 #: Which agent-facing protocol a run spoke, recorded in
 #: ``metadata.run_config`` so that runs on either side of a change to the
 #: tools an agent is bound or to how a stage ends are never pooled by mistake.
+#: 17 = a request a trim left with no user turn gets a neutral one after the
+#: system turn (``transcript.ensure_user_turn``), both arms.
 #: 16 = the assessment plan is judged at the submit as it will be committed
 #: (its coverage targets derived, never asked for), the single arm offers a
 #: stage's own artifacts before its item lists, and a stage whose smallest
@@ -287,7 +289,7 @@ def respec(messages: list, step, brief: str) -> str:
 #: each item's objective, type and cognitive level and each activity's
 #: objective and level, the mode states a material's depth, and the pilot
 #: data plan names its collection points in words.
-PROTOCOL_REV = 16
+PROTOCOL_REV = 17
 
 #: The answer to a repeated read whose result is unchanged — ONE wording for
 #: both arms, and only ever said when it is true (``turn.answer_read`` has

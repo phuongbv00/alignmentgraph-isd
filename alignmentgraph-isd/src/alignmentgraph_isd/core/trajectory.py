@@ -92,6 +92,10 @@ class TrajectoryAction(StrEnum):
     #: The single arm closed a stage that spent ``SUBMIT_CAP`` without
     #: finishing, so the run moves on to the next one (``ReactLoop._close_stage``).
     STAGE_ABANDONED = "stage_abandoned"
+    #: A trim left a request no user turn, which the serving chat template
+    #: refuses, so a neutral one was put after the system turn
+    #: (``transcript.ensure_user_turn``).
+    USER_TURN_RESTORED = "user_turn_restored"
     #: A rejected submit was written again by the model under the artifact's
     #: per-run schema, with no tools bound (``turn.constrained_pass``): what
     #: was wrong with the call, and whether the pass was accepted. A transport
@@ -241,6 +245,7 @@ _RECOVERY_ACTIONS = frozenset({
     TrajectoryAction.CALLS_NOT_EXECUTED,
     TrajectoryAction.REPAIR_WINDOW_CLOSED,
     TrajectoryAction.STAGE_ABANDONED,
+    TrajectoryAction.USER_TURN_RESTORED,
     TrajectoryAction.CONVERGE,
     TrajectoryAction.DUPLICATE_ELEMENT_DROPPED,
     TrajectoryAction.AGENTIC_FALLBACK,
