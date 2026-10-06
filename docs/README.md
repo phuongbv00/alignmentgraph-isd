@@ -11,6 +11,7 @@ tài liệu trùng nội dung luôn lệch nhau sau vài tuần.
 | `paper/structure-guide.md` | Khung cấu trúc bài báo khoa học theo đề cương của GVHD. |
 | `paper/refs-deployment-survey.md` | Tư liệu citation cho phần triển khai SLM trong giáo dục (Intro + Related Work). |
 | `guides/benchmark_guides.md` | **Toàn bộ quy trình thực nghiệm**: split data → serving → tune → chạy ladder → audit → chấm alignment → pooling → sinh bảng cho paper, kèm định nghĩa metric (Phụ lục A). Đọc trước khi động vào bất cứ thứ gì liên quan tới experiment. |
+| `guides/ablation_parity.md` | **Parity của trục `agent_mode`**: cái gì cố ý khác giữa multi và single, cái gì phải giữ như nhau và đi qua đường code nào, cùng các bất biến kiểm offline. Bản nháp chờ duyệt. |
 | `guides/alignment_protocol.md` | **Đặc tả phép đo alignment (RQ2)**: panel, thống kê, sensitivity star, validity evidence. Paper được cập nhật TỪ file này. |
 | `supervision/feedbacks/` | Nhận xét gốc của GVHD theo từng sprint (DOCX) + bản đọc được. **Nguồn thẩm quyền** cho định vị, mức claim và thiết kế thí nghiệm. |
 | `supervision/reports/` | Báo cáo sprint gửi GVHD. |
