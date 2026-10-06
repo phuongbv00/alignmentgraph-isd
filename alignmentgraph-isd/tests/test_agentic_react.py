@@ -719,8 +719,10 @@ def test_a_submit_that_adds_an_artifact_is_not_charged_against_the_cap(graph_mod
     """MEASURED (run t1 20261006_091626, train_1): both single arms wrote the
     assessment items one per submit, every one committed, and the stage was
     closed at ``SUBMIT_CAP`` still owing two tasks' items. Progress is not
-    charged; a submit that adds nothing still is, so a model that only resends
-    is still closed."""
+    charged; a submit that adds nothing — a repeat, or an item past the count
+    its task would be commissioned in the multi arm — still is, so a model that
+    piles onto one task is still closed (single x prose wrote 59 items on run
+    t1 20261006_094654 once progress went uncharged)."""
     import copy
 
     from test_agentic_loop import _ANALYSIS, _ASSESSMENT, _OUTCOMES
@@ -740,22 +742,48 @@ def test_a_submit_that_adds_an_artifact_is_not_charged_against_the_cap(graph_mod
         specialists.commit_outcomes_prose(graph, trajectory, _OUTCOMES)
     plan = copy.deepcopy(_ASSESSMENT["assessment_plan"])
     tasks = plan["sets"][0]["assessment_tasks"]
-    tasks.append(dict(tasks[0], id="AT-02", timing="formative", weight_percent=0))
+    cap = react.ReactLoop.SUBMIT_CAP
+    tasks[1:] = [dict(tasks[0], id=f"AT-{n:02d}", weight_percent=0) for n in range(2, cap + 3)]
     item = _ASSESSMENT["assessment_tools"][0]
-    fresh = [dict(item, question=f"Build model number {i}.") for i in range(react.ReactLoop.SUBMIT_CAP + 1)]
+    # The count AT-01 would be commissioned in the multi arm, read off a
+    # scratch copy of the design with the plan committed.
+    scratch, scratch_log = (AlignmentGraph() if graph_mode else ProseStore()), TrajectoryLogger()
+    for name, payload in (("analysis", _ANALYSIS), ("outcomes", _OUTCOMES),
+                          ("assessment", {"assessment_plan": plan})):
+        commit = getattr(specialists, f"commit_{name}" + ("" if graph_mode else "_prose"))
+        commit(scratch, scratch_log, payload)
+    quota = fanout.unit_quotas("assessment", scratch, "light")["assessment_tools"]["AT-01"]
+    one_per_task = [dict(item, task_id=f"AT-{n:02d}", question=f"Build model {n}.")
+                    for n in range(1, cap + 2)]               # every task but the last
+    # AT-01 filled to its count, then piled past it until the cap closes.
+    piled = [dict(item, task_id="AT-01", question=f"Another model {n}.")
+             for n in range(quota - 1 + cap + 1)]
     turns = ([("submit_assessment", {"assessment_plan": plan})]
-             + [("submit_assessment", {"assessment_tools": [one]}) for one in fresh]
-             + [("submit_assessment", {"assessment_tools": [fresh[0]]})] * (react.ReactLoop.SUBMIT_CAP + 2))
+             + [("submit_assessment", {"assessment_tools": [one]}) for one in one_per_task]
+             + [("submit_assessment", {"assessment_tools": [one]}) for one in piled])
     model = _Scripted(turns)
     loop = react.ReactLoop(HarnessRunConfig(llm_factory=lambda: model), graph, trajectory,
                            load_brief("minimal_brief.json"))
     loop.run()
 
-    accepted = loop.stats["submits_per_stage"]["assessment"]
-    assert accepted > react.ReactLoop.SUBMIT_CAP, "progress past the cap was accepted"
-    assert "assessment" in loop.stats["abandoned_stages"], "resending still closes it"
-    assert loop._submit_attempts("assessment") >= react.ReactLoop.SUBMIT_CAP
-    # The resends are dropped as repeats, not appended as second copies.
-    held = loop._held(fanout.SPECS["assessment"].outputs[0])
-    assert len(held) == len(fresh)
+    output = fanout.SPECS["assessment"].outputs[0]
+    assert loop.stats["submits_per_stage"]["assessment"] > cap, "progress past the cap was accepted"
+    # AT-01 holds what the multi arm would commission for it, and no more.
+    assert fanout.held_by_unit(graph, output)["AT-01"] == quota
+    assert "assessment" in loop.stats["abandoned_stages"], "piling on one task still closes it"
+    held = loop._held(output)
     assert len({dev_plans.same_artifact_key("assessment_tools", one) for one in held}) == len(held)
+
+
+@_pytest.mark.parametrize("mode", ["light", "full"])
+def test_the_commissioned_counts_are_the_same_on_both_substrates(mode):
+    """The single arm's quota is the multi arm's derivation; read differently
+    per substrate it would be a second variable on ``context_mode``."""
+    from test_grammar import _design
+
+    from alignmentgraph_isd.core.agentic import fanout
+
+    for stage in ("assessment", "activities", "content"):
+        assert fanout.unit_quotas(stage, _design("graph"), mode) == \
+            fanout.unit_quotas(stage, _design("prose"), mode), (stage, mode)
+    assert fanout.unit_quotas("assessment", _design("graph"), mode)["assessment_tools"]

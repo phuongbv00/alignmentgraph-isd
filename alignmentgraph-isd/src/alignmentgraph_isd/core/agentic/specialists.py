@@ -328,7 +328,7 @@ def commit_implementation(graph, trajectory, parsed: dict) -> None:
     and P10/P11 are established from those nodes (``alignment.establish_delivery``).
 
     The dev plan is kept on the section for the same reason the assessment one
-    is (``commit_assessment``): ``_dispatch_payload`` reads the fan-out's input
+    is (``commit_assessment``): ``fanout.dispatch_payload`` reads the fan-out's input
     back out of the state, so a stripped plan means the deterministic fallback
     decides every division. It is stripped again at AGGREGATION
     so the graph dump shows how the

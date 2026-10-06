@@ -325,7 +325,7 @@ def _run_fanout(config, memory, trajectory, design_brief, step, spec, *,
     state = memory.state
     with trajectory.acting_as(orchestrator):
         if work_sets is None:
-            parsed = _dispatch_payload(state, spec)
+            parsed = fanout.dispatch_payload(state, spec)
             work_sets, stats_dev = spec.plan_sets(state, parsed, config.development_mode)
         else:
             # A REPLAN round: the sets were derived from the gaps, not from
@@ -522,7 +522,7 @@ def _redispatch_rounds(config, memory, trajectory, design_brief, step, spec, *,
                 return stats
             trajectory.log_reconcile_result(step.family, gaps, agent=ORCHESTRATOR)
             work_sets, _stats = spec.plan_sets(
-                state, _dispatch_payload(state, spec), config.development_mode)
+                state, fanout.dispatch_payload(state, spec), config.development_mode)
             redo = redispatch.redo(step.name, gaps, work_sets,
                                fanout.committed_set_ids(spec, state), round_index)
         if not redo:
@@ -536,39 +536,6 @@ def _redispatch_rounds(config, memory, trajectory, design_brief, step, spec, *,
             round_index=round_index,
             answers=tuple(sorted({v.violation_type for v in gaps}))))
     return stats
-
-
-def _dispatch_payload(state, spec) -> dict:
-    """What the dispatch hop left behind, in the shape ``plan_sets`` expects.
-
-    Read back from committed state rather than passed through from the loop:
-    the dispatch may have been regenerated or salvaged, so the sets must be
-    derived from what actually landed either way."""
-    modules = {"modules": fanout.course_modules(state)}
-    if spec.stage == "assessment":
-        plan = _section_data(state, "assessment_plan")
-        return {**modules, "assessment_plan": plan}
-    if spec.stage == "activities":
-        return modules
-    if spec.stage == "content":
-        content = _section_data(state, "content")
-        return {**modules, "media_selections": content.get("media_selections") or []}
-    if spec.stage == "implementation":
-        return modules
-    return {}
-
-
-def _section_data(state, key: str) -> dict:
-    if not hasattr(state, "element_nodes"):
-        return state.get(key) or {}
-    sections = {"assessment_plan": NodeType.ASSESSMENT_PLAN,
-                "activity_plan": NodeType.ACTIVITY_PLAN,
-                "implementation_plan": NodeType.IMPLEMENTATION_PLAN}
-    if key in sections:
-        node = state.get_node(state.section_id(sections[key]))
-        return (node or {}).get("data") or {}
-    media = [n["data"] for n in state.element_nodes(NodeType.MEDIA_SELECTION)]
-    return {"media_selections": media}
 
 
 def _repair_all(memory, trajectory, design_brief, *, graph_mode: bool,

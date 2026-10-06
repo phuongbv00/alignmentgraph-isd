@@ -237,6 +237,32 @@ class ReactLoop:
                   for output in (spec.outputs if spec is not None else ())]
         return json.dumps([landed, counts], sort_keys=True, default=str)
 
+    def _within_quota(self, output, items: list, quotas: dict[str, int]) -> list:
+        """``items`` held to the count each unit (a task, a module) would be
+        commissioned in the multi arm, beside what the design already holds
+        there: the excess is dropped in order, the way ``trim_to_quota`` drops
+        a work set's, and a unit with no stated count is left as written."""
+        if not quotas:
+            return items
+        field = fanout.UNIT_FIELD[output.schema_key]
+        room = {unit: count - fanout.held_by_unit(self.state, output).get(unit, 0)
+                for unit, count in quotas.items()}
+        kept, dropped = [], 0
+        for item in items:
+            unit = dev_plans._bare((item or {}).get(field)) if isinstance(item, dict) else ""
+            if unit in room:
+                if room[unit] <= 0:
+                    dropped += 1
+                    continue
+                room[unit] -= 1
+            kept.append(item)
+        if dropped:
+            self.trajectory.log_recovery_event(
+                ORCHESTRATOR, "excess_artifacts_trimmed",
+                f"{output.schema_key}: {dropped} past the commissioned count",
+                "single-arm commit")
+        return kept
+
     def _held(self, output) -> list:
         """What the design already holds of one item list, on either substrate."""
         pool = (fanout._pool(self.state, output) if self.graph_mode
@@ -979,6 +1005,8 @@ class ReactLoop:
             # the one definition the multi arm's commit uses
             # (``dev_plans.same_artifact_key``): appended, a resent item was a
             # second copy in this arm's deliverable and in no other.
+            quotas = fanout.unit_quotas(step.name, self.state,
+                                        self.config.development_mode)
             for output in spec.outputs:
                 items = section.get(output.schema_key)
                 if not isinstance(items, list):
@@ -990,6 +1018,7 @@ class ReactLoop:
                         self.identity, "duplicate_element_dropped",
                         f"{output.schema_key}: {len(items) - len(kept)} repeat(s)",
                         step.name)
+                kept = self._within_quota(output, kept, quotas.get(output.schema_key) or {})
                 section[output.schema_key] = kept
             # The item lists a fan-out family's Developers would have produced
             # in the multi arm. One "set" because this agent chose its own

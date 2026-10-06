@@ -1045,6 +1045,105 @@ def _tasks_with_items(store) -> list[dict]:
                        if isinstance(i, dict)])
 
 
+def dispatch_payload(state, spec) -> dict:
+    """What the dispatch hop left behind, in the shape ``plan_sets`` expects.
+
+    Read back from committed state rather than passed through from the loop:
+    the dispatch may have been regenerated or salvaged, so the sets must be
+    derived from what actually landed either way. Read by the multi arm's
+    fan-out and by the single arm's commit (:func:`unit_quotas`), so the two
+    divide the same design the same way."""
+    modules = {"modules": course_modules(state)}
+    if spec.stage == "assessment":
+        plan = _section_data(state, "assessment_plan")
+        return {**modules, "assessment_plan": plan}
+    if spec.stage == "activities":
+        return modules
+    if spec.stage == "content":
+        content = _section_data(state, "content")
+        return {**modules, "media_selections": content.get("media_selections") or []}
+    if spec.stage == "implementation":
+        return modules
+    return {}
+
+
+def _section_data(state, key: str) -> dict:
+    if not hasattr(state, "element_nodes"):
+        return state.get(key) or {}
+    sections = {"assessment_plan": NodeType.ASSESSMENT_PLAN,
+                "activity_plan": NodeType.ACTIVITY_PLAN,
+                "implementation_plan": NodeType.IMPLEMENTATION_PLAN}
+    if key in sections:
+        node = state.get_node(state.section_id(sections[key]))
+        return (node or {}).get("data") or {}
+    media = [n["data"] for n in state.element_nodes(NodeType.MEDIA_SELECTION)]
+    return {"media_selections": media}
+
+
+
+#: The field an artifact names its unit by — the unit a work set is derived
+#: for (a task, a module) — per item list with a stated count.
+UNIT_FIELD = {"assessment_tools": "task_id", "learning_activities": "module_id",
+              "learner_materials": "linked_module"}
+
+
+def unit_quotas(stage: str, state, mode: str) -> dict[str, dict[str, int]]:
+    """``schema_key -> unit -> count`` the multi arm's work sets would state
+    for ``stage``: the same derivation (``plan_sets`` over
+    :func:`dispatch_payload`), summed over a unit's batches.
+
+    The single arm writes its own item lists, and nothing held them to a
+    scale: MEASURED (run t1 20261006_094654, train_1), single x prose wrote 59
+    assessment items in 88 calls where the multi arms wrote 10 and 22, so the
+    deliverable's size sat on the decomposition axis. Session guides state no
+    count (what a block owes is every id), so they have no entry."""
+    spec = SPECS.get(stage)
+    if spec is None:
+        return {}
+    sets, _stats = spec.plan_sets(state, dispatch_payload(state, spec), mode)
+    out: dict[str, dict[str, int]] = {}
+    for output in spec.outputs:
+        if output.schema_key not in UNIT_FIELD:
+            continue
+        quotas: dict[str, int] = {}
+        for work_set in sets:
+            count = dev_plans.quota_of(work_set, output.schema_key)
+            if not count:
+                continue
+            units = ([dev_plans._bare(s.get("id")) for s in work_set.payload.get("sets") or []
+                      if isinstance(s, dict) and s.get("id")]
+                     if output.schema_key == "assessment_tools" else [work_set.module_id])
+            units = [unit for unit in units if unit]
+            # A set over several tasks shares its count between them, the
+            # first ones taking the remainder.
+            share, extra = divmod(count, len(units)) if units else (0, 0)
+            for index, unit in enumerate(units):
+                quotas[unit] = quotas.get(unit, 0) + share + (1 if index < extra else 0)
+        out[output.schema_key] = quotas
+    return out
+
+
+def held_by_unit(state, output: "SetOutput") -> dict[str, int]:
+    """How many artifacts of one item list the design holds per unit."""
+    field = UNIT_FIELD.get(output.schema_key)
+    if not field:
+        return {}
+    counts: dict[str, int] = {}
+    if hasattr(state, "element_nodes") and output.parent_field:
+        for node in state.element_nodes(output.element_type):
+            unit = dev_plans._bare(node["data"].get("id") or node["id"])
+            counts[unit] = len([i for i in (node["data"].get(output.parent_list) or [])
+                                if isinstance(i, dict)])
+        return counts
+    pool = (_pool(state, output) if hasattr(state, "element_nodes")
+            else state.items(*output.doc_key))
+    for one in pool or ():
+        if isinstance(one, dict):
+            unit = dev_plans._bare(one.get(field))
+            counts[unit] = counts.get(unit, 0) + 1
+    return counts
+
+
 def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
              state=None) -> AgenticStep:
     """An :class:`AgenticStep` for one work set, so the ordinary ToolLoop runs it.
