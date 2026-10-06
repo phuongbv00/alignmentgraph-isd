@@ -1588,7 +1588,12 @@ def with_membership(work_set: WorkSet, schema_key: str, items: list) -> list:
     `set_id` on sets that each listed a single set. Only a
     MISSING id is filled. One the model wrote is left as written, right or
     wrong — that is what P13 measures — and an
-    item with several candidates is left without one for the validator."""
+    item with several candidates is left without one for the validator.
+
+    An item's ``plan_category`` is its task's ``timing``, set here from the
+    task it names, as the commit files it: compared before that, two items
+    that become the same question in the same task looked different
+    (``same_artifact_key`` reads the category) and both were kept."""
     if schema_key == "learning_activities" and work_set.module_id:
         return [{**item, "module_id": work_set.module_id}
                 if isinstance(item, dict) and not str(item.get("module_id") or "").strip()
@@ -1607,6 +1612,11 @@ def with_membership(work_set: WorkSet, schema_key: str, items: list) -> list:
             pick = fits if len(fits) == 1 else sets if len(sets) == 1 else []
             if pick:
                 item = {**item, "task_id": _bare(pick[0].get("id"))}
+        if isinstance(item, dict):
+            task = next((i for i in sets if _bare(i.get("id")) == _bare(item.get("task_id"))), None)
+            timing = str((task or {}).get("timing") or "").strip().lower()
+            if timing:
+                item = {**item, "plan_category": timing}
         out.append(item)
     return out
 

@@ -1395,6 +1395,10 @@ def _deposit_sets(spec: FanoutSpec, state, trajectory, work_sets: list,
         for payload in payloads:
             items = payload.get(output.schema_key) or []
             work_set = set_of.get(payload.get("set_id", ""))
+            if work_set is not None and isinstance(items, list):
+                # Membership first, so a repeat is judged on the artifact as
+                # it will be filed.
+                items = dev_plans.with_membership(work_set, output.schema_key, items)
             if isinstance(items, list):
                 # A repeat of anything the design already holds goes: ONE
                 # definition of "the same artifact" for both arms (C8).
@@ -1410,7 +1414,6 @@ def _deposit_sets(spec: FanoutSpec, state, trajectory, work_sets: list,
                         str(payload.get("set_id", "")))
                 items = fresh
             if work_set is not None and isinstance(items, list):
-                items = dev_plans.with_membership(work_set, output.schema_key, items)
                 items, dropped = dev_plans.trim_to_quota(
                     work_set, output.schema_key, items,
                     held=held_in_set(state, output, work_set.set_id))

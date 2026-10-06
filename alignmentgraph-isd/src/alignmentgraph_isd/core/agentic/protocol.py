@@ -250,6 +250,10 @@ def respec(messages: list, step, brief: str) -> str:
 #: Which agent-facing protocol a run spoke, recorded in
 #: ``metadata.run_config`` so that runs on either side of a change to the
 #: tools an agent is bound or to how a stage ends are never pooled by mistake.
+#: 22 = what the 2x2 invariant tests found (``tests/test_ablation_parity.py``):
+#: an item's category is its task's timing BEFORE repeats are judged, the
+#: single arm refuses a submit carrying none of its stage's artifacts (as the
+#: stage validator does), and a closed artifact is no longer judged.
 #: 21 = the single arm writes into the multi arm's derived work sets: its
 #: item lists are routed to the set of the unit they name and committed
 #: through the same deposit, it is shown what each set is still commissioned
@@ -301,7 +305,7 @@ def respec(messages: list, step, brief: str) -> str:
 #: each item's objective, type and cognitive level and each activity's
 #: objective and level, the mode states a material's depth, and the pilot
 #: data plan names its collection points in words.
-PROTOCOL_REV = 21
+PROTOCOL_REV = 22
 
 #: The answer to a repeated read whose result is unchanged — ONE wording for
 #: both arms, and only ever said when it is true (``turn.answer_read`` has

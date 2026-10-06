@@ -458,6 +458,15 @@ class ReactLoop:
         # Dispatch keys go through the step's own validator, but only once the
         # submit actually claims to carry them.
         dispatch_keys = [k for k, _t, _r in step.submit_fields]
+        item_keys = [o.schema_key for o in spec.outputs] if spec is not None else []
+        if not any(k in present for k in dispatch_keys + item_keys):
+            # What the stage validator refuses as nothing arrived: a payload
+            # of keys the stage does not declare. Accepted here, the
+            # unwrapped inside of a refused artifact was committed as if it
+            # were the artifact.
+            return errors + [
+                f"the submit carries none of {step.name}'s artifacts "
+                f"({', '.join(dispatch_keys + item_keys)})"]
         if any(k in present for k in dispatch_keys):
             errors += list(step.validate(section))
         if spec is not None:
@@ -687,6 +696,19 @@ class ReactLoop:
         if step.name in self._abandoned:
             self._answer(turn, self._closed_note(step))
             return "return" if len(self._done_set) == len(STEPS) else "continue"
+        declared = {k for k, _t, _r in step.submit_fields}
+        spec_now = fanout.SPECS.get(step.name)
+        declared |= {o.schema_key for o in spec_now.outputs} if spec_now is not None else set()
+        named = [k for k in (args or {}) if k in declared]
+        if named and all(self._closed(step, k) for k in named):
+            # An artifact whose budget is spent is no longer taken, as the
+            # stage loop unbinds its submit: the call is answered, never
+            # judged or charged again.
+            self._answer(turn, (
+                f"{', '.join(named)} is CLOSED: it was sent {self._budget.limit} times "
+                "without adding anything, so it is no longer accepted. "
+                + (f"Still owed: {', '.join(self._owed(step))}." if self._owed(step) else "")))
+            return "continue"
         args, carried = turn_mod.carry_over(self._kept, args)
         turn_mod.note_carried(carried, trajectory=self.trajectory, identity=self.identity)
         validate = lambda parsed, _s=step: self._validate(_s, parsed)  # noqa: E731

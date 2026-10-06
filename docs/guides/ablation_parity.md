@@ -108,6 +108,15 @@ Chạy cả bốn arm với model giả trả cùng một bộ artifact, rồi k
 - **I7:** Mỗi luật ở §3 được gọi từ đúng một hàm. Test kiểm trên source, kiểu
   `test_neither_arm_reads_its_settings_off_the_other`.
 
+Các bất biến này nằm ở `alignmentgraph-isd/tests/test_ablation_parity.py` (phần C, PROTOCOL_REV 22). Khi
+viết, chúng bắt được ba lỗi thật, đã sửa:
+- Item bị so trùng trước khi category được gán theo `timing` của task, nên hai item sẽ trở thành một
+  vẫn được giữ cả hai (I4).
+- Single nhận một submit không mang artifact nào của stage: phần ruột của một artifact bị từ chối được
+  commit như chính artifact đó, trong khi validator của stage multi từ chối (I3).
+- Single vẫn chấm và tính phí submit gửi tới một artifact đã tiêu hết ngân sách, còn multi đã gỡ tool
+  của artifact đó (I3).
+
 ## 7. Nghiệm thu bằng run thật (bước 4)
 
 Một run `train_10` ở cả 2B và 0.8B. Chỉ đọc các bất biến sau, không đọc transcript để tìm thêm
