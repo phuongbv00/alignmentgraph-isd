@@ -184,6 +184,9 @@ class ReactLoop:
         #: and folding failed attempts into it would make a stuck stage look
         #: like a productive one.
         self._rejected: dict[str, int] = {}
+        #: Accepted submits per stage that added nothing to the design; with
+        #: ``_rejected``, what ``SUBMIT_CAP`` counts (``_submit_attempts``).
+        self._idle_submits: dict[str, int] = {}
         #: Fields of rejected object artifacts, carried into the next attempt
         #: at the same artifact (``turn.carry_over``).
         self._kept: dict = {}
@@ -212,9 +215,33 @@ class ReactLoop:
         self._abandoned: set[str] = set()
 
     def _submit_attempts(self, stage: str) -> int:
-        """Turns this stage has spent on submitting, accepted or not."""
-        return (self.stats["submits_per_stage"].get(stage, 0)
-                + self._rejected.get(stage, 0))
+        """Submits to this stage that MOVED NOTHING: refused, or accepted with
+        nothing new in the design. ``SUBMIT_CAP`` reads this.
+
+        An accepted submit that adds an artifact is progress and is not
+        charged: MEASURED (run t1 20261006_091626, train_1), both single arms
+        wrote the assessment items one per submit, each one committed, and the
+        stage was closed at the cap still owing two tasks' items — a stage CUT
+        by its budget, which the decomposition claim rests on not happening.
+        The turn ceiling still bounds a run that keeps adding."""
+        return self._idle_submits.get(stage, 0) + self._rejected.get(stage, 0)
+
+    def _progress_mark(self, step) -> str:
+        """What a submit to ``step`` could move, as one comparable value: the
+        parts that have landed and how many artifacts each item list holds.
+        Read the same way on either substrate."""
+        landed = view_as_harness(step, self.state)
+        spec = fanout.SPECS.get(step.name)
+        counts = [len({dev_plans.same_artifact_key(output.schema_key, one)
+                       for one in self._held(output)})
+                  for output in (spec.outputs if spec is not None else ())]
+        return json.dumps([landed, counts], sort_keys=True, default=str)
+
+    def _held(self, output) -> list:
+        """What the design already holds of one item list, on either substrate."""
+        pool = (fanout._pool(self.state, output) if self.graph_mode
+                else self.state.items(*output.doc_key))
+        return [one for one in (pool or ()) if isinstance(one, dict)]
 
     @property
     def _history_budget(self) -> int:
@@ -718,6 +745,7 @@ class ReactLoop:
         turn_mod.note_dropped_args(
             unreadable, stats=self.stats, trajectory=self.trajectory,
             identity=self.identity)
+        before = self._progress_mark(step)
         self._commit(step, section)
         # Judge-visible, like the multi arm's `design_<stage>`: the
         # BFCL trajectory score reads `tool_calls`, so a submit that is
@@ -731,6 +759,8 @@ class ReactLoop:
             json.dumps(args, ensure_ascii=False)[:200],
             json.dumps(section, ensure_ascii=False)[:200])
         self._compact(turn, step, section)
+        if self._progress_mark(step) == before:
+            self._idle_submits[step.name] = self._idle_submits.get(step.name, 0) + 1
         if self.graph_mode and not self._state_reads.get(step.name):
             self.stats["blind_submits"] += 1      # see ToolLoop._handle_submit
         self.stats["submits_per_stage"][step.name] = (
@@ -821,7 +851,7 @@ class ReactLoop:
         else:
             owed = self._owed(step)
             head = (f"{step.name} is CLOSED after {self._submit_attempts(step.name)} submits "
-                    f"with what it holds" + (f" ({', '.join(owed)} left missing)" if owed else "")
+                    f"that added nothing, with what it holds" + (f" ({', '.join(owed)} left missing)" if owed else "")
                     + ". Do not submit it again.")
         if not left:
             return head + " Every other stage is complete."
@@ -945,6 +975,22 @@ class ReactLoop:
             fanout.cap_module_minutes(
                 self.state, duration_hours(self.design_brief) * 60, self.trajectory)
         if spec is not None:
+            # A repeat of an artifact the design already holds is dropped, by
+            # the one definition the multi arm's commit uses
+            # (``dev_plans.same_artifact_key``): appended, a resent item was a
+            # second copy in this arm's deliverable and in no other.
+            for output in spec.outputs:
+                items = section.get(output.schema_key)
+                if not isinstance(items, list):
+                    continue
+                kept = dev_plans.without_repeats(
+                    output.schema_key, items, beside=self._held(output))
+                if len(kept) < len(items):
+                    self.trajectory.log_recovery_event(
+                        self.identity, "duplicate_element_dropped",
+                        f"{output.schema_key}: {len(items) - len(kept)} repeat(s)",
+                        step.name)
+                section[output.schema_key] = kept
             # The item lists a fan-out family's Developers would have produced
             # in the multi arm. One "set" because this agent chose its own
             # batching — that IS the batching.

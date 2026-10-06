@@ -74,12 +74,14 @@ PART_SUBMIT_SLACK = 3
 #: How many times one stage may be submitted before the SINGLE arm's loop stops
 #: accepting it. Generous — additive submits are the point — but finite.
 #:
-#: Counts ACCEPTED and REJECTED submits together: they cost the same turn, and a
-#: stage that cannot pass its validator is exactly the case the cap exists for.
-#: Counting only the accepted ones lets a stage sit at 1 while it is rejected 61
-#: more times on a single unparseable argument, burning every turn the arm has
-#: (run single_20260901_205901: 3 of 6 stages reached, 0.0 on Analysis and
-#: Implementation).
+#: Counts the submits that MOVED NOTHING — refused, or accepted with nothing new
+#: in the design (``ReactLoop._submit_attempts``). A refused submit is exactly
+#: the case the cap exists for: counting only accepted ones let a stage sit at 1
+#: while it was rejected 61 more times on a single unparseable argument (run
+#: single_20260901_205901: 3 of 6 stages reached). An accepted submit that adds
+#: an artifact is not charged: counted, it closed both single arms' assessment
+#: stage while they were still writing items one per call (run t1
+#: 20261006_091626).
 #:
 #: Deliberately NOT equal to ``SUBMIT_BUDGET``: that one is per artifact and
 #: this one is per stage, and both are non-terminal, so the arms are close but

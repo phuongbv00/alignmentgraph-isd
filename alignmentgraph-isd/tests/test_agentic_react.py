@@ -709,3 +709,53 @@ def test_the_multi_arm_gives_a_stage_up_the_same_way():
     assert analysis["prompt_exceeds_window"] and analysis["gave_up"]
     # Every attempt the regen loop makes stops at the floor, not the ceiling.
     assert analysis["turns_used"] <= turn_mod.SQUEEZE_STEPS + 1
+
+
+import pytest as _pytest
+
+
+@_pytest.mark.parametrize("graph_mode", [True, False])
+def test_a_submit_that_adds_an_artifact_is_not_charged_against_the_cap(graph_mode):
+    """MEASURED (run t1 20261006_091626, train_1): both single arms wrote the
+    assessment items one per submit, every one committed, and the stage was
+    closed at ``SUBMIT_CAP`` still owing two tasks' items. Progress is not
+    charged; a submit that adds nothing still is, so a model that only resends
+    is still closed."""
+    import copy
+
+    from test_agentic_loop import _ANALYSIS, _ASSESSMENT, _OUTCOMES
+
+    from alignmentgraph_isd.core.agentic import specialists
+
+    from alignmentgraph_isd.core import dev_plans
+    from alignmentgraph_isd.core.agentic import fanout
+    from alignmentgraph_isd.core.prose_store import ProseStore
+
+    graph, trajectory = (AlignmentGraph() if graph_mode else ProseStore()), TrajectoryLogger()
+    if graph_mode:
+        specialists.commit_analysis(graph, trajectory, _ANALYSIS)
+        specialists.commit_outcomes(graph, trajectory, _OUTCOMES)
+    else:
+        specialists.commit_analysis_prose(graph, trajectory, _ANALYSIS)
+        specialists.commit_outcomes_prose(graph, trajectory, _OUTCOMES)
+    plan = copy.deepcopy(_ASSESSMENT["assessment_plan"])
+    tasks = plan["sets"][0]["assessment_tasks"]
+    tasks.append(dict(tasks[0], id="AT-02", timing="formative", weight_percent=0))
+    item = _ASSESSMENT["assessment_tools"][0]
+    fresh = [dict(item, question=f"Build model number {i}.") for i in range(react.ReactLoop.SUBMIT_CAP + 1)]
+    turns = ([("submit_assessment", {"assessment_plan": plan})]
+             + [("submit_assessment", {"assessment_tools": [one]}) for one in fresh]
+             + [("submit_assessment", {"assessment_tools": [fresh[0]]})] * (react.ReactLoop.SUBMIT_CAP + 2))
+    model = _Scripted(turns)
+    loop = react.ReactLoop(HarnessRunConfig(llm_factory=lambda: model), graph, trajectory,
+                           load_brief("minimal_brief.json"))
+    loop.run()
+
+    accepted = loop.stats["submits_per_stage"]["assessment"]
+    assert accepted > react.ReactLoop.SUBMIT_CAP, "progress past the cap was accepted"
+    assert "assessment" in loop.stats["abandoned_stages"], "resending still closes it"
+    assert loop._submit_attempts("assessment") >= react.ReactLoop.SUBMIT_CAP
+    # The resends are dropped as repeats, not appended as second copies.
+    held = loop._held(fanout.SPECS["assessment"].outputs[0])
+    assert len(held) == len(fresh)
+    assert len({dev_plans.same_artifact_key("assessment_tools", one) for one in held}) == len(held)
