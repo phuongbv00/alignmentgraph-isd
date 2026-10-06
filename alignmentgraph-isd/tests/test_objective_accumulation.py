@@ -65,12 +65,26 @@ def test_both_substrates_accumulate_the_same_objectives():
     assert from_graph == ["Explain X", "Apply Y", "Analyse Z"]
 
 
-def test_the_single_arm_does_not_append_an_already_additive_document():
-    """``ReactLoop._commit`` re-merges prose list fields because a prose commit
-    replaces its key. A commit that appends for itself would otherwise land
+def test_the_single_arm_accumulates_objectives_as_the_stage_commit_does():
+    """The single arm commits a stage's own artifacts through the SAME stage
+    commit the multi arm uses, and re-merges nothing itself: a second submit
+    lands what ``commit_outcomes_prose`` lands, repeat dropped, never
     ``previous + (previous + new)``."""
+    from conftest import load_brief
+
+    from alignmentgraph_isd import HarnessRunConfig
     from alignmentgraph_isd.core.agentic import react, specialists
     from alignmentgraph_isd.core.alignment_graph import NodeType
+    from alignmentgraph_isd.core.prose_store import ProseStore
+    from alignmentgraph_isd.core.trajectory import TrajectoryLogger
 
-    assert str(NodeType.OBJECTIVE) in specialists.ADDITIVE_PROSE_DOC_KEYS
-    assert str(NodeType.OBJECTIVE) not in react._doc_keys(_OUTCOMES)
+    by_loop, by_commit = ProseStore(), ProseStore()
+    loop = react.ReactLoop(HarnessRunConfig(llm_factory=lambda: None), by_loop,
+                           TrajectoryLogger(), load_brief("minimal_brief.json"))
+    for section in _two_submits():
+        loop._commit(_OUTCOMES, section)
+        specialists.commit_outcomes_prose(by_commit, TrajectoryLogger(), section)
+
+    key = (str(NodeType.OBJECTIVE), "learning_objectives")
+    assert _statements(by_loop.items(*key)) == _statements(by_commit.items(*key)) == [
+        "Explain X", "Apply Y", "Analyse Z"]

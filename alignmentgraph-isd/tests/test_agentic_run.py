@@ -384,10 +384,16 @@ def test_the_trajectory_records_everything_a_run_audit_needs():
             #    why (a rejected submit, an invalid turn, a re-send of what is
             #    already committed). Repairs are on neither side: none of them
             #    calls the model.
+            #    A compaction is the harness's own call, made over the agent's
+            #    head (``compaction.py``), so it is neither a step nor a
+            #    recovery and is counted on its own.
             calls = metadata["token_usage"]["llm_calls"]
             recovery = len(events_of(trajectory, "recovery"))
+            compactions = sum(stage.get("compactions", 0)
+                              for stage in metadata["autonomy"].values()
+                              if isinstance(stage, dict))
             assert len(trajectory["tool_calls"]) <= calls, label
-            assert calls - len(trajectory["tool_calls"]) <= recovery, label
+            assert calls - compactions - len(trajectory["tool_calls"]) <= recovery, label
 
             # 3. What the run PRODUCED is recorded, in both context modes —
             #    node_add for the graph arm, doc_write for the blackboard.

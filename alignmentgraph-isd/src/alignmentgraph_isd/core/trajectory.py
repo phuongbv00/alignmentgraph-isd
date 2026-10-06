@@ -89,8 +89,10 @@ class TrajectoryAction(StrEnum):
     #: The single arm's allowance for answering repair requests after its last
     #: stage landed ran out — the same number of turns a stage gets.
     REPAIR_WINDOW_CLOSED = "repair_window_closed"
-    #: The single arm closed a stage that spent ``SUBMIT_CAP`` without
-    #: finishing, so the run moves on to the next one (``ReactLoop._close_stage``).
+    #: The single arm closed a stage whose every owed artifact spent its
+    #: submit budget, so the run moves on to the next one
+    #: (``ReactLoop._close_stage``) — a Developer giving up its set, one
+    #: stage wide.
     STAGE_ABANDONED = "stage_abandoned"
     #: A trim left a request no user turn, which the serving chat template
     #: refuses, so a neutral one was put after the system turn
@@ -180,6 +182,10 @@ class TrajectoryAction(StrEnum):
     #: filed and were dropped. The likeliest cause is order — a batch of
     #: items submitted before the plan that declares the task they name.
     ITEMS_WITHOUT_PARENT = "items_without_parent"
+    #: Items the single arm submitted that name no unit any work set of the
+    #: stage holds, so no set could receive them and they were dropped
+    #: (``fanout.route_items``).
+    ITEMS_WITHOUT_SET = "items_without_set"
     #: A step ended without the agent producing a valid artifact. Nothing
     #: writes one on its behalf: a scripted single-shot fallback covers 26-35%
     #: of the full pipeline's artifacts and only in the multi arm, which would
@@ -257,6 +263,7 @@ _RECOVERY_ACTIONS = frozenset({
     TrajectoryAction.EXCESS_ARTIFACTS_TRIMMED,
     TrajectoryAction.MODULE_MINUTES_CAPPED,
     TrajectoryAction.ITEMS_WITHOUT_PARENT,
+    TrajectoryAction.ITEMS_WITHOUT_SET,
     TrajectoryAction.TOOL_BINDING_UNAVAILABLE,
     TrajectoryAction.TOOL_CALL_MARKUP_RECOVERED,
     TrajectoryAction.ARGUMENT_RESHAPED,

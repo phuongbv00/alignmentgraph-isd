@@ -991,7 +991,7 @@ def react_specs(steps: tuple, done: frozenset, *, graph_mode: bool = True,
     and requires none. Offered whole, the plan stays required after it has
     landed, so every further call has to write it again before it can reach
     the items: MEASURED (run t1 20261002_134550), every fan-out stage of both
-    single arms re-sent its plan until ``SUBMIT_CAP`` closed it, 0 assessment
+    single arms re-sent its plan until the submit cap closed it, 0 assessment
     items in 20 of 20 runs."""
     read_types: tuple[str, ...] = ()
     read_relations: tuple[str, ...] = ()

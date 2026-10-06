@@ -322,6 +322,16 @@ def test_a_partial_deposit_does_not_satisfy_the_done_guard():
 
             impl = result["addie_output"]["implementation"]
             assert impl["system_check"], f"{label}: the stage produced nothing"
+            if agent_mode == "single":
+                # No regen in the single arm (``ablation_parity.md`` D7): an
+                # artifact refused ``SUBMIT_BUDGET`` times without progress is
+                # closed, and the stage is recorded as abandoned OWING it —
+                # never as having produced it.
+                if not impl["monitoring"]:
+                    design = result["metadata"]["autonomy"]["design"]
+                    assert "implementation" in design["abandoned_stages"], (
+                        f"{label}: an empty artifact was accepted as produced")
+                    continue
             # The artifact that kept arriving EMPTY is the one under test.
             assert impl["monitoring"], (
                 f"{label}: an empty artifact was accepted as produced")

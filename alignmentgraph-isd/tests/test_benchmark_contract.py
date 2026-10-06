@@ -49,7 +49,7 @@ EVENT_ACTIONS = {
     "dropped_argument", "argument_reshaped", "tool_choice_downgraded",
     "read_of_assignment_id", "repair_declined", "run_stopped",
     "excess_artifacts_trimmed", "module_minutes_capped",
-    "items_without_parent",
+    "items_without_parent", "items_without_set",
     "calls_not_executed", "repair_window_closed", "stage_abandoned", "user_turn_restored",
     "constrained_pass", "constrained_pass_skipped", "structured_outputs_unavailable",
     "duplicate_task_id_renamed",

@@ -30,6 +30,7 @@ lost for want of it would be our design failing rather than the agent choosing.
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
 
 from .. import dev_plans
@@ -54,7 +55,6 @@ from .protocol import (
     with_progress,
 )
 from .specialists import (
-    ADDITIVE_PROSE_DOC_KEYS,
     SINGLE_IDENTITY,
     SINGLE_PERSONA,
     STEPS,
@@ -121,7 +121,6 @@ class ReactLoop:
     MAX_TURNS = MAX_TURNS
     #: Held in :mod:`budget` with every other ceiling, the stage loop's
     #: included: this one and ``SUBMIT_BUDGET`` are the pair a reader compares.
-    SUBMIT_CAP = budget.SUBMIT_CAP
 
     def __init__(self, config, state, trajectory, design_brief) -> None:
         self.config = config
@@ -160,7 +159,7 @@ class ReactLoop:
             # The two numbers that separate "worked out of order" from "never
             # split the work" — different failures with identical output.
             "stage_order": [], "submits_per_stage": {},
-            # Stages closed at SUBMIT_CAP without completing, in the order
+            # Stages closed with their submit budget spent, in the order
             # they were closed. Separate from `stage_order`, which records
             # what was WRITTEN.
             "abandoned_stages": [],
@@ -175,18 +174,10 @@ class ReactLoop:
             # two stage boundaries, compaction and constrained passes included.
             "spend_by_stage": {},
         }
-        #: Batch counter, so each additive submit's items get a distinct
-        #: `plan_set` tag and `remap_and_tag` renames rather than overwrites
-        #: when two batches propose the same id.
-        self._batch = 0
-        #: Rejected submits per stage. Reported only through the cap: what a
-        #: stage COMMITTED stays the `submits_per_stage` series the axis reads,
-        #: and folding failed attempts into it would make a stuck stage look
-        #: like a productive one.
-        self._rejected: dict[str, int] = {}
-        #: Accepted submits per stage that added nothing to the design; with
-        #: ``_rejected``, what ``SUBMIT_CAP`` counts (``_submit_attempts``).
-        self._idle_submits: dict[str, int] = {}
+        #: Submits that moved nothing, per artifact (``turn.SubmitBudget``):
+        #: the one budget both loops keep. What a stage COMMITTED stays the
+        #: `submits_per_stage` series the axis reads.
+        self._budget = turn_mod.SubmitBudget()
         #: Fields of rejected object artifacts, carried into the next attempt
         #: at the same artifact (``turn.carry_over``).
         self._kept: dict = {}
@@ -208,66 +199,36 @@ class ReactLoop:
         self._idle = 0
         self._state_view = None
         self._state_reads: dict[str, int] = {}
-        #: Stages closed at ``SUBMIT_CAP`` without completing (``_close_stage``).
+        #: Stages closed with every owed artifact's submit budget spent
+        #: (``_close_stage``) — the single agent's counterpart of a Developer
+        #: giving up its set, never a stage cut by the turn ceiling.
         #: Counted as done for everything that decides what is CURRENT — the
         #: contract offered, the state read, the menu, the end of the run — and
         #: never as written.
         self._abandoned: set[str] = set()
 
-    def _submit_attempts(self, stage: str) -> int:
-        """Submits to this stage that MOVED NOTHING: refused, or accepted with
-        nothing new in the design. ``SUBMIT_CAP`` reads this.
-
-        An accepted submit that adds an artifact is progress and is not
-        charged: MEASURED (run t1 20261006_091626, train_1), both single arms
-        wrote the assessment items one per submit, each one committed, and the
-        stage was closed at the cap still owing two tasks' items — a stage CUT
-        by its budget, which the decomposition claim rests on not happening.
-        The turn ceiling still bounds a run that keeps adding."""
-        return self._idle_submits.get(stage, 0) + self._rejected.get(stage, 0)
-
-    def _progress_mark(self, step) -> str:
-        """What a submit to ``step`` could move, as one comparable value: the
-        parts that have landed and how many artifacts each item list holds.
-        Read the same way on either substrate."""
-        landed = view_as_harness(step, self.state)
+    def _artifacts_of(self, step, args: dict) -> tuple[str, ...]:
+        """The artifacts a submit to ``step`` carried, by their declared keys;
+        an unreadable submit is charged to the first one offered — the one
+        the bound schema asked for."""
+        declared = {key for key, _t, _r in step.submit_fields}
         spec = fanout.SPECS.get(step.name)
-        counts = [len({dev_plans.same_artifact_key(output.schema_key, one)
-                       for one in self._held(output)})
-                  for output in (spec.outputs if spec is not None else ())]
-        return json.dumps([landed, counts], sort_keys=True, default=str)
+        declared |= {o.schema_key for o in spec.outputs} if spec is not None else set()
+        carried = tuple(k for k in (args or {}) if k in declared)
+        return carried or self._open_fields(step)[:1] or (step.name,)
 
-    def _within_quota(self, output, items: list, quotas: dict[str, int]) -> list:
-        """``items`` held to the count each unit (a task, a module) would be
-        commissioned in the multi arm, beside what the design already holds
-        there: the excess is dropped in order, the way ``trim_to_quota`` drops
-        a work set's, and a unit with no stated count is left as written."""
-        if not quotas:
-            return items
-        field = fanout.UNIT_FIELD[output.schema_key]
-        room = {unit: count - fanout.held_by_unit(self.state, output).get(unit, 0)
-                for unit, count in quotas.items()}
-        kept, dropped = [], 0
-        for item in items:
-            unit = dev_plans._bare((item or {}).get(field)) if isinstance(item, dict) else ""
-            if unit in room:
-                if room[unit] <= 0:
-                    dropped += 1
-                    continue
-                room[unit] -= 1
-            kept.append(item)
-        if dropped:
-            self.trajectory.log_recovery_event(
-                ORCHESTRATOR, "excess_artifacts_trimmed",
-                f"{output.schema_key}: {dropped} past the commissioned count",
-                "single-arm commit")
-        return kept
+    def _charge(self, step, artifacts: tuple[str, ...]) -> None:
+        for artifact in artifacts:
+            self._budget.charge(f"{step.name}.{artifact}")
 
-    def _held(self, output) -> list:
-        """What the design already holds of one item list, on either substrate."""
-        pool = (fanout._pool(self.state, output) if self.graph_mode
-                else self.state.items(*output.doc_key))
-        return [one for one in (pool or ()) if isinstance(one, dict)]
+    def _closed(self, step, artifact: str) -> bool:
+        return self._budget.closed(f"{step.name}.{artifact}")
+
+    def _spent_out(self, step) -> bool:
+        """Every artifact ``step`` still owes has spent its budget: the stage
+        can take nothing more from this agent."""
+        owed = {entry.split(" for ", 1)[0] for entry in self._owed(step)}
+        return bool(owed) and all(self._closed(step, key) for key in owed)
 
     @property
     def _history_budget(self) -> int:
@@ -314,10 +275,13 @@ class ReactLoop:
         # the serving window before any message (MEASURED, run t1
         # 20261005_205508: ~7.5k of the 8,192 prompt tokens in `tools` alone,
         # and three runs resent one refused request 270-280 times).
-        own = tuple(key for key, _type, _required in step.submit_fields if key in owed)
+        own = tuple(key for key, _type, _required in step.submit_fields
+                    if key in owed and not self._closed(step, key))
+        optional = tuple(key for key in optional if not self._closed(step, key))
         if own:
             return own + optional
-        return tuple(key for key in declared if key in owed) + optional
+        return tuple(key for key in declared
+                     if key in owed and not self._closed(step, key)) + optional
 
     def _done(self) -> frozenset:
         """Stages no longer open: the finished ones and the closed ones."""
@@ -715,20 +679,12 @@ class ReactLoop:
                                 f"stages go in order; the current one is {now}: "
                                 f"call submit_{now}."))
             return "continue"
-        # A submit to a stage that already has artifacts is ACCEPTED —
-        # that is the agent adding a second batch, which is the whole
-        # point of additive submits, and the menu drops a stage when it
-        # stops NEEDING work, not when it may stop receiving any.
-        #
-        # But it is bounded. MEASURED (run single_20260901_154303): the
-        # prose arm submitted `analysis` 61 times, spending its entire
-        # budget on one stage. Once the cap is reached the loop stops
-        # accepting and says so, because a stage submitted over and over
-        # without completing is a disagreement between the validator and
-        # the self._done_set-guard, and accepting it forever turns that
-        # disagreement into the whole run.
-        if step.name in self._abandoned or self._submit_attempts(step.name) >= self.SUBMIT_CAP:
-            self._close_stage(step)
+        # A submit to a stage that already has artifacts is ACCEPTED — that
+        # is the agent adding a second batch, which is the whole point of
+        # additive submits. What bounds it is ``turn.SubmitBudget``: a submit
+        # that moves nothing is charged to the artifact it carried, and a
+        # stage whose every owed artifact has spent its budget is closed.
+        if step.name in self._abandoned:
             self._answer(turn, self._closed_note(step))
             return "return" if len(self._done_set) == len(STEPS) else "continue"
         args, carried = turn_mod.carry_over(self._kept, args)
@@ -741,15 +697,22 @@ class ReactLoop:
             # tightened schema.
             passed = turn_mod.constrained_pass(
                 self.llm, self.messages, turn, artifact=step.name,
-                schema=grammar.for_decoder(params, budget_chars=grammar.decoder_budget_chars(
-                    getattr(self.config, "llm_completion_reserve", 0) or 8192)),
+                schema=grammar.for_decoder(
+                    self._pass_params(step, args, params),
+                    budget_chars=grammar.decoder_budget_chars(
+                        getattr(self.config, "llm_completion_reserve", 0) or 8192)),
                 errors=errors, params=params, validate=validate, stats=self.stats,
                 trajectory=self.trajectory, identity=self.identity)
             if passed is not None:
                 section, args, unreadable = passed
                 self._pending_note, errors = turn_mod.constrained_note(errors), []
         if errors:
-            self._rejected[step.name] = self._rejected.get(step.name, 0) + 1
+            carried = self._artifacts_of(step, args)
+            # Charged to the artifact the errors NAME: a submit that carries
+            # six artifacts and is refused for one empty field costs that one,
+            # as the stage loop's per-artifact submits do.
+            named = tuple(a for a in carried if any(a in e for e in errors))
+            self._charge(step, named or carried)
             turn_mod.note_submit_rejected(
                 step.name, turn, args, errors, stats=self.stats,
                 trajectory=self.trajectory, identity=self.identity)
@@ -757,7 +720,7 @@ class ReactLoop:
                    "below never arrived in full. Do not rewrite everything — send a "
                    "SHORTER submit: fewer items, shorter prose, required fields "
                    "first.\n" if turn.truncated else "")
-            if self._submit_attempts(step.name) >= self.SUBMIT_CAP:
+            if self._spent_out(step):
                 self._close_stage(step)
                 self._answer(turn, "SUBMIT REJECTED:\n- " + "\n- ".join(errors)
                              + "\n" + self._closed_note(step))
@@ -770,7 +733,7 @@ class ReactLoop:
         turn_mod.note_dropped_args(
             unreadable, stats=self.stats, trajectory=self.trajectory,
             identity=self.identity)
-        before = self._progress_mark(step)
+        before = fanout.progress_mark(step, self.state)
         self._commit(step, section)
         # Judge-visible, like the multi arm's `design_<stage>`: the
         # BFCL trajectory score reads `tool_calls`, so a submit that is
@@ -784,16 +747,15 @@ class ReactLoop:
             json.dumps(args, ensure_ascii=False)[:200],
             json.dumps(section, ensure_ascii=False)[:200])
         self._compact(turn, step, section)
-        if self._progress_mark(step) == before:
-            self._idle_submits[step.name] = self._idle_submits.get(step.name, 0) + 1
+        if fanout.progress_mark(step, self.state) == before:
+            self._charge(step, self._artifacts_of(step, section))
         if self.graph_mode and not self._state_reads.get(step.name):
             self.stats["blind_submits"] += 1      # see ToolLoop._handle_submit
         self.stats["submits_per_stage"][step.name] = (
             self.stats["submits_per_stage"].get(step.name, 0) + 1)
         if not self.stats["stage_order"] or self.stats["stage_order"][-1] != step.name:
             self.stats["stage_order"].append(step.name)
-        if (step.name not in self._finished()
-                and self._submit_attempts(step.name) >= self.SUBMIT_CAP):
+        if step.name not in self._finished() and self._spent_out(step):
             self._close_stage(step)
             self._answer(turn, self._closed_note(step))
             return "return" if len(self._done_set) == len(STEPS) else "continue"
@@ -835,13 +797,14 @@ class ReactLoop:
                 ", ".join(sorted({v.violation_type for v in fixable}))[:200])
         if self._repairing == step.name:
             self._repairing = None
-        self._answer(turn, _committed_note(step, self._done_set, self._owed(step)))
+        self._answer(turn, _committed_note(step, self._done_set, self._owed(step))
+                     + self._commission(step))
         if len(self._done_set) == len(STEPS):
             return "return"
         return "continue"
 
     def _close_stage(self, step) -> None:
-        """Take a stage that has spent ``SUBMIT_CAP`` without finishing out of
+        """Take a stage whose every owed artifact has spent its submit budget out of
         play: off the menu, no longer the current stage, its contract no
         longer offered. What it committed stays committed.
 
@@ -858,7 +821,7 @@ class ReactLoop:
         self.stats["abandoned_stages"].append(step.name)
         self.trajectory.log_recovery_event(
             self.identity, "stage_abandoned",
-            f"{step.name}: {self._submit_attempts(step.name)} submit(s)",
+            f"{step.name}: submit budget spent",
             f"still owed: {', '.join(owed)}"[:200])
         if self._repairing == step.name:
             self._repairing = None
@@ -867,16 +830,69 @@ class ReactLoop:
         self._live_specs = self._bound_specs()
         self._specs = merge_specs(self._specs, self._live_specs)
 
+    #: How many owed work sets are put in front of the agent in full after a
+    #: commit; the rest are named in one line each. The window is shared with
+    #: the whole conversation, and the agent needs the next few, not all.
+    COMMISSION_SHOWN = 3
+
+    def _commission(self, step) -> str:
+        """What the stage's item lists are still commissioned for, in the
+        words a Developer is handed for the same work set (``spec.render``):
+        one rendering, so the two arms are told the same thing about the same
+        unit and only WHO is told differs (``docs/guides/ablation_parity.md``
+        C6). Empty while the stage's own artifacts are still owed."""
+        spec = fanout.SPECS.get(step.name)
+        if spec is None or missing_parts(step, self.state):
+            return ""
+        owed = fanout.owed_sets(step.name, self.state)
+        if not owed:
+            return ""
+        shown, rest = owed[:self.COMMISSION_SHOWN], owed[self.COMMISSION_SHOWN:]
+        blocks = [f"{spec.render(ws)}\n(still owed for {ws.set_id}: {left} "
+                  f"{output.schema_key})" for ws, output, left in shown]
+        tail = [f"  - {ws.set_id}: {left} more {output.schema_key}" for ws, output, left in rest]
+        return ("\n\nWHAT THIS STAGE IS STILL COMMISSIONED FOR — write into these, "
+                "naming each artifact's unit as stated:\n\n" + "\n\n".join(blocks)
+                + (("\n\nAfter those:\n" + "\n".join(tail)) if tail else ""))
+
+    def _pass_params(self, step, args: dict, params: dict) -> dict:
+        """The schema pass 2 decodes under: the bound tool's, tightened by the
+        work set the submit's items all belong to when they belong to one —
+        the set's count as what it still owes, its module as a constant — as a
+        Developer's pass 2 is (C5). Items of several sets, or none, leave the
+        bound schema as it is."""
+        spec = fanout.SPECS.get(step.name)
+        if spec is None:
+            return params
+        for output in spec.outputs:
+            items = (args or {}).get(output.schema_key)
+            if not isinstance(items, list) or not items:
+                continue
+            routed = fanout.route_items(step.name, self.state, output, items)
+            if len(routed) != 1 or routed[0][0] is None:
+                return params
+            work_set = routed[0][0]
+            left = fanout.remaining(self.state, output, work_set)
+            quota_key = dev_plans._QUOTA_KEY.get(output.schema_key)
+            if quota_key and left:
+                work_set = dataclasses.replace(
+                    work_set, payload={**work_set.payload, quota_key: left})
+            return grammar.tighten_parameters(
+                params, grammar.Vocabulary.of(
+                    self.state, course_hours=duration_hours(self.design_brief)),
+                work_set=work_set)
+        return params
+
     def _closed_note(self, step) -> str:
-        """The answer to a submit the cap refuses, saying where to go next."""
+        """The answer to a submit to a closed stage, saying where to go next."""
         left = [s.name for s in STEPS if s.name not in self._done_set]
         if step.name in self._finished():
-            head = (f"{step.name} is already complete and has had its {self.SUBMIT_CAP} "
-                    "submits; nothing more is accepted for it.")
+            head = f"{step.name} is already complete; nothing more is accepted for it."
         else:
             owed = self._owed(step)
-            head = (f"{step.name} is CLOSED after {self._submit_attempts(step.name)} submits "
-                    f"that added nothing, with what it holds" + (f" ({', '.join(owed)} left missing)" if owed else "")
+            head = (f"{step.name} is CLOSED: each artifact it still owes was sent "
+                    f"{self._budget.limit} times without adding anything, so it keeps what it "
+                    f"holds" + (f" ({', '.join(owed)} left missing)" if owed else "")
                     + ". Do not submit it again.")
         if not left:
             return head + " Every other stage is complete."
@@ -982,74 +998,43 @@ class ReactLoop:
         return executor(self.state, scope, args)
 
     def _commit(self, step, section: dict) -> None:
-        """Deposit one submit. ADDITIVE: a second submit for the same stage adds
-        to what is there rather than replacing it, which is what lets the agent
-        split a large family across calls."""
+        """Deposit one submit: the stage's own artifacts through the stage's
+        commit, its item lists through the work-set deposit.
+
+        The item lists are taken OUT of the section before the stage commit,
+        so they reach the design one way only — ``fanout.commit_sets``, into
+        the SAME work sets the multi arm's Developers are given
+        (``fanout.derived_sets``), each artifact to the set of the unit it
+        names. Count, repeats, ids and the ``plan_set`` stamp are then settled
+        by one rule for both arms (``docs/guides/ablation_parity.md`` C7-C9);
+        who writes them is the treatment, what they are written into is not."""
         section = copy.deepcopy(section)
         spec = fanout.SPECS.get(step.name)
-        if self.graph_mode:
-            # Element pools are additive by construction (`add_element_node`);
-            # section nodes are single documents and a re-submit replaces them.
-            commit_as_harness(step.commit, self.state, self.trajectory, section)
-        else:
-            before = {key: self.state.get(key) for key in _doc_keys(step)}
-            step.commit_prose(self.state, self.trajectory, section)
+        items_by_output = {}
+        if spec is not None:
+            for output in spec.outputs:
+                items = section.pop(output.schema_key, None)
+                if isinstance(items, list) and items:
+                    items_by_output[output.schema_key] = (output, items)
+        if section:
+            if self.graph_mode:
+                commit_as_harness(step.commit, self.state, self.trajectory, section)
+            else:
+                step.commit_prose(self.state, self.trajectory, section)
         if step.name == "outcomes" and fanout.course_modules(self.state):
             # The same ceiling the multi arm applies after its outcomes stage:
             # a harness fact about the course, not a choice of either arm.
             fanout.cap_module_minutes(
                 self.state, duration_hours(self.design_brief) * 60, self.trajectory)
-        if spec is not None:
-            # A repeat of an artifact the design already holds is dropped, by
-            # the one definition the multi arm's commit uses
-            # (``dev_plans.same_artifact_key``): appended, a resent item was a
-            # second copy in this arm's deliverable and in no other.
-            quotas = fanout.unit_quotas(step.name, self.state)
-            for output in spec.outputs:
-                items = section.get(output.schema_key)
-                if not isinstance(items, list):
-                    continue
-                kept = dev_plans.without_repeats(
-                    output.schema_key, items, beside=self._held(output))
-                if len(kept) < len(items):
+        for key, (output, items) in items_by_output.items():
+            for work_set, mine in fanout.route_items(step.name, self.state, output, items):
+                if work_set is None:
                     self.trajectory.log_recovery_event(
-                        self.identity, "duplicate_element_dropped",
-                        f"{output.schema_key}: {len(items) - len(kept)} repeat(s)",
-                        step.name)
-                kept = self._within_quota(output, kept, quotas.get(output.schema_key) or {})
-                section[output.schema_key] = kept
-            # The item lists a fan-out family's Developers would have produced
-            # in the multi arm. One "set" because this agent chose its own
-            # batching — that IS the batching.
-            fanout.commit_sets(
-                spec, self.state, self.trajectory,
-                [dev_plans.WorkSet(set_id=f"S{self._batch}", source="agent")],
-                [{"set_id": f"S{self._batch}", **section}])
-            self._batch += 1
-        if self.graph_mode:
-            return
-        for key, old in before.items():
-            if not isinstance(old, dict):
-                continue
-            new = self.state.get(key)
-            if not isinstance(new, dict):
-                continue
-            merged = dict(new)
-            for field, previous in old.items():
-                fresh = new.get(field)
-                if not (isinstance(previous, list) and isinstance(fresh, list)):
+                        ORCHESTRATOR, "items_without_set", f"{key}: {len(mine)}",
+                        "named no unit any work set of the stage holds")
                     continue
-                # Only a list the commit REPLACED is joined back to what it
-                # held. One it left alone -- a submit that re-sent the plan and
-                # no items -- already starts with ``previous``, and joining it
-                # again doubled the family on every such submit (MEASURED, run
-                # train_1 20261002_130041: one item, seven plan-only submits,
-                # 64 copies).
-                if fresh[:len(previous)] != previous:
-                    merged[field] = previous + fresh
-            if merged != new:
-                self.state.put(key, merged)
-                self.trajectory.log_doc_write(key, merged)
+                fanout.commit_sets(spec, self.state, self.trajectory, [work_set],
+                                   [{"set_id": work_set.set_id, key: mine}])
 
     def _compact(self, turn, step, section: dict) -> None:
         """Replace a committed submit's payload with a record of what it was.
@@ -1151,32 +1136,6 @@ class ReactLoop:
         stage loop (:func:`transcript.answer_unexecuted`)."""
         answer_unexecuted(self.messages, calls, why,
                           trajectory=self.trajectory, identity=self.identity)
-
-
-def _doc_keys(step) -> tuple[str, ...]:
-    """Blackboard documents this step writes whose commit REPLACES its key —
-    read back so a second submit ADDS to them instead.
-
-    A commit that appends for itself is excluded
-    (``specialists.ADDITIVE_PROSE_DOC_KEYS``): appending it here too would
-    double it, and its own commit is the better place because it can dedup,
-    which this cannot.
-
-    Taken from the fan-out outputs and the step's primary type, NOT from
-    ``step.family``: a family name ("outcome_designer") is not a document key
-    ("objective"), so the merge was reading a key nothing ever wrote and every
-    additive submit silently replaced its predecessor."""
-    keys: list[str] = []
-    spec = fanout.SPECS.get(step.name)
-    if spec is not None:
-        keys += [o.doc_key[0] for o in spec.outputs if o.doc_key[0]]
-    if step.primary_type:
-        keys.append(str(step.primary_type))
-    # A document whose own commit already appends must NOT be appended again
-    # here, or a second submit lands `previous + (previous + new)`. This
-    # re-merge exists only for the commits that still replace their key.
-    return tuple(k for k in dict.fromkeys(keys)
-                 if k not in ADDITIVE_PROSE_DOC_KEYS)
 
 
 def _committed_note(step, done: frozenset, parts: tuple[str, ...]) -> str:

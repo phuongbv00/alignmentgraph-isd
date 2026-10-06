@@ -43,7 +43,8 @@ from ..checks import _ALL_BLOOM_VERBS, described_levels
 from ..trajectory import ORCHESTRATOR
 from . import tools
 from .protocol import ITEM_RESTATES_OBJECTIVE
-from .specialists import STEPS, AgenticStep, declared_required_errors, missing_parts
+from .specialists import (STEPS, AgenticStep, declared_required_errors, missing_parts,
+                          view_as_harness)
 
 
 @dataclass(frozen=True)
@@ -1049,7 +1050,7 @@ def dispatch_payload(state, spec) -> dict:
     Read back from committed state rather than passed through from the loop:
     the dispatch may have been regenerated or salvaged, so the sets must be
     derived from what actually landed either way. Read by the multi arm's
-    fan-out and by the single arm's commit (:func:`unit_quotas`), so the two
+    fan-out and by the single arm's commit (:func:`derived_sets`), so the two
     divide the same design the same way."""
     modules = {"modules": course_modules(state)}
     if spec.stage == "assessment":
@@ -1079,67 +1080,117 @@ def _section_data(state, key: str) -> dict:
 
 
 
-#: The field an artifact names its unit by — the unit a work set is derived
-#: for (a task, a module) — per item list with a stated count.
-UNIT_FIELD = {"assessment_tools": "task_id", "learning_activities": "module_id",
-              "learner_materials": "linked_module"}
+def derived_sets(stage: str, state) -> list:
+    """The work sets of ``stage`` as the multi arm derives them for its
+    Developers (``plan_sets`` over :func:`dispatch_payload`), once the stage's
+    own artifacts have landed; empty before, and for a stage with no fan-out.
 
-
-def unit_quotas(stage: str, state) -> dict[str, dict[str, int]]:
-    """``schema_key -> unit -> count`` the multi arm's work sets would state
-    for ``stage``: the same derivation (``plan_sets`` over
-    :func:`dispatch_payload`), summed over a unit's batches.
-
-    The single arm writes its own item lists, and nothing held them to a
-    scale: MEASURED (run t1 20261006_094654, train_1), single x prose wrote 59
-    assessment items in 88 calls where the multi arms wrote 10 and 22, so the
-    deliverable's size sat on the decomposition axis. Session guides state no
-    count (what a block owes is every id), so they have no entry."""
+    The single arm writes into the SAME sets (``docs/guides/ablation_parity.md``
+    C9): who writes them is the treatment, what they are is not."""
     spec = SPECS.get(stage)
-    if spec is None:
-        return {}
+    if spec is None or not spec.dispatch_done(state):
+        return []
     sets, _stats = spec.plan_sets(state, dispatch_payload(state, spec))
-    out: dict[str, dict[str, int]] = {}
-    for output in spec.outputs:
-        if output.schema_key not in UNIT_FIELD:
-            continue
-        quotas: dict[str, int] = {}
-        for work_set in sets:
-            count = dev_plans.quota_of(work_set, output.schema_key)
-            if not count:
-                continue
-            units = ([dev_plans._bare(s.get("id")) for s in work_set.payload.get("sets") or []
-                      if isinstance(s, dict) and s.get("id")]
-                     if output.schema_key == "assessment_tools" else [work_set.module_id])
-            units = [unit for unit in units if unit]
-            # A set over several tasks shares its count between them, the
-            # first ones taking the remainder.
-            share, extra = divmod(count, len(units)) if units else (0, 0)
-            for index, unit in enumerate(units):
-                quotas[unit] = quotas.get(unit, 0) + share + (1 if index < extra else 0)
-        out[output.schema_key] = quotas
+    return sets
+
+
+def held_in_set(state, output: "SetOutput", set_id: str) -> list[dict]:
+    """What the design already holds of one output for one work set, by the
+    ``plan_set`` stamp every committed artifact carries."""
+    pool = (_pool(state, output) if hasattr(state, "element_nodes")
+            else state.items(*output.doc_key))
+    return [one for one in (pool or ())
+            if isinstance(one, dict) and str(one.get("plan_set") or "") == set_id]
+
+
+def remaining(state, output: "SetOutput", work_set) -> int:
+    """How many more of ``output`` the set is commissioned for. A session
+    block states no count (how many sessions is the writer's): it owes one
+    guide, and its ids are checked by P10/P11, not counted here."""
+    held = len(held_in_set(state, output, work_set.set_id))
+    quota = dev_plans.quota_of(work_set, output.schema_key)
+    if output.schema_key == "session_guides" or quota <= 0:
+        return 0 if held else 1
+    return max(0, quota - held)
+
+
+def owed_sets(stage: str, state) -> list[tuple]:
+    """``(work_set, output, remaining)`` for every set of ``stage`` still owed
+    something — the ONE definition of "still owed" for a fan-out family
+    (``docs/guides/ablation_parity.md`` C10)."""
+    spec = SPECS.get(stage)
+    out = []
+    for work_set in derived_sets(stage, state):
+        for output in spec.outputs:
+            left = remaining(state, output, work_set)
+            if left:
+                out.append((work_set, output, left))
     return out
 
 
-def held_by_unit(state, output: "SetOutput") -> dict[str, int]:
-    """How many artifacts of one item list the design holds per unit."""
-    field = UNIT_FIELD.get(output.schema_key)
-    if not field:
-        return {}
-    counts: dict[str, int] = {}
-    if hasattr(state, "element_nodes") and output.parent_field:
-        for node in state.element_nodes(output.element_type):
-            unit = dev_plans._bare(node["data"].get("id") or node["id"])
-            counts[unit] = len([i for i in (node["data"].get(output.parent_list) or [])
-                                if isinstance(i, dict)])
-        return counts
-    pool = (_pool(state, output) if hasattr(state, "element_nodes")
-            else state.items(*output.doc_key))
-    for one in pool or ():
-        if isinstance(one, dict):
-            unit = dev_plans._bare(one.get(field))
-            counts[unit] = counts.get(unit, 0) + 1
-    return counts
+def progress_mark(step, state) -> str:
+    """What a submit to ``step`` can move, as one comparable value: which of
+    its parts have landed and how many DISTINCT artifacts each of its item
+    lists holds. Equal before and after a submit means the submit moved
+    nothing (``turn.SubmitBudget``). One definition for both arms (C12)."""
+    landed = view_as_harness(step, state)
+    spec = SPECS.get(step.name)
+    counts = []
+    for output in (spec.outputs if spec is not None else ()):
+        pool = (_pool(state, output) if hasattr(state, "element_nodes")
+                else state.items(*output.doc_key))
+        counts.append(len({dev_plans.same_artifact_key(output.schema_key, one)
+                           for one in (pool or ()) if isinstance(one, dict)}))
+    return json.dumps([landed, counts], sort_keys=True, default=str)
+
+
+def route_items(stage: str, state, output: "SetOutput", items: list) -> list[tuple]:
+    """``[(work_set, items)]``: each artifact sent to the derived set it belongs
+    to, by the unit it names — a task, a module, the ids a guide schedules.
+    Among several sets of one unit (a task written in batches, a module's
+    blocks), the first with room takes it; when none has room the first does,
+    and the deposit's count then decides. An artifact naming no unit any set
+    holds goes to no set (``None``)."""
+    sets = derived_sets(stage, state)
+    room = {ws.set_id: remaining(state, output, ws) for ws in sets}
+    buckets: dict[str, list] = {}
+    order: list = []
+
+    def candidates(item: dict) -> list:
+        key = output.schema_key
+        if key == "assessment_tools":
+            task = dev_plans._bare(item.get("task_id"))
+            return [ws for ws in sets if task and task in {
+                dev_plans._bare(t.get("id")) for t in ws.payload.get("sets") or []
+                if isinstance(t, dict)}]
+        if key in ("learning_activities", "learner_materials"):
+            field = "module_id" if key == "learning_activities" else "linked_module"
+            module = dev_plans._bare(item.get(field))
+            mine = [ws for ws in sets if module and dev_plans._bare(ws.module_id) == module]
+            los = {dev_plans._bare(o) for o in (item.get("aligned_objectives") or [])}
+            return ([ws for ws in mine if los & set(ws.objectives)]
+                    + [ws for ws in mine if not los & set(ws.objectives)])
+        if key == "session_guides":
+            ids = {dev_plans._bare(i) for f in ("activity_ids", "material_ids")
+                   for i in (item.get(f) or [])}
+            scored = [(len(ids & {dev_plans._bare(i) for f in ("activity_ids", "material_ids")
+                                  for i in (ws.payload.get(f) or [])}), ws) for ws in sets]
+            return [ws for n, ws in sorted(scored, key=lambda p: -p[0]) if n]
+        return []
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        cands = candidates(item)
+        target = next((ws for ws in cands if room[ws.set_id] > 0), cands[0] if cands else None)
+        key = target.set_id if target is not None else ""
+        if key not in buckets:
+            buckets[key] = []
+            order.append(target)
+        buckets[key].append(item)
+        if target is not None:
+            room[key] -= 1
+    return [(ws, buckets[ws.set_id if ws is not None else ""]) for ws in order]
 
 
 def set_step(spec: FanoutSpec, work_set: dev_plans.WorkSet, base: AgenticStep,
@@ -1267,52 +1318,18 @@ def committed_set_ids(spec: FanoutSpec, state) -> set[str]:
 
 
 def missing_outputs(stage: str, state) -> tuple[str, ...]:
-    """The Developer-tier lists of ``stage`` the state holds none of yet.
-
-    Empty for a stage that has no fan-out. The multi arm never asks: its
-    Developers write these after the stage loop has closed. The single arm
-    writes them itself, inside the stage, so a stage it walks is finished only
-    when they exist — the plan alone leaves the work it plans unwritten."""
-    spec = SPECS.get(stage)
-    if spec is None:
+    """What ``stage``'s item lists still owe, one entry per work set, as
+    ``"<list> for <set id>"``. Empty for a stage that has no fan-out. The
+    multi arm's Developers write these after the stage loop has closed; the
+    single arm writes them inside the stage, into the same sets, so a stage
+    it walks is finished only when none is owed (:func:`owed_sets`)."""
+    if SPECS.get(stage) is None:
         return ()
-    graph = hasattr(state, "element_nodes")
-    owed: list[str] = []
-    for output in spec.outputs:
-        pool = _pool(state, output) if graph else state.items(*output.doc_key)
-        if not pool:
-            owed.append(output.schema_key)
-            continue
-        uncovered = _units_without(stage, state, pool)
-        if uncovered:
-            owed.append(f"{output.schema_key} for {', '.join(uncovered)}")
-    return tuple(owed)
-
-
-def _units_without(stage: str, state, pool: list) -> list[str]:
-    """The units of the design a stage's lists leave without any artifact:
-    an assessment task no item sits in, a module no activity or material is
-    written for. The multi arm writes one work set per such unit, so a single
-    arm closed on the first artifact would write a fraction of what its plan
-    asks for and be compared with one that wrote all of it."""
-    if stage == "assessment":
-        plan = _section_doc(state, NodeType.ASSESSMENT_PLAN, "assessment_plan")
-        wanted = [dev_plans._bare(t.get("id")) for t in dev_plans.plan_tasks(plan)
-                  if t.get("id")]
-        if hasattr(state, "element_nodes"):
-            held = {dev_plans._bare(n["data"].get("id") or n["id"])
-                    for n in state.element_nodes(NodeType.ASSESSMENT)
-                    if n["data"].get("items")}
-        else:
-            held = {dev_plans._bare(str(one.get("task_id") or "").rsplit(":", 1)[-1])
-                    for one in pool if isinstance(one, dict)}
-        return [t for t in wanted if t not in held]
-    field_name = {"activities": "module_id", "content": "linked_module"}.get(stage)
-    if field_name is None:
-        return []
-    held = {dev_plans._bare(one.get(field_name)) for one in pool if isinstance(one, dict)}
-    return [str(m["id"]) for m in course_modules(state)
-            if m.get("id") and dev_plans._bare(m["id"]) not in held]
+    spec = SPECS[stage]
+    if not spec.dispatch_done(state):
+        return tuple(o.schema_key for o in spec.outputs)
+    return tuple(f"{output.schema_key} for {ws.set_id}"
+                 for ws, output, _left in owed_sets(stage, state))
 
 
 def _pool(state, output: SetOutput) -> list[dict]:
@@ -1378,9 +1395,25 @@ def _deposit_sets(spec: FanoutSpec, state, trajectory, work_sets: list,
         for payload in payloads:
             items = payload.get(output.schema_key) or []
             work_set = set_of.get(payload.get("set_id", ""))
+            if isinstance(items, list):
+                # A repeat of anything the design already holds goes: ONE
+                # definition of "the same artifact" for both arms (C8).
+                pool = (_pool(state, output) if hasattr(state, "element_nodes")
+                        else state.items(*output.doc_key))
+                fresh = dev_plans.without_repeats(
+                    output.schema_key, [one for one in items if isinstance(one, dict)],
+                    beside=[one for one in (pool or ()) if isinstance(one, dict)])
+                if len(fresh) < len(items):
+                    trajectory.log_recovery_event(
+                        ORCHESTRATOR, "duplicate_element_dropped",
+                        f"{output.schema_key}: {len(items) - len(fresh)} repeat(s)",
+                        str(payload.get("set_id", "")))
+                items = fresh
             if work_set is not None and isinstance(items, list):
                 items = dev_plans.with_membership(work_set, output.schema_key, items)
-                items, dropped = dev_plans.trim_to_quota(work_set, output.schema_key, items)
+                items, dropped = dev_plans.trim_to_quota(
+                    work_set, output.schema_key, items,
+                    held=held_in_set(state, output, work_set.set_id))
                 if dropped:
                     trajectory.log_recovery_event(
                         ORCHESTRATOR, "excess_artifacts_trimmed", work_set.set_id,

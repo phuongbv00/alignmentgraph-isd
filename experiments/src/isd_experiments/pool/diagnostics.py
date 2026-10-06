@@ -404,7 +404,8 @@ def harness_counts(events: list) -> dict:
     (no decoder can fix it, or its prompt would not fit the window). ``rejected_empty_args`` is a submit that arrived
     with no arguments at all -- the transport failure the constrained pass
     exists for -- apart from every other rejection. ``stage_abandoned`` is a
-    single-arm stage closed at ``SUBMIT_CAP`` unfinished, ``repair_window_closed``
+    single-arm stage closed unfinished once every artifact it still owed had
+    spent ``SUBMIT_BUDGET`` submits that moved nothing, ``repair_window_closed``
     the single arm's repair allowance running out, ``budget_exhausted`` a loop
     ended by its turn ceiling, ``prompt_exceeds_window`` a stage ended because
     the window refused even its smallest transcript, and ``user_turn_restored``

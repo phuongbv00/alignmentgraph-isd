@@ -477,7 +477,9 @@ def _named_from_prompt(payload: dict, prompt: str) -> dict:
 # mean to. A real model only ever sees -- and only ever answers for -- its
 # own slice, so the fake one should too.
 _ASSIGNED_PAIRS_RE = re.compile(
-    r"pairs \(objective x plan_category\) YOU must cover, one item each:\n((?:  - .+\n?)+)")
+    r"(?:pairs \(objective x plan_category\) YOU must cover, one item each|"
+    r"(?:covering every|one for each) \(objective x plan_category\) pair below(?: at least once)?)"
+    r":\n((?:  - .+\n?)+)")
 _ASSIGNED_OBJECTIVES_RE = re.compile(r"objectives YOU must cover:\n((?:  - .+\n?)+)")
 _ASSIGNED_MODULES_RE = re.compile(r"\[MODULE:([^\]]+)\]")
 _ASSIGNED_ASSESSMENT_ITEM_LINE_RE = re.compile(r"\[ASSESSMENT:[^\]]*\] (\{.*\})")
@@ -578,7 +580,7 @@ _NAME_FIELD = {"assessment_tools": "question", "learning_activities": "activity_
                "learner_materials": "title"}
 
 
-def _sliced_payload_for_set(raw_prompt: str) -> dict | None:
+def _sliced_payload_for_set(raw_prompt: str, offset: int = 0) -> dict | None:
     """A Developer's slice, written to the COUNT its assignment states: a
     Developer that is told "write exactly 4" and writes 3 is refused
     (``dev_plans.short_of_quota``), so a fixture that ignored the number would
@@ -589,12 +591,31 @@ def _sliced_payload_for_set(raw_prompt: str) -> dict | None:
         # the slicer above does not recognise an activity block by its schema
         # key; its assignment line does.
         payload = {"learning_activities": list(_ACTIVITIES["learning_activities"])}
+    module_line = (re.search(r"^module: (\S+)", raw_prompt, re.M)
+                   or _ASSIGNED_MODULES_RE.search(raw_prompt))
+    if payload is None and module_line and re.search(r"write exactly \d+ material", raw_prompt):
+        # A material unit, recognised by its assignment line for the same
+        # reason: the module's own canned materials, or the first one
+        # re-pointed at it when the canned set has none for this module, each
+        # realizing one of the media types the assignment allows.
+        module_id = module_line.group(1)
+        allowed = re.search(r'allowed "type" values for this module: (.+)', raw_prompt)
+        types = [t.strip() for t in allowed.group(1).split(",")] if allowed else []
+        mine = [m for m in _MATERIALS["learner_materials"] if m.get("linked_module") == module_id]
+        mine = mine or [dict(_MATERIALS["learner_materials"][0])]
+        payload = {"learner_materials": [
+            dict(m, linked_module=module_id, **({"type": types[i % len(types)]} if types else {}))
+            for i, m in enumerate(mine)]}
     found = _STATED_COUNT_RE.search(raw_prompt)
     if payload is None or found is None:
         return payload
     wanted = int(found.group(1) or found.group(2))
     module = re.search(r"^module: (\S+)", raw_prompt, re.M)
-    named_set = re.search(r"^  - (AT-\S+):", raw_prompt, re.M)
+    found_id = re.search(r"^assignment: (\S+)", raw_prompt, re.M)
+    # The task line of THIS assignment, never an earlier one in the prompt.
+    own = raw_prompt[found_id.start():] if found_id else raw_prompt
+    named_set = re.search(r"^  - (AT-\S+):", own, re.M)
+    assignment = found_id.group(1) if found_id else "set"
     for key, items in payload.items():
         name = _NAME_FIELD.get(key)
         if name is None or not items:
@@ -604,7 +625,12 @@ def _sliced_payload_for_set(raw_prompt: str) -> dict | None:
             twin = copy.deepcopy(written[extra % len(items)])
             twin[name] = f"{twin.get(name, '')} (variation {extra + 1})"
             written.append(twin)
-        for item in written:
+        for number, item in enumerate(written, start=offset + 1):
+            # Each set writes its OWN artifacts: the same canned question in
+            # every part of a task is a repeat the commit drops, which a real
+            # Developer writing a different third of the content never is.
+            # ``offset`` numbers past what the set already holds.
+            item[name] = f"{item.get(name, '')} [{assignment} #{number}]"
             if module and key == "learning_activities":
                 item["module_id"] = module.group(1)
             if named_set and key == "assessment_tools":
@@ -613,10 +639,16 @@ def _sliced_payload_for_set(raw_prompt: str) -> dict | None:
     return payload
 
 
+def _objective_level(raw_prompt: str, objective: str) -> str | None:
+    found = re.search(rf'"id": "{re.escape(objective)}", "level": "(\w+)"', raw_prompt)
+    return found.group(1) if found else None
+
+
 def _canned_slice_for_set(raw_prompt: str) -> dict | None:
     """A Developer's own slice of the family's canned items, or ``None`` if
     this prompt isn't a Developer's (falls through to schema-key matching)."""
-    if "=== YOUR ASSIGNMENT ===" in raw_prompt and '"assessment_tools"' in raw_prompt:
+    if "=== YOUR ASSIGNMENT ===" in raw_prompt and (
+            '"assessment_tools"' in raw_prompt or _ASSIGNED_PAIRS_RE.search(raw_prompt)):
         pairs = _parse_assigned_pairs(raw_prompt)
         if pairs is not None:
             by_pair = {(t["aligned_objective"], t["plan_category"]): t for t in _assessment_tools()}
@@ -638,7 +670,9 @@ def _canned_slice_for_set(raw_prompt: str) -> dict | None:
                         "type": "short_answer",
                         "question": f"Demonstrate mastery of {lo} in a realistic scenario.",
                         "aligned_objective": lo, "plan_category": category,
-                        "required_cognitive_process": "apply",
+                        # At the objective's own level when the assignment
+                        # shows it, as a Developer reading it would write.
+                        "required_cognitive_process": _objective_level(raw_prompt, lo) or "apply",
                         "scoring_criteria": ("Rubric scores correctness and justification against "
                                              "observable criteria (0-3)."),
                     })
@@ -690,7 +724,8 @@ def _canned_slice_for_set(raw_prompt: str) -> dict | None:
     # Recognised by its ASSIGNMENT LINE, not by its schema key: the artifact's
     # shape travels in the bound tool now, so `"session_guides"` appears
     # nowhere in the prompt (same gap the activity fallback above closes).
-    if "=== YOUR ASSIGNED BLOCK ===" in raw_prompt and "session guides, numbered" in raw_prompt:
+    if "session guides, numbered" in raw_prompt and (
+            "=== YOUR ASSIGNED BLOCK ===" in raw_prompt or "=== YOUR ASSIGNMENT ===" in raw_prompt):
         guides = _session_guides_for_block(raw_prompt)
         if guides is not None:
             return {"session_guides": guides}
@@ -845,7 +880,10 @@ class FakeChatModel:
         # land on merged entries). Only the task/schema text may key payloads.
         stage = self._react_stage()
         if stage is not None:
-            whole = "\n".join(str(m.get("content", "")) for m in messages
+            commissioned = self._commissioned_slice(messages)
+            if commissioned is not None:
+                return self._respond(commissioned, f"submit_{stage}")
+            whole ="\n".join(str(m.get("content", "")) for m in messages
                                if isinstance(m, dict))
             # ReAct mode: the whole workflow is in the system turn, so match on
             # the chosen stage's block alone. Matching the lot would let the
@@ -903,6 +941,33 @@ class FakeChatModel:
         seen = " ".join(str(m.get("original_content") or m.get("content", ""))
                         for _i, m in results if m.get("name") == _STATE_TOOL)
         return f"ALIGNMENT STATE — {stage} ===" not in seen
+
+    @staticmethod
+    def _commissioned_slice(messages: list) -> dict | None:
+        """The single arm's answer once a stage names what it is still
+        commissioned for: the FIRST owed work set's slice, written the way a
+        Developer handed the same assignment writes it. Resending the canned
+        whole family instead is a model that ignores its commission — every
+        repeat is dropped, nothing moves, and the stage closes on its budget."""
+        results = [m for m in messages if isinstance(m, dict) and m.get("role") == "tool"]
+        if not results:
+            return None
+        text = str(results[-1].get("content", ""))
+        head = "STILL COMMISSIONED FOR"
+        if head not in text:
+            return None
+        body = text.split(head, 1)[1]
+        owed = re.search(r"\(still owed for \S+: \d+ (\w+)\)", body)
+        if owed is None:
+            return None
+        left = re.search(r": (\d+) ", owed.group(0)).group(1)
+        stated = re.search(r"(?:write exactly |how many activities to write: )(\d+)", body[:owed.start()])
+        held = max(0, int(stated.group(1)) - int(left)) if stated else 0
+        block = re.sub(r"(write exactly |how many activities to write: )\d+",
+                       lambda m: m.group(1) + left, body[:owed.start()], count=1)
+        if "=== YOUR ASSIGNMENT ===" not in block:
+            block = "=== YOUR ASSIGNMENT ===\n" + block
+        return _sliced_payload_for_set(f'{block}\n"{owed.group(1)}"', offset=held)
 
     def _react_stage(self):
         """The first still-open stage, or None when this is a stage loop."""

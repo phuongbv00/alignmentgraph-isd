@@ -40,7 +40,7 @@ from ..memory import Memory, new_agent_run_id
 from ..rag.planner import RetrievalPlanner
 from ..trajectory import ORCHESTRATOR
 from ..checks import duration_hours, serialize_violations
-from . import alignment_state, budget, grammar, repair_turn, tools
+from . import alignment_state, budget, fanout, grammar, repair_turn, tools
 from . import turn as turn_mod
 from .client import AgenticLLM
 from .compaction import compact
@@ -247,7 +247,7 @@ class ToolLoop:
         #: pointer / that read was this very call / idle calls since.
         self._repairing = self._read_since_pointer = self._just_read = False
         self._idle = 0
-        self._submit_attempts: dict[str, int] = {}
+        self._submit_attempts = turn_mod.SubmitBudget(self.SUBMIT_BUDGET)
 
     @property
     def graph_mode(self) -> bool:
@@ -355,7 +355,7 @@ class ToolLoop:
         #: for the stage let three bad guesses at one `implementation`
         #: artifact abandon the five beside it and trigger a whole-stage regen
         #: (run 24343e4d: 55.6k prompt / 11.7k completion / 122 s).
-        self._submit_attempts: dict[str, int] = {}
+        self._submit_attempts = turn_mod.SubmitBudget(self.SUBMIT_BUDGET)
         self._bind(retrieval_available)
         # Before the first model call: a stage takes minutes, and what the
         # agent was ASKED is the thing a viewer wants first.
@@ -626,9 +626,9 @@ class ToolLoop:
             if passed is not None:
                 section, args, unreadable = passed
                 self._pending_note, errors = turn_mod.constrained_note(errors), []
-        spent = self._submit_attempts.get(artifact, 0)
+        spent = self._submit_attempts.spent(artifact)
         if errors and spent < self.SUBMIT_BUDGET:
-            self._submit_attempts[artifact] = spent = spent + 1
+            spent = self._submit_attempts.charge(artifact)
             # Kept from the FIRST rejection: the give-up commits `_best`, and
             # a payload rejected under one artifact's name may carry another
             # artifact that will never be offered again (its tool is unbound
@@ -654,7 +654,7 @@ class ToolLoop:
             if left:
                 # One artifact that will not pass costs THAT artifact, not
                 # the ones beside it. Exactly the single arm's existing
-                # rule (`react.SUBMIT_CAP` is non-terminal), applied at the
+                # rule (`turn.SubmitBudget` is non-terminal), applied at the
                 # granularity the per-artifact split already declares — so
                 # this narrows a standing asymmetry rather than adding one.
                 self._append_tool_turn(turn, (
@@ -702,7 +702,7 @@ class ToolLoop:
                 if still or turn_mod.keep_items(self._kept, whole) <= 0:
                     whole = None
             if whole is None:
-                self._submit_attempts[artifact] = spent + 1
+                self._submit_attempts.charge(artifact)
                 self._append_tool_turn(turn, (
                     "NOTHING NEW: what you sent is already kept. " + owed))
                 if spent + 1 >= self.SUBMIT_BUDGET:
@@ -735,6 +735,8 @@ class ToolLoop:
                 if self.stats["repair_turns"]
                 else artifact)
         before = set(landed_parts(self.step, self.state))
+        mark = (fanout.progress_mark(self.step, self.state)
+                if self.step.commits_to_state else None)
         self._commit(section, stage_message,
                      json.dumps(args, ensure_ascii=False), note=note,
                      # Re-sending a landed artifact is a duplicate — except on
@@ -745,6 +747,12 @@ class ToolLoop:
         landed = set(landed_parts(self.step, self.state))
         left = missing_parts(self.step, self.state)
         self._accepted += 1
+        if (mark is not None and not self.stats["repair_turns"]
+                and fanout.progress_mark(self.step, self.state) == mark):
+            # Accepted, and the design holds nothing it did not hold before:
+            # a resend. Charged like a refusal (`turn.SubmitBudget`), or a
+            # model that only resends a landed artifact runs to the ceiling.
+            self._submit_attempts.charge(artifact)
         if tools.STATE_TOOL in tools.tool_names(self._live_specs) \
                 and not self.stats["state_reads"]:
             # Written without ever looking at the state: how often a model
@@ -881,7 +889,7 @@ class ToolLoop:
         """Parts still missing whose submit budget is spent — the loop will
         not accept them again, so no sentence may list them as owed."""
         return tuple(p for p in missing_parts(self.step, self.state)
-                     if self._submit_attempts.get(p, 0) >= self.SUBMIT_BUDGET)
+                     if self._submit_attempts.closed(p))
 
     def _open_parts(self) -> tuple[str, ...]:
         """Parts still missing that a submit can still land."""

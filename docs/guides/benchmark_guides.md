@@ -439,7 +439,8 @@ hiệu chỉnh liên tiếp, cần đặt cạnh nhau chứ không lấy trung b
   dir trở lên thì in thêm bảng **gap theo run dir** (Total, ADDIE) — các rung của comparison hoặc các lần tune
   liên tiếp; cột chấm bằng roster khác cột đầu được đánh `*`.
 - ATTENTION `no_c4_references`: arm có activity nhưng không activity nào trỏ tới task — C4 không đọc được.
-- bộ đếm harness thêm `stage_abandoned` (single đóng stage ở `SUBMIT_CAP`), `repair_window_closed`,
+- bộ đếm harness thêm `stage_abandoned` (single đóng stage khi mọi artifact còn nợ đã tiêu hết
+  `SUBMIT_BUDGET` submit không tiến triển), `repair_window_closed`,
   `budget_exhausted`; bảng stage thêm số set Developer bỏ cuộc; dòng work set in `tasks_planned` so với
   `task_ceiling`.
 
@@ -716,8 +717,10 @@ về bundle, kèm câu nói rằng phần chênh do repair net viết.
 
 **Điều kiện treatment fidelity.** Không thoả thì không đọc kết quả của trục đó, và báo lý do.
 - Không stage nào bị trần turn cắt ở cả hai arm của một simple effect (`via_budget_exhaustion`).
-- Arm single không có stage bị đóng ở `SUBMIT_CAP` khi còn nợ artifact (`stage_abandoned`), không có run
-  dừng vì thiếu module (`run_stopped`).
+- Không có run dừng vì thiếu module (`run_stopped`).
+- `stage_abandoned` của single không phải điều kiện fidelity. Nó là kết quả về model, giống một work set
+  Developer bỏ cuộc (`gave_up`). Cả hai chỉ xảy ra sau `SUBMIT_BUDGET` submit không tiến triển cho một
+  artifact, theo cùng một luật ở cả hai arm (`ablation_parity.md` C11). Báo hai số này cạnh nhau theo ô.
 - Mọi run của TN2 cùng một `protocol_rev`, và cờ của từng arm khớp agent id
   (`flag_check`).
 - `gave_up`, `constrained_pass` và overflow báo theo ô. Một ô có tỉ lệ bất thường so với tune phải giải

@@ -102,6 +102,37 @@ class ToolTurn:
         return bool(self.name)
 
 
+class SubmitBudget:
+    """The submits that MOVE NOTHING, counted per artifact — the one submit
+    budget both loops keep (``docs/guides/ablation_parity.md`` C11).
+
+    A refused submit, or an accepted one after which the design holds nothing
+    it did not hold before (``fanout.progress_mark``), is charged to the
+    artifact it carried; one that moves the design is not, whatever it
+    weighs. An artifact charged ``limit`` times is closed: the loop stops
+    offering it. The stage loop and the single agent's loop each hold one, so
+    a refund or a charge cannot sit on one side of the decomposition axis.
+    MEASURED, both ways of getting this wrong: charged per STAGE whatever the
+    submit did, the single arm's assessment stage closed while it was still
+    writing items one per call (run t1 20261006_091626); not charged when
+    progress went uncounted, it wrote 59 items in 88 calls (run t1
+    20261006_094654)."""
+
+    def __init__(self, limit: int = budget.SUBMIT_BUDGET) -> None:
+        self.limit = limit
+        self._spent: dict[str, int] = {}
+
+    def spent(self, artifact: str) -> int:
+        return self._spent.get(artifact, 0)
+
+    def charge(self, artifact: str) -> int:
+        self._spent[artifact] = self.spent(artifact) + 1
+        return self._spent[artifact]
+
+    def closed(self, artifact: str) -> bool:
+        return self.spent(artifact) >= self.limit
+
+
 class TurnMeter:
     """What a loop has spent, and what it is given back.
 

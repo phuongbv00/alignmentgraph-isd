@@ -11,7 +11,7 @@ from __future__ import annotations
 from conftest import FakeChatModel, load_brief, run_brief
 
 from alignmentgraph_isd import HarnessRunConfig
-from alignmentgraph_isd.core.agentic import react, tools
+from alignmentgraph_isd.core.agentic import budget, react, tools
 from alignmentgraph_isd.core.agentic.protocol import STAGE_BRIEF_HEADER
 from alignmentgraph_isd.core.agentic.specialists import STEPS
 from alignmentgraph_isd.core.alignment_graph import AlignmentGraph, NodeType
@@ -267,7 +267,7 @@ def test_one_stage_cannot_consume_the_whole_run():
     and the cap says what to do next."""
     from test_agentic_loop import _ANALYSIS
 
-    over = react.ReactLoop.SUBMIT_CAP + 4
+    over = budget.SUBMIT_BUDGET + 4
     loop, graph, trajectory, _m = _loop([("submit_analysis", _ANALYSIS)] * over)
     loop.run()
 
@@ -280,36 +280,42 @@ def test_one_stage_cannot_consume_the_whole_run():
     assert "the current one is outcomes: call submit_outcomes" in told
 
 
-def test_a_stage_that_keeps_being_rejected_hits_the_same_cap():
-    """MEASURED FAILURE (run single_20260901_205901): the cap counted only
-    ACCEPTED submits, so a stage stuck at 1 accepted submit could be rejected
-    76 more times without ever reaching it. The arm burned all 96 turns on
-    three of six stages and scored 0.0 on Analysis and Implementation.
+def test_a_stage_that_keeps_being_rejected_is_closed_by_the_submit_budget():
+    """MEASURED FAILURE (run single_20260901_205901): a cap that counted only
+    ACCEPTED submits let a stage be rejected 76 more times; the arm burned all
+    96 turns on three of six stages.
 
-    A rejected submit costs the same turn as an accepted one, and a stage that
-    cannot pass its validator is exactly what the cap is for."""
-    over = react.ReactLoop.SUBMIT_CAP + 6
+    A rejection moves nothing, so it is charged — to the artifact it was for,
+    ``SUBMIT_BUDGET`` times each, the rule the multi arm's stage loop keeps
+    (``ablation_parity.md`` C11). An empty submit names no artifact and is
+    charged to the first one still owed, so the stage closes once every part
+    has spent its budget."""
+    from alignmentgraph_isd.core.agentic.specialists import parts_of
+
+    parts = len(parts_of({s.name: s for s in STEPS}["analysis"]))
+    over = budget.SUBMIT_BUDGET * parts + 6
     # `{}` is an empty submit: rejected every time, never committed.
     loop, _g, trajectory, _m = _loop([("submit_analysis", {})] * over)
     loop.run()
 
     rejected = [e for e in trajectory.recovery_events if e["action"] == "submit_rejected"]
-    assert len(rejected) == react.ReactLoop.SUBMIT_CAP, (
-        "rejections must count toward the per-stage cap, not run unbounded")
+    assert len(rejected) == budget.SUBMIT_BUDGET * parts, (
+        "rejections must be charged per artifact, not run unbounded")
     # What the stage COMMITTED stays its own series: folding failures into it
     # would make a stuck stage read as a productive one.
     assert loop.stats["submits_per_stage"].get("analysis", 0) == 0
-    told = _said(loop)
-    assert "another stage" in told
+    assert loop.stats["abandoned_stages"] == ["analysis"]
 
 
 def test_a_capped_stage_is_closed_and_the_run_moves_on():
-    """MEASURED FAILURE (run a1 20261001_101147): at the cap the agent was told
+    """MEASURED FAILURE (run a1 20261001_101147): at a spent budget the agent was told
     to leave the stage while the harness kept that stage current — its
     contract re-offered, the state read still on it — and 13 of 20 single-arm
     runs spent their turn ceiling resubmitting one stage. A closed stage leaves
     the menu, stops being current, and the next stage's contract is offered."""
-    over = react.ReactLoop.SUBMIT_CAP + 6
+    from alignmentgraph_isd.core.agentic.specialists import parts_of
+
+    over = budget.SUBMIT_BUDGET * len(parts_of({s.name: s for s in STEPS}["analysis"])) + 6
     loop, _g, trajectory, _m = _loop([("submit_analysis", {})] * over)
     loop.run()
 
@@ -324,11 +330,11 @@ def test_a_capped_stage_is_closed_and_the_run_moves_on():
 
 
 def test_a_finished_stage_is_never_recorded_as_abandoned():
-    """The cap refuses further submits to a stage that is complete; it does
-    not turn written work into an abandoned stage."""
+    """A complete stage refuses further submits; it does not turn written
+    work into an abandoned stage."""
     from test_agentic_loop import _ANALYSIS
 
-    loop, _g, _t, _m = _loop([("submit_analysis", _ANALYSIS)] * (react.ReactLoop.SUBMIT_CAP + 4))
+    loop, _g, _t, _m = _loop([("submit_analysis", _ANALYSIS)] * (budget.SUBMIT_BUDGET + 4))
     loop.run()
 
     assert loop.stats["abandoned_stages"] == []
@@ -383,18 +389,21 @@ def test_the_single_arm_reports_context_per_stage():
     assert set(design["turns_by_stage"]) == set(by_stage)
 
 
-def test_the_prose_merge_reads_the_keys_the_commits_actually_write():
-    """`_doc_keys` used to return the FAMILY name ("outcome_designer"), which is
-    not a document key ("objective"). The additive merge therefore read a key
-    nothing had ever written, and every second submit silently replaced its
-    predecessor instead of adding to it."""
-
-    by_name = {s.name: s for s in STEPS}
-    for name in ("assessment", "activities", "content"):
-        keys = react._doc_keys(by_name[name])
-        assert keys, f"{name} has no document keys to merge"
-        assert not any(k.endswith("_designer") or k.endswith("_planner") for k in keys), (
-            f"{name} merges on a family name, not a document key: {keys}")
+def test_the_single_arm_commits_items_only_through_work_sets():
+    """Every item the single arm writes reaches the design through
+    ``fanout.commit_sets``, into one of the work sets the multi arm's
+    Developers are given, so it carries that set's ``plan_set`` stamp on both
+    substrates (``ablation_parity.md`` C9). An item written into the stage's
+    document directly would be counted by nothing that counts a set."""
+    for context_mode in ("graph", "prose"):
+        result = run_brief(load_brief("minimal_brief.json"), HarnessRunConfig(
+            llm_factory=lambda: FakeChatModel(), agent_mode="single",
+            context_mode=context_mode))
+        dev = result["addie_output"]["development"]
+        items = [i for t in dev["assessment_tools"] for i in (t.get("items") or [])]
+        assert items, context_mode
+        assert all(i.get("plan_set") for i in items), context_mode
+        assert all(m.get("plan_set") for m in dev["learner_materials"]), context_mode
 
 
 def test_a_rejection_brings_back_the_schema_it_lost():
@@ -593,10 +602,10 @@ def test_a_turns_cost_is_charged_to_the_stage_it_prepares():
 
 
 def test_a_plan_only_resubmit_does_not_multiply_the_items_on_prose():
-    """single x prose re-merges a document's lists after each commit. A submit
-    that re-sends the plan and no items leaves the item list alone, so it must
-    not be joined to itself: MEASURED on run train_1 20261002_130041, one item
-    and seven plan-only submits shipped 64 copies of it."""
+    """A submit that re-sends the plan and no items leaves the item list
+    alone: MEASURED on run train_1 20261002_130041, one item and seven
+    plan-only submits shipped 64 copies of it when the single arm re-merged
+    prose lists itself."""
     import copy
 
     from test_agentic_loop import _ANALYSIS, _ASSESSMENT, _OUTCOMES
@@ -606,9 +615,12 @@ def test_a_plan_only_resubmit_does_not_multiply_the_items_on_prose():
     for name, payload in (("analysis", _ANALYSIS), ("outcomes", _OUTCOMES)):
         loop._commit(by_name[name], copy.deepcopy(payload))
 
+    from alignmentgraph_isd.core.agentic import fanout
+
+    output = fanout.SPECS["assessment"].outputs[0]
+
     def items():
-        return [i for doc in [store.get(k) for k in react._doc_keys(by_name["assessment"])]
-                if isinstance(doc, dict) for i in doc.get("assessment_tools") or []]
+        return store.items(*output.doc_key)
 
     loop._commit(by_name["assessment"], copy.deepcopy(_ASSESSMENT))
     first = len(items())
@@ -715,74 +727,77 @@ import pytest as _pytest
 
 
 @_pytest.mark.parametrize("graph_mode", [True, False])
-def test_a_submit_that_adds_an_artifact_is_not_charged_against_the_cap(graph_mode):
+def test_progress_is_never_charged_and_piling_on_one_task_is(graph_mode):
     """MEASURED (run t1 20261006_091626, train_1): both single arms wrote the
-    assessment items one per submit, every one committed, and the stage was
-    closed at ``SUBMIT_CAP`` still owing two tasks' items. Progress is not
-    charged; a submit that adds nothing — a repeat, or an item past the count
-    its task would be commissioned in the multi arm — still is, so a model that
-    piles onto one task is still closed (single x prose wrote 59 items on run
-    t1 20261006_094654 once progress went uncharged)."""
+    assessment items one per submit, every one committed, and a per-stage cap
+    closed the stage still owing two tasks' items. A submit that adds an item
+    moves the design and is never charged; one that adds nothing — an item
+    past what its task's work sets are commissioned for, trimmed at the
+    deposit — is, ``SUBMIT_BUDGET`` times, the multi arm's rule (C11). So a
+    model that piles onto one task is still closed (single x prose wrote 59
+    items on run t1 20261006_094654 once progress went uncharged)."""
     import copy
 
     from test_agentic_loop import _ANALYSIS, _ASSESSMENT, _OUTCOMES
 
-    from alignmentgraph_isd.core.agentic import specialists
-
     from alignmentgraph_isd.core import dev_plans
-    from alignmentgraph_isd.core.agentic import fanout
+    from alignmentgraph_isd.core.agentic import fanout, specialists
     from alignmentgraph_isd.core.prose_store import ProseStore
 
-    graph, trajectory = (AlignmentGraph() if graph_mode else ProseStore()), TrajectoryLogger()
-    if graph_mode:
-        specialists.commit_analysis(graph, trajectory, _ANALYSIS)
-        specialists.commit_outcomes(graph, trajectory, _OUTCOMES)
-    else:
-        specialists.commit_analysis_prose(graph, trajectory, _ANALYSIS)
-        specialists.commit_outcomes_prose(graph, trajectory, _OUTCOMES)
+    def fresh():
+        state = AlignmentGraph() if graph_mode else ProseStore()
+        suffix = "" if graph_mode else "_prose"
+        for name, payload in (("analysis", _ANALYSIS), ("outcomes", _OUTCOMES)):
+            getattr(specialists, f"commit_{name}{suffix}")(state, TrajectoryLogger(), payload)
+        return state
+
     plan = copy.deepcopy(_ASSESSMENT["assessment_plan"])
     tasks = plan["sets"][0]["assessment_tasks"]
-    cap = react.ReactLoop.SUBMIT_CAP
-    tasks[1:] = [dict(tasks[0], id=f"AT-{n:02d}", weight_percent=0) for n in range(2, cap + 3)]
+    # Other pairs, so their items belong to work sets of their own.
+    tasks[1:] = [dict(tasks[0], id=f"AT-{n:02d}", timing=timing, weight_percent=0)
+                 for n, timing in ((2, "formative"), (3, "diagnostic"))]
+    # What AT-01's work sets are commissioned for, read off a scratch copy of
+    # the design with the plan committed: the multi arm's derivation.
+    scratch = fresh()
+    getattr(specialists, "commit_assessment" + ("" if graph_mode else "_prose"))(
+        scratch, TrajectoryLogger(), {"assessment_plan": plan})
+    output = fanout.SPECS["assessment"].outputs[0]
+    mine = [ws for ws in fanout.derived_sets("assessment", scratch)
+            if "AT-01" in {dev_plans._bare(t.get("id")) for t in ws.payload.get("sets") or []}]
+    total = sum(fanout.remaining(scratch, output, ws) for ws in mine)
+    assert total > 0
+
     item = _ASSESSMENT["assessment_tools"][0]
-    # The count AT-01 would be commissioned in the multi arm, read off a
-    # scratch copy of the design with the plan committed.
-    scratch, scratch_log = (AlignmentGraph() if graph_mode else ProseStore()), TrajectoryLogger()
-    for name, payload in (("analysis", _ANALYSIS), ("outcomes", _OUTCOMES),
-                          ("assessment", {"assessment_plan": plan})):
-        commit = getattr(specialists, f"commit_{name}" + ("" if graph_mode else "_prose"))
-        commit(scratch, scratch_log, payload)
-    quota = fanout.unit_quotas("assessment", scratch)["assessment_tools"]["AT-01"]
-    one_per_task = [dict(item, task_id=f"AT-{n:02d}", question=f"Build model {n}.")
-                    for n in range(1, cap + 2)]               # every task but the last
-    # AT-01 filled to its count, then piled past it until the cap closes.
-    piled = [dict(item, task_id="AT-01", question=f"Another model {n}.")
-             for n in range(quota - 1 + cap + 1)]
-    turns = ([("submit_assessment", {"assessment_plan": plan})]
-             + [("submit_assessment", {"assessment_tools": [one]}) for one in one_per_task]
-             + [("submit_assessment", {"assessment_tools": [one]}) for one in piled])
-    model = _Scripted(turns)
-    loop = react.ReactLoop(HarnessRunConfig(llm_factory=lambda: model), graph, trajectory,
+    piled = [dict(item, task_id="AT-01", question=f"Build model {n}.")
+             for n in range(total + budget.SUBMIT_BUDGET + 2)]
+    model = _Scripted([("submit_assessment", {"assessment_plan": plan})]
+                      + [("submit_assessment", {"assessment_tools": [one]}) for one in piled])
+    state, trajectory = fresh(), TrajectoryLogger()
+    loop = react.ReactLoop(HarnessRunConfig(llm_factory=lambda: model), state, trajectory,
                            load_brief("minimal_brief.json"))
     loop.run()
 
-    output = fanout.SPECS["assessment"].outputs[0]
-    assert loop.stats["submits_per_stage"]["assessment"] > cap, "progress past the cap was accepted"
-    # AT-01 holds what the multi arm would commission for it, and no more.
-    assert fanout.held_by_unit(graph, output)["AT-01"] == quota
-    assert "assessment" in loop.stats["abandoned_stages"], "piling on one task still closes it"
-    held = loop._held(output)
-    assert len({dev_plans.same_artifact_key("assessment_tools", one) for one in held}) == len(held)
+    held = [one for ws in mine for one in fanout.held_in_set(state, output, ws.set_id)]
+    # AT-01 holds what the multi arm would commission for it, and no more...
+    assert len(held) == total
+    assert len({dev_plans.same_artifact_key("assessment_tools", one) for one in held}) == total
+    # ...every item up to it was accepted without a charge...
+    assert loop.stats["submits_per_stage"]["assessment"] > budget.SUBMIT_BUDGET
+    # ...and piling past it closes the stage, which still owes the other tasks.
+    assert "assessment" in loop.stats["abandoned_stages"]
 
 
-def test_the_commissioned_counts_are_the_same_on_both_substrates():
-    """The single arm's quota is the multi arm's derivation; read differently
-    per substrate it would be a second variable on ``context_mode``."""
+def test_the_commissioned_work_is_the_same_on_both_substrates():
+    """The single arm is owed the multi arm's derived work sets; read
+    differently per substrate they would be a second variable on
+    ``context_mode``."""
     from test_grammar import _design
 
     from alignmentgraph_isd.core.agentic import fanout
 
-    for stage in ("assessment", "activities", "content"):
-        assert fanout.unit_quotas(stage, _design("graph")) == \
-            fanout.unit_quotas(stage, _design("prose")), stage
-    assert fanout.unit_quotas("assessment", _design("graph"))["assessment_tools"]
+    def owed(substrate):
+        return [(ws.set_id, output.schema_key, left)
+                for ws, output, left in fanout.owed_sets("assessment", _design(substrate))]
+
+    assert owed("graph") == owed("prose")
+    assert owed("graph")

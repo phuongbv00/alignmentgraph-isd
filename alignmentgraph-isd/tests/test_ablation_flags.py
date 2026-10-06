@@ -625,8 +625,16 @@ def test_the_alignment_state_is_pulled_in_the_graph_arm_and_absent_from_prose(fa
             config.llm_factory = spy(f"{mode}-{context_mode}")
             run_brief(brief, config)
 
+    from alignmentgraph_isd.core.agentic import compaction
+
+    def agent_calls(tag):
+        """The agent's own requests: the harness's compaction fold quotes the
+        dropped turns to its summariser, and that is no turn of the agent's."""
+        return [call for call in captured[tag]
+                if not (call and call[0].get("content") == compaction._SYSTEM)]
+
     def shown(tag, *, roles):
-        return [str(m.get("content", "")) for call in captured[tag] for m in call
+        return [str(m.get("content", "")) for call in agent_calls(tag) for m in call
                 if m.get("role") in roles]
 
     for mode in ("multi", "single"):

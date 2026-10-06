@@ -250,11 +250,17 @@ def respec(messages: list, step, brief: str) -> str:
 #: Which agent-facing protocol a run spoke, recorded in
 #: ``metadata.run_config`` so that runs on either side of a change to the
 #: tools an agent is bound or to how a stage ends are never pooled by mistake.
+#: 21 = the single arm writes into the multi arm's derived work sets: its
+#: item lists are routed to the set of the unit they name and committed
+#: through the same deposit, it is shown what each set is still commissioned
+#: for in the Developer's words, its pass 2 is tightened by that set, and its
+#: submits are charged like the stage loop's — ``SUBMIT_BUDGET`` submits that
+#: move nothing per artifact (``docs/guides/ablation_parity.md``).
 #: 20 = development_mode is retired: every run writes the scale its design
 #: plans (no light slice, no per-item assignment rows, no development_scope).
 #: 19 = the single arm's item lists are held to the count each task or
-#: module would be commissioned in the multi arm (``fanout.unit_quotas``).
-#: 18 = the single arm's SUBMIT_CAP counts only submits that moved nothing,
+#: module would be commissioned in the multi arm (since 21, its derived work sets).
+#: 18 = the single arm's submit cap counted only submits that moved nothing,
 #: and its commit drops an item repeating one the design holds.
 #: 17 = a request a trim left with no user turn gets a neutral one after the
 #: system turn (``transcript.ensure_user_turn``), both arms.
@@ -295,7 +301,7 @@ def respec(messages: list, step, brief: str) -> str:
 #: each item's objective, type and cognitive level and each activity's
 #: objective and level, the mode states a material's depth, and the pilot
 #: data plan names its collection points in words.
-PROTOCOL_REV = 20
+PROTOCOL_REV = 21
 
 #: The answer to a repeated read whose result is unchanged — ONE wording for
 #: both arms, and only ever said when it is true (``turn.answer_read`` has

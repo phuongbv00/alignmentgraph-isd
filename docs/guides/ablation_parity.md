@@ -47,15 +47,15 @@ Cột **Hiện trạng**:
 | C2 | Hình dạng artifact (schema) | `artifact_schemas` qua `submit_specs` | `artifact_schemas` qua `react_specs(open_fields)` | chung (nguồn) | giữ |
 | C3 | Validator của artifact | `step.validate`, `output_errors` | như multi | chung | giữ |
 | C4 | Constrained pass (pass 2) | `turn.constrained_pass` | như multi | chung | giữ |
-| C5 | Siết schema pass 2 theo giao việc | có `work_set`: số lượng là `minItems`/`maxItems`, module là `const` | không có `work_set`: chỉ enum | **LỆCH** | Pass 2 của single siết theo đúng work set mà artifact thuộc về |
-| C6 | **Nội dung giao việc** (đơn vị nào, viết bao nhiêu, cho cặp objective × timing nào, xếp lịch id nào) | Dòng giao việc trong assignment của Developer | Một câu ghi chú độ sâu | **LỆCH** | Một hàm dẫn xuất từ design; cả hai arm nhận cùng danh sách. Ai nhận (D3) mới là khác biệt. |
-| C7 | Quota mỗi đơn vị (task, module) | `trim_to_quota` trên work set | `fanout.unit_quotas` + `_within_quota` (rev 19) | chép | Một hàm: commit đơn vị nào thì cắt theo quota đơn vị đó |
-| C8 | Bỏ artifact trùng | `without_repeats` khi ghép instalment, trim | `without_repeats` trong `ReactLoop._commit` (rev 18) | chép | Gộp vào đường commit chung |
-| C9 | Đường commit item | `fanout.commit_sets` theo work set thật | `commit_sets` với một set giả `S{n}` mỗi submit | **LỆCH** | Single commit vào đúng work set dẫn xuất mà item thuộc về |
-| C10 | "Còn nợ gì" (instalment, owes) | `AgenticStep.owes` + `keep_items` cho Developer | `_owed` = phần chưa landed + đơn vị chưa có item | **LỆCH** | Một hàm: phần chưa landed + đơn vị chưa đủ quota |
-| C11 | Ngân sách submit | `SUBMIT_BUDGET=3` mỗi artifact; instalment có tiến triển không tính | `SUBMIT_CAP=8` mỗi stage, chỉ tính submit không tiến triển (rev 18) | **LỆCH** | Một luật: N submit *không tiến triển* cho mỗi artifact, cả hai arm |
-| C12 | Định nghĩa "tiến triển" | ngầm trong `keep_items` | `_progress_mark` (rev 18) | **LỆCH** | Một hàm dùng cho C10 và C11 |
-| C13 | Khi nào stage xong | `step_done` + `dispatch_done` + Developer xong | `step_done` + `missing_outputs` rỗng | chép | Một hàm: không còn nợ theo C10 |
+| C5 | Siết schema pass 2 theo giao việc | có `work_set`: số lượng là `minItems`/`maxItems`, module là `const` | `ReactLoop._pass_params`: siết theo work set mà các item thuộc về, số lượng là phần còn nợ | chung (`grammar.tighten_parameters(work_set=)`) | đạt |
+| C6 | **Nội dung giao việc** (đơn vị nào, viết bao nhiêu, cho cặp objective × timing nào, xếp lịch id nào) | `spec.render(ws)` trong assignment của Developer | `spec.render(ws)` cho các set còn nợ, gắn vào câu trả lời sau commit (`_commission`) | chung | đạt |
+| C7 | Quota mỗi đơn vị (task, module) | `trim_to_quota` trên work set | như multi, qua `commit_sets` | chung | đạt |
+| C8 | Bỏ artifact trùng | `_deposit_sets`: `without_repeats` trên cả pool | như multi | chung | đạt |
+| C9 | Đường commit item | `fanout.commit_sets` theo work set thật | `route_items` rồi `commit_sets` vào đúng work set dẫn xuất | chung | đạt |
+| C10 | "Còn nợ gì" (instalment, owes) | `AgenticStep.owes` + `keep_items` cho Developer | `missing_parts` + `fanout.owed_sets` | chung (`fanout.remaining`) | đạt |
+| C11 | Ngân sách submit | `turn.SubmitBudget` mỗi artifact | `turn.SubmitBudget` mỗi `<stage>.<artifact>` | chung | đạt |
+| C12 | Định nghĩa "tiến triển" | `fanout.progress_mark` | `fanout.progress_mark` | chung | đạt |
+| C13 | Khi nào stage xong | `step_done` + `dispatch_done` + Developer xong | `step_done` + `missing_outputs` rỗng | chép (cùng đọc `fanout.remaining`) | giữ, có test |
 | C14 | Regen khi stage ra rỗng | `regen_budget` (stage và Developer) | không có | đã chuyển | Xếp vào §2 (D7) |
 | C15 | Refund turn (lặp, ERROR, endpoint, overflow) | `TurnMeter` | `TurnMeter` | chung | giữ |
 | C16 | Dừng khi prompt không vừa cửa sổ | `cannot_fit` | `cannot_fit` | chung | giữ |
@@ -65,10 +65,11 @@ Cột **Hiện trạng**:
 | C20 | Trần thời lượng module, dừng khi không có module | `cap_module_minutes`, `NO_MODULES` | như multi | chung | giữ |
 | C21 | Bind tool đọc | theo stage | hợp các stage, state read theo stage hiện tại | chép | giữ, có test |
 
-Tóm tắt: 9 dòng **chung**, 5 dòng **chép**, 6 dòng **LỆCH** (C5, C6, C9, C10, C11, C12); C14 đã
-chuyển sang §2 (D7).
-Các lỗi bất đối xứng lộ ra ở rev 13, 18 và 19 rơi đúng vào các dòng LỆCH (C9–C12). Lỗi ở rev 16
-và 17 nằm ở dòng chung (C3, C17), nên đã sửa một lần cho cả hai arm; chúng không phải lỗi parity.
+Tóm tắt sau phần B (2026-10-06, PROTOCOL_REV 21): 17 dòng **chung**, 3 dòng **chép** có test (C13, C18,
+C21), không còn dòng **LỆCH**; C14 đã chuyển sang §2 (D7).
+Trước phần B có 6 dòng LỆCH (C5, C6, C9–C12). Các lỗi bất đối xứng lộ ra ở rev 13, 18 và 19 rơi đúng vào
+các dòng đó. Lỗi ở rev 16 và 17 nằm ở dòng chung (C3, C17), nên đã sửa một lần cho cả hai arm; chúng không
+phải lỗi parity.
 
 ## 4. Đích kiến trúc
 
@@ -78,10 +79,10 @@ Arm single **tự điền vào chính các work set dẫn xuất** mà arm multi
 - Cùng đường commit vào work set (C9), nên quota (C7) và bỏ trùng (C8) đi theo luôn.
 - Cùng luật "còn nợ" và "tiến triển" (C10, C12), cùng ngân sách submit (C11).
 
-Phần còn lại của single đúng là D1–D6: một context, một persona, không giao việc, tự chọn thứ
-tự, không re-dispatch, repair net ở cuối. Các mảnh vá riêng cho single (`unit_quotas`,
-`_within_quota`, `_progress_mark`, ngữ nghĩa riêng của `SUBMIT_CAP`) sẽ được gỡ, thay bằng các
-hàm chung.
+Phần còn lại của single đúng là D1–D7: một context, một persona, không giao việc, tự chọn thứ
+tự, không re-dispatch, repair net ở cuối, không regen. Các mảnh vá riêng cho single (`unit_quotas`,
+`_within_quota`, `_progress_mark`, `SUBMIT_CAP`, việc single tự ghép lại list trong tài liệu prose) đã
+được gỡ ở phần B, thay bằng các hàm chung.
 
 ## 5. Quyết định (đã chốt 2026-10-06)
 

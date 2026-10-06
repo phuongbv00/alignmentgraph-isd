@@ -13,12 +13,41 @@ spelled out, because a commit drops a repeat.
 from __future__ import annotations
 
 
+import re
+
+import pytest
+
+import conftest
 from alignmentgraph_isd import HarnessRunConfig
 from alignmentgraph_isd.core import runner as run_module
 from alignmentgraph_isd.core.agentic import budget, redispatch
 from alignmentgraph_isd.core.dev_plans import WorkSet
 
 from conftest import FakeChatModel, load_brief, run_brief
+
+
+@pytest.fixture
+def first_round_leaves_a_pair(monkeypatch):
+    """The first round's Developers leave each set's LAST assigned objective
+    unwritten — its items go to the set's first objective instead — so the
+    checks find real `plan_coverage` gaps for the re-dispatch to close. The
+    plain fixture writes every pair it is assigned, so without this there is
+    nothing to dispatch again."""
+    real = conftest._sliced_payload_for_set
+
+    def leaves_one(raw_prompt, offset=0):
+        payload = real(raw_prompt, offset)
+        assignment = re.search(r"^assignment: (\S+)", raw_prompt, re.M)
+        pairs = conftest._parse_assigned_pairs(raw_prompt) or []
+        objectives = list(dict.fromkeys(lo for lo, _ in pairs))
+        if (payload and "assessment_tools" in payload and assignment
+                and "R" not in assignment.group(1).rsplit("-", 1)[-1] and len(objectives) > 1):
+            for item in payload["assessment_tools"]:
+                if item.get("aligned_objective") == objectives[-1]:
+                    item["aligned_objective"] = objectives[0]
+        return payload
+
+    monkeypatch.setattr(conftest, "_sliced_payload_for_set", leaves_one)
 
 
 class _Gap:
@@ -180,9 +209,8 @@ def test_a_family_with_no_replannable_gap_is_never_replanned():
     assert content and all(p["round"] == 0 for p in content)
 
 
-def test_the_replan_actually_produces_the_missing_work():
-    """End to end on the plain fixture, which leaves real `plan_coverage` gaps
-    after its first round: the promised (objective, category) pairs that no
+def test_the_replan_actually_produces_the_missing_work(first_round_leaves_a_pair):
+    """End to end, with real `plan_coverage` gaps left by the first round: the promised (objective, category) pairs that no
     item realised come back as new work sets, and their items are committed
     under round-tagged ids."""
     config = HarnessRunConfig(agent_mode="multi")
@@ -219,7 +247,7 @@ def test_the_round_is_bounded(monkeypatch):
     assert max(rounds) <= budget.REDISPATCH_ROUNDS
 
 
-def test_a_replan_is_not_a_retry():
+def test_a_replan_is_not_a_retry(first_round_leaves_a_pair):
     """`attempt` counts REGENS — a stage that came back empty and was run again
     from a fresh context.
 

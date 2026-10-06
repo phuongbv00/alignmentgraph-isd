@@ -59,10 +59,14 @@ SINGLE_ARM_TURN_FACTOR = 2
 #: gives up is regenerated at full price.
 DEVELOPER_MAX_TURNS = 12
 
-#: Rejected submits allowed per ARTIFACT before it is dropped with a note and
-#: the stage keeps going. A rejected submit returns the identical deterministic
-#: errors and costs no extra writing, so the retry allowance belongs here, where
-#: it is explicit and equal across arms.
+#: Submits that MOVE NOTHING allowed per ARTIFACT before it is closed — refused,
+#: or accepted with nothing new in the design — on BOTH arms
+#: (``turn.SubmitBudget``, ``docs/guides/ablation_parity.md`` C11). A submit
+#: that adds an artifact is never charged. A refused submit returns the
+#: identical deterministic errors and costs no extra writing, so the retry
+#: allowance belongs here, where it is explicit and equal across arms. A
+#: closed artifact is dropped with a note and the stage keeps going; a stage
+#: whose every owed artifact is closed ends.
 SUBMIT_BUDGET = 3
 
 #: Accepted submits allowed beyond one per artifact, for an artifact that comes
@@ -70,23 +74,6 @@ SUBMIT_BUDGET = 3
 #: tool each), so this is on every stage's path; a work set has none and returns
 #: on its first accepted submit.
 PART_SUBMIT_SLACK = 3
-
-#: How many times one stage may be submitted before the SINGLE arm's loop stops
-#: accepting it. Generous — additive submits are the point — but finite.
-#:
-#: Counts the submits that MOVED NOTHING — refused, or accepted with nothing new
-#: in the design (``ReactLoop._submit_attempts``). A refused submit is exactly
-#: the case the cap exists for: counting only accepted ones let a stage sit at 1
-#: while it was rejected 61 more times on a single unparseable argument (run
-#: single_20260901_205901: 3 of 6 stages reached). An accepted submit that adds
-#: an artifact is not charged: counted, it closed both single arms' assessment
-#: stage while they were still writing items one per call (run t1
-#: 20261006_091626).
-#:
-#: Deliberately NOT equal to ``SUBMIT_BUDGET``: that one is per artifact and
-#: this one is per stage, and both are non-terminal, so the arms are close but
-#: not identical here — stated rather than hidden.
-SUBMIT_CAP = 8
 
 # The two refunds below are one family. A turn that produced no observation and
 # no artifact — a repeat, or a call that came back ERROR — spends the stage's

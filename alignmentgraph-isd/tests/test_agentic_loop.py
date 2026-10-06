@@ -1168,7 +1168,7 @@ def test_a_stage_that_keeps_submitting_without_completing_is_stopped():
     """The cap is one turn per part plus slack. Without it, a model that
     resends the same part forever spends the whole stage on it — the same
     disagreement between validator and completeness probe that the single
-    arm's SUBMIT_CAP answers."""
+    arm's per-artifact submit budget answers."""
     step = STEP_BY_NAME["analysis"]
     one_part = {"needs_analysis": _ANALYSIS["needs_analysis"]}
     _model, config, graph, trajectory, brief = _harness(
@@ -2072,7 +2072,8 @@ def test_a_re_attached_brief_names_a_closed_artifact_as_closed():
     # The state after one artifact landed and another spent its budget.
     specialists.commit_implementation(
         graph, trajectory, {"system_check": _IMPLEMENTATION["system_check"]})
-    loop._submit_attempts["prototype_execution"] = ToolLoop.SUBMIT_BUDGET
+    for _ in range(ToolLoop.SUBMIT_BUDGET):
+        loop._submit_attempts.charge("prototype_execution")
 
     restored = loop._restore_brief(step.name)
     assert "Closed, do not submit again: prototype_execution" in restored
@@ -2175,7 +2176,8 @@ def test_a_closed_artifact_is_unbound_too():
 def test_a_resent_committed_artifact_is_a_duplicate_whatever_door_it_came_through():
     """Once `submit_X` is unbound, a model re-sending X does so under a bare
     `submit` or under a neighbour's tool. Either way it is a duplicate of X —
-    not a rejection charged to the neighbour, and not "Y did not land"."""
+    charged to X as a submit that moved nothing (``turn.SubmitBudget``), never
+    a rejection charged to the neighbour, and not "Y did not land"."""
     from conftest import _IMPLEMENTATION
 
     step = STEP_BY_NAME["implementation"]
@@ -2192,7 +2194,8 @@ def test_a_resent_committed_artifact_is_a_duplicate_whatever_door_it_came_throug
     actions = [e["action"] for e in trajectory.recovery_events]
     assert actions.count("duplicate_submit") == 2, actions
     assert "submit_rejected" not in actions and "commit_did_not_land" not in actions
-    assert loop._submit_attempts == {}
+    assert loop._submit_attempts.spent("monitoring") == 0
+    assert loop._submit_attempts.spent("system_check") == 2
 
 
 # ── a read for an id the assignment already shows ───────────────────────────

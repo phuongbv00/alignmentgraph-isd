@@ -1677,52 +1677,65 @@ def without_repeats(schema_key: str, items: list, *, beside: list | None = None)
     return out
 
 
-def trim_to_quota(work_set: WorkSet, schema_key: str, items: list) -> tuple[list, int]:
+def trim_to_quota(work_set: WorkSet, schema_key: str, items: list,
+                  held: list | None = None) -> tuple[list, int]:
     """Hold a set to the count its assignment stated: ``(kept, dropped)``.
 
     "Write exactly N" is told to the Developer and was enforced by nobody.
-    MEASURED (run aef73e0a, light mode): a set told to write 3 items submitted
-    17 — three of them word-for-word repeats — another told 3 activities wrote
-    15, and a block told one session guide wrote eight that each scheduled the
-    same eleven activities. One module then held 15 of the design's 24
-    activities, and the whole point of a stated scale was gone.
+    MEASURED (run aef73e0a): a set told to write 3 items submitted 17 — three
+    of them word-for-word repeats — another told 3 activities wrote 15, and a
+    block told one session guide wrote eight that each scheduled the same
+    eleven activities. One module then held 15 of the design's 24 activities,
+    and the whole point of a stated scale was gone.
+
+    ``held`` is what the set already holds from an earlier deposit: it uses
+    its share of the count, and what it covers is no longer owed. The multi
+    arm deposits a set once (``held`` empty); the single arm writes into the
+    same sets across several submits, and one rule holds both
+    (``docs/guides/ablation_parity.md`` C7).
 
     Dropping is not writing: nothing is invented and what is kept is the
     model's own, in its own order. What is NEVER dropped is what a check
     measures — the first item of every (objective, category) pair the set
-    owes, and any session guide that schedules an id no kept guide does. A
-    repeat (same ``question`` / ``activity_name`` / ``title``) goes first. A
-    family with positional references keeps a PREFIX, so ``[2]`` still means
-    the second activity. A set that states no count (the single arm's own
-    batches) is left as written."""
+    still owes, and any session guide that schedules an id no kept or held
+    guide does. A repeat (same ``question`` / ``activity_name`` / ``title``)
+    goes first. A family with positional references keeps a PREFIX, so
+    ``[2]`` still means the second activity. A set that states no count is
+    left as written."""
+    held = [one for one in (held or []) if isinstance(one, dict)]
     quota = quota_of(work_set, schema_key)
     rows = [item for item in items if isinstance(item, dict)]
-    if quota <= 0 or len(rows) <= quota:
+    room = quota - len(held)
+    if quota <= 0 or len(rows) <= room:
         return items, 0
 
-    rows = without_repeats(schema_key, rows)
+    rows = without_repeats(schema_key, rows, beside=held)
 
     if schema_key == "learning_activities":
-        kept = rows[:quota]
+        kept = rows[:max(0, room)]
     elif schema_key == "session_guides":
-        kept, covered = [], set()
+        covered = {_bare(i) for guide in held for field_name in ("activity_ids", "material_ids")
+                   for i in (guide.get(field_name) or []) if _bare(i)}
+        kept = []
         for index, guide in enumerate(rows):
             ids = {_bare(i) for field_name in ("activity_ids", "material_ids")
                    for i in (guide.get(field_name) or []) if _bare(i)}
-            if index < quota or ids - covered:
+            if index < room or ids - covered:
                 kept.append(guide)
                 covered |= ids
     else:
-        owed = list(work_set.pairs)
+        def pair_of(item: dict) -> tuple[str, str]:
+            return (_bare(item.get("aligned_objective")),
+                    str(item.get("plan_category") or "").strip().lower())
+        done = {pair_of(one) for one in held}
+        owed = [pair for pair in work_set.pairs if pair not in done]
         first_of: dict[tuple[str, str], int] = {}
         for index, item in enumerate(rows):
-            pair = (_bare(item.get("aligned_objective")),
-                    str(item.get("plan_category") or "").strip().lower())
-            if pair in owed:
-                first_of.setdefault(pair, index)
+            if pair_of(item) in owed:
+                first_of.setdefault(pair_of(item), index)
         keep = set(first_of.values())
         for index in range(len(rows)):
-            if len(keep) >= max(quota, len(first_of)):
+            if len(keep) >= max(room, len(first_of)):
                 break
             keep.add(index)
         kept = [item for index, item in enumerate(rows) if index in keep]
