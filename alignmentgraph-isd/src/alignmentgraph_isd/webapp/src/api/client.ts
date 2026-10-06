@@ -1,7 +1,6 @@
 import type {
   AgentContext,
   AgentMode,
-  DevelopmentMode,
   AlignmentGraphPayload,
   Brief,
   BriefResponse,
@@ -99,12 +98,12 @@ export const api = {
   // `HarnessRunConfig` owns those values, and posting a copy of them from here
   // would make this file a second place they are written down.
   startRun: (id: string, options?: {
-    agent_mode?: AgentMode; context_mode?: ContextMode; development_mode?: DevelopmentMode
+    agent_mode?: AgentMode; context_mode?: ContextMode
     fanout_workers?: number
   }) =>
     request<{
       run_id: string; status: string; agent_mode: string; context_mode: string
-      development_mode: string; fanout_workers: number
+      fanout_workers: number
     }>(
       `/programs/${id}/runs`,
       { method: 'POST', ...(options ? { body: JSON.stringify(options) } : {}) },

@@ -25,7 +25,7 @@ def _clean_env(monkeypatch):
     for name in ("BENCHMARK_RATE_LIMIT", "HARNESS_LLM_MAX_CONCURRENCY",
                  "HARNESS_LLM_MIN_INTERVAL", "HARNESS_REGEN_BACKOFF",
                  "HARNESS_REGEN_BUDGET", "BENCHMARK_DELAY", "HARNESS_FANOUT_WORKERS",
-                 "HARNESS_DEVELOPMENT_MODE", "AGENT_MODEL_STRUCTURED_OUTPUTS"):
+                 "AGENT_MODEL_STRUCTURED_OUTPUTS"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -109,19 +109,11 @@ def test_structured_outputs_is_the_package_default_unless_declared(monkeypatch):
         _regen_settings_from_env()
 
 
-def test_the_development_mode_is_the_package_default_unless_asked_for(monkeypatch):
-    """Unset keeps the package default; a declared value is applied as spelled
-    in experiment.toml; and a value the harness could not apply RAISES, since
-    the freeze manifest records it and a value silently dropped here would be
-    a posture written down that never ran."""
-    assert "development_mode" not in _regen_settings_from_env()
-    monkeypatch.setenv("HARNESS_DEVELOPMENT_MODE", " Full ")
-    assert _regen_settings_from_env()["development_mode"] == "full"
+def test_a_development_mode_in_the_environment_is_ignored(monkeypatch):
+    """Every run writes the scale its design plans; the retired variable
+    reaches nothing."""
     monkeypatch.setenv("HARNESS_DEVELOPMENT_MODE", "light")
-    assert _regen_settings_from_env()["development_mode"] == "light"
-    monkeypatch.setenv("HARNESS_DEVELOPMENT_MODE", "sample")
-    with pytest.raises(ValueError, match="HARNESS_DEVELOPMENT_MODE"):
-        _regen_settings_from_env()
+    assert "development_mode" not in _regen_settings_from_env()
 
 
 def test_fanout_workers_are_off_unless_asked_for(monkeypatch):

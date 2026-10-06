@@ -239,9 +239,11 @@ def test_every_work_set_names_the_module_it_belongs_to():
     family divides by, and its id is what the assignment names first."""
     from alignmentgraph_isd.core.agentic import fanout
 
+    # Tasks small enough for one call each: batching is not what this pins.
     graph = _design({"sets": [
-        _set("SET-01", "summative", ["ILO-01"]),
-        _set("SET-02", "summative", ["ILO-02"], module="MOD-02")],
+        dict(_set("SET-01", "summative", ["ILO-01"]), item_counts={"multiple_choice": 3}),
+        dict(_set("SET-02", "summative", ["ILO-02"], module="MOD-02"),
+             item_counts={"multiple_choice": 3})],
         "lo_coverage_targets": {"ILO-01": ["summative"], "ILO-02": ["summative"]}}, [])
     graph.add_element_node(NodeType.MODULE, "MOD-02", {"id": "MOD-02"})
     modules = [{"id": "MOD-01", "objectives": ["ILO-01"], "minutes": 60},
@@ -249,7 +251,7 @@ def test_every_work_set_names_the_module_it_belongs_to():
     payload = {"modules": modules,
                "assessment_plan": graph.get_node("assessment_plan_0")["data"]}
 
-    sets, _stats = fanout.SPECS["assessment"].plan_sets(graph, payload, "light")
+    sets, _stats = fanout.SPECS["assessment"].plan_sets(graph, payload)
     assert [ws.module_id for ws in sets] == ["MOD-01", "MOD-02"]
     assert [ws.set_id for ws in sets] == ["AS-SET-01", "AS-SET-02"], (
         "a set id says which set it writes, so deriving again names it "
@@ -269,9 +271,8 @@ def test_a_work_set_is_the_pairs_of_the_assessment_sets_it_names():
         {"set_id": "SET-02", "module_id": "MOD-02", "set_ids": ["SET-03", "SET-09"],
          "expected_items": 2}]}
     sets, stats = dev_plans.assessment_work_sets(
-        plan, ["ILO-01", "ILO-02"], targets, modules=modules, blueprint=sets,
-        mode="light")
-    assert [(ws.module_id, ws.pairs, ws.source) for ws in sets] == [
+        plan, ["ILO-01", "ILO-02"], targets, modules=modules, blueprint=sets)
+    assert list(dict.fromkeys((ws.module_id, ws.pairs, ws.source) for ws in sets)) == [
         ("MOD-01", (("ILO-01", "diagnostic"), ("ILO-01", "formative")), "llm"),
         ("MOD-02", (("ILO-02", "summative"),), "llm")]
     assert [i["id"] for i in sets[0].payload["sets"]] == ["SET-01", "SET-02"]
@@ -470,9 +471,9 @@ def test_the_fanout_divides_the_sets_and_never_the_promise():
             "lo_coverage_targets": {"ILO-01": ["summative", "diagnostic"]}}
     sets, stats = dev_plans.assessment_work_sets(
         None, ["ILO-01"], plan["lo_coverage_targets"], modules=modules,
-        blueprint=plan["sets"], mode="light")
+        blueprint=plan["sets"])
 
-    assert [list(ws.pairs) for ws in sets] == [[("ILO-01", "summative")]], (
+    assert list(dict.fromkeys(ws.pairs for ws in sets)) == [(("ILO-01", "summative"),)], (
         "the diagnostic promise is the check's to report, not work to hand out"
     )
     assert all(ws.payload.get("sets") for ws in sets), (
@@ -486,7 +487,7 @@ def test_a_plan_with_no_sets_still_divides_by_the_promise():
     to divide."""
     sets, _stats = dev_plans.assessment_work_sets(
         None, ["ILO-01"], {"ILO-01": ["summative", "diagnostic"]},
-        modules=None, blueprint=[], mode="light")
+        modules=None, blueprint=[])
     assert sorted(p for ws in sets for p in ws.pairs) == [
         ("ILO-01", "diagnostic"), ("ILO-01", "summative")]
 

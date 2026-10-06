@@ -79,7 +79,7 @@ class TestTheUniformConfig:
         cfg = current()
         env = llm.pinned_env(cfg)
         assert env["HARNESS_FANOUT_WORKERS"] == str(cfg.harness.fanout_workers)
-        assert env["HARNESS_DEVELOPMENT_MODE"] == cfg.harness.development_mode
+        assert "HARNESS_DEVELOPMENT_MODE" not in env
 
 
 class TestTheBaselinesAreBuiltAsTheBenchmarkBuildsThem:

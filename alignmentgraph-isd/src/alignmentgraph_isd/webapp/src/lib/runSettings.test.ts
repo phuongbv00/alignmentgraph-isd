@@ -26,10 +26,10 @@ describe('toRunOptions', () => {
 
   it('sends only what differs from the default', () => {
     const single = ARMS.find((arm) => arm.agentMode === 'single' && arm.contextMode === 'prose')!
-    const settings = { armKey: armKey(single), fullDevelopment: true, fanoutWorkers: 3 }
+    const settings = { armKey: armKey(single), fanoutWorkers: 3 }
     expect(isDefault(settings)).toBe(false)
     expect(toRunOptions(settings)).toEqual({
-      agent_mode: 'single', context_mode: 'prose', development_mode: 'full', fanout_workers: 3,
+      agent_mode: 'single', context_mode: 'prose', fanout_workers: 3,
     })
     expect(toRunOptions({ ...DEFAULT_RUN_SETTINGS, fanoutWorkers: 2 }))
       .toEqual({ fanout_workers: 2 })
@@ -47,7 +47,7 @@ describe('clampWorkers', () => {
 
 describe('stored settings', () => {
   it('round-trip', () => {
-    const settings = { ...DEFAULT_RUN_SETTINGS, fullDevelopment: true, fanoutWorkers: 4 }
+    const settings = { ...DEFAULT_RUN_SETTINGS, fanoutWorkers: 4 }
     saveRunSettings(settings)
     expect(loadRunSettings()).toEqual(settings)
   })

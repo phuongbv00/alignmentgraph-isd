@@ -77,7 +77,6 @@ export type RunStatus = 'running' | 'cancelling' | 'succeeded' | 'failed' | 'can
 /** The two ablation axes, as the server spells them (`config.py`). */
 export type AgentMode = 'single' | 'multi'
 /** How much of the planned scale a run writes out. Not an ablation axis. */
-export type DevelopmentMode = 'light' | 'full'
 export type ContextMode = 'prose' | 'graph'
 
 export interface RunStats {
@@ -100,8 +99,6 @@ export interface RunStats {
   // recorded before this existed, which is why they are optional.
   agent_mode?: AgentMode
   context_mode?: ContextMode
-  // Beside the arm for the same reason, and optional for the same reason.
-  development_mode?: DevelopmentMode
   /** Present only when a run asked for more than one; wall time only. */
   fanout_workers?: number
 }

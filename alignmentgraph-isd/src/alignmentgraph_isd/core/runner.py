@@ -326,7 +326,7 @@ def _run_fanout(config, memory, trajectory, design_brief, step, spec, *,
     with trajectory.acting_as(orchestrator):
         if work_sets is None:
             parsed = fanout.dispatch_payload(state, spec)
-            work_sets, stats_dev = spec.plan_sets(state, parsed, config.development_mode)
+            work_sets, stats_dev = spec.plan_sets(state, parsed)
         else:
             # A REPLAN round: the sets were derived from the gaps, not from
             # re-normalizing the family (see agentic/redispatch.py).
@@ -522,7 +522,7 @@ def _redispatch_rounds(config, memory, trajectory, design_brief, step, spec, *,
                 return stats
             trajectory.log_reconcile_result(step.family, gaps, agent=ORCHESTRATOR)
             work_sets, _stats = spec.plan_sets(
-                state, fanout.dispatch_payload(state, spec), config.development_mode)
+                state, fanout.dispatch_payload(state, spec))
             redo = redispatch.redo(step.name, gaps, work_sets,
                                fanout.committed_set_ids(spec, state), round_index)
         if not redo:
@@ -715,9 +715,6 @@ def _metadata(config, trajectory, design_brief, *, single: bool, graph_mode: boo
         "run_config": {
             "agent_mode": "single" if single else "multi",
             "context_mode": "graph" if graph_mode else "prose",
-            # Not an axis: how much of the planned scale was written out. Every
-            # arm of one experiment runs under the same value.
-            "development_mode": config.development_mode,
             "structured_outputs": config.structured_outputs,
             "history_char_budget": history_budget(config),
             "max_turns": react.MAX_TURNS if single else ToolLoop.MAX_TURNS,
@@ -893,14 +890,11 @@ class MetaAgent:
             # doesn't fall back to a stale actor once aggregate() returns.
             with trajectory.acting_as(ADDIEOutputAggregator.__name__):
                 try:
-                    mode = config.development_mode
                     ledger = memory.findings
                     addie_output = (
-                        ADDIEOutputAggregator(graph, trajectory, development_mode=mode,
-                                              findings=ledger).aggregate()
+                        ADDIEOutputAggregator(graph, trajectory, findings=ledger).aggregate()
                         if graph_mode else
-                        aggregate_prose(store, trajectory, development_mode=mode,
-                                        findings_=ledger))
+                        aggregate_prose(store, trajectory, findings_=ledger))
                 except Exception:  # noqa: BLE001 - aggregation failure must not lose the run
                     addie_output = empty_addie()
                 validation_errors = validate_addie(addie_output)

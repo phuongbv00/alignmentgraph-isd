@@ -259,14 +259,17 @@ def test_the_event_says_which_artifact_each_set_was_derived_from():
 
     for phase, sets in events.items():
         assert all(s["module_id"] for s in sets), phase
-        keys = [(s["module_id"], tuple(s.get("for_sets") or ())) for s in sets]
+        keys = [(s["module_id"], tuple(s.get("for_sets") or ()), tuple(s.get("objectives") or ()),
+                 tuple(s.get("batch") or ())) for s in sets]
         assert len(keys) == len(set(keys)) or phase.endswith("R1"), (
             f"{phase}: two sets with the same grouping key are indistinguishable")
 
     assessment = events["assessment"]
     assert all(s["for_sets"] for s in assessment), (
         "an assessment set writes for a named set of the blueprint")
-    assert len({tuple(s["for_sets"]) for s in assessment}) == len(assessment)
+    # A task written in several calls is one task: its batches say which part.
+    assert len({(tuple(s["for_sets"]), tuple(s.get("batch") or ())) for s in assessment}) \
+        == len(assessment)
 
 
 # ── a reference must name something that exists ─────────────────────────────

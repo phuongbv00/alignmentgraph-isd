@@ -676,21 +676,20 @@ def blueprint_consistency_data(node_id: str, plan: dict, *, modules: set[str] | 
                          "graduates."),
             metadata={"kind": "no_summative_task", "task_count": len(tasks)},
         ))
-    # And a summative task of one item is not an instrument: the light
-    # development writes it at the floor anyway, and the plan is told so here
-    # while it is still the only thing written (same tune-10 runs: four of
+    # And a summative task of one item is not an instrument: the plan is told
+    # so here while it is still the only thing written (same tune-10 runs: four of
     # ten planned every summative task as ONE performance_task).
     for task in tasks:
         if (str(task.get("timing") or "").strip().lower() == "summative"
-                and 0 < dev_plans._set_total(task) < dev_plans.LIGHT_ITEMS_PER_TASK):
+                and 0 < dev_plans._set_total(task) < dev_plans.TASK_ITEMS_FLOOR):
             violations.append(Violation(
                 node_id=node_id, edge_type="", violation_type="blueprint_consistency",
                 severity="warning",
                 message=(f"Summative task {task.get('id') or '?'} plans "
                          f"{dev_plans._set_total(task)} item(s); an instrument the course "
-                         f"grades on carries at least {dev_plans.LIGHT_ITEMS_PER_TASK}."),
+                         f"grades on carries at least {dev_plans.TASK_ITEMS_FLOOR}."),
                 repair_hint=("Raise the task's item_counts to at least "
-                             f"{dev_plans.LIGHT_ITEMS_PER_TASK} items across its types."),
+                             f"{dev_plans.TASK_ITEMS_FLOOR} items across its types."),
                 metadata={"kind": "thin_summative_task", "task_id": str(task.get("id") or ""),
                           "item_total": dev_plans._set_total(task)},
             ))

@@ -375,19 +375,11 @@ class TestHarnessPosture:
         with pytest.raises(SystemExit, match="unknown key"):
             config.load(write(tmp_path, body))
 
-    def test_the_development_mode_is_declared_and_read(self):
-        """How much of the plan the proposed system writes out is a posture of
-        the run like the worker count: declared once, recorded in the freeze
-        manifest, and the same for every arm and rung."""
-        assert config.load().harness.development_mode in config.DEVELOPMENT_MODES
-
-    def test_the_development_mode_is_optional(self, tmp_path):
-        assert config.load(write(tmp_path, TWO_RUNG)).harness.development_mode is None
-
-    @pytest.mark.parametrize("value", ['"sample"', '"Light"', "1", "true"])
-    def test_anything_but_light_or_full_is_rejected(self, tmp_path, value):
-        body = TWO_RUNG + f"\n[harness]\ndevelopment_mode = {value}\n"
-        with pytest.raises(SystemExit, match="development_mode"):
+    def test_a_development_mode_is_refused_with_the_move_to_make(self, tmp_path):
+        """Retired: every run writes the scale its design plans. A leftover
+        key would be a posture written down that nothing applies."""
+        body = TWO_RUNG + '\n[harness]\ndevelopment_mode = "full"\n'
+        with pytest.raises(SystemExit, match="retired"):
             config.load(write(tmp_path, body))
 
 

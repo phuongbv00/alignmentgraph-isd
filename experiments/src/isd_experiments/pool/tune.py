@@ -1,8 +1,8 @@
 """Pooling the tune slice: what the ceilings and quotas are set from.
 
 The tune experiment never enters the paper. What it is FOR is fixing the
-harness parameters before ``isd-exp freeze`` -- the turn ceilings, the light
-development quotas, the task ceiling, the thinking budget -- from what the
+harness parameters before ``isd-exp freeze`` -- the turn ceilings, the task
+ceiling, the thinking budget -- from what the
 model actually did, and seeing the quality they buy next to it. So this pool is
 descriptive only: no Holm family, no bootstrap, no failure policies. A baseline
 carries cost and scores and nothing else, because it keeps no harness records.
@@ -75,6 +75,7 @@ from .comparison import default_glob, discover
 #: run_config keys that are the ceilings and postures a tune slice calibrates;
 #: the pool reports every distinct value it saw, so a slice that mixed two
 #: postures says so instead of averaging across them.
+#: ``development_mode`` is read only off run dirs written before it was retired.
 CALIBRATED = ("max_turns", "submit_budget", "regen_budget", "development_mode",
               "fanout_workers", "history_char_budget", "protocol_rev",
               "structured_outputs", "agent_mode", "context_mode")

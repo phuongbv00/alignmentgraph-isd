@@ -250,6 +250,8 @@ def respec(messages: list, step, brief: str) -> str:
 #: Which agent-facing protocol a run spoke, recorded in
 #: ``metadata.run_config`` so that runs on either side of a change to the
 #: tools an agent is bound or to how a stage ends are never pooled by mistake.
+#: 20 = development_mode is retired: every run writes the scale its design
+#: plans (no light slice, no per-item assignment rows, no development_scope).
 #: 19 = the single arm's item lists are held to the count each task or
 #: module would be commissioned in the multi arm (``fanout.unit_quotas``).
 #: 18 = the single arm's SUBMIT_CAP counts only submits that moved nothing,
@@ -293,7 +295,7 @@ def respec(messages: list, step, brief: str) -> str:
 #: each item's objective, type and cognitive level and each activity's
 #: objective and level, the mode states a material's depth, and the pilot
 #: data plan names its collection points in words.
-PROTOCOL_REV = 19
+PROTOCOL_REV = 20
 
 #: The answer to a repeated read whose result is unchanged — ONE wording for
 #: both arms, and only ever said when it is true (``turn.answer_read`` has

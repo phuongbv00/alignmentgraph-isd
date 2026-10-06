@@ -35,7 +35,6 @@ model thương mại mạnh.
 | "hệ rẻ hơn baseline", mọi biến thể của claim tiết kiệm chi phí | Cost cao hơn react-isd nhiều lần (tune Sprint 2: khoảng 12×) | Câu cost ở §4, nguyên văn. |
 | "chi phí được bù đắp bởi alignment/auditability" | Chưa có đánh giá người dùng nào chứng minh | Đặt cost cạnh alignment signals, traceability và auditability, không kết luận chiều nào thắng. |
 | "tương đương" / "không khác biệt" vì chênh lệch nằm trong biên nhiễu 10,8 điểm | 10,8 là số mô tả của Sprint 1, không phải ngưỡng kiểm định | Paired effect size + CI + multiplicity correction đã định trước. |
-| "chất lượng chương trình ADDIE hoàn chỉnh" khi output sinh ở `light` | `light` chỉ phát triển một lát cắt đại diện | Claim giới hạn rõ, và chỉ sau khi so light–full chứng minh tính đại diện. |
 | "số agent gây ra…", "graph gây ra…" từ ablation | Mỗi trục ablation là một bundle cơ chế | *"The multi-agent bundle / the graph substrate bundle"*, kèm danh sách thành phần của bundle. |
 | Mức giảm token/thời gian giữa các sprint là nhờ thuật toán | Thinking bị tắt cùng lúc; cách đo token và kiến trúc cũng đổi | Không báo before–after giữa các sprint như một so sánh tương đương. |
 | "kết quả giữ cho mọi SLM" | Mới thiết kế trên Qwen ladder | *"Observed on the Qwen3.5 0.8B–9B ladder."* |
@@ -197,8 +196,9 @@ Mức tất định được phép claim: *reproducible up to floating-point noi
   - Phải khai đã xác minh cả ba judge nhận đủ output dài và không chấm nội dung dài thành "vắng mặt"
     (trên tune: 25/26 mục bị đánh ABSENT là vắng thật trong output).
   - Cần thầy duyệt việc đổi roster (Sprint 2 chốt hai judge GPT-4o-mini và Gemini 2.5 Flash-Lite).
-- **Scope phát triển (`development_mode`) của output được chấm**, và bằng chứng so light–full
-  trên cùng scenario (đặc biệt rubric item 12, 17, 19, 22, 30) nếu claim dựa trên light.
+- **Output được chấm ở toàn bộ quy mô plan nêu.** Chế độ `light` (một lát cắt) đã bị bỏ trước
+  freeze (2026-10-06), nên không output nào trong TN1/TN2 là lát cắt; khai điều này cùng lý do
+  Sprint 2 nêu cho việc không dùng light làm đánh giá chính.
 - **Repeat của A0/ReAct-ISD không phải thiết kế lặp cân bằng.** Bảng bảy hệ dùng bộ run chung;
   phân tích repeat làm riêng và chỉ nói về độ ổn định của hai hệ đó. Không coi ba lần sinh cùng
   một scenario là ba scenario độc lập.

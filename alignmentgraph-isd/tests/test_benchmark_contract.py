@@ -88,7 +88,7 @@ METADATA_KEYS = {
     "autonomy",
 }
 RUN_CONFIG_KEYS = {
-    "agent_mode", "context_mode", "development_mode", "structured_outputs",
+    "agent_mode", "context_mode", "structured_outputs",
     # The trim budget the stages ran under: it changes what a results dir
     # means, so it is self-describing.
     "max_turns", "submit_budget", "history_char_budget",

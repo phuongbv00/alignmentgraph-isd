@@ -752,7 +752,7 @@ def test_a_submit_that_adds_an_artifact_is_not_charged_against_the_cap(graph_mod
                           ("assessment", {"assessment_plan": plan})):
         commit = getattr(specialists, f"commit_{name}" + ("" if graph_mode else "_prose"))
         commit(scratch, scratch_log, payload)
-    quota = fanout.unit_quotas("assessment", scratch, "light")["assessment_tools"]["AT-01"]
+    quota = fanout.unit_quotas("assessment", scratch)["assessment_tools"]["AT-01"]
     one_per_task = [dict(item, task_id=f"AT-{n:02d}", question=f"Build model {n}.")
                     for n in range(1, cap + 2)]               # every task but the last
     # AT-01 filled to its count, then piled past it until the cap closes.
@@ -775,8 +775,7 @@ def test_a_submit_that_adds_an_artifact_is_not_charged_against_the_cap(graph_mod
     assert len({dev_plans.same_artifact_key("assessment_tools", one) for one in held}) == len(held)
 
 
-@_pytest.mark.parametrize("mode", ["light", "full"])
-def test_the_commissioned_counts_are_the_same_on_both_substrates(mode):
+def test_the_commissioned_counts_are_the_same_on_both_substrates():
     """The single arm's quota is the multi arm's derivation; read differently
     per substrate it would be a second variable on ``context_mode``."""
     from test_grammar import _design
@@ -784,6 +783,6 @@ def test_the_commissioned_counts_are_the_same_on_both_substrates(mode):
     from alignmentgraph_isd.core.agentic import fanout
 
     for stage in ("assessment", "activities", "content"):
-        assert fanout.unit_quotas(stage, _design("graph"), mode) == \
-            fanout.unit_quotas(stage, _design("prose"), mode), (stage, mode)
-    assert fanout.unit_quotas("assessment", _design("graph"), mode)["assessment_tools"]
+        assert fanout.unit_quotas(stage, _design("graph")) == \
+            fanout.unit_quotas(stage, _design("prose")), stage
+    assert fanout.unit_quotas("assessment", _design("graph"))["assessment_tools"]

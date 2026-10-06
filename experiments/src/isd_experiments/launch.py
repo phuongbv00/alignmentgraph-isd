@@ -125,8 +125,6 @@ def profile_env(profile: Profile, *, slots: str | None = None,
         env["_AGENT_MODEL_STRUCTURED_OUTPUTS"] = "1" if gen.structured_outputs else "0"
     if cfg.harness.fanout_workers is not None:
         env["_HARNESS_FANOUT_WORKERS"] = str(cfg.harness.fanout_workers)
-    if cfg.harness.development_mode is not None:
-        env["_HARNESS_DEVELOPMENT_MODE"] = cfg.harness.development_mode
     return env
 
 

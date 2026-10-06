@@ -383,8 +383,7 @@ class ReactLoop:
                           f"{output.rules}")
                 # The same sentence a Developer reads in its assignment. This
                 # agent divides its own batches, so the rule is all it is given.
-                note = dev_plans.development_note(
-                    self.config.development_mode, str(output.element_type))
+                note = dev_plans.depth_note(str(output.element_type))
                 if note:
                     block += f"\n{note}"
         return block
@@ -1005,8 +1004,7 @@ class ReactLoop:
             # the one definition the multi arm's commit uses
             # (``dev_plans.same_artifact_key``): appended, a resent item was a
             # second copy in this arm's deliverable and in no other.
-            quotas = fanout.unit_quotas(step.name, self.state,
-                                        self.config.development_mode)
+            quotas = fanout.unit_quotas(step.name, self.state)
             for output in spec.outputs:
                 items = section.get(output.schema_key)
                 if not isinstance(items, list):
@@ -1128,8 +1126,7 @@ class ReactLoop:
         divides its own batches, so no work set."""
         return grammar.tighten_specs(
             specs, grammar.Vocabulary.of(
-                self.state, course_hours=duration_hours(self.design_brief)),
-            mode=self.config.development_mode)
+                self.state, course_hours=duration_hours(self.design_brief)))
 
     def _answer(self, turn, observation: str) -> None:
         observation, self._pending_note = observation + self._pending_note, ""

@@ -489,7 +489,7 @@ class ToolLoop:
         return grammar.tighten_specs(
             specs, grammar.Vocabulary.of(
                 self.state, course_hours=duration_hours(self.design_brief)),
-            work_set=self.step.work_set, mode=self.config.development_mode)
+            work_set=self.step.work_set)
 
     def _pass_schema(self, tool_name: str, artifact: str, params: dict) -> dict:
         """The schema the constrained pass decodes under: the bound tool's own
@@ -505,7 +505,7 @@ class ToolLoop:
         return grammar.for_decoder(grammar.tighten_parameters(
             {"type": "object", "properties": {artifact: prop}, "required": [artifact]},
             grammar.Vocabulary.of(self.state, course_hours=duration_hours(self.design_brief)),
-            work_set=self.step.work_set, mode=self.config.development_mode),
+            work_set=self.step.work_set),
             budget_chars=self._pass_budget)
 
     @property

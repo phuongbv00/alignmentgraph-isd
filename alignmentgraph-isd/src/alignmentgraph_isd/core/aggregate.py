@@ -20,17 +20,13 @@ class ADDIEOutputAggregator:
     Gap/Topic/LearnerProfile/Constraint/Improvement elements, the Assessment
     pool, and Content/Media."""
 
-    def __init__(self, graph, trajectory=None, *, development_mode: str = "",
-                 findings: tuple = ()) -> None:
+    def __init__(self, graph, trajectory=None, *, findings: tuple = ()) -> None:
         self.graph = graph
         self.trajectory = trajectory
         #: The run's violation ledger (``Memory.findings()``), settled: what
         #: every distinct finding was and what became of it. What the review
         #: itemises; empty for a caller aggregating a graph outside a run.
         self.findings = tuple(findings or ())
-        #: ``HarnessRunConfig.development_mode``; empty for a caller that
-        #: aggregates a graph outside a run, which then states no scope.
-        self.development_mode = development_mode
 
     def aggregate(self) -> dict:
         analysis = self._build_analysis()
@@ -116,13 +112,6 @@ class ADDIEOutputAggregator:
             "expert_review": expert_review,
             "instructor_guide": impl_data.get("instructor_guide", {}),
             "operator_manual": impl_data.get("operator_manual", {}),
-            **_development_scope(
-                self.development_mode,
-                _merge_node_data(self.graph.section_nodes(NodeType.ASSESSMENT_PLAN)),
-                items=_items_in(assessment_tools),
-                activities=len(self.graph.element_nodes(NodeType.ACTIVITY)),
-                materials=len(materials),
-                modules=len(self.graph.element_nodes(NodeType.MODULE))),
         }
 
     def _expert_review_from_audit(self) -> dict:
@@ -630,7 +619,7 @@ def _review_summary(findings: tuple, *, rounds: int, found: int, repairs: int,
     return " ".join(parts)
 
 
-def aggregate_prose(store, trajectory, *, development_mode: str = "",
+def aggregate_prose(store, trajectory, *,
                     findings_: tuple = ()) -> dict:
     """The prose arm's aggregator: assemble ``addie_output`` from the
     blackboard documents alone. Same output schema as the graph aggregator,
@@ -722,11 +711,6 @@ def aggregate_prose(store, trajectory, *, development_mode: str = "",
         "expert_review": expert_review,
         "instructor_guide": impl_doc.get("instructor_guide") or {},
         "operator_manual": impl_doc.get("operator_manual") or {},
-        **_development_scope(
-            development_mode, doc("assessment_plan"), items=_items_in(assessment_tools),
-            activities=len(design["learning_activities"]),
-            materials=len(items("material", "learner_materials")),
-            modules=len(content_modules)),
     }
 
     implementation = {
@@ -801,17 +785,6 @@ def _compute_storyboard(instructional_strategies: dict, content_modules: list[di
 #: ``commit_assessment``): it belongs in the graph and its dump, where an
 #: auditor can see how the family was divided up, and not in the deliverable,
 #: which is what the judge scores.
-def _set_scale(one: dict) -> int:
-    counts = one.get("item_counts")
-    total = 0
-    for value in (counts.values() if isinstance(counts, dict) else ()):
-        try:
-            total += max(0, int(value))
-        except (TypeError, ValueError):
-            continue
-    return total
-
-
 def _with_items_written(plan: dict, items: list[dict]) -> dict:
     """The assessment plan with each set's ``items_written`` beside its
     ``item_counts``: the blueprint states the set at full scale, and
@@ -866,32 +839,6 @@ def _tasks_with_items(plan: dict, items: list) -> list[dict]:
         host = by_id.get(ref, tasks[0])
         host["items"].append({k: v for k, v in one.items() if k != "task_id"})
     return tasks
-
-
-def _development_scope(mode: str, plan: dict, *, items: int, activities: int,
-                       materials: int, modules: int) -> dict:
-    """``development.development_scope``: at what scale the design was written
-    out, as counts. The same kind of statement as ``expert_review`` — a fact
-    about the run, reported because a reader of the output would otherwise
-    have to guess why a quiz planned at forty items shows three — and never
-    instructional content. Empty when no mode was given."""
-    if not mode:
-        return {}
-    planned = sum(_set_scale(t) for t in dev_plans.plan_tasks(plan))
-    scale = (f"{items} of the {planned} assessment items the blueprint plans"
-             if planned else f"{items} assessment items")
-    light = mode == "light"
-    how = ("a typical, reviewable slice of the design" if light
-           else "the design at the scale its plan states")
-    depth = ("each item and activity written in full and each material as a structured "
-             "outline" if light else "each written in full")
-    return {"development_scope": {
-        "mode": mode, "items_planned": planned, "items_written": items,
-        "note": (f"Development writes out {how}: {scale}, {activities} learning activities and "
-                 f"{materials} learner materials across {modules} modules, {depth}. The "
-                 "assessment plan's sets state every task's full scale (item_counts) beside "
-                 "how many of its items are written here (items_written)."),
-    }}
 
 
 def _merge_node_data(nodes: list[dict]) -> dict:

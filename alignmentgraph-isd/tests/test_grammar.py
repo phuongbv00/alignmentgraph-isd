@@ -196,53 +196,26 @@ def test_the_assessment_plan_is_one_set_per_module_within_its_allowance():
     assert len(tight) < 1.5 * len(base), (len(base), len(tight))
 
 
-def test_a_light_assignment_becomes_constants_and_a_count_becomes_bounds():
-    """What a light work set FIXES — objective, category, task, type, and a
-    level at or above the objective's — is said as `const`/`enum` per row, and
-    the number of rows is the number of items."""
-    state = _design("graph")
-    step = STEP_BY_NAME["assessment"]
-    sets, _stats = fanout.SPECS["assessment"].plan_sets(
-        state, {"assessment_plan": _ASSESSMENT["assessment_plan"],
-                "modules": fanout.course_modules(state)}, "light")
-    work_set = sets[0]
-    rows = work_set.payload["assigned_items"]
-    assert rows and rows[0]["objective"] == "ILO-01" and rows[0]["level"] == "apply"
-    dev_step = fanout.set_step(fanout.SPECS["assessment"], work_set, step, state)
-    assert dev_step.work_set is work_set
-    specs = grammar.tighten_specs(tools.tool_specs(dev_step), grammar.Vocabulary.of(state),
-                                  work_set=work_set, mode="light")
-    params = tools.spec_parameters(specs, "submit_assessment_tools")
-    items = params["properties"]["assessment_tools"]
-    assert items["minItems"] == items["maxItems"] == len(rows) and items["items"] is False
-    row = items["prefixItems"][0]["properties"]
-    assert row["aligned_objective"]["const"] == "ILO-01"
-    assert row["plan_category"]["const"] == "summative"
-    assert row["task_id"]["const"] == "AT-01"
-    assert row["type"]["const"] == rows[0]["type"]
-    assert row["required_cognitive_process"]["enum"] == ["apply", "analyze", "evaluate", "create"]
-
-
-def test_an_activity_block_fixes_module_objective_and_level_per_row():
+def test_a_work_set_count_becomes_bounds_and_its_module_a_constant():
+    """What a work set states — how many items, which module a block is — is
+    said in the schema the pass decodes under."""
     state = _design("graph")
     step = STEP_BY_NAME["activities"]
     sets, _stats = fanout.SPECS["activities"].plan_sets(
-        state, {"modules": fanout.course_modules(state)}, "light")
+        state, {"modules": fanout.course_modules(state)})
     block = next(ws for ws in sets if ws.module_id == "MOD-02")
-    rows = block.payload["assigned_activities"]
     params = grammar.tighten_parameters(
         tools.submit_parameters(fanout.set_step(fanout.SPECS["activities"], block, step, state)),
-        grammar.Vocabulary.of(state), work_set=block, mode="light")
+        grammar.Vocabulary.of(state), work_set=block)
     activities = params["properties"]["learning_activities"]
-    assert activities["minItems"] == activities["maxItems"] == len(rows)
-    first = activities["prefixItems"][0]["properties"]
-    assert first["module_id"]["const"] == "MOD-02"
-    assert first["aligned_objectives"]["prefixItems"] == [{"const": "ILO-02"}]
-    assert first["aligned_objectives"]["items"]["enum"] == ["ILO-01", "ILO-02"]
-    assert first["learner_cognitive_process"]["enum"] == ["analyze", "evaluate", "create"]
+    count = block.payload["expected_activities"]
+    assert activities["minItems"] == activities["maxItems"] == count
+    item = activities["items"]["properties"]
+    assert item["module_id"]["const"] == "MOD-02"
+    assert item["aligned_objectives"]["items"]["enum"] == ["ILO-01", "ILO-02"]
 
 
-def test_a_light_material_is_bound_to_its_module_s_media_and_never_to_a_length():
+def test_a_material_is_bound_to_its_module_s_media_and_never_to_a_length():
     state = _design("graph")
     specialists.commit_content(state, TrajectoryLogger(), {"media_selections": [
         {"id": "MS-01", "media_type": "slides", "for_modules": ["MOD-01"],
@@ -252,16 +225,16 @@ def test_a_light_material_is_bound_to_its_module_s_media_and_never_to_a_length()
     step = STEP_BY_NAME["content"]
     sets, _stats = fanout.SPECS["content"].plan_sets(
         state, {"modules": fanout.course_modules(state),
-                "media_selections": fanout.media_selections(state)}, "light")
+                "media_selections": fanout.media_selections(state)})
     unit = next(ws for ws in sets if ws.module_id == "MOD-01")
     params = grammar.tighten_parameters(
         tools.submit_parameters(fanout.set_step(fanout.SPECS["content"], unit, step, state)),
-        grammar.Vocabulary.of(state), work_set=unit, mode="light")
+        grammar.Vocabulary.of(state), work_set=unit)
     item = params["properties"]["learner_materials"]["items"]["properties"]
     assert item["linked_module"]["const"] == "MOD-01"
     assert item["type"]["enum"] == ["slides"]
-    # The depth of a light material is TOLD, never decoded: a length bound is
-    # a hard stop mid-word.
+    # A material's depth is TOLD, never decoded: a length bound is a hard
+    # stop mid-word.
     assert "maxLength" not in item["content"]
 
 
@@ -289,12 +262,10 @@ def test_every_schema_the_module_can_produce_uses_only_compiled_keywords():
             continue
         parsed = {"assessment_plan": _ASSESSMENT["assessment_plan"],
                   "modules": fanout.course_modules(state), "media_selections": []}
-        for mode in ("light", "full"):
-            sets, _ = spec.plan_sets(state, parsed, mode)
-            for ws in sets:
-                dev = fanout.set_step(spec, ws, step, state)
-                produced += grammar.tighten_specs(tools.tool_specs(dev), vocab,
-                                                  work_set=ws, mode=mode)
+        sets, _ = spec.plan_sets(state, parsed)
+        for ws in sets:
+            dev = fanout.set_step(spec, ws, step, state)
+            produced += grammar.tighten_specs(tools.tool_specs(dev), vocab, work_set=ws)
     produced += grammar.tighten_specs(tools.react_specs(STEPS, frozenset()), vocab)
     assert produced
     for spec in produced:
@@ -407,13 +378,11 @@ def test_every_constrained_pass_can_end_inside_the_completion_cap():
         parsed = {"assessment_plan": _ASSESSMENT["assessment_plan"],
                   "modules": fanout.course_modules(state),
                   "media_selections": fanout.media_selections(state)}
-        for mode in ("light", "full"):
-            for ws in spec.plan_sets(state, parsed, mode)[0]:
-                dev = fanout.set_step(spec, ws, step, state)
-                for dspec in grammar.tighten_specs(tools.tool_specs(dev), vocab,
-                                                   work_set=ws, mode=mode):
-                    if dspec["function"]["name"].startswith("submit_"):
-                        schemas.append((f"{ws.set_id}/{mode}", dspec["function"]["parameters"]))
+        for ws in spec.plan_sets(state, parsed)[0]:
+            dev = fanout.set_step(spec, ws, step, state)
+            for dspec in grammar.tighten_specs(tools.tool_specs(dev), vocab, work_set=ws):
+                if dspec["function"]["name"].startswith("submit_"):
+                    schemas.append((ws.set_id, dspec["function"]["parameters"]))
     for spec in grammar.tighten_specs(tools.react_specs(STEPS, frozenset()), vocab):
         if spec["function"]["name"].startswith("submit_"):
             schemas.append((f"single/{spec['function']['name']}", spec["function"]["parameters"]))

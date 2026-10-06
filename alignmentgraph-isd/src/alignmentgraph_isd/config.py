@@ -19,7 +19,6 @@ else:
 #: else.
 AgentMode = Literal["single", "multi"]
 ContextMode = Literal["prose", "graph"]
-DevelopmentMode = Literal["light", "full"]
 
 
 class HarnessRunConfig(BaseModel):
@@ -130,28 +129,6 @@ class HarnessRunConfig(BaseModel):
     # timing difference to declare, and because a shared endpoint answers an
     # unbounded burst with HTTP 429 (see ``llm_max_concurrency`` above).
     fanout_workers: int = 1
-
-    # How much of the planned scale the Developers write out. The PLAN always
-    # states the course at full scale (a 40-item quiz, a module's whole run of
-    # activities). ``"light"`` writes a typical, reviewable slice of it — one
-    # item per (objective x timing) pair at the objective's own Bloom level,
-    # one activity per objective, two outlined materials per module, the
-    # quotas ``core.dev_plans.LIGHT_*`` — for a human, the LLM judge and the
-    # alignment panel to judge alignment quality and typical content on;
-    # ``"full"`` writes all of it for deployment, batching what one call
-    # cannot hold. The table at the head of ``core/dev_plans.py``'s
-    # development-mode section states the difference field by field.
-    # ``"light"`` is the default because a full development multiplies
-    # Developer calls by the blueprint's scale and a benchmark ladder is
-    # scored per scenario. NOT an ablation axis: every arm of one experiment
-    # runs under the same value (declared once in experiment.toml
-    # ``[harness].development_mode``), it changes numbers and a derived
-    # assignment in a work set plus one note in its assignment and never a
-    # ``RULES_*`` block, and ``metadata.run_config`` records it. The aggregate
-    # states the scope it was written at (``development.development_scope``),
-    # so a reader of the output is never left to infer why a quiz of 40 shows
-    # three items.
-    development_mode: DevelopmentMode = "light"
 
     # Whether a submit the validator refuses is written again by the model
     # under the artifact's per-run schema, decoded with the schema enforced

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import type { AgentMode, ContextMode, DevelopmentMode } from '../api/types'
+import type { AgentMode, ContextMode } from '../api/types'
 import { ARMS, DEFAULT_ARM, type Arm } from './arms'
 
 /**
- * What the NEXT run is started under: the ablation arm, how much of the design
- * is written out, and how many of one family's Developers run at once.
+ * What the NEXT run is started under: the ablation arm, and how many of one
+ * family's Developers run at once.
  *
  * Remembered in this browser, because it is a posture the reader sets once and
  * reruns under. What a run WAS is recorded on the run itself (the badges in the
@@ -14,7 +14,6 @@ import { ARMS, DEFAULT_ARM, type Arm } from './arms'
 export interface RunSettings {
   /** `${agentMode}-${contextMode}`, resolved through `ARMS`. */
   armKey: string
-  fullDevelopment: boolean
   /** 1 = the Developers run one after another. */
   fanoutWorkers: number
 }
@@ -27,7 +26,6 @@ export const armKey = (arm: Arm): string => `${arm.agentMode}-${arm.contextMode}
 
 export const DEFAULT_RUN_SETTINGS: RunSettings = {
   armKey: armKey(DEFAULT_ARM),
-  fullDevelopment: false,
   fanoutWorkers: 1,
 }
 
@@ -43,7 +41,6 @@ export function clampWorkers(value: unknown): number {
 
 export function isDefault(settings: RunSettings): boolean {
   return armFor(settings).isDefault === true
-    && !settings.fullDevelopment
     && settings.fanoutWorkers === 1
 }
 
@@ -52,7 +49,6 @@ export function describe(settings: RunSettings): string[] {
   const arm = armFor(settings)
   return [
     ...(arm.isDefault ? [] : [`${arm.agentMode}·${arm.contextMode}`]),
-    ...(settings.fullDevelopment ? ['full development'] : []),
     ...(settings.fanoutWorkers > 1 ? [`${settings.fanoutWorkers} workers`] : []),
   ]
 }
@@ -60,7 +56,6 @@ export function describe(settings: RunSettings): string[] {
 export interface RunOptions {
   agent_mode?: AgentMode
   context_mode?: ContextMode
-  development_mode?: DevelopmentMode
   fanout_workers?: number
 }
 
@@ -74,7 +69,6 @@ export function toRunOptions(settings: RunSettings): RunOptions | undefined {
   const arm = armFor(settings)
   const options: RunOptions = {
     ...(arm.isDefault ? {} : { agent_mode: arm.agentMode, context_mode: arm.contextMode }),
-    ...(settings.fullDevelopment ? { development_mode: 'full' as const } : {}),
     ...(settings.fanoutWorkers > 1 ? { fanout_workers: settings.fanoutWorkers } : {}),
   }
   return Object.keys(options).length ? options : undefined
@@ -92,7 +86,6 @@ export function loadRunSettings(): RunSettings {
     const stored = JSON.parse(raw) as Partial<RunSettings>
     const settings: RunSettings = {
       armKey: typeof stored.armKey === 'string' ? stored.armKey : DEFAULT_RUN_SETTINGS.armKey,
-      fullDevelopment: stored.fullDevelopment === true,
       fanoutWorkers: clampWorkers(stored.fanoutWorkers ?? 1),
     }
     // An arm key no longer in `ARMS` is the default arm, and is stored as such.

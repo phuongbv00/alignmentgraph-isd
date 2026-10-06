@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from ..config import AgentMode, ContextMode, DevelopmentMode
+from ..config import AgentMode, ContextMode
 
 
 class HealthResponse(BaseModel):
@@ -169,13 +169,9 @@ class BriefResponse(BaseModel):
 
 
 class RunCreate(BaseModel):
-    """Which ablation arm to run under, and how much of the design to write out.
+    """Which ablation arm to run under.
 
-    ``development_mode`` is not an axis — it says whether the Developers write
-    a light, reviewable slice of what the design plans or all of it — but it is
-    chosen per run exactly as the axes are, so it travels with them.
-
-    Neither is ``fanout_workers``, and it is not even a property of the design:
+    ``fanout_workers`` is not an axis, and it is not even a property of the design:
     it runs one family's Developers at once instead of one after another, and
     the graph, the calls and the artifacts are identical whatever it is set to
     (``tests/test_fanout.py::test_parallel_workers_produce_the_same_graph_as_sequential``).
@@ -195,7 +191,6 @@ class RunCreate(BaseModel):
 
     agent_mode: AgentMode | None = None
     context_mode: ContextMode | None = None
-    development_mode: DevelopmentMode | None = None
     fanout_workers: int | None = Field(default=None, ge=1, le=8)
 
 
@@ -206,7 +201,6 @@ class RunCreated(BaseModel):
     # which arm it got instead of having to assume.
     agent_mode: str = ""
     context_mode: str = ""
-    development_mode: str = ""
     fanout_workers: int = 1
 
 

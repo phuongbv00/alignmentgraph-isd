@@ -659,10 +659,6 @@ def test_the_blocks_of_a_module_share_all_of_its_time_not_just_what_they_declare
     assert sets[0].payload["block_minutes"] == 120
     assert sets[0].payload["expected_activities"] == 6
 
-    sampled, _stats = dev_plans.activity_work_sets(
-        plan, ["ILO-01"], modules=_one_module(120, ["ILO-01"]), mode="light")
-    assert sampled[0].payload["expected_activities"] == dev_plans.LIGHT_ACTIVITIES_PER_MODULE_FLOOR
-
 
 def test_a_set_that_writes_fewer_than_it_was_asked_for_is_not_finished():
     """MEASURED (run 40856c96): three sets told "write exactly 3 items" each
@@ -723,13 +719,12 @@ def test_assessment_sets_follow_the_sets_module_by_module():
                {"id": "MOD-02", "objectives": ["ILO-01", "ILO-02"], "minutes": 60}]
     sets = [
         {"id": "SET-01", "module_id": "MOD-01", "timing": "formative", "format": "quiz",
-         "item_counts": {"multiple_choice": 10}, "covers_objectives": ["ILO-01"]},
+         "item_counts": {"multiple_choice": 3}, "covers_objectives": ["ILO-01"]},
         {"id": "SET-02", "module_id": "MOD-02", "timing": "summative", "format": "practical",
          "item_counts": {"performance_task": 2}, "covers_objectives": ["ILO-01", "ILO-02"]}]
     targets = {"ILO-01": ["formative", "summative"], "ILO-02": ["summative"]}
     sets, _stats = dev_plans.assessment_work_sets(
-        None, ["ILO-01", "ILO-02"], targets, modules=modules, blueprint=sets,
-        mode="light")
+        None, ["ILO-01", "ILO-02"], targets, modules=modules, blueprint=sets)
 
     assert [(ws.module_id, ws.pairs) for ws in sets] == [
         ("MOD-01", (("ILO-01", "formative"),)),

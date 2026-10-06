@@ -276,7 +276,7 @@ nhân với năng lực model, không sửa được bằng prompt.
 
 Harness đề xuất trả lời một submit bị từ chối bằng **một call nữa, không bind tool, với
 `response_format = json_schema` = schema per-run của artifact đó** (`core/agentic/grammar.py`,
-`turn.constrained_pass`): mọi tham chiếu là `enum` trên id đang tồn tại, mỗi hàng của assignment light là `const`,
+`turn.constrained_pass`): mọi tham chiếu là `enum` trên id đang tồn tại, module của block là `const`,
 số lượng đã khai là `minItems`/`maxItems`. Kết quả đi qua đúng validator cũ; pass 2 hỏng thì rejection về agent như
 trước. Khai ở `[generation].structured_outputs` (publish `AGENT_MODEL_STRUCTURED_OUTPUTS`, adapter đọc, manifest
 ghi); baseline không gọi kiểu này vì harness của chúng là của benchmark. **Cần endpoint tự host** — backend
@@ -539,18 +539,9 @@ wall time, và được ghi vào `metadata.run_config.fanout_workers`. Với lad
 lại, và `audit preflight` fail nếu `.env` cũng đặt biến này. Chốt trước `isd-exp freeze write` vì nó đổi
 `execution_time_seconds`. `--dry-run` in cận trên số call đồng thời của mỗi slot (scenario song song × agent song song ×
 Developer song song) để cân với sức chịu của endpoint.
-`HARNESS_DEVELOPMENT_MODE` (`light` | `full`) quyết định Developer viết một lát cắt điển hình của thiết kế hay toàn
-bộ, khai MỘT lần ở `experiment.toml [harness].development_mode` (bảng so sánh hai mode nằm ngay trong comment của khoá
-đó), runner ghim vào môi trường như `fanout_workers`, freeze manifest ghi lại, `audit preflight` fail nếu `.env` cũng
-đặt, và adapter RAISE nếu giá trị sai. Plan luôn nêu quy mô thật (quiz 40 câu). `light` (mặc định): ~3 item/task — MỘT
-item cho mỗi cặp (objective × timing) ở đúng mức Bloom của objective, type phải mang được mức đó (apply+ → short_answer
-/ performance_task); 1 TLA/ILO (sàn 3/module, introduce–practise–apply); 2 material/module chọn theo media điển hình,
-`content` là OUTLINE 400–800 ký tự; 1–2 session guide/module vẫn xếp lịch mọi id. `full`: viết hết, chia batch, material
-đầy đủ. Mục đích của `light` là để người và benchmark chấm được chất lượng alignment và nội dung điển hình; `full` là bản
-triển khai. KHÔNG phải trục ablation — mọi arm của một thí nghiệm chạy cùng một giá trị, ghi ở
-`metadata.run_config.development_mode`; output tự khai phạm vi ở `development.development_scope`. Quota `light`
-(`dev_plans.LIGHT_*`) là tham số tạm: hiệu chỉnh trên `train_10` (cùng scenario ở hai mode, so các mục rubric chấm theo
-item) TRƯỚC `isd-exp freeze`, sau đó không đổi.
+Developer viết toàn bộ quy mô mà plan nêu (quiz 40 câu là 40 item, chia batch khi một call không chứa nổi). Không có
+chế độ viết một lát cắt: chế độ `light` đã bị bỏ ngày 2026-10-06 (PROTOCOL_REV 20), và một khoá `development_mode` còn sót
+trong `experiment.toml` bị từ chối.
 
 Tổng request in-flight = `max_workers × scenario_max_workers × cap`. Gate là **per-run**, không process-wide: gate chung
 sẽ khiến fan-out của arm này xếp hàng trước call của arm kia và thổi phồng `execution_time_seconds` của arm kia.
@@ -727,7 +718,7 @@ về bundle, kèm câu nói rằng phần chênh do repair net viết.
 - Không stage nào bị trần turn cắt ở cả hai arm của một simple effect (`via_budget_exhaustion`).
 - Arm single không có stage bị đóng ở `SUBMIT_CAP` khi còn nợ artifact (`stage_abandoned`), không có run
   dừng vì thiếu module (`run_stopped`).
-- Mọi run của TN2 cùng một `protocol_rev`, cùng `development_mode`, và cờ của từng arm khớp agent id
+- Mọi run của TN2 cùng một `protocol_rev`, và cờ của từng arm khớp agent id
   (`flag_check`).
 - `gave_up`, `constrained_pass` và overflow báo theo ô. Một ô có tỉ lệ bất thường so với tune phải giải
   trình trước khi đọc.

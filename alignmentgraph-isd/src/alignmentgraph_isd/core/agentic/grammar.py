@@ -4,8 +4,8 @@
 every run. What it cannot say is which ids exist in the design being written:
 that an item's ``aligned_objective`` must be one of the objectives the
 outcomes stage committed, that a session guide may schedule only the
-activities its block was handed, that a light work set writes exactly the
-rows its assignment fixed. Those facts are checked after the submit
+activities its block was handed, that a work set writes the count its
+assignment states. Those facts are checked after the submit
 (``fanout.reference_errors``, ``fanout.item_level_errors``,
 ``dev_plans.trim_to_quota``) and were, until now, told to the model in prose
 only — which a small model follows some of the time. MEASURED (run
@@ -14,8 +14,8 @@ rejections were a reference that resolved to nothing or a level below the
 objective's, and every one cost a turn and a share of the submit budget.
 
 This module writes the same facts INTO the schema: every reference becomes an
-``enum`` over the ids that exist, every fixed row of a light assignment a
-``const``, every stated count a ``minItems``/``maxItems``. The schema is then
+``enum`` over the ids that exist, a block's own module a ``const``, every
+stated count a ``minItems``/``maxItems``. The schema is then
 what the constrained pass (``turn.constrained_pass``) decodes under, and what
 the bound ``submit_*`` tool declares — so a backend that enforces a tool's
 parameters gets the same contract the recovery pass does.
@@ -151,8 +151,7 @@ def _plan(state) -> dict:
 
 # ── the public surface ──────────────────────────────────────────────────────
 
-def tighten_specs(specs: list[dict], vocab: Vocabulary, *, work_set=None,
-                  mode: str = "full") -> list[dict]:
+def tighten_specs(specs: list[dict], vocab: Vocabulary, *, work_set=None) -> list[dict]:
     """The bound tool specs with every ``submit_*`` tool's parameters
     tightened. Read tools pass through untouched; the base specs are not
     mutated (they are what the golden fixture pins)."""
@@ -165,13 +164,12 @@ def tighten_specs(specs: list[dict], vocab: Vocabulary, *, work_set=None,
             continue
         tightened = dict(function)
         tightened["parameters"] = tighten_parameters(
-            function.get("parameters") or {}, vocab, work_set=work_set, mode=mode)
+            function.get("parameters") or {}, vocab, work_set=work_set)
         out.append({**spec, "function": tightened})
     return out
 
 
-def tighten_parameters(params: dict, vocab: Vocabulary, *, work_set=None,
-                       mode: str = "full") -> dict:
+def tighten_parameters(params: dict, vocab: Vocabulary, *, work_set=None) -> dict:
     """A submit tool's ``parameters`` object, each artifact property replaced
     by :func:`artifact_property` and every object stamped open."""
     properties = dict(params.get("properties") or {})
@@ -182,7 +180,7 @@ def tighten_parameters(params: dict, vocab: Vocabulary, *, work_set=None,
             continue
         json_type = "array" if (prop or {}).get("type") == "array" else "object"
         tightened = artifact_property(
-            key, json_type, key in required, vocab, work_set=work_set, mode=mode)
+            key, json_type, key in required, vocab, work_set=work_set)
         # A shared sub-schema is declared ONCE at the root, where `$ref`
         # resolves it: the assessment plan names its task schema per module
         # and a copy per module made the spec twice its size (measured: 10k
@@ -197,7 +195,7 @@ def tighten_parameters(params: dict, vocab: Vocabulary, *, work_set=None,
 
 
 def artifact_property(key: str, json_type: str, is_required: bool, vocab: Vocabulary, *,
-                      work_set=None, mode: str = "full") -> dict:
+                      work_set=None) -> dict:
     """The schema of one submit field — the artifact under ``key`` — tightened.
 
     ``json_type`` says whether the field is the artifact itself (``object``) or
@@ -205,16 +203,10 @@ def artifact_property(key: str, json_type: str, is_required: bool, vocab: Vocabu
     draws from ``AgenticStep.submit_fields``."""
     base = copy.deepcopy(ARTIFACT_SCHEMAS[key])
     builder = _BUILDERS.get(key)
+    shaped = builder(base, vocab, work_set) if builder else base
     if json_type != "array":
-        shape = builder(base, vocab, work_set, mode) if builder else base
-        return required_floor(shape) if is_required else shape
-    rows = builder(base, vocab, work_set, mode) if builder else None
-    if isinstance(rows, list):
-        # A fixed assignment: one schema per row, in the row's order, and
-        # nothing beside them.
-        return {"type": "array", "prefixItems": rows, "items": False,
-                "minItems": len(rows), "maxItems": len(rows)}
-    item = rows if isinstance(rows, dict) else base
+        return required_floor(shaped) if is_required else shaped
+    item = shaped
     shape: dict = {"type": "array", "items": item}
     count = _stated_count(key, work_set, vocab)
     if count:
@@ -247,11 +239,10 @@ def xgrammar_safe(schema: object) -> list[str]:
 
 
 # ── per-artifact builders ───────────────────────────────────────────────────
-# Each takes the base (item) schema, the vocabulary, the work set (None for a
-# stage agent and for the single arm) and the development mode, and returns
-# either the tightened item schema (a dict) or, for a fixed assignment, one
-# schema per row (a list). A builder never adds a field the base does not
-# declare and never widens one.
+# Each takes the base (item) schema, the vocabulary and the work set (None for
+# a stage agent and for the single arm), and returns the tightened item
+# schema. A builder never adds a field the base does not declare and never
+# widens one.
 
 def _enum(values: tuple[str, ...]) -> dict | None:
     values = tuple(dict.fromkeys(str(v) for v in values if str(v).strip()))
@@ -269,26 +260,20 @@ def _ref_list(prop: dict, values: tuple[str, ...]) -> dict:
     return {**prop, "items": narrowed} if narrowed else prop
 
 
-def _levels_from(level: str) -> tuple[str, ...]:
-    """Bloom levels at or above ``level``; all six when it is unreadable."""
-    index = dev_plans._level_index(level)
-    return dev_plans.BLOOM_ORDER[index:] if index is not None else dev_plans.BLOOM_ORDER
-
-
 def _with(base: dict, **props: dict) -> dict:
     out = dict(base)
     out["properties"] = {**base.get("properties", {}), **props}
     return out
 
 
-def _course_modules(base: dict, vocab: Vocabulary, work_set, mode: str) -> dict:
+def _course_modules(base: dict, vocab: Vocabulary, work_set) -> dict:
     props = base["properties"]
     return _with(base,
                  objectives=_ref_list(props["objectives"], vocab.objectives),
                  covers_topics=_ref_list(props["covers_topics"], vocab.topics))
 
 
-def _assessment_plan(base: dict, vocab: Vocabulary, work_set, mode: str) -> dict:
+def _assessment_plan(base: dict, vocab: Vocabulary, work_set) -> dict:
     props = base["properties"]
     set_schema = props["sets"]["items"]
     task_schema = set_schema["properties"]["assessment_tasks"]["items"]
@@ -325,32 +310,14 @@ def _assessment_plan(base: dict, vocab: Vocabulary, work_set, mode: str) -> dict
     return out
 
 
-def _assessment_tools(base: dict, vocab: Vocabulary, work_set, mode: str):
+def _assessment_tools(base: dict, vocab: Vocabulary, work_set) -> dict:
     props = base["properties"]
-    rows = [r for r in ((work_set.payload.get("assigned_items") if work_set else None) or [])
-            if isinstance(r, dict)]
-    if not rows:
-        return _with(base,
-                     aligned_objective=_ref(props["aligned_objective"], vocab.objectives),
-                     task_id=_ref(props["task_id"], vocab.task_ids))
-    out = []
-    for row in rows:
-        fixed: dict = {
-            "aligned_objective": {**props["aligned_objective"], "const": str(row["objective"])},
-            "plan_category": {**props["plan_category"], "const": str(row["plan_category"])},
-            "required_cognitive_process": {
-                **props["required_cognitive_process"],
-                "enum": list(_levels_from(str(row.get("level") or "")))},
-        }
-        if row.get("task_id"):
-            fixed["task_id"] = {**props["task_id"], "const": str(row["task_id"])}
-        if row.get("type"):
-            fixed["type"] = {**props["type"], "const": str(row["type"])}
-        out.append(_with(base, **fixed))
-    return out
+    return _with(base,
+                 aligned_objective=_ref(props["aligned_objective"], vocab.objectives),
+                 task_id=_ref(props["task_id"], vocab.task_ids))
 
 
-def _learning_activities(base: dict, vocab: Vocabulary, work_set, mode: str):
+def _learning_activities(base: dict, vocab: Vocabulary, work_set):
     props = base["properties"]
     task_ids = tuple(str(t) for t in (
         (work_set.payload.get("assessment_task_ids") if work_set else None) or vocab.task_ids))
@@ -365,33 +332,13 @@ def _learning_activities(base: dict, vocab: Vocabulary, work_set, mode: str):
         common["prepares_for_assessment"] = {**common["prepares_for_assessment"], "minItems": 1}
         base = {**base, "required": list(dict.fromkeys(
             [*(base.get("required") or ()), "prepares_for_assessment"]))}
-    rows = [r for r in ((work_set.payload.get("assigned_activities") if work_set else None) or [])
-            if isinstance(r, dict)]
-    if not rows:
-        return _with(base, **common)
-    module = work_set.module_id if work_set else ""
-    out = []
-    for row in rows:
-        fixed = dict(common)
-        lo = str(row.get("objective") or "")
-        if lo:
-            # The row's objective FIRST; the block may name more of its own
-            # objectives after it. `contains` is not compiled, and this is the
-            # same fact in a form that is.
-            fixed["aligned_objectives"] = {
-                **props["aligned_objectives"], "prefixItems": [{"const": lo}],
-                **({"items": _enum(vocab.objectives)} if vocab.objectives else {}),
-                "minItems": 1}
-        if module:
-            fixed["module_id"] = {**props["module_id"], "const": module}
-        fixed["learner_cognitive_process"] = {
-            **props["learner_cognitive_process"],
-            "enum": list(_levels_from(str(row.get("level") or "")))}
-        out.append(_with(base, **fixed))
-    return out
+    if work_set and work_set.module_id:
+        # A block is one module's share: every activity it writes belongs there.
+        common["module_id"] = {**props["module_id"], "const": work_set.module_id}
+    return _with(base, **common)
 
 
-def _media_selections(base: dict, vocab: Vocabulary, work_set, mode: str) -> dict:
+def _media_selections(base: dict, vocab: Vocabulary, work_set) -> dict:
     props = base["properties"]
     return _with(base,
                  for_modules=_ref_list(props["for_modules"], vocab.module_ids),
@@ -399,7 +346,7 @@ def _media_selections(base: dict, vocab: Vocabulary, work_set, mode: str) -> dic
                                                 vocab.constraints))
 
 
-def _learner_materials(base: dict, vocab: Vocabulary, work_set, mode: str) -> dict:
+def _learner_materials(base: dict, vocab: Vocabulary, work_set) -> dict:
     props = base["properties"]
     fixed: dict = {"linked_module": _ref(props["linked_module"], vocab.module_ids)}
     media = [m for m in ((work_set.payload.get("media_selections") if work_set else None) or [])
@@ -411,15 +358,13 @@ def _learner_materials(base: dict, vocab: Vocabulary, work_set, mode: str) -> di
         fixed["type"] = _ref(props["type"], types)
     if work_set and work_set.module_id:
         fixed["linked_module"] = {**props["linked_module"], "const": work_set.module_id}
-    # A light material's DEPTH is told (`dev_plans.LIGHT_MATERIAL_OUTLINE_CHARS`,
-    # in the assignment's note) and never decoded: a `maxLength` on `content`
-    # is a hard stop the decoder enforces mid-word — measured, seven of ten
-    # runs shipped materials of exactly the cap, cut mid-sentence. `mode` is
-    # accepted so every builder has one signature.
+    # A material's DEPTH is told (``dev_plans.depth_note``) and never decoded:
+    # a `maxLength` on `content` is a hard stop the decoder enforces mid-word —
+    # measured, seven of ten runs shipped materials of exactly the cap.
     return _with(base, **fixed)
 
 
-def _session_guides(base: dict, vocab: Vocabulary, work_set, mode: str) -> dict:
+def _session_guides(base: dict, vocab: Vocabulary, work_set) -> dict:
     props = base["properties"]
     activities, materials = (dev_plans._scheduled(work_set) if work_set
                              else (list(vocab.activities), list(vocab.materials)))

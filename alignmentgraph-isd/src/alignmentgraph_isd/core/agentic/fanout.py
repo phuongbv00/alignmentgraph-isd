@@ -427,8 +427,8 @@ def cap_module_minutes(state, ceiling_minutes: float, trajectory) -> dict[str, i
 
 def objective_levels(state) -> dict[str, str]:
     """``objective id -> its declared Bloom level``, identically on either
-    substrate. What a light assignment reads to fix each item's and each
-    activity's cognitive level: the objectives' OWN word, never the harness's."""
+    substrate. What the item-level check (:func:`item_level_errors`) holds an
+    item's cognitive level to: the objectives' OWN word, never the harness's."""
     return {
         str(one["id"]): str(one.get("level") or "").strip().lower()
         for one in _element_data(state, NodeType.OBJECTIVE, ("objective", "learning_objectives"))
@@ -585,7 +585,7 @@ def item_restatement_errors(items: list, statements: dict[str, str]) -> list[str
     return errors
 
 
-def _assessment_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dict]:
+def _assessment_sets(state, parsed: dict) -> tuple[list, dict]:
     """One work set per INSTRUMENT of the blueprint.
 
     The set is what an assessment designer actually divides by — a
@@ -599,8 +599,7 @@ def _assessment_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dic
                         for one in blueprint]}
     sets, stats = dev_plans.assessment_work_sets(
         derived, _lo_ids(state), plan.get("lo_coverage_targets") or {},
-        modules=parsed.get("modules"), blueprint=blueprint, mode=mode,
-        levels=objective_levels(state))
+        modules=parsed.get("modules"), blueprint=blueprint)
     named = dev_plans.name_sets_after(
         sets, "AS", lambda ws: next((i["id"] for i in ws.payload.get("sets") or []
                                      if i.get("id")), ws.module_id))
@@ -613,13 +612,12 @@ def _assessment_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dic
     return named, _derived_stats(stats)
 
 
-def _activity_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dict]:
+def _activity_sets(state, parsed: dict) -> tuple[list, dict]:
     """One block per MODULE, holding the objectives that module serves.
 
     Unlike the other three families nothing in the design states how MANY
     activities a module needs, so the count comes from the module's own
-    minutes (``fit_time_budget``) and, under ``light``, from the light
-    quota."""
+    minutes (``fit_time_budget``)."""
     modules = [m for m in (parsed.get("modules") or [])
                if isinstance(m, dict) and m.get("id")]
     derived = {"activity_blocks": [{"module_id": m["id"],
@@ -627,7 +625,7 @@ def _activity_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dict]
                                     "block_minutes": m.get("minutes")} for m in modules]}
     sets, stats = dev_plans.activity_work_sets(
         derived, _lo_ids(state), items_by_lo(state),
-        modules=parsed.get("modules"), mode=mode, levels=objective_levels(state))
+        modules=parsed.get("modules"))
     return (dev_plans.name_sets_after(sets, "AB", lambda ws: ws.module_id),
             _derived_stats(stats))
 
@@ -646,10 +644,10 @@ def module_of_artifacts(state) -> dict[str, str]:
     return out
 
 
-def _material_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dict]:
+def _material_sets(state, parsed: dict) -> tuple[list, dict]:
     sets = dev_plans.material_work_units(
         parsed.get("modules") or [], parsed.get("media_selections") or [],
-        _constraints(state), mode=mode)
+        _constraints(state))
     return sets, _deterministic_stats(sets)
 
 
@@ -732,7 +730,7 @@ def _element_ids(state, node_type: str, doc: tuple[str, str], id_field: str = "i
             if isinstance(i, dict) and i.get(id_field)]
 
 
-def _session_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dict]:
+def _session_sets(state, parsed: dict) -> tuple[list, dict]:
     """One block per MODULE, holding what that module is taught with.
 
     Which activities and materials a module owns is already written on the
@@ -753,7 +751,7 @@ def _session_sets(state, parsed: dict, mode: str = "full") -> tuple[list, dict]:
         for m in modules]}
     sets, stats = dev_plans.session_work_sets(
         derived, activity_ids, material_ids,
-        modules=parsed.get("modules"), module_of=module_of, mode=mode)
+        modules=parsed.get("modules"), module_of=module_of)
     return (dev_plans.name_sets_after(sets, "SB", lambda ws: ws.module_id),
             _derived_stats(stats))
 
@@ -1087,7 +1085,7 @@ UNIT_FIELD = {"assessment_tools": "task_id", "learning_activities": "module_id",
               "learner_materials": "linked_module"}
 
 
-def unit_quotas(stage: str, state, mode: str) -> dict[str, dict[str, int]]:
+def unit_quotas(stage: str, state) -> dict[str, dict[str, int]]:
     """``schema_key -> unit -> count`` the multi arm's work sets would state
     for ``stage``: the same derivation (``plan_sets`` over
     :func:`dispatch_payload`), summed over a unit's batches.
@@ -1100,7 +1098,7 @@ def unit_quotas(stage: str, state, mode: str) -> dict[str, dict[str, int]]:
     spec = SPECS.get(stage)
     if spec is None:
         return {}
-    sets, _stats = spec.plan_sets(state, dispatch_payload(state, spec), mode)
+    sets, _stats = spec.plan_sets(state, dispatch_payload(state, spec))
     out: dict[str, dict[str, int]] = {}
     for output in spec.outputs:
         if output.schema_key not in UNIT_FIELD:

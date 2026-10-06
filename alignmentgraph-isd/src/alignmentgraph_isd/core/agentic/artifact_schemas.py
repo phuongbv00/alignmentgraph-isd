@@ -79,10 +79,13 @@ def required_floor(prop: dict) -> dict:
     (one carrying ``additionalProperties``) takes ``minProperties``; an object
     with declared properties is already floored by its own ``required``.
     """
+    # A floor the field already states — a work set's stated count — is never
+    # lowered: overwritten with 1, a Developer's pass 2 decoded "1 to N items"
+    # where its assignment said exactly N.
     if prop.get("type") == "array":
-        return prop | {"minItems": 1}
+        return prop | {"minItems": max(1, int(prop.get("minItems") or 0))}
     if prop.get("type") == "object" and "additionalProperties" in prop:
-        return prop | {"minProperties": 1}
+        return prop | {"minProperties": max(1, int(prop.get("minProperties") or 0))}
     if prop.get("type") == "string" and "enum" not in prop and "const" not in prop:
         # An empty string is "missing or empty" to every validator here, and
         # a grammar holding only "present" let the constrained pass write
