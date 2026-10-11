@@ -785,6 +785,12 @@ def test_progress_is_never_charged_and_piling_on_one_task_is(graph_mode):
     assert loop.stats["submits_per_stage"]["assessment"] > budget.SUBMIT_BUDGET
     # ...and piling past it closes the stage, which still owes the other tasks.
     assert "assessment" in loop.stats["abandoned_stages"]
+    # A pile that landed nothing is told so, never "COMMITTED" (MEASURED, run
+    # t1 20261011_163858: trimmed items answered COMMITTED and resent).
+    answers = [str(m.get("original_content") or m.get("content"))
+               for m in list(loop.compacted) + list(loop.messages)
+               if isinstance(m, dict) and m.get("role") == "tool"]
+    assert sum("NOTHING LANDED" in a for a in answers) == budget.SUBMIT_BUDGET - 1
 
 
 def test_the_commissioned_work_is_the_same_on_both_substrates():

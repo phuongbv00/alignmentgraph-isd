@@ -250,6 +250,12 @@ def respec(messages: list, step, brief: str) -> str:
 #: Which agent-facing protocol a run spoke, recorded in
 #: ``metadata.run_config`` so that runs on either side of a change to the
 #: tools an agent is bound or to how a stage ends are never pooled by mistake.
+#: 23 = a submit that lands nothing is answered NOTHING LANDED on the single
+#: arm, as the stage loop answers it, and a refused call too long for the
+#: next prompt has its arguments cut instead of being resent until the stage
+#: is given up (``transcript.trim_history``), and an assessment task takes
+#: no more items than it states whichever set writes into it
+#: (``dev_plans.within_task_counts``).
 #: 22 = what the 2x2 invariant tests found (``tests/test_ablation_parity.py``):
 #: an item's category is its task's timing BEFORE repeats are judged, the
 #: single arm refuses a submit carrying none of its stage's artifacts (as the
@@ -305,7 +311,7 @@ def respec(messages: list, step, brief: str) -> str:
 #: each item's objective, type and cognitive level and each activity's
 #: objective and level, the mode states a material's depth, and the pilot
 #: data plan names its collection points in words.
-PROTOCOL_REV = 22
+PROTOCOL_REV = 23
 
 #: The answer to a repeated read whose result is unchanged — ONE wording for
 #: both arms, and only ever said when it is true (``turn.answer_read`` has
@@ -435,3 +441,13 @@ ITEM_RESTATES_OBJECTIVE = (
     "assessment_tools[{index}].question: restates {lo}'s own wording — write "
     "the task the learner performs on the subject matter (a case, data, a "
     "problem to solve), not the objective sentence")
+
+
+#: The single arm's answer to a submit that moved nothing: everything it
+#: carried repeated what the design holds, or named a unit whose work set is
+#: already full. The stage loop's counterparts are "ALREADY COMMITTED" and a
+#: Developer's "NOTHING NEW".
+NOTHING_LANDED = (
+    "NOTHING LANDED in {stage}: everything you sent repeats what the design already "
+    "holds, or names a unit whose work set already has what it is commissioned for. "
+    "Do not send it again — write for a unit that is still owed.")

@@ -43,6 +43,7 @@ from . import turn as turn_mod
 from .client import AgenticLLM
 from .compaction import compact
 from .protocol import (
+    NOTHING_LANDED,
     PROMPT_EXCEEDS_WINDOW,
     STAGE_BRIEF_HEADER,
     WORKFLOW_OVERVIEW,
@@ -769,7 +770,8 @@ class ReactLoop:
             json.dumps(args, ensure_ascii=False)[:200],
             json.dumps(section, ensure_ascii=False)[:200])
         self._compact(turn, step, section)
-        if fanout.progress_mark(step, self.state) == before:
+        moved = fanout.progress_mark(step, self.state) != before
+        if not moved:
             self._charge(step, self._artifacts_of(step, section))
         if self.graph_mode and not self._state_reads.get(step.name):
             self.stats["blind_submits"] += 1      # see ToolLoop._handle_submit
@@ -781,6 +783,16 @@ class ReactLoop:
             self._close_stage(step)
             self._answer(turn, self._closed_note(step))
             return "return" if len(self._done_set) == len(STEPS) else "continue"
+        if not moved and self._repairing != step.name:
+            # Never "COMMITTED" for a submit that landed nothing, as the stage
+            # loop answers a re-send "ALREADY COMMITTED" and a Developer's
+            # empty instalment "NOTHING NEW". MEASURED (run t1
+            # 20261011_163858): items written for a module whose work set was
+            # full were trimmed, answered COMMITTED, and written again until
+            # the stage closed owing the other modules.
+            self._answer(turn, NOTHING_LANDED.format(stage=step.name)
+                         + self._commission(step))
+            return "continue"
         self._done_set = self._done()
         self._offer_contract()
         self._live_specs = self._bound_specs()
