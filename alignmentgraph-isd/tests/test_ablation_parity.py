@@ -231,3 +231,27 @@ def test_i4_a_task_takes_its_stated_count_whichever_set_writes_into_it():
             {"task_id": "AT-02", "aligned_objective": "ILO-01", "question": "q5"}]
     kept, dropped = dev_plans.within_task_counts(work_set, sent, held)
     assert [i["question"] for i in kept] == ["q4", "q5"] and dropped == 1
+
+
+@pytest.mark.parametrize("substrate", ["graph", "prose"])
+def test_i5_an_empty_submit_is_written_again_for_the_set_a_developer_holds(substrate):
+    """Pass 2 for a submit that carried no item is tightened by the first owed
+    work set, so it names only that set's tasks — the schema the Developer
+    holding that set decodes under (C5). Left untightened it wrote for the
+    first, already full, task again (MEASURED, run t1 20261011_171005)."""
+    from alignmentgraph_isd.core.agentic import grammar, tools
+
+    state = _design(substrate)
+    single = react.ReactLoop(HarnessRunConfig(llm_factory=lambda: None), state,
+                             TrajectoryLogger(), load_brief("minimal_brief.json"))
+    step = STEP["assessment"]
+    params = tools.spec_parameters(
+        tools.react_specs(STEPS, frozenset(), current="assessment",
+                          open_fields=("assessment_tools",)), "submit_assessment")
+    by_single = single._pass_params(step, {}, params)
+    work_set, _output, _left = fanout.owed_sets("assessment", state)[0]
+    by_developer = grammar.tighten_parameters(
+        params, grammar.Vocabulary.of(state), work_set=work_set)
+    task_ids = lambda p: p["properties"]["assessment_tools"]["items"]["properties"]["task_id"]["enum"]  # noqa: E731
+    assert task_ids(by_single) == task_ids(by_developer)
+    assert set(task_ids(by_single)) == {t["id"] for t in work_set.payload["sets"]}

@@ -312,9 +312,13 @@ def _assessment_plan(base: dict, vocab: Vocabulary, work_set) -> dict:
 
 def _assessment_tools(base: dict, vocab: Vocabulary, work_set) -> dict:
     props = base["properties"]
+    # A set's items belong to the set's own tasks: an item naming another task
+    # is filed there and counted against a set it was not written for.
+    own = tuple(str(t.get("id")) for t in ((work_set.payload.get("sets") if work_set else None)
+                                           or []) if isinstance(t, dict) and t.get("id"))
     return _with(base,
                  aligned_objective=_ref(props["aligned_objective"], vocab.objectives),
-                 task_id=_ref(props["task_id"], vocab.task_ids))
+                 task_id=_ref(props["task_id"], own or vocab.task_ids))
 
 
 def _learning_activities(base: dict, vocab: Vocabulary, work_set):

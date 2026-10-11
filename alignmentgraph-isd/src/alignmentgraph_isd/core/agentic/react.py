@@ -890,32 +890,43 @@ class ReactLoop:
                 + (("\n\nAfter those:\n" + "\n".join(tail)) if tail else ""))
 
     def _pass_params(self, step, args: dict, params: dict) -> dict:
-        """The schema pass 2 decodes under: the bound tool's, tightened by the
-        work set the submit's items all belong to when they belong to one —
-        the set's count as what it still owes, its module as a constant — as a
-        Developer's pass 2 is (C5). Items of several sets, or none, leave the
-        bound schema as it is."""
+        """The schema pass 2 decodes under: the bound tool's, tightened by ONE
+        owed work set — the set's count as what it still owes, its tasks or
+        module as the only ones to name — as a Developer's pass 2 is (C5).
+
+        The set is the one the submit's items all belong to while it still has
+        room; otherwise the first set the commission lists. Left untightened,
+        a pass for an empty submit, or for items naming a full unit, wrote
+        for the first unit again and landed nothing (MEASURED, run t1
+        20261011_171005: three accepted passes, every item trimmed)."""
         spec = fanout.SPECS.get(step.name)
         if spec is None:
             return params
+        owed = fanout.owed_sets(step.name, self.state)
+        target = None
         for output in spec.outputs:
             items = (args or {}).get(output.schema_key)
             if not isinstance(items, list) or not items:
                 continue
             routed = fanout.route_items(step.name, self.state, output, items)
-            if len(routed) != 1 or routed[0][0] is None:
-                return params
-            work_set = routed[0][0]
-            left = fanout.remaining(self.state, output, work_set)
-            quota_key = dev_plans._QUOTA_KEY.get(output.schema_key)
-            if quota_key and left:
-                work_set = dataclasses.replace(
-                    work_set, payload={**work_set.payload, quota_key: left})
-            return grammar.tighten_parameters(
-                params, grammar.Vocabulary.of(
-                    self.state, course_hours=duration_hours(self.design_brief)),
-                work_set=work_set)
-        return params
+            if len(routed) == 1 and routed[0][0] is not None:
+                mine = routed[0][0].set_id
+                target = next(((ws, o, left) for ws, o, left in owed
+                               if ws.set_id == mine and o is output), None)
+            break
+        if target is None and owed:
+            target = owed[0]
+        if target is None:
+            return params
+        work_set, output, left = target
+        quota_key = dev_plans._QUOTA_KEY.get(output.schema_key)
+        if quota_key and left:
+            work_set = dataclasses.replace(
+                work_set, payload={**work_set.payload, quota_key: left})
+        return grammar.tighten_parameters(
+            params, grammar.Vocabulary.of(
+                self.state, course_hours=duration_hours(self.design_brief)),
+            work_set=work_set)
 
     def _closed_note(self, step) -> str:
         """The answer to a submit to a closed stage, saying where to go next."""
