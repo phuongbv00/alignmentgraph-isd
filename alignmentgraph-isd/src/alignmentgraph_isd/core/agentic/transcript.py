@@ -551,12 +551,77 @@ def trim_history(messages: list, budget: int = HISTORY_CHAR_BUDGET,
     # whatever answered it. Below that there is nothing left to trim.
     while len(body) > 2 and size(head + note + body) > target:
         dropped.append(body.pop(0))
+    # What is left can still be over the budget when a CALL is the bulk of it:
+    # a submit may be as long as the completion cap, and the prompt budget is
+    # the window minus that same cap, so the turn after a refused full-length
+    # submit could never be sent — MEASURED (run t1 20261011_163858, a
+    # Developer's 13 items with rubrics): four 400s, the set given up. The
+    # call and its answer stay paired; only its arguments are cut, oldest
+    # first, and the harness already holds what it needs of them (what landed
+    # is committed, a refused artifact's parts are kept by ``turn.keep_fields``).
+    if size(head + note + body) > budget:
+        for index, message in enumerate(body):
+            if size(head + note + body) <= budget:
+                break
+            if _call_chars(message) > ELIDE_CALL_CHARS:
+                body[index] = _elided(message)
     # The dropped run is CONTIGUOUS and starts right after the system turn,
     # which is what lets a caller rebuild the whole conversation in order as
     # `[system] + everything dropped so far + what is left`. Nothing has to
     # record positions, and the compacted part of a transcript can be shown
     # where it actually happened rather than as a count.
     return head + note + body, dropped
+
+
+#: A tool call whose arguments run past this many characters may have them
+#: cut by ``trim_history`` when nothing else is left to drop.
+ELIDE_CALL_CHARS = 2000
+
+#: What a cut call carries in place of its arguments.
+ELIDED_ARGUMENTS = ("[arguments of this call were cut to fit the context window: "
+                    "{n} characters, already answered below]")
+
+
+def _calls_of(message: object) -> list:
+    if isinstance(message, dict):
+        return list(message.get("tool_calls") or [])
+    return list(getattr(message, "tool_calls", None) or [])
+
+
+def _call_chars(message: object) -> int:
+    calls = _calls_of(message)
+    if not calls:
+        return 0
+    try:
+        return len(json.dumps(calls, ensure_ascii=False, default=str))
+    except (TypeError, ValueError):
+        return len(str(calls))
+
+
+def _elided(message: object) -> object:
+    """``message`` with each tool call's arguments replaced by a note, ids and
+    names untouched so every answer still pairs with its call."""
+    def cut(call: dict) -> dict:
+        call = dict(call)
+        if isinstance(call.get("function"), dict):
+            raw = call["function"].get("arguments")
+            n = len(raw if isinstance(raw, str) else json.dumps(raw, default=str))
+            call["function"] = {**call["function"], "arguments": json.dumps(
+                {"_note": ELIDED_ARGUMENTS.format(n=n)})}
+        else:
+            n = len(json.dumps(call.get("args"), ensure_ascii=False, default=str))
+            call["args"] = {"_note": ELIDED_ARGUMENTS.format(n=n)}
+        return call
+
+    calls = [cut(c) if isinstance(c, dict) else c for c in _calls_of(message)]
+    if isinstance(message, dict):
+        return {**message, "tool_calls": calls, "arguments_elided": True}
+    extra = {k: v for k, v in (getattr(message, "additional_kwargs", None) or {}).items()
+             if k != "tool_calls"}
+    try:
+        return message.model_copy(update={"tool_calls": calls, "additional_kwargs": extra})
+    except AttributeError:
+        return message
 
 
 def append_assistant(messages: list, turn) -> None:
