@@ -1422,6 +1422,16 @@ def _deposit_sets(spec: FanoutSpec, state, trajectory, work_sets: list,
                         ORCHESTRATOR, "excess_artifacts_trimmed", work_set.set_id,
                         f"{output.schema_key}: kept {len(items)} of {len(items) + dropped} "
                         "— the set's assignment stated the count")
+                if output.schema_key == "assessment_tools":
+                    pool = (_pool(state, output) if hasattr(state, "element_nodes")
+                            else state.items(*output.doc_key))
+                    items, over = dev_plans.within_task_counts(
+                        work_set, items, [one for one in (pool or ()) if isinstance(one, dict)])
+                    if over:
+                        trajectory.log_recovery_event(
+                            ORCHESTRATOR, "excess_artifacts_trimmed", work_set.set_id,
+                            f"assessment_tools: dropped {over} past their task's stated "
+                            "item count")
             held.append({"set_id": payload.get("set_id", ""), "items": items})
         merged = dev_plans.remap_and_tag(
             work_sets, held,

@@ -1687,6 +1687,45 @@ def without_repeats(schema_key: str, items: list, *, beside: list | None = None)
     return out
 
 
+def within_task_counts(work_set: WorkSet, items: list, pool: list) -> tuple[list, int]:
+    """Hold each assessment TASK to the items it states, across every set and
+    round that writes into it: ``(kept, dropped)``.
+
+    A work set's quota is the sum over its tasks, so one set that groups two
+    tasks (both summative on one objective) could fill one task with all of
+    it and leave the other empty — MEASURED (run t1 20261011_163858): 19
+    items in a task that states 13, none in its sibling — and a re-dispatched
+    set, quota whole again, wrote past the task it was sent to complete. An
+    item is kept while its task is short of its count, or when it is the first
+    for an objective that task holds no item for (what a re-dispatch exists to
+    add). ``pool`` is what the design already holds."""
+    totals = {_bare(t.get("id")): (_set_total(t) or TASK_ITEMS_FLOOR)
+              for t in (work_set.payload.get("sets") or []) if isinstance(t, dict)}
+    if not totals:
+        return items, 0
+    counts: dict[str, int] = {}
+    covered: set[tuple[str, str]] = set()
+    for one in pool:
+        if isinstance(one, dict):
+            task = _bare(one.get("task_id"))
+            counts[task] = counts.get(task, 0) + 1
+            covered.add((task, _bare(one.get("aligned_objective"))))
+    kept, dropped = [], 0
+    for item in items:
+        task = _bare(item.get("task_id")) if isinstance(item, dict) else ""
+        if task not in totals:
+            kept.append(item)
+            continue
+        objective = _bare(item.get("aligned_objective"))
+        if counts.get(task, 0) < totals[task] or (task, objective) not in covered:
+            kept.append(item)
+            counts[task] = counts.get(task, 0) + 1
+            covered.add((task, objective))
+        else:
+            dropped += 1
+    return kept, dropped
+
+
 def trim_to_quota(work_set: WorkSet, schema_key: str, items: list,
                   held: list | None = None) -> tuple[list, int]:
     """Hold a set to the count its assignment stated: ``(kept, dropped)``.

@@ -213,3 +213,21 @@ def test_i7_each_held_constant_rule_has_one_implementation():
         assert retired not in single, retired
     assert not hasattr(budget, "SUBMIT_CAP")
     assert turn.SubmitBudget().limit == budget.SUBMIT_BUDGET == loop.ToolLoop.SUBMIT_BUDGET
+
+
+def test_i4_a_task_takes_its_stated_count_whichever_set_writes_into_it():
+    """A set grouping two tasks of one pair, or a re-dispatched set with its
+    quota whole again, cannot fill a task past what it states (MEASURED, run t1
+    20261011_163858: 19 items in a task stating 13, none in its sibling). The
+    first item for an objective the task holds nothing for is still kept — the
+    gap a re-dispatch is sent to close."""
+    work_set = dev_plans.WorkSet(set_id="AS-AT-01", payload={"sets": [
+        {"id": "AT-01", "item_counts": {"short_answer": 2}},
+        {"id": "AT-02", "item_counts": {"short_answer": 2}}]})
+    held = [{"task_id": "AT-01", "aligned_objective": "ILO-01", "question": "q1"},
+            {"task_id": "AT-01", "aligned_objective": "ILO-01", "question": "q2"}]
+    sent = [{"task_id": "AT-01", "aligned_objective": "ILO-01", "question": "q3"},
+            {"task_id": "AT-01", "aligned_objective": "ILO-04", "question": "q4"},
+            {"task_id": "AT-02", "aligned_objective": "ILO-01", "question": "q5"}]
+    kept, dropped = dev_plans.within_task_counts(work_set, sent, held)
+    assert [i["question"] for i in kept] == ["q4", "q5"] and dropped == 1
