@@ -255,3 +255,34 @@ def test_i5_an_empty_submit_is_written_again_for_the_set_a_developer_holds(subst
     task_ids = lambda p: p["properties"]["assessment_tools"]["items"]["properties"]["task_id"]["enum"]  # noqa: E731
     assert task_ids(by_single) == task_ids(by_developer)
     assert set(task_ids(by_single)) == {t["id"] for t in work_set.payload["sets"]}
+
+
+@pytest.mark.parametrize("substrate", ["graph", "prose"])
+def test_i5_a_plan_that_drops_a_task_holding_items_is_refused_on_both_arms(substrate):
+    """A resubmitted plan that renames a task holding items would orphan them
+    (MEASURED, run t1 20261012_090924: 36 items, then filed under the wrong
+    task). Both arms' validators refuse it with the same error."""
+    import copy
+
+    from test_agentic_loop import _ASSESSMENT
+
+    from alignmentgraph_isd.core.agentic.client import AgenticLLM
+
+    state = _design(substrate)
+    spec = fanout.SPECS["assessment"]
+    work_set = fanout.derived_sets("assessment", state)[0]
+    item = dict(_ASSESSMENT["assessment_tools"][0], task_id="AT-01")
+    fanout.commit_sets(spec, state, TrajectoryLogger(), [work_set],
+                       [{"set_id": work_set.set_id, "assessment_tools": [item]}])
+    plan = copy.deepcopy(_ASSESSMENT["assessment_plan"])
+    plan["sets"][0]["assessment_tasks"][0]["id"] = "AT-0101"
+    section = {"assessment_plan": plan}
+
+    config = HarnessRunConfig(llm_factory=lambda: None)
+    step, log = STEP["assessment"], TrajectoryLogger()
+    multi = loop.ToolLoop(config, state, log, load_brief("minimal_brief.json"), step,
+                          AgenticLLM(config, log, step.identity))
+    single = react.ReactLoop(config, state, log, load_brief("minimal_brief.json"))
+    by_multi = [e for e in multi._validate(section) if "drops task" in e]
+    by_single = [e for e in single._validate(step, section) if "drops task" in e]
+    assert by_multi and by_multi == by_single

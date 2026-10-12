@@ -53,7 +53,7 @@ Cột **Hiện trạng**:
 | C8 | Bỏ artifact trùng | `_deposit_sets`: `without_repeats` trên cả pool | như multi | chung | đạt |
 | C9 | Đường commit item | `fanout.commit_sets` theo work set thật | `route_items` rồi `commit_sets` vào đúng work set dẫn xuất | chung | đạt |
 | C10 | "Còn nợ gì" (instalment, owes) | `AgenticStep.owes` + `keep_items` cho Developer | `missing_parts` + `fanout.owed_sets` | chung (`fanout.remaining`) | đạt |
-| C11 | Ngân sách submit | `turn.SubmitBudget` mỗi artifact | `turn.SubmitBudget` mỗi `<stage>.<artifact>` | chung | đạt |
+| C11 | Ngân sách submit | `turn.SubmitBudget` mỗi artifact của mỗi Developer (tức mỗi work set) | `turn.SubmitBudget` mỗi artifact của stage, và mỗi item list theo từng work set (`<key> for <set>`) | chung | đạt |
 | C12 | Định nghĩa "tiến triển" | `fanout.progress_mark` | `fanout.progress_mark` | chung | đạt |
 | C13 | Khi nào stage xong | `step_done` + `dispatch_done` + Developer xong | `step_done` + `missing_outputs` rỗng | chép (cùng đọc `fanout.remaining`) | giữ, có test |
 | C14 | Regen khi stage ra rỗng | `regen_budget` (stage và Developer) | không có | đã chuyển | Xếp vào §2 (D7) |

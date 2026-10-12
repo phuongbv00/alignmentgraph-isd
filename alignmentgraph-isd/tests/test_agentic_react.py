@@ -726,8 +726,11 @@ def test_the_multi_arm_gives_a_stage_up_the_same_way():
 import pytest as _pytest
 
 
+STEPS_BY_NAME = {s.name: s for s in STEPS}
+
+
 @_pytest.mark.parametrize("graph_mode", [True, False])
-def test_progress_is_never_charged_and_piling_on_one_task_is(graph_mode):
+def test_progress_is_never_charged_and_piling_on_one_task_closes_its_sets(graph_mode):
     """MEASURED (run t1 20261006_091626, train_1): both single arms wrote the
     assessment items one per submit, every one committed, and a per-stage cap
     closed the stage still owing two tasks' items. A submit that adds an item
@@ -783,14 +786,18 @@ def test_progress_is_never_charged_and_piling_on_one_task_is(graph_mode):
     assert len({dev_plans.same_artifact_key("assessment_tools", one) for one in held}) == total
     # ...every item up to it was accepted without a charge...
     assert loop.stats["submits_per_stage"]["assessment"] > budget.SUBMIT_BUDGET
-    # ...and piling past it closes the stage, which still owes the other tasks.
-    assert "assessment" in loop.stats["abandoned_stages"]
+    # ...and piling past it closes AT-01's sets — each set holds its own
+    # budget, as each Developer does — while the stage stays open for the
+    # other tasks it still owes.
+    assert "assessment" not in loop.stats["abandoned_stages"]
+    assert all(loop._closed(STEPS_BY_NAME["assessment"], f"assessment_tools for {ws.set_id}")
+               for ws in mine if fanout.remaining(state, output, ws) == 0)
     # A pile that landed nothing is told so, never "COMMITTED" (MEASURED, run
     # t1 20261011_163858: trimmed items answered COMMITTED and resent).
     answers = [str(m.get("original_content") or m.get("content"))
                for m in list(loop.compacted) + list(loop.messages)
                if isinstance(m, dict) and m.get("role") == "tool"]
-    assert sum("NOTHING LANDED" in a for a in answers) == budget.SUBMIT_BUDGET - 1
+    assert sum("NOTHING LANDED" in a for a in answers) >= budget.SUBMIT_BUDGET - 1
 
 
 def test_the_commissioned_work_is_the_same_on_both_substrates():

@@ -208,28 +208,57 @@ class ReactLoop:
         #: never as written.
         self._abandoned: set[str] = set()
 
-    def _artifacts_of(self, step, args: dict) -> tuple[str, ...]:
-        """The artifacts a submit to ``step`` carried, by their declared keys;
-        an unreadable submit is charged to the first one offered — the one
-        the bound schema asked for."""
+    def _targets(self, step, args: dict, keys: tuple[str, ...] | None = None) -> tuple[str, ...]:
+        """The budget entries a submit to ``step`` is charged to.
+
+        A stage's own artifact is one entry, by its key. An item list is one
+        entry PER WORK SET its items go to (``"<key> for <set>"``, the entries
+        ``_owed`` lists): the multi arm gives each set's Developer its own
+        ``SUBMIT_BUDGET``, so a stage-wide count let three refusals in one set
+        close every set of the stage (MEASURED, run t1 20261012_090924:
+        assessment closed in 17 of 20 single-arm runs). Items routed to no set,
+        or an unreadable submit, are charged to the first open entry — the set
+        the commission names first."""
         declared = {key for key, _t, _r in step.submit_fields}
         spec = fanout.SPECS.get(step.name)
-        declared |= {o.schema_key for o in spec.outputs} if spec is not None else set()
-        carried = tuple(k for k in (args or {}) if k in declared)
-        return carried or self._open_fields(step)[:1] or (step.name,)
+        outputs = {o.schema_key: o for o in spec.outputs} if spec is not None else {}
+        declared |= set(outputs)
+        carried = keys if keys is not None else tuple(k for k in (args or {}) if k in declared)
+        out: list[str] = []
+        for key in carried:
+            output = outputs.get(key)
+            if output is None:
+                out.append(key)
+                continue
+            items = (args or {}).get(key)
+            routed = (fanout.route_items(step.name, self.state, output, items)
+                      if isinstance(items, list) and items else [])
+            sets = [ws.set_id for ws, _mine in routed if ws is not None]
+            out += [f"{key} for {set_id}" for set_id in sets] or [
+                self._first_open(step, key) or key]
+        if not out:
+            out.append(self._first_open(step) or step.name)
+        return tuple(dict.fromkeys(out))
 
-    def _charge(self, step, artifacts: tuple[str, ...]) -> None:
-        for artifact in artifacts:
-            self._budget.charge(f"{step.name}.{artifact}")
+    def _first_open(self, step, key: str | None = None) -> str:
+        """The first entry ``step`` still owes whose budget is not spent."""
+        for entry in self._owed(step):
+            if (key is None or entry.split(" for ", 1)[0] == key) and not self._closed(step, entry):
+                return entry
+        return ""
 
-    def _closed(self, step, artifact: str) -> bool:
-        return self._budget.closed(f"{step.name}.{artifact}")
+    def _charge(self, step, entries: tuple[str, ...]) -> None:
+        for entry in entries:
+            self._budget.charge(f"{step.name}.{entry}")
+
+    def _closed(self, step, entry: str) -> bool:
+        return self._budget.closed(f"{step.name}.{entry}")
 
     def _spent_out(self, step) -> bool:
-        """Every artifact ``step`` still owes has spent its budget: the stage
-        can take nothing more from this agent."""
-        owed = {entry.split(" for ", 1)[0] for entry in self._owed(step)}
-        return bool(owed) and all(self._closed(step, key) for key in owed)
+        """Every entry ``step`` still owes has spent its budget: the stage can
+        take nothing more from this agent."""
+        owed = self._owed(step)
+        return bool(owed) and all(self._closed(step, entry) for entry in owed)
 
     @property
     def _history_budget(self) -> int:
@@ -260,9 +289,12 @@ class ReactLoop:
         yet written. What has landed is not offered again — a repair is the
         one time it is, through the empty tuple ``react_specs`` reads as
         "everything, nothing required"."""
-        owed = {entry.split(" for ", 1)[0] for entry in self._owed(step)}
+        entries = self._owed(step)
+        owed = {entry.split(" for ", 1)[0] for entry in entries}
         if not owed:
             return ()
+        open_keys = {entry.split(" for ", 1)[0] for entry in entries
+                     if not self._closed(step, entry)}
         declared = tuple(key for key, _type, _required in step.submit_fields)
         spec = fanout.SPECS.get(step.name)
         declared += tuple(o.schema_key for o in spec.outputs) if spec is not None else ()
@@ -281,8 +313,7 @@ class ReactLoop:
         optional = tuple(key for key in optional if not self._closed(step, key))
         if own:
             return own + optional
-        return tuple(key for key in declared
-                     if key in owed and not self._closed(step, key)) + optional
+        return tuple(key for key in declared if key in open_keys) + optional
 
     def _done(self) -> frozenset:
         """Stages no longer open: the finished ones and the closed ones."""
@@ -470,6 +501,7 @@ class ReactLoop:
                 f"({', '.join(dispatch_keys + item_keys)})"]
         if any(k in present for k in dispatch_keys):
             errors += list(step.validate(section))
+            errors += fanout.held_task_errors(self.state, section)
         if spec is not None:
             # The SAME item rules a Developer's submit is held to
             # (`fanout.output_errors`), because this agent is writing exactly
@@ -701,7 +733,7 @@ class ReactLoop:
         spec_now = fanout.SPECS.get(step.name)
         declared |= {o.schema_key for o in spec_now.outputs} if spec_now is not None else set()
         named = [k for k in (args or {}) if k in declared]
-        if named and all(self._closed(step, k) for k in named):
+        if named and all(self._closed(step, e) for e in self._targets(step, args, tuple(named))):
             # An artifact whose budget is spent is no longer taken, as the
             # stage loop unbinds its submit: the call is answered, never
             # judged or charged again.
@@ -730,12 +762,12 @@ class ReactLoop:
                 section, args, unreadable = passed
                 self._pending_note, errors = turn_mod.constrained_note(errors), []
         if errors:
-            carried = self._artifacts_of(step, args)
+            carried = tuple(k for k in (args or {}) if k in declared)
             # Charged to the artifact the errors NAME: a submit that carries
             # six artifacts and is refused for one empty field costs that one,
             # as the stage loop's per-artifact submits do.
             named = tuple(a for a in carried if any(a in e for e in errors))
-            self._charge(step, named or carried)
+            self._charge(step, self._targets(step, args, named or None))
             turn_mod.note_submit_rejected(
                 step.name, turn, args, errors, stats=self.stats,
                 trajectory=self.trajectory, identity=self.identity)
@@ -757,6 +789,7 @@ class ReactLoop:
             unreadable, stats=self.stats, trajectory=self.trajectory,
             identity=self.identity)
         before = fanout.progress_mark(step, self.state)
+        targets = self._targets(step, section)
         self._commit(step, section)
         # Judge-visible, like the multi arm's `design_<stage>`: the
         # BFCL trajectory score reads `tool_calls`, so a submit that is
@@ -772,7 +805,7 @@ class ReactLoop:
         self._compact(turn, step, section)
         moved = fanout.progress_mark(step, self.state) != before
         if not moved:
-            self._charge(step, self._artifacts_of(step, section))
+            self._charge(step, targets)
         if self.graph_mode and not self._state_reads.get(step.name):
             self.stats["blind_submits"] += 1      # see ToolLoop._handle_submit
         self.stats["submits_per_stage"][step.name] = (
@@ -902,7 +935,8 @@ class ReactLoop:
         spec = fanout.SPECS.get(step.name)
         if spec is None:
             return params
-        owed = fanout.owed_sets(step.name, self.state)
+        owed = [(ws, o, left) for ws, o, left in fanout.owed_sets(step.name, self.state)
+                if not self._closed(step, f"{o.schema_key} for {ws.set_id}")]
         target = None
         for output in spec.outputs:
             items = (args or {}).get(output.schema_key)

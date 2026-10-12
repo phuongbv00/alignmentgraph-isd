@@ -250,6 +250,9 @@ def respec(messages: list, step, brief: str) -> str:
 #: Which agent-facing protocol a run spoke, recorded in
 #: ``metadata.run_config`` so that runs on either side of a change to the
 #: tools an agent is bound or to how a stage ends are never pooled by mistake.
+#: 25 = the single arm's submit budget is held per work set, as each
+#: Developer holds its own; identical calls in one reply run once; a plan
+#: may not drop a task that already holds items (both arms).
 #: 24 = the single arm's constrained pass is tightened by the first owed work
 #: set when its items name none with room, and a set's items may name only
 #: that set's own tasks (both arms).
@@ -314,7 +317,7 @@ def respec(messages: list, step, brief: str) -> str:
 #: each item's objective, type and cognitive level and each activity's
 #: objective and level, the mode states a material's depth, and the pilot
 #: data plan names its collection points in words.
-PROTOCOL_REV = 24
+PROTOCOL_REV = 25
 
 #: The answer to a repeated read whose result is unchanged — ONE wording for
 #: both arms, and only ever said when it is true (``turn.answer_read`` has

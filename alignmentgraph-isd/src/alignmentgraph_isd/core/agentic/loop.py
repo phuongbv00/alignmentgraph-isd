@@ -259,7 +259,8 @@ class ToolLoop:
         the TRANSPORT rather than of any one artifact's contract, so it is
         composed here and is the same for every step. A field the artifact
         does not declare is NOT a fault: it is kept (``artifact_schemas._obj``)."""
-        return list(self.step.validate(section)) + protocol_leak_errors(section)
+        return (list(self.step.validate(section)) + protocol_leak_errors(section)
+                + fanout.held_task_errors(self.state, section))
 
     # ── prompt assembly ─────────────────────────────────────────────────────
     def _retrieval_available(self) -> bool:

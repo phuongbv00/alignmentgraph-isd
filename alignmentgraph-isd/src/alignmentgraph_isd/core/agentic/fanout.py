@@ -1044,6 +1044,34 @@ def _tasks_with_items(store) -> list[dict]:
                        if isinstance(i, dict)])
 
 
+def held_task_errors(state, section: dict) -> list[str]:
+    """An assessment plan may not drop a task that already holds items.
+
+    Its items would lose the task they are filed under: MEASURED (run t1
+    20261012_090924), a plan resubmitted with renamed tasks orphaned 36 items,
+    which the prose join then filed under the first task (54 against 3). The
+    rule reads the design, not who submitted: the multi arm's Designer closes
+    its plan before any item exists, so it is the single agent that meets it."""
+    plan = (section or {}).get("assessment_plan")
+    if state is None or not isinstance(plan, dict) or "sets" not in plan:
+        return []
+    if hasattr(state, "element_nodes"):
+        held = {dev_plans._bare((n.get("data") or {}).get("id"))
+                for n in state.element_nodes(NodeType.ASSESSMENT)
+                if (n.get("data") or {}).get("items")}
+    else:
+        held = {dev_plans._bare(i.get("task_id"))
+                for i in (state.items("assessment", "assessment_tools") or [])
+                if isinstance(i, dict) and i.get("task_id")}
+    kept = {dev_plans._bare(t.get("id")) for t in dev_plans.plan_tasks(plan)}
+    gone = sorted(t for t in held - kept if t)
+    if not gone:
+        return []
+    return [f"assessment_plan drops task(s) {', '.join(gone)}, which already hold items: "
+            "keep every task that has items, under the same id, and change only what "
+            "the plan still lacks"]
+
+
 def dispatch_payload(state, spec) -> dict:
     """What the dispatch hop left behind, in the shape ``plan_sets`` expects.
 
