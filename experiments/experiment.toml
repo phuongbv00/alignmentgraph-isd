@@ -30,7 +30,7 @@ slot = "qwen2b"
 model = "Qwen/Qwen3.5-2B"
 family = "Qwen3.5"
 display = "2B"
-base_urls = ["https://ikiarxtb7cppzc-8000.proxy.runpod.net/v1"]
+base_urls = ["https://2b6hk5xymih4sx-8000.proxy.runpod.net/v1"]
 key_env = "VLLM_API_KEY"
 
 [[serving.slots]]
@@ -103,13 +103,18 @@ models = [# in the order the evaluator reports them
 #              | tfidf | transformer (Bloom checkpoint) | lexicon
 #   macro      LaTeX word form (no digits);  short  label in tables/figures
 #   revision   optional HF commit; part of the embedding-cache key
+#
+# REV-ECIT 2026 light frame: the served Nemotron encoder is dropped and bge-m3
+# (local) is primary. The full-study lines are kept commented as `# [full]`.
 [judge.alignment]
-primary_encoder = "nemotron"
+# [full] primary_encoder = "nemotron"
+primary_encoder = "bgem3"
 primary_bloom = "bertbloom"
 
 [judge.alignment.encoders]
-nemotron = { kind = "api", model = "nvidia/llama-embed-nemotron-8b", suffix = "", macro = "Nemotron", short = "Nemotron", base_urls = ["https://<POD_ID>-8000.proxy.runpod.net/v1"] }
-bgem3 = { kind = "local", model = "BAAI/bge-m3", suffix = "bgem3", macro = "BgeMThree", short = "bge-m3" }
+# [full] nemotron = { kind = "api", model = "nvidia/llama-embed-nemotron-8b", suffix = "", macro = "Nemotron", short = "Nemotron", base_urls = ["https://<POD_ID>-8000.proxy.runpod.net/v1"] }
+# [full] bgem3 = { kind = "local", model = "BAAI/bge-m3", suffix = "bgem3", macro = "BgeMThree", short = "bge-m3" }
+bgem3 = { kind = "local", model = "BAAI/bge-m3", suffix = "", macro = "BgeMThree", short = "bge-m3" }
 granite = { kind = "local", model = "ibm-granite/granite-embedding-311m-multilingual-r2", suffix = "granite", macro = "Granite", short = "granite" }
 tfidf = { kind = "tfidf", model = "tfidf-char-ngram", suffix = "tfidf", macro = "Tfidf", short = "TF-IDF" }
 
@@ -146,10 +151,15 @@ agents = [
     "react-isd",
 ]
 
+# REV-ECIT 2026 light frame: one rung (2B), the 30 held-out scenarios, one run
+# per cell, for both experiments. The full-study lines are kept as `# [full]`.
 [experiment.comparison]
-title = "COMPARISON - proposed system vs baselines across model scale"
-dataset = "test_90"
-slots = ["qwen08b", "qwen2b", "qwen4b", "qwen9b"]
+# [full] title = "COMPARISON - proposed system vs baselines across model scale"
+# [full] dataset = "test_90"
+# [full] slots = ["qwen08b", "qwen2b", "qwen4b", "qwen9b"]
+title = "COMPARISON (REV-ECIT 2026) - proposed system vs baselines, 2B"
+dataset = "test_30"
+slots = ["qwen2b"]
 tags = ["c1"]
 rate_limit = "turbo"
 session_prefix = "comparison"
@@ -167,10 +177,13 @@ agents = [
 [experiment.ablation]
 # 2x2 decomposition x substrate. The reference arm runs here too, so every
 # delta comes from one run.
-title = "ABLATION - decomposition x substrate"
+# [full] title = "ABLATION - decomposition x substrate"
+# [full] slots = ["qwen08b", "qwen4b"]          # both ends of the deployment envelope
+# [full] tags = ["a1", "a2", "a3"]              # three independent runs per cell (Sprint 2)
+title = "ABLATION (REV-ECIT 2026) - decomposition x substrate, 2B"
 dataset = "test_30"
-slots = ["qwen08b", "qwen4b"]          # both ends of the deployment envelope
-tags = ["a1", "a2", "a3"]              # three independent runs per cell (Sprint 2)
+slots = ["qwen2b"]
+tags = ["a1"]
 rate_limit = "turbo"
 session_prefix = "ablation"
 reference = "alignmentgraph-isd"
