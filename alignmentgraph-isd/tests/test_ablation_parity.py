@@ -286,3 +286,21 @@ def test_i5_a_plan_that_drops_a_task_holding_items_is_refused_on_both_arms(subst
     by_multi = [e for e in multi._validate(section) if "drops task" in e]
     by_single = [e for e in single._validate(step, section) if "drops task" in e]
     assert by_multi and by_multi == by_single
+
+
+def test_items_of_a_task_go_to_its_next_batch_once_a_batch_is_closed():
+    """A task written in batches is several work sets; on the multi arm each is
+    its own Developer. The single agent names the TASK, so routing must pass a
+    batch whose budget is spent, or the next batch is unreachable (MEASURED,
+    run t1 20261013_012331: AS-AT-01-02 never received an item)."""
+    work_sets = [dev_plans.WorkSet(set_id="AS-AT-01-01", payload={"sets": [{"id": "AT-01"}]}),
+                 dev_plans.WorkSet(set_id="AS-AT-01-02", payload={"sets": [{"id": "AT-01"}]})]
+    output = fanout.SPECS["assessment"].outputs[0]
+    import unittest.mock as mock
+    with mock.patch.object(fanout, "derived_sets", lambda stage, state: work_sets), \
+         mock.patch.object(fanout, "remaining", lambda state, output, ws: 3):
+        item = {"task_id": "AT-01", "question": "q"}
+        assert fanout.route_items("assessment", None, output, [item])[0][0].set_id == "AS-AT-01-01"
+        routed = fanout.route_items("assessment", None, output, [item],
+                                    frozenset({"AS-AT-01-01"}))
+        assert routed[0][0].set_id == "AS-AT-01-02"

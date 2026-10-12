@@ -231,7 +231,8 @@ class ReactLoop:
                 out.append(key)
                 continue
             items = (args or {}).get(key)
-            routed = (fanout.route_items(step.name, self.state, output, items)
+            routed = (fanout.route_items(step.name, self.state, output, items,
+                               self._closed_sets(step, output))
                       if isinstance(items, list) and items else [])
             sets = [ws.set_id for ws, _mine in routed if ws is not None]
             out += [f"{key} for {set_id}" for set_id in sets] or [
@@ -239,6 +240,11 @@ class ReactLoop:
         if not out:
             out.append(self._first_open(step) or step.name)
         return tuple(dict.fromkeys(out))
+
+    def _closed_sets(self, step, output) -> frozenset:
+        """The work sets of ``output`` whose budget this agent has spent."""
+        return frozenset(ws.set_id for ws in fanout.derived_sets(step.name, self.state)
+                         if self._closed(step, f"{output.schema_key} for {ws.set_id}"))
 
     def _first_open(self, step, key: str | None = None) -> str:
         """The first entry ``step`` still owes whose budget is not spent."""
@@ -954,7 +960,8 @@ class ReactLoop:
             items = (args or {}).get(output.schema_key)
             if not isinstance(items, list) or not items:
                 continue
-            routed = fanout.route_items(step.name, self.state, output, items)
+            routed = fanout.route_items(step.name, self.state, output, items,
+                               self._closed_sets(step, output))
             if len(routed) == 1 and routed[0][0] is not None:
                 mine = routed[0][0].set_id
                 target = next(((ws, o, left) for ws, o, left in owed
@@ -1118,7 +1125,8 @@ class ReactLoop:
             fanout.cap_module_minutes(
                 self.state, duration_hours(self.design_brief) * 60, self.trajectory)
         for key, (output, items) in items_by_output.items():
-            for work_set, mine in fanout.route_items(step.name, self.state, output, items):
+            for work_set, mine in fanout.route_items(step.name, self.state, output, items,
+                               self._closed_sets(step, output)):
                 if work_set is None:
                     self.trajectory.log_recovery_event(
                         ORCHESTRATOR, "items_without_set", f"{key}: {len(mine)}",

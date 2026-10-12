@@ -1172,13 +1172,16 @@ def progress_mark(step, state) -> str:
     return json.dumps([landed, counts], sort_keys=True, default=str)
 
 
-def route_items(stage: str, state, output: "SetOutput", items: list) -> list[tuple]:
+def route_items(stage: str, state, output: "SetOutput", items: list,
+                closed: frozenset = frozenset()) -> list[tuple]:
     """``[(work_set, items)]``: each artifact sent to the derived set it belongs
     to, by the unit it names — a task, a module, the ids a guide schedules.
     Among several sets of one unit (a task written in batches, a module's
     blocks), the first with room takes it; when none has room the first does,
     and the deposit's count then decides. An artifact naming no unit any set
-    holds goes to no set (``None``)."""
+    holds goes to no set (``None``). A set in ``closed`` takes nothing while
+    another set of the same unit is open: its batch is done, the next one is
+    where the unit's items now go."""
     sets = derived_sets(stage, state)
     room = {ws.set_id: remaining(state, output, ws) for ws in sets}
     buckets: dict[str, list] = {}
@@ -1210,6 +1213,7 @@ def route_items(stage: str, state, output: "SetOutput", items: list) -> list[tup
         if not isinstance(item, dict):
             continue
         cands = candidates(item)
+        cands = [ws for ws in cands if ws.set_id not in closed] or cands
         target = next((ws for ws in cands if room[ws.set_id] > 0), cands[0] if cands else None)
         key = target.set_id if target is not None else ""
         if key not in buckets:
