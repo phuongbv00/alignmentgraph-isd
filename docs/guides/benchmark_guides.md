@@ -296,19 +296,32 @@ không phải trục ablation** — xem `docs/paper/claim-rules.md`.
 
 ### 3.4 Tạo pod + khai endpoint
 
-Pod tạo thủ công trên console từ template public dùng chung cho cả 4 size:
-**<https://console.runpod.io/deploy?template=x4cakqmn77>**
+Pod tạo thủ công trên console, mỗi size một template riêng (private, cùng image `vllm/vllm-openai:v0.25.1`, CUDA
+13.0, port 8000/http, `HF_HOME=/workspace/huggingface`, secret `VLLM_API_KEY`); start command là đúng các flag mục 3.2
+với HF id ở token đầu:
 
-1. Deploy → chọn GPU theo bảng 3.1.
-2. Đổi model: sửa **token positional đầu tiên** của container start command thành HF id của slot. RunPod truyền start
-   command như Docker CMD thuần (không shell, không expand `$ENV`) nên **không đổi model bằng env var được**. Không sửa
-   flag phía sau.
-3. Auth đã đấu sẵn qua RunPod secret `VLLM_API_KEY` — đảm bảo secret trùng giá trị trong `.env`. Không cần `HF_TOKEN`.
-4. Chờ `GET https://<pod_id>-8000.proxy.runpod.net/v1/models` trả 401 (không key) / 200 (có key).
+| Template | id | Volume `/workspace` |
+|---|---|---|
+| `isd-agent-bench-qwen3.5-0.8b` | `ex6hawwuk4` | 10 GB |
+| `isd-agent-bench-qwen3.5-2b` | `lg1katctqn` | 10 GB |
+| `isd-agent-bench-qwen3.5-4b` | `c5mzc4rhzb` | 10 GB |
+| `isd-agent-bench-qwen3.5-9b` | `x4cakqmn77` | 20 GB |
+| `isd-agent-bench-embed-nemotron-8b` | `3i3er665bh` | 20 GB (thêm secret `HF_TOKEN`) |
 
-Storage: container 20GB + mỗi pod một network volume mount `/workspace` cho HF cache — weights sống sót qua restart.
+1. Deploy template của size cần chạy → chọn GPU theo bảng 3.1. Không sửa start command.
+2. Auth đã đấu sẵn qua RunPod secret `VLLM_API_KEY` — đảm bảo secret trùng giá trị trong `.env`.
+3. Chờ `GET https://<pod_id>-8000.proxy.runpod.net/v1/models` trả 401 (không key) / 200 (có key).
 
-5. Dán URL vào `[[serving.slots]]` tương ứng trong `experiment.toml`:
+Storage: container disk 5GB + volume `/workspace` theo bảng trên cho HF cache — weights sống sót qua restart.
+
+Các template này được khai báo trong `experiments/serving/runpod_templates.py` (API v2, stdlib, key lấy từ
+`RUNPOD_API_KEY` hoặc từ `~/.runpod/config.toml` do `runpodctl doctor` ghi; v2 đòi volume ≥ 10 GB); image, args, volume và GPU của từng size nằm ở `experiments/serving/ladder.py`, file mà
+`vastai_templates.py` cũng đọc, nên đổi một flag ở đó là đổi cả hai host. `--check` so với RunPod mà không ghi gì (exit 1 nếu
+lệch); `--apply` tạo template còn thiếu và chỉ PATCH các field lệch. Secret không nằm trong script: env của template
+ghi `{{ RUNPOD_SECRET_<TÊN> }}`, giá trị tạo một lần trong console (Settings → Secrets) **trước** khi `--apply`:
+script tra secret của tài khoản trước, và bỏ qua template nào tham chiếu secret chưa có.
+
+4. Dán URL vào `[[serving.slots]]` tương ứng trong `experiment.toml`:
 
 ```toml
 [[serving.slots]]
@@ -357,6 +370,26 @@ provider đã làm với nó.
 `./isd-exp audit preflight` (mục 6.1) kiểm đúng các URL vừa khai — 401 không key, 200 có key, model `/v1/models` trả
 về khớp `model` của rung — nên sai địa chỉ bị bắt trước khi tốn một đồng GPU nào. Endpoint là OpenAI-compatible nên
 thay một slot bằng hosted API chỉ là đổi URL.
+
+### 3.5 Chạy y như template trên một VPS GPU khác
+
+`experiments/serving/run-docker.sh` là các template ở mục 3.4, chạy ngoài RunPod bằng một lệnh: `docker run` image
+`vllm/vllm-openai:v0.25.1` (không build gì) với cùng env, cùng args theo đúng thứ tự (đã so: 5/5 khớp), rồi chờ tới khi
+`/v1/models` trả đúng model. Script tự chứa — chỉ cần copy một file đó lên VPS. Image CUDA 13.0 ⇒ host cần driver
+NVIDIA ≥ R580 + NVIDIA Container Toolkit.
+
+```bash
+export VLLM_API_KEY=...                  # trùng giá trị trong experiments/.env
+./run-docker.sh 2b                            # GPU 0, port 8000
+./run-docker.sh 9b --gpu 1 --port 8001
+./run-docker.sh nemotron --gpu 2 --port 8002  # encoder; export HF_TOKEN nếu cần
+./run-docker.sh stop 2b
+```
+
+Rung: `0.8b 2b 4b 9b nemotron`; container tên `isd-<rung>`, chạy lại thì thay container cũ. Weights cache trong volume
+`isd-hf-cache` dùng chung cho mọi rung trên host. **Một rung một GPU**: ghép hai rung lên một card thì độ trễ rung này
+phụ thuộc tải rung kia, tức một khác biệt nằm trên đúng trục ladder. Mở port ra internet thì đặt sau reverse proxy có
+TLS hoặc firewall theo IP; `base_urls` trong `experiment.toml` là `https://<host>/v1` hoặc `http://<ip>:<port>/v1`.
 
 ## 4. Tune trên `train_10`
 
