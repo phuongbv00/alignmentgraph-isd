@@ -69,6 +69,9 @@ def payload(rung: Rung) -> dict:
             "gpu_name": {"eq": rung.gpu},
             "num_gpus": {"eq": 1},
             "cuda_max_good": {"gte": float(CUDA)},  # the driver must run the image's CUDA
+            # The ~9 GB image is unpacked on the host's disk before the container
+            # exists; on a slow disk that alone took over 20 minutes.
+            "disk_bw": {"gte": 1000},
         },
         "desc": f"vLLM {TAG} serving {rung.model} for isd-agent-bench (mirror of the RunPod template)",
         "readme": f"Set the account env var(s) {', '.join(rung.secrets)} first."
