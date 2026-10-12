@@ -734,13 +734,24 @@ class ReactLoop:
         declared |= {o.schema_key for o in spec_now.outputs} if spec_now is not None else set()
         named = [k for k in (args or {}) if k in declared]
         if named and all(self._closed(step, e) for e in self._targets(step, args, tuple(named))):
-            # An artifact whose budget is spent is no longer taken, as the
-            # stage loop unbinds its submit: the call is answered, never
-            # judged or charged again.
+            # Everything it carried is for a set whose budget is spent: no
+            # longer taken, as the stage loop unbinds that Developer's submit.
+            # It is still a submit that moved nothing, so it is charged to the
+            # first entry still open — answered and never charged, a model
+            # that kept writing for a closed set looped until the run's
+            # ceiling (MEASURED, run t1 20261012_224532: 259 such answers,
+            # 4 of 20 single-arm runs cut).
+            first = self._first_open(step)
+            if first:
+                self._charge(step, (first,))
+            if self._spent_out(step):
+                self._close_stage(step)
+                self._answer(turn, self._closed_note(step))
+                return "return" if len(self._done_set) == len(STEPS) else "continue"
             self._answer(turn, (
-                f"{', '.join(named)} is CLOSED: it was sent {self._budget.limit} times "
-                "without adding anything, so it is no longer accepted. "
-                + (f"Still owed: {', '.join(self._owed(step))}." if self._owed(step) else "")))
+                f"NOTHING LANDED: what you sent is for a set that is CLOSED (sent "
+                f"{self._budget.limit} times without adding anything). Write for one that "
+                "is still open." + self._commission(step)))
             return "continue"
         args, carried = turn_mod.carry_over(self._kept, args)
         turn_mod.note_carried(carried, trajectory=self.trajectory, identity=self.identity)
@@ -911,7 +922,8 @@ class ReactLoop:
         spec = fanout.SPECS.get(step.name)
         if spec is None or missing_parts(step, self.state):
             return ""
-        owed = fanout.owed_sets(step.name, self.state)
+        owed = [(ws, o, left) for ws, o, left in fanout.owed_sets(step.name, self.state)
+                if not self._closed(step, f"{o.schema_key} for {ws.set_id}")]
         if not owed:
             return ""
         shown, rest = owed[:self.COMMISSION_SHOWN], owed[self.COMMISSION_SHOWN:]

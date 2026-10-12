@@ -814,3 +814,39 @@ def test_the_commissioned_work_is_the_same_on_both_substrates():
 
     assert owed("graph") == owed("prose")
     assert owed("graph")
+
+
+@_pytest.mark.parametrize("graph_mode", [True, False])
+def test_writing_for_a_closed_set_forever_still_ends_the_stage(graph_mode):
+    """A submit for a set whose budget is spent is not taken; it is still a
+    submit that moved nothing, so the stage ends once every set has spent its
+    budget. Answered and never charged, it looped until the run's ceiling
+    (MEASURED, run t1 20261012_224532: 259 such answers, 4 of 20 single-arm
+    runs cut)."""
+    import copy
+
+    from test_agentic_loop import _ANALYSIS, _ASSESSMENT, _OUTCOMES
+
+    from alignmentgraph_isd.core.agentic import specialists
+    from alignmentgraph_isd.core.prose_store import ProseStore
+
+    state = AlignmentGraph() if graph_mode else ProseStore()
+    suffix = "" if graph_mode else "_prose"
+    for name, payload in (("analysis", _ANALYSIS), ("outcomes", _OUTCOMES)):
+        getattr(specialists, f"commit_{name}{suffix}")(state, TrajectoryLogger(), payload)
+    plan = copy.deepcopy(_ASSESSMENT["assessment_plan"])
+    tasks = plan["sets"][0]["assessment_tasks"]
+    tasks[1:] = [dict(tasks[0], id="AT-02", timing="formative", weight_percent=0)]
+    item = _ASSESSMENT["assessment_tools"][0]
+    forever = [("submit_assessment", {"assessment_tools": [dict(item, task_id="AT-01",
+                                                               question=f"Model {n}.")]})
+               for n in range(400)]
+    model = _Scripted([("submit_assessment", {"assessment_plan": plan})] + forever)
+    loop = react.ReactLoop(HarnessRunConfig(llm_factory=lambda: model), state,
+                           TrajectoryLogger(), load_brief("minimal_brief.json"))
+    loop.run()
+
+    # The script keeps writing for assessment after it closes, which costs the
+    # rest of the run; what is under test is that the stage itself ends.
+    assert "assessment" in loop.stats["abandoned_stages"]
+    assert loop.stats["turns_by_stage"]["assessment"] < 40
