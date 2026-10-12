@@ -54,6 +54,10 @@ class Job:
     reason: str | None
 
 
+#: What every LLM judge must have returned for a row to count as judged.
+JUDGE_METRICS = ("addie_score", "trajectory_score")
+
+
 def report_gaps(scenario_dir: Path, agents: tuple[str, ...],
                 roster: tuple[str, ...] = ()) -> str | None:
     """Why the scenario's report does not already judge these agents, or None.
@@ -77,6 +81,16 @@ def report_gaps(scenario_dir: Path, agents: tuple[str, ...],
                   if any(rows[a].get(k) in (None, {}, "") for k in REQUIRED_METRICS)]
     if incomplete:
         return f"missing metrics for {', '.join(incomplete)}"
+    for agent in agents:
+        # A judge that errored (a refused or failed call) leaves the row scored
+        # by the others alone, under the same roster names: MEASURED (run t1
+        # 20261012_090924), a router out of credit answered 402 mid-run, and
+        # four rows carried a trajectory score from one or two judges of three
+        # while their ADDIE score had all three.
+        failed = sorted({str(j.get("model")) for j in rows[agent].get("judges") or []
+                         if j.get("error") or any(j.get(k) is None for k in JUDGE_METRICS)})
+        if failed:
+            return f"LLM judge failed for {agent} ({', '.join(failed)})"
     if roster:
         for agent in agents:
             models = [str(j.get("model")) for j in rows[agent].get("judges") or []]

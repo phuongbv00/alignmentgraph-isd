@@ -143,7 +143,8 @@ class TestTheLlmJudgeOverARun:
         from isd_experiments.judge import llm
 
         calls = []
-        judges = [{"model": m.name, "addie_score": 50.0} for m in cfg.judge.models]
+        judges = [{"model": m.name, "addie_score": 50.0, "trajectory_score": 50.0}
+                  for m in cfg.judge.models]
 
         def fake_evaluate(command, env, scenario):
             calls.append(command)
