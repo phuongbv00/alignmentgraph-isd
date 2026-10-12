@@ -46,3 +46,22 @@ def test_a_call_that_fits_is_never_cut():
         "function": {"name": "submit_x", "arguments": '{"x": "' + "a" * (ELIDE_CALL_CHARS // 2) + '"}'}}]}
     kept, _dropped = trim_history(_history(small), 8000)
     assert kept[2] is small
+
+
+def test_identical_calls_in_one_reply_cost_one_turn():
+    """MEASURED (run t1 20261012_090924): one reply carried 305 identical
+    state reads, each charged a turn, and the stage was cut by its ceiling
+    before the model could be told anything. A repeat inside one reply is the
+    same call again: answered with a stub, never run, never a turn."""
+    from alignmentgraph_isd.core.agentic import turn as turn_mod
+
+    first = turn_mod.ToolTurn(name="read_alignment_state", args={}, call_id="c0")
+    first.calls = tuple(turn_mod.ToolTurn(name="read_alignment_state", args={},
+                                          call_id=f"c{i}", sibling=True) for i in range(1, 305))
+    meter = turn_mod.TurnMeter({}, max_turns=24)
+    ran, stubbed = [], []
+    outcome = turn_mod.spend_queue(first, meter=meter, handle=lambda c: ran.append(c) or "",
+                                   unexecuted=lambda cs, why: stubbed.extend(cs),
+                                   ended_why="done")
+    assert outcome == "" and len(ran) == 1 and len(stubbed) == 304
+    assert not meter.exhausted

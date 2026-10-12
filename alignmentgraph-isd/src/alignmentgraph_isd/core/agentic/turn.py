@@ -269,7 +269,18 @@ def spend_queue(turn: ToolTurn, *, meter: TurnMeter, handle, unexecuted,
     """
     meter.stats["batched_calls"] = meter.stats.get("batched_calls", 0) + len(turn.calls)
     queue = [turn, *turn.calls]
+    seen: set[str] = set()
     for index, call in enumerate(queue):
+        # A call identical to one earlier in the SAME reply is that call again:
+        # answered, never run, never a turn. MEASURED (run t1 20261012_090924):
+        # one reply carried 305 identical state reads and spent a stage's
+        # whole ceiling before the model could be told anything.
+        key = f"{call.name}:{json.dumps(call.args, sort_keys=True, default=str)}"
+        if index and key in seen:
+            meter.stats["repeated_in_reply"] = meter.stats.get("repeated_in_reply", 0) + 1
+            unexecuted([call], "it repeats an earlier call in this same reply")
+            continue
+        seen.add(key)
         if meter.exhausted:
             unexecuted(queue[index:], "the turn budget ran out first")
             return "exhausted"
