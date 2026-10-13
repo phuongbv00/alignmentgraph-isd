@@ -1,0 +1,19 @@
+\begin{table}[t]
+  \caption{Thí nghiệm 2: phân rã $\times$ trạng thái (30 kịch bản)}
+  \label{tab:ablation}
+  \centering
+  \footnotesize
+  \setlength{\tabcolsep}{3pt}
+  \begin{tabular}{@{}lcccc@{}}
+    \toprule
+    Biến thể & ADDIE $\uparrow$ & Total $\uparrow$ & Khép kín (\%) $\uparrow$ & Token (k) $\downarrow$ \\
+    \midrule
+    multi, graph (đề xuất) & 58.2\,$\pm$\,2.6 & 62.4 & 86 & 278 \\
+    multi, prose & \textbf{58.6\,$\pm$\,2.6} & \textbf{64.1} & \textbf{87} & 255 \\
+    single, graph & 53.1\,$\pm$\,3.7 & 56.5 & 67 & 428 \\
+    single, prose & 53.9\,$\pm$\,3.0 & 56.7 & 69 & 414 \\
+    \bottomrule
+  \end{tabular}
+  \par\vspace{2pt}
+  {\scriptsize\raggedright Khép kín: tỉ lệ mục tiêu có đủ ba cạnh $C_2$--$C_4$ trong đầu ra.\par}
+\end{table}

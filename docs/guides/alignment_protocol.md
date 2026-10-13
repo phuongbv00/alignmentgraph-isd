@@ -3,7 +3,7 @@
 > **Đây là đặc tả canonical của RQ2 protocol** — paper được cập nhật TỪ file này (methodology §RQ2,
 > results §RQ2, threats/limitations). Bản thảo là source of truth cho nội dung, file này cho phép đo.
 >
-> - Mức claim + luật viết: [`docs/paper/claim-rules.md`](../paper/claim-rules.md); nội dung paper: `docs/paper/acm/`
+> - Mức claim + luật viết: [`docs/paper/claim-rules.md`](../paper/claim-rules.md); nội dung paper: `docs/paper/rev-ecit2026/`
 > - Lệnh chạy scorer/pooling + metrics reference: [`docs/guides/benchmark_guides.md`](benchmark_guides.md) (§7, Appendix A)
 > - Code: `experiments/src/isd_experiments/alignment/protocol.py`, scorer `isd-exp judge alignment`,
 >   pooling `isd-exp pool comparison`
@@ -490,8 +490,8 @@ chứng trên, không nằm ở tên metric (§4) và bản thân cách đặt t
    - `pawar2018similarity` — "Bloom Index": similarity cặp động từ cho Bloom-level matching. Thêm vào dòng rule-based
      Bloom cùng Omar/Haris/Jayakodi — precedent gần nhất cho thiết kế `LexiconBloomClassifier` (dẫn từ động từ, không
      học từ nhãn).
-- **Tiền đề task decomposition** (nợ R7 — **đã trả**, metadata đã verify, đã có trong
-  `docs/paper/acm/references.bib`): zhou2023leasttomost (Least-to-Most, ICLR 2023), khot2023decomposed (Decomposed
+- **Tiền đề task decomposition** (nợ R7 — **đã trả**, metadata đã verify, bib entry nằm trong
+  `references.bib` của bản thảo ACM đã xoá — lấy lại bằng `git show 44bf99e:docs/paper/acm/references.bib`): zhou2023leasttomost (Least-to-Most, ICLR 2023), khot2023decomposed (Decomposed
   Prompting, ICLR 2023), ferraz2024decrim (DeCRIM, Findings of EMNLP 2024), shen2024multillmagent (Small LLMs Are Weak
   Tool Learners, EMNLP 2024 main) — kèm belcak2025slm đã có sẵn. Bốn nguồn này chỉ đỡ vế "tác vụ hẹp dễ hơn tác vụ rộng
   đa mục tiêu"; **không** trích chúng cho vế "phân rã có lợi nhiều hơn khi model nhỏ đi" (vế đó là RQ1b, và

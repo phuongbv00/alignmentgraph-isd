@@ -2,4 +2,8 @@
 template/*.zip
 template/latex/
 template/bst/
-generated/
+
+# The built paper, its figure and the generated tables/macros are committed so
+# the paper reads and builds without re-running the experiment.
+!main.pdf
+!figures/*.pdf

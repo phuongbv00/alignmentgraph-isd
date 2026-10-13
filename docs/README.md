@@ -6,7 +6,7 @@ tài liệu trùng nội dung luôn lệch nhau sau vài tuần.
 
 | Đường dẫn | Canonical cho |
 |:---|:---|
-| `paper/acm/` | **Nội dung bài báo.** Source of truth cho cấu trúc, luận điểm, thứ tự mục, từng mục nói gì. Không có giàn ý song song ở chỗ khác. |
+| `paper/rev-ecit2026/` | **Nội dung bài báo** (bài hội thảo REV-ECIT 2026). Source of truth cho cấu trúc, luận điểm, thứ tự mục, từng mục nói gì. Không có giàn ý song song ở chỗ khác. `generated/`, `main.pdf` và `figures/*.pdf` được commit. |
 | `paper/claim-rules.md` | **Luật viết.** Điều gì cấm claim và viết thay bằng gì, từ vựng điểm số, câu phải giữ nguyên văn, điều bắt buộc phải khai. Chỉ luật, không nội dung — nên không thể stale so với bản thảo. |
 | `paper/structure-guide.md` | Khung cấu trúc bài báo khoa học theo đề cương của GVHD. |
 | `paper/refs-deployment-survey.md` | Tư liệu citation cho phần triển khai SLM trong giáo dục (Intro + Related Work). |
@@ -24,8 +24,9 @@ tài liệu trùng nội dung luôn lệch nhau sau vài tuần.
 ## Số liệu
 
 `docs/generated/` **không nằm trong git và không được tạo bằng tay**: `isd-exp report sync`
-copy bảng, figure và macro sinh tự động vào đó, rồi `paper/acm/main.tex` `\input` từ đó bằng
-đường dẫn tương đối. Thư mục hiện đang trống — bản cũ bị xoá 2026-09-17 vì là số của kiến trúc
+copy bảng, figure và macro sinh tự động vào đó, để bản thảo tạp chí sau này `\input` từ đó bằng
+đường dẫn tương đối. Bài hội thảo không đọc thư mục này: `paper/rev-ecit2026/make_tables.py`
+sinh bảng và macro thẳng vào `paper/rev-ecit2026/generated/` từ hai file pooled JSON. Thư mục hiện đang trống — bản cũ bị xoá 2026-09-17 vì là số của kiến trúc
 LangGraph đã bỏ, và `main.tex` đã comment hết các dòng `\input` tương ứng, mỗi chỗ cần số đánh
 dấu `\TBD`. Khi TN1/TN2 chạy xong và chấm xong thì sinh lại, chạy `isd-exp report sync`, bật
 lại bốn dòng `\input` và thay từng `\TBD`.

@@ -1,7 +1,7 @@
 # Claim rules cho manuscript
 
 > Đây là file **luật viết**, không phải giàn ý. Nó không mô tả nội dung paper — nội dung nằm
-> trong chính `docs/paper/acm/`, và bản thảo là source of truth duy nhất cho nội dung.
+> trong chính `docs/paper/rev-ecit2026/`, và bản thảo là source of truth duy nhất cho nội dung.
 > File này chỉ giữ phần **không thể đặt trong paper**: điều gì cấm viết, viết thay bằng gì,
 > câu nào phải giữ nguyên văn, và điều gì bắt buộc phải khai.
 

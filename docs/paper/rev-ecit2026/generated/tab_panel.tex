@@ -1,0 +1,24 @@
+\begin{table}[t]
+  \caption{Thí nghiệm 1: tín hiệu căn chỉnh (trung bình qua 30 kịch bản)}
+  \label{tab:panel}
+  \centering
+  \footnotesize
+  \setlength{\tabcolsep}{3pt}
+  \begin{tabular}{@{}lcccccc@{}}
+    \toprule
+    & \multicolumn{3}{c}{Họ A: văn bản} & \multicolumn{3}{c}{Họ B: Bloom} \\
+    \cmidrule(lr){2-4}\cmidrule(l){5-7}
+    Hệ & OA $\uparrow$ & OT $\uparrow$ & TA $\uparrow$ & Cg $\uparrow$ & Po $\uparrow$ & Wb $\uparrow$ \\
+    \midrule
+    AlignmentGraph-ISD & \textbf{0.76} & \textbf{0.75} & \textbf{0.71} & 0.75 & \textbf{0.42} & 0.66 \\
+    EduPlanner & 0.43$^{*}$ & 0.40$^{*}$ & 0.35$^{*}$ & 0.45$^{*}$ & 0.17$^{*}$ & 0.40$^{*}$ \\
+    Baseline & 0.45$^{*}$ & 0.33$^{*}$ & 0.29$^{*}$ & 0.57 & 0.13$^{*}$ & 0.45$^{*}$ \\
+    React-ADDIE & 0.69$^{*}$ & 0.63$^{*}$ & 0.57$^{*}$ & 0.68 & 0.22$^{*}$ & 0.52$^{*}$ \\
+    ADDIE-Agent & 0.69$^{*}$ & 0.64$^{*}$ & 0.52$^{*}$ & 0.69 & 0.30$^{*}$ & 0.58 \\
+    Dick-Carey-Agent & 0.66$^{*}$ & 0.63$^{*}$ & 0.62$^{*}$ & \textbf{0.78} & 0.34$^{*}$ & \textbf{0.69} \\
+    RPISD-Agent & 0.64$^{*}$ & 0.65$^{*}$ & 0.52$^{*}$ & 0.53$^{*}$ & 0.28$^{*}$ & 0.50$^{*}$ \\
+    \bottomrule
+  \end{tabular}
+  \par\vspace{2pt}
+  {\scriptsize\raggedright $^{*}$ khác AlignmentGraph-ISD, Wilcoxon theo cặp, Holm trong từng tín hiệu, $p<0.05$.\par}
+\end{table}

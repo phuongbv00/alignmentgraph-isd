@@ -4,7 +4,7 @@
 > hậu xử lý ra số cho paper, kèm định nghĩa metric (Phụ lục A). Mục tiêu: đọc mỗi file này là
 > tái lập được thực nghiệm.
 >
-> Mọi lệnh `./isd-exp` chạy từ `experiments/` trừ khi ghi khác. Bối cảnh RQ: bản thảo `docs/paper/acm/` (§Experimental Design) + [`docs/guides/alignment_protocol.md`](alignment_protocol.md).
+> Mọi lệnh `./isd-exp` chạy từ `experiments/` trừ khi ghi khác. Bối cảnh RQ: bản thảo `docs/paper/rev-ecit2026/` (§Thực nghiệm) + [`docs/guides/alignment_protocol.md`](alignment_protocol.md).
 
 **Ba quy tắc không được vi phạm:**
 

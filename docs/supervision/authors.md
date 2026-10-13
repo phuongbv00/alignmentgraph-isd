@@ -1,6 +1,6 @@
 # Authors
 
-Canonical author/supervisor info for the paper (`docs/paper/acm/main.tex`).
+Canonical author/supervisor info for the papers (`docs/paper/rev-ecit2026/main.tex` and the journal manuscript still to be written).
 Update here first, then propagate.
 
 ## Paper byline (per supervisor's international-standard instruction, 2026-08-17)
