@@ -39,6 +39,8 @@ def _run(root: Path, name: str, scenarios: dict) -> Path:
         scen.mkdir(parents=True)
         rankings = []
         for agent, (addie, output, phases) in agents.items():
+            # The runner writes a log for every attempt, successful or not.
+            (scen / f"{agent}_log.txt").write_text("", encoding="utf-8")
             if addie is not None:
                 rankings.append({"agent_id": agent, "addie_median": addie,
                                  **({"phase_scores": phases} if phases else {})})
@@ -56,6 +58,31 @@ def test_main_effects_average_the_two_simple_effects():
     effects = registered.main_effects(values)
     assert effects["decomposition"]["S"] == pytest.approx(((10 - 4) + (7 - 5)) / 2)
     assert effects["substrate"]["S"] == pytest.approx(((10 - 7) + (4 - 5)) / 2)
+
+
+def test_the_interaction_is_decomposition_under_graph_minus_under_prose():
+    values = {("multi", "graph"): {"S": 10.0}, ("single", "graph"): {"S": 4.0},
+              ("multi", "prose"): {"S": 7.0}, ("single", "prose"): {"S": 5.0}}
+    assert registered.main_effects(values)["interaction"]["S"] == pytest.approx(
+        (10 - 4) - (7 - 5))
+
+
+def test_the_secondary_block_tests_only_the_sensitivity_and_the_interaction(tmp_path):
+    """Outside the family: the complete-case layer and the pre-specified
+    interaction carry a p; the model-written triad and the phase slope are
+    estimates with an interval and no p."""
+    run = _run(tmp_path, "r", {f"S{i}": {a: (70.0 + i + (5.0 if a == "mg" else 0.0),
+                                            _output(a == "mg"), None)
+                                        for a in CELLS.values()} for i in range(6)})
+    sec = registered.analyse({"2b": [run]}, CELLS)["secondary"]["2b"]
+    assert [r["test"] for r in sec["complete_case"]] == [
+        "H-D @ 2b complete-case", "H-S @ 2b complete-case"]
+    assert all("p_holm" in r and "verdict" in r for r in sec["complete_case"])
+    assert set(sec["interaction"]) == {"addie_median", "objectives_closed_triad"}
+    assert sec["interaction"]["addie_median"]["mean_diff"] == pytest.approx(5.0)
+    assert "p_raw" in sec["interaction"]["addie_median"]
+    assert set(sec["substrate|model_written"]) == {"n", "mean_diff", "ci95"}
+    assert "p_raw" not in sec["phase_slope"]["slope"]
 
 
 def test_a_run_with_nothing_scorable_counts_zero_and_complete_case_leaves_it_out(tmp_path):

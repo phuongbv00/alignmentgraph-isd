@@ -1,53 +1,23 @@
 """Figures for the 2x2 ablation.
 
-Shares the agent colour and marker identity with every other figure, so an arm
-keeps its appearance across the whole paper.
+Every value drawn is descriptive: a cell mean per arm (failure = 0) or a
+factorial effect with its bootstrap interval. The ablation's tests are the
+registered ones, reported in ``tab_ablation``; no figure marks significance.
 """
 
 from __future__ import annotations
 
-import json
 import math
 from pathlib import Path
 
 from .. import paths
-from ..config import current as current_config
-from ..latex import model_display, size_display, size_of_label
-from ..plots import (
-    AGENT_COLOR,
-    PROPOSED,
-    Line2D,
-    Patch,
-    _nan,
-    plt,
-    save,
-    sized_axis,
-)
-from .figures import PANEL_COMPONENTS, PANEL_FAMILY_A_N, PANEL_FOOTNOTE
+from ..latex import model_display, size_of_label
+from ..plots import _nan, plt, save, sized_axis
+from .figures import PANEL_COMPONENTS, PANEL_FAMILY_A_N
 
 PRODUCER = "isd-exp report ablation-figures"
 
-
-
-
-
-ARM_DISPLAY = {
-    "alignmentgraph-isd-single-prose": "A1 — Single-agent, prose context",
-    "alignmentgraph-isd-single-graph": "A2 — Single-agent, graph context",
-    "alignmentgraph-isd-multi-prose": "A3 — Multi-agent, prose context",
-}
-ARM_COLOR = {
-    "alignmentgraph-isd-single-prose": "#7f7f7f",
-    "alignmentgraph-isd-single-graph": "#d62728",
-    "alignmentgraph-isd-multi-prose": "#1f77b4",
-}
-ARM_LINESTYLE = {
-    "alignmentgraph-isd-single-prose": ":",
-    "alignmentgraph-isd-single-graph": "-",
-    "alignmentgraph-isd-multi-prose": "--",
-}
-
-# All four arms (A0 included) for the alignment level figures.
+# All four arms (A0 included), in legend order.
 ARM_ORDER = [
     "alignmentgraph-isd",
     "alignmentgraph-isd-single-graph",
@@ -76,28 +46,41 @@ ARM_LS_FULL = {
 }
 
 
-def _align_models(pooled: dict) -> dict:
-    return (pooled.get("alignment") or {}).get("models") or {}
+def _panel_cells(pooled: dict, signal: str) -> dict[str, dict]:
+    """label -> {"n": scenarios, "means": {arm: mean}} for one factorial measure.
+
+    The per-arm means are the factorial's cell means: failure = 0, over the
+    scenarios on which all four arms were scored, so the arms of one size are
+    always compared on the same scenarios."""
+    fact = pooled.get("factorial") or {}
+    blk = (fact.get("measures") or {}).get(signal) or {}
+    cells = fact.get("cells") or {}
+    out = {}
+    for e in blk.get("per_model") or []:
+        means = e.get("cell_means") or {}
+        if not e.get("n_scenarios") or not means:
+            continue
+        out[e["label"]] = {"n": e["n_scenarios"],
+                           "means": {agent: means.get(key) for key, agent in cells.items()}}
+    return out
 
 
-def _ordered_labels(pooled: dict) -> list[str]:
-    am = _align_models(pooled)
-    return [m["label"] for m in pooled["models"] if m["label"] in am]
+def _ordered_labels(pooled: dict, by_label: dict) -> list[str]:
+    return [m["label"] for m in pooled["models"] if m["label"] in by_label]
 
 
 def fig_ablation_align_ladder(pooled: dict, outdir: Path, written: list[Path]) -> bool:
     """Objective->assessment similarity per arm vs size —
     the ablation analogue of fig_alignment_ladder."""
-    am = _align_models(pooled)
-    labels = _ordered_labels(pooled)
+    signal = "objective_assessment_similarity"
+    by_label = _panel_cells(pooled, signal)
+    labels = _ordered_labels(pooled, by_label)
     if not labels:
         return False
     sizes = [size_of_label(lb) for lb in labels]
     fig, ax = plt.subplots(figsize=(5.9, 3.2))
     for arm in ARM_ORDER:
-        ys = [_nan(am[lb].get(arm, {})
-                     .get("objective_assessment_similarity", {}).get("mean"))
-              for lb in labels]
+        ys = [_nan(by_label[lb]["means"].get(arm)) for lb in labels]
         proposed = arm == "alignmentgraph-isd"
         ax.plot(sizes, ys, color=ARM_COLOR_FULL[arm],
                 linestyle=ARM_LS_FULL[arm],
@@ -112,22 +95,49 @@ def fig_ablation_align_ladder(pooled: dict, outdir: Path, written: list[Path]) -
     # outside the data area: loc="best" dropped the key onto the A2/A3 series,
     # which were then drawn through the labels
     ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1.0), frameon=False, fontsize=7)
+    fig.text(0.5, -0.03, f"Mean over scenarios, failure = 0 ({_n_text(by_label)}); "
+             "descriptive.", ha="center", va="top", fontsize=6.5, color="#555555")
     save(fig, outdir, "fig_ablation_ladder", written)
     return True
 
 
+def _n_text(by_label: dict) -> str:
+    """'n = 30 scenarios per size', read from the data, never typed."""
+    ns = sorted({v["n"] for v in by_label.values() if isinstance(v.get("n"), int)})
+    if not ns:
+        return "n per size: see pooled JSON"
+    if len(ns) == 1:
+        return f"n = {ns[0]} scenarios per size"
+    return f"n = {ns[0]}–{ns[-1]} scenarios per size"
+
+
+#: In-figure disclosure for the ablation panel heatmap: the two instrument
+#: families and what a cell is, since a figure gets read detached from its
+#: caption.
+ABL_PANEL_FOOTNOTE = (
+    "Flat panel of 6 alignment signals, no primary endpoint. Family A = the three edges of the "
+    "constructive-alignment triad (textual correspondence, rectified cosine "
+    "max(0, cos) on [0,1]): Obj→Asm, Obj→Act, Act→Asm.  "
+    "Family B (cognitive demand, Bloom-derived, no similarity): Cognitive congruence, "
+    "Porter (mean of 3 pairwise indices), Webb.\n"
+    "Cell = mean over the scenarios on which all four arms were scored, failure = 0 "
+    "({n}); leading zero omitted. Descriptive."
+)
+
+
 def fig_ablation_components(pooled: dict, outdir: Path, written: list[Path]) -> bool:
-    """Per-criterion heatmap (arm x 4 criteria) per model size — the ablation
+    """Per-signal heatmap (arm x panel signal) per model size — the ablation
     analogue of fig_alignment_components."""
-    am = _align_models(pooled)
-    labels = _ordered_labels(pooled)
-    if not labels:
-        return False
     comp_keys = [k for k, _ in PANEL_COMPONENTS]
     comp_names = [n for _, n in PANEL_COMPONENTS]
+    per_signal = {k: _panel_cells(pooled, k) for k in comp_keys}
+    labels = [lb for lb in _ordered_labels(pooled, per_signal[comp_keys[0]])
+              if any(lb in per_signal[k] for k in comp_keys)]
+    if not labels:
+        return False
     n_arm = len(ARM_ORDER)
-    # figure width per panel matches fig_alignment_components: 7 narrow columns need
-    # the room, otherwise the cell values merge into one digit run
+    # figure width per panel matches fig_alignment_components: narrow columns
+    # need the room, otherwise the cell values merge into one digit run
     fig, axes = plt.subplots(
         1, len(labels),
         figsize=(3.05 * len(labels) + 1.6, 1.9 + 0.38 * n_arm), sharey=True)
@@ -135,26 +145,17 @@ def fig_ablation_components(pooled: dict, outdir: Path, written: list[Path]) -> 
     cmap = plt.get_cmap("Blues")
     last_im = None
     for ax, lb in zip(axes, labels):
-        cells = [[am[lb].get(arm, {}).get(k, {}) or {} for k in comp_keys]
-                 for arm in ARM_ORDER]
-        grid = [[_nan(c.get("mean")) for c in row] for row in cells]
-        ns = [n for row in cells for c in row
-              if isinstance(n := c.get("n_scenarios"), int)]
-        n_max = max(ns) if ns else 0
+        grid = [[_nan(((per_signal[k].get(lb) or {}).get("means") or {}).get(arm))
+                 for k in comp_keys] for arm in ARM_ORDER]
         last_im = ax.imshow(grid, cmap=cmap, vmin=0.0, vmax=1.0, aspect="auto")
         for i, r in enumerate(grid):
             for j, v in enumerate(r):
                 if math.isnan(v):
                     continue
                 txt = f"{v:.2f}"
-                dark = v > 0.55
                 ax.text(j, i, txt[1:] if 0 <= v < 1 else txt,
                         ha="center", va="center", fontsize=6.5,
-                        color="white" if dark else "#333333")
-                n = cells[i][j].get("n_scenarios")
-                if isinstance(n, int) and n_max and n < 0.5 * n_max:
-                    ax.text(j, i + 0.30, f"n={n}", ha="center", va="center",
-                            fontsize=5.5, color="#FFC4C4" if dark else "#8B0000")
+                        color="white" if v > 0.55 else "#333333")
         ax.axvline(PANEL_FAMILY_A_N - 0.5, color="white", linewidth=2.0, zorder=4)
         ax.set_title(model_display(lb))
         ax.set_xticks(range(len(comp_names)))
@@ -169,24 +170,10 @@ def fig_ablation_components(pooled: dict, outdir: Path, written: list[Path]) -> 
     cbar = fig.colorbar(last_im, ax=axes, fraction=0.02, pad=0.02)
     cbar.ax.tick_params(labelsize=6.5)
     cbar.set_label("Panel signal mean (0–1)", fontsize=7)
-    fig.text(0.5, -0.07, PANEL_FOOTNOTE, ha="center", va="top",
-             fontsize=6.5, color="#555555", linespacing=1.5)
+    fig.text(0.5, -0.07, ABL_PANEL_FOOTNOTE.format(n=_n_text(per_signal[comp_keys[0]])),
+             ha="center", va="top", fontsize=6.5, color="#555555", linespacing=1.5)
     save(fig, outdir, "fig_ablation_components", written)
     return True
-
-
-def arm_rows(pooled: dict, arm: str) -> dict[str, dict]:
-    """label -> comparison row under the pool's primary failure policy
-    (stored direction: A0 − arm)."""
-    policy = (pooled.get("config") or {}).get("primary_failure_policy") or "zero"
-    out = {}
-    for m in pooled["models"]:
-        for row in (m.get("comparisons", {}).get("by_score", {})
-                    .get("addie_median", {}).get("policies", {})
-                    .get(policy, [])):
-            if row.get("baseline") == arm and row.get("n"):
-                out[m["label"]] = row
-    return out
 
 
 #: Signal the factorial figure leads on (see ``ablation_tables.FACT_LEAD``).
@@ -205,16 +192,16 @@ FACT_PANELS = [
 def fig_ablation_factorial(pooled: dict, outdir: Path, written: list[Path]) -> bool:
     """Each mechanism's effect under both states of the other one.
 
-    The arm-vs-A0 figure shows simple contrasts at one fixed level of the
-    other factor, so it cannot show that a mechanism looks idle only because
-    the other one already prevented the problem. Two lines per panel — if they
-    separate, the mechanisms substitute for each other, and the gap between
-    them IS the interaction.
+    Two lines per panel, one per state of the other mechanism; the gap between
+    them IS the interaction, whatever the sign of either effect.
+    Descriptive, with the bootstrap interval of each effect.
     """
     fact = pooled.get("factorial") or {}
-    if "skipped" in fact or not fact.get("measures"):
+    if "skipped" in fact or FACT_LEAD not in (fact.get("measures") or {}):
         return False
-    per_model = fact["measures"][FACT_LEAD]["per_model"]
+    per_model = [e for e in fact["measures"][FACT_LEAD]["per_model"] if e.get("n_scenarios")]
+    if not per_model:
+        return False
     labels = [e["label"] for e in per_model]
     sizes = [size_of_label(lb) for lb in labels]
 
@@ -222,7 +209,7 @@ def fig_ablation_factorial(pooled: dict, outdir: Path, written: list[Path]) -> b
     for ax, (mech, series) in zip(axes, FACT_PANELS):
         ax.axhline(0.0, color="#444444", linewidth=0.8, zorder=2)
         for key, cond, color in series:
-            xs, ys, lo_err, hi_err, sig = [], [], [], [], []
+            xs, ys, lo_err, hi_err = [], [], [], []
             for e, size in zip(per_model, sizes):
                 d = e.get(key) or {}
                 if not d.get("n"):
@@ -231,34 +218,24 @@ def fig_ablation_factorial(pooled: dict, outdir: Path, written: list[Path]) -> b
                 ys.append(d["mean_diff"])
                 lo_err.append(d["mean_diff"] - d["ci95"][0])
                 hi_err.append(d["ci95"][1] - d["mean_diff"])
-                sig.append(isinstance(d.get("p_raw"), (int, float)) and d["p_raw"] < 0.05)
             if not xs:
                 continue
             ax.errorbar(xs, ys, yerr=[lo_err, hi_err], color=color,
                         linewidth=1.8, capsize=2.5, elinewidth=0.9,
-                        marker="", zorder=4, label=cond)
-            for x, y, sg in zip(xs, ys, sig):
-                ax.plot([x], [y], marker="o", markersize=5.0,
-                        markerfacecolor=color if sg else "white",
-                        markeredgecolor=color, markeredgewidth=1.1,
-                        linestyle="", zorder=5)
+                        marker="o", markersize=5.0, markeredgecolor=color,
+                        zorder=4, label=cond)
         sized_axis(ax, sizes, labels)
         ax.set_title(f"Effect of {mech}", fontsize=8.5)
         ax.legend(loc="best", frameon=False, fontsize=7)
     axes[0].set_ylabel("Δ objective→assessment similarity\n(paired per scenario)")
     # Short, wrapped, centred: a one-line footnote wider than the axes sets the
     # tight bounding box and halves the panels once the figure is scaled to a
-    # paper column. The "separation IS the interaction" reading belongs in the
-    # LaTeX caption. n is read from the data, never typed.
-    n_per_size = sorted({e.get("n_scenarios") for e in per_model
-                         if isinstance(e.get("n_scenarios"), int)})
-    n_txt = (f"n = {n_per_size[0]} scenarios per size" if len(n_per_size) == 1
-             else f"n = {n_per_size[0]}–{n_per_size[-1]} scenarios per size"
-             if n_per_size else "n per size: see pooled JSON")
+    # paper column. n is read from the data, never typed.
+    by_label = {e["label"]: {"n": e.get("n_scenarios")} for e in per_model}
     fig.text(
         0.5, -0.03,
-        "Error bar = bootstrap 95% CI; filled marker = p < 0.05\n"
-        f"(Wilcoxon two-sided, uncorrected; {n_txt}).",
+        "Error bar = bootstrap 95% CI; failure = 0; descriptive, no test\n"
+        f"(the registered tests are in tab_ablation; {_n_text(by_label)}).",
         ha="center", va="top", fontsize=6.5, color="#555555",
     )
     fig.tight_layout()
@@ -266,66 +243,54 @@ def fig_ablation_factorial(pooled: dict, outdir: Path, written: list[Path]) -> b
     return True
 
 
-def fig_ablation(pooled: dict, outdir: Path, written: list[Path]) -> None:
+def fig_ablation(pooled: dict, outdir: Path, written: list[Path]) -> bool:
+    """Each arm's mean ADDIE per size (failure = 0), the figure form of the
+    cell block of ``tab_ablation``. Error bar = SEM across scenarios."""
     models = pooled["models"]
-    arms = pooled["config"]["arms"]
+    a0 = pooled["config"]["reference"]
     labels = [m["label"] for m in models]
     sizes = [size_of_label(lb) for lb in labels]
+    order = [a for a in ARM_ORDER if a in {a0, *pooled["config"]["arms"]}]
 
-    fig, ax = plt.subplots(figsize=(4.6, 3.0))
-    ax.axhline(0.0, color="#444444", linewidth=0.8, zorder=2)
-    for arm in arms:
-        rows = arm_rows(pooled, arm)
-        xs, ys, lo_err, hi_err, sig = [], [], [], [], []
-        for lb, size in zip(labels, sizes):
-            row = rows.get(lb)
-            if row is None:
+    fig, ax = plt.subplots(figsize=(5.4, 3.0))
+    drawn = False
+    for arm in order:
+        xs, ys, errs = [], [], []
+        for m, size in zip(models, sizes):
+            s = m["agents"].get(arm) or {}
+            mean, sd, n = s.get("mean_addie"), s.get("sd_addie_across_scenarios"), \
+                s.get("n_scenarios")
+            if math.isnan(_nan(mean)):
                 continue
-            # plotted direction: arm − A0 (negative = removal hurts)
-            delta = -row["mean_diff"]
-            ci_lo, ci_hi = -row["ci95"][1], -row["ci95"][0]
             xs.append(size)
-            ys.append(delta)
-            lo_err.append(delta - ci_lo)
-            hi_err.append(ci_hi - delta)
-            p = row.get("p_holm")
-            sig.append(isinstance(p, (int, float)) and p < 0.05)
+            ys.append(mean)
+            errs.append(sd / math.sqrt(n) if isinstance(sd, (int, float))
+                        and isinstance(n, int) and n > 0 else 0.0)
         if not xs:
             continue
-        color = ARM_COLOR.get(arm, "#666666")
-        ax.errorbar(
-            xs, ys, yerr=[lo_err, hi_err],
-            color=color, linestyle=ARM_LINESTYLE.get(arm, "-"),
-            linewidth=1.6, capsize=2.5, elinewidth=0.9,
-            marker="", zorder=4, label=ARM_DISPLAY.get(arm, arm),
-        )
-        # markers: filled = significant after Holm, open = not
-        for x, y, s in zip(xs, ys, sig):
-            ax.plot(
-                [x], [y], marker="o", markersize=5.0,
-                markerfacecolor=color if s else "white",
-                markeredgecolor=color, markeredgewidth=1.1,
-                linestyle="", zorder=5,
-            )
+        drawn = True
+        proposed = arm == a0
+        ax.errorbar(xs, ys, yerr=errs, color=ARM_COLOR_FULL.get(arm, "#666666"),
+                    linestyle=ARM_LS_FULL.get(arm, "-"),
+                    linewidth=2.2 if proposed else 1.5, capsize=2.5, elinewidth=0.9,
+                    marker="D" if proposed else "o", markersize=5.5 if proposed else 4.5,
+                    markeredgecolor="white", markeredgewidth=0.6,
+                    zorder=5 if proposed else 3, label=ARM_DISPLAY_FULL.get(arm, arm))
+    if not drawn:
+        plt.close(fig)
+        return False
     sized_axis(ax, sizes, labels)
-    ax.set_ylabel("Δ ADDIE (arm − A0), paired per scenario")
-    # Simple contrasts, not main effects: each arm differs from A0 in one
-    # mechanism while the other stays at one fixed level. The 2x2 main/simple
-    # effects under both states live in fig_ablation_factorial.
-    ax.set_title("Ablation: effect of removing a component vs A0 "
-                 "(simple contrasts)", fontsize=8.5)
-    ax.legend(loc="best", frameon=False)
+    ax.set_ylabel("Mean ADDIE (/100), failure = 0")
+    ax.set_title("Ablation: mean ADDIE per arm across model sizes", fontsize=8.5)
+    ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1.0), frameon=False, fontsize=7)
     fig.text(
         0.5, -0.04,
-        "Error bar = bootstrap 95% CI. Filled marker = p$_{Holm}$ < 0.05\n"
-        f"(Wilcoxon two-sided, {len(arms)} arms per size). Each arm is compared\n"
-        "with A0; each mechanism's effect under both states of the other\n"
-        "is in fig_ablation_factorial.",
+        "Error bar = SEM across scenarios; a scenario with no scorable output counts 0.\n"
+        "Descriptive; the registered tests (H-D, H-S) are in tab_ablation.",
         ha="center", va="top", fontsize=6.5, color="#555555",
     )
     save(fig, outdir, "fig_ablation", written)
-
-
+    return True
 
 
 def run(*, pooled_path: Path | None = None, outdir: Path | None = None,
@@ -342,10 +307,10 @@ def run(*, pooled_path: Path | None = None, outdir: Path | None = None,
     out.mkdir(parents=True, exist_ok=True)
 
     written: list[Path] = []
-    fig_ablation(pooled, out, written)
-    for builder, layer in ((fig_ablation_factorial, "factorial layer"),
-                           (fig_ablation_align_ladder, "alignment data"),
-                           (fig_ablation_components, "alignment data")):
+    for builder, layer in ((fig_ablation, "arm means"),
+                           (fig_ablation_factorial, "factorial layer"),
+                           (fig_ablation_align_ladder, "alignment data in the factorial"),
+                           (fig_ablation_components, "alignment data in the factorial")):
         if not builder(pooled, out, written) and not quiet:
             print(f"! no {layer} in the pooled JSON — skipped {builder.__name__}")
     if not quiet:

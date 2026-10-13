@@ -1,24 +1,16 @@
-"""The pooling layer must reproduce what the scripts it replaces produced.
+"""Pooling must reproduce the frozen pooled snapshots of the synthetic tree.
 
-This is the load-bearing test of the whole migration. ``results/`` is empty and
-no real pooled file survives, so the oracle is a synthetic run tree (see
-``factory.py``) pooled by the ORIGINAL scripts and frozen. If this passes, the
-split of a 1,900-line script into five modules changed no number.
+The oracle is a synthetic run tree (``factory.py``) pooled by the current code
+and frozen under ``fixtures/golden/`` -- ``pooled_comparison.json`` and
+``pooled_ablation.json``. A difference is a number that moved; a change that
+moves one on purpose regenerates the snapshot and has its diff read.
 
 Fields excluded from the comparison, and why:
 
 ``generated_at``   a timestamp, different by construction
-``config``         prose and provenance, reworded during the move
+``config``         prose and provenance (software versions among them)
 ``run_dirs``/``dir``/``per_run``   absolute paths, different on every machine
 ``definition``     the prose description of the statistics
-
-The frozen goldens carry the vocabulary the code uses: the LLM judge family
-speaks in SCORES (``by_score``/``lead_score``/``scores``,
-``interaction_by_score``), the alignment family in SIGNALS, and
-``factorial.measures``, which holds both, is named after neither. Settling
-that took one pass over the goldens: key names and one ``holm_family``
-sentence, with the multiset of leaf VALUES asserted identical, so the oracle
-is the same numbers under the names the code now uses.
 """
 
 from __future__ import annotations
@@ -29,9 +21,10 @@ from pathlib import Path
 import pytest
 
 from isd_experiments import paths
-from isd_experiments.pool import comparison
+from isd_experiments.pool import ablation, comparison
 
 GOLDEN = paths.exp_root() / "tests" / "fixtures" / "golden" / "pooled_comparison.json"
+GOLDEN_ABLATION = GOLDEN.with_name("pooled_ablation.json")
 MINI = paths.exp_root() / "tests" / "fixtures" / "mini_run"
 
 #: The roster the golden was pooled with. Stated, not inferred: the roster
@@ -90,6 +83,18 @@ def golden():
 
 def test_pooled_output_is_identical(repooled, golden):
     differences = diff(golden, repooled)
+    assert differences == [], (
+        f"{len(differences)} difference(s) from the frozen reference:\n  "
+        + "\n  ".join(differences[:20])
+    )
+
+
+def test_the_ablation_pool_is_identical(tmp_path):
+    out = tmp_path / "pooled_ablation.json"
+    ablation.run(patterns=[str(MINI / "test_30_benchmark_*_a1_*")], out=out,
+                 comparison_pooled=GOLDEN, quiet=True)
+    differences = diff(json.loads(GOLDEN_ABLATION.read_text(encoding="utf-8")),
+                       json.loads(out.read_text(encoding="utf-8")))
     assert differences == [], (
         f"{len(differences)} difference(s) from the frozen reference:\n  "
         + "\n  ".join(differences[:20])

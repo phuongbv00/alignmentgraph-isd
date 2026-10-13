@@ -1,5 +1,11 @@
-"""What every pool checks before it reads a score: which LLM judges gave it,
-and whether the alignment artifact it is about to read exists at all.
+"""What every pool checks before it reads a score: that every output was
+judged, which LLM judges gave it, and whether the alignment artifact it is
+about to read exists at all.
+
+A pool runs on finished judging only. Under failure = 0 a scenario a system
+left no output for scores 0, and that is the only way a score is missing: an
+output nobody judged yet would otherwise be read as a failure and scored 0
+against the system.
 
 Two LLM judge rosters are never pooled together -- the median of two judges is
 not the median of three, and a judge's preference for one agent over another
@@ -69,6 +75,48 @@ def require_declared_roster(run_dirs: list[Path], agents: list[str] | None = Non
     if unrecorded and not quiet:
         print(f"  ! {unrecorded} report row(s) record no LLM judge: their roster cannot be "
               "checked")
+
+
+def unjudged(run_dirs: list[Path], agents: list[str],
+             artifact: str | None = None) -> list[str]:
+    """Every (run dir, scenario) where an agent left an output that is not
+    judged yet, and every scenario missing ``artifact`` when any scenario of
+    the pool carries it -- across run dirs, so a whole run left unscored is
+    caught. Agents that left no output are failures and belong in the pool, so
+    they are never listed."""
+    from ..judge import rundirs
+    from ..judge.llm import report_gaps
+
+    dirs_by_run = {run_dir: rundirs.scenario_dirs(run_dir) for run_dir in run_dirs}
+    has_artifact = artifact is not None and any(
+        (d / artifact).exists() for dirs in dirs_by_run.values() for d in dirs)
+    out: list[str] = []
+    for run_dir, dirs in dirs_by_run.items():
+        for scen_dir in dirs:
+            produced = tuple(rundirs.produced_agents(scen_dir, set(agents)))
+            if not produced:
+                continue
+            gap = report_gaps(scen_dir, produced)
+            if gap:
+                out.append(f"{run_dir.name}/{scen_dir.name}: {gap}")
+            elif has_artifact and not (scen_dir / artifact).exists():
+                out.append(f"{run_dir.name}/{scen_dir.name}: no {artifact}")
+    return out
+
+
+def require_judged(run_dirs: list[Path], agents: list[str],
+                   artifact: str | None = None) -> None:
+    """Stop a pool over a run whose judging is not finished, naming what is left."""
+    gaps = unjudged(run_dirs, agents, artifact)
+    if gaps:
+        shown = "\n    ".join(gaps[:10]) + (f"\n    ... and {len(gaps) - 10} more"
+                                            if len(gaps) > 10 else "")
+        raise SystemExit(
+            f"{len(gaps)} scenario(s) hold an output that is not judged yet:\n    {shown}\n"
+            "  A pool reads finished judging only: an unjudged output would score 0 as a\n"
+            "  failure. Finish it first:\n"
+            "    ./isd-exp judge llm '<run dir glob>'\n"
+            "    ./isd-exp judge alignment '<run dir glob>'")
 
 
 def missing_artifact(run_dirs: list[Path], artifact: str) -> dict[str, list[str]]:

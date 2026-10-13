@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from isd_experiments import paths
+from isd_experiments.alignment import presets
 from isd_experiments.pool import diagnostics, tune
 
 GOLDEN = paths.exp_root() / "tests" / "fixtures" / "golden"
@@ -296,9 +297,11 @@ class TestReadingTheReport:
         assert {"repeated_items", "no_assessment_items"} <= set(s["harness"]["attention"])
 
     def test_a_missing_panel_artifact_names_the_arms_that_are_there(self, run_dir, capsys):
-        _write(run_dir / "train_10" / "S-001" / "alignment_scores.bgem3.json", {"agents": {}})
+        # Any declared sensitivity encoder: which one is primary is configuration.
+        key, arm = next((k, a) for k, a in presets.current().encoders.items() if a.suffix)
+        _write(run_dir / "train_10" / "S-001" / arm.artifact, {"agents": {}})
         doc, _ = tune.pool({"m": [run_dir]}, [PROPOSED])
-        assert doc["runs"][0]["panel_missing"] == ["bgem3"]
+        assert doc["runs"][0]["panel_missing"] == [key]
         tune.print_report(doc)
         assert "--encoder" in capsys.readouterr().out
 
@@ -604,6 +607,8 @@ def test_pool_ablation_reads_the_named_encoder_arm(tmp_path):
         {"agent_id": PROPOSED, "total_score": 80.0}]}})
     _write(scen / "alignment_scores.bgem3.json",
            {"agents": {PROPOSED: {"porter_mean": 0.4}}})
+    _write(scen / f"{PROPOSED}_output.json", {})
+    (scen / f"{PROPOSED}_log.txt").write_text("", encoding="utf-8")
     primary = ablation.per_scenario_maps([run], [PROPOSED])
     bgem3 = ablation.per_scenario_maps([run], [PROPOSED], "alignment_scores.bgem3.json")
     assert primary["porter_mean"][PROPOSED] == {}

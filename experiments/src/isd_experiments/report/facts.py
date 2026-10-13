@@ -82,15 +82,17 @@ def verdict(p, alpha=SIG_ALPHA):
 
 # ── data access helpers ────────────────────────────────────────────────────────
 
-def llm_judge_comparisons(model_block, score, policy="complete_case"):
+def llm_judge_comparisons(model_block, score, policy=None):
     """LLM judge comparison rows for one score under one failure policy.
 
+    ``policy`` defaults to the block's own primary policy (failure = 0).
     Direction as stored: mean_diff = proposed - baseline (positive favours the
     proposed harness).
     """
-    by_score = (model_block.get("comparisons") or {}).get("by_score") or {}
+    comp = model_block.get("comparisons") or {}
+    by_score = comp.get("by_score") or {}
     sig = by_score.get(score) or {}
-    rows = (sig.get("policies") or {}).get(policy) or []
+    rows = (sig.get("policies") or {}).get(policy or comp.get("primary_policy")) or []
     return rows if isinstance(rows, list) else []
 
 
@@ -127,8 +129,8 @@ def sec_reading_contract(lad, abl):
     L = []
     L.append("## 0. Reading contract - READ BEFORE QUOTING ANY NUMBER\n")
     L.append("**There are two measurement families in this file. They are measured by mechanically "
-             "different instruments, they are on different scales, and on the ablation they "
-             "DISAGREE. Never quote a number without naming its family.**\n")
+             "different instruments, they are on different scales, and they can DISAGREE. "
+             "Never quote a number without naming its family.**\n")
     L.append("| Family | Measures | Scale | Instrument |")
     L.append("|---|---|---|---|")
     L.append(f"| LLM JUDGE (`llm_judge`) | `{'`, `'.join(LLM_JUDGE_SCORES)}` | rubric points /100 | LLM judge rubric |")
@@ -139,26 +141,27 @@ def sec_reading_contract(lad, abl):
              "side by side. The panel has NO primary endpoint at all - it is flat by design, so "
              "calling any one panel signal 'primary' reintroduces the composite the protocol removes.\n")
     L.append("### Sign conventions\n")
-    L.append("Each table below restates its own direction in its header. The two that bite:\n")
+    L.append("Each table below restates its own direction in its header.\n")
     L.append("- **LLM judge / panel comparisons**: `mean_diff = proposed - baseline`. Positive favours "
              "the proposed harness.")
-    L.append("- **Ablation**: the pooled JSON stores `A0 - arm` (the contribution of the removed "
-             "component). This file prints the column `arm - A0` instead, i.e. **what happens when "
-             "you REMOVE the component** - negative means removing it made the score worse. Both "
-             "labels appear in the header of every ablation table; do not mix them up.")
-    L.append("- **2x2 factorial**: `component ON - component OFF`. This is the OPPOSITE sign of "
-             "the `arm - A0` column, by construction.\n")
-    L.append("### Multiplicity\n")
+    L.append(f"- **Ablation** (registered tests and the 2x2 factorial): "
+             f"{(abl.get('config') or {}).get('direction') or 'richer setting minus plainer one: multi - single, graph - prose'}. "
+             "Positive = the richer setting scores higher.\n")
+    L.append("### Tests and multiplicity\n")
+    L.append("- Every comparison is a paired Wilcoxon test (exact null) with a BCa bootstrap CI "
+             "and a rank-biserial r.")
     L.append("- `p_holm` = Holm within one measure - one LLM judge score or one alignment "
-             "signal (LLM judge: 6 baselines; ablation: 3 arms).")
-    L.append("- `p_holm_panel` = Holm over the whole panel x baseline family for that size. "
-             "Panel rows carry both; a panel claim should survive `p_holm_panel`.")
-    L.append("- Factorial p-values are UNCORRECTED - they are pre-specified structural contrasts, "
-             "not a family of arm-vs-A0 tests.\n")
+             "signal - over the baselines of one size. There is no panel-wide correction.")
+    L.append("- Ablation: the ONLY tests are the registered ones (H-D, H-S per size, H-C per axis), "
+             "Holm over exactly that family. The 2x2 factorial is DESCRIPTIVE (mean and CI, no p). "
+             "The secondary interaction contrasts are pre-specified and UNCORRECTED.")
+    L.append("- The scale-interaction (DiD, method x model size) Wilcoxon p values are "
+             "UNCORRECTED - outside every Holm family - and carry no significance verdict.\n")
     L.append("### Failure policies\n")
-    L.append("Complete-case is over AVAILABLE outputs - never describe it as unconditional. "
-             "A crashed run leaves no output to score. The `zero` policy re-runs the paired test "
-             "with those cells imputed at that measure's floor.\n")
+    L.append("Failure = 0 carries every claim: a scenario where a system left no scorable output "
+             "in a run counts 0 there, so every mean covers every scenario. Complete-case "
+             "(sensitivity) drops those scenarios and is over AVAILABLE outputs - never describe "
+             "it as unconditional. Failure rates are descriptive counts.\n")
     L.append("### NOT in this file\n")
     L.append("- Cost ratios and token/quality economics -> `stats_cost.md`, `cost_macros.tex` "
              "(computed from run dirs, not from the pooled JSONs).")
@@ -184,7 +187,9 @@ def sec_provenance(lad, abl):
     L.append(f"| model sizes | {', '.join(cfg.get('size_order', []))} |")
     L.append(f"| pooling | {cfg.get('pooling', '?')} |")
     L.append(f"| primary failure policy | {cfg.get('primary_failure_policy', '?')} |")
-    L.append(f"| bootstrap | n={cfg.get('n_boot', '?')}, seed={cfg.get('bootstrap_seed', '?')} |")
+    L.append(f"| sensitivity failure policy | {cfg.get('sensitivity_failure_policy', '?')} |")
+    L.append(f"| bootstrap | {cfg.get('bootstrap_method', '?')}, n={cfg.get('n_boot', '?')}, "
+             f"seed={cfg.get('bootstrap_seed', '?')} |")
     L.append(f"| encoder (primary) | {align.get('encoder_label', '?')} |")
     L.append(f"| encoder revision pinned | {align.get('encoder_revision_pinned', '?')} "
              f"({align.get('encoder_revision', '?')}) |")
@@ -230,7 +235,7 @@ def rollup_llm_judge(lad):
     """For each baseline x LLM judge score: how many sizes the proposed agent wins
     significantly, and the delta range. Pre-computed so nobody counts by eye."""
     L = ["### 2.1 LLM judge scores - proposed vs each baseline\n",
-         "Direction: `proposed - baseline`, complete-case. "
+         "Direction: `proposed - baseline`, failure = 0. "
          "`sizes SIG+` counts sizes with p_holm < 0.05 AND a positive delta; "
          "`sizes SIG-` counts sizes significant in the baseline's favour.\n",
          "| Signal | Baseline | sizes SIG+ | sizes SIG- | sizes n.s. | delta range |",
@@ -257,8 +262,8 @@ def rollup_llm_judge(lad):
 
 def rollup_panel(lad):
     L = ["### 2.2 alignment panel - proposed vs each baseline\n",
-         "Direction: `proposed - baseline`, complete-case. Verdict uses `p_holm_panel` "
-         "(the stricter of the two multiplicity levels).\n",
+         "Direction: `proposed - baseline`, failure = 0. Verdict uses `p_holm` "
+         "(Holm within the signal).\n",
          "| Signal | Baseline | sizes SIG+ | sizes SIG- | sizes n.s. | delta range |",
          "|---|---|---|---|---|---|"]
     blocks = panel_blocks(lad)
@@ -269,12 +274,10 @@ def rollup_panel(lad):
             for row in block.get("comparisons") or []:
                 per_baseline.setdefault(row.get("baseline"), []).append(row)
         for baseline, rows in sorted(per_baseline.items()):
-            def p_of(r):
-                return r.get("p_holm_panel", r.get("p_holm"))
-            pos = sum(1 for r in rows if p_of(r) is not None
-                      and p_of(r) < SIG_ALPHA and r.get("mean_diff", 0) > 0)
-            neg = sum(1 for r in rows if p_of(r) is not None
-                      and p_of(r) < SIG_ALPHA and r.get("mean_diff", 0) < 0)
+            pos = sum(1 for r in rows if r.get("p_holm") is not None
+                      and r["p_holm"] < SIG_ALPHA and r.get("mean_diff", 0) > 0)
+            neg = sum(1 for r in rows if r.get("p_holm") is not None
+                      and r["p_holm"] < SIG_ALPHA and r.get("mean_diff", 0) < 0)
             ns = len(rows) - pos - neg
             diffs = [r.get("mean_diff") for r in rows if r.get("mean_diff") is not None]
             rng = f"{signed(min(diffs))} .. {signed(max(diffs))}" if diffs else "--"
@@ -284,196 +287,200 @@ def rollup_panel(lad):
     return L
 
 
-def _arm_rows(abl, signal, family):
-    """[(size, arm, row)] for one signal, complete-case, with mean_diff stored as A0 - arm."""
-    out = []
-    if family == "llm_judge":
-        for m in abl.get("models") or []:
-            for row in llm_judge_comparisons(m, signal):
-                out.append((m.get("label", "?"), row.get("baseline"), row))
-    else:
-        stats = ((abl.get("alignment") or {}).get("stats") or {})
-        for per_model in stats.get("per_model") or []:
-            block = (per_model.get("panel") or {}).get(signal) or {}
-            for row in block.get("comparisons") or []:
-                out.append((per_model.get("label", "?"), row.get("baseline"), row))
-    return out
+#: The four simple effects and the interaction of one factorial row, as
+#: (key, short label). Every effect reads richer minus plainer.
+FACTORIAL_EFFECTS = (
+    ("decomposition_effect_given_context_graph", "decomp | ctx=graph"),
+    ("decomposition_effect_given_context_prose", "decomp | ctx=prose"),
+    ("context_effect_given_decomposition_multi", "ctx | decomp=multi"),
+    ("context_effect_given_decomposition_single", "ctx | decomp=single"),
+    ("interaction", "interaction"),
+)
+
+#: Each main effect is the mean of its two simple effects (both are taken over
+#: the same scenarios, the ones with all four cells).
+MAIN_EFFECTS = {
+    "decomposition": ("decomposition_effect_given_context_graph",
+                      "decomposition_effect_given_context_prose"),
+    "substrate": ("context_effect_given_decomposition_multi",
+                  "context_effect_given_decomposition_single"),
+}
+
+
+def factorial_rows(abl, measure):
+    """[row] per size for one factorial measure, rows without a 2x2 dropped."""
+    block = ((abl.get("factorial") or {}).get("measures") or {}).get(measure) or {}
+    return [r for r in block.get("per_model") or [] if r.get("cell_means")]
+
+
+def main_effect(row, axis):
+    """Descriptive main effect of one axis on one factorial row, or None."""
+    vals = [(row.get(k) or {}).get("mean_diff") for k in MAIN_EFFECTS[axis]]
+    if any(v is None for v in vals):
+        return None
+    return sum(vals) / 2
 
 
 def rollup_ablation(abl, lad):
-    """The section that would have caught our two bad claims."""
-    L = ["### 2.3 Ablation - removing a component, per family\n",
-         "**Direction here is `arm - A0` = the effect of REMOVING the component** "
-         "(the pooled JSON stores the negation, `A0 - arm`). Negative = removing it made the "
-         "score worse = the component was load-bearing.\n",
-         "| Family | Signal | Arm | cells neg | cells pos | cells SIG | delta range (arm - A0) |",
-         "|---|---|---|---|---|---|---|"]
-    panel_names = panel_signal_names(abl) or panel_signal_names(lad)
-    plan = [("LLM JUDGE", s) for s in LLM_JUDGE_SCORES] + [("PANEL", s) for s in panel_names]
-    for family_label, signal in plan:
-        fam = "llm_judge" if family_label == "LLM JUDGE" else "panel"
-        rows = _arm_rows(abl, signal, fam)
-        by_arm = {}
-        for size, arm, row in rows:
-            by_arm.setdefault(arm, []).append((size, row))
-        for arm in sorted(by_arm, key=lambda a: ARM_LABELS.get(a, a)):
-            entries = by_arm[arm]
-            # flip: stored A0 - arm  ->  printed arm - A0
-            deltas = [-(r.get("mean_diff") or 0.0) for _, r in entries]
-            ps = [r.get("p_holm_panel", r.get("p_holm")) for _, r in entries]
-            neg = sum(1 for d in deltas if d < 0)
-            pos = sum(1 for d in deltas if d > 0)
-            sig = sum(1 for p in ps if p is not None and p < SIG_ALPHA)
-            digits = 2 if fam == "llm_judge" else 3
-            rng = f"{signed(min(deltas), digits)} .. {signed(max(deltas), digits)}" if deltas else "--"
-            L.append(f"| {family_label} | `{signal}` | {ARM_LABELS.get(arm, arm)} | "
-                     f"{neg}/{len(deltas)} | {pos}/{len(deltas)} | {sig}/{len(ps)} | {rng} |")
-    L.append("")
-
-    # Cross-family aggregate for each arm — the headline roll-up.
-    L.append("**Per-arm totals across a whole family** (this is the number to quote, not a "
-             "hand-count of the tables in section 5):\n")
-    L.append("| Arm | Family | cells | neg | pos | SIG | SIG and neg | delta range (arm - A0) |")
+    """The registered tests: the only inferential claims the ablation makes."""
+    reg = abl.get("registered") or {}
+    family = reg.get("family") or []
+    L = ["### 2.3 Ablation - the registered tests\n",
+         "Direction: the richer setting minus the plainer one (`multi - single`, "
+         "`graph - prose`); H-C = effect at the smallest size minus at the largest. "
+         f"Failure = {reg.get('failure_policy', 'zero')}. Holm over exactly these tests. "
+         "Verdict: supported (p_holm < 0.05, positive), contrary (p_holm < 0.05, negative), "
+         "else not detected. Nothing else in the ablation is a test.\n"]
+    if not family:
+        L.append("_No `registered` block in pooled_ablation.json._\n")
+        return L
+    if not reg.get("complete"):
+        L.append("**INCOMPLETE: not every registered test could be run, so these verdicts "
+                 "are not the registered analysis.**\n")
+    L.append("| Test | Measure | n | delta | CI95 | p_holm | r_rb | verdict |")
     L.append("|---|---|---|---|---|---|---|---|")
-    for arm in sorted(ARM_LABELS, key=lambda a: ARM_LABELS[a]):
-        for family_label, signals, digits in (("LLM JUDGE", LLM_JUDGE_SCORES, 2),
-                                              ("PANEL", tuple(panel_names), 3)):
-            fam = "llm_judge" if family_label == "LLM JUDGE" else "panel"
-            deltas, ps = [], []
-            for signal in signals:
-                for size, a, row in _arm_rows(abl, signal, fam):
-                    if a != arm:
-                        continue
-                    deltas.append(-(row.get("mean_diff") or 0.0))
-                    ps.append(row.get("p_holm_panel", row.get("p_holm")))
-            if not deltas:
-                continue
-            neg = sum(1 for d in deltas if d < 0)
-            pos = sum(1 for d in deltas if d > 0)
-            sig = sum(1 for p in ps if p is not None and p < SIG_ALPHA)
-            signeg = sum(1 for d, p in zip(deltas, ps)
-                         if d < 0 and p is not None and p < SIG_ALPHA)
-            L.append(f"| {ARM_LABELS[arm]} | {family_label} | {len(deltas)} | {neg} | {pos} | "
-                     f"{sig} | **{signeg}** | {signed(min(deltas), digits)} .. "
-                     f"{signed(max(deltas), digits)} |")
+    for r in family:
+        if not r.get("n"):
+            L.append(f"| {r.get('test')} | `{r.get('measure')}` | 0 | -- | -- | -- | -- | "
+                     f"{r.get('note') or r.get('verdict', 'not tested')} |")
+            continue
+        digits = 2 if r.get("measure") in LLM_JUDGE_SCORES else 3
+        L.append(f"| {r.get('test')} | `{r.get('measure')}` | {r.get('n')} | "
+                 f"{signed(r.get('mean_diff'), digits)} | {ci(r.get('ci95'), digits)} | "
+                 f"{pval(r.get('p_holm'))} | {num(r.get('rank_biserial_r'))} | "
+                 f"{r.get('verdict')} |")
     L.append("")
+    tally = {}
+    for r in family:
+        tally[r.get("verdict", "not tested")] = tally.get(r.get("verdict", "not tested"), 0) + 1
+    L.append("Verdicts: " + ", ".join(f"{v}: {c}" for v, c in sorted(tally.items()))
+             + f" (of {len(family)}).\n")
     return L
 
 
 def rollup_scale_gradient(abl, lad):
     """Which size carries the largest |effect|. Exists to stop 'strongest at the
-    small model' style claims that the per-signal argmax does not support."""
+    small model' style claims that the per-measure argmax does not support."""
     L = ["### 2.4 Scale gradient check - where does the largest effect actually sit?\n",
-         "For each arm x signal, the size with the largest |arm - A0|. **If the argmax size is "
+         "For each factorial measure x main effect, the size with the largest |effect| "
+         "(descriptive; the scale TEST is the registered H-C). **If the argmax size is "
          "scattered across sizes, there is NO monotone scale gradient and a sentence like "
-         "'strongest at the smallest model' is unsupported.** Count the distribution before "
-         "writing any scale claim.\n"]
-    panel_names = panel_signal_names(abl) or panel_signal_names(lad)
-    for family_label, signals, digits in (("LLM JUDGE", LLM_JUDGE_SCORES, 2),
-                                          ("PANEL", tuple(panel_names), 3)):
-        fam = "llm_judge" if family_label == "LLM JUDGE" else "panel"
-        L.append(f"**{family_label} family**\n")
-        L.append("| Arm | Signal | argmax size | |delta| there | delta by size |")
-        L.append("|---|---|---|---|---|")
-        tally = {}
-        for arm in sorted(ARM_LABELS, key=lambda a: ARM_LABELS[a]):
-            for signal in signals:
-                entries = [(size, -(row.get("mean_diff") or 0.0))
-                           for size, a, row in _arm_rows(abl, signal, fam) if a == arm]
-                if not entries:
-                    continue
-                top = max(entries, key=lambda t: abs(t[1]))
-                tally.setdefault(arm, {}).setdefault(top[0], 0)
-                tally[arm][top[0]] += 1
-                by_size = ", ".join(f"{s}={signed(d, digits)}" for s, d in entries)
-                L.append(f"| {ARM_LABELS[arm]} | `{signal}` | **{top[0]}** | "
-                         f"{num(abs(top[1]), digits)} | {by_size} |")
-        L.append("")
-        for arm, counts in tally.items():
-            spread = ", ".join(f"{s}: {c}" for s, c in sorted(counts.items()))
-            n_sizes = len(counts)
-            note = ("CONCENTRATED - a scale claim may be defensible" if n_sizes == 1
-                    else "SCATTERED - do NOT claim a scale gradient")
-            L.append(f"- {ARM_LABELS[arm]} ({family_label}) argmax distribution: {spread} -> **{note}**")
-        L.append("")
+         "'strongest at the smallest model' is unsupported.**\n"]
+    measures = list(((abl.get("factorial") or {}).get("measures") or {}))
+    if len({r.get("label") for m in measures for r in factorial_rows(abl, m)}) < 2:
+        L.append("_Fewer than two sizes with a complete 2x2 - no gradient to read._\n")
+        return L
+    L.append("| Main effect | Measure | argmax size | |effect| there | effect by size |")
+    L.append("|---|---|---|---|---|")
+    tally = {}
+    for axis in MAIN_EFFECTS:
+        for measure in measures:
+            entries = [(r.get("label", "?"), main_effect(r, axis))
+                       for r in factorial_rows(abl, measure)]
+            entries = [(s, d) for s, d in entries if d is not None]
+            if not entries:
+                continue
+            digits = 2 if measure in LLM_JUDGE_SCORES else 3
+            top = max(entries, key=lambda t: abs(t[1]))
+            tally.setdefault(axis, {}).setdefault(top[0], 0)
+            tally[axis][top[0]] += 1
+            by_size = ", ".join(f"{s}={signed(d, digits)}" for s, d in entries)
+            L.append(f"| {axis} | `{measure}` | **{top[0]}** | "
+                     f"{num(abs(top[1]), digits)} | {by_size} |")
+    L.append("")
+    for axis, counts in tally.items():
+        spread = ", ".join(f"{s}: {c}" for s, c in sorted(counts.items()))
+        note = ("CONCENTRATED - a scale claim may be defensible" if len(counts) == 1
+                else "SCATTERED - do NOT claim a scale gradient")
+        L.append(f"- {axis} argmax distribution: {spread} -> **{note}**")
+    L.append("")
     return L
 
 
 def rollup_family_disagreement(abl, lad):
     """Where the LLM judge and the panel point opposite ways — the finding itself."""
     L = ["### 2.5 Cross-family disagreement (LLM judge vs panel)\n",
-         "Same arm, same size, opposite sign between the two families. **Every row here is a "
-         "place where quoting one family alone would misrepresent the result.**\n",
-         "| Arm | Size | LLM JUDGE lead (`%s`) | PANEL (n signals neg / total) | disagreement |"
+         "Same main effect, same size, opposite sign between the two families (descriptive "
+         "factorial effects, richer minus plainer). **Every row marked OPPOSITE is a place "
+         "where quoting one family alone would misrepresent the result.**\n",
+         "| Main effect | Size | LLM JUDGE lead (`%s`) | PANEL (n signals neg / total) | disagreement |"
          % LLM_JUDGE_LEAD,
          "|---|---|---|---|---|"]
     panel_names = panel_signal_names(abl) or panel_signal_names(lad)
-    sizes = [m.get("label") for m in abl.get("models") or []]
-    for arm in sorted(ARM_LABELS, key=lambda a: ARM_LABELS[a]):
-        for size in sizes:
-            jrows = [row for s, a, row in _arm_rows(abl, LLM_JUDGE_LEAD, "llm_judge")
-                     if a == arm and s == size]
-            if not jrows:
+    lead = {r.get("label"): r for r in factorial_rows(abl, LLM_JUDGE_LEAD)}
+    panel = {s: {r.get("label"): r for r in factorial_rows(abl, s)} for s in panel_names}
+    for axis in MAIN_EFFECTS:
+        for size, row in lead.items():
+            jd = main_effect(row, axis)
+            if jd is None:
                 continue
-            jd = -(jrows[0].get("mean_diff") or 0.0)
-            jp = jrows[0].get("p_holm")
-            pneg = ptot = 0
-            for signal in panel_names:
-                for s, a, row in _arm_rows(abl, signal, "panel"):
-                    if a != arm or s != size:
-                        continue
-                    ptot += 1
-                    if -(row.get("mean_diff") or 0.0) < 0:
-                        pneg += 1
-            if not ptot:
+            effects = [main_effect(panel[s][size], axis) for s in panel_names
+                       if size in panel[s]]
+            effects = [d for d in effects if d is not None]
+            if not effects:
                 continue
+            pneg = sum(1 for d in effects if d < 0)
+            ptot = len(effects)
             panel_dir = -1 if pneg > ptot / 2 else (1 if pneg < ptot / 2 else 0)
             llm_judge_dir = -1 if jd < 0 else (1 if jd > 0 else 0)
             flag = "**OPPOSITE**" if llm_judge_dir * panel_dir < 0 else "same direction"
-            L.append(f"| {ARM_LABELS[arm]} | {size} | {signed(jd, 2)} ({verdict(jp)}) | "
+            L.append(f"| {axis} | {size} | {signed(jd, 2)} | "
                      f"{pneg}/{ptot} negative | {flag} |")
     L.append("")
     L.append("Reading rule that follows from this table: a sentence about a mechanism must name "
-             "its family. 'Removing graph context hurts alignment' and 'removing graph context "
-             "does not lower the LLM judge score' are both true and belong in the same paragraph.\n")
+             "its family. A mechanism can lower the alignment signals without lowering the LLM "
+             "judge score, and both statements belong in the same paragraph.\n")
     return L
 
 
 # ── sections 3-5: full tables ──────────────────────────────────────────────────
 
+def _paired_table(rows, digits):
+    """Rows of one paired comparison, direction proposed - baseline."""
+    L = ["| Baseline | n | mean_diff | CI95 | p_raw | p_holm | r_rb | verdict |",
+         "|---|---|---|---|---|---|---|---|"]
+    for r in rows:
+        L.append(f"| `{r.get('baseline')}` | {r.get('n','--')} | "
+                 f"{signed(r.get('mean_diff'), digits)} | {ci(r.get('ci95'), digits)} | "
+                 f"{pval(r.get('p_raw'))} | {pval(r.get('p_holm'))} | "
+                 f"{num(r.get('rank_biserial_r'))} | {verdict(r.get('p_holm'))} |")
+    L.append("")
+    return L
+
+
 def sec_llm_judge_tables(lad):
     L = ["## 3. LLM judge scores - full tables\n",
-         "Per-agent descriptive means come from the pooled per-agent block. "
-         "**A mean and its SD must come from the same signal** - the columns below are already "
-         "paired correctly (`mean_addie` with `sd_addie_across_scenarios`, etc.). "
-         "The SD is ACROSS SCENARIOS, not across runs: the comparison experiment generates one "
-         "run per cell, so a run-to-run SD has a single value and "
-         "does not exist. It is descriptive spread, not a precision estimate.\n"]
+         "Per-agent descriptive means come from the pooled per-agent block, under failure = 0 "
+         "over every scenario. **A mean and its SD must come from the same signal** - the "
+         "columns below are already paired correctly (`mean_addie` with "
+         "`sd_addie_across_scenarios`, etc.). The SD is ACROSS SCENARIOS, not across runs: the "
+         "comparison experiment generates one run per cell, so a run-to-run SD has a single "
+         "value and does not exist. It is descriptive spread, not a precision estimate. "
+         "`counted 0` = scenarios with no scorable output in at least one run.\n"]
     for m in lad.get("models") or []:
         L.append(f"### {m.get('label','?')}\n")
-        L.append("| Agent | n complete | n any missing | ADDIE | SD scen | Traj | SD scen | Total | SD scen |")
-        L.append("|---|---|---|---|---|---|---|---|---|")
+        L.append("| Agent | n | counted 0 | ADDIE | SD scen | Traj | SD scen | Total | SD scen "
+                 "| ADDIE complete-case |")
+        L.append("|---|---|---|---|---|---|---|---|---|---|")
         for agent, a in sorted((m.get("agents") or {}).items()):
-            L.append(f"| `{agent}` | {a.get('n_scenarios_complete','--')} | "
+            L.append(f"| `{agent}` | {a.get('n_scenarios','--')} | "
                      f"{a.get('n_scenarios_any_missing','--')} | "
                      f"{num(a.get('mean_addie'), 2)} | {num(a.get('sd_addie_across_scenarios'), 2)} | "
                      f"{num(a.get('mean_traj'), 2)} | {num(a.get('sd_traj_across_scenarios'), 2)} | "
-                     f"{num(a.get('mean_total'), 2)} | {num(a.get('sd_total_across_scenarios'), 2)} |")
+                     f"{num(a.get('mean_total'), 2)} | {num(a.get('sd_total_across_scenarios'), 2)} | "
+                     f"{num(a.get('mean_addie_complete_case'), 2)} |")
         L.append("")
+        sensitivity = (m.get("comparisons") or {}).get("sensitivity_policy")
         for signal in LLM_JUDGE_SCORES:
             rows = llm_judge_comparisons(m, signal)
-            if not rows:
-                continue
-            L.append(f"Paired vs baselines - `{signal}`, complete-case, "
-                     "direction `proposed - baseline`:\n")
-            L.append("| Baseline | n | mean_diff | CI95 | p_raw | p_holm | r_rb | verdict |")
-            L.append("|---|---|---|---|---|---|---|---|")
-            for r in rows:
-                L.append(f"| `{r.get('baseline')}` | {r.get('n','--')} | "
-                         f"{signed(r.get('mean_diff'), 2)} | {ci(r.get('ci95'), 2)} | "
-                         f"{pval(r.get('p_raw'))} | {pval(r.get('p_holm'))} | "
-                         f"{num(r.get('rank_biserial_r'))} | {verdict(r.get('p_holm'))} |")
-            L.append("")
+            if rows:
+                L.append(f"Paired vs baselines - `{signal}`, failure = 0, "
+                         "direction `proposed - baseline`:\n")
+                L += _paired_table(rows, 2)
+            cc = llm_judge_comparisons(m, signal, sensitivity) if sensitivity else []
+            if cc:
+                L.append(f"`{signal}`, complete-case (sensitivity):\n")
+                L += _paired_table(cc, 2)
     return L
 
 
@@ -481,36 +488,31 @@ def sec_panel_tables(lad):
     L = ["## 4. alignment panel - full tables\n",
          "Flat panel, no primary endpoint. Continuous signals are mean-max RECTIFIED cosine "
          "(`max(0, cos)` on [0,1]) - a scale choice, not a matching cutoff. There is no "
-         "similarity threshold anywhere in the protocol.\n"]
+         "similarity threshold anywhere in the protocol. Means and paired rows are under "
+         "failure = 0; the complete-case rows are the sensitivity.\n"]
     for size, panel in panel_blocks(lad):
         L.append(f"### {size}\n")
         for signal, block in panel.items():
-            fam = block.get("family", "?")
-            directional = block.get("directional", True)
-            tag = "" if directional else " - NON-DIRECTIONAL"
-            L.append(f"#### `{signal}` [{fam}]{tag}\n")
+            L.append(f"#### `{signal}` [{block.get('family', '?')}]\n")
             desc = block.get("align_descriptive") or {}
+            cc_desc = block.get("complete_case_descriptive") or {}
             if desc:
-                L.append("| Agent | mean | CI95 |")
-                L.append("|---|---|---|")
+                L.append("| Agent | n | mean | CI95 | complete-case mean (n) |")
+                L.append("|---|---|---|---|---|")
                 for agent, d in sorted(desc.items()):
-                    if isinstance(d, dict):
-                        L.append(f"| `{agent}` | {num(d.get('mean'))} | {ci(d.get('ci95'))} |")
-                    else:
-                        L.append(f"| `{agent}` | {num(d)} | -- |")
+                    cc = cc_desc.get(agent) or {}
+                    cc_txt = f"{num(cc.get('mean'))} ({cc.get('n', '--')})" if cc else "--"
+                    L.append(f"| `{agent}` | {d.get('n', '--')} | {num(d.get('mean'))} | "
+                             f"{ci(d.get('ci95'))} | {cc_txt} |")
                 L.append("")
             rows = block.get("comparisons") or []
             if rows:
-                L.append("Paired, complete-case, direction `proposed - baseline`:\n")
-                L.append("| Baseline | n | mean_diff | CI95 | p_holm | p_holm_panel | r_rb | verdict (panel) |")
-                L.append("|---|---|---|---|---|---|---|---|")
-                for r in rows:
-                    pp = r.get("p_holm_panel", r.get("p_holm"))
-                    L.append(f"| `{r.get('baseline')}` | {r.get('n','--')} | "
-                             f"{signed(r.get('mean_diff'))} | {ci(r.get('ci95'))} | "
-                             f"{pval(r.get('p_holm'))} | {pval(pp)} | "
-                             f"{num(r.get('rank_biserial_r'))} | {verdict(pp)} |")
-                L.append("")
+                L.append("Paired, failure = 0, direction `proposed - baseline`:\n")
+                L += _paired_table(rows, 3)
+            cc_rows = block.get("comparisons_complete_case") or []
+            if cc_rows:
+                L.append("Paired, complete-case (sensitivity):\n")
+                L += _paired_table(cc_rows, 3)
     L += sec_panel_validity(lad)
     return L
 
@@ -548,88 +550,105 @@ def sec_panel_validity(lad):
 
 
 def sec_ablation_tables(abl, lad):
+    cfg = abl.get("config") or {}
     L = ["## 5. Ablation - full tables\n",
-         "**Direction: the `arm - A0` column is the effect of REMOVING the component.** "
-         "The pooled JSON stores `A0 - arm`; it is negated here. Negative = removing it "
-         "made the score worse.\n"]
-    panel_names = panel_signal_names(abl) or panel_signal_names(lad)
+         f"**Direction: {cfg.get('direction') or 'richer setting minus plainer one'}.** "
+         "Cell means are under failure = 0 and descriptive; the only tests are the "
+         "registered ones (2.3, with their secondary readings in 5.3).\n"]
+    reference = cfg.get("reference") or PROPOSED
 
-    L.append("### 5.1 JUDGE family\n")
+    def arm_label(agent):
+        return "A0 - full pipeline" if agent == reference else ARM_LABELS.get(agent, agent)
+
+    L.append("### 5.1 JUDGE family - cell means per arm\n")
     for m in abl.get("models") or []:
         L.append(f"#### {m.get('label','?')}\n")
-        L.append("| Agent/arm | ADDIE | Traj | Total |")
-        L.append("|---|---|---|---|")
-        for agent, a in sorted((m.get("agents") or {}).items()):
-            L.append(f"| `{agent}` | {num(a.get('mean_addie'), 2)} | "
+        L.append("| Arm | n | counted 0 | ADDIE | Traj | Total |")
+        L.append("|---|---|---|---|---|---|")
+        for agent, a in sorted((m.get("agents") or {}).items(), key=lambda t: arm_label(t[0])):
+            L.append(f"| {arm_label(agent)} | {a.get('n_scenarios', '--')} | "
+                     f"{a.get('n_scenarios_any_missing', '--')} | "
+                     f"{num(a.get('mean_addie'), 2)} | "
                      f"{num(a.get('mean_traj'), 2)} | {num(a.get('mean_total'), 2)} |")
-        L.append("")
-        for signal in LLM_JUDGE_SCORES:
-            rows = llm_judge_comparisons(m, signal)
-            if not rows:
-                continue
-            L.append(f"`{signal}` - paired vs A0:\n")
-            L.append("| Arm | n | arm - A0 | CI95 (arm - A0) | p_holm | r_rb | verdict |")
-            L.append("|---|---|---|---|---|---|---|")
-            for r in rows:
-                d = -(r.get("mean_diff") or 0.0)
-                c = r.get("ci95") or [None, None]
-                cflip = [-c[1], -c[0]] if None not in c else None
-                arm = r.get("baseline")
-                L.append(f"| {ARM_LABELS.get(arm, arm)} | {r.get('n','--')} | {signed(d, 2)} | "
-                         f"{ci(cflip, 2)} | {pval(r.get('p_holm'))} | "
-                         f"{num(r.get('rank_biserial_r'))} | {verdict(r.get('p_holm'))} |")
-            L.append("")
-
-    L.append("### 5.2 PANEL family\n")
-    stats = ((abl.get("alignment") or {}).get("stats") or {})
-    for per_model in stats.get("per_model") or []:
-        L.append(f"#### {per_model.get('label','?')}\n")
-        L.append("| Signal | Arm | n | arm - A0 | p_holm | p_holm_panel | verdict (panel) |")
-        L.append("|---|---|---|---|---|---|---|")
-        panel = per_model.get("panel") or {}
-        for signal in panel_names:
-            block = panel.get(signal) or {}
-            for r in block.get("comparisons") or []:
-                d = -(r.get("mean_diff") or 0.0)
-                pp = r.get("p_holm_panel", r.get("p_holm"))
-                arm = r.get("baseline")
-                L.append(f"| `{signal}` | {ARM_LABELS.get(arm, arm)} | {r.get('n','--')} | "
-                         f"{signed(d)} | {pval(r.get('p_holm'))} | {pval(pp)} | {verdict(pp)} |")
         L.append("")
 
     fac = abl.get("factorial") or {}
-    if fac:
-        L.append("### 5.3 2x2 factorial (decomposition x context representation)\n")
-        L.append("**Direction: `multi-agent - single-agent` / `graph - prose`** - the OPPOSITE "
-                 "sign of the `arm - A0` columns above. Positive = the richer setting scores "
-                 "higher. p-values UNCORRECTED (pre-specified structural contrasts).\n")
-        L.append("A negative `interaction` means the two mechanisms SUBSTITUTE for each other - "
-                 "but only where both simple effects carry the beneficial sign. Where both are "
-                 "negative it is a magnitude statement; where the signs differ it is a crossover, "
-                 "neither substitution nor complementarity.\n")
-        for signal, block in (fac.get("measures") or {}).items():
+    cells = fac.get("cells") or {}
+    measures = fac.get("measures") or {}
+    panel_names = panel_signal_names(abl) or panel_signal_names(lad)
+    if any(s in measures for s in panel_names) and cells:
+        L.append("### 5.2 PANEL family - cell means per arm (scenarios with all four cells)\n")
+        keys = list(cells)
+        L.append("| Size | Signal | n | " + " | ".join(arm_label(cells[k]) for k in keys) + " |")
+        L.append("|---|---|---|" + "---|" * len(keys))
+        for signal in panel_names:
+            for row in factorial_rows(abl, signal):
+                means = row.get("cell_means") or {}
+                L.append(f"| {row.get('label','?')} | `{signal}` | {row.get('n_scenarios','--')} | "
+                         + " | ".join(num(means.get(k)) for k in keys) + " |")
+        L.append("")
+
+    reg = abl.get("registered") or {}
+    if reg.get("family"):
+        L.append("### 5.3 Registered tests - secondary readings\n")
+        L.append("The family itself is in 2.3. Per size: the same tests over complete cases "
+                 "(sensitivity, their own Holm), the pre-specified decomposition x substrate "
+                 "interaction (UNCORRECTED), the model-written triad (descriptive) and the "
+                 "phase slope of the decomposition gap (descriptive).\n")
+        for size, sec in (reg.get("secondary") or {}).items():
+            L.append(f"#### {size}\n")
+            L.append("| Reading | n | delta | CI95 | p | verdict |")
+            L.append("|---|---|---|---|---|---|")
+            for r in sec.get("complete_case") or []:
+                L.append(f"| {r.get('test')} | {r.get('n', '--')} | {signed(r.get('mean_diff'))} | "
+                         f"{ci(r.get('ci95'))} | p_holm={pval(r.get('p_holm'))} | "
+                         f"{r.get('verdict', '--')} |")
+            for measure, r in (sec.get("interaction") or {}).items():
+                L.append(f"| interaction on `{measure}` | {r.get('n', '--')} | "
+                         f"{signed(r.get('mean_diff'))} | {ci(r.get('ci95'))} | "
+                         f"p_raw={pval(r.get('p_raw'))} (uncorrected) | -- |")
+            mw = sec.get("substrate|model_written") or {}
+            if mw.get("n"):
+                L.append(f"| H-S on the model-written triad | {mw['n']} | "
+                         f"{signed(mw.get('mean_diff'))} | {ci(mw.get('ci95'))} | "
+                         "descriptive | -- |")
+            slope = (sec.get("phase_slope") or {}).get("slope") or {}
+            if slope.get("n"):
+                L.append(f"| H-D gap slope per ADDIE phase | {slope['n']} | "
+                         f"{signed(slope.get('mean_diff'))} | {ci(slope.get('ci95'))} | "
+                         "descriptive | -- |")
+            L.append("")
+
+    if measures:
+        L.append("### 5.4 2x2 factorial (decomposition x context representation)\n")
+        L.append("**Direction: `multi-agent - single-agent` / `graph - prose`.** Positive = the "
+                 "richer setting scores higher. Each effect is a mean with its bootstrap CI - "
+                 "DESCRIPTIVE; the tests are the registered ones.\n")
+        L.append("`interaction` = (decomposition effect given ctx=graph) - (decomposition "
+                 "effect given ctx=prose). Negative means the decomposition effect is lower "
+                 "under graph than under prose, whatever its sign: where both simple effects "
+                 "are positive the two mechanisms SUBSTITUTE for each other, where both are "
+                 "negative multi-agent decomposition costs MORE under graph, and where the "
+                 "signs differ it is a crossover.\n")
+        for signal, block in measures.items():
             L.append(f"#### `{signal}`\n")
-            L.append("| Size | n | decomp \\| ctx=graph | decomp \\| ctx=prose | ctx \\| decomp=multi | "
-                     "ctx \\| decomp=single | interaction |")
-            L.append("|---|---|---|---|---|---|---|")
+            L.append("| Size | n | " + " | ".join(lbl.replace("|", "\\|")
+                                                    for _, lbl in FACTORIAL_EFFECTS) + " |")
+            L.append("|---|---|" + "---|" * len(FACTORIAL_EFFECTS))
             digits = 2 if signal in LLM_JUDGE_SCORES else 3
             for row in block.get("per_model") or []:
                 def cell(key):
                     e = row.get(key) or {}
-                    if not e:
+                    if e.get("mean_diff") is None:
                         return "--"
-                    return f"{signed(e.get('mean_diff'), digits)} (p={pval(e.get('p_raw'))})"
-                L.append(f"| {row.get('label','?')} | {row.get('n_scenarios','--')} | "
-                         f"{cell('decomposition_effect_given_context_graph')} | "
-                         f"{cell('decomposition_effect_given_context_prose')} | "
-                         f"{cell('context_effect_given_decomposition_multi')} | "
-                         f"{cell('context_effect_given_decomposition_single')} | "
-                         f"{cell('interaction')} |")
+                    return f"{signed(e['mean_diff'], digits)} {ci(e.get('ci95'), digits)}"
+                L.append(f"| {row.get('label','?')} | {row.get('n_scenarios', row.get('n', '--'))} | "
+                         + " | ".join(cell(k) for k, _ in FACTORIAL_EFFECTS) + " |")
             L.append("")
 
     va = abl.get("self_validation_activity") or []
     if va:
-        L.append("### 5.4 Self-validation activity (repairs actually performed)\n")
+        L.append("### 5.5 Self-validation activity (repairs actually performed)\n")
         L.append("Operational counts, not a scored signal. Self-validation is always on (not "
                  "one of the two ablated axes), so this is context for the decomposition/context "
                  "effects above, not mechanism evidence for an on/off switch.\n")
@@ -638,8 +657,7 @@ def sec_ablation_tables(abl, lad):
         L.append("|---|---|---|---|---|---|")
         for row in va:
             for arm, d in (row.get("arms") or {}).items():
-                label = "A0 - full pipeline" if arm == PROPOSED else ARM_LABELS.get(arm, arm)
-                L.append(f"| {row.get('label','?')} | {label} | "
+                L.append(f"| {row.get('label','?')} | {arm_label(arm)} | "
                          f"{(d or {}).get('n_scenario_runs','--')} | "
                          f"{num((d or {}).get('verifier_events_mean'), 2)} | "
                          f"{num((d or {}).get('repair_events_mean'), 2)} | "
@@ -651,21 +669,22 @@ def sec_ablation_tables(abl, lad):
 # ── sections 6-9 ───────────────────────────────────────────────────────────────
 
 def sec_interaction(lad):
-    L = ["## 6. Scale interaction (DiD, largest size - smallest size)\n"]
-    by_score = lad.get("interaction_by_score") or {}
-    if not by_score and lad.get("interaction"):
-        by_score = {"(default)": lad["interaction"]}
-    for signal, block in by_score.items():
+    L = ["## 6. Scale interaction (DiD, largest size - smallest size)\n",
+         "Under failure = 0. Direction: delta(proposed - baseline) at the largest size minus at "
+         "the smallest; positive = the advantage grows with size. The p column is the "
+         "Wilcoxon p of the per-scenario DiD values, UNCORRECTED (outside every Holm "
+         "family); no significance verdict is given.\n"]
+    for signal, block in (lad.get("interaction_by_score") or {}).items():
         L.append(f"### `{signal}`\n")
         defn = block.get("definition")
         if defn:
             L.append(f"> {defn}\n")
-        L.append("| Baseline | DiD | CI95 | p | verdict |")
+        L.append("| Baseline | n | DiD | CI95 | p (uncorrected) |")
         L.append("|---|---|---|---|---|")
         for row in block.get("per_baseline") or []:
-            p = row.get("p_raw", row.get("p"))
-            L.append(f"| `{row.get('baseline')}` | {signed(row.get('did', row.get('mean_diff')), 2)} | "
-                     f"{ci(row.get('ci95'), 2)} | {pval(p)} | {verdict(p)} |")
+            L.append(f"| `{row.get('baseline')}` | {row.get('n_paired_scenarios', '--')} | "
+                     f"{signed(row.get('did_mean'), 2)} | "
+                     f"{ci(row.get('did_ci95'), 2)} | {pval(row.get('did_wilcoxon_p'))} |")
         L.append("")
     ia = ((lad.get("alignment") or {}).get("stats") or {}).get("interaction_align") or {}
     if ia:
@@ -674,12 +693,12 @@ def sec_interaction(lad):
             L.append(f"> {ia['definition']}\n")
         rows = ia.get("per_baseline") or []
         if rows:
-            L.append("| Baseline | DiD | CI95 | p |")
-            L.append("|---|---|---|---|")
+            L.append("| Baseline | n | DiD | CI95 | p (uncorrected) |")
+            L.append("|---|---|---|---|---|")
             for row in rows:
-                p = row.get("p_raw", row.get("p"))
-                L.append(f"| `{row.get('baseline')}` | {signed(row.get('did', row.get('mean_diff')))} | "
-                         f"{ci(row.get('ci95'))} | {pval(p)} |")
+                L.append(f"| `{row.get('baseline')}` | {row.get('n_paired_scenarios', '--')} | "
+                         f"{signed(row.get('did_mean'))} | "
+                         f"{ci(row.get('did_ci95'))} | {pval(row.get('did_wilcoxon_p'))} |")
             L.append("")
     return L
 
@@ -689,22 +708,22 @@ def sec_failures(lad):
     fr = lad.get("failure_rates") or {}
     if fr.get("definition"):
         L.append(f"> {fr['definition']}\n")
-    L.append("Direction: these compare the proposed agent's failed-scenario count against each "
-             "baseline's. Fisher exact two-sided, Holm over the 6 comparisons per size.\n")
+    L.append("Descriptive counts on the same scenarios, no test: under failure = 0 every failure "
+             "already scores 0 in the paired comparisons.\n")
     for block in fr.get("per_model") or []:
         rows = block.get("rows") or []
         if not rows:
             continue
         L.append(f"### {block.get('label','?')}\n")
-        L.append("| Baseline | proposed failed | baseline failed | n | baseline run-level | "
-                 "p_fisher | p_holm | verdict |")
+        L.append("| Baseline | proposed failed | baseline failed | both failed | only proposed | "
+                 "only baseline | n | baseline run-level |")
         L.append("|---|---|---|---|---|---|---|---|")
         for r in rows:
             L.append(f"| `{r.get('baseline')}` | {r.get('proposed_failed_scenarios','--')} | "
-                     f"{r.get('baseline_failed_scenarios','--')} | {r.get('n_scenarios','--')} | "
-                     f"{r.get('baseline_failed_run_level','--')} | "
-                     f"{pval(r.get('fisher_p_two_sided'))} | {pval(r.get('p_holm'))} | "
-                     f"{verdict(r.get('p_holm'))} |")
+                     f"{r.get('baseline_failed_scenarios','--')} | "
+                     f"{r.get('both_failed_scenarios','--')} | "
+                     f"{r.get('only_proposed_failed','--')} | {r.get('only_baseline_failed','--')} | "
+                     f"{r.get('n_scenarios','--')} | {r.get('baseline_failed_run_level','--')} |")
         L.append("")
     return L
 
@@ -771,10 +790,17 @@ def sec_macros(outdir):
             L.append(f"_`{name}` not found - skipped._\n")
             continue
         entries = []
+        # a macro's comment is on its own line or on the line just above it
+        above = ""
         for line in path.read_text(encoding="utf-8").splitlines():
-            m = MACRO_RE.match(line.strip())
+            line = line.strip()
+            m = MACRO_RE.match(line)
             if m:
-                entries.append((m.group(1), m.group(2), (m.group(3) or "").strip()))
+                entries.append((m.group(1), m.group(2),
+                                (m.group(3) or "").strip() or above))
+                above = ""
+            else:
+                above = line[1:].strip() if line.startswith("%") else ""
         total += len(entries)
         L.append(f"### `{name}` ({len(entries)} macros)\n")
         L.append("| Macro | Value | Comment |")

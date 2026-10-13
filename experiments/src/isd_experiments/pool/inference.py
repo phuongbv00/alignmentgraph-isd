@@ -6,28 +6,18 @@ ladder exists to answer. A single difference at a single size says nothing
 about a trend, so the DiD is computed explicitly rather than inferred by
 eye from two numbers.
 
-`failure_tests` treats producing no scorable output as an outcome in its own
-right. Dropping those cells silently would let the worst outputs leave the
-denominator, which flatters exactly the configurations that fail most -- and
-failure rate rises as the model shrinks, so the missingness tracks the
-ladder's own independent variable.
+`failure_counts` reports how often each system produced no scorable output.
+Under failure = 0 a failure already scores 0 in every comparison, so these
+counts say where a score difference comes from; they are not tested again.
 """
 
 from __future__ import annotations
 
-import random
-
-from ..config import LLM_JUDGE_LEAD
-from ..stats import (
-    BOOT_SEED,
-    N_BOOT,
-    bootstrap_ci,
-    fisher_exact_2x2,
-    holm_correct,
-    wilcoxon_signed_rank,
-)
+from ..config import FAILURE_POLICY, LLM_JUDGE_LEAD
+from ..stats import BOOT_METHOD, BOOT_SEED, N_BOOT, bootstrap_ci, wilcoxon_signed_rank
 from ..util import mean as _mean
-from .llm_judge import scenario_mean_map
+from .llm_judge import ran, scenario_mean_map
+
 
 def interaction_tests(models: list[dict], proposed: str, baselines: list[str],
                       n_boot: int = N_BOOT, seed: int = BOOT_SEED,
@@ -35,8 +25,8 @@ def interaction_tests(models: list[dict], proposed: str, baselines: list[str],
     """Method x model-size interaction (reviewer Q11).
 
     DiD = mean_i[ delta_i(largest) - delta_i(smallest) ] where
-    delta_i(size) = proposed_i - baseline_i on scenario i (complete-case
-    mean-of-runs), paired by scenario across sizes. Bootstrap CI resamples
+    delta_i(size) = proposed_i - baseline_i on scenario i (mean of runs,
+    failure = 0), paired by scenario across sizes. Bootstrap CI resamples
     scenarios. Also reports the per-size delta trend + OLS slope on size rank.
     """
     if len(models) < 2:
@@ -47,8 +37,8 @@ def interaction_tests(models: list[dict], proposed: str, baselines: list[str],
         deltas_by_size = []
         for m in models:
             series = m["_scores"][metric]
-            pmap = scenario_mean_map(series, proposed, "complete_case", 0.0)
-            bmap = scenario_mean_map(series, b, "complete_case", 0.0)
+            pmap = scenario_mean_map(series, proposed, FAILURE_POLICY)
+            bmap = scenario_mean_map(series, b, FAILURE_POLICY)
             deltas_by_size.append({s: pmap[s] - bmap[s] for s in set(pmap) & set(bmap)})
         d_small, d_large = deltas_by_size[0], deltas_by_size[-1]
         shared = sorted(set(d_small) & set(d_large))
@@ -73,13 +63,7 @@ def interaction_tests(models: list[dict], proposed: str, baselines: list[str],
                 return sum((x - xbar) * m for x, m in zip(range(k), ms)) / denom
 
             slope = ols_slope(common)
-            rng = random.Random(seed)
-            boots = sorted(
-                ols_slope([common[rng.randrange(len(common))] for _ in common])
-                for _ in range(n_boot)
-            )
-            slope_lo = boots[int(0.025 * n_boot)]
-            slope_hi = boots[int(0.975 * n_boot) - 1]
+            slope_lo, slope_hi = bootstrap_ci(common, ols_slope, n_boot=n_boot, seed=seed)
 
         results.append({
             "baseline": b,
@@ -103,52 +87,53 @@ def interaction_tests(models: list[dict], proposed: str, baselines: list[str],
         "definition": (
             f"DiD on {metric} = mean over scenarios of [delta(largest size) - "
             "delta(smallest size)], delta = proposed - baseline per scenario "
-            "(mean of runs, complete-case); bootstrap CI (10k, seed 42) "
-            "resamples scenarios; positive DiD means the proposed method's "
-            "advantage GROWS with model size, negative means it shrinks (i.e. "
+            f"(mean of runs, failure = 0); {BOOT_METHOD} bootstrap CI "
+            f"({n_boot}, seed {seed}) resamples scenarios; positive DiD means the "
+            "proposed method's advantage GROWS with model size, negative means it shrinks (i.e. "
             "the method helps small models more)."
         ),
         "per_baseline": results,
     }
 
-def failure_tests(models: list[dict], proposed: str, baselines: list[str]) -> dict:
-    """Scenario-level output-failure comparison (proposed vs each baseline).
+def failure_counts(models: list[dict], proposed: str, baselines: list[str]) -> dict:
+    """Scenario-level output failures, proposed vs each baseline. Descriptive.
 
-    Unit = scenario (union across the size's runs); "failed" = the agent has no
-    scorable output in at least one run (n_scenarios_any_missing). Fisher exact
-    two-sided on the 2x2 [failed, ok] x [proposed, baseline]. This is the
-    robustness face of the "harness compensates for small models" claim — it
-    stays valid where tiny complete-case n makes the score comparison
-    untestable. Run-level totals are reported descriptively only (runs of the
-    same scenario are not independent)."""
+    Unit = scenario (union across the size's runs); "failed" = the agent was
+    attempted and left no scorable output in at least one run (``attempts``). The two agents are scored on the same
+    scenarios, so the counts are split by who failed: both, only the proposed
+    system, only the baseline. Run-level totals are descriptive too (runs of
+    the same scenario are not independent)."""
     out = []
     for model in models:
         n_union = model["n_scenarios_union"]
         n_runs = model["n_runs"]
-        summ = model["agents"]
+        totals = model["_scores"]["total_score"]
+
+        def failed(agent: str) -> set[str]:
+            return {sid for sid, vals in totals[agent].items()
+                    if any(v is None for v in ran(vals))}
+
+        failed_p = failed(proposed)
         rows = []
-        miss_p = summ[proposed]["n_scenarios_any_missing"]
         for b in baselines:
-            miss_b = summ[b]["n_scenarios_any_missing"]
-            p = fisher_exact_2x2(miss_p, n_union - miss_p, miss_b, n_union - miss_b)
+            failed_b = failed(b)
             run_level_b = sum(info["missing_by_agent"].get(b, 0) for info in model["per_run"])
             rows.append({
                 "baseline": b,
-                "proposed_failed_scenarios": miss_p,
-                "baseline_failed_scenarios": miss_b,
+                "proposed_failed_scenarios": len(failed_p),
+                "baseline_failed_scenarios": len(failed_b),
+                "both_failed_scenarios": len(failed_p & failed_b),
+                "only_proposed_failed": len(failed_p - failed_b),
+                "only_baseline_failed": len(failed_b - failed_p),
                 "n_scenarios": n_union,
                 "baseline_failed_run_level": f"{run_level_b}/{n_runs * n_union}",
-                "fisher_p_two_sided": p,
             })
-        holm = holm_correct([r["fisher_p_two_sided"] for r in rows])
-        for r, ph in zip(rows, holm):
-            r["p_holm"] = ph
         out.append({"label": model["label"], "rows": rows})
     return {
         "definition": (
             "Scenario-level failure = agent missing a scorable output in >=1 of the "
-            "size's runs (n_scenarios_any_missing). Fisher exact two-sided, Holm over "
-            f"{len(baselines)} comparisons per size. Run-level counts descriptive only."
+            "size's runs. Descriptive: under failure = 0 every failure already scores "
+            "0 in the paired comparisons."
         ),
         "per_model": out,
     }

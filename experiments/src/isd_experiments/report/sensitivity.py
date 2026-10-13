@@ -204,7 +204,6 @@ def _cells(models_map: dict | None, agree_rows: dict | None, metric: str,
             "best_baseline": best_b,
             "rho": row.get("spearman_rho_agent_means"),
             "tau": row.get("kendall_tau_b_agent_means"),
-            "p_exact": row.get("spearman_p_exact"),
             "rank": row.get("proposed_rank_here"),
             "top1": row.get("top1_agent_here"),
             "top1_same": (row.get("top1_agent_here") == row.get("top1_agent_primary")
@@ -286,10 +285,10 @@ def gen_table(pooled: dict, blocks: list[dict]) -> str:
     ncols = 1 + 3 * len(labels)
     colspec = "@{}l" + "r@{\\hskip 3pt}r@{\\hskip 3pt}c" * len(labels) + "@{}"
     head = [
-        header_comment(pooled, "Alignment instrument sensitivity, one block per swept "
+        header_comment(PRODUCER, "Alignment instrument sensitivity, one block per swept "
                                "axis: level on that axis's score, rank agreement "
                                "with the primary arm, and the proposed agent's "
-                               "rank, per model size."),
+                               "rank, per model size.", pooled),
         "\\begin{table*}[t]",
         "\\centering",
         "\\small",
@@ -343,10 +342,11 @@ def gen_macros(pooled: dict, blocks: list[dict]) -> str:
     sens = pooled["alignment_sensitivity"]
     labels = [m["label"] for m in pooled["models"]]
     tex = [header_comment(
-        pooled,
+        PRODUCER,
         "Alignment instrument-sensitivity macros (encoder axis + Bloom-classifier "
         "axis); each axis is reported on the score it can move, and scores are "
-        "named after the operation they compute — no primary endpoint.")]
+        "named after the operation they compute — no primary endpoint.",
+        pooled)]
 
     def newcmd(name: str, value: str, desc: str) -> None:
         tex.append(f"\\newcommand{{\\{name}}}{{{value}}}  % {desc}")
@@ -508,9 +508,9 @@ def gen_stats_md(pooled: dict, blocks: list[dict]) -> str:
                 f"- coverage: {row.get('coverage')} scenario score file(s)",
                 "",
                 f"| Size | proposed mean ({row['metric']}) | Δ vs best baseline "
-                "| rank | ρ vs primary | τ-b | exact p | top-1 | scenario ρ "
+                "| rank | ρ vs primary | τ-b | top-1 | scenario ρ "
                 "| sign/Holm agree | worst Holm p |",
-                "|---|---|---|---|---|---|---|---|---|---|---|",
+                "|---|---|---|---|---|---|---|---|---|---|",
             ]
             for label in labels:
                 c = row["cells"].get(label) or {}
@@ -524,7 +524,7 @@ def gen_stats_md(pooled: dict, blocks: list[dict]) -> str:
                 out.append(
                     f"| {label} | {_num(c.get('mean'), 3)} | {_num(c.get('delta_best'), 3)} "
                     f"| {c.get('rank') or '--'} | {_num(c.get('rho'), 3)} "
-                    f"| {_num(c.get('tau'), 3)} | {_sci(c.get('p_exact'))} | {top1} "
+                    f"| {_num(c.get('tau'), 3)} | {top1} "
                     f"| {_num(c.get('scen_rho'), 3)} | {sign_txt} "
                     f"| {_sci(c.get('p_holm_max'))} |"
                 )

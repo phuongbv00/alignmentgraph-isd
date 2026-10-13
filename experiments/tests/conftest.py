@@ -3,10 +3,9 @@
 The synthetic run tree is built on demand rather than committed. It is ~250
 small JSON files that ``factory.py`` reproduces deterministically, so
 committing them would add bulk to every clone and every diff for no
-information. The frozen pooled JSON and generated artifacts under
-``fixtures/golden/`` are different: those were produced once by the scripts
-this package replaces, they cannot be regenerated, and they are the oracle the
-migration is verified against.
+information. The pooled JSON and generated artifacts under ``fixtures/golden/``
+are different: they are regression snapshots of what the current code makes of
+that tree, committed so a change that moves a number shows up as a diff.
 """
 
 from __future__ import annotations

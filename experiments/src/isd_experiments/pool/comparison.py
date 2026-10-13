@@ -12,13 +12,13 @@ from datetime import datetime
 from pathlib import Path
 
 from .. import paths, runs, schema
-from ..config import LLM_JUDGE_SCORES, Profile
-from ..config import current as current_config
 from ..alignment.presets import PRIMARY_ARTIFACT
-from ..stats import BOOT_SEED, N_BOOT
-from . import rosters
+from ..config import FAILURE_POLICY, LLM_JUDGE_SCORES, SENSITIVITY_POLICY, Profile
+from ..config import current as current_config
+from ..stats import BOOT_METHOD, BOOT_SEED, N_BOOT, software
+from . import attempts, rosters
 from .arms import resolve_sensitivity_arms
-from .inference import failure_tests, interaction_tests
+from .inference import failure_counts, interaction_tests
 from .llm_judge import compare_model, pool_model
 from .panel import SUMMARY_SIGNAL, pool_alignment, pool_alignment_sensitivity
 from .report import print_report
@@ -51,9 +51,13 @@ def discover(patterns: list[str], profile: Profile) -> dict[str, list[Path]]:
     grouped: dict[str, list[Path]] = {}
     for pattern in patterns:
         for label, dirs in runs.group_by_glob(pattern).items():
-            grouped.setdefault(label, []).extend(dirs)
+            grouped.setdefault(label, []).extend(d for d in dirs
+                                                 if d not in grouped.get(label, []))
     if grouped:
-        return grouped
+        # Smallest model first whatever order the patterns came in: every
+        # size contrast (H-C, the DiD, the trend) reads the first size as
+        # the smallest, so pattern order must not decide a sign.
+        return dict(sorted(grouped.items(), key=lambda kv: runs.parse_size_key(kv[0])))
 
     # Distinguish "you passed nothing" from "what you passed matched nothing":
     # telling someone who just used a glob to use a glob sends them hunting for
@@ -80,6 +84,7 @@ def pool(profile: Profile, run_dirs_by_model: dict[str, list[Path]], *,
     would otherwise shrink the correction and inflate every remaining result.
     Used for re-pooling a subset deliberately, and by the fixtures.
     """
+    attempts.forget()
     roster = list(agents or profile.agents)
     proposed = profile.proposed if profile.proposed in roster else roster[0]
     baselines = [a for a in roster if a != proposed]
@@ -111,13 +116,12 @@ def pool(profile: Profile, run_dirs_by_model: dict[str, list[Path]], *,
             "baselines": baselines,
             "score_field": SCORE_FIELD_NOTE,
             "pooling": "mean across runs per (model, agent, scenario)",
-            "primary_failure_policy": "complete_case",
-            "alignment_failure_policies": (
-                "complete_case (primary) + zero; the panel has no min_score "
-                "policy because its endpoints already floor at 0.0"
-            ),
+            "primary_failure_policy": FAILURE_POLICY,
+            "sensitivity_failure_policy": SENSITIVITY_POLICY,
             "n_boot": N_BOOT,
             "bootstrap_seed": BOOT_SEED,
+            "bootstrap_method": BOOT_METHOD,
+            "stats_software": software(),
             "size_order": [m["label"] for m in models],
         },
         "models": models,
@@ -126,7 +130,7 @@ def pool(profile: Profile, run_dirs_by_model: dict[str, list[Path]], *,
             m: interaction_tests(models, proposed, baselines, metric=m)
             for m in LLM_JUDGE_SCORES
         },
-        "failure_rates": failure_tests(models, proposed, baselines),
+        "failure_rates": failure_counts(models, proposed, baselines),
         "alignment": alignment,
         "token_usage": pool_tokens(run_dirs_by_model, scored),
     }
@@ -153,6 +157,7 @@ def run(*, experiment: str = "comparison", patterns: list[str] | None = None,
 
     all_dirs = [d for dirs in run_dirs_by_model.values() for d in dirs]
     rosters.require_declared_roster(all_dirs, list(agents or profile.agents), quiet=quiet)
+    rosters.require_judged(all_dirs, list(agents or profile.agents), PRIMARY_ARTIFACT)
     if not quiet:
         rosters.warn_missing_artifact(all_dirs, PRIMARY_ARTIFACT,
                                       flag="'judge alignment --primary-only' first")

@@ -53,6 +53,15 @@ AGENT_ORDER = [
 LLM_JUDGE_SCORES = ("addie_median", "total_score", "trajectory_score")
 LLM_JUDGE_LEAD = "addie_median"
 
+#: The failure policy every inferential claim is made under, and its one
+#: sensitivity. failure = 0: a scenario where a system left no scorable output
+#: scores 0 for that system, so the worst outputs stay in the denominator --
+#: dropping them would flatter exactly the configurations that fail most.
+#: complete-case re-runs the same tests over the scenarios both sides scored.
+FAILURE_POLICY = "zero"
+SENSITIVITY_POLICY = "complete_case"
+FAILURE_POLICIES = (FAILURE_POLICY, SENSITIVITY_POLICY)
+
 #: How each LLM judge score is named in a report, spelled out so a reader does not
 #: have to know that `total_score` is the benchmark's own composite.
 LLM_JUDGE_SCORE_LABEL = {

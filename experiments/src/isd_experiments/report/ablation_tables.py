@@ -1,22 +1,21 @@
 """Tables for the 2x2 ablation.
 
-Two sign conventions live here and are labelled at every use, because they are
-opposites and a reader who mixes them reads every result backwards:
-
-* **arm - reference**: how much worse an ablated arm is.
-* **component ON - OFF**: what a mechanism contributes.
+One sign convention throughout, the one the pooled JSON stores: every effect
+reads the richer setting minus the plainer one, **multi - single**
+(decomposition) and **graph - prose** (substrate). The ablation concludes only
+from its registered tests (``registered``: H-D, H-S per size, H-C per axis);
+every factorial effect beside them is a descriptive mean difference with its
+bootstrap interval, and is labelled as such wherever it is printed.
 """
 
 from __future__ import annotations
 
-import json
 import math
 from datetime import datetime
 from pathlib import Path
 
 from .. import paths
 from ..config import LLM_JUDGE_SCORES
-from ..pool.diagnostics import TRIAD_REFERENCE_FIELDS
 from ..config import current as current_config
 from ..latex import (
     fmt_num,
@@ -24,18 +23,16 @@ from ..latex import (
     header_comment,
     model_display,
     size_display,
-    size_of_label,
     size_word,
 )
+from ..pool.diagnostics import TRIAD_REFERENCE_FIELDS
+from ..pool.registered import REGISTERED_TESTS
 
 PRODUCER = "isd-exp report ablation-tables"
 
 
-
-
 def _size_word(label: str, index: int) -> str:
     return size_word(label, index, current_config().macro_words)
-
 
 
 ARM_DISPLAY = {
@@ -46,40 +43,19 @@ ARM_DISPLAY = {
 }
 # digit-free macro words per arm (LaTeX macro names cannot contain digits)
 ARM_WORDS = {
+    "alignmentgraph-isd": "AZero",
     "alignmentgraph-isd-single-prose": "SingleProse",
     "alignmentgraph-isd-single-graph": "SingleGraph",
     "alignmentgraph-isd-multi-prose": "MultiProse",
 }
-SIZE_WORDS = {0.8: "ZeroEightB", 2.0: "TwoB", 4.0: "FourB", 9.0: "NineB"}
-FALLBACK_WORDS = ["SizeA", "SizeB", "SizeC", "SizeD", "SizeE", "SizeF"]
 
-
-# ── formatting (same conventions as tables.py) ───────────────────────────────
-
-
-
-
-
-
-
-
-
-
-
-def stars(p: float) -> str:
-    if p is None or (isinstance(p, float) and math.isnan(p)):
-        return ""
-    if p < 0.001:
-        return "$^{***}$"
-    if p < 0.01:
-        return "$^{**}$"
-    if p < 0.05:
-        return "$^{*}$"
-    return ""
-
-
-#: Star legend, emitted as a table footnote so captions stay short.
-STAR_LEGEND = "$^{*}p<0.05$; $^{**}p<0.01$; $^{***}p<0.001$"
+#: What each registered axis compares and what it is measured on, for display.
+AXIS_DIRECTION = {"decomposition": "multi $-$ single", "substrate": "graph $-$ prose"}
+AXIS_DIRECTION_MD = {"decomposition": "multi − single", "substrate": "graph − prose"}
+AXIS_WORDS = {"decomposition": "Decomp", "substrate": "Substrate"}
+MEASURE_DISPLAY = {"addie_median": "ADDIE", "objectives_closed_triad": "closed triads"}
+#: Decimal places per registered measure: rubric points vs a [0,1] share.
+MEASURE_ND = {"addie_median": 2, "objectives_closed_triad": 3}
 
 
 def n_clause(entries: list[dict]) -> str:
@@ -94,36 +70,76 @@ def n_clause(entries: list[dict]) -> str:
     return "$n$ per size in stats\\_ablation.md"
 
 
-
-
 # ── helpers over the pooled structure ────────────────────────────────────────
 
-def comparison_row(model: dict, arm: str, policy: str = "zero") -> dict:
-    """Comparison row (A0 − arm) for one arm under ``policy``, or {}. The
-    default is the registered primary layer, failure = 0."""
-    for row in (model.get("comparisons", {}).get("by_score", {})
-                .get("addie_median", {}).get("policies", {})
-                .get(policy, [])):
-        if row.get("baseline") == arm:
-            return row
-    return {}
+def _tex_num(v, nd: int = 2) -> str:
+    """A number for a text-mode cell, with a typeset minus."""
+    return fmt_num(v, nd).replace("-", "$-$")
 
 
-def arm_delta(model: dict, arm: str) -> dict:
-    """Delta in TABLE direction: arm − A0 (negative = removal hurts)."""
-    row = comparison_row(model, arm)
-    if not row.get("n"):
-        return {}
-    return {
-        "n": row["n"],
-        "delta": -row["mean_diff"],
-        "ci95": [-row["ci95"][1], -row["ci95"][0]],
-        "p_holm": row.get("p_holm"),
-        "rank_biserial_r": row.get("rank_biserial_r"),
-    }
+def _tex_ci(row: dict, nd: int = 2) -> str:
+    lo, hi = row["ci95"]
+    return f"[{_tex_num(lo, nd)}, {_tex_num(hi, nd)}]"
+
+
+def _finite(v) -> bool:
+    return isinstance(v, (int, float)) and not (isinstance(v, float) and math.isnan(v))
+
+
+def registered_by_size(pooled: dict) -> dict[str, dict[str, dict]]:
+    """size label -> axis -> the registered H-D / H-S row at that size."""
+    out: dict[str, dict[str, dict]] = {}
+    for row in (pooled.get("registered") or {}).get("family") or []:
+        if row.get("size"):
+            out.setdefault(row["size"], {})[row["axis"]] = row
+    return out
+
+
+def registered_cross_size(pooled: dict) -> dict[str, dict]:
+    """axis -> the registered H-C row (effect at the smallest size minus at the largest)."""
+    return {row["axis"]: row for row in (pooled.get("registered") or {}).get("family") or []
+            if not row.get("size")}
+
+
+def _n_tested(pooled: dict) -> int:
+    return sum(1 for r in (pooled.get("registered") or {}).get("family") or [] if "p_holm" in r)
+
+
+def _zero_scored(pooled: dict) -> list[tuple[str, str, int]]:
+    """(size, arm, k) for every arm that left k scenarios with no scorable output."""
+    a0 = pooled["config"]["reference"]
+    out = []
+    for m in pooled["models"]:
+        for arm in [a0] + pooled["config"]["arms"]:
+            k = (m["agents"].get(arm) or {}).get("n_scenarios_any_missing")
+            if isinstance(k, int) and k:
+                out.append((m["label"], arm, k))
+    return out
+
+
+def _zero_clause_tex(pooled: dict) -> str:
+    zeros = _zero_scored(pooled)
+    if not zeros:
+        return "Every arm left a scorable output on every scenario."
+    parts = [f"{ARM_DISPLAY.get(arm, arm).split(' ')[0]} at {size_display(lb)}: {k}"
+             for lb, arm, k in zeros]
+    return ("Scenarios with no scorable output count 0 (" + "; ".join(parts) + ").")
+
+
+def _cell_key_by_arm(pooled: dict) -> dict[str, str]:
+    """agent id -> its factorial cell key (``agentmode_<m>__contextmode_<c>``)."""
+    cells = (pooled.get("factorial") or {}).get("cells") or {}
+    return {agent: key for key, agent in cells.items()}
 
 
 # ── outputs ──────────────────────────────────────────────────────────────────
+
+def _md_test_row(r: dict, nd: int = 3) -> str:
+    lo, hi = r["ci95"]
+    return (f"{r['mean_diff']:+.{nd}f} | [{lo:+.{nd}f}, {hi:+.{nd}f}] "
+            f"| {fmt_num(r.get('rank_biserial_r'), 2)} | {r['n']} "
+            f"| {r.get('p_holm', float('nan')):.3g} | {r['verdict']}")
+
 
 def registered_section(pooled: dict) -> list[str]:
     """The tests the ablation concludes from, as registered (benchmark_guides §5.5)."""
@@ -134,10 +150,9 @@ def registered_section(pooled: dict) -> list[str]:
          "Direction: **multi − single** (decomposition) and **graph − prose** "
          "(substrate), main effect over the other axis; H-C = effect at the "
          "smallest size − at the largest. Failure = 0, scenario as the unit. "
-         f"Holm over the {sum(1 for r in reg['family'] if 'p_holm' in r)} of these that "
-         "could be run, and no others. Verdict: supported = "
-         "p_holm < 0.05 with the predicted (positive) sign; contrary = p_holm < "
-         "0.05, negative; otherwise not detected.", "",
+         f"Holm over the {_n_tested(pooled)} of these that could be run, and no "
+         "others. Verdict: supported = p_holm < 0.05 with the predicted (positive) "
+         "sign; contrary = p_holm < 0.05, negative; otherwise not detected.", "",
          "| Test | Measure | Δ | CI95 | r_rb | n | p_holm | Verdict |",
          "|---|---|---|---|---|---|---|---|"]
     if not reg.get("complete"):
@@ -147,94 +162,161 @@ def registered_section(pooled: dict) -> list[str]:
         if not r.get("n"):
             L.append(f"| {r['test']} | {r['measure']} | — | — | — | 0 | — | {r['verdict']} |")
             continue
-        lo, hi = r["ci95"]
-        L.append(f"| {r['test']} | {r['measure']} | {fmt_num(r['mean_diff'], 3)} "
-                 f"| [{fmt_num(lo, 3)}, {fmt_num(hi, 3)}] | {fmt_num(r['rank_biserial_r'], 2)} "
-                 f"| {r['n']} | {r['p_holm']:.3g} | {r['verdict']} |")
+        L.append(f"| {r['test']} | {r['measure']} | {_md_test_row(r)} |")
     L.append("")
-    L.append("Secondary, outside the family: the substrate effect on the triad the "
-             "model wrote itself (references the repair net did not write), the "
-             "complete-case layer of both tests, and the slope of the "
-             "multi − single gap over the ADDIE phases (positive = the single arm "
-             "falls further behind the later the phase).")
-    L.append("")
-    L.append("| Size | Reading | Δ | CI95 | n | p_raw |")
-    L.append("|---|---|---|---|---|---|")
-    for size, sec in (reg.get("secondary") or {}).items():
+
+    secondary = reg.get("secondary") or {}
+    if not secondary:
+        return L
+    L += ["### Complete-case (sensitivity)", "",
+          "The same H-D / H-S tests with a run that left no scorable output left "
+          "out instead of scored 0; Holm over the pair at each size, verdict on the "
+          "same rule.", "",
+          "| Size | Test | Δ | CI95 | r_rb | n | p_holm | Verdict |",
+          "|---|---|---|---|---|---|---|---|"]
+    for size, sec in secondary.items():
+        for r in sec.get("complete_case") or []:
+            if not r.get("n"):
+                L.append(f"| {size} | {r['test']} | — | — | — | 0 | — | {r.get('verdict', '')} |")
+                continue
+            L.append(f"| {size} | {r['test']} | {_md_test_row(r)} |")
+    L += ["", "### Decomposition × substrate interaction (pre-specified, uncorrected)", "",
+          "Interaction = (multi − single | graph) − (multi − single | prose) on each "
+          "axis's measure, failure = 0. Positive = decomposition gains more on the "
+          "graph substrate. p_raw is **uncorrected**: these contrasts are outside "
+          "the Holm family.", "",
+          "| Size | Measure | Δ | CI95 | r_rb | n | p_raw (uncorrected) |",
+          "|---|---|---|---|---|---|---|"]
+    for size, sec in secondary.items():
+        for measure, r in (sec.get("interaction") or {}).items():
+            if not r or not r.get("n"):
+                L.append(f"| {size} | {measure} | — | — | — | 0 | — |")
+                continue
+            lo, hi = r["ci95"]
+            L.append(f"| {size} | {measure} | {r['mean_diff']:+.3f} | [{lo:+.3f}, {hi:+.3f}] "
+                     f"| {fmt_num(r.get('rank_biserial_r'), 2)} | {r['n']} | {r['p_raw']:.3g} |")
+    L += ["", "### Descriptive readings (mean and BCa interval, no test)", "",
+          "The substrate effect (graph − prose) on the triad closed by references "
+          "the model wrote itself (the repair net's references taken out), and the "
+          "slope of the multi − single ADDIE gap over the five ADDIE phases "
+          "(positive = the single arm falls further behind the later the phase).", "",
+          "| Size | Reading | Δ | CI95 | n |",
+          "|---|---|---|---|---|"]
+    for size, sec in secondary.items():
         for name, row in (("substrate, model-written triad", sec.get("substrate|model_written")),
-                          ("decomposition, complete-case", sec.get("decomposition|complete_case")),
-                          ("substrate, complete-case", sec.get("substrate|complete_case")),
                           ("phase slope (per phase)", (sec.get("phase_slope") or {}).get("slope"))):
             if not row or not row.get("n"):
-                L.append(f"| {size} | {name} | — | — | 0 | — |")
+                L.append(f"| {size} | {name} | — | — | 0 |")
                 continue
             lo, hi = row["ci95"]
-            L.append(f"| {size} | {name} | {fmt_num(row['mean_diff'], 3)} "
-                     f"| [{fmt_num(lo, 3)}, {fmt_num(hi, 3)}] | {row['n']} | {row['p_raw']:.3g} |")
+            L.append(f"| {size} | {name} | {row['mean_diff']:+.3f} "
+                     f"| [{lo:+.3f}, {hi:+.3f}] | {row['n']} |")
+    gaps = [(size, (sec.get("phase_slope") or {}).get("gap_by_phase") or {})
+            for size, sec in secondary.items()]
+    if any(g for _s, g in gaps):
+        L += ["", "Multi − single ADDIE gap by phase (mean over scenarios, complete-case "
+              "per phase):", "",
+              "| Size | " + " | ".join(next(g for _s, g in gaps if g)) + " |",
+              "|---|" + "---|" * len(next(g for _s, g in gaps if g))]
+        for size, g in gaps:
+            L.append(f"| {size} | " + " | ".join(
+                f"{v:+.2f}" if _finite(v) else "--" for v in g.values()) + " |")
     L.append("")
     return L
 
 
 def gen_tab_ablation(pooled: dict) -> str:
+    """The 2x2 cell table: each arm's mean ADDIE per size, and the registered
+    H-D / H-S result at that size beneath it."""
     models = pooled["models"]
     a0 = pooled["config"]["reference"]
     arms = pooled["config"]["arms"]
+    by_size = registered_by_size(pooled)
+    cross = registered_cross_size(pooled)
+    ncols = 1 + len(models)
+    env = "table*" if len(models) > 2 else "table"
 
-    colspec = "@{}l" + "r@{\\hskip 4pt}r" * len(models) + "@{}"
-    lines = [header_comment(pooled, "tab_ablation.tex — ablation arms x model sizes")]
-    lines.append("\\begin{table*}[t]")
+    lines = [header_comment(PRODUCER, "tab_ablation.tex — 2x2 cell means and registered tests",
+                            pooled)]
+    lines.append(f"\\begin{{{env}}}[t]")
     lines.append(
-        "  \\caption{Ablation across model sizes. Each cell: mean ADDIE"
-        " (/100, failure = 0) and $\\Delta$ = arm $-$ A0 (negative = removal"
-        " lowered ADDIE, positive = raised it). Wilcoxon, Holm over the"
-        f" {len(arms)} arms per size.}}")
+        "  \\caption{Ablation per model size. Top: each arm's mean ADDIE (/100,"
+        " failure = 0); bold marks the reference arm (A0). Bottom: the registered"
+        " main effects of decomposition (H-D) and substrate (H-S), with bootstrap"
+        " 95\\% CI, Holm-adjusted $p$ and verdict.}")
     lines.append("  \\label{tab:ablation}")
     lines.append("  \\small")
-    lines.append(f"  \\begin{{tabular}}{{{colspec}}}")
+    lines.append(f"  \\begin{{tabular}}{{@{{}}l{'r' * len(models)}@{{}}}}")
     lines.append("    \\toprule")
-    heads = " & ".join(
-        f"\\multicolumn{{2}}{{c}}{{{model_display(m['label'])}}}" for m in models)
-    lines.append(f"    & {heads} \\\\")
-    cmids = "".join(
-        f"\\cmidrule(lr){{{2 + 2 * i}-{3 + 2 * i}}}" for i in range(len(models)))
-    lines.append(f"    {cmids}")
-    subs = " & ".join(["ADDIE", "$\\Delta$ vs A0"] * len(models))
-    lines.append(f"    Arm & {subs} \\\\")
+    lines.append("    & " + " & ".join(model_display(m["label"]) for m in models) + " \\\\")
     lines.append("    \\midrule")
+    lines.append(f"    \\multicolumn{{{ncols}}}{{@{{}}l}}"
+                 "{\\emph{Mean ADDIE (/100), failure = 0}} \\\\")
     for arm in [a0] + arms:
         name = ARM_DISPLAY.get(arm, arm)
         if arm == a0:
             name = f"\\textbf{{{name}}}"
         cells = []
         for m in models:
-            s = m["agents"].get(arm)
-            if not s or s.get("mean_addie") is None or math.isnan(s["mean_addie"]):
-                cells += ["--", "--"]
+            v = (m["agents"].get(arm) or {}).get("mean_addie")
+            if not _finite(v):
+                cells.append("--")
                 continue
-            total = fmt_num(s["mean_addie"])
-            if arm == a0:
-                cells += [f"\\textbf{{{total}}}", "--"]
-                continue
-            d = arm_delta(m, arm)
-            if not d:
-                cells += [total, "--"]
-                continue
-            cells += [total, f"{fmt_num(d['delta']).replace('-', '$-$')}{stars(d['p_holm'])}"]
+            cells.append(f"\\textbf{{{fmt_num(v)}}}" if arm == a0 else fmt_num(v))
         lines.append(f"    {name} & " + " & ".join(cells) + " \\\\")
+    if by_size:
+        lines.append("    \\addlinespace")
+        lines.append(f"    \\multicolumn{{{ncols}}}{{@{{}}l}}"
+                     "{\\emph{Registered tests (main effect over the other axis)}} \\\\")
+        for axis, hyp in (("decomposition", "H-D"), ("substrate", "H-S")):
+            rows = [by_size.get(m["label"], {}).get(axis) or {} for m in models]
+            measure = next((r.get("measure") for r in rows if r.get("measure")), "")
+            nd = MEASURE_ND.get(measure, 3)
+            lines.append(f"    {hyp}: $\\Delta$ {MEASURE_DISPLAY.get(measure, measure)},"
+                         f" {AXIS_DIRECTION[axis]} & "
+                         + " & ".join(_tex_num(r["mean_diff"], nd) if r.get("n") else "--"
+                                      for r in rows) + " \\\\")
+            lines.append("    \\quad 95\\% CI & "
+                         + " & ".join(_tex_ci(r, nd) if r.get("n") else "--"
+                                      for r in rows) + " \\\\")
+            lines.append("    \\quad $p_{\\mathrm{Holm}}$, verdict & "
+                         + " & ".join(f"${fmt_p(r.get('p_holm'))}$, {r['verdict']}"
+                                      if r.get("n") else "--" for r in rows) + " \\\\")
+        if len(models) >= 2:
+            for axis in ("decomposition", "substrate"):
+                r = cross.get(axis) or {}
+                if not r.get("n"):
+                    continue
+                measure = r.get("measure")
+                nd = MEASURE_ND.get(measure, 3)
+                lines.append(
+                    f"    H-C: $\\Delta$ {MEASURE_DISPLAY.get(measure, measure)},"
+                    f" {AXIS_DIRECTION[axis]}, smallest $-$ largest size & "
+                    f"\\multicolumn{{{len(models)}}}{{c}}{{{_tex_num(r['mean_diff'], nd)}"
+                    f" {_tex_ci(r, nd)}, $p_{{\\mathrm{{Holm}}}}={fmt_p(r.get('p_holm'))}$,"
+                    f" {r['verdict']}}} \\\\")
     lines.append("    \\bottomrule")
     lines.append("  \\end{tabular}")
-    lines.append(
-        f"  \\par\\smallskip\\footnotesize {STAR_LEGEND} (Holm-corrected)."
-        " Bootstrap 95\\% CI and per-scenario $n$ for every $\\Delta$:"
-        " see stats\\_ablation.md, generated together with this table.")
-    lines.append("\\end{table*}")
+    reg = pooled.get("registered") or {}
+    foot = ("  \\par\\smallskip\\footnotesize $\\Delta$ = per-scenario main effect,"
+            " averaged over the other axis; closed triads = share of objectives whose"
+            " references close the triad.")
+    if by_size and not reg.get("complete"):
+        foot += (f" Holm over the {_n_tested(pooled)} of the {REGISTERED_TESTS} registered"
+                 " tests that could be run on these runs, so this is not the full"
+                 " registered analysis.")
+    elif by_size:
+        foot += f" Holm over the {REGISTERED_TESTS} registered tests."
+    foot += (f" {_zero_clause_tex(pooled)} Complete-case sensitivity and secondary"
+             " readings: stats\\_ablation.md.")
+    lines.append(foot)
+    lines.append(f"\\end{{{env}}}")
     return "\n".join(lines) + "\n"
 
 
 #: Signal the factorial table leads on: the decomposition/context effects are
-#: expected as alignment effects, not LLM judge effects (on ADDIE nothing may
-#: reach significance), so the table is built on the alignment signal and
-#: ADDIE is reported beside it.
+#: expected as alignment effects, not LLM judge effects, so the main-text table
+#: is built on the alignment signal and ADDIE is reported in the appendix one.
 FACT_LEAD = "objective_assessment_similarity"
 
 
@@ -242,29 +324,30 @@ def _fx(model_entry: dict, key: str) -> dict:
     return model_entry.get(key) or {}
 
 
-def gen_tab_factorial(pooled: dict) -> str:
-    """The 2x2 read: simple effects of each mechanism + their interaction.
-
-    The arm-vs-A0 table answers "what does removing this cost?", which is a
-    main-effects question. It cannot show that a mechanism is idle only because
-    the other one already did the work — that is an interaction, and the four
-    arms are a complete 2x2, so it is directly estimable.
-    """
+def _has_factorial(pooled: dict, signal: str | None = None) -> bool:
     fact = pooled.get("factorial") or {}
     if "skipped" in fact or not fact.get("measures"):
-        return (header_comment(pooled, "tab_ablation_factorial.tex — placeholder")
-                + "% No factorial layer in pooled_ablation.json (arms missing).\n")
-    per_model = fact["measures"][FACT_LEAD]["per_model"]
+        return False
+    return signal is None or signal in fact["measures"]
 
-    lines = [header_comment(pooled, "tab_ablation_factorial.tex — 2x2 simple effects + interaction")]
+
+def gen_tab_factorial(pooled: dict) -> str:
+    """The 2x2 read: simple effects of decomposition under each context
+    representation, and their difference (the interaction). Descriptive: the
+    ablation's tests are the registered ones."""
+    if not _has_factorial(pooled, FACT_LEAD):
+        return (header_comment(PRODUCER, "tab_ablation_factorial.tex — placeholder", pooled)
+                + "% No factorial layer in pooled_ablation.json (arms missing).\n")
+    per_model = pooled["factorial"]["measures"][FACT_LEAD]["per_model"]
+
+    lines = [header_comment(
+        PRODUCER, "tab_ablation_factorial.tex — 2x2 simple effects + interaction", pooled)]
     lines.append("\\begin{table}[t]")
     lines.append(
-        "  \\caption{$2\\times2$ read (decomposition $\\times$ context"
-        " representation) on \\texttt{objective\\_assessment\\_similarity}."
-        " Each cell: paired difference, multi-agent $-$ single-agent"
-        f" decomposition ({n_clause(per_model)}); positive favours the"
-        " multi-agent 5-Designer pipeline. Interaction = col.~1 $-$ col.~2."
-        " Wilcoxon, uncorrected.}")
+        "  \\caption{$2\\times2$ read on \\texttt{objective\\_assessment\\_similarity}."
+        " Each cell: mean paired difference, multi-agent $-$ single-agent"
+        f" ({n_clause(per_model)}, failure = 0); interaction = col.~1 $-$ col.~2."
+        " Descriptive, no test.}")
     lines.append("  \\label{tab:ablation-factorial}")
     lines.append("  \\small")
     lines.append("  \\begin{tabular}{@{}lrrr@{}}")
@@ -277,25 +360,22 @@ def gen_tab_factorial(pooled: dict) -> str:
         for key in ("decomposition_effect_given_context_graph",
                     "decomposition_effect_given_context_prose", "interaction"):
             d = _fx(e, key)
-            if not d.get("n"):
-                cells.append("--")
-                continue
-            cells.append(f"{fmt_num(d['mean_diff'], 3).replace('-', '$-$')}"
-                         f"{stars(d.get('p_raw'))}")
+            cells.append(_tex_num(d["mean_diff"], 3) if d.get("n") else "--")
         lines.append(f"    {size_display(e['label'])} & " + " & ".join(cells) + " \\\\")
     lines.append("    \\bottomrule")
     lines.append("  \\end{tabular}")
     lines.append(
-        f"  \\par\\smallskip\\footnotesize {STAR_LEGEND}, \\emph{{uncorrected}}"
-        " --- unlike the Holm-corrected stars of Table~\\ref{tab:ablation}."
-        " Bootstrap 95\\% CI of every cell: see stats\\_ablation.md.")
+        "  \\par\\smallskip\\footnotesize Positive = the multi-agent pipeline scores"
+        " higher. The ablation's tests are the registered ones"
+        " (Table~\\ref{tab:ablation}); bootstrap 95\\% CI of every cell:"
+        " stats\\_ablation.md.")
     lines.append("\\end{table}")
     return "\n".join(lines) + "\n"
 
 
 #: Short display names for the factorial appendix table. Same labels as
-#: tables.py uses: the dagger marks the non-directional signal, and
-#: porter_mean is the MEAN of the three pairwise Porter indices, not one index.
+#: tables.py uses: porter_mean is the MEAN of the three pairwise Porter
+#: indices, not one index.
 FACT_SIGNAL_DISPLAY = {
     "addie_median": "ADDIE",
     "trajectory_score": "Trajectory",
@@ -317,34 +397,28 @@ SCALE_BLOCKS = (
 def gen_tab_factorial_full(pooled: dict) -> str:
     """Every signal x every size — the appendix version of the 2x2 read.
 
-    The main-text table leads on one signal because a slide or a results
-    paragraph cannot carry ten. The claim being made (that the two mechanisms
-    substitute for each other) is a claim about the design, so it has to be
-    checkable on every signal the study reports, not on the one that shows it
-    most cleanly. This table is that check.
-
-    The two row blocks are on different scales (rubric points vs [0,1]) and are
-    labelled as such: nothing in this table licenses comparing the magnitude of
-    an LLM judge cell with the magnitude of a panel cell.
+    The main-text table leads on one signal; a claim about how the two
+    mechanisms combine is a claim about the design, so it has to be checkable
+    on every signal the study reports. The two row blocks are on different
+    scales (rubric points vs [0,1]) and are labelled as such: nothing in this
+    table licenses comparing the magnitude of an LLM judge cell with the
+    magnitude of a panel cell.
     """
-    fact = pooled.get("factorial") or {}
-    if "skipped" in fact or not fact.get("measures"):
-        return (header_comment(pooled, "tab_ablation_factorial_full.tex — placeholder")
+    if not _has_factorial(pooled):
+        return (header_comment(PRODUCER, "tab_ablation_factorial_full.tex — placeholder", pooled)
                 + "% No factorial layer in pooled_ablation.json (arms missing).\n")
-    signals = fact["measures"]
+    signals = pooled["factorial"]["measures"]
     labels = [e["label"] for e in next(iter(signals.values()))["per_model"]]
     all_entries = [e for blk in signals.values() for e in blk["per_model"]]
 
     lines = [header_comment(
-        pooled, "tab_ablation_factorial_full.tex — 2x2 read on every reported signal")]
+        PRODUCER, "tab_ablation_factorial_full.tex — 2x2 read on every reported signal", pooled)]
     lines.append("\\begin{table*}[t]")
     lines.append(
-        "  \\caption{$2\\times2$ read on every reported signal. Each cell:"
-        f" paired difference, multi-agent $-$ single-agent decomposition"
-        f" ({n_clause(all_entries)}); D$|$ctx = decomposition effect with"
-        " context representation graph/prose, $\\times$ = col.~1 $-$ col.~2."
-        " Row blocks differ in scale; magnitudes are not comparable across"
-        " them.}")
+        "  \\caption{$2\\times2$ read on every reported signal. Each cell: mean"
+        " paired difference, multi-agent $-$ single-agent decomposition"
+        f" ({n_clause(all_entries)}, failure = 0); D$|$ctx = decomposition effect"
+        " with context graph/prose, $\\times$ = col.~1 $-$ col.~2. Descriptive.}")
     lines.append("  \\label{tab:ablation-factorial-full}")
     lines.append("  \\scriptsize")
     colspec = "@{}l" + "rrr" * len(labels) + "@{}"
@@ -375,53 +449,49 @@ def gen_tab_factorial_full(pooled: dict) -> str:
                 for key in ("decomposition_effect_given_context_graph",
                             "decomposition_effect_given_context_prose", "interaction"):
                     d = e.get(key) or {}
-                    cells.append("--" if not d.get("n") else
-                                 f"{fmt_num(d['mean_diff'], 3).replace('-', '$-$')}"
-                                 f"{stars(d.get('p_raw'))}")
+                    cells.append(_tex_num(d["mean_diff"], 3) if d.get("n") else "--")
             name = FACT_SIGNAL_DISPLAY.get(sig, sig.replace("_", "\\_"))
             lines.append(f"    {name} & " + " & ".join(cells) + " \\\\")
     lines.append("    \\bottomrule")
     lines.append("  \\end{tabular}")
     lines.append(
-        f"  \\par\\smallskip\\footnotesize {STAR_LEGEND}, \\emph{{uncorrected}}."
-        " $^{\\dagger}$ = non-directional diagnostic."
+        "  \\par\\smallskip\\footnotesize Row blocks differ in scale; magnitudes are"
+        " not comparable across them. Descriptive, no test: the ablation's tests are"
+        " the registered ones (Table~\\ref{tab:ablation}); bootstrap 95\\% CI of"
+        " every cell: stats\\_ablation.md."
         " $\\times$ is computed at full precision, so it need not equal the"
         " difference of the two rounded cells beside it."
-        " A negative $\\times$ means the two mechanisms substitute for each"
-        " other only where both simple effects carry the beneficial sign; where"
-        " they are negative (Trajectory, Total) read $\\times$ as multi-agent"
-        " decomposition costing less when graph context is on. Column"
-        " D$|$ctx=graph is the A0-vs-A2 contrast, whose Holm-corrected $p$ is"
-        " in stats\\_ablation.md.")
+        " A negative $\\times$ means the decomposition effect is lower under graph"
+        " than under prose, whatever its sign; it reads as substitution only where"
+        " both simple effects are positive.")
     lines.append("\\end{table*}")
     return "\n".join(lines) + "\n"
 
 
 def factorial_macros(pooled: dict, newcmd) -> None:
-    fact = pooled.get("factorial") or {}
-    if "skipped" in fact or not fact.get("measures"):
-        return
-    for i, e in enumerate(fact["measures"][FACT_LEAD]["per_model"]):
-        w = _size_word(e["label"], i)
-        for key, tag in (("decomposition_effect_given_context_graph", "DecompCtxGraph"),
-                         ("decomposition_effect_given_context_prose", "DecompCtxProse"),
-                         ("interaction", "Interaction")):
-            d = _fx(e, key)
-            if not d.get("n"):
-                continue
-            what = ("difference of the two simple effects (ctx=graph minus ctx=prose)"
-                    if key == "interaction"
-                    else "multi-agent minus single-agent decomposition")
-            sign = ("POSITIVE = the decomposition effect is larger when context "
-                    "is graph" if key == "interaction"
-                    else "POSITIVE = the multi-agent pipeline scores higher")
-            newcmd(f"abl{tag}{w}", fmt_num(d["mean_diff"], 3),
-                   f"{key} = {what} on {FACT_LEAD} @ {e['label']} "
-                   f"(paired per-scenario, n={d['n']}; {sign}; OPPOSITE sign "
-                   "convention to \\ablDelta*, which is arm minus A0)")
-            newcmd(f"abl{tag}P{w}", fmt_p(d["p_raw"]),
-                   f"Wilcoxon p (uncorrected) for {key} on {FACT_LEAD} @ "
-                   f"{e['label']}")
+    if _has_factorial(pooled, FACT_LEAD):
+        for i, e in enumerate(pooled["factorial"]["measures"][FACT_LEAD]["per_model"]):
+            w = _size_word(e["label"], i)
+            for key, tag in (("decomposition_effect_given_context_graph", "DecompCtxGraph"),
+                             ("decomposition_effect_given_context_prose", "DecompCtxProse"),
+                             ("interaction", "Interaction")):
+                d = _fx(e, key)
+                if not d.get("n"):
+                    continue
+                what = ("difference of the two simple effects (ctx=graph minus ctx=prose)"
+                        if key == "interaction"
+                        else "multi-agent minus single-agent decomposition")
+                sign = ("POSITIVE = the decomposition effect is larger when context "
+                        "is graph" if key == "interaction"
+                        else "POSITIVE = the multi-agent pipeline scores higher")
+                newcmd(f"abl{tag}{w}", fmt_num(d["mean_diff"], 3),
+                       f"{key} = {what} on {FACT_LEAD} @ {e['label']} "
+                       f"(paired per-scenario, n={d['n']}, failure = 0; {sign}; "
+                       "descriptive, no test)")
+                newcmd(f"abl{tag}CILo{w}", fmt_num(d["ci95"][0], 3),
+                       f"bootstrap CI95 lower, {key} on {FACT_LEAD} @ {e['label']}")
+                newcmd(f"abl{tag}CIHi{w}", fmt_num(d["ci95"][1], 3),
+                       f"bootstrap CI95 upper, {key} on {FACT_LEAD} @ {e['label']}")
     act = pooled.get("self_validation_activity") or []
     for i, e in enumerate(act):
         w = _size_word(e["label"], i)
@@ -434,52 +504,78 @@ def factorial_macros(pooled: dict, newcmd) -> None:
                    f"mean self-validation repairs per scenario, {arm} @ {e['label']}")
 
 
+def registered_macros(pooled: dict, newcmd) -> None:
+    """The registered H-D / H-S result per size and H-C per axis."""
+    models = pooled["models"]
+    by_size = registered_by_size(pooled)
+    for i, m in enumerate(models):
+        w = _size_word(m["label"], i)
+        for axis, row in by_size.get(m["label"], {}).items():
+            if not row.get("n"):
+                continue
+            tag = f"ablReg{AXIS_WORDS[axis]}"
+            nd = MEASURE_ND.get(row["measure"], 3)
+            what = (f"registered {row['test']}: main effect {AXIS_DIRECTION_MD[axis]} on "
+                    f"{row['measure']}, failure = 0")
+            newcmd(f"{tag}{w}", fmt_num(row["mean_diff"], nd),
+                   f"{what} (paired per-scenario, n={row['n']})")
+            newcmd(f"{tag}CILo{w}", fmt_num(row["ci95"][0], nd), f"bootstrap CI95 lower, {what}")
+            newcmd(f"{tag}CIHi{w}", fmt_num(row["ci95"][1], nd), f"bootstrap CI95 upper, {what}")
+            newcmd(f"{tag}P{w}", fmt_p(row.get("p_holm")),
+                   f"Holm-adjusted p (math mode), {what}; Holm over the "
+                   f"{_n_tested(pooled)} registered tests run")
+            newcmd(f"{tag}Verdict{w}", row["verdict"], f"verdict, {what}")
+    for axis, row in registered_cross_size(pooled).items():
+        if not row.get("n"):
+            continue
+        tag = f"ablRegCross{AXIS_WORDS[axis]}"
+        nd = MEASURE_ND.get(row["measure"], 3)
+        what = (f"registered {row['test']}: {axis} effect at {row['smallest']} minus at "
+                f"{row['largest']} on {row['measure']}, failure = 0")
+        newcmd(tag, fmt_num(row["mean_diff"], nd), f"{what} (n={row['n']})")
+        newcmd(f"{tag}CILo", fmt_num(row["ci95"][0], nd), f"bootstrap CI95 lower, {what}")
+        newcmd(f"{tag}CIHi", fmt_num(row["ci95"][1], nd), f"bootstrap CI95 upper, {what}")
+        newcmd(f"{tag}P", fmt_p(row.get("p_holm")), f"Holm-adjusted p (math mode), {what}")
+        newcmd(f"{tag}Verdict", row["verdict"], f"verdict, {what}")
+
+
 def gen_macros(pooled: dict) -> str:
     models = pooled["models"]
     a0 = pooled["config"]["reference"]
     arms = pooled["config"]["arms"]
     out = [header_comment(
-        pooled, "abl_macros.tex — headline ablation numbers (separate from stats_macros.tex)")]
+        PRODUCER, "abl_macros.tex — headline ablation numbers (separate from stats_macros.tex)",
+        pooled)]
 
     def newcmd(name: str, value: str, comment: str) -> None:
         out.append(f"\\newcommand{{\\{name}}}{{{value}}}  % {comment}")
 
     for i, m in enumerate(models):
         w = _size_word(m["label"], i)
-        s0 = m["agents"].get(a0, {})
-        if s0.get("mean_addie") is not None:
-            newcmd(f"ablAZeroAddie{w}", fmt_num(s0["mean_addie"]),
-                   f"A0 ({a0}) mean addie_median @ {m['label']}, as re-run "
-                   "inside the ablation; all four arms share each scenario's LLM "
-                   "LLM judge session")
-        for arm in arms:
+        for arm in [a0] + arms:
             word = ARM_WORDS.get(arm)
-            if word is None:
+            s = m["agents"].get(arm) or {}
+            if word is None or not _finite(s.get("mean_addie")):
                 continue
-            d = arm_delta(m, arm)
-            if not d:
-                continue
-            sig_note = ("on addie_median (ADDIE rubric /100, failure = 0; "
-                        "NEGATIVE = removing the component lowered ADDIE)")
-            newcmd(f"ablDelta{word}{w}", fmt_num(d["delta"]),
-                   f"{arm} minus A0 {sig_note} @ {m['label']} "
-                   f"(paired per-scenario, n={d['n']})")
-            newcmd(f"ablDelta{word}CILo{w}", fmt_num(d["ci95"][0]),
-                   f"bootstrap CI95 lower, {arm} minus A0 {sig_note} @ {m['label']}")
-            newcmd(f"ablDelta{word}CIHi{w}", fmt_num(d["ci95"][1]),
-                   f"bootstrap CI95 upper, {arm} minus A0 {sig_note} @ {m['label']}")
-            newcmd(f"ablP{word}{w}", fmt_p(d["p_holm"]),
-                   f"Holm-corrected p on addie_median ({arm} vs A0; family = "
-                   f"{len(arms)} arms within the size) @ {m['label']}")
+            newcmd(f"abl{word}Addie{w}", fmt_num(s["mean_addie"]),
+                   f"{arm} mean addie_median @ {m['label']} over "
+                   f"{s.get('n_scenarios')} scenarios, failure = 0; all four arms "
+                   "share each scenario's LLM judge session")
+    registered_macros(pooled, newcmd)
     factorial_macros(pooled, newcmd)
 
     return "\n".join(out) + "\n"
+
+
+def _md_num(v, spec: str = ".2f") -> str:
+    return format(v, spec) if _finite(v) else "--"
 
 
 def gen_stats_md(pooled: dict) -> str:
     models = pooled["models"]
     a0 = pooled["config"]["reference"]
     arms = pooled["config"]["arms"]
+    flags = pooled["config"].get("expected_flags") or {}
     L: list[str] = []
     L.append("# stats_ablation.md — ablation study, full numbers")
     L.append("")
@@ -489,61 +585,47 @@ def gen_stats_md(pooled: dict) -> str:
              f"Do not edit by hand.")
     L.append("")
     L.append(f"- Design: {pooled['config'].get('design')}")
-    L.append("- Axes: decomposition (multi-agent 5-Designer pipeline vs a "
-             "single monolithic agent) x context representation (structured "
-             "graph injection vs narrative prose). Self-validation is always "
-             "on in both `agent_mode` values, so it is not an ablated axis.")
+    L.append("- Axes: decomposition (multi-agent pipeline vs a single agent) x "
+             "context representation (structured graph vs narrative prose). "
+             "Self-validation is always on in both `agent_mode` values, so it is "
+             "not an ablated axis.")
     L.append("- Arms: A0 = multi + graph (full pipeline), "
              "A1 = single + prose (both axes changed), "
              "A2 = single + graph (decomposition only), "
              "A3 = multi + prose (context only).")
-    L.append("- **Two sign conventions are in play, so every section below "
-             "states its own direction.** The arm-vs-A0 sections use "
-             "**arm − A0** (flipped from the pooled JSON, which stores "
-             "A0 − arm); the 2x2 factorial section uses "
-             "**multi-agent − single-agent** / **graph − prose** (unflipped).")
-    L.append(f"- Primary policy: {pooled['config'].get('primary_failure_policy')}; "
-             f"Holm family: {pooled['config'].get('holm_family')}.")
+    L.append(f"- Direction: {pooled['config'].get('direction')}. Every section "
+             "below uses it.")
+    L.append(f"- Primary policy: failure = 0 ({pooled['config'].get('primary_failure_policy')}); "
+             f"Holm family: {pooled['config'].get('holm_family')}. Everything outside "
+             "the registered tests is descriptive or labelled uncorrected.")
     L.append("")
 
     L.extend(registered_section(pooled))
 
-    L.append("## Per-size means and paired deltas (ADDIE, failure = 0)")
+    L.append("## Per-size cell means (failure = 0)")
     L.append("")
-    L.append("Direction in this section: **arm − A0** on `addie_median` "
-             "(negative = removing the component lowered ADDIE, positive = "
-             "raised it). `r_rb` is the rank-biserial effect size, flipped to "
-             "the same direction.")
+    L.append("Each arm's mean over scenarios, a scenario where the arm left no "
+             "scorable output counting 0; `scored 0` is how many such scenarios "
+             "there were. The complete-case column (sensitivity) leaves them out. "
+             "SD is across scenarios.")
     L.append("")
     for m in models:
         L.append(f"### {m['label']}  (runs={m['n_runs']}, scenario union="
                  f"{m['n_scenarios_union']})")
         L.append("")
-        L.append("| Arm | mean ADDIE | nCC | missing | Δ vs A0 | CI95 | p_holm | r_rb |")
-        L.append("|---|---|---|---|---|---|---|---|")
+        L.append("| Arm | agent_mode | context_mode | n | scored 0 | mean ADDIE | SD "
+                 "| mean Traj | mean Total | mean ADDIE complete-case |")
+        L.append("|---|---|---|---|---|---|---|---|---|---|")
         for arm in [a0] + arms:
-            s = m["agents"].get(arm, {})
-            mt = s.get("mean_addie")
-            mt_txt = f"{mt:.2f}" if isinstance(mt, (int, float)) and not math.isnan(mt) else "--"
-            ncc = s.get("n_scenarios_complete", "--")
-            miss = s.get("n_scenarios_any_missing", "--")
-            if arm == a0:
-                L.append(f"| {ARM_DISPLAY.get(arm, arm)} | {mt_txt} | {ncc} | {miss} "
-                         f"| -- | -- | -- | -- |")
-                continue
-            d = arm_delta(m, arm)
-            if d:
-                # rank_biserial stored in A0−arm direction; flip with the delta
-                r_rb = d.get("rank_biserial_r")
-                r_txt = f"{-r_rb:+.2f}" if isinstance(r_rb, (int, float)) else "--"
-                L.append(
-                    f"| {ARM_DISPLAY.get(arm, arm)} | {mt_txt} | {ncc} | {miss} "
-                    f"| {d['delta']:+.2f} (n={d['n']}) "
-                    f"| [{d['ci95'][0]:+.2f}, {d['ci95'][1]:+.2f}] "
-                    f"| {d['p_holm']:.3g} | {r_txt} |")
-            else:
-                L.append(f"| {ARM_DISPLAY.get(arm, arm)} | {mt_txt} | {ncc} | {miss} "
-                         f"| (no shared scenarios) | -- | -- | -- |")
+            s = m["agents"].get(arm) or {}
+            f = flags.get(arm) or {}
+            L.append(f"| {ARM_DISPLAY.get(arm, arm)} | {f.get('agent_mode', '--')} "
+                     f"| {f.get('context_mode', '--')} | {s.get('n_scenarios', '--')} "
+                     f"| {s.get('n_scenarios_any_missing', '--')} "
+                     f"| {_md_num(s.get('mean_addie'))} "
+                     f"| {_md_num(s.get('sd_addie_across_scenarios'))} "
+                     f"| {_md_num(s.get('mean_traj'))} | {_md_num(s.get('mean_total'))} "
+                     f"| {_md_num(s.get('mean_addie_complete_case'))} |")
         L.append("")
 
     L.append("## A0 consistency check (pooling invariant, on total_score)")
@@ -555,11 +637,10 @@ def gen_stats_md(pooled: dict) -> str:
         L.append("**This check runs on `total_score` (the benchmark composite), "
                  "not on the `addie_median` series the rest of this file "
                  "reports** — so the A0 numbers here are deliberately different "
-                 "from the mean-ADDIE column in the per-size tables above. A0's "
-                 "ADDIE means are those per-size tables; this section bounds how "
-                 "much of an arm delta could be session effect, by putting the ablation's "
-                 "own A0 next to the comparison experiment's. It is not an arm comparison and must not "
-                 "be written up as one.")
+                 "from the mean-ADDIE column in the per-size tables above. It "
+                 "bounds how much of an effect could be session effect, by putting "
+                 "the ablation's own A0 next to the comparison experiment's. It is "
+                 "not an arm comparison and must not be written up as one.")
         L.append("")
         L.append("| Size | A0 Total (the ablation) | A0 Total (the comparison experiment ladder) "
                  "| Δ Total | ladder run-to-run SD (Total) | within 2×SD |")
@@ -585,142 +666,29 @@ def gen_stats_md(pooled: dict) -> str:
             L.append(f"- {label} / {agent}: {status}")
     L.append("")
 
-    align = pooled.get("alignment")
-    L.append("## Alignment panel (paired, every score)")
-    L.append("")
-    if align and align.get("stats", {}).get("per_model"):
-        L.append("Direction in this section: **arm − A0** (negative = removing "
-                 "the component lowered the signal, positive = raised it); "
-                 "flipped from the pooled JSON, which stores A0 − arm.")
-        L.append("")
-        L.append("A FLAT PANEL of signals, no primary endpoint and no "
-                 "composite: every score is reported win or lose. The three "
-                 "textual-correspondence signals are mean-max RECTIFIED cosine, "
-                 "max(0, cos) on [0,1] — a scale choice, not a matching cutoff; "
-                 "there is no similarity threshold anywhere in the protocol. "
-                 "The three cognitive-demand "
-                 "signals involve no similarity, and `porter_mean` is the MEAN "
-                 "of the three pairwise Porter indices over those same three "
-                 "triad edges, not a single index.")
-        L.append("")
-        L.append("Per-arm means come from the `align_descriptive` layer "
-                 "(per-agent mean over per-scenario values), so their difference "
-                 "need not equal the paired Δ to the last digit. Δ, CI and p are "
-                 "the paired complete-case `comparisons` layer: Wilcoxon "
-                 "two-sided, bootstrap 95% CI (10000 resamples, seed 42). "
-                 "Multiplicity is reported twice: `p_holm` = Holm within one "
-                 "signal (across the arms), `p_holm_panel` = Holm over the whole "
-                 "panel × arm family for that size. Complete-case is over "
-                 "AVAILABLE outputs, never unconditional.")
-        L.append("")
-        n_fail = sum(len(pm.get("align_failures") or {})
-                     for pm in align["stats"]["per_model"])
-        if n_fail:
-            L.append(f"`align_failures` is non-empty ({n_fail} size(s) with a "
-                     "missing output): the failure=0 rows therefore differ from "
-                     "the complete-case rows below — read "
-                     "`comparisons_failure_zero` in pooled_ablation.json.")
-        else:
-            L.append("`align_failures` is empty at every size (no arm is missing "
-                     "an output), so the failure=0 pass "
-                     "(`comparisons_failure_zero`) reproduces the complete-case "
-                     "rows below exactly. The `conditional_align` and "
-                     "`interaction_align` layers are not printed here — see "
-                     "pooled_ablation.json.")
-        L.append("")
-        L.append("| Size | Signal | Arm | mean A0 | mean arm | Δ | CI95 "
-                 "| p_holm | p_holm_panel | n |")
-        L.append("|---|---|---|---|---|---|---|---|---|---|")
-        for pm in align["stats"]["per_model"]:
-            for signal, layers in (pm.get("panel") or {}).items():
-                desc = layers.get("align_descriptive") or {}
-                sig_txt = signal if layers.get("directional", True) \
-                    else f"{signal} (non-directional)"
-                for row in layers.get("comparisons") or []:
-                    base = row.get("baseline")
-                    arm = ARM_DISPLAY.get(base, base or "?")
-                    m0 = (desc.get(a0) or {}).get("mean")
-                    ma = (desc.get(base) or {}).get("mean")
-                    m0_txt = f"{m0:.3f}" if isinstance(m0, (int, float)) else "--"
-                    ma_txt = f"{ma:.3f}" if isinstance(ma, (int, float)) else "--"
-                    if not row.get("n"):
-                        L.append(f"| {pm['label']} | {sig_txt} | {arm} | {m0_txt} "
-                                 f"| {ma_txt} | (no shared scenarios) | -- | -- "
-                                 f"| -- | 0 |")
-                        continue
-                    pp = row.get("p_holm_panel")
-                    pp_txt = f"{pp:.3g}" if isinstance(pp, (int, float)) else "--"
-                    L.append(
-                        f"| {pm['label']} | {sig_txt} | {arm} | {m0_txt} | {ma_txt} "
-                        f"| {-row['mean_diff']:+.3f} "
-                        f"| [{-row['ci95'][1]:+.3f}, {-row['ci95'][0]:+.3f}] "
-                        f"| {row.get('p_holm', float('nan')):.3g} | {pp_txt} "
-                        f"| {row['n']} |")
-    else:
-        L.append(f"Absent — run `{paths.cli()} judge alignment` on each ablation run "
-                 f"dir, then re-run `{paths.cli()} pool ablation` and "
-                 f"`{paths.cli()} report ablation-tables`.")
-    L.append("")
-    inter = pooled.get("interaction") or {}
-    L.append("")
-    L.append("## H2 / capacity interaction (DiD, largest size − smallest size)")
-    L.append("")
-    if inter.get("per_baseline"):
-        L.append("Direction in this section: delta = **A0 − arm** per scenario (the full "
-                 "architecture's advantage over that ablated cell); DiD = delta(largest) − "
-                 "delta(smallest). **H2 predicts NEGATIVE DiD** — the advantage is largest "
-                 "at the smallest model and shrinks as capacity grows. Near-zero DiD with "
-                 "uniformly positive per-size deltas means the axis helps at every size "
-                 "equally (decomposition/context helps, but not BECAUSE models are small); "
-                 "near-zero DiD with near-zero deltas means the axis does not matter at "
-                 "any size. Same machinery as the ladder pool's interaction layer "
-                 "(Wilcoxon two-sided on per-scenario DiD, bootstrap 95% CI, complete-case); "
-                 "per-signal versions in `interaction_by_score`.")
-        L.append("")
-        L.append("| Arm | Δ(smallest) | Δ(largest) | DiD | CI95 | p | n | trend by size |")
-        L.append("|---|---|---|---|---|---|---|---|")
-        for r in inter["per_baseline"]:
-            lo, hi = r["did_ci95"]
-            trend = " → ".join(f"{v:+.2f}" for v in r.get("trend_delta_by_size", {}).values())
-            L.append(f"| {ARM_DISPLAY.get(r['baseline'], r['baseline'])} "
-                     f"| {r['delta_smallest_mean']:+.2f} | {r['delta_largest_mean']:+.2f} "
-                     f"| {r['did_mean']:+.2f} | [{lo:+.2f}, {hi:+.2f}] "
-                     f"| {r['did_wilcoxon_p']:.3g} | {r['n_paired_scenarios']} | {trend} |")
-    else:
-        L.append(f"Skipped: {inter.get('note', 'no interaction layer in pooled_ablation.json — re-run ablation/08 (needs >= 2 model sizes)')}")
-    L.append("")
-
     fact = pooled.get("factorial") or {}
-    L.append("")
     L.append("## 2x2 factorial (decomposition x context representation)")
     L.append("")
-    if "skipped" in fact or not fact.get("measures"):
+    if not _has_factorial(pooled):
         L.append(fact.get("skipped", "absent"))
     else:
-        L.append("Direction in this section: **multi-agent − single-agent** / "
-                 "**graph − prose** (positive = the richer setting scores "
-                 "higher). These signs are NOT flipped, i.e. they are the "
-                 "OPPOSITE of the arm − A0 direction used in the two sections "
-                 "above: `decomp | ctx=graph` here is A0 − A2, the same "
-                 "quantity the per-size table prints as A2 − A0.")
+        cell_of = _cell_key_by_arm(pooled)
+        cell_order = [cell_of.get(arm) for arm in [a0] + arms]
+        cell_names = "/".join(ARM_DISPLAY.get(arm, arm).split(" ")[0] for arm in [a0] + arms)
+        L.append("Descriptive: each effect is a mean of per-scenario differences "
+                 "with its BCa bootstrap 95% interval and no test — the ablation's "
+                 "tests are the registered ones above. Failure = 0, over the "
+                 "scenarios all four cells scored (`n`). Direction **multi − single** "
+                 "/ **graph − prose** (positive = the richer setting scores higher). "
+                 f"Cell means are {cell_names}, in that order.")
         L.append("")
         L.append("`interaction` = (decomposition effect given ctx=graph) − "
-                 "(decomposition effect given ctx=prose). A negative "
-                 "interaction means the two mechanisms substitute for each "
-                 "other ONLY where both simple effects carry the beneficial "
-                 "sign; where both are negative (`trajectory_score`, "
-                 "`total_score`, on which multi-agent decomposition lowers the "
-                 "score) read it as a magnitude statement — multi-agent "
-                 "decomposition costs less when graph context is on — and "
-                 "where the two simple effects have opposite signs it is a "
-                 "crossover, neither substitution nor complementarity.")
-        L.append("")
-        L.append("p-values here are uncorrected. Note that the `decomp | "
-                 "ctx=graph` and `ctx | decomp=multi` columns are the A0-vs-A2 "
-                 "and A0-vs-A3 comparisons, which the sections above report "
-                 "Holm-corrected within their family; only the `| ... =prose` "
-                 "/ `| ... =single` columns and `interaction` are contrasts "
-                 "unique to this section.")
+                 "(decomposition effect given ctx=prose). Negative means the "
+                 "decomposition effect is lower under graph than under prose, "
+                 "whatever its sign: where both simple effects are positive the two "
+                 "mechanisms substitute for each other, where both are negative "
+                 "multi-agent decomposition costs MORE under graph, and where the "
+                 "two simple effects have opposite signs it is a crossover.")
         L.append("")
         L.append("Signals in this section are on two scales: `addie_median`, "
                  "`trajectory_score` and `total_score` are rubric points out of "
@@ -729,12 +697,20 @@ def gen_stats_md(pooled: dict) -> str:
         for sig, blk in fact["measures"].items():
             L.append("")
             scale = "rubric points /100" if sig in LLM_JUDGE_SCORES else "[0,1]"
+            nd = 2 if sig in LLM_JUDGE_SCORES else 3
             L.append(f"### {sig} ({scale})")
             L.append("")
-            L.append("| Size | n | decomp \\| ctx=graph | decomp \\| ctx=prose "
-                     "| ctx \\| decomp=multi | ctx \\| decomp=single | interaction |")
-            L.append("|---|---|---|---|---|---|---|")
+            L.append(f"| Size | n | cell means {cell_names} | decomp \\| ctx=graph "
+                     "| decomp \\| ctx=prose | ctx \\| decomp=multi | ctx \\| decomp=single "
+                     "| interaction |")
+            L.append("|---|---|---|---|---|---|---|---|")
             for e in blk["per_model"]:
+                if not e.get("n_scenarios"):
+                    L.append(f"| {e['label']} | 0 | {e.get('note', '--')} "
+                             "| -- | -- | -- | -- | -- |")
+                    continue
+                means = e.get("cell_means") or {}
+                cm = " / ".join(_md_num(means.get(k), f".{nd}f") for k in cell_order)
                 cells = []
                 for key in ("decomposition_effect_given_context_graph",
                             "decomposition_effect_given_context_prose",
@@ -743,9 +719,9 @@ def gen_stats_md(pooled: dict) -> str:
                             "interaction"):
                     d = e.get(key) or {}
                     cells.append("--" if not d.get("n") else
-                                 f"{d['mean_diff']:+.3f} [{d['ci95'][0]:+.3f},"
-                                 f"{d['ci95'][1]:+.3f}] p={d['p_raw']:.1e}")
-                L.append(f"| {e['label']} | {e.get('n_scenarios', 0)} | "
+                                 f"{d['mean_diff']:+.{nd}f} [{d['ci95'][0]:+.{nd}f}, "
+                                 f"{d['ci95'][1]:+.{nd}f}]")
+                L.append(f"| {e['label']} | {e['n_scenarios']} | {cm} | "
                          + " | ".join(cells) + " |")
     act = pooled.get("self_validation_activity") or []
     if act:
@@ -767,7 +743,6 @@ def gen_stats_md(pooled: dict) -> str:
 
     L += process_md(pooled)
     return "\n".join(L) + "\n"
-
 
 
 # ── the process measures (what each arm DID) ─────────────────────────────────
@@ -803,22 +778,20 @@ def gen_tab_process(pooled: dict) -> str:
     """
     by_label = _process_by_label(pooled)
     if not any(by_label.values()):
-        return (header_comment(pooled, "tab_ablation_process.tex — placeholder")
+        return (header_comment(PRODUCER, "tab_ablation_process.tex — placeholder", pooled)
                 + "% No process layer in pooled_ablation.json.\n")
     models = pooled["models"]
     a0 = pooled["config"]["reference"]
     arms = pooled["config"]["arms"]
     k = len(PROCESS_COLUMNS)
     colspec = "@{}l" + ("r" * k) * len(models) + "@{}"
-    lines = [header_comment(pooled, "tab_ablation_process.tex — what each arm did")]
+    lines = [header_comment(PRODUCER, "tab_ablation_process.tex — what each arm did", pooled)]
     lines.append("\\begin{table*}[t]")
     lines.append(
-        "  \\caption{What each ablation arm did, per model size. Ctx$\\times$: mean"
-        " prompt length of the last stage over the first; Cut: \\% of stages ended"
-        " by the turn ceiling; Core: mean coverage of the relations C2--C4"
-        " (graph arms only); Triad: share of objectives whose references close"
-        " the triad in the delivered design (every arm); Open: findings left open"
-        " per run.}")
+        "  \\caption{What each ablation arm did, per size. Ctx$\\times$: mean"
+        " last-stage over first-stage prompt length; Cut: \\% of stages cut by"
+        " the turn ceiling; Core: mean C2--C4 coverage (graph arms); Triad: share"
+        " of objectives closing the triad; Open: open findings per run.}")
     lines.append("  \\label{tab:ablation-process}")
     lines.append("  \\small")
     lines.append(f"  \\begin{{tabular}}{{{colspec}}}")

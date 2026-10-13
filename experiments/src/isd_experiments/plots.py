@@ -141,10 +141,12 @@ def bar_legend(fig, agents: list[str], labels: dict[str, str] | None = None, **k
 
 
 def thin_coverage_n(summary: dict, model: dict) -> int | None:
-    """Complete-case n when it covers < half the scenario union, else None.
+    """Scored-scenario n when it is < half the scenario union, else None.
 
-    A mean over 5 of 90 scenarios is a survivorship mean; drawn identically to
-    a 90-scenario mean it reads as comparable, so callers mark it."""
+    Under failure = 0 the cell's mean covers every scenario, but where more than
+    half of them scored 0 because the system left no scorable output it is
+    mostly a failure count; drawn identically to a mean of real scores it reads
+    as comparable, so callers mark it."""
     n = summary.get("n_scenarios_complete")
     union = model.get("n_scenarios_union") or 0
     if isinstance(n, (int, float)) and not isinstance(n, bool) and union and n < 0.5 * union:

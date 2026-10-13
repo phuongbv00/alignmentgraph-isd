@@ -10,6 +10,7 @@ import pytest
 from isd_experiments import paths, schema
 
 GOLDEN = paths.exp_root() / "tests" / "fixtures" / "golden" / "pooled_comparison.json"
+V = schema.SCHEMA_VERSION
 
 
 @pytest.fixture(scope="module")
@@ -75,10 +76,10 @@ class TestValidationFailsLoudly:
 
     def test_empty_models_is_refused(self):
         with pytest.raises(SystemExit, match="nothing was pooled"):
-            schema.validate({"generated_at": "x", "config": {}, "models": []})
+            schema.validate({"schema_version": V, "generated_at": "x", "config": {}, "models": []})
 
     def test_incomplete_agent_row_names_the_gap_and_the_agent(self):
-        doc = {"generated_at": "x", "config": {},
+        doc = {"schema_version": V, "generated_at": "x", "config": {},
                "models": [{"label": "m", "comparisons": {},
                            "agents": {"react-isd": {"mean_addie": 1.0}}}]}
         with pytest.raises(SystemExit) as exc:
@@ -87,12 +88,31 @@ class TestValidationFailsLoudly:
 
     def test_missing_top_level_key_is_named(self):
         with pytest.raises(SystemExit, match="config"):
-            schema.validate({"generated_at": "x",
+            schema.validate({"schema_version": V, "generated_at": "x",
                              "models": [{"label": "m", "agents": {"a": {}}, "comparisons": {}}]})
 
-    def test_model_without_comparisons_is_refused(self):
-        """Comparisons are per-model because every paired test is made within
-        one model size; a model row without them was pooled incompletely."""
+    def test_an_ablation_model_row_needs_no_comparisons(self):
+        """The ablation's tests live in its top-level `registered` block, so a
+        model row of pooled_ablation.json carries none."""
+        row = {k: 0.0 for k in schema.REQUIRED_AGENT}
+        doc = {"schema_version": V, "generated_at": "x", "config": {}, "registered": {},
+               "models": [{"label": "m", "agents": {"a": row}}]}
+        assert schema.validate(doc) is doc
+
+    def test_a_comparison_model_row_without_comparisons_is_refused(self):
+        row = {k: 0.0 for k in schema.REQUIRED_AGENT}
         with pytest.raises(SystemExit, match="comparisons"):
-            schema.validate({"generated_at": "x", "config": {},
-                             "models": [{"label": "m", "agents": {"a": {}}}]})
+            schema.validate({"schema_version": V, "generated_at": "x", "config": {},
+                             "models": [{"label": "m", "agents": {"a": row}}]})
+
+    def test_a_file_from_another_pooling_version_is_refused(self):
+        """Version 1 wrote complete-case means under the key names version 2
+        uses for failure = 0; read silently, every table would mislabel them."""
+        row = {k: 0.0 for k in schema.REQUIRED_AGENT}
+        for version in (None, 1):
+            doc = {"generated_at": "x", "config": {},
+                   "models": [{"label": "m", "agents": {"a": row}}]}
+            if version is not None:
+                doc["schema_version"] = version
+            with pytest.raises(SystemExit, match="re-pool"):
+                schema.validate(doc)

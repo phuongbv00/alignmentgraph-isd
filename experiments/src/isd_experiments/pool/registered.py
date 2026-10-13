@@ -14,14 +14,17 @@ module computes exactly that and nothing chosen afterwards:
 
 The unit is the scenario: a cell's value on a scenario is the mean over that
 size's runs, and a run that left no scorable output counts 0 (``failure =
-0``, the primary layer; complete-case is the sensitivity). Each test is a
-paired Wilcoxon signed-rank (two-sided), a bootstrap CI and the rank-biserial
-r; Holm runs over exactly the six tests, and the verdict reads the adjusted p
+0``, the primary layer). Each test is a paired Wilcoxon signed-rank
+(two-sided, exact null), a BCa bootstrap CI and the rank-biserial r; Holm runs
+over exactly the registered tests, and the verdict reads the adjusted p
 together with the sign the hypothesis predicts.
 
-Also here, outside the family: the slope of the multi-minus-single gap over
-the ADDIE phases (``phase_scores``), H-D's registered mechanism. A positive
-slope means the single arm falls further behind the later the phase.
+Also here, outside the family, per size: the same tests over complete cases
+(the sensitivity, with its own Holm so its verdicts read on the same rule);
+the decomposition x substrate interaction on each axis's measure, the guide's
+pre-specified uncorrected contrast; and two descriptive readings -- H-S's
+measure over the references the model wrote itself, and the multi-minus-single
+gap by ADDIE phase (H-D's mechanism), each a mean with its interval.
 """
 
 from __future__ import annotations
@@ -30,17 +33,11 @@ import json
 from pathlib import Path
 from typing import Callable, Optional
 
-from ..runs import iter_scenario_dirs, load_run
-from ..stats import (
-    BOOT_SEED,
-    N_BOOT,
-    bootstrap_ci,
-    holm_correct,
-    rank_biserial,
-    wilcoxon_signed_rank,
-)
+from ..config import FAILURE_POLICY, SENSITIVITY_POLICY
+from ..runs import load_run
+from ..stats import BOOT_METHOD, BOOT_SEED, N_BOOT, describe, holm_correct, paired
 from ..util import mean as _mean
-from . import diagnostics
+from . import attempts, diagnostics
 
 #: The family the guide registers, in the order it lists them.
 ALPHA = 0.05
@@ -66,16 +63,16 @@ class Reader:
 
     def __init__(self) -> None:
         self._reports: dict[str, dict] = {}
-        self._scen_dirs: dict[str, dict[str, Path]] = {}
 
     def scenarios(self, run_dirs: list[Path]) -> list[str]:
+        """Every scenario any agent was attempted in, judged or not."""
         return sorted({sid for d in run_dirs for sid in self._dirs(d)})
 
     def _dirs(self, run_dir: Path) -> dict[str, Path]:
-        key = str(run_dir)
-        if key not in self._scen_dirs:
-            self._scen_dirs[key] = dict(iter_scenario_dirs(run_dir))
-        return self._scen_dirs[key]
+        return attempts.scenarios(run_dir)
+
+    def attempted(self, run_dir: Path, scenario: str, agent: str) -> bool:
+        return attempts.attempted(run_dir, scenario, agent)
 
     def _ranking(self, run_dir: Path, scenario: str, agent: str) -> dict:
         key = str(run_dir)
@@ -130,36 +127,38 @@ def _without_repaired_references(output: dict) -> dict:
 
 def cell_means(reader: Reader, run_dirs: list[Path], cells: Cells,
                read: Callable[[Path, str, str], Optional[float]], *,
-               policy: str = "zero") -> dict[tuple[str, str], dict[str, float]]:
+               policy: str = FAILURE_POLICY) -> dict[tuple[str, str], dict[str, float]]:
     """cell -> scenario -> mean over this size's runs.
 
-    ``zero``: a run with nothing scorable counts 0, so the worst outputs stay
-    in the denominator (the registered primary layer). ``complete_case``: such
-    a run is left out, and a scenario none of whose runs scored is absent."""
+    Over the runs the cell's agent was attempted in (``attempts``). failure = 0:
+    an attempt with nothing scorable counts 0, so the worst outputs stay in the
+    denominator (the registered primary layer). complete-case: only the
+    scenarios the cell scored in every attempted run, the same definition the
+    LLM judge pool uses."""
     out: dict[tuple[str, str], dict[str, float]] = {}
     for cell, agent in cells.items():
         per: dict[str, float] = {}
         for sid in reader.scenarios(run_dirs):
-            vals = []
-            for run_dir in run_dirs:
-                v = read(run_dir, sid, agent)
-                if v is None and policy == "zero":
-                    v = 0.0
-                if v is not None:
-                    vals.append(v)
-            if vals:
-                per[sid] = _mean(vals)
+            vals = [read(run_dir, sid, agent) for run_dir in run_dirs
+                    if reader.attempted(run_dir, sid, agent)]
+            if not vals:
+                continue
+            if policy == FAILURE_POLICY:
+                per[sid] = _mean([0.0 if v is None else v for v in vals])
+            elif all(v is not None for v in vals):
+                per[sid] = _mean(vals)  # type: ignore[arg-type]
         out[cell] = per
     return out
 
 
 def main_effects(values: dict[tuple[str, str], dict[str, float]]) -> dict[str, dict[str, float]]:
-    """axis -> scenario -> main effect, over the scenarios all four cells scored.
+    """effect -> scenario -> value, over the scenarios all four cells scored.
 
     decomposition = mean of (multi - single) under graph and under prose;
     substrate = mean of (graph - prose) under multi and under single. Both read
     "the richer setting minus the plainer one", so the registered prediction is
-    positive for both."""
+    positive for both. interaction = the decomposition effect under graph minus
+    under prose."""
     # Sorted: the bootstrap resamples by position, so a set's hash order would
     # move the CI from one run of the pool to the next.
     shared = sorted(set.intersection(*(set(v) for v in values.values()))) if values else []
@@ -168,18 +167,10 @@ def main_effects(values: dict[tuple[str, str], dict[str, float]]) -> dict[str, d
     return {
         "decomposition": {s: ((mg[s] - sg[s]) + (mp[s] - sp[s])) / 2 for s in shared},
         "substrate": {s: ((mg[s] - mp[s]) + (sg[s] - sp[s])) / 2 for s in shared},
+        # (multi - single | graph) - (multi - single | prose): positive means
+        # decomposition gains more on the graph substrate.
+        "interaction": {s: (mg[s] - sg[s]) - (mp[s] - sp[s]) for s in shared},
     }
-
-
-def paired(diffs: list[float]) -> dict:
-    """The registered statistics of one series of per-scenario differences."""
-    if not diffs:
-        return {"n": 0}
-    w, p, n_eff = wilcoxon_signed_rank(diffs)
-    lo, hi = bootstrap_ci(diffs, n_boot=N_BOOT, seed=BOOT_SEED)
-    return {"n": len(diffs), "n_effective_nonzero": n_eff, "mean_diff": _mean(diffs),
-            "ci95": [lo, hi], "wilcoxon_w_plus": w, "p_raw": p,
-            "rank_biserial_r": rank_biserial(diffs)}
 
 
 def verdict(row: dict) -> str:
@@ -200,8 +191,9 @@ def phase_slope(reader: Reader, run_dirs: list[Path], cells: Cells) -> dict:
     """Slope of the multi-minus-single gap over the ADDIE phases, per scenario.
 
     The gap at a phase is the decomposition main effect on that phase's score
-    (mean over runs, complete-case: a phase the LLM judge did not score is not
-    a phase the agent failed). The slope is the OLS slope of the gap on the
+    (mean over runs, complete-case: a cell counts only where the phase was
+    scored in every run its agent was attempted in; a phase the LLM judge did
+    not score is not a phase the agent failed). The slope is the OLS slope of the gap on the
     phase index, so a positive slope is the registered mechanism — the single
     arm falls further behind the later the phase."""
     slopes: list[float] = []
@@ -211,10 +203,11 @@ def phase_slope(reader: Reader, run_dirs: list[Path], cells: Cells) -> dict:
         for phase in PHASE_ORDER:
             cell = {}
             for key, agent in cells.items():
-                vals = [reader.phase_scores(d, sid, agent).get(phase) for d in run_dirs]
-                vals = [float(v) for v in vals if isinstance(v, (int, float))]
-                if vals:
-                    cell[key] = _mean(vals)
+                vals = [reader.phase_scores(d, sid, agent).get(phase) for d in run_dirs
+                        if reader.attempted(d, sid, agent)]
+                # Complete-case: the phase scored in every attempted run.
+                if vals and all(isinstance(v, (int, float)) for v in vals):
+                    cell[key] = _mean([float(v) for v in vals])
             if len(cell) < 4:
                 gaps.append(None)
                 continue
@@ -228,7 +221,7 @@ def phase_slope(reader: Reader, run_dirs: list[Path], cells: Cells) -> dict:
             denom = sum((x - xbar) ** 2 for x, _ in points)
             slopes.append(sum((x - xbar) * g for x, g in points) / denom)
     return {"gap_by_phase": {p: (_mean(v) if v else None) for p, v in by_phase.items()},
-            "slope": paired(slopes)}
+            "slope": describe(slopes)}
 
 
 # ── the whole registered analysis ───────────────────────────────────────────
@@ -242,20 +235,40 @@ def analyse(run_dirs_by_model: dict[str, list[Path]], cells: Cells) -> dict:
     readers = {"decomposition": reader.llm_judge(PRIMARY_MEASURE["decomposition"]),
                "substrate": reader.triad()}
 
-    def effect(dirs, axis, read, policy="zero") -> dict[str, float]:
+    def effect(dirs, axis, read, policy=FAILURE_POLICY) -> dict[str, float]:
         return main_effects(cell_means(reader, dirs, cells, read, policy=policy))[axis]
 
     effects: dict[str, dict[str, dict[str, float]]] = {}   # size -> axis -> scenario -> effect
     secondary: dict[str, dict] = {}
+    # size -> measure -> arm -> mean under failure = 0: the cell values the
+    # registered effects are differences of, for a table to print beside them.
+    arm_means: dict[str, dict[str, dict[str, float]]] = {}
     for size, dirs in run_dirs_by_model.items():
         effects[size] = {axis: effect(dirs, axis, read) for axis, read in readers.items()}
+        arm_means[size] = {
+            PRIMARY_MEASURE[axis]: {cells[cell]: _mean(list(vals.values()))
+                                    for cell, vals in cell_means(reader, dirs, cells, read).items()
+                                    if vals}
+            for axis, read in readers.items()}
+        sensitivity = [{"test": f"{HYPOTHESIS[axis]} @ {size} complete-case", "axis": axis,
+                        **paired(list(effect(dirs, axis, read, SENSITIVITY_POLICY).values()))}
+                       for axis, read in readers.items()]
+        tested = [r for r in sensitivity if isinstance(r.get("p_raw"), float)]
+        for row, adjusted in zip(tested, holm_correct([r["p_raw"] for r in tested])):
+            row["p_holm"] = adjusted
+            row["holm_family_size"] = len(tested)
+        for row in sensitivity:
+            row["verdict"] = verdict(row)
         secondary[size] = {
-            # The sensitivity layer of the same two tests.
-            **{f"{axis}|complete_case": paired(list(
-                effect(dirs, axis, read, "complete_case").values()))
-               for axis, read in readers.items()},
-            # H-S's mandatory twin: the triad as the model wrote it.
-            "substrate|model_written": paired(list(
+            # The same tests over complete cases, with their own Holm.
+            "complete_case": sensitivity,
+            # The guide's pre-specified decomposition x substrate contrast,
+            # on each axis's measure; reported uncorrected.
+            "interaction": {PRIMARY_MEASURE[axis]: paired(list(
+                effect(dirs, "interaction", read).values()))
+                for axis, read in readers.items()},
+            # H-S's mandatory twin: the triad as the model wrote it. Descriptive.
+            "substrate|model_written": describe(list(
                 effect(dirs, "substrate", reader.triad(unrepaired=True)).values())),
             "phase_slope": phase_slope(reader, dirs, cells),
         }
@@ -280,6 +293,7 @@ def analyse(run_dirs_by_model: dict[str, list[Path]], cells: Cells) -> dict:
     tested = [r for r in family if isinstance(r.get("p_raw"), float)]
     for row, adjusted in zip(tested, holm_correct([r["p_raw"] for r in tested])):
         row["p_holm"] = adjusted
+        row["holm_family_size"] = len(tested)
     for row in family:
         row["verdict"] = verdict(row)
 
@@ -290,17 +304,19 @@ def analyse(run_dirs_by_model: dict[str, list[Path]], cells: Cells) -> dict:
             "of substrate = mean of (graph - prose) under multi and under single. "
             "H-C = per-scenario effect at the smallest size minus at the largest. "
             "Scenario is the unit (mean over runs); failure = 0. Paired Wilcoxon "
-            f"two-sided, bootstrap CI ({N_BOOT}, seed {BOOT_SEED}), rank-biserial r; "
+            f"two-sided (exact null), {BOOT_METHOD} bootstrap CI ({N_BOOT}, seed "
+            f"{BOOT_SEED}), rank-biserial r; "
             f"Holm over the tests below that could be run ({len(tested)} of the "
             f"{REGISTERED_TESTS} registered) at alpha {ALPHA}. Verdict: "
             "supported (p_holm < alpha, positive), contrary (p_holm < alpha, "
             "negative), else not detected."),
         "primary_measure": dict(PRIMARY_MEASURE),
-        "failure_policy": "zero",
+        "failure_policy": FAILURE_POLICY,
         "sizes": sizes,
         "family": family,
         "complete": len(tested) == REGISTERED_TESTS,
         "secondary": secondary,
+        "arm_means": arm_means,
     }
 
 
@@ -320,12 +336,21 @@ def print_family(registered: dict) -> None:
               f"CI95=[{lo:+.3f},{hi:+.3f}] r={r['rank_biserial_r']:+.2f} n={r['n']} "
               f"p_holm={r.get('p_holm', float('nan')):.3g}  {r['verdict']}")
     for size, sec in (registered.get("secondary") or {}).items():
+        for r in sec.get("complete_case") or []:
+            if r.get("n"):
+                print(f"    [{size}] {r['test']:<36} d={r['mean_diff']:+.3f} "
+                      f"p_holm={r.get('p_holm', float('nan')):.3g}  {r['verdict']} (sensitivity)")
+        for measure, r in (sec.get("interaction") or {}).items():
+            if r.get("n"):
+                print(f"    [{size}] interaction on {measure:<22} d={r['mean_diff']:+.3f} "
+                      f"p_raw={r['p_raw']:.3g} (pre-specified, uncorrected)")
         mw = sec.get("substrate|model_written") or {}
         slope = (sec.get("phase_slope") or {}).get("slope") or {}
         if mw.get("n"):
+            lo, hi = mw["ci95"]
             print(f"    [{size}] H-S model-written triad d={mw['mean_diff']:+.3f} "
-                  f"p_raw={mw['p_raw']:.3g} (secondary, not in the family)")
+                  f"CI95=[{lo:+.3f},{hi:+.3f}] (descriptive)")
         if slope.get("n"):
+            lo, hi = slope["ci95"]
             print(f"    [{size}] H-D phase slope d={slope['mean_diff']:+.3f}/phase "
-                  f"p_raw={slope['p_raw']:.3g} (mechanism, not in the family)")
-
+                  f"CI95=[{lo:+.3f},{hi:+.3f}] (descriptive)")

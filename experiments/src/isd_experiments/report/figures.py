@@ -77,17 +77,15 @@ PANEL_FAMILY_A_N = 3
 #: In-figure disclosure for the panel heatmaps. Figures get read detached from
 #: their LaTeX caption, so every caveat a reader needs to not over-read a cell
 #: has to live inside the image: the two instrument families, the flat-panel
-#: status, and why some cells carry an n. No non-directionality note any more —
-#: the one non-directional signal left the panel.
+#: status, the failure policy, and why some cells carry an n.
 PANEL_FOOTNOTE = (
     "Flat panel of 6 alignment signals, no primary endpoint. Family A = the three edges of the "
     "constructive-alignment triad (textual correspondence, rectified cosine "
     "max(0, cos) on [0,1]): Obj→Asm, Obj→Act, Act→Asm.  "
     "Family B (cognitive demand, Bloom-derived, no similarity): Cognitive congruence, "
     "Porter (mean of 3 pairwise indices), Webb.\n"
-    "Cell values omit the leading zero. A red n marks a cell where fewer than half the "
-    "scenarios produced a scorable output — a survivorship mean, not comparable with "
-    "full-coverage cells."
+    "Cell values omit the leading zero. A missing output counts 0 (failure = 0). A red n "
+    "marks a cell where the signal was defined on fewer than half the scenarios."
 )
 
 
@@ -115,14 +113,14 @@ def fig_llm_judge_ladder(pooled: dict, outdir: Path, written: list[Path]) -> Non
         errs = []
         for st in summaries:
             sd = _nan(st.get(sd_field))
-            n = st.get("n_scenarios_complete") or 0
+            n = st.get("n_scenarios") or 0
             errs.append(sd / math.sqrt(n) if n and not math.isnan(sd) else float("nan"))
         have_sd = any(not math.isnan(e) for e in errs)
         errs = [0.0 if math.isnan(e) else e for e in errs]
         ax.errorbar(sizes, ys, yerr=errs if have_sd else None,
                     capsize=2, elinewidth=0.8, **line_kw(a))
-        # thin complete-case support: open marker + n, so a survivorship mean
-        # cannot be read as comparable with a full-coverage point
+        # fewer than half the scenarios scored: open marker + how many did, so a
+        # mean made mostly of failures counted 0 is visible as one
         for x, y, s, m in zip(sizes, ys, summaries, models):
             n = thin_coverage_n(s, m)
             if n is None or math.isnan(y):
@@ -131,7 +129,7 @@ def fig_llm_judge_ladder(pooled: dict, outdir: Path, written: list[Path]) -> Non
             ax.plot([x], [y], marker="o", markersize=6.0, markerfacecolor="white",
                     markeredgecolor=AGENT_COLOR.get(a, "#666666"),
                     markeredgewidth=1.3, linestyle="", zorder=7)
-            ax.annotate(f"n={n}", xy=(x, y), textcoords="offset points",
+            ax.annotate(f"{n} scored", xy=(x, y), textcoords="offset points",
                         fontsize=6, color=AGENT_COLOR.get(a, "#666666"),
                         **edge_annot_kw(x, sizes, dy=-12))
     # direct label on the proposed agent (secondary encoding beside the legend)
@@ -145,10 +143,10 @@ def fig_llm_judge_ladder(pooled: dict, outdir: Path, written: list[Path]) -> Non
     sized_axis(ax, sizes, labels)
     ax.set_ylabel("ADDIE rubric (/100)")
     ax.grid(axis="x", visible=False)
-    note = "error bars: ±SEM across scenarios"
+    note = "error bars: ±SEM across scenarios; failure = 0"
     if thin_seen:
-        note += ("\nopen marker + n: complete-case mean over\n"
-                 f"fewer than half of {union} scenarios (agent failures)")
+        note += ("\nopen marker: fewer than half of\n"
+                 f"{union} scenarios scored, the rest count 0")
     ax.text(0.98, 0.02, note, transform=ax.transAxes, ha="right", va="bottom",
             multialignment="right", fontsize=6.5, color="#666666", zorder=8)
     agent_legend(fig, agents, bbox_to_anchor=(0.5, -0.02))
@@ -166,7 +164,8 @@ def fig_llm_judge_delta(pooled: dict, outdir: Path, written: list[Path]) -> None
     for ax, b in zip(axes.flat, baselines):
         rows_by_size = []
         for m in models:
-            rows = m["comparisons"]["by_score"][LLM_JUDGE_LEAD]["policies"]["complete_case"]
+            comp = m["comparisons"]
+            rows = comp["by_score"][LLM_JUDGE_LEAD]["policies"][comp["primary_policy"]]
             rows_by_size.append(next((r for r in rows if r.get("baseline") == b), {}))
         ys = [_nan(r.get("mean_diff")) for r in rows_by_size]
         los = [_nan((r.get("ci95") or [None, None])[0]) for r in rows_by_size]
@@ -176,16 +175,10 @@ def fig_llm_judge_delta(pooled: dict, outdir: Path, written: list[Path]) -> None
         ax.axhline(0, color="#999999", linewidth=0.8, zorder=1)
         ax.fill_between(sizes, los, his, color=AGENT_COLOR[PROPOSED], alpha=0.15, linewidth=0, zorder=2)
         ax.plot(sizes, ys, color=AGENT_COLOR[PROPOSED], linewidth=1.4, zorder=3)
-        for x, y, s, r, m in zip(sizes, ys, sig, rows_by_size, models):
+        for x, y, s in zip(sizes, ys, sig):
             ax.plot([x], [y], marker="D", markersize=4.5,
                     markerfacecolor=AGENT_COLOR[PROPOSED] if s else "white",
                     markeredgecolor=AGENT_COLOR[PROPOSED], markeredgewidth=1.0, zorder=4)
-            # flag points backed by few complete-case pairs (heavy agent failure)
-            n = r.get("n")
-            if n is not None and n < 0.5 * (m.get("n_scenarios_union") or n):
-                ax.annotate(f"n={n}", xy=(x, y), textcoords="offset points",
-                            fontsize=6, color="#666666",
-                            **edge_annot_kw(x, sizes))
         row = inter.get(b)
         if row:
             # The slope rests on the scenarios common to every size; with a
@@ -213,7 +206,7 @@ def fig_llm_judge_delta(pooled: dict, outdir: Path, written: list[Path]) -> None
     # axis is tall, so per-axes labels butt into each other
     fig.supylabel("Δ ADDIE (proposed − baseline)", fontsize=8)
     fig.suptitle(
-        "Paired per-scenario delta with bootstrap 95% CI "
+        "Paired per-scenario delta with bootstrap 95% CI, failure = 0 "
         "(filled marker: Holm-adjusted p < 0.05)", fontsize=8.5)
     fig.tight_layout(rect=(0.02, 0, 1, 0.97))
     save(fig, outdir, "fig_llm_judge_delta", written)
@@ -337,7 +330,7 @@ RQ2_FOREST_BASELINE = "react-isd"
 def fig_alignment_forest(pooled: dict, outdir: Path, written: list[Path]) -> bool:
     """Forest plot of paired panel-signal deltas (proposed - RQ2_FOREST_BASELINE).
 
-    Primary failure=0 layer, one facet per size, 6 signals per facet in panel
+    Failure = 0, one facet per size, 6 signals per facet in panel
     order with the family A|B separator; filled marker = within-signal
     Holm-adjusted p < 0.05. This is the significance view the heatmap
     deliberately does not carry.
@@ -357,7 +350,7 @@ def fig_alignment_forest(pooled: dict, outdir: Path, written: list[Path]) -> boo
     for ax, m in zip(axes, stats):
         panel = m.get("panel") or {}
         for y, key in zip(ys, comp_keys):
-            rows = (panel.get(key) or {}).get("comparisons_failure_zero") or []
+            rows = (panel.get(key) or {}).get("comparisons") or []
             r = next((r for r in rows if r.get("baseline") == RQ2_FOREST_BASELINE), {})
             d = _nan(r.get("mean_diff"))
             lo, hi = (r.get("ci95") or [float("nan"), float("nan")])
@@ -378,7 +371,7 @@ def fig_alignment_forest(pooled: dict, outdir: Path, written: list[Path]) -> boo
     axes[0].set_yticklabels(comp_names, fontsize=7.5)
     fig.supxlabel(
         f"Δ score (proposed − {AGENT_DISPLAY.get(RQ2_FOREST_BASELINE, RQ2_FOREST_BASELINE)}), "
-        "failure=0 layer", fontsize=8)
+        "failure = 0", fontsize=8)
     fig.text(0.5, -0.06,
              "Paired per-scenario delta with bootstrap 95% CI; filled marker: "
              "within-signal Holm-adjusted p < 0.05.",
@@ -526,14 +519,13 @@ def fig_cost_quality(pooled: dict, outdir: Path, written: list[Path]) -> bool:
             summary = m["agents"].get(a, {})
             xs.append(_nan(cell.get("mean")))
             ys.append(_nan(summary.get(LLM_JUDGE_LEAD_FIELD)))
-            # the two coordinates are averaged over different scenario sets
-            # (tokens over runs with metadata, ADDIE over the complete-case
-            # set); flag the markers where they diverge badly
-            n_tok, n_add = cell.get("n_scenarios"), summary.get("n_scenarios_complete")
-            union = m.get("n_scenarios_union") or 0
-            thin = (union and isinstance(n_tok, int) and isinstance(n_add, int)
-                    and min(n_tok, n_add) < 0.5 * union)
-            notes.append(f"n={n_add}/{n_tok}" if thin else None)
+            # ADDIE (failure = 0) covers every scenario; the token mean covers
+            # only the scenarios with token metadata, so flag the markers whose
+            # x rests on well under half of the scenarios the y covers
+            n_tok = cell.get("n_scenarios")
+            n_all = summary.get("n_scenarios") or m.get("n_scenarios_union") or 0
+            thin = (n_all and isinstance(n_tok, int) and n_tok < 0.5 * n_all)
+            notes.append(f"n={n_tok}/{n_all}" if thin else None)
         kw = line_kw(a)
         ax.plot(xs, ys, alpha=0.9, color=kw["color"], marker="",
                 linewidth=0.9 if a != PROPOSED else 1.6, zorder=kw["zorder"])
@@ -558,10 +550,10 @@ def fig_cost_quality(pooled: dict, outdir: Path, written: list[Path]) -> bool:
         # below the legend: the data area has no free corner at the small sizes,
         # which is exactly where the flagged markers are
         fig.text(0.5, -0.20,
-                 "Hollow marker: the two coordinates are averaged over different "
-                 "partial scenario sets\n(n = ADDIE complete-case / scenarios with "
-                 "token metadata), so the point is not a property\nof one common "
-                 "scenario set.",
+                 "ADDIE (failure = 0) covers every scenario. Hollow marker: the token "
+                 "mean covers fewer than\nhalf of them (n = scenarios with token "
+                 "metadata / all scenarios), so its x rests on a\npartial scenario "
+                 "set.",
                  ha="center", va="top", fontsize=6.5, color="#555555")
     fig.suptitle("Quality vs token cost — marker size grows with model size "
                  f"({', '.join(size_display(m['label']) for m in models)})", fontsize=8)

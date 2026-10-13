@@ -19,19 +19,22 @@ from . import util
 
 #: Bumped when a consumer would misread an older file. Not a general
 #: versioning scheme -- it exists so a stale pooled file is refused rather than
-#: silently half-read.
-SCHEMA_VERSION = 1
+#: silently half-read. 2: `mean_*` and the paired tests are under failure = 0;
+#: a version-1 file carries the same key names with complete-case values.
+SCHEMA_VERSION = 2
 
 #: Top-level keys pooling always writes. `comparisons` is NOT among them --
 #: it is per-model, because every comparison is made within one model size.
 REQUIRED_TOP = ("generated_at", "config", "models")
 
-#: Per-model keys. `comparisons` holds the paired tests for that size.
-REQUIRED_MODEL = ("label", "agents", "comparisons")
+#: Per-model keys every pooled file carries. The comparison pool adds
+#: `comparisons` (the paired tests for that size); the ablation's tests live in
+#: its top-level `registered` block instead.
+REQUIRED_MODEL = ("label", "agents")
 
 #: Per-agent keys the table and figure generators index directly.
 REQUIRED_AGENT = (
-    "mean_addie", "mean_total", "mean_traj",
+    "n_scenarios", "mean_addie", "mean_total", "mean_traj",
     "sd_addie_across_scenarios", "sd_total_across_scenarios", "sd_traj_across_scenarios",
     "n_scenarios_complete",
 )
@@ -49,6 +52,10 @@ def _require(cond: bool, message: str) -> None:
 def validate(pooled: dict, source: str = "<pooled>") -> dict:
     """Check the shape every consumer assumes. Returns the document."""
     _require(isinstance(pooled, dict), f"{source}: not a JSON object")
+    _require(pooled.get("schema_version") == SCHEMA_VERSION,
+             f"{source}: schema_version {pooled.get('schema_version')!r}, expected "
+             f"{SCHEMA_VERSION}. It was written by a different pooling version, whose "
+             f"numbers may share key names with different meanings; re-pool it.")
     missing = [k for k in REQUIRED_TOP if k not in pooled]
     _require(not missing, f"{source}: missing top-level key(s): {', '.join(missing)}")
     _require(isinstance(pooled["models"], list) and pooled["models"],
@@ -60,6 +67,10 @@ def validate(pooled: dict, source: str = "<pooled>") -> dict:
         _require(isinstance(model, dict), f"{where}: not an object")
         gaps = [k for k in REQUIRED_MODEL if k not in model]
         _require(not gaps, f"{where}: missing {', '.join(gaps)}")
+        # The comparison pool's paired tests are per model; the ablation's live
+        # in its top-level `registered` block instead.
+        _require("registered" in pooled or "comparisons" in model,
+                 f"{where}: missing comparisons")
         agents = model.get("agents")
         _require(isinstance(agents, dict) and agents,
                  f"{where} ({model.get('label')}): 'agents' is empty")
@@ -100,9 +111,10 @@ def write(path: Path, payload: dict) -> None:
     ``allow_nan=False`` is the point. ``json.dumps`` otherwise emits bare
     ``NaN``/``Infinity`` tokens, which Python reads back but jq, most JS and
     most typed loaders reject -- and NaN reaches this structure legitimately,
-    whenever a cell has nothing to average.
+    whenever a cell has nothing to average. Every file is stamped with
+    ``SCHEMA_VERSION`` so a later reader can refuse a stale one.
     """
-    util.write_json_atomic(path, payload)
+    util.write_json_atomic(path, {"schema_version": SCHEMA_VERSION, **payload})
 
 
 def agent_row(pooled: dict, label: str, agent: str) -> dict[str, Any]:

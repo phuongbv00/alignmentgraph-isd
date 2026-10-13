@@ -23,15 +23,17 @@ def print_report(pooled: dict, proposed: str, baselines: list[str]) -> None:
             miss = {a: n for a, n in info["missing_by_agent"].items() if n}
             print(f"  run {Path(info['dir']).name}: {info['n_scenarios_scored']} scenarios scored"
                   + (f", missing {miss}" if miss else ""))
-        print(f"  {'agent':20s} {'nCC':>4s} {'miss':>4s} {'ADDIE':>7s} {'Traj':>7s} "
-              f"{'Total':>7s} {'sdScen':>7s} {'runSD':>7s}")
+        print(f"  {'agent':20s} {'n':>4s} {'nCC':>4s} {'as0':>4s} {'ADDIE':>7s} {'Traj':>7s} "
+              f"{'Total':>7s} {'sdScen':>7s} {'runSD':>7s}   (failure = 0; as0 = scenarios "
+              "counted 0)")
         def _sd_cell(value: object) -> str:
             return f"{value:7.2f}" if isinstance(value, float) else f"{'--':>7s}"
 
         for a, s in model["agents"].items():
             # runSD is None on a single-run cell; sdScen (across scenarios) is
             # always defined and is the one to read here.
-            print(f"  {a:20s} {s['n_scenarios_complete']:4d} {s['n_scenarios_any_missing']:4d} "
+            print(f"  {a:20s} {s['n_scenarios']:4d} {s['n_scenarios_complete']:4d} "
+                  f"{s['n_scenarios_any_missing']:4d} "
                   f"{s['mean_addie']:7.2f} {s['mean_traj']:7.2f} "
                   f"{s['mean_total']:7.2f} "
                   f"{_sd_cell(s.get('sd_total_across_scenarios'))} "
@@ -43,11 +45,8 @@ def print_report(pooled: dict, proposed: str, baselines: list[str]) -> None:
             print(f"\n  Paired stats on {metric} — {block['label']}{lead}")
             print(f"  ({proposed} - baseline), Holm family = {len(baselines)} "
                   "comparisons per policy in this model size:")
-            for policy in ("complete_case", "zero", "min_score"):
-                label = {"complete_case": "complete-case",
-                         "zero": "sensitivity: failure=0",
-                         "min_score":
-                             f"sensitivity: failure=min ({block['min_score_floor']:.2f})"}[policy]
+            for policy, label in ((comp["primary_policy"], "failure = 0"),
+                                  (comp["sensitivity_policy"], "complete-case (sensitivity)")):
                 print(f"  [{label}]")
                 for r in block["policies"][policy]:
                     if r.get("n", 0) == 0 or "p_raw" not in r:
@@ -81,7 +80,7 @@ def print_report(pooled: dict, proposed: str, baselines: list[str]) -> None:
                 print(f"    {agent:20s} total_tokens={tt:10.0f}  llm_calls={calls:6.1f}  exec_s={secs:7.1f}")
 
     if pooled.get("failure_rates"):
-        print("\n## Output-failure rates (scenario-level, Fisher exact vs proposed)")
+        print("\n## Output-failure rates (scenario-level, descriptive counts)")
         print(f"  {pooled['failure_rates']['definition']}")
         for entry in pooled["failure_rates"]["per_model"]:
             print(f"  [{entry['label']}]")
@@ -89,7 +88,8 @@ def print_report(pooled: dict, proposed: str, baselines: list[str]) -> None:
                 print(f"    vs {r['baseline']:20s} failed {r['proposed_failed_scenarios']:2d} vs "
                       f"{r['baseline_failed_scenarios']:2d} /{r['n_scenarios']} scenarios "
                       f"(run-level {r['baseline_failed_run_level']:>8s})  "
-                      f"p={r['fisher_p_two_sided']:.2e} p_holm={r['p_holm']:.2e}")
+                      f"both {r['both_failed_scenarios']}  only proposed "
+                      f"{r['only_proposed_failed']}  only baseline {r['only_baseline_failed']}")
 
     if pooled.get("alignment"):
         print("\n## Alignment metrics (alignment panel, pooled from alignment_scores.json)")
@@ -126,8 +126,7 @@ def print_report(pooled: dict, proposed: str, baselines: list[str]) -> None:
                 print(f"  [{entry['label']}]")
                 fails = entry.get("align_failures")
                 for signal, layers in (entry.get("panel") or {}).items():
-                    flag = "" if layers.get("directional", True) else "  (diagnostic, no good direction)"
-                    print(f"   -- {signal} [{layers.get('family')}]{flag}")
+                    print(f"   -- {signal} [{layers.get('family')}]  (failure = 0)")
                     for r in layers.get("comparisons") or []:
                         if r.get("n", 0) == 0 or "p_raw" not in r:
                             print(f"      vs {r['baseline']:20s} (no paired scenarios)")
@@ -136,8 +135,7 @@ def print_report(pooled: dict, proposed: str, baselines: list[str]) -> None:
                         print(f"      vs {r['baseline']:20s} n={r['n']:3d} "
                               f"d={r['mean_diff']:+7.3f} "
                               f"CI95[{lo:+6.3f},{hi:+6.3f}] r_rb={r['rank_biserial_r']:+.2f} "
-                              f"p={r['p_raw']:.2e} p_holm={r['p_holm']:.2e} "
-                              f"p_panel={r.get('p_holm_panel', float('nan')):.2e}")
+                              f"p={r['p_raw']:.2e} p_holm={r['p_holm']:.2e}")
                     desc = ", ".join(
                         f"{a}={v['mean']:.3f}[{v['ci95'][0]:.3f},{v['ci95'][1]:.3f}]"
                         for a, v in layers.get("align_descriptive", {}).items())
@@ -148,11 +146,11 @@ def print_report(pooled: dict, proposed: str, baselines: list[str]) -> None:
                     if cond:
                         print(f"      conditional (>=1 objective): {cond}")
                     if fails:
-                        for r in layers.get("comparisons_failure_zero") or []:
+                        for r in layers.get("comparisons_complete_case") or []:
                             if r.get("n", 0) == 0 or "p_raw" not in r:
                                 continue
                             lo, hi = r["ci95"]
-                            print(f"        [failure=0] vs {r['baseline']:20s} "
+                            print(f"        [complete-case] vs {r['baseline']:20s} "
                                   f"n={r['n']:3d} d={r['mean_diff']:+7.3f} "
                                   f"CI95[{lo:+6.3f},{hi:+6.3f}] "
                                   f"p_holm={r['p_holm']:.2e}")
@@ -161,10 +159,10 @@ def print_report(pooled: dict, proposed: str, baselines: list[str]) -> None:
                         f"{a}={v['n_agent_run_cells_missing']} cell(s)/"
                         f"{v['n_scenarios_affected']} scen"
                         for a, v in fails.items())
-                    print(f"    missing outputs (excluded from complete-case): {fail_desc}")
+                    print(f"    missing outputs (count 0; dropped by complete-case): {fail_desc}")
                 else:
                     print("    missing outputs: none — complete-case == "
-                          "failure=0 for this size")
+                          "failure = 0 for this size")
             inter = stats.get("interaction_align")
             if inter:
                 print(f"  [interaction {inter['largest']} - {inter['smallest']}]")
@@ -200,7 +198,6 @@ def print_report(pooled: dict, proposed: str, baselines: list[str]) -> None:
                 if "note" in row:
                     print(f"    {row['label']:14s} {row['note']}")
                     continue
-                p_exact = row.get("spearman_p_exact")
                 worst = max(
                     (r.get("p_holm", 0.0)
                      for m in (entry.get("stats") or {}).get("per_model") or []
@@ -211,7 +208,6 @@ def print_report(pooled: dict, proposed: str, baselines: list[str]) -> None:
                     default=float("nan"))
                 top1 = "=" if row["top1_agent_here"] == row["top1_agent_primary"] else "DIFFERS"
                 print(f"    {row['label']:14s} rho={row['spearman_rho_agent_means']:.3f} "
-                      f"(p_exact={p_exact if p_exact is None else f'{p_exact:.2e}'}) "
                       f"tau_b={row['kendall_tau_b_agent_means']:.3f}  "
                       f"top1={row['top1_agent_here']} ({top1})  "
                       f"rank_prop={row['proposed_rank_here']}  worst p_holm={worst:.2e}")

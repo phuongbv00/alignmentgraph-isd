@@ -16,6 +16,10 @@ requires-python = ">=3.11"
 # OpenAI-compatible embeddings endpoint, and it is a thin HTTP client rather
 # than a model runtime -- a few hundred KB against torch's two gigabytes.
 #
+# `scipy` computes the inferential statistics (stats.py). 1.15 is the first
+# release whose `bootstrap` and `permutation_test` take `rng`; the version a
+# pool ran under is recorded in its `config.stats_software`.
+#
 # LAUNCHING a run is the other half, and it is not declared here. This
 # environment is also the one run_benchmark.py executes in, so a machine that
 # launches runs additionally carries the benchmark, the seven agents,
@@ -27,6 +31,7 @@ dependencies = [
     "matplotlib>=3.8",
     "openai>=1.0",
     "python-dotenv>=1.0",
+    "scipy>=1.15",
 ]
 
 [project.optional-dependencies]
@@ -38,10 +43,7 @@ bloom = ["transformers>=4.40", "accelerate>=0.30", "torch>=2.2", "scikit-learn>=
 # the editable installs `isd-exp doctor --fix` makes. Named here so the
 # dependency is declared rather than merely true.
 repair = ["isd-evaluator"]
-# scipy is a TEST ORACLE for the hand-rolled statistics, never a runtime
-# dependency: stats.py stays stdlib-only so results cannot drift with a
-# library version. See tests/test_stats.py.
-dev = ["pytest>=8", "ruff>=0.4", "scipy>=1.12"]
+dev = ["pytest>=8", "ruff>=0.4"]
 all = ["isd-experiments[encoder,bloom,repair]"]
 
 [project.scripts]

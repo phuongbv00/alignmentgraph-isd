@@ -39,7 +39,7 @@ Checks, in report order:
                         Vietnamese caption cannot creep back in unnoticed
   J  protocol integrity the pooled panel carries every ALIGNMENT_SIGNALS entry, and
                         the encoder revision is pinned — both are invisible in
-                        the artifacts yet change what the p-values mean
+                        the artifacts yet change what the numbers describe
 
 What counts as required follows the pooled layers that exist: ablation
 artifacts are expected once pooled_ablation.json is there, sensitivity ones
@@ -211,9 +211,10 @@ def check_protocol_integrity(rep: Report, ctx: dict) -> None:
     render, the macros resolve, and nothing looks wrong — so without this check
     they reach the manuscript silently.
 
-    * A panel signal that was defined on no scenario is dropped by 07, which
-      shrinks the whole-panel Holm family and makes every panel-corrected p
-      less conservative than its own caption says.
+    * A panel signal that was defined on no scenario is dropped by pooling, so
+      the tables report fewer signals than the panel the paper describes --
+      and the panel's defence against selective reporting is that every
+      signal is reported for every comparison.
     * An unpinned encoder revision disables the pooling mixed-configuration guard:
       with ``encoder_revision`` null in every run dir they all collapse to one
       configuration key, so re-pulled encoder weights between runs would pool
@@ -231,9 +232,8 @@ def check_protocol_integrity(rep: Report, ctx: dict) -> None:
         missing = sorted(declared - pooled_panel)
         if missing:
             rep.add("red", f"J: {label} pooled {len(pooled_panel)} panel signals "
-                           f"but {missing} are absent — the whole-panel Holm "
-                           "family is built from what pooled, so every "
-                           "p_holm_panel is corrected over too few comparisons. "
+                           f"but {missing} are absent — the panel tables would "
+                           "report a subset of the panel the paper describes. "
                            f"Re-score with `{paths.cli()} judge alignment --overwrite` "
                            "(cached artifacts predating the signal are otherwise "
                            "valid, so a plain re-run reuses them), then re-pool")
@@ -241,8 +241,8 @@ def check_protocol_integrity(rep: Report, ctx: dict) -> None:
         if stale:
             rep.add("red", f"J: {label} pooled {stale}, which are no longer in "
                            "ALIGNMENT_SIGNALS — this pooled file predates the current "
-                           "panel and its p_holm_panel was corrected over a "
-                           "different family than the paper describes. Re-pool")
+                           "panel and reports a different panel than the paper "
+                           "describes. Re-pool")
     if align and not align.get("encoder_revision_pinned"):
         rep.add("warn", "J: encoder revision is not pinned "
                         "(encoder_revision null) — the one-pool-one-config "

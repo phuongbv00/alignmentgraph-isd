@@ -54,13 +54,14 @@ def gen_tab_llm_judge(pooled: dict, field: str = "mean_addie",
     colspec = "@{}l" + "r@{\\hskip 3pt}r" * len(models) + "@{}"
     demo_note = " [TBD-DEMO: synthetic values, awaiting real ladder runs]" if demo else ""
     lines = [header_comment(
-        pooled, f"tab_{tag.replace('-', '_')}.tex — LLM judge ladder table on {label}")]
+        PRODUCER, f"tab_{tag.replace('-', '_')}.tex — LLM judge ladder table on {label}",
+        pooled)]
     lines.append("\\begin{table*}[t]")
     lines.append(
-        f"  \\caption{{LLM judge score ({label}) on the model size ladder. Cell: {caption_metric},"
-        " with the SD across scenarios in parentheses; $n$ = scenarios scored"
-        " in every run of the cell. \\textbf{Bold} = column maximum, not a"
-        " significance claim." + demo_note + "}")
+        f"  \\caption{{LLM judge score ({label}) per model size. Cell: {caption_metric}"
+        " (SD across scenarios); $n$ = scenarios, no scorable output counting 0"
+        " (failure = 0). \\textbf{Bold} = column maximum, not a significance"
+        " claim." + demo_note + "}")
     lines.append(f"  \\label{{tab:{tag}}}")
     lines.append("  \\small")
     lines.append(f"  \\begin{{tabular}}{{{colspec}}}")
@@ -74,6 +75,7 @@ def gen_tab_llm_judge(pooled: dict, field: str = "mean_addie",
     subs = " & ".join([label + " {\\scriptsize(SD)}", "$n$"] * len(models))
     lines.append(f"    Agent & {subs} \\\\")
     lines.append("    \\midrule")
+    failed: list[str] = []
     for a in agents_present:
         name = AGENT_DISPLAY.get(a, a)
         if a == proposed:
@@ -92,17 +94,22 @@ def gen_tab_llm_judge(pooled: dict, field: str = "mean_addie",
             # None here, and an archived pooled file carries nan.
             sd_txt = ("~{\\scriptsize(" + fmt_num(sd, 2) + ")}"
                       if isinstance(sd, float) and not math.isnan(sd) else "")
-            n = s["n_scenarios_complete"]
+            n = s["n_scenarios"]
             miss = s.get("n_scenarios_any_missing", 0)
             n_txt = f"{n}" if not miss else f"{n}\\textsuperscript{{*}}"
+            if miss:
+                failed.append(f"{AGENT_DISPLAY.get(a, a)} / {size_display(m['label'])}"
+                              f" $k={miss}$")
             cells += [val + sd_txt, n_txt]
         lines.append(f"    {name} & " + " & ".join(cells) + " \\\\")
     lines.append("    \\bottomrule")
     lines.append("  \\end{tabular}")
-    lines.append(
-        "  \\par\\smallskip\\footnotesize\\textsuperscript{*}$n<$ total scenarios:"
-        " the agent failed or produced no output in at least one run"
-        " (complete-case; see stats\\_summary.md).")
+    if failed:
+        lines.append(
+            "  \\par\\smallskip\\footnotesize\\textsuperscript{*}$k$ scenarios with"
+            " no scorable output in at least one run count 0 there (failure = 0): "
+            + "; ".join(failed) + ". The complete-case sensitivity is in"
+            " stats\\_summary.md.")
     lines.append("\\end{table*}")
     return "\n".join(lines) + "\n"
 
@@ -123,11 +130,32 @@ def instrument_note(align: dict) -> str:
             " are reported separately.")
 
 
+def failure_note(pooled: dict, align: dict, labels: list[str]) -> str:
+    """How many scenarios count 0 because an agent left no output to score.
+
+    Empty when no agent missed one. The counts come from the panel's own
+    missing-output roster, so they are the scenarios the failure = 0 layer
+    filled in, not an estimate.
+    """
+    per = {s["label"]: s for s in (align.get("stats") or {}).get("per_model") or []}
+    parts = []
+    for lb in labels:
+        fails = (per.get(lb) or {}).get("align_failures") or {}
+        for a in AGENT_ORDER:
+            if a in fails:
+                parts.append(f"{AGENT_DISPLAY.get(a, a)} / {size_display(lb)}"
+                             f" $k={fails[a]['n_scenarios_affected']}$")
+    if not parts:
+        return ""
+    return ("$k$ scenarios with no scorable output in at least one run count 0"
+            " there (failure = 0): " + "; ".join(parts) + ". ")
+
+
 def gen_tab_alignment(pooled: dict) -> str:
     align = pooled.get("alignment")
     demo = pooled.get("_demo", False)
     if not align or not align.get("models"):
-        return (header_comment(pooled, "tab_alignment.tex — placeholder")
+        return (header_comment(PRODUCER, "tab_alignment.tex — placeholder", pooled)
                 + "% No alignment_scores.json data was present in the pooled input.\n"
                   "% Re-run isd-exp pool comparison after the alignment metric\n"
                   "% (alignment scoring) lands in the scenario dirs, then regenerate this file.\n"
@@ -142,18 +170,20 @@ def gen_tab_alignment(pooled: dict) -> str:
                       if any(a in align["models"][lb] for lb in model_labels)]
 
     demo_note = " [TBD-DEMO: synthetic values]" if demo else ""
-    # n per cell, mirroring tab_llm_judge's two-column-per-size layout. Without it,
-    # cells averaged over as few as 17 scenarios printed identically to
-    # full-coverage cells and read as comparable.
+    # n per cell, mirroring tab_llm_judge's two-column-per-size layout. A missing
+    # output counts 0, so a cell falls short of the full set only where the
+    # signal itself was undefined, and that has to be visible.
     n_union = {m["label"]: m["n_scenarios_union"] for m in pooled["models"]}
     colspec = "@{}l" + "r@{\\hskip 3pt}r" * len(model_labels) + "@{}"
-    lines = [header_comment(pooled, "tab_alignment.tex — objective->assessment similarity x model sizes")]
+    lines = [header_comment(
+        PRODUCER, "tab_alignment.tex — objective->assessment similarity x model sizes",
+        pooled)]
     lines.append("\\begin{table}[t]")
     lines.append(
         "  \\caption{Objective$\\to$assessment similarity, the"
         " \\emph{measures} leg of \\textit{aligned(o)}. Each cell: mean"
-        " per-scenario mean-max rectified cosine (SD), pooled mean-of-runs;"
-        " $n$ = scenarios with at least one scored run. Remaining"
+        " per-scenario mean-max rectified cosine (SD), pooled mean-of-runs,"
+        " a missing output counting 0; $n$ = scenarios. Remaining"
         f" {len(ALIGNMENT_SIGNALS) - 1} panel"
         " signals: \\Cref{tab:alignment-panel}." + demo_note + "}")
     lines.append("  \\label{tab:alignment}")
@@ -193,15 +223,11 @@ def gen_tab_alignment(pooled: dict) -> str:
         lines.append(f"    {name} & " + " & ".join(cells) + " \\\\")
     lines.append("    \\bottomrule")
     lines.append("  \\end{tabular}")
-    note = instrument_note(align)
+    note = failure_note(pooled, align, model_labels) + instrument_note(align)
     if thin:
-        note = ("\\textsuperscript{*}$n<$ total scenarios: the agent produced no"
-                " scorable output for the rest, or none on which this signal was"
-                " defined, so the cell is conditioned on the"
-                " scenarios it survived and is not comparable to a full-coverage"
-                " cell. $n$ counts scenarios with \\emph{at least one} scored run,"
-                " a weaker condition than the all-3-runs complete case used in the"
-                " LLM judge score tables. " + note)
+        note = ("\\textsuperscript{*}$n<$ total scenarios: the signal was undefined"
+                " on the rest, so the cell covers only the scenarios where it was"
+                " defined. " + note)
     lines.append("  \\par\\smallskip\\footnotesize " + note)
     lines.append("\\end{table}")
     return "\n".join(lines) + "\n"
@@ -235,7 +261,7 @@ def gen_tab_alignment_panel(pooled: dict) -> str:
     align = pooled.get("alignment")
     demo = pooled.get("_demo", False)
     if not align or not align.get("models"):
-        return (header_comment(pooled, "tab_alignment_panel.tex — placeholder")
+        return (header_comment(PRODUCER, "tab_alignment_panel.tex — placeholder", pooled)
                 + "% No alignment_scores.json data was present in the pooled input.\n"
                   "% This file intentionally renders nothing.\n")
 
@@ -249,14 +275,12 @@ def gen_tab_alignment_panel(pooled: dict) -> str:
     n_cells = len(ALIGNMENT_SIGNALS) * len(model_labels) * len(agents_present)
 
     colspec = "@{}ll" + "r" * len(agents_present) + "@{}"
-    lines = [header_comment(pooled, "tab_alignment_panel.tex — the full alignment-score panel")]
+    lines = [header_comment(
+        PRODUCER, "tab_alignment_panel.tex — the full alignment-signal panel", pooled)]
     lines.append("\\begin{table*}[t]")
-    lines.append(
-        "  \\caption{The full alignment-score panel. Cell: mean per-scenario value,"
-        " pooled mean-of-runs. No score is primary; every score is reported for"
-        " every comparison."
-        " $^{*}$ = fewer scenarios than the full set (see note)."
-        + demo_note + "}")
+    # the caption waits for the cells: its star legend is printed only when a
+    # cell carries the star
+    caption_at = len(lines)
     lines.append("  \\label{tab:alignment-panel}")
     lines.append("  \\small")
     lines.append(f"  \\begin{{tabular}}{{{colspec}}}")
@@ -284,9 +308,8 @@ def gen_tab_alignment_panel(pooled: dict) -> str:
                     if mean is None:
                         cells.append("--")
                         continue
-                    # 196 cells cannot each carry an n column, so thin coverage is
-                    # flagged and the roster lives in stats_summary.md. Unflagged
-                    # would mean a 17-scenario cell reads like a 90-scenario one.
+                    # The cells cannot each carry an n column, so thin coverage
+                    # is flagged and the roster lives in stats_summary.md.
                     txt = fmt_num(mean, 3)
                     if n is not None and n < n_union.get(lb, n):
                         thin_cells.append((signal, lb, a, n))
@@ -296,26 +319,44 @@ def gen_tab_alignment_panel(pooled: dict) -> str:
                              + " & ".join(cells) + " \\\\")
     lines.append("    \\bottomrule")
     lines.append("  \\end{tabular}")
-    note = instrument_note(align)
+    lines.insert(caption_at,
+        "  \\caption{The full alignment-signal panel. Cell: mean per-scenario value,"
+        " pooled mean-of-runs, a missing output counting 0. No signal is primary;"
+        " every signal is reported for every comparison."
+        + (" $^{*}$ = fewer scenarios than the full set (see note)."
+           if thin_cells else "")
+        + demo_note + "}")
+    note = failure_note(pooled, align, model_labels) + instrument_note(align)
     if thin_cells:
         worst = min(thin_cells, key=lambda t: t[3])
-        # Two different events thin a cell and the footnote must not assert
-        # only one: the agent produced no scorable output, OR it produced
-        # output on which this particular signal was undefined (no
-        # Bloom-classifiable text, for the cognitive-demand signals). n is
-        # per-signal, so the two are indistinguishable in the cell.
-        note = ("\\textsuperscript{*}The agent either produced no scorable output"
-                " for the remaining scenarios or produced output on which this"
-                " signal was undefined, so the cell is conditioned on those it"
-                f" survived ({len(thin_cells)} of {n_cells} cells; smallest"
+        # A missing output counts 0, so the one event that thins a cell is an
+        # output on which this signal was undefined (no Bloom-classifiable
+        # text, for the cognitive-demand signals).
+        note = ("\\textsuperscript{*}The signal was undefined on the remaining"
+                " scenarios, so the cell covers only those where it was defined"
+                f" ({len(thin_cells)} of {n_cells} cells; smallest"
                 f" $n={worst[3]}$ at {AGENT_DISPLAY.get(worst[2], worst[2])} /"
                 f" {size_display(worst[1])}). Per-cell $n$ is in"
-                " stats\\_summary.md. $n$ counts scenarios with at least one"
-                " scored run, a weaker condition than the all-3-runs complete"
-                " case used in the LLM judge score tables. " + note)
+                " stats\\_summary.md. " + note)
     lines.append("  \\par\\smallskip\\footnotesize " + note)
     lines.append("\\end{table*}")
     return "\n".join(lines) + "\n"
+
+
+def _paired_md(rows: list[dict]) -> list[str]:
+    """One markdown table of paired rows: proposed - baseline, Holm within."""
+    out = ["| baseline | n | mean diff | 95% CI | W+ | r_rb | p | p_holm |",
+           "|---|---|---|---|---|---|---|---|"]
+    for r in rows:
+        if "p_raw" not in r:
+            out.append(f"| {r['baseline']} | {r.get('n', 0)} | -- | -- | -- | -- | -- | -- |")
+            continue
+        out.append(
+            f"| {r['baseline']} | {r['n']} | {r['mean_diff']:+.4f} "
+            f"| [{r['ci95'][0]:+.4f}, {r['ci95'][1]:+.4f}] "
+            f"| {r['wilcoxon_w_plus']:.1f} | {r['rank_biserial_r']:+.3f} "
+            f"| {r['p_raw']:.3e} | {r.get('p_holm', float('nan')):.3e} |")
+    return out
 
 
 def gen_macros(pooled: dict) -> tuple[str, str]:
@@ -325,7 +366,8 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
     demo = pooled.get("_demo", False)
     words = [_size_word(m["label"], i) for i, m in enumerate(models)]
 
-    tex: list[str] = [header_comment(pooled, "stats_macros.tex — headline numbers for prose")]
+    tex: list[str] = [header_comment(
+        PRODUCER, "stats_macros.tex — headline numbers for prose", pooled)]
     md: list[str] = [
         "# Ladder statistics summary",
         "",
@@ -334,10 +376,13 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
         "",
         f"- Proposed agent: `{proposed}`",
         f"- Size order: {', '.join(m['label'] for m in models)}",
-        f"- Pooling: mean of {models[0]['n_runs']} runs per scenario; primary policy complete-case",
+        f"- Pooling: mean of {models[0]['n_runs']} runs per scenario; failure = 0 "
+        "(a run with no scorable output counts 0) for every claim, complete-case "
+        "(sensitivity) beside it",
         f"- Bootstrap: {pooled['config'].get('n_boot', 10000)} resamples, seed "
         f"{pooled['config'].get('bootstrap_seed', 42)}",
-        "- Holm family: 6 comparisons (proposed vs each baseline) per model size",
+        f"- Holm family: {len(pooled['config']['baselines'])} comparisons (proposed "
+        "vs each baseline) per model size, within one score or one signal",
         "",
     ]
 
@@ -349,14 +394,17 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
     newcmd("ladderNumRunsPerModel", str(models[0]["n_runs"]),
            "independent runs per model size")
     n_scen = max(m["n_scenarios_union"] for m in models)
-    newcmd("ladderNumScenarios", str(n_scen), "scenarios per run (test_90)")
-    newcmd("ladderNumAgents", str(len(pooled["config"]["baselines"]) + 1),
-           "agents compared (6 baselines + proposed)")
+    newcmd("ladderNumScenarios", str(n_scen), "scenarios per run")
+    n_baselines = len(pooled["config"]["baselines"])
+    newcmd("ladderNumAgents", str(n_baselines + 1),
+           f"agents compared ({n_baselines} baselines + proposed)")
 
     all_p_holm: list[float] = []
     for m, w in zip(models, words):
         agents = m["agents"]
-        rows = m["comparisons"]["by_score"][LLM_JUDGE_LEAD]["policies"]["complete_case"]
+        comp = m["comparisons"]
+        policies = comp["by_score"][LLM_JUDGE_LEAD]["policies"]
+        rows = policies[comp["primary_policy"]]
         rows_p = [r for r in rows if "p_holm" in r]
         harness = agents.get(proposed, {})
         base_vals = {a: s["mean_addie"] for a, s in agents.items()
@@ -412,7 +460,8 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
             pmax = max(r["p_holm"] for r in rows_p)
             all_p_holm.append(pmax)
             newcmd(f"llmJudgePHolmMax{w}", fmt_p(pmax),
-                   f"max Holm-adjusted p over the 6 ADDIE comparisons at {m['label']}")
+                   f"max Holm-adjusted p over the {len(rows_p)} ADDIE comparisons "
+                   f"at {m['label']} (failure = 0)")
 
         # Lead signal first: the paired table printed below is computed on ADDIE,
         # so leading this bullet with Total made the note headline one signal and
@@ -428,37 +477,26 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
             f"(sdScen={_sd_txt('sd_traj_across_scenarios')}), "
             f"Total={harness.get('mean_total'):.4f} "
             f"(sdScen={_sd_txt('sd_total_across_scenarios')}), "
+            f"n={harness.get('n_scenarios')}, "
             f"nCC={harness.get('n_scenarios_complete')}, "
-            f"missing={harness.get('n_scenarios_any_missing')}")
+            f"counted 0={harness.get('n_scenarios_any_missing')}")
         md.append("  Each sdScen is the SD across scenarios of that signal; they "
                   "are not interchangeable, and none of them is a run-to-run SD "
                   "— with one run per cell that quantity does not exist. "
                   f"Run-to-run SD of Total: {_sd_txt('run_to_run_sd_total')}.")
         md.append("")
-        md.append("| baseline | n | mean diff | 95% CI | W+ | r_rb | p | p_holm |")
-        md.append("|---|---|---|---|---|---|---|---|")
-        for r in rows:
-            if "p_raw" not in r:
-                md.append(f"| {r['baseline']} | 0 | -- | -- | -- | -- | -- | -- |")
-                continue
-            md.append(
-                f"| {r['baseline']} | {r['n']} | {r['mean_diff']:+.4f} "
-                f"| [{r['ci95'][0]:+.4f}, {r['ci95'][1]:+.4f}] "
-                f"| {r['wilcoxon_w_plus']:.1f} | {r['rank_biserial_r']:+.3f} "
-                f"| {r['p_raw']:.3e} | {r['p_holm']:.3e} |")
+        md.append("failure = 0:")
         md.append("")
-        md.append("Sensitivity (mean diff under imputation policies):")
-        for policy in ("zero", "min_score"):
-            vals = ", ".join(
-                f"{r['baseline']}={r['mean_diff']:+.2f}"
-                for r in m["comparisons"]["by_score"][LLM_JUDGE_LEAD]["policies"][policy]
-                if "mean_diff" in r)
-            md.append(f"- {policy}: {vals}")
+        md += _paired_md(rows)
+        md.append("")
+        md.append("complete-case (sensitivity):")
+        md.append("")
+        md += _paired_md(policies[comp["sensitivity_policy"]])
         md.append("")
 
     if all_p_holm:
         newcmd("llmJudgePHolmMaxAll", fmt_p(max(all_p_holm)),
-               "max Holm-adjusted p across ALL sizes x baselines (complete-case)")
+               "max Holm-adjusted p across ALL sizes x baselines (failure = 0)")
 
     # scale drop of the proposed agent: Total(largest) - Total(smallest)
     h_small = models[0]["agents"].get(proposed, {}).get("mean_total", float("nan"))
@@ -470,14 +508,14 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
 
     inter = pooled.get("interaction", {})
     md += ["## Interaction (method x model size, DiD largest - smallest)", "",
-           inter.get("definition", ""), ""]
-    # NOT the agent literally named `baseline`. That agent is the degenerate
-    # single-prompt one: it fails most scenarios at the small end, so its DiD
-    # rested on 5 paired scenarios and its OLS slope on 1, while the macro was
-    # quoted in prose as if it characterised the ladder. The comparison is taken
-    # against the STRONGEST baseline at the largest size instead — a pre-statable
-    # rule, the most conservative contrast, and adequately covered. Every macro
-    # here carries its n so prose cannot quote the estimate without the support.
+           inter.get("definition", ""), "",
+           "Wilcoxon p values in this section are UNCORRECTED: the DiD tests sit "
+           "outside every Holm family.", ""]
+    # The macros take the STRONGEST baseline at the largest size, not the agent
+    # literally named `baseline` (the degenerate single-prompt one, which fails
+    # most scenarios at the small end): a pre-statable rule and the most
+    # conservative contrast. Every macro here carries its n so prose cannot
+    # quote the estimate without the support.
     did_ref = None
     if models:
         last = models[-1]["agents"]
@@ -500,7 +538,8 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
         newcmd("llmJudgeDiDVsBestBaselineCIHi", fmt_num(row["did_ci95"][1]),
                "bootstrap 95% CI upper bound of that DiD")
         newcmd("llmJudgeDiDVsBestBaselineP", fmt_p(row["did_wilcoxon_p"]),
-               "Wilcoxon p of the per-scenario DiD values vs 0")
+               "Wilcoxon p of the per-scenario DiD values vs 0 (UNCORRECTED: "
+               "outside every Holm family)")
         newcmd("llmJudgeDiDVsBestBaselineN", str(row["n_paired_scenarios"]),
                "paired scenarios backing that DiD")
         newcmd("llmJudgeTrendSlopeVsBaseline", fmt_num(row["trend_ols_slope_per_size_step"]),
@@ -513,7 +552,7 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
         md.append(
             f"- vs {r['baseline']}: n={r['n_paired_scenarios']}, "
             f"DiD={r['did_mean']:+.4f} CI[{r['did_ci95'][0]:+.4f}, {r['did_ci95'][1]:+.4f}] "
-            f"p={r['did_wilcoxon_p']:.3e}; trend "
+            f"p={r['did_wilcoxon_p']:.3e} (uncorrected); trend "
             + " ".join(f"{k}:{v:+.2f}" for k, v in r["trend_delta_by_size"].items())
             + f"; slope/step={r['trend_ols_slope_per_size_step']:+.4f} "
               f"CI[{r['trend_slope_ci95'][0]:+.4f}, {r['trend_slope_ci95'][1]:+.4f}]")
@@ -522,6 +561,7 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
     align = pooled.get("alignment")
     md.append("## Alignment metrics")
     if align and align.get("models"):
+        md.append("Means under failure = 0 (a missing output counts 0).")
         for lb, agents_metrics in align["models"].items():
             md.append(f"### {lb}")
             for agent, metrics in agents_metrics.items():
@@ -533,27 +573,26 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
     md.append("")
 
     if align and align.get("stats", {}).get("per_model"):
-        md.append("## Alignment panel (every score, descriptive + paired, proposed vs baselines)")
+        md.append("## Alignment panel (every signal, descriptive + paired, proposed vs baselines)")
         md.append("")
-        md.append("No score is primary: each is reported for every comparison, "
-                  "win or lose. `p_holm` corrects within one signal (6 "
-                  "comparisons); `p_panel` corrects over the whole panel x "
-                  "baseline family for that size.")
+        md.append("No signal is primary: each is reported for every comparison, "
+                  "win or lose. `p_holm` corrects within one signal over the "
+                  f"{len(pooled['config']['baselines'])} baselines.")
         md.append("")
         all_align_p: list[float] = []
-        all_panel_p: list[float] = []
         for m, w in zip(models, words):
             per = next((s for s in align["stats"]["per_model"]
                         if s["label"] == m["label"]), None)
             if not per:
                 continue
             md.append(f"### {m['label']}")
-            # The failure roster belongs next to the numbers it conditions: every
-            # complete-case mean below is over available outputs only, so without
-            # this a survivorship mean reads like a full-coverage one.
+            # The failure roster belongs next to the numbers it fills in: these
+            # cells count 0 under failure = 0 and drop out of the complete-case
+            # sensitivity.
             fails = per.get("align_failures") or {}
             if fails:
-                md.append("**Missing outputs (complete-case layer is conditioned on these):** "
+                md.append("**Missing outputs (count 0 under failure = 0; dropped by "
+                          "the complete-case sensitivity):** "
                           + ", ".join(
                               f"`{a}` {v['n_scenarios_affected']} scenario(s), "
                               f"{v['n_agent_run_cells_missing']} agent-run cell(s)"
@@ -582,13 +621,12 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
                     newcmd(f"alignmentSimPHolmMax{w}", fmt_p(pmax),
                            f"max Holm-adjusted p over the {SUMMARY_SIGNAL} "
                            f"comparisons at {m['label']}")
-                all_panel_p += [r["p_holm_panel"] for r in rows if "p_holm_panel" in r]
 
                 flag = "" if layers.get("directional", True) else \
                     " — diagnostic, direction not one-way-good"
                 md.append(f"#### {signal} [{layers.get('family')}]{flag}")
                 if desc:
-                    md.append("mean [bootstrap CI95] per agent: " + ", ".join(
+                    md.append("failure = 0 mean [BCa CI95] per agent: " + ", ".join(
                         f"{a}={v['mean']:.3f} [{v['ci95'][0]:.3f}, {v['ci95'][1]:.3f}] (n={v['n']})"
                         for a, v in desc.items()))
                 cond = layers.get("conditional_align", {})
@@ -596,61 +634,36 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
                     md.append("conditional (>=1 objective): " + ", ".join(
                         f"{a}={v['mean']:.3f} (n={v['n']})" for a, v in cond.items()))
                 md.append("")
-                md.append("complete-case (over AVAILABLE outputs, not unconditional):")
+                md.append("failure = 0:")
                 md.append("")
-                md.append("| baseline | n | mean diff | 95% CI | p_holm | p_panel |")
-                md.append("|---|---|---|---|---|---|")
-                for r in rows:
-                    if "p_raw" not in r:
-                        md.append(f"| {r['baseline']} | 0 | -- | -- | -- | -- |")
-                        continue
-                    panel_p = r.get("p_holm_panel")
-                    md.append(
-                        f"| {r['baseline']} | {r['n']} | {r['mean_diff']:+.4f} "
-                        f"| [{r['ci95'][0]:+.4f}, {r['ci95'][1]:+.4f}] "
-                        f"| {r['p_holm']:.3e} "
-                        f"| {'--' if panel_p is None else f'{panel_p:.3e}'} |")
+                md += _paired_md(rows)
                 md.append("")
-                # The mandated second pass: a missing output scores 0 rather than
-                # dropping out, so the two layers bracket the survivorship effect.
-                fz_rows = layers.get("comparisons_failure_zero") or []
-                fz_desc = layers.get("failure_zero_descriptive") or {}
-                if fz_desc:
-                    md.append("failure=0 mean per agent: " + ", ".join(
+                # The sensitivity: over the scenarios each agent was scored on.
+                cc_desc = layers.get("complete_case_descriptive") or {}
+                if cc_desc:
+                    md.append("complete-case mean per agent: " + ", ".join(
                         f"{a}={v['mean']:.3f} (n={v['n']})"
-                        for a, v in sorted(fz_desc.items())))
-                if fz_rows:
+                        for a, v in sorted(cc_desc.items())))
                     md.append("")
-                    md.append("failure=0 (missing output scored 0):")
-                    md.append("")
-                    md.append("| baseline | n | mean diff | 95% CI | p_holm |")
-                    md.append("|---|---|---|---|---|")
-                    for r in fz_rows:
-                        if "p_raw" not in r:
-                            md.append(f"| {r['baseline']} | 0 | -- | -- | -- |")
-                            continue
-                        md.append(
-                            f"| {r['baseline']} | {r['n']} | {r['mean_diff']:+.4f} "
-                            f"| [{r['ci95'][0]:+.4f}, {r['ci95'][1]:+.4f}] "
-                            f"| {r['p_holm']:.3e} |")
-                    md.append("")
+                md.append("complete-case (sensitivity):")
+                md.append("")
+                md += _paired_md(layers.get("comparisons_complete_case") or [])
+                md.append("")
         if all_align_p:
             newcmd("alignmentSimPHolmMaxAll", fmt_p(max(all_align_p)),
                    f"max Holm-adjusted p across ALL sizes for {SUMMARY_SIGNAL} ONLY "
                    f"— 1 of the {len(ALIGNMENT_SIGNALS)} alignment signals, corrected "
-                   "within that signal (6 comparisons). For the whole-panel "
-                   "family use alignmentPanelPHolmMaxAll; prose must not present "
-                   "this as a panel-wide result")
-        if all_panel_p:
-            newcmd("alignmentPanelPHolmMaxAll", fmt_p(max(all_panel_p)),
-                   "max p across ALL sizes and ALL alignment signals under the "
-                   "conservative whole-panel Holm correction")
+                   f"within that signal ({len(pooled['config']['baselines'])} "
+                   "comparisons, failure = 0); prose must not present this as a "
+                   "panel-wide result")
 
         inter = align["stats"].get("interaction_align")
         if inter:
             md.append(f"### Interaction (objective->assessment similarity DiD, "
                       f"{inter['largest']} - {inter['smallest']})")
             md.append(inter.get("definition", ""))
+            md.append("Wilcoxon p values here are UNCORRECTED: the DiD tests sit "
+                      "outside every Holm family.")
             for r in inter.get("per_baseline", []):
                 if not r.get("n_paired_scenarios"):
                     md.append(f"- vs {r['baseline']}: no paired scenarios")
@@ -659,9 +672,9 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
                     f"- vs {r['baseline']}: n={r['n_paired_scenarios']}, "
                     f"DiD={r['did_mean']:+.4f} "
                     f"CI[{r['did_ci95'][0]:+.4f}, {r['did_ci95'][1]:+.4f}] "
-                    f"p={r['did_wilcoxon_p']:.3e}")
-                # Same fix as the LLM judge DiD block: not the degenerate agent named
-                # `baseline`, whose pairing collapses at the small end.
+                    f"p={r['did_wilcoxon_p']:.3e} (uncorrected)")
+                # Same baseline as the LLM judge DiD macros: the strongest at the
+                # largest size.
                 if r["baseline"] == did_ref:
                     newcmd("alignmentSimDiDVsBaseline", fmt_num(r["did_mean"], 3),
                            f"objective->assessment similarity DiD (largest - "
@@ -672,7 +685,8 @@ def gen_macros(pooled: dict) -> tuple[str, str]:
                     newcmd("alignmentSimDiDVsBaselineCIHi", fmt_num(r["did_ci95"][1], 3),
                            "bootstrap 95% CI upper bound of that similarity DiD")
                     newcmd("alignmentSimDiDVsBaselineP", fmt_p(r["did_wilcoxon_p"]),
-                           "Wilcoxon p of the per-scenario similarity DiD values vs 0")
+                           "Wilcoxon p of the per-scenario similarity DiD values vs 0 "
+                           "(UNCORRECTED: outside every Holm family)")
                     newcmd("alignmentSimDiDVsBaselineN", str(r["n_paired_scenarios"]),
                            "paired scenarios backing that similarity DiD")
             md.append("")
@@ -696,8 +710,8 @@ def build(pooled: dict) -> dict[str, str]:
         "tab_llm_judge_total.tex": gen_tab_llm_judge(
             pooled, field="mean_total", label="Total", tag="llm-judge-ladder-total",
             caption_metric=(
-                "mean per-scenario \\texttt{total\\_score}"
-                " ($0.7\\,$ADDIE$+0.3\\,$Traj), the benchmark's own composite")),
+                "mean per-scenario benchmark composite \\texttt{total\\_score}"
+                " $=0.7\\,$ADDIE$+0.3\\,$Traj")),
         "tab_llm_judge_trajectory.tex": gen_tab_llm_judge(
             pooled, field="mean_traj", label="Traj", tag="llm-judge-ladder-traj",
             caption_metric="mean per-scenario Trajectory score (BFCL tool-use, /100)"),

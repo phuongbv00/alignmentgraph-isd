@@ -4,33 +4,36 @@ The panel is FLAT: six signals, no primary endpoint, no composite. Naming one
 signal primary would be an implicit composite, and combining them would assert
 a weighting nothing in the study establishes.
 
-Multiplicity is reported twice per size -- Holm within one signal, and Holm
-across the whole panel x baseline family -- so a reader can see both the
-per-signal and the family-wise picture instead of being handed one and told it
-is the answer.
+Every signal is tested the same way, under failure = 0, with Holm within the
+signal over the baselines; complete-case is the sensitivity.
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Optional
 
 from .. import paths
+from ..alignment.presets import current as arm_registry
 from ..alignment.protocol import ALIGNMENT_SIGNALS
+from ..config import FAILURE_POLICY, SENSITIVITY_POLICY
 from ..runs import extract_alignment_metrics, load_run
 from ..stats import (
+    BOOT_METHOD,
+    BOOT_SEED,
+    EXACT_WILCOXON_N_MAX,
+    N_BOOT,
     bootstrap_ci,
     holm_correct,
     kendall_tau_b,
-    rank_biserial,
-    spearman_p_exact,
+    paired,
     spearman_rho,
     wilcoxon_signed_rank,
 )
-from ..stats import BOOT_SEED, EXACT_WILCOXON_N_MAX, N_BOOT
 from ..util import mean as _mean
 from ..util import sd as _sd
-from ..alignment.presets import current as arm_registry
+from . import attempts
 
 #: Which single series the one-dimensional summaries plot (the scale/DiD
 #: narrative, and the default sensitivity agreement).
@@ -54,35 +57,26 @@ def pool_alignment(models: list[dict], run_dirs_by_model: dict[str, list[Path]],
     """Pool alignment_scores.json metrics if any exist (the alignment panel). Graceful skip.
 
     **The inferential layer runs over the whole panel, not one endpoint.**
-    Every signal in :data:`PANEL` gets the full treatment under
+    Every signal in :data:`PANEL` gets the same treatment under
     ``per_model[].panel[<signal>]``; no signal is hoisted to the top level,
     because a structural hierarchy is exactly the implicit composite the panel
     design removes. Per signal:
 
-      * 'comparisons': paired Wilcoxon (exact at small n) + Holm + bootstrap
-        CI, proposed vs each baseline, paired by scenario on mean-of-runs
-        (scenarios where both agents were scored) — the panel's inferential layer;
-      * 'align_descriptive': per-agent mean + bootstrap 95% CI over
-        per-scenario values (the absolute descriptive layer);
+      * 'comparisons': proposed vs each baseline, paired by scenario on the
+        mean of runs under failure = 0 -- a run that left no output to score
+        (the scorer's 'missing_outputs' roster) counts 0.0, the floor of every
+        signal. Wilcoxon (exact null) + BCa CI + rank-biserial, Holm within the
+        signal over the baselines;
+      * 'comparisons_complete_case': the same over the scenarios both agents
+        were scored on -- the sensitivity, never called unconditional;
+      * 'align_descriptive': per-agent mean + BCa 95% CI under failure = 0;
+      * 'complete_case_descriptive': per-agent mean over scored scenarios;
       * 'conditional_align': restricted to scenarios whose output yielded
-        >=1 objective in every scored run — isolates signal quality from
-        parse failure, which the complete-case layer folds in as 0;
-      * 'comparisons_failure_zero': the failure-policy layer, mirroring the LLM judge layer.
-        'comparisons' are complete-case over AVAILABLE outputs — a crashed
-        agent writes no *_output.json, so its scenario drops out of the paired
-        set and the crash costs it nothing. The zero policy re-adds those cells
-        at 0.0 from the scorer's 'missing_outputs' roster. Report both; never
-        call the complete-case layer unconditional.
-
-    Multiplicity is handled at two levels, both reported (see the protocol
-    spec, docs/guides/alignment_protocol.md section 5): ``p_holm`` is Holm within one signal
-    (family = one comparison per baseline), and ``p_holm_panel`` is Holm over
-    the entire panel x baseline family for that model size. The second costs
-    nothing to compute and pre-empts the "you ran 168 tests" objection without
-    giving up the power of the first.
+        >=1 objective in every scored run -- isolates signal quality from
+        parse failure.
 
     Signal-independent, at 'per_model[]' level: 'align_failures' (the missing
-    -output roster) and, top-level under stats, 'interaction_align' — the
+    -output roster) and, top-level under stats, 'interaction_align' -- the
     method x model-size DiD on the paired delta of ``lead_metric``.
     """
     PANEL = [signal for signal, _family in ALIGNMENT_SIGNALS]
@@ -110,10 +104,24 @@ def pool_alignment(models: list[dict], run_dirs_by_model: dict[str, list[Path]],
         # miss_counts[agent][scenario] = #runs where the agent produced no
         # scoreable output (the other half of the roster; see failure policies).
         miss_counts: dict[str, dict[str, int]] = {}
-        for run in runs:
-            for sid, payload in run.items():
-                doc = payload.get("alignment")
+        for run_dir, run in zip(run_dirs_by_model[label], runs):
+            held = attempts.scenarios(run_dir)
+            for sid in sorted(set(run) | set(held)):
+                doc = (run.get(sid) or {}).get("alignment")
+                if doc is None and sid not in run and sid in held:
+                    # A scenario in which every agent failed has no report to
+                    # list it; its artifact, if the scorer wrote one, is read
+                    # directly.
+                    doc = _read_json(held[sid] / scores_filename)
                 if doc is None:
+                    # No artifact: an agent attempted here that left no output
+                    # still failed. (An output left unscored is refused by the
+                    # pool's guard before this point.)
+                    for agent in agents:
+                        if (attempts.attempted(run_dir, sid, agent)
+                                and not attempts.produced(run_dir, sid, agent)):
+                            per = miss_counts.setdefault(agent, {})
+                            per[sid] = per.get(sid, 0) + 1
                     continue
                 found_any = True
                 n_scenario_files += 1
@@ -135,27 +143,54 @@ def pool_alignment(models: list[dict], run_dirs_by_model: dict[str, list[Path]],
                     for metric, val in metrics.items():
                         metric_vals.setdefault(agent, {}).setdefault(metric, {}) \
                             .setdefault(sid, []).append(val)
-        if not metric_vals:
+        if not metric_vals and not miss_counts:
             continue
+        # complete-case: the scenarios the agent left an output for in every
+        # run (none on the missing-output roster), the same definition the LLM
+        # judge pool uses.
+        def per_scenario(metric: str) -> dict[str, dict[str, float]]:
+            return {
+                agent: {sid: _mean(v) for sid, v in metrics.get(metric, {}).items()
+                        if not miss_counts.get(agent, {}).get(sid)}
+                for agent, metrics in metric_vals.items()
+            }
+
+        # failure = 0: an (agent, scenario, run) cell on the missing-output
+        # roster counts 0.0 -- the floor of every signal, and the value a
+        # parseable but objective-less output already scores.
+        def failure_zero(metric: str) -> dict[str, dict[str, float]]:
+            out: dict[str, dict[str, float]] = {}
+            for agent in sorted(set(metric_vals) | set(miss_counts)):
+                per_scen = metric_vals.get(agent, {}).get(metric, {})
+                row: dict[str, float] = {}
+                # Sorted: the bootstrap resamples by position, so a set's hash
+                # order would move the interval from one pool to the next.
+                for sid in sorted(set(per_scen) | set(miss_counts.get(agent, {}))):
+                    vals = list(per_scen.get(sid, []))
+                    denom = len(vals) + miss_counts.get(agent, {}).get(sid, 0)
+                    row[sid] = (sum(vals) / denom) if denom else 0.0
+                if row:
+                    out[agent] = row
+            return out
+
+        # Every panel signal, so a size where every agent failed still carries
+        # its zeros; plus whatever else the artifacts report (counts, details).
+        metrics_seen = sorted(set(PANEL) | {m for metrics in metric_vals.values()
+                                            for m in metrics})
+        zero_by_metric = {m: failure_zero(m) for m in metrics_seen}
         out_models[label] = {
             agent: {
                 metric: {
-                    "n_scenarios": len(by_scen),
-                    "mean": _mean([_mean(v) for v in by_scen.values()]),
-                    "sd_across_scenarios": _sd([_mean(v) for v in by_scen.values()]),
+                    "n_scenarios": len(zero_by_metric[metric][agent]),
+                    "mean": _mean(list(zero_by_metric[metric][agent].values())),
+                    "sd_across_scenarios": _sd(list(zero_by_metric[metric][agent].values())),
                 }
-                for metric, by_scen in sorted(metrics.items())
+                for metric in metrics_seen if zero_by_metric[metric].get(agent)
             }
-            for agent, metrics in sorted(metric_vals.items())
+            # An agent that failed everywhere is on the roster only; it is kept,
+            # at 0.0, so the agent vectors the sensitivity layer ranks stay whole.
+            for agent in sorted(set(metric_vals) | set(miss_counts))
         }
-
-        # per-scenario values (mean of runs where scored) for the primary
-        # metric that carries the inferential layer.
-        def per_scenario(metric: str) -> dict[str, dict[str, float]]:
-            return {
-                agent: {sid: _mean(v) for sid, v in metrics.get(metric, {}).items()}
-                for agent, metrics in metric_vals.items()
-            }
 
         def paired_rows(metric_map: dict[str, dict[str, float]]) -> list[dict]:
             rows = []
@@ -163,29 +198,13 @@ def pool_alignment(models: list[dict], run_dirs_by_model: dict[str, list[Path]],
                 pmap, bmap = metric_map.get(proposed, {}), metric_map.get(b, {})
                 shared = sorted(set(pmap) & set(bmap))
                 diffs = [pmap[s] - bmap[s] for s in shared]
-                if not diffs:
-                    rows.append({"baseline": b, "n": 0})
-                    continue
-                w, p, n_eff = wilcoxon_signed_rank(diffs)
-                lo, hi = bootstrap_ci(diffs)
-                rows.append({
-                    "baseline": b,
-                    "n": len(diffs),
-                    "n_effective_nonzero": n_eff,
-                    "mean_diff": _mean(diffs),
-                    "ci95": [lo, hi],
-                    "wilcoxon_w_plus": w,
-                    "p_raw": p,
-                    "rank_biserial_r": rank_biserial(diffs),
-                })
+                rows.append({"baseline": b, **paired(diffs)})
             with_p = [r for r in rows if "p_raw" in r]
-            holm = holm_correct([r["p_raw"] for r in with_p])
-            for r, ph in zip(with_p, holm):
+            for r, ph in zip(with_p, holm_correct([r["p_raw"] for r in with_p])):
                 r["p_holm"] = ph
+                r["holm_family_size"] = len(with_p)
             return rows
 
-        align_map = per_scenario(lead_metric)
-        align_maps_by_label[label] = align_map
         # Conditional-on-parseable-output: the documented criterion is ">=1
         # objective", so read the objective COUNT, not the incidental
         # definedness of porter_mean (which is also None when the objectives
@@ -202,42 +221,22 @@ def pool_alignment(models: list[dict], run_dirs_by_model: dict[str, list[Path]],
                 }
                 for agent in metric_map
             }
-        # Failure policy, mirroring the LLM judge layer. align_map is complete-case over
-        # AVAILABLE outputs: an agent that crashed has no *_output.json, so its
-        # scenario silently leaves the paired set and the crash costs it
-        # nothing. zero_map re-adds those (agent, scenario, run) cells at 0.0 —
-        # the floor of every endpoint here, and the same value a parseable but
-        # objective-less output already scores.
-        def failure_zero(metric: str, metric_map: dict[str, dict[str, float]]) -> dict:
-            out: dict[str, dict[str, float]] = {}
-            for agent in sorted(set(metric_map) | set(miss_counts)):
-                per_scen = metric_vals.get(agent, {}).get(metric, {})
-                row: dict[str, float] = {}
-                for sid in set(per_scen) | set(miss_counts.get(agent, {})):
-                    vals = list(per_scen.get(sid, []))
-                    denom = len(vals) + miss_counts.get(agent, {}).get(sid, 0)
-                    row[sid] = (sum(vals) / denom) if denom else 0.0
-                if row:
-                    out[agent] = row
-            return out
 
         panel: dict[str, dict] = {}
         absent_signals: list[str] = []
         for signal in PANEL:
-            signal_map = align_map if signal == lead_metric else per_scenario(signal)
-            if not any(signal_map.values()):
+            cc_map = per_scenario(signal)
+            if metric_vals and not any(signal in m for m in metric_vals.values()):
                 # Skipping here keeps the pool usable, but the run is NOT
                 # reportable: the panel's defence against selective reporting is
-                # that every signal is reported for every comparison, and the
-                # whole-panel Holm family is built from `panel` below. A signal
-                # that quietly drops out shrinks that family and makes every
-                # panel-corrected p less conservative than its caption claims.
-                # Collected and raised after the loop so the message can name
-                # all of them at once.
+                # that every signal is reported for every comparison. Collected
+                # and raised after the loop so the message names all of them.
                 absent_signals.append(signal)
                 continue
-            zero_map = failure_zero(signal, signal_map)
-            maps_by_metric.setdefault(signal, {})[label] = signal_map
+            zero_map = zero_by_metric[signal]
+            maps_by_metric.setdefault(signal, {})[label] = zero_map
+            if signal == lead_metric:
+                align_maps_by_label[label] = zero_map
             panel[signal] = {
                 "family": dict(ALIGNMENT_SIGNALS)[signal],
                 "align_descriptive": {
@@ -246,40 +245,29 @@ def pool_alignment(models: list[dict], run_dirs_by_model: dict[str, list[Path]],
                         "mean": _mean(list(vals.values())),
                         "ci95": list(bootstrap_ci(list(vals.values()))),
                     }
-                    for agent, vals in sorted(signal_map.items()) if vals
+                    for agent, vals in sorted(zero_map.items()) if vals
+                },
+                "complete_case_descriptive": {
+                    agent: {"n": len(vals), "mean": _mean(list(vals.values()))}
+                    for agent, vals in sorted(cc_map.items()) if vals
                 },
                 "conditional_align": {
                     agent: {"n": len(vals), "mean": _mean(list(vals.values()))}
-                    for agent, vals in sorted(conditional(signal_map).items()) if vals
+                    for agent, vals in sorted(conditional(cc_map).items()) if vals
                 },
-                "comparisons": paired_rows(signal_map),
-                "comparisons_failure_zero": paired_rows(zero_map),
-                "failure_zero_descriptive": {
-                    agent: {"n": len(vals), "mean": _mean(list(vals.values()))}
-                    for agent, vals in sorted(zero_map.items()) if vals
-                },
+                "comparisons": paired_rows(zero_map),
+                "comparisons_complete_case": paired_rows(cc_map),
             }
 
         if absent_signals:
             raise SystemExit(
                 f"[{label}] panel incomplete: {absent_signals} defined on no "
                 f"scenario, so the pooled panel would carry "
-                f"{len(panel)}/{len(PANEL)} signals and the whole-panel Holm "
-                f"family would shrink to match. Re-score these run dirs with "
+                f"{len(panel)}/{len(PANEL)} signals. Re-score these run dirs with "
                 f"`{paths.cli()} judge alignment --overwrite` (a signal added since the "
                 f"artifacts were written is absent from them, and the cached "
                 f"artifacts are otherwise valid so a plain re-run reuses them)."
             )
-
-        # Holm across the WHOLE panel x baseline family for this model size --
-        # the conservative footnote that travels with the per-signal Holm. Same
-        # data, stricter correction; free to compute, and it pre-empts the
-        # multiplicity objection without costing the per-signal layer's power.
-        flat = [(signal, row)
-                for signal in panel
-                for row in panel[signal]["comparisons"] if "p_raw" in row]
-        for (_signal, row), ph in zip(flat, holm_correct([r["p_raw"] for _s, r in flat])):
-            row["p_holm_panel"] = ph
 
         stats_models.append({
             "label": label,
@@ -348,7 +336,7 @@ def pool_alignment(models: list[dict], run_dirs_by_model: dict[str, list[Path]],
                 f"baseline): value at the largest size ({large}) minus the "
                 f"smallest ({small}), per scenario; negative = the gap narrows "
                 "as the model grows (i.e. widens toward small models). "
-                f"Bootstrap CI ({N_BOOT}, seed {BOOT_SEED}) + Wilcoxon p on the "
+                f"{BOOT_METHOD} bootstrap CI ({N_BOOT}, seed {BOOT_SEED}) + Wilcoxon p on the "
                 "per-scenario DiD values."
             ),
             "smallest": small,
@@ -382,25 +370,22 @@ def pool_alignment(models: list[dict], run_dirs_by_model: dict[str, list[Path]],
                 "signal, reported win or lose. Continuous signals are mean-max "
                 "RECTIFIED cosine (max(0,cos) on [0,1]; no matching threshold). "
                 "'comparisons' = paired diffs (proposed - baseline) per "
-                "scenario (mean of runs where scored; scenarios scored for "
-                "both agents), Wilcoxon two-sided (exact null for n<=%d), "
-                "bootstrap CI (%d, seed %d). Multiplicity is reported twice: "
-                "p_holm = Holm within one signal (%d comparisons), p_holm_panel "
-                "= Holm over the whole panel x baseline family for that size. "
-                "align_descriptive = per-agent mean + bootstrap 95%% "
-                "CI over per-scenario values. Both are COMPLETE-CASE over "
-                "available outputs, not unconditional: an agent run that "
-                "crashed leaves no output to score. align_failures counts "
-                "those cells and comparisons_failure_zero re-runs the paired "
-                "test with them imputed at 0.0 (the signal's floor; a "
-                "min-score policy is degenerate here because the observed "
-                "minimum IS 0.0). conditional_align = over scenarios whose "
-                "output yielded >=1 objective in every scored run (isolates "
-                "signal quality from parse failure). interaction_align = "
-                "method x model-size DiD on the paired delta of %s "
-                "(complete-case)."
-                % (len(PANEL), EXACT_WILCOXON_N_MAX, N_BOOT, BOOT_SEED,
-                   len(baselines), lead_metric)
+                "scenario, mean of runs under %s: a run that left no output to "
+                "score counts 0.0, the floor of every signal. Wilcoxon two-sided "
+                "(exact null for n<=%d), %s bootstrap CI (%d, seed %d), "
+                "rank-biserial r; p_holm = Holm within one signal (%d "
+                "comparisons). 'comparisons_complete_case' = the same over the "
+                "scenarios both agents were scored on (%s, the sensitivity). "
+                "align_descriptive = per-agent mean + BCa 95%% CI under %s; "
+                "complete_case_descriptive = the mean over scored scenarios. "
+                "align_failures counts the missing-output cells. "
+                "conditional_align = over scenarios whose output yielded >=1 "
+                "objective in every scored run (isolates signal quality from "
+                "parse failure). interaction_align = method x model-size DiD on "
+                "the paired delta of %s (%s)."
+                % (len(PANEL), FAILURE_POLICY, EXACT_WILCOXON_N_MAX, BOOT_METHOD,
+                   N_BOOT, BOOT_SEED, len(baselines), SENSITIVITY_POLICY,
+                   FAILURE_POLICY, lead_metric, FAILURE_POLICY)
             ),
             "panel_signals": [
                 {"signal": signal, "family": family}
@@ -419,6 +404,18 @@ def pool_alignment(models: list[dict], run_dirs_by_model: dict[str, list[Path]],
         result["_align_maps"] = maps_by_metric
     return result
 
+def _read_json(path: Path) -> Optional[dict]:
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    return doc if isinstance(doc, dict) else None
+
+
+def _sign(x: float) -> int:
+    return (x > 0) - (x < 0)
+
+
 def _rank_of(agent: str, means: dict[str, float]) -> Optional[int]:
     """1-based rank of ``agent`` by descending mean (1 = best)."""
     if agent not in means:
@@ -434,8 +431,8 @@ def _agreement(primary: dict, arm: dict, primary_maps: dict, arm_maps: dict,
     The headline is a rank correlation over the AGENT VECTOR, per model size:
     that is literally the claim the paper makes ("the ranking of agents is the
     same under a different encoder"). Spearman and Kendall tau-b are both
-    reported — at n = 7 agents Spearman is noisy and tau-b is the conservative
-    one to quote.
+    reported, descriptively -- at n = 7 agents Spearman is noisy and tau-b is
+    the one to quote; neither is tested.
 
     A high rho can still coexist with a flipped conclusion, so three non-rank
     corroborations travel with it: top-1 agreement, the proposed agent's rank,
@@ -486,7 +483,7 @@ def _agreement(primary: dict, arm: dict, primary_maps: dict, arm_maps: dict,
             if not pr or not ar or "mean_diff" not in pr or "mean_diff" not in ar:
                 continue
             n_cmp += 1
-            if (pr["mean_diff"] > 0) == (ar["mean_diff"] > 0):
+            if _sign(pr["mean_diff"]) == _sign(ar["mean_diff"]):
                 same_sign += 1
             if (pr.get("p_holm", 1.0) < 0.05) == (ar.get("p_holm", 1.0) < 0.05):
                 same_verdict += 1
@@ -495,7 +492,6 @@ def _agreement(primary: dict, arm: dict, primary_maps: dict, arm_maps: dict,
             "label": label,
             "n_agents": len(common),
             "spearman_rho_agent_means": spearman_rho(xs, ys),
-            "spearman_p_exact": spearman_p_exact(xs, ys),
             "kendall_tau_b_agent_means": kendall_tau_b(xs, ys),
             "mean_abs_diff_agent_means": _mean([abs(a - b) for a, b in zip(xs, ys)]),
             "top1_agent_primary": max(p_means, key=lambda a: p_means[a]),
@@ -630,8 +626,8 @@ def pool_alignment_sensitivity(models: list[dict],
             f"'{primary_key}' owns the unsuffixed artifact and stays in "
             "pooled['alignment']; the arms here are read from "
             "alignment_scores.<suffix>.json. agreement_with_primary compares "
-            "the per-size agent vector on that arm's own signal — Spearman rho with an "
-            "exact permutation p (n<=8) and Kendall tau-b, plus top-1 / "
+            "the per-size agent vector on that arm's own signal — Spearman rho and "
+            "Kendall tau-b (descriptive, not tested), plus top-1 / "
             "proposed-rank / sign / Holm-verdict agreement, and a "
             "scenario-level Spearman for the proposed agent."
         ),

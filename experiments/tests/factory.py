@@ -10,11 +10,11 @@ schema the pooler actually emits, whereas pooling a fixture run tree cannot.
 The numbers are invented. The *shapes* are taken from the readers:
 ``comparison_report.json`` from ``load_run``, ``alignment_scores.json`` from
 the scorer's own payload literal, and the trajectory from what the cost table
-reads. Three pathologies are planted on purpose, because a fixture where
-everything succeeds tests only the happy path:
+reads. The tree is a FINISHED run -- every output judged, as a pool requires --
+with two pathologies planted on purpose, because a fixture where everything
+succeeds tests only the happy path:
 
-* one agent missing an output entirely   -> the failure-policy layers
-* one scenario recording evaluation_error -> what `audit repair` looks for
+* one agent missing an output entirely   -> the failure = 0 layer
 * one stub output                         -> what `audit postrun` flags
 """
 
@@ -43,8 +43,16 @@ N_SCENARIOS = 6
 DATASET = "test_90"
 
 MISSING = ("scenario_03", "baseline")          # no output at all
-EVAL_ERROR = ("scenario_04", "react-isd")      # transient LLM judge failure
 STUB = ("scenario_05", "baseline")             # produced, but empty
+
+#: The ADDIE phases a judged row scores, each offset from the row's ADDIE score
+#: by a fixed amount (no draw from the RNG, so every other number is unchanged).
+PHASE_OFFSETS = (("analysis", 2.0), ("design", 1.0), ("development", 0.0),
+                 ("implementation", -1.0), ("evaluation", -2.0))
+
+
+def _phase_scores(addie: float) -> dict:
+    return {phase: round(addie + off, 4) for phase, off in PHASE_OFFSETS}
 
 
 def _quality(agent: str, params_b: float, rng: random.Random) -> float:
@@ -146,6 +154,9 @@ def build(root: Path, tag: str = "c1", seed: int = 42) -> list[Path]:
 
             rankings, scores, missing = [], {}, {}
             for agent in AGENTS:
+                # The runner writes a log for every attempt, successful or not;
+                # an output only on success.
+                (scen / f"{agent}_log.txt").write_text("", encoding="utf-8")
                 if (sid, agent) == MISSING:
                     # {agent: reason} -- the shape pool_alignment reads.
                     missing[agent] = "no output produced"
@@ -154,15 +165,9 @@ def build(root: Path, tag: str = "c1", seed: int = 42) -> list[Path]:
                 total = round(_quality(agent, params_b, rng), 4)
                 addie = round(total + rng.gauss(1.5, 1.0), 4)
                 traj = round(total - rng.gauss(4.0, 1.5), 4)
-                row = {"agent_id": agent, "total_score": total,
-                       "addie_median": addie, "trajectory_score": traj}
-                if (sid, agent) == EVAL_ERROR:
-                    # Scored cell lost to a transient LLM judge failure: the exact
-                    # shape `audit repair` re-judges without regenerating output.
-                    row = {"agent_id": agent, "total_score": None,
-                           "addie_median": None, "trajectory_score": None,
-                           "evaluation_error": "LLM judge timeout"}
-                rankings.append(row)
+                rankings.append({"agent_id": agent, "total_score": total,
+                                 "addie_median": addie, "trajectory_score": traj,
+                                 "phase_scores": _phase_scores(addie)})
                 (scen / f"{agent}_output.json").write_text(
                     json.dumps(_addie_output(agent, sid, stub), indent=2), encoding="utf-8")
                 (scen / f"{agent}_trajectory.json").write_text(
@@ -235,14 +240,17 @@ def build_ablation(root: Path, tag: str = "a1", seed: int = 7) -> list[Path]:
                 scen.mkdir(parents=True, exist_ok=True)
                 rankings, scores = [], {}
                 for arm in ARMS:
+                    (scen / f"{arm}_log.txt").write_text("", encoding="utf-8")
                     # The full architecture leads; removing either mechanism
                     # costs, and removing both costs most.
                     mode, ctx = ARM_FLAGS[arm]
                     penalty = (0.0 if mode == "multi" else 3.0) + (0.0 if ctx == "graph" else 2.0)
                     total = round(_quality("alignmentgraph-isd", params_b, rng) - penalty, 4)
+                    addie = round(total + rng.gauss(1.5, 1.0), 4)
                     rankings.append({"agent_id": arm, "total_score": total,
-                                     "addie_median": round(total + rng.gauss(1.5, 1.0), 4),
-                                     "trajectory_score": round(total - rng.gauss(4.0, 1.5), 4)})
+                                     "addie_median": addie,
+                                     "trajectory_score": round(total - rng.gauss(4.0, 1.5), 4),
+                                     "phase_scores": _phase_scores(addie)})
                     (scen / f"{arm}_output.json").write_text(
                         json.dumps(_addie_output(arm, sid, False), indent=2), encoding="utf-8")
                     traj = _trajectory("alignmentgraph-isd", params_b, rng)
