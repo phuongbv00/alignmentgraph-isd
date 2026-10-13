@@ -5,8 +5,8 @@
 >
 > - Mức claim + luật viết: [`docs/paper/claim-rules.md`](../paper/claim-rules.md); nội dung paper: `docs/paper/acm/`
 > - Lệnh chạy scorer/pooling + metrics reference: [`docs/guides/benchmark_guides.md`](benchmark_guides.md) (§7, Appendix A)
-> - Code: `isd-agent-benchmark/evaluator/src/isd_evaluator/metrics/alignment.py`, scorer
->   `experiments/06_score_alignment.py`, pooling `isd-exp pool comparison`
+> - Code: `experiments/src/isd_experiments/alignment/protocol.py`, scorer `isd-exp judge alignment`,
+>   pooling `isd-exp pool comparison`
 
 ## 1. Định vị & claim
 
@@ -312,41 +312,41 @@ Ngoài panel: `details.validation.declared_link_agreement` và `details.sanity.*
 
 ## 5. Statistical analysis
 
-**Multiplicity — hai tầng, báo cả hai.** Panel không có thứ bậc *báo cáo* (§4) nhưng vẫn cần neo *hiệu chỉnh*: 6 tín
-hiệu × 6 so sánh × 4 size = 144 test, không hiệu chỉnh thì reviewer gọi đúng tên là fishing — và mỉa mai là nó hạ giá
-chính cái panel.
+**Multiplicity — một tầng.** Panel không có thứ bậc *báo cáo* (§4), nhưng mỗi so sánh vẫn được hiệu chỉnh. Phòng
+thủ chống fishing có hai phần: Holm trong từng tín hiệu, và quy tắc đọc ở §4 được cố định trước khi có kết quả, đọc
+trên mọi tín hiệu của mọi so sánh.
 
-- **Chính = Holm riêng cho từng tín hiệu**: mỗi tín hiệu một family = 6 so sánh/size. Phòng thủ chống selective
-  reporting nằm ở chỗ **mọi tín hiệu đều báo cho mọi so sánh**, thắng hay thua, chứ không nằm ở việc gộp family.
-  Giữ nguyên power.
-- **Footnote = Holm chung toàn panel** (family = 6 tín hiệu × 6 so sánh mỗi size). Cùng dữ liệu, chỉ khác cách hiệu
-  chỉnh, nên miễn phí về tính toán — và có nó thì câu *"kể cả hiệu chỉnh chung toàn panel, kết luận không đổi"* là
-  miễn phí về lập luận. Key pooled: `comparisons[].p_holm_panel`.
+- **Holm riêng cho từng tín hiệu**: mỗi tín hiệu một family = 6 so sánh/size, tính riêng cho layer chính và cho layer
+  sensitivity → `p_holm`. Phòng thủ chống selective reporting nằm ở chỗ **mọi tín hiệu đều báo cho mọi so sánh**,
+  thắng hay thua, chứ không nằm ở việc gộp family. Giữ nguyên power. Quy tắc đọc panel (§4) đọc đúng `p_holm` này.
 
-- **Comparative (mỗi tín hiệu panel)**: paired Wilcoxon signed-rank per-scenario (mean-of-runs), proposed vs từng đối
-  sánh, bootstrap 95% CI (10k, seed 42), rank-biserial. Key pooled:
-  `alignment.stats.per_model[].panel[<signal>].comparisons`.
-- **Scale**: **DiD** (largest − smallest size) trên paired delta per-scenario, bootstrap CI + Wilcoxon p — key
-  `alignment.stats.interaction_align`. Chạy cho `objective_assessment_similarity` (vế `measures`, tín hiệu dẫn dắt
-  narrative scale) và báo bảng phụ cho các tín hiệu còn lại.
-- **Descriptive**: mean + bootstrap CI per agent/size (`align_descriptive`) + phân bố per-scenario, **cho mọi tín hiệu
-  panel**; `conditional_align` (chỉ scenario mà mọi run được chấm đều cho ≥1 objective, đọc `counts.objectives`) tách
-  chất lượng khỏi parse failure.
-- **Failure policy** (song song RQ1, key `alignment.stats.per_model[].align_failures` +
-  `comparisons_failure_zero`): **layer chính = `failure=0`** — scorer ghi roster `missing_outputs`, pooling chạy paired
-  test với các cell đó impute 0.0. Hai layer comparative/descriptive ở trên tính trên **complete-case trên output có
-  sẵn**, tức **không phải unconditional** và là **sensitivity, không phải kết quả chính**: agent crash thì benchmark
-  không ghi `*_output.json` nên scenario rơi khỏi tập ghép cặp và cú crash không tốn gì cho agent (điều kiện hoá trên
-  biến hậu-treatment — rationale failure policy nằm ở §Experimental Design của bản thảo). Không có `failure=min` vì endpoint đã sàn ở 0.0. **Artifact chấm
-  trước 2026-07-27 chưa có roster** → pooling báo `UNKNOWN` (không phải "không có failure"); phải re-score
-  `--overwrite` mới có layer chính này.
+- **Comparative (mỗi tín hiệu panel)**: paired Wilcoxon signed-rank hai phía per-scenario (mean-of-runs, `failure=0`),
+  proposed vs từng đối sánh — p là exact null có hạng trùng tới `n_effective` 500 (routine riêng, đối chiếu với SciPy
+  trong `tests/test_stats.py`), bootstrap BCa 95% CI (SciPy, 10k, seed 42), rank-biserial. Key pooled:
+  `alignment.stats.per_model[].panel[<signal>].comparisons`; cùng phép thử trên complete-case (sensitivity) ở
+  `comparisons_complete_case`.
+- **Scale**: **DiD** (largest − smallest size) trên paired delta per-scenario dưới `failure=0`, bootstrap CI + Wilcoxon
+  p — key `alignment.stats.interaction_align`. Chạy cho `objective_assessment_similarity` (vế `measures`, tín hiệu dẫn
+  dắt narrative scale) và báo bảng phụ cho các tín hiệu còn lại.
+- **Descriptive**: mean + bootstrap BCa CI per agent/size dưới `failure=0` (`align_descriptive`), mean complete-case
+  (`complete_case_descriptive`) + phân bố per-scenario, **cho mọi tín hiệu panel**; `conditional_align` (chỉ scenario
+  mà mọi run được chấm đều cho ≥1 objective, đọc `counts.objectives`) tách chất lượng khỏi parse failure.
+- **Failure policy** (một policy cho mọi claim — RQ1, panel và ablation; key
+  `alignment.stats.per_model[].align_failures`): **layer chính = `failure=0`** — scorer ghi roster `missing_outputs`,
+  pooling tính các cell đó là 0.0 trong mọi so sánh và mọi mean mô tả ở trên. **Sensitivity duy nhất = complete-case
+  trên output có sẵn** (`comparisons_complete_case`, `complete_case_descriptive`), **không bao giờ gọi là
+  unconditional**: agent crash thì benchmark không ghi `*_output.json` nên ở layer này scenario rơi khỏi tập ghép cặp và
+  cú crash không tốn gì cho agent (điều kiện hoá trên biến hậu-treatment — rationale failure policy nằm ở §Experimental
+  Design của bản thảo). Tỉ lệ failure chỉ báo mô tả (`align_failures`), không kiểm định lại: dưới `failure=0` mỗi
+  failure đã tính 0 trong phép thử. **Artifact không ghi roster** thì không có cell nào để tính 0 và layer chính suy
+  biến thành complete-case; phải re-score `--overwrite`.
 - Macros LaTeX: `alignmentHarnessSim*`, `alignmentHarnessSimCILo/Hi*`, `alignmentSimPHolmMax*`, `alignmentSimDiDVsBaseline*` — tên
   macro luôn bám tên metric; để hai thứ lệch nhau là cách chắc chắn nhất để prose nói sai về số.
 
 ## 6. Sensitivity — bốn trục, mỗi trục một câu hỏi khác nhau
 
 Instrument là **chiều được sweep** như kích thước mô hình: cùng một tập run được chấm lại bằng từng arm, rồi
-`07_pool_ladder_runs.py --auto-encoders --auto-bloom` gộp thành `alignment_sensitivity` và tính mức đồng thuận với
+`isd-exp pool comparison --auto-encoders --auto-bloom` gộp thành `alignment_sensitivity` và tính mức đồng thuận với
 cấu hình chính.
 
 **Thiết kế star, KHÔNG phải grid.** Cấu hình chính = (encoder `nemotron` + Bloom `bertbloom`); mỗi arm lệch **đúng một

@@ -55,8 +55,9 @@ outcome difference cannot be attributed to the ceiling.
 We register one directional prediction before running TN2: under \texttt{single},
 quality degrades with the position of a stage in the ADDIE sequence, and this
 degradation is absent or weaker under \texttt{multi} and widens as the model
-shrinks. TN2 is read out on the internal audit metrics and the alignment panel; the
-LLM judge serves only as a cross-check and never leads the ablation narrative.
+shrinks. The decomposition factor is tested on the ADDIE score and the substrate
+factor on the share of objectives with a closed triad (\Cref{sec:stats}); the
+internal audit metrics and the alignment panel describe what each arm did.
 
 \begin{table}[t]
   \caption{TN2's four arms. The proposed system is the top-left cell; each of the
@@ -358,15 +359,19 @@ seeing results would make the whole evaluation retrospective.
 The unit of inference is the scenario. For the level part of Objective~2, paired
 Wilcoxon signed-rank tests compare the proposed system with each baseline at every
 size and on all three LLM judge scores; Objective~3 applies the same test to each
-alignment signal. When a paired sample has $n\leq25$, we use the exact permutation
-null. We report paired mean differences, rank-biserial effect sizes, and bootstrap
-95\% confidence intervals from 10{,}000 scenario resamples with seed 42.
+alignment signal. The Wilcoxon $p$-values are exact. LLM judge scores are discrete,
+so paired differences carry tied ranks and zeros, and we compute the sign-flip null
+conditional on the observed ranks with the shift
+algorithm~\cite{streitberg1986exact}. We report paired mean differences,
+rank-biserial effect sizes, and bias-corrected and accelerated (BCa) bootstrap 95\%
+confidence intervals~\cite{efron1987better} from 10{,}000 scenario resamples with
+seed 42, computed with SciPy~\cite{virtanen2020scipy}. The Wilcoxon routine, Holm
+correction and the rank-biserial effect size are our own code; the Wilcoxon routine
+agrees with SciPy's full permutation enumeration to $10^{-9}$.
 
-Holm correction covers the six proposed-versus-baseline comparisons per size,
-separately for each LLM judge score and each alignment signal. Objective~3
-additionally reports a panel-wide Holm correction over six signals and six
-comparisons as a multiplicity sensitivity; that correction creates no hierarchy
-among signals. For the scale part of Objective~2, let
+Holm correction~\cite{holm1979simple} covers the six proposed-versus-baseline comparisons per size,
+separately for each LLM judge score and each alignment signal. For the scale part of
+Objective~2, let
 $\Delta_s$ be the paired proposed-minus-baseline gap at size $s$. The pre-specified
 interaction is $\Delta_{\mathrm{largest}}-\Delta_{\mathrm{smallest}}$, tested with
 paired Wilcoxon and a bootstrap interval; a negative value means a larger advantage
@@ -379,9 +384,17 @@ produces no output has quality zero, not missing data. Complete-case inference i
 sensitivity analysis only, computed over available outputs and never described as
 unconditional, because it conditions on a post-treatment variable---it removes
 precisely the most severe failures, and does so most at the small sizes where the
-hypothesis lives. Objective~2 additionally reports \texttt{failure=min};
-Objective~3 does not, because its signals already floor at zero. Output-failure rates
-are compared separately with Fisher's exact test under Holm correction.
+hypothesis lives. Output-failure counts are reported per system and size as
+description; under \texttt{failure=0} a failure already scores zero in every
+comparison, so it is not tested a second time.
+
+In TN2 the tests are registered: the main effect of decomposition on the ADDIE score
+and of substrate on the share of objectives with a closed triad, at each size, and
+the change of each between the smallest and the largest size---six tests under
+\texttt{failure=0}, with Holm correction over the six. The pre-specified
+decomposition $\times$ substrate interaction is reported with an uncorrected $p$.
+Cell means, simple effects and every other signal are reported as estimates with
+bootstrap intervals and are not tested.
 
 \subsection{Reproducibility}
 \label{sec:reproducibility}

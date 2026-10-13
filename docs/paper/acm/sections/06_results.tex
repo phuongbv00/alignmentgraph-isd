@@ -12,8 +12,7 @@ from system development enters this section.}
 The first question is whether a system produces a usable design at all, because a
 comparison of quality among systems that did not all finish is a comparison among
 survivors. We report, per system and size, the proportion of the 90 scenarios
-yielding a complete ADDIE output, with Fisher's exact test under Holm correction
-(\Cref{fig:failure-rate}). Failure mechanisms are named per system rather than
+yielding a complete ADDIE output (\Cref{fig:failure-rate}). Failure mechanisms are named per system rather than
 pooled, since they have different causes and different implications: a run that
 stops at the per-call token cap is a deployment property of that architecture,
 while a schema parse failure is not. Values: \TBD.
@@ -77,8 +76,8 @@ within-signal Holm correction, at least one of them in each family, with none
 significantly negative, and every other
 pattern is reported as mixed with the losing side named. All six signals are reported
 for every comparison, win or lose (\Cref{tab:rq2-panel},
-\Cref{fig:rq2-components,fig:rq2-forest}). Per-size panel readings: \TBD. The
-panel-wide Holm sensitivity: \TBD. The scale interaction on
+\Cref{fig:rq2-components,fig:rq2-forest}). Per-size panel readings: \TBD. The scale
+interaction on
 $\sigma_{\mathrm{meas}}$, with the remaining signals alongside: \TBD.
 
 Absolute levels are reported descriptively only. The comparative claim is what the
@@ -140,10 +139,11 @@ correction, and the Bloom arm: \TBD{} (\Cref{tab:rq2-sensitivity}).
 \label{sec:ablation}
 
 TN2 separates the two factors of \Cref{tab:ablation-arms} at 0.8B and 4B. The
-readout is the internal audit metrics---relation coverage, residual violations,
-stages that gave up---together with the alignment panel; the LLM judge is a
-cross-check only. Main effects of decomposition and of substrate, and their
-interaction: \TBD{} (\Cref{tab:ablation}, \Cref{fig:ablation-components}). The
+registered tests are the main effects of decomposition (on the ADDIE score) and of
+substrate (on closed triads) at each size and their change with size; the internal
+audit metrics---relation coverage, residual violations, stages that gave up---and
+the alignment panel describe the arms. Main effects of decomposition and of
+substrate, and their interaction: \TBD{} (\Cref{tab:ablation}, \Cref{fig:ablation-components}). The
 registered directional prediction, that quality degrades with stage position under
 \texttt{single} and less so under \texttt{multi}, widening as the model shrinks:
 \TBD. The budget-parity condition---that no arm was cut short by its turn

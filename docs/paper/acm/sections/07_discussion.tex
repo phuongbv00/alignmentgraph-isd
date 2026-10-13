@@ -107,14 +107,14 @@ measures properties of a document, not learning: it says nothing about what stud
 would learn from these designs.
 
 \paragraph{Conclusion validity.}
-Inference rests on 90 paired scenarios per size, with one deterministic generation
+Inference rests on 90 paired scenarios per size, with one generation
 per cell. Uncertainty is therefore estimated over scenarios rather than over repeated
 runs, which is the dominant source of variation at this sample size but leaves
 run-to-run variability unestimated for most cells; the targeted repeats
 (\Cref{sec:setup}) cover only the decisive cells and are reported separately with
-their own $n$. Bootstrap intervals and exact permutation nulls for small paired
-samples mitigate the small-sample limits; within-signal and panel-wide Holm
-corrections expose the multiplicity trade-off. Output failure is a post-treatment
+their own $n$. BCa bootstrap intervals and exact Wilcoxon nulls mitigate the
+small-sample limits, and one Holm correction per score and per signal keeps the
+multiplicity explicit. Output failure is a post-treatment
 variable, so complete-case analysis can discard a system's worst cases:
 \texttt{failure=0} is the primary layer, complete-case is a sensitivity computed over
 available outputs, and failure rates are reported separately (\Cref{sec:stats}). The

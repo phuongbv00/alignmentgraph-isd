@@ -41,7 +41,7 @@
 | Launcher | `isd-exp run comparison` | `isd-exp run ablation` |
 
 **A0 chạy LẠI trong TN2**, không mượn từ TN1: LLM judge session, scenario set và dải size đều khác,
-nên delta arm−A0 chỉ sạch khi hai vế đến từ cùng một run. Trước 2026-09-10 các arm chạy chung
+còn A0 là ô multi+graph của lưới 2×2, nên các hiệu ứng của lưới chỉ sạch khi bốn ô đến từ cùng một run. Trước 2026-09-10 các arm chạy chung
 trong ladder (10 agent một run) — mọi mô tả kiểu đó trong tài liệu cũ đã hết hiệu lực.
 
 **TN1: 1 run mỗi ô, không phải 3.** Bất định ước lượng theo SCENARIO (paired Wilcoxon + bootstrap trên
@@ -166,8 +166,9 @@ giữ cho phần reproducibility. `train_10` lấy từ train split nên tune th
 `per_cell` một mình không cho ra tập nhỏ hơn 30. `train_10` vì vậy dùng thêm `--max-total`: đổ đầy 1/ô rồi hạ mẫu
 round-robin theo thứ tự ô đã shuffle bằng seed, nên 10 scenario nằm trên 10 ô khác nhau thay vì dồn vào ba domain đầu
 danh sách. Hệ quả phải khai thẳng: **`train_10` phủ 10/30 ô nên KHÔNG phải mẫu stratified của corpus** — nó là tập hiệu
-chỉnh chi phí, kết quả không bao giờ vào paper. Ở n=10, `EXACT_WILCOXON_N_MAX = 25` cộng family Holm 36 của panel làm p
-điều chỉnh nhỏ nhất đạt được là 0.070, tức không kết luận suy diễn nào tồn tại được. Sidecar `train_10_metadata.json`
+chỉnh chi phí, kết quả không bao giờ vào paper. Ở n=10, exact null của Wilcoxon cho p hai phía nhỏ nhất 2/1024, và
+Holm trên 6 baseline đẩy p điều chỉnh nhỏ nhất đạt được lên 0.012 — chỉ khi cả 10 scenario cùng dấu, nên tune chỉ đọc
+mô tả, không rút kết luận suy diễn. Sidecar `train_10_metadata.json`
 ghi rõ điều đó ở `source_note`, `max_total` và `cells_covered`.
 
 ## 3. Serving (RunPod + vLLM)
@@ -655,14 +656,15 @@ Post-processing chạy **sau khi ladder xong** (consistency check cần `pooled_
 ./isd-exp report ablation-figures
 ```
 
-**Đọc theo lưới 2×2, không chỉ theo "vs A0".** Bốn arm là một **thiết kế giai thừa đầy đủ** (decomposition ×
-alignment machinery). So từng arm với A0 (= multi+graph) chỉ là *main effect*, và nó **giấu mất** trường hợp một cơ chế trông như vô dụng chỉ vì
-cơ chế kia đã ngăn lỗi từ trước. `08` vì vậy sinh thêm hai khối:
+**Đọc theo lưới 2×2, không theo "vs A0".** Bốn arm là một **thiết kế giai thừa đầy đủ** (decomposition ×
+alignment machinery). So từng arm với A0 (= multi+graph) **giấu mất** trường hợp một cơ chế trông như vô dụng chỉ vì
+cơ chế kia đã ngăn lỗi từ trước, nên pool không so arm với A0. Phép kiểm định duy nhất của ablation là khối
+`registered` (§5.5); ngoài nó, pool sinh các khối mô tả:
 
-- **`factorial`** — simple effect của từng cơ chế dưới **cả hai trạng thái** của cơ chế kia, cộng **tương tác**
-  (hiệu của hai simple effect; âm = hai cơ chế **thay thế** nhau). Tính trên cả `addie_median` lẫn
-  `objective_assessment_similarity`, paired per-scenario, Wilcoxon + bootstrap CI. Báo **không hiệu chỉnh**: đây là các
-  contrast cấu trúc của thiết kế, không phải một family so-sánh-với-A0.
+- **`factorial`** — **mô tả, không p, không sao**: mean của bốn ô, simple effect của từng cơ chế dưới **cả hai trạng
+  thái** của cơ chế kia, và **tương tác** (hiệu của hai simple effect; âm = hai cơ chế **thay thế** nhau), mỗi hiệu ứng
+  là mean paired per-scenario kèm bootstrap BCa CI, dưới `failure=0`. Tính trên mọi measure báo cáo (ba LLM judge score
+  và sáu alignment signal). Kiểm định nằm ở `registered`, không ở đây.
 - **`verifier_activity`** — số lần verifier chạy / số lần **sửa** mỗi scenario, đọc từ `verifier_events` /
   `repair_events` trong trajectory. Đây là bằng chứng **cơ chế**: nó tách "thành phần không chạy" khỏi "chạy nhưng
   không còn việc để làm".
@@ -678,13 +680,13 @@ cơ chế kia đã ngăn lỗi từ trước. `08` vì vậy sinh thêm hai kh�
   "context tăng theo vị trí stage" giống arm multi.
 
 Artifact tương ứng: `tab_ablation_factorial.tex` (dẫn 1 tín hiệu chính) kèm `tab_ablation_factorial_full.tex`
-(bản đầy đủ 2×2 read trên toàn bộ 10 tín hiệu báo cáo, phụ lục), macro `\ablVerifCtxOn/Off*` + `\ablInteraction*` +
+(bản đầy đủ 2×2 read trên toàn bộ 9 measure báo cáo, phụ lục), macro `\ablVerifCtxOn/Off*` + `\ablInteraction*` +
 `\ablRepairs*`, hình `fig_ablation_factorial`, và section "2x2 factorial" trong `stats_ablation.md`.
 
 Diễn giải cần ghi trong paper:
 
-- Hướng delta trong bảng/hình = **arm − A0** (âm = gỡ thành phần làm giảm chất lượng); trong `pooled_ablation.json` các
-  row comparison lưu chiều A0 − arm (contribution).
+- Mọi hiệu ứng (registered lẫn factorial) đọc **setting giàu hơn trừ setting đơn giản hơn**: multi − single,
+  graph − prose (`config.direction` của `pooled_ablation.json`); dương = cơ chế giúp.
 - `isd-exp pool comparison` chỉ xét proposed + 6 baseline nên 3 arm nằm cùng run dir **không bị nuốt** vào phía ladder.
 - Ở hai arm prose, mọi cơ chế cross-artifact (edge checks, docket, plan_coverage, routing, residual audit,
   aggregator coverage-net, `design.alignment_matrix`) **vắng theo thiết kế** — chênh lệch từ đó là **một phần của
@@ -731,14 +733,17 @@ về bundle, kèm câu nói rằng phần chênh do repair net viết.
 **Thống kê.**
 - Đơn vị là scenario (n = 30 mỗi size). Điểm của một ô trên một scenario là trung bình ba run. Không coi
   ba run là ba scenario.
-- Mỗi hiệu ứng: paired Wilcoxon signed-rank hai phía, bootstrap CI 95% (10 000 lần, seed 42), effect size
-  rank-biserial r.
+- Mỗi hiệu ứng: paired Wilcoxon signed-rank hai phía (exact null), bootstrap BCa CI 95% (SciPy, 10 000 lần, seed 42),
+  effect size rank-biserial r.
 - Họ kiểm định chính có 6 phép: H-D ở 0.8B và 4B, H-S ở 0.8B và 4B, H-C cho trục decomposition và cho trục
   substrate. Hiệu chỉnh Holm trên đúng 6 phép này, α = 0,05.
-- Interaction decomposition × substrate (đã có trong `factorial`) báo không hiệu chỉnh, vì là contrast
-  cấu trúc của thiết kế. Dự đoán đã có từ trước: decomposition có lợi hơn khi đi cùng graph.
+- Interaction decomposition × substrate, mỗi size, trên measure chính của từng trục, báo không hiệu chỉnh,
+  vì là contrast cấu trúc của thiết kế. Dự đoán đã có từ trước: decomposition có lợi hơn khi đi cùng graph.
 - Failure policy chính: output hỏng tính điểm 0 (layer triển khai, theo Sprint 2). Complete-case là
-  sensitivity. Báo riêng tỉ lệ fail và nguyên nhân theo từng ô.
+  sensitivity duy nhất: H-D và H-S mỗi size trên complete-case, Holm riêng trên cặp đó. Tỉ lệ fail và nguyên nhân
+  báo mô tả theo từng ô.
+- Measure phụ báo mô tả (mean + CI, không p): triad do model tự viết của H-S, và khoảng multi − single theo
+  phase ADDIE kèm độ dốc của nó. Bảng 2×2 (`factorial`) trên mọi measure cũng chỉ là mô tả.
 
 **Quy tắc kết luận.**
 - **Ủng hộ:** p Holm < 0,05 và dấu khớp dự đoán.
@@ -765,8 +770,11 @@ lượng. Không có nó thì H-S chỉ được phát biểu về structural co
 
 **Công cụ.** Phân tích đăng ký nằm trong `experiments/src/isd_experiments/pool/registered.py`, được
 `isd-exp pool ablation` gọi và ghi vào khối `registered` của `pooled_ablation.json`. Khối này có đúng 6 phép, Holm
-trên chúng, verdict theo quy tắc trên, và các phép phụ: triad do model tự viết, layer complete-case, độ dốc
-`phase_scores`. `stats_ablation.md` in nó ở mục "Registered tests". `primary_failure_policy` của pool là `zero`.
+trên chúng, verdict theo quy tắc trên, và khối phụ `secondary[size]`: `complete_case` (H-D, H-S trên complete-case,
+Holm riêng), `interaction` (decomposition × substrate trên `addie_median` và `objectives_closed_triad`, đọc `p_raw`,
+không hiệu chỉnh), `substrate|model_written` (triad do model tự viết) và `phase_slope` (khoảng multi − single theo
+phase, kèm độ dốc) — hai mục cuối là mean + CI, không p. Đó là những phép kiểm định duy nhất của ablation.
+`stats_ablation.md` in nó ở mục "Registered tests". `primary_failure_policy` của pool là `zero`.
 Pool chạy trên ít hơn hai size thì chỉ làm được một phần họ kiểm định. Khi đó cả terminal lẫn báo cáo ghi
 **INCOMPLETE**, và các verdict đó không phải phân tích đã đăng ký. `[experiment.ablation].tags` là
 `["a1", "a2", "a3"]`, nên `isd-exp run ablation` chạy ba run độc lập mỗi ô.
@@ -945,7 +953,7 @@ Bước (2) và (3) phải tách, vì sweep là hình sao: một lần gọi ch�
 Tổng 5 arm (1 chính + 3 encoder + 1 Bloom), không phải 4×2 = 8 — lưới không trả lời thêm câu hỏi nào mà nhân đôi chi
 phí lẫn diện tích phải kiểm.
 
-Trục Bloom **không tùy chọn**: 3/7 tín hiệu panel do Bloom sinh ra, bỏ trục này thì cả họ B không được kiểm bởi
+Trục Bloom **không tùy chọn**: 3/6 tín hiệu panel do Bloom sinh ra, bỏ trục này thì cả họ B không được kiểm bởi
 trục nào. Arm chính `bertbloom` cần checkpoint (train một lần, ~15 phút trên máy local); arm sweep `lexicon` gần như
 miễn phí — chạy CPU, vector lấy từ cache:
 
@@ -1028,8 +1036,8 @@ Validity evidence cho Bloom — chạy một lần, báo cả hai arm + κ giữ
 ```
 
 Output `results/pooled_comparison.json` + report stdout. Gộp run/size (mean-of-runs; TN1 mặc định 1 run), rồi per-size: Wilcoxon paired
-(proposed vs 6 baseline), Holm, bootstrap CI, rank-biserial, 3 failure policy, interaction DiD + trend slope — định
-nghĩa ở A.2. RQ2 pool từ `alignment_scores.json` (A.3). Kèm section `token_usage` (A.4).
+(proposed vs 6 baseline), Holm, bootstrap CI, rank-biserial, dưới `failure=0` (chính) và complete-case (sensitivity),
+đếm failure mô tả, interaction DiD + trend slope — định nghĩa ở A.2. RQ2 pool từ `alignment_scores.json` (A.3). Kèm section `token_usage` (A.4).
 
 - `--auto-encoders` (hoặc `--encoders bgem3,granite,tfidf`) thêm khoá `alignment_sensitivity`. `pooled["alignment"]`
   **luôn** là encoder chính nên `09`/`10`/ablation không đổi gì.
@@ -1055,7 +1063,7 @@ cd .. && ./isd-exp report sync                                 # từ repo thesi
 
 Tất cả ghi vào `results/generated/` (benchmark-local, gitignored): `tab_llm_judge_addie.tex` (ADDIE-lead) kèm
 `tab_llm_judge_total.tex`/`tab_llm_judge_trajectory.tex` (Total/Trajectory song song, cùng logic §A.2), `tab_alignment.tex`
-(tín hiệu dẫn) kèm `tab_alignment_panel.tex` (panel đầy đủ 7 tín hiệu), `stats_macros.tex` (mọi con số trong prose là
+(tín hiệu dẫn) kèm `tab_alignment_panel.tex` (panel đầy đủ 6 tín hiệu), `stats_macros.tex` (mọi con số trong prose là
 `\newcommand`), `stats_summary.md` (bản dump người đọc để cross-check).
 
 ### 9.2 Facts sheet — gộp mọi số vào một file
@@ -1073,14 +1081,16 @@ Chạy **sau** `report tables`/`ablation-tables`/`cost`/`sensitivity` (nó đọ
 mang nghĩa ngược. Cụ thể đã vấp: đọc bảng ADDIE rồi kết luận "graph context không giúp gì", trong khi bảng panel
 ngay dưới cùng file nói 28/28 ô ngược lại.
 
-Bố cục — mục **0 = hợp đồng đọc** (hai họ tín hiệu, quy ước dấu từng bảng, 2 tầng Holm, chính sách failure, và
+Bố cục — mục **0 = hợp đồng đọc** (hai họ tín hiệu, quy ước dấu từng bảng, Holm một tầng, chính sách failure, và
 **những gì KHÔNG có trong file**); mục **2 = roll-up tính sẵn** để không ai đếm ô bằng mắt:
 
 - 2.1/2.2 — mỗi baseline × tín hiệu: thắng/thua/n.s. ở mấy size, khoảng Δ.
-- 2.3 — mỗi arm × họ: số ô âm/dương/có ý nghĩa, khoảng Δ. Cột in ra là **`arm − A0`** (JSON lưu `A0 − arm`, đã lật).
-- 2.4 — **kiểm gradient theo scale**: size nào giữ |Δ| lớn nhất, và verdict CONCENTRATED/SCATTERED. Đây là chốt chặn
-  cho các câu kiểu "mạnh nhất ở model nhỏ" (A2 trên panel: SCATTERED đều cả 4 size → không được claim).
-- 2.5 — **bảng bất đồng giữa hai họ**: mỗi dòng là một chỗ mà trích một họ thôi sẽ xuyên tạc kết quả.
+- 2.3 — họ kiểm định đăng ký của ablation (H-D, H-S mỗi size, H-C mỗi trục): Δ, CI, `p_holm`, r, verdict, và
+  cảnh báo khi họ chưa đủ. Chiều đọc: multi − single, graph − prose.
+- 2.4 — **kiểm gradient theo scale** trên main effect của factorial (mô tả): size nào giữ |Δ| lớn nhất. Đây là
+  chốt chặn cho các câu kiểu "mạnh nhất ở model nhỏ"; phép thử của scale là H-C.
+- 2.5 — **bảng bất đồng giữa hai họ** trên cùng main effect, cùng size: mỗi dòng là một chỗ mà trích một họ thôi
+  sẽ xuyên tạc kết quả.
 
 Mục 3–9 là bảng đầy đủ per-cell; mục 10 là index mọi `\newcommand` — số nào trong paper mà không có ở đây tức là
 **gõ tay**, vi phạm quy ước "số sinh tự động".
@@ -1091,9 +1101,10 @@ không kiểm nó.
 **Quy ước artifact (2026-07-30, enforce bằng `isd-exp audit artifacts` check I):** mọi text trong artifact là
 **tiếng Anh**, số dùng **dấu chấm** (`87.77`). Caption chỉ nói *bảng chiếu gì* và *một ô là gì*, ~100–250 ký tự;
 phần biện luận phương pháp thuộc mục Methods. Mean và SD phải cùng một signal (`sd_{addie,traj,total}_across_scenarios`
-trong pooled; `run_to_run_sd` trần là Total, chỉ còn tồn tại cho `isd-exp pool ablation`). Ô nào tính trên tập
-scenario thiếu thì phải in `n` + footnote — RQ2 đếm scenario có **ít nhất một** run chấm được, điều kiện yếu hơn
-complete-case (đủ mọi run của ô) của RQ1, nên hai bảng ghi nhãn khác nhau.
+trong pooled; `run_to_run_sd` trần là Total, chỉ còn tồn tại cho `isd-exp pool ablation`). Mean chính tính dưới
+`failure=0` trên mọi scenario của size, nên footnote không khai "tập scenario thiếu" mà khai **bao nhiêu scenario
+tính 0 vì hệ không để lại output chấm được** (`n_scenarios_any_missing`). Bảng complete-case (sensitivity) in `n`
+riêng.
 Số format kiểu VN (`{,}`). `isd-exp report sync` là **bước copy duy nhất** sang `docs/generated/`; LaTeX trỏ tới đó bằng
 đường dẫn tương đối.
 
@@ -1183,9 +1194,9 @@ Total = 0,7 × ADDIE.normalized_score + 0,3 × Trajectory.total
 **Thước dẫn của RQ1 là `addie_median`, không phải composite** — ADDIE đo chất lượng nội dung thiết kế giảng dạy, tức
 đúng construct câu hỏi nghiên cứu nhắm tới; `trajectory_score` đo process conformance (construct khác); `total_score`
 mang trọng số 0,7/0,3 của benchmark, không đến từ câu hỏi nghiên cứu này. Cả ba tín hiệu được thống kê **y như nhau**
-(3 failure policy, Holm theo từng (signal, policy)) dưới `comparisons.by_score[<signal>]`, và `total_score` vẫn báo
-đầy đủ để so sánh được với chính ISD-Agent-Bench. Quyết định này là **post-hoc** (chọn sau khi đã thấy kết quả) và
-phải khai đúng như vậy trong paper.
+(`failure=0` chính + complete-case sensitivity, Holm theo từng (score, policy)) dưới `comparisons.by_score[<score>]`, và `total_score` vẫn báo
+đầy đủ để so sánh được với chính ISD-Agent-Bench. ADDIE dẫn phần diễn giải vì khớp construct; không tín hiệu nào là
+endpoint, và cả ba xuất hiện song song trong abstract và bảng chính.
 
 Về composite: per-scenario `total_score` trong `comparison_report.json` —
 **không phải** cột `Avg` của `aggregate_table.csv`.
@@ -1195,34 +1206,49 @@ Về composite: per-scenario `total_score` trong `comparison_report.json` —
 File: [`isd-exp pool comparison`](../../experiments/src/isd_experiments/pool/comparison.py).
 Input: 4 size × 1 run × 90 scenario (TN1), mỗi scenario đã có `Total` cho từng agent.
 
-- **`mean_total`** — trung bình `Total` của một agent tại một size, pool qua run rồi qua scenario (complete-case là
-  policy chính).
-- **`sd_{total,addie,traj}_across_scenarios`** — SD **giữa các scenario** của chính signal đó. Đây là con số in trong
+- **`mean_total`** (và `mean_addie`, `mean_traj`) — trung bình của một agent tại một size, pool qua run rồi qua
+  scenario, dưới `failure=0` trên mọi `n_scenarios` của size: run không để lại output chấm được tính 0. Đây đúng là các
+  giá trị mà phép thử ghép cặp dùng. Bản complete-case (sensitivity) là `mean_{total,addie,traj}_complete_case`; số
+  scenario tính 0 là `n_scenarios_any_missing`.
+- **`sd_{total,addie,traj}_across_scenarios`** — SD **giữa các scenario** của chính signal đó, dưới `failure=0`. Đây là con số in trong
   ngoặc cạnh mean ở `tab_llm_judge_addie.tex` và vẽ thành **SEM** (`sd/√n`) làm error bar của `fig_llm_judge_ladder`. Nó là **độ tản mô
   tả**, không phải ước lượng độ chính xác — khoảng tin cậy là bootstrap CI ở tầng so sánh. Cùng quy ước với bảng/hình
   panel RQ2, nên error bar hai họ instrument có cùng nghĩa.
 - **`run_to_run_sd{,_addie,_traj,_total}`** — SD giữa các giá trị trung bình cấp-run. **`None` khi ô chỉ có 1 run**,
-  tức mặc định của TN1; chỉ những ô nằm trong *targeted repeat* mới có số. Tính trên **đúng tập complete-case của
-  `mean_total`**: nếu mỗi run trung bình trên một tập scenario khác nhau thì các run mean không so sánh được, và độ tản
-  của chúng lẫn biến thiên run-to-run với khác biệt thành phần scenario. Consumer phải kiểm `isinstance(x, float)`
-  trước khi in.
+  tức mặc định của TN1; chỉ những ô nằm trong *targeted repeat* mới có số. Mỗi run mean tính dưới failure = 0 trên
+  các scenario agent được chạy trong run đó, tức cùng tập với mean chính in bên cạnh. Consumer phải kiểm
+  `isinstance(x, float)` trước khi in.
+- **Fail là gì** (`pool/attempts.py`, một định nghĩa cho cả ba tầng LLM judge, panel và ablation): agent **được chạy**
+  ở một scenario của một run (runner luôn ghi `<agent>_log.txt`, kể cả khi lỗi) mà **không để lại output chấm được**.
+  Agent không được chạy ở run đó (ví dụ targeted repeat chỉ chạy vài agent) không fail; run đó không thuộc chuỗi của
+  nó. Scenario mà mọi agent đều fail vẫn thuộc run và tính 0 cho từng agent, dù nó không có report.
 - **JSON hợp lệ**: `json_safe()` đổi mọi float không hữu hạn thành `null` ngay tại chỗ dump, nên `pooled_comparison.json`
   đọc được bằng parser chặt (`json.dumps(..., allow_nan=False)`), không còn token `NaN` trần.
-- **Paired Wilcoxon signed-rank** — khớp cặp theo scenario, proposed vs từng baseline, two-sided. Với `n_effective ≤ 25`
-  dùng **exact permutation null** (bắt buộc: xấp xỉ chuẩn anti-conservative ở n nhỏ — exact p sàn two-sided là 0,25 tại
-  n=3). Ô có complete-case n≤5 khai báo *not testable* bằng score test; bằng chứng tại đó lấy từ failure-rate test.
-- **Fisher exact 2×2 trên output-failure** (secondary) — [failed, ok] × [proposed, baseline] cấp scenario, Holm/6 mỗi
-  size. Đây là mặt robustness của luận điểm bù scale, dùng thay score test ở các ô n quá nhỏ. Run-level count chỉ báo
-  cáo mô tả (các run cùng scenario không độc lập).
-- **Holm correction** — step-down trên family gồm đúng 6 so sánh **trong cùng một size** → `p_holm`.
-- **Bootstrap 95% CI** — 10 000 resample, seed 42, trên mean paired delta.
+- **Paired Wilcoxon signed-rank** — khớp cặp theo scenario, proposed vs từng baseline, two-sided. Với `n_effective ≤ 500`
+  (`EXACT_WILCOXON_N_MAX`, phủ cả test_30 và test_90) p là **exact conditional permutation null có hạng trùng**, tính
+  bằng shift algorithm (Streitberg & Röhmel 1986); xấp xỉ chuẩn chỉ dùng khi vượt ngưỡng. Đây là routine duy nhất tự
+  viết: SciPy không có đường exact cho hạng trùng và số 0 (`method="exact"` bỏ qua hạng trùng mà không cảnh báo, còn duyệt
+  đủ 2ⁿ phép đổi dấu thì không khả thi ở n=30). `tests/test_stats.py` đối chiếu nó với phép duyệt đầy đủ của SciPy, có hạng
+  trùng, tới 1e-9. Diff được làm tròn tới `TIE_DECIMALS = 9` chữ số trước khi xếp hạng, để nhiễu float không tách một
+  hạng trùng hay giữ lại một số "gần 0". Dưới `failure=0` mọi scenario của size đều vào phép thử.
+- **Output-failure** (`failure_rates`, **mô tả, không p**) — mỗi size × baseline: số scenario proposed fail, baseline
+  fail, **cả hai fail, chỉ proposed fail, chỉ baseline fail**, trên `n_scenarios`; kèm run-level count của baseline (các
+  run cùng scenario không độc lập). Không kiểm định lại: dưới `failure=0` mỗi failure đã tính 0 trong phép thử ghép
+  cặp, nên các số đếm này chỉ cho biết chênh điểm đến từ đâu.
+- **Holm correction** — step-down trên family gồm đúng 6 so sánh **trong cùng một size**, riêng cho từng (score,
+  policy) → `p_holm`. Đây là tầng hiệu chỉnh duy nhất.
+- **Bootstrap 95% CI** — BCa (`scipy.stats.bootstrap`), 10 000 resample, seed 42, trên mean paired delta. Trend slope
+  dùng cùng routine, resample scenario. Phiên bản SciPy ghi ở `config.stats_software` của pooled JSON.
 - **Rank-biserial r** — effect size của Wilcoxon, `r = (W⁺ − W⁻)/(W⁺ + W⁻)`, range [−1, 1].
-- **Failure policies** — `complete_case` (chính, loại scenario thiếu) / `zero` (impute 0) / `min_score` (impute điểm
-  thấp nhất quan sát được ở size đó). Kiểm kết luận có nhạy với cách xử lý failure không.
-- **Interaction / DiD** — `did_mean` = delta tại size lớn nhất trừ delta tại size nhỏ nhất, kèm bootstrap CI + Wilcoxon
-  p.
-- **Trend slope** — độ dốc OLS của delta theo 4 bước size, kèm CI. ⚠️ Với baseline failure nặng ở size nhỏ,
-  trend/DiD complete-case trộn các subset scenario khác nhau qua size (survivorship) — **chỉ diễn giải mô tả**.
+- **Failure policy** — một policy cho mọi claim (`config.FAILURE_POLICY = "zero"`): scenario mà hệ không để lại output
+  chấm được tính 0, cả trong phép thử lẫn trong mean mỗi agent. Một sensitivity (`config.SENSITIVITY_POLICY =
+  "complete_case"`): chỉ scenario hệ chấm được ở mọi run — trên output có sẵn, không bao giờ gọi là unconditional.
+  Kiểm kết luận có nhạy với cách xử lý failure không.
+- **Interaction / DiD** — `did_mean` = delta tại size lớn nhất trừ delta tại size nhỏ nhất (delta per-scenario dưới
+  `failure=0`), kèm bootstrap CI + Wilcoxon p.
+- **Trend slope** — độ dốc OLS của delta (dưới `failure=0`) theo 4 bước size, trên scenario có mặt ở mọi size, kèm CI.
+  `failure=0` giữ mọi scenario đã chấm ở mỗi size (failure tính 0 chứ không rơi khỏi tập), nên DiD và trend so cùng
+  một tập scenario qua size.
 
 ## A.3 RQ2 — Alignment evaluation protocol
 
@@ -1233,7 +1259,7 @@ Chấm constructive alignment bằng một hàm cố định của văn bản �
 Đọc **chỉ text** (`objective_id`/`aligned_objective`/`level` tự khai **không** dùng để chấm, chỉ làm validation
 evidence). Mọi giá trị trong [0, 1]. **Không có scalar tổng hợp và không có ngưỡng cắt.**
 
-> **Panel, không thứ bậc.** 7 tín hiệu là một panel phẳng, mỗi tín hiệu một câu hỏi riêng, tất cả đều báo cho mọi so
+> **Panel, không thứ bậc.** 6 tín hiệu là một panel phẳng, mỗi tín hiệu một câu hỏi riêng, tất cả đều báo cho mọi so
 > sánh — thắng hay thua. Không có "endpoint chính": gắn nhãn chính/phụ chỉ là composite ngầm.
 >
 > **Quy tắc đặt tên**: tín hiệu mang tên phép toán nó thực hiện. Tên metric bị đọc trên nhãn trục hình và bullet
@@ -1275,10 +1301,9 @@ Evaluation-phase text không ứng với quan hệ core nào sau khi `evaluation
 
 Không có objectives → 3 tín hiệu similarity họ A = 0,0; set trống → tín hiệu tương ứng 0,0 + note.
 
-**Multiplicity — báo hai tầng.** `p_holm` = Holm trong từng tín hiệu (family = 6 so sánh/size), giữ nguyên power;
-`p_holm_panel` = Holm trên **toàn panel × baseline** của size đó, cùng dữ liệu nên miễn phí, và nó chặn trước phản
-biện "các anh chạy 168 test". Phòng thủ chống selective reporting nằm ở chỗ **mọi tín hiệu đều báo cho mọi so sánh**,
-không nằm ở việc gộp family.
+**Multiplicity — một tầng.** `p_holm` = Holm trong từng tín hiệu (family = 6 so sánh/size, riêng cho layer chính và
+layer sensitivity), giữ nguyên power. Phòng thủ chống selective reporting nằm ở chỗ **mọi tín hiệu đều báo cho mọi so
+sánh**, không nằm ở việc gộp family.
 
 Hai layer validity trong `details` (**không phải tín hiệu panel** — chúng đo instrument, không đo agent):
 `validation.declared_link_agreement` (% link objective↔item mà similarity matching tái tạo đúng link agent tự khai) và
@@ -1376,13 +1401,13 @@ này (lên 0,80 sau khi thảo luận thống nhất). Lexicon đạt 0,657 — 
 Trần oracle 77,6% là giới hạn trên của *mọi* classifier nhìn động từ (cùng một động từ mang nhiều nhãn khác nhau), nên
 phần lỗi còn lại chủ yếu là mơ hồ của nhãn chứ không phải lỗi instrument.
 
-Chạy lại: `00_validate_bloom.py <csv> --text-col Learning_outcome --label-cols Remember,Understand,Apply,Analyze,Evaluate,Create`
+Chạy lại: `./isd-exp bloom validate` (tham số: `./isd-exp help bloom validate`)
 — **chạy một lần, trước khi tin bất kỳ số Bloom nào**; độc lập hoàn toàn với run data. Báo cáo đầy đủ (kèm phân tầng
 theo độ thuần nhãn + confusion matrix): `results/generated/bloom_validation.md`.
 
 ### Trục sensitivity Bloom — `bertbloom`
 
-3/7 tín hiệu (`objective_cognitive_congruence`, `porter_*`, `webb_bloom_consistency`) chạy trên Bloom, nên họ tín
+3/6 tín hiệu (`objective_cognitive_congruence`, `porter_*`, `webb_bloom_consistency`) chạy trên Bloom, nên họ tín
 hiệu này có **trục sensitivity riêng**, ngang hàng với trục encoder:
 
 | Arm | Instrument | Xuất xứ | Suffix |
@@ -1459,44 +1484,44 @@ agent × size thành `mean`/`sd_across_scenarios` cho mọi metric. Tầng infer
 `stats.per_model[].panel[<signal>]` — không tín hiệu nào được hoisted lên cấp trên, vì thứ bậc *cấu trúc* cũng chính
 là composite ngầm mà panel loại bỏ. Mỗi tín hiệu có đủ:
 
-- `comparisons` — paired Wilcoxon + bootstrap CI + rank-biserial (cùng machinery RQ1), kèm `p_holm` (Holm/6 trong
-  tín hiệu đó) và `p_holm_panel` (Holm trên toàn panel × baseline của size đó).
-- `align_descriptive` — mean + bootstrap CI95 per agent.
+- `comparisons` — **layer chính, `failure=0`**: paired Wilcoxon + bootstrap BCa CI + rank-biserial (cùng machinery
+  RQ1), kèm `p_holm` (Holm/6 trong tín hiệu đó). `06` ghi roster `missing_outputs` (có log, không output → attempted &
+  failed), và pooling tính các cell đó là 0,0 — sàn của mọi tín hiệu.
+- `comparisons_complete_case` — **sensitivity**: cùng phép thử trên scenario cả hai agent được chấm, `p_holm` riêng.
+  Đây là **complete-case trên output CÓ SẴN**, không phải unconditional: agent crash thì không có `*_output.json`,
+  scenario đó rơi khỏi tập ghép cặp và cú crash **không tốn gì** cho agent. **Paper phải báo cả hai layer**, và
+  **không được gọi complete-case là "unconditional"**. Roster là bắt buộc: `06` luôn ghi, `07` luôn đọc.
+- `align_descriptive` — mean + bootstrap BCa CI95 per agent, dưới `failure=0`; `complete_case_descriptive` — mean
+  per agent trên scenario đã chấm.
 - `conditional_align` — chỉ scenario mà **mọi run được chấm** đều cho ≥1 objective (đọc `counts.objectives`, không đọc
   sự tồn tại của `porter_mean`). Tách quality khỏi parse failure.
-- `align_failures` + `comparisons_failure_zero` — **tầng failure policy, song song RQ1**. Hai layer trên là
-  **complete-case trên output CÓ SẴN**, không phải unconditional: agent crash thì không có `*_output.json`, scenario đó
-  rơi khỏi tập ghép cặp và cú crash **không tốn gì** cho agent. `06` ghi roster `missing_outputs` (có log, không output
-  → attempted & failed), pooling đếm vào `align_failures` rồi chạy lại paired test với các cell đó impute 0,0. Không có
-  policy `min_score` như RQ1 vì các endpoint đã sàn ở 0,0. **Paper phải báo cả hai layer**, và **không được gọi layer
-  chính là "unconditional"**. Roster là bắt buộc: `06` luôn ghi, `07` luôn đọc.
-- `align_failures` nằm ở cấp `per_model[]` (độc lập tín hiệu); `interaction_align` — DiD (largest − smallest size) per
-  baseline, bootstrap CI + Wilcoxon p — chạy trên `lead_metric` (mặc định `objective_assessment_similarity`, đổi bằng
+- `align_failures` (đếm mô tả số scenario và cell agent × run thiếu output) nằm ở cấp `per_model[]` (độc lập tín hiệu); `interaction_align` — DiD (largest − smallest size) per
+  baseline, dưới `failure=0`, bootstrap CI + Wilcoxon p — chạy trên `lead_metric` (mặc định `objective_assessment_similarity`, đổi bằng
   `--sensitivity-metric`). "Lead" ở đây chỉ chọn *chuỗi nào được vẽ* cho các tóm tắt một chiều, không phải một endpoint
   chính.
 
 Pooling **hard-fail** nếu các run dir gộp lại mang nhiều bộ `(encoder, encoder_revision, bloom_classifier)` khác nhau —
 trung bình trộn hai instrument không đo cái gì cả.
 
-**Coverage**: `07` so số file score tìm được với kỳ vọng (`n_scenarios_union × n_runs`) và **in WARNING nếu thiếu**
-(`n_scenario_files` / `n_scenario_files_expected` / `coverage_complete` cũng nằm trong JSON). Cần cảnh báo này vì con
-số `n=` per-agent trong report **không phân biệt được** "agent fail ở scenario đó" (dữ liệu thật, failure policy xử lý)
-với "scenario đó chưa từng được chấm" (lỗi thao tác) — một sweep chấm dở sẽ pool y như thể đã đủ. `04_audit_postrun.py`
-bắt cùng lỗi này sớm hơn, ở mức từng run dir và từng encoder arm; `07` là lớp phòng thủ thứ hai ngay tại chỗ số được tạo
-ra.
+**Coverage**: pool chỉ chạy trên judging đã xong. `pool comparison` và `pool ablation` từ chối khi một output chưa được
+LLM judge chấm đủ, hoặc khi một scenario thiếu artifact alignment mà các scenario khác trong run dir có
+(`pool/rosters.py::require_judged`), vì dưới failure = 0 một output chưa chấm sẽ bị tính 0 như một lần fail. Agent không
+để lại output là fail thật và được tính 0. `n_scenario_files` / `n_scenario_files_expected` / `coverage_complete` vẫn
+nằm trong JSON. `isd-exp audit postrun` bắt cùng lỗi này sớm hơn, ở mức từng run dir và từng encoder arm.
 
 **Sensitivity sweep** (cả hai trục) → `alignment_sensitivity.encoders[]`, mỗi entry mang `axis: encoder|bloom`:
 mỗi arm chạy **cùng** `pool_alignment` trên
 `alignment_scores.<suffix>.json` nên có đủ `models` + `stats`, cộng `agreement_with_primary.per_model[]`:
-Spearman ρ + p permutation chính xác (n≤8) + Kendall τ-b trên vector điểm trung bình theo agent (**trích τ-b trong
+Spearman ρ + Kendall τ-b trên vector điểm trung bình theo agent, **mô tả, không p** (**trích τ-b trong
 prose** vì n=7 thì Spearman nhiễu); ρ cấp scenario cho agent đề xuất (n≈90, trả lời câu hỏi khác: hai encoder có đồng ý
 *scenario nào* align tốt không); và ba đối chứng phi-rank — `top1_agent_*`, `proposed_rank_*`,
-`sign_agreement_vs_baselines` — vì ρ cao vẫn có thể đi kèm kết luận lật.
+`sign_agreement_vs_baselines` (cùng dấu và cùng verdict `p_holm` < 0,05) — vì ρ cao vẫn có thể đi kèm kết luận lật.
 
 `--auto-encoders` / `--auto-bloom` lấy roster **từ registry trước, đĩa sau**: preset non-primary chưa chấm được ghi là
 `skipped` chứ không vắng mặt — vắng mặt chính là kiểu hỏng làm một sweep dở dang trông như đã đủ.
 
-Ablation pooling reuse `pool_alignment` → bảng `objective_assessment_similarity` arm−A0 trong `stats_ablation.md`.
+Ablation đọc cùng artifact panel (`config.panel_artifact`) dưới `failure=0` cho bảng 2×2 mô tả (`factorial`); panel
+không có phép thử nào trong ablation.
 
 ## A.4 Operational metadata
 
