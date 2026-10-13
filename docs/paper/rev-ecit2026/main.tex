@@ -28,9 +28,9 @@
 
 \begin{document}
 
-\title{AlignmentGraph-ISD: Hệ đa tác tử phân rã theo vai\\
-với đồ thị căn chỉnh cho thiết kế giảng dạy\\
-kiểm toán được bằng mô hình ngôn ngữ nhỏ}
+\title{AlignmentGraph-ISD: Hệ đa tác tử\\
+thiết kế giảng dạy có thể kiểm toán\\
+trên mô hình ngôn ngữ nhỏ}
 
 % Thứ tự tác giả theo thầy Hải (tin nhắn 2026-10-13): Phương, thầy Tâm, thầy Hải;
 % thầy Hải là tác giả liên hệ (đã xác nhận 2026-10-13).
@@ -44,7 +44,7 @@ Email: phuong.bv242011m@sis.hust.edu.vn, tambv@dhhp.edu.vn, haipv@soict.hust.edu
 
 \begin{abstract}
 Các hệ tác tử dựa trên mô hình ngôn ngữ lớn (LLM) cho thiết kế giảng dạy (ISD)
-phần lớn dựa vào LLM thương mại qua API, trong khi các cơ sở giáo dục cần mô hình ngôn
+phần lớn dựa vào LLM thương mại gọi qua API, trong khi các cơ sở giáo dục cần mô hình ngôn
 ngữ nhỏ (SLM) vận hành tại chỗ. Với SLM, sự căn chỉnh giữa mục tiêu, hoạt động và
 đánh giá có nguy cơ bị phá vỡ mà LLM judge không chỉ ra được. Bài báo đề xuất
 AlignmentGraph-ISD, một hệ đa tác tử phân rã theo vai dùng chung một đồ thị căn
@@ -52,7 +52,7 @@ chỉnh. Khung điều phối ghi và kiểm tra các quan hệ căn chỉnh, r�
 sổ vi phạm để kiểm toán. Trên \NScenCmp{} kịch bản của ISD-Agent-Bench với Qwen3.5-2B, tuy điểm ADDIE
 của hệ (\cmpAGAddie) không khác biệt có ý nghĩa với tác tử mạnh nhất của benchmark
 là React-ADDIE (\cmpReactAddie), song ba tín hiệu tương ứng văn bản, đo không dùng
-LLM, của hệ cao hơn cả sáu tác tử đối sánh. Thí nghiệm phân tích thành phần cho thấy việc phân rã thành nhiều tác tử theo vai
+LLM, của hệ cao hơn cả sáu hệ đối chứng. Thí nghiệm phân tích thành phần cho thấy việc phân rã thành nhiều tác tử theo vai
 nâng điểm ADDIE thêm \ablHDDiff{} điểm so với một tác tử duy nhất ($p$\,\ablHDP).
 Trong khi đó, việc thay blackboard dạng văn bản bằng đồ thị căn chỉnh không cho thấy khác biệt có ý nghĩa về tỉ lệ mục tiêu được liên kết đầy đủ với cả hoạt động
 lẫn đánh giá, mà chủ yếu bổ sung khả năng kiểm toán.
@@ -83,11 +83,11 @@ hạ tầng của bên thứ ba, gây lo ngại về quyền riêng tư~\cite{ya
 ngữ nhỏ (Small Language Model -- SLM) mã nguồn mở, vận hành tại chỗ
 (on-premise)~\cite{chan2026bigger,katharakis2025slm}.
 
-Khi kích thước mô hình giảm, chất lượng đầu ra phụ thuộc nhiều hơn vào hệ thống
+Khi kích thước mô hình giảm, chất lượng đầu ra phụ thuộc nhiều hơn vào khung điều phối (harness)
 bao quanh mô hình. Phân rã bài toán cho một hệ đa tác tử (Multi-Agent System --
 MAS) là một hướng đã có bằng chứng thực nghiệm. Khung đa tác tử phân rã giúp SLM
 sử dụng công cụ tốt hơn~\cite{shen2024multillmagent}. Một hướng khác là chưng cất quỹ đạo tác tử (agent distillation), giúp các mô hình 0.5B--3B đạt kết quả gần với mô hình lớn hơn~\cite{kang2025agentdistill}.
-Tuy nhiên, tác dụng của khung bao quanh mô hình có thể không đơn điệu theo năng lực mô hình~\cite{cho2026harness}, nên cần đo trực tiếp lợi ích này.
+Tuy nhiên, tác dụng của khung điều phối có thể không đơn điệu theo năng lực mô hình~\cite{cho2026harness}, nên cần đo trực tiếp lợi ích này.
 
 Đối với ISD, yêu cầu cốt lõi mà hệ thống phải bảo đảm là sự căn chỉnh. Theo lý
 thuyết căn chỉnh kiến tạo (constructive alignment), chất lượng thiết kế nằm ở
@@ -104,12 +104,12 @@ chỉnh như một trạng thái tường minh, kiểm tra được ngay trong l
 đánh giá với SLM vận hành tại chỗ. Vì vậy, đóng góp của bài báo này là
 AlignmentGraph-ISD, một MAS phân rã theo vai cho ISD. Các tác tử dùng chung
 một đồ thị căn chỉnh, trong đó mỗi quan hệ mục tiêu--hoạt động--đánh giá là một
-cạnh có kiểu do khung điều phối (harness) ghi khi tác tử nộp sản phẩm. Đồ thị và sổ
+cạnh có kiểu do khung điều phối ghi khi tác tử nộp sản phẩm. Đồ thị và sổ
 vi phạm (violation ledger) được xuất ra để người thiết kế giảng dạy truy vết. Trên
 ISD-Agent-Bench với Qwen3.5-2B, tuy điểm LLM judge của hệ không khác biệt có ý nghĩa với tác tử
-mạnh nhất của benchmark, song các tín hiệu tương ứng văn bản của hệ cao hơn mọi tác
-tử đối sánh, và hệ cung cấp thêm hồ sơ kiểm toán, đổi lại chi phí token cao hơn. Lợi ích này đi cùng
-việc phân rã theo vai; đồ thị không cho thấy khác biệt có ý nghĩa so với blackboard.
+mạnh nhất của benchmark, song các tín hiệu tương ứng văn bản của hệ cao hơn mọi hệ
+đối chứng, và hệ cung cấp thêm hồ sơ kiểm toán, đổi lại chi phí token cao hơn. Thí nghiệm phân tích thành phần cho thấy lợi ích đo được đi cùng
+việc phân rã theo vai; đồ thị không cho thấy khác biệt có ý nghĩa so với blackboard dạng văn bản.
 
 Phần~\ref{sec:related}--\ref{sec:conclusion} lần lượt trình bày nghiên cứu liên quan,
 hệ thống đề xuất, thực nghiệm và kết luận.
@@ -125,9 +125,9 @@ vai~\cite{yao2025instructionalagents}.
 ISD-Agent-Bench tập hợp các tác tử theo nhiều lý thuyết ISD, trong đó có một tác
 tử theo mẫu ReAct~\cite{isdagentbench,yao2023react}. Các hệ này chạy trên mô
 hình thương mại mạnh và giữ sự nhất quán giữa các thành phần một cách ngầm định.
-Về kiến trúc, EduPlanner, Instructional Agents và hệ đề xuất cùng thuộc họ MAS theo quy trình vận hành
+Về kiến trúc, EduPlanner, Instructional Agents và hệ đề xuất cùng thuộc nhóm MAS theo quy trình vận hành
 chuẩn (Standard Operating Procedure -- SOP) như MetaGPT~\cite{hong2024metagpt,guo2024mas}.
-Trong họ này, các vai và thứ tự của chúng được định trước. Điểm khác biệt nằm ở
+Trong nhóm này, các vai và thứ tự của chúng được định trước. Điểm khác biệt nằm ở
 đối tượng mà các tác tử dùng chung: văn bản truyền giữa các bước, hoặc một trạng
 thái có thể truy vấn và kiểm toán.
 
@@ -140,7 +140,7 @@ trình ISD trên SLM.
 \subsection{Căn chỉnh kiến tạo và đánh giá bằng LLM judge}
 Căn chỉnh kiến tạo yêu cầu mục tiêu học tập, hoạt động dạy--học và nhiệm vụ đánh
 giá cùng hướng về một kết quả học tập dự
-kiến~\cite{biggs1996enhancing}. Với ChatGPT, việc thiết kế khóa học theo căn chỉnh kiến tạo vẫn cần giảng viên hoàn thiện~\cite{pereira2024constructive}. Thang phân loại Bloom
+kiến~\cite{biggs1996enhancing}. Khi dùng ChatGPT thiết kế khóa học theo căn chỉnh kiến tạo, kết quả vẫn cần giảng viên hoàn thiện~\cite{pereira2024constructive}. Thang phân loại Bloom
 sửa đổi cung cấp bộ từ vựng chung về mức nhận thức~\cite{anderson2001taxonomy}. Ở phía
 đánh giá hệ thống, LLM judge có các thiên lệch đã biết như thiên lệch vị trí, độ
 dài và tự ưu tiên~\cite{ye2025justice}. Khi chấm từng pha ADDIE riêng rẽ, LLM
@@ -161,11 +161,11 @@ kiểm tra và việc báo cáo.
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\textwidth]{architecture_timeline.pdf}
-  \caption{Kiến trúc AlignmentGraph-ISD. Sáu Stage Agent giữ lượt theo thứ tự 1--6;
-  ở bốn giai đoạn, Developer viết các nhóm việc suy ra từ sản phẩm của Stage Agent.
+  \caption{Kiến trúc AlignmentGraph-ISD. Sáu Stage Agent lần lượt làm việc theo thứ tự 1--6;
+  ở bốn giai đoạn, Developer thực hiện các nhóm việc được suy ra từ sản phẩm của Stage Agent.
   Mọi lượt đọc và nộp đi qua lớp kiểm soát (guardrails) của khung điều phối: lượt
   đọc chỉ trả về phạm vi của vai; lượt nộp đạt kiểm tra thì được ghi vào đồ thị,
-  không đạt thì lỗi được trả về bên đã nộp để sửa. Hàng dưới cùng là đồ thị sau
+  không đạt thì lỗi được trả lại cho tác tử đã nộp để sửa. Hàng dưới cùng là đồ thị sau
   từng giai đoạn; tam giác C2--C4 khép lại ở giai đoạn 4.}
   \label{fig:arch}
 \end{figure*}
@@ -208,7 +208,7 @@ Ba quan hệ cốt lõi (giữ cách đánh số trong mã nguồn) là ba cạn
 (\texttt{prepares\_for}) nối hoạt động với nhiệm vụ đánh giá mà nó chuẩn bị. Mười
 bốn quan hệ phụ $P_1$--$P_{14}$ ghi nguồn gốc, cách tổ chức theo mô-đun và việc
 truy vết khi triển khai. Mô-đun
-chỉ tham gia quan hệ phụ, vì nó tổ chức khóa học chứ không phải một đỉnh của tam
+chỉ tham gia quan hệ phụ, vì mô-đun là đơn vị tổ chức khóa học, không phải một đỉnh của tam
 giác.
 
 Một mục tiêu $o$ được căn chỉnh về cấu trúc khi tam giác khép kín trên nó:
@@ -220,10 +220,10 @@ Một mục tiêu $o$ được căn chỉnh về cấu trúc khi tam giác khép
 \end{aligned}
 \end{equation}
 trong đó $h$ là một hoạt động và $d$ là một nhiệm vụ đánh giá. Ba cạnh phải gặp
-nhau trên cùng một hoạt động và cùng một nhiệm vụ. Ba điều kiện tồn tại tách rời
-là chưa đủ, vì hoạt động có thể chuẩn bị cho một nhiệm vụ không đo $o$.
+nhau trên cùng một hoạt động và cùng một nhiệm vụ. Nếu ba cạnh chỉ tồn tại riêng rẽ
+thì chưa đủ, vì hoạt động có thể chuẩn bị cho một nhiệm vụ không đo $o$.
 
-Với mỗi quan hệ $r$, gọi $S_r$ là tập nút thuộc phía phủ (coverage side) của $r$
+Với mỗi quan hệ $r$, gọi $S_r$ là tập nút được xét độ phủ (coverage side) của $r$
 và $N_r(v)$ là tập nút nối với $v$ qua $r$ theo hướng đó. Độ phủ của $r$ là
 \begin{equation}
 \label{eq:coverage}
@@ -234,7 +234,7 @@ nó. Điều kiện~\eqref{eq:aligned} và độ phủ~\eqref{eq:coverage} là �
 trúc: chúng cho biết quan hệ có tồn tại hay không, không cho biết thiết kế có giá
 trị sư phạm hay không.
 
-Cạnh không do mô hình tạo ra. Mỗi sản phẩm khai báo mã định danh (id) của các
+Mô hình không trực tiếp tạo cạnh. Mỗi sản phẩm khai báo mã định danh (id) của các
 sản phẩm mà nó phục vụ, ví dụ một hoạt động khai báo mục tiêu mà nó luyện tập.
 Khi ghi sản phẩm, khung điều phối tra từng id và tự ghi cạnh có kiểu. Vì vậy,
 quan hệ hình thành đúng tại thời điểm ghi. Một id không trỏ tới nút nào thì không
@@ -246,8 +246,8 @@ tạo cạnh. Phần thiếu hụt này được phản ánh trong độ phủ.
 Mỗi tác tử chạy một vòng lặp hành động--quan sát (act--observe) theo mẫu
 ReAct~\cite{yao2023react}, dùng cơ chế gọi công cụ (tool calling) gốc của mô hình. Công cụ
 \texttt{read\_alignment\_state} không có tham số và trả về lát cắt đồ thị theo vai
-của tác tử: những gì đã có kèm id, phần do tác tử viết, những gì còn thiếu mà sản
-phẩm của nó phải bù, và các vi phạm đang mở của nó. Công cụ \texttt{read\_node}
+của tác tử: những gì đã có kèm id, phần do tác tử viết, những gì còn thiếu mà tác tử
+phải bổ sung, và các vi phạm đang mở của nó. Công cụ \texttt{read\_node}
 trả về trọn một sản phẩm. Mỗi sản phẩm có một công cụ nộp riêng
 \texttt{submit\_<sản phẩm>}, và sản phẩm chính là tham số của lời gọi nộp.
 
@@ -256,13 +256,13 @@ phẩm. Lần nộp hợp lệ được ghi thành nút có kiểu kèm các c�
 Mục~\ref{sec:graph}. Lần nộp không hợp lệ bị từ chối, và thông báo lỗi của
 validator trở thành quan sát kế tiếp để tác tử sửa và nộp lại. Mỗi sản phẩm được phép tối đa ba lần nộp không tiến triển. Mỗi giai đoạn có trần số lượt. Nếu một giai đoạn không hoàn tất
 trong các giới hạn này, khung điều phối vẫn ghi phần tốt nhất mà mô hình đã viết,
-đánh dấu giai đoạn là bỏ dở (\texttt{gave\_up}) và báo cáo nó cùng kết quả.
+đánh dấu giai đoạn là bỏ dở (\texttt{gave\_up}) và ghi nhận điều này trong kết quả.
 
-Có bốn họ sản phẩm mà số lượng tăng theo quy mô thiết kế: câu hỏi đánh giá (nằm
+Có bốn loại sản phẩm mà số lượng tăng theo quy mô thiết kế: câu hỏi đánh giá (nằm
 trong nhiệm vụ đánh giá), hoạt động học tập, học liệu và hướng dẫn buổi học. Các
-họ này do tầng tác tử phát triển (Developer) viết, mỗi Developer đảm nhận một
+loại này do tầng tác tử phát triển (Developer) viết, mỗi Developer đảm nhận một
 nhóm việc (work set). Nhóm việc được suy ra từ thiết kế đã có: mỗi mô-đun là một
-nhóm, riêng họ đánh giá thì mỗi mục của bảng đặc tả là một nhóm. Mô hình không
+nhóm, riêng phần đánh giá thì mỗi mục của bảng đặc tả là một nhóm. Mô hình không
 tự chọn cách chia nhóm. Developer chạy cùng kiểu vòng lặp act--observe và
 ghi vào cùng đồ thị. Nếu sau đó vẫn còn phần thiếu hụt, khung điều phối giao lại nhóm việc liên quan cho Developer, tối đa một lần, kèm danh sách những gì còn thiếu.
 
@@ -270,22 +270,22 @@ ghi vào cùng đồ thị. Nếu sau đó vẫn còn phần thiếu hụt, khun
 \label{sec:repair}
 
 Sau mỗi giai đoạn, khung điều phối chạy các phép kiểm tra tất định gắn với giai
-đoạn đó mà không gọi mô hình. Các phép kiểm tra gồm động từ Bloom so với mức khai báo, tính đo được của mục tiêu,
+đoạn đó mà không gọi mô hình. Các phép kiểm tra gồm sự khớp giữa động từ Bloom và mức khai báo, tính đo được của mục tiêu,
 độ phủ quan hệ, bảng đặc tả, câu hỏi, ngân sách thời gian, lịch triển khai và tính khả thi.
 
 Việc sửa có hai tầng. Tầng thứ nhất là sửa cấu trúc do khung điều phối thực hiện
 mà không gọi mô hình. Tầng này chỉ sắp xếp lại những gì thiết kế đã có, ví dụ trỏ
 lại một tham chiếu không hợp lệ hoặc thay động từ ngoài thang Bloom bằng động từ
 mà mức khai báo cho phép. Tầng thứ hai dành cho vi phạm cần viết thêm nội dung.
-Vi phạm loại này được trả về tác tử sở hữu thành một lượt sửa trong chính hội
+Vi phạm loại này được chuyển cho tác tử phụ trách dưới dạng một yêu cầu sửa, ngay trong hội
 thoại của tác tử đó. Tác tử đọc lại trạng thái, thấy vi phạm đang mở và nộp lại.
-Khung điều phối không tự viết nội dung giảng dạy. Với một số loại vi phạm, khung điều phối không sửa mà chỉ báo cáo và đếm nếu còn tồn tại.
+Khung điều phối không tự viết nội dung giảng dạy. Với một số loại vi phạm, khung điều phối không sửa mà chỉ ghi nhận và thống kê nếu vi phạm vẫn còn.
 
 Mỗi vi phạm được ghi vào sổ vi phạm cùng kết cục: còn mở, do
 khung điều phối sửa hoặc do tác tử sửa. Với vi phạm còn mở, sổ ghi lý do: tác tử
-đã thấy nhưng không sửa được, hết ngân sách, không có tác tử nào sở hữu, hoặc chưa được đưa tới tác tử nào. Sau sáu giai đoạn, một lượt đối chiếu (reconciliation) tất
-định gán các vi phạm liên giai đoạn còn lại cho tác tử sở hữu và chỉ sửa cấu trúc, không gọi mô hình. Bộ tổng hợp lắp đầu ra ADDIE từ đồ thị. Bộ kiểm toán ghi lại các vi phạm
-còn tồn tại.
+đã thấy nhưng không sửa được, hết ngân sách, không có tác tử nào phụ trách, hoặc chưa được đưa tới tác tử nào. Sau sáu giai đoạn, một lượt đối chiếu (reconciliation) tất
+định gán các vi phạm liên giai đoạn còn lại cho tác tử phụ trách và chỉ sửa cấu trúc, không gọi mô hình. Bộ tổng hợp dựng bản thiết kế ADDIE hoàn chỉnh từ đồ thị. Cuối cùng, bộ kiểm toán (auditor) ghi lại các vi phạm
+chưa được xử lý.
 
 Mỗi lần chạy xuất ra hai tệp. Tệp \texttt{graph.json} chứa mọi nút, cạnh có kiểu
 và các cạnh tam giác của từng mục tiêu. Tệp \texttt{violations.json} chứa sổ vi
@@ -303,12 +303,12 @@ trong vòng lặp (teacher-in-the-loop). Như vậy, cơ chế kiểm tra--sửa
 
 \subsubsection{Dữ liệu và mô hình}
 Chúng tôi dùng 30 kịch bản thuộc tập kiểm tra của
-ISD-Agent-Bench~\cite{isdagentbench}. Tập này tách biệt với 10 kịch bản đã dùng trong giai đoạn hoàn thiện hệ. Mọi hệ chạy trên cùng mô hình Qwen3.5-2B, vận hành tại chỗ bằng vLLM, với nhiệt độ sinh mặc định 0.7 (EduPlanner giữ nhiệt độ riêng cho từng vai theo thiết kế gốc) và cùng trần 8192 token cho mỗi lượt gọi. Trần này là ngân sách mà một mô hình đến 4B để lại trên một GPU
-12--16\,GB, tức môi trường triển khai mà bài báo nhắm tới. Phần suy luận của mô hình dùng chung ngân sách này và bị giới hạn ở 32 token; đây là trần chứ không phải tắt suy luận, được chốt trước khi chạy chính thức. Mỗi ô (hệ, kịch bản)
-được sinh một lần. Vì nhiệt độ sinh khác không, một lần sinh không phải là một
-giá trị tất định. Khi một lượt nộp của hệ đề xuất bị từ chối, hệ viết lại sản phẩm
+ISD-Agent-Bench~\cite{isdagentbench}. Tập này tách biệt với 10 kịch bản đã dùng trong giai đoạn hoàn thiện hệ. Mọi hệ chạy trên cùng mô hình Qwen3.5-2B, vận hành tại chỗ bằng vLLM, với nhiệt độ sinh mặc định 0.7 (EduPlanner giữ nhiệt độ riêng cho từng vai theo thiết kế gốc) và cùng trần 8192 token cho mỗi lượt gọi. Trần này là mức mà một GPU
+12--16\,GB còn đáp ứng được khi chạy mô hình đến 4B, tức môi trường triển khai mà bài báo nhắm tới. Phần suy luận của mô hình dùng chung ngân sách này và bị giới hạn ở 32 token; đây là trần chứ không phải tắt suy luận, được chốt trước khi chạy chính thức. Mỗi ô (hệ, kịch bản)
+được sinh một lần. Vì nhiệt độ sinh khác không, kết quả của một lần sinh
+không tất định. Khi một lượt nộp của hệ đề xuất bị từ chối, hệ viết lại sản phẩm
 đó một lần bằng giải mã có ràng buộc (constrained decoding) theo JSON Schema của
-sản phẩm. Đây là cơ chế sẵn có của vLLM~\cite{kwon2023vllm}, và điều kiện phục vụ này giống nhau ở mọi
+sản phẩm. Đây là cơ chế sẵn có của vLLM~\cite{kwon2023vllm}, và cấu hình này giống nhau ở mọi
 biến thể của hệ. Sáu tác tử của benchmark chạy nguyên mã gốc, không có lượt viết lại
 này. Trung bình mỗi kịch bản có \CPass{} lượt viết lại, trong đó \CPassRej{} lượt vẫn
 không qua validator. Hai lượt sinh của EduPlanner lỗi do mất kết nối tới máy chủ mô hình. Một kịch bản có tệp đầu vào sai tên trường, và tệp được sửa theo bản gốc của benchmark. Các ô này được sinh lại với cùng cấu hình trước khi chấm. Hệ đề xuất được sinh riêng ở mỗi thí nghiệm, nên số liệu của nó ở Bảng~\ref{tab:judge} và Bảng~\ref{tab:ablation} khác nhau đôi chút.
@@ -322,10 +322,10 @@ Tên tác tử theo bài báo gốc; prompt của React-ADDIE được dịch sa
 \subsubsection{Thí nghiệm 2 -- phân tích thành phần}
 Để tách vai trò của hai lựa chọn thiết kế, chúng tôi dùng thiết kế thực nghiệm
 giai thừa $2\times2$. Trục \emph{phân rã} so sánh sáu tác tử theo vai (multi) với
-một tác tử duy nhất duy trì một ngữ cảnh qua cả sáu giai đoạn (single). Trục
+một tác tử đơn giữ một ngữ cảnh chung qua cả sáu giai đoạn (single). Trục
 \emph{trạng thái} so sánh đồ thị căn chỉnh (graph) với một blackboard dạng văn bản (prose). Trong biến thể prose, mỗi giai đoạn lưu nguyên văn sản phẩm và
 giai đoạn sau đọc lại toàn văn. Mỗi trục thay đổi đồng thời một nhóm cơ chế. Trục phân rã thay đổi cùng lúc ranh giới ngữ cảnh, số vai, tầng Developer, việc chia và giao lại nhóm việc, và thời điểm sửa. Trục trạng
-thái thay đổi toàn bộ bộ máy căn chỉnh: đồ thị, công cụ đọc trạng thái, định tuyến
+thái thay đổi toàn bộ cơ chế căn chỉnh: đồ thị, công cụ đọc trạng thái, định tuyến
 vi phạm và kiểm toán. Vì vậy, kết quả được diễn giải cho cả nhóm cơ chế của từng trục, không quy cho một
 thành phần riêng lẻ.
 
@@ -336,8 +336,8 @@ thành phần riêng lẻ.
 \label{eq:total}
 \mathrm{Total}=0.7\cdot\mathrm{ADDIE}+0.3\cdot\mathrm{Trajectory}.
 \end{equation}
-Ba điểm được báo cáo song song. ADDIE là điểm dẫn vì nó đo chất lượng nội dung
-thiết kế. Ba LLM judge của ba hãng khác nhau (GPT-6 Luna, Gemini~3.1 Flash-Lite, DeepSeek-V4.1-Flash) chấm mỗi đầu ra, với suy luận tắt. Điểm cuối cùng là trung vị của ba điểm. Không hãng nào trùng với hãng của mô hình tác tử. GPT-6 Luna không nhận tham số nhiệt độ nên không tất định. Bộ chấm của benchmark chỉ
+Ba điểm được báo cáo song song. Chúng tôi diễn giải điểm ADDIE trước vì nó đo chất lượng nội dung
+thiết kế. Ba LLM judge của ba hãng khác nhau (GPT-6 Luna, Gemini~3.1 Flash-Lite, DeepSeek-V4.1-Flash) chấm mỗi đầu ra ở chế độ tắt suy luận. Điểm cuối cùng là trung vị của ba điểm. Không hãng nào trùng với hãng của mô hình tác tử. GPT-6 Luna không nhận tham số nhiệt độ nên không tất định. Bộ chấm của benchmark chỉ
 đưa cho LLM judge 20 lời gọi công cụ đầu tiên. Do đó, hệ phân rã chịu bất lợi do
 cách chấm ở điểm Trajectory.
 
@@ -354,15 +354,15 @@ tỉ lệ phần tử của hai phía rơi vào ô (chủ đề, mức Bloom) th
 chỉnh trên dữ liệu mục tiêu học tập~\cite{li2022bloomclassification} và câu hỏi thi~\cite{faraji2026crossdataset} do chuyên gia gán nhãn ($\kappa=\BloomKappa$ trên \BloomN{} mẫu giữ lại). Tín
 hiệu bằng 0 khi hệ không sinh ra tập phần tử tương ứng. Quy trình chấm không dùng
 LLM và không có thành phần ngẫu nhiên. Kết quả tái lập được, sai khác chỉ ở mức
-nhiễu dấu phẩy động, nhờ cố định phiên bản encoder và lưu đệm embedding. Các tín hiệu này chỉ phản ánh một số khía cạnh đo được của căn chỉnh kiến tạo.
+nhiễu dấu phẩy động, nhờ cố định phiên bản encoder và lưu bộ đệm (cache) embedding. Các tín hiệu này chỉ phản ánh một số khía cạnh đo được của căn chỉnh kiến tạo.
 
 \subsubsection{Thước đo quá trình và thống kê}
 Với Thí nghiệm~2, chúng tôi tính tỉ lệ mục tiêu có đủ ba cạnh $C_2$, $C_3$, $C_4$ theo~\eqref{eq:aligned} trên đầu ra của cả bốn biến thể. Thước đo này tính được trên cả đồ thị lẫn blackboard. Đây là mức tuân thủ cấu trúc, không
 phải giá trị sư phạm. Các bảng ghi trung bình qua 30 kịch bản; Bảng~\ref{tab:judge} và cột ADDIE của Bảng~\ref{tab:ablation} ghi thêm độ lệch chuẩn. Ở Thí nghiệm~1, hệ đề xuất được so sánh với từng hệ còn lại bằng kiểm định
 Wilcoxon theo cặp kịch bản. Giá trị $p$ được hiệu chỉnh Holm trong từng điểm số
-hoặc từng tín hiệu. Ở Thí nghiệm~2, hai kiểm định được định trước, ghi trong cấu hình đóng băng trước khi chạy chính thức, với giả thuyết multi cao hơn single về điểm ADDIE và graph cao hơn prose về tỉ lệ mục tiêu khép kín tam giác. Thước đo của trục trạng thái được chốt sau khi xem dữ liệu của giai đoạn hoàn thiện, trước khi chạy chính thức, vì LLM judge chấm từng pha riêng rẽ nên không thấy liên kết giữa các pha. Hai kiểm định này thuộc cùng một họ hiệu chỉnh Holm.
+hoặc từng tín hiệu. Ở Thí nghiệm~2, hai kiểm định được định trước, ghi trong cấu hình đã cố định trước khi chạy chính thức, với giả thuyết multi cao hơn single về điểm ADDIE và graph cao hơn prose về tỉ lệ mục tiêu khép kín tam giác. Thước đo của trục trạng thái được chốt sau khi xem dữ liệu của giai đoạn hoàn thiện, trước khi chạy chính thức, vì LLM judge chấm từng pha riêng rẽ nên không thấy liên kết giữa các pha. Hai kiểm định này thuộc cùng một nhóm hiệu chỉnh Holm.
 Ở cả hai thí nghiệm, hệ không sinh ra đầu ra chấm được ở một kịch bản thì nhận
-0 điểm ở kịch bản đó. Vì chênh lệch theo cặp thường có hạng trùng hoặc bằng 0, giá trị $p$ của Wilcoxon được tính chính xác theo phân phối hoán vị có điều kiện. Khoảng tin cậy 95\% được ước lượng bằng bootstrap.
+0 điểm ở kịch bản đó. Vì chênh lệch theo cặp thường có hạng bằng nhau hoặc bằng 0, giá trị $p$ của Wilcoxon được tính chính xác theo phân phối hoán vị có điều kiện. Khoảng tin cậy 95\% được ước lượng bằng bootstrap.
 
 \subsection{Kết quả}
 \label{sec:results}
@@ -383,8 +383,8 @@ $p$\,\cmpReactAddieP), Dick-Carey-Agent (\cmpDickAddie) và RPISD-Agent
 (\cmpRpisdAddie). Hệ đề xuất cao hơn ADDIE-Agent \cmpAddieAddieDiff{} điểm,
 Baseline \cmpBaseAddieDiff{} điểm và EduPlanner \cmpEduAddieDiff{} điểm
 ($p$\,\cmpEduAddieP{} ở cả ba so sánh). Một phần chênh lệch với hai hệ sau đến từ các kịch bản không
-có đầu ra chấm được (chú thích Bảng~\ref{tab:judge}). Baseline hỏng vì đầu ra chạm
-trần 8192 token, còn EduPlanner hỏng vì đầu ra không khớp schema của chính nó. Về
+có đầu ra chấm được (chú thích Bảng~\ref{tab:judge}). Baseline thất bại vì đầu ra chạm
+trần 8192 token, còn EduPlanner thất bại vì đầu ra không khớp lược đồ (schema) do chính nó quy định. Về
 điểm Trajectory, ADDIE-Agent đạt cao nhất (\cmpAddieTraj) và cao hơn có ý nghĩa so với hệ đề xuất ($p$\,\cmpAddieTrajP). Về điểm Total, hệ đề xuất không khác biệt có ý nghĩa với React-ADDIE, Dick-Carey-Agent và RPISD-Agent.
 
 Bảng~\ref{tab:panel} trình bày sáu tín hiệu căn chỉnh. Tuy điểm ADDIE không tách
@@ -409,8 +409,8 @@ giác cũng tăng từ \ablSGTriad--\ablSPTriad\% ở biến thể single lên
 không phát hiện khác biệt: chênh lệch tỉ lệ khép kín của graph so với prose là $\ablHSDiff$ điểm phần trăm (khoảng tin cậy 95\% [$\ablHSCILo$; $\ablHSCIHi$],
 $p$\,\ablHSP). Khoảng tin cậy này rộng: với 30 kịch bản, thí nghiệm không loại trừ được
 chênh lệch đến \ablHSCILoAbs{} điểm phần trăm về phía prose hay $\ablHSCIHi$ điểm về phía graph.
-Ở biến thể graph, lưới sửa chỉ nối thêm cạnh $C_4$ cho \ablMGRepaired\% hoạt động (multi) và
-\ablSGRepaired\% (single); các cạnh $C_2$ và $C_3$ đều do tác tử viết. Biến thể single tốn nhiều token hơn multi (\ablSGTok{}k so với
+Ở biến thể graph, tầng sửa cấu trúc chỉ nối thêm cạnh $C_4$ cho \ablMGRepaired\% hoạt động (multi) và
+\ablSGRepaired\% (single); các cạnh $C_2$ và $C_3$ đều xuất phát từ tham chiếu do tác tử viết. Biến thể single tốn nhiều token hơn multi (\ablSGTok{}k so với
 \ablMGTok{}k ở biến thể graph).
 
 \subsection{Thảo luận}
@@ -421,7 +421,7 @@ kịch bản của hệ (\cmpAGAddieSD) ngang Dick-Carey-Agent (\cmpDickAddieSD)
 
 \textbf{(2) Tín hiệu họ A tách hệ đề xuất khỏi các tác tử mạnh, điểm ADDIE thì không.} Có hai cách đọc
 kết quả này. Cách thứ nhất: LLM judge chấm từng pha ADDIE riêng rẽ nên không thấy
-liên kết giữa các pha, đúng là lý do cần đo thêm tín hiệu căn chỉnh. Cách thứ hai: khung điều phối đã kiểm tra ngay lúc nộp một phần các ràng buộc mà các tín hiệu này đo, nên tín hiệu cao một phần phản ánh việc hệ tuân thủ ràng buộc của chính nó.
+liên kết giữa các pha, đúng là lý do cần đo thêm tín hiệu căn chỉnh. Cách thứ hai: khung điều phối đã kiểm tra, ngay lúc nộp, một số ràng buộc mà các tín hiệu này đo, nên tín hiệu cao một phần phản ánh việc hệ tuân thủ ràng buộc của chính nó.
 Bằng chứng độc lập cần đến đánh giá của chuyên gia.
 
 \textbf{(3) Phân rã đa tác tử có tác dụng rõ với Qwen3.5-2B.} Trục này gồm các thay đổi nêu ở phần thiết lập Thí nghiệm~2. Với mô hình 2B, cả điểm ADDIE và
@@ -438,8 +438,8 @@ thiện cặp này cho điểm ít phân tán giữa các kịch bản, và GPT-
 nhất~\cite{chen2026longjudgebench}. Các LLM judge này lệch nhau đáng kể về mức điểm tuyệt
 đối (độ lệch chuẩn giữa ba LLM judge trung bình \JudgeSD{} điểm ADDIE), và thứ hạng giữa hệ đề
 xuất và React-ADDIE thay đổi theo từng LLM judge. Chúng
-tôi đã kiểm tra rằng cả ba LLM judge nhận đủ các đầu ra dài và không chấm nội dung
-có thật thành vắng mặt. Bằng chứng độc lập về chất lượng thiết kế cần đến đánh giá
+tôi đã kiểm tra rằng cả ba LLM judge nhận đủ các đầu ra dài và không chấm nhầm nội dung
+có thật là bị thiếu. Bằng chứng độc lập về chất lượng thiết kế cần đến đánh giá
 của chuyên gia thiết kế giảng dạy. Kết quả được quan sát trên Qwen3.5-2B và chưa
 được kiểm chứng trên các cỡ mô hình và các họ mô hình khác.
 
@@ -449,8 +449,8 @@ của chuyên gia thiết kế giảng dạy. Kết quả được quan sát tr�
 Bài báo đã trình bày AlignmentGraph-ISD, một hệ đa tác tử phân rã theo vai cho
 thiết kế giảng dạy. Trong hệ này, các tác tử dùng chung một đồ thị căn chỉnh làm
 trạng thái trung tâm. Trên \NScenCmp{} kịch bản với Qwen3.5-2B, tuy điểm LLM judge của hệ không khác biệt có ý nghĩa với tác tử mạnh nhất của
-benchmark, song các tín hiệu tương ứng văn bản của hệ cao hơn cả sáu tác tử đối
-sánh. Thí nghiệm phân tích thành phần cho thấy việc phân rã thành nhiều tác tử theo vai
+benchmark, song các tín hiệu tương ứng văn bản của hệ cao hơn cả sáu hệ đối
+chứng. Thí nghiệm phân tích thành phần cho thấy việc phân rã thành nhiều tác tử theo vai
 nâng điểm ADDIE so với một tác tử duy nhất. Trong khi đó, đồ thị căn chỉnh không cho thấy khác biệt có ý nghĩa so với blackboard
 dạng văn bản, mà chủ yếu bổ sung hồ sơ kiểm toán. Hướng phát triển gồm đánh giá trên nhiều cỡ mô hình,
 lặp lại nhiều lần sinh cho mỗi kịch bản và lấy đánh giá của chuyên gia thiết kế
