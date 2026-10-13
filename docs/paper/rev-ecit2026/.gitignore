@@ -1,0 +1,5 @@
+# Downloaded originals; IEEEtran.cls and IEEEtran.bst are copied out of them.
+template/*.zip
+template/latex/
+template/bst/
+generated/

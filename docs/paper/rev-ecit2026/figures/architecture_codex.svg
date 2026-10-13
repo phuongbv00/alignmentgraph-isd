@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180mm" height="62.181818mm" viewBox="0 0 1100 380">
+<defs>
+<marker id="blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#315e81"/></marker>
+<marker id="teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#28776f"/></marker>
+<marker id="grey" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#697580"/></marker>
+</defs>
+<rect width="1100" height="380" fill="white"/>
+<text x="12" y="23" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" text-anchor="start" fill="#24313d">AlignmentGraph-ISD</text>
+<text x="1088" y="23" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="end" fill="#697580">Thiết kế dạy học đa tác tử</text>
+<rect x="12" y="39" width="266" height="32" rx="7" fill="#fff" stroke="#cad2d9" stroke-width="1.3"/>
+<text x="145" y="60" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle" fill="#24313d">Bản mô tả thiết kế</text>
+<path d="M145 71V91" fill="none" stroke="#315e81" stroke-width="1.7" marker-end="url(#blue)"/>
+<text x="145" y="88" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle" fill="#24313d"></text>
+<text x="145" y="111" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24313d">Designer · Backward Design</text>
+<text x="145" y="132" font-family="Arial,Helvetica,sans-serif" font-size="15.5" font-weight="400" text-anchor="middle" fill="#697580">Lượt cố định 1 → 6 · chỉ 1 tác tử</text>
+<rect x="12" y="143" width="266" height="25" rx="4" fill="#f5f6f7" stroke="#d8dfe4" stroke-width="1.3"/>
+<text x="29" y="161" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#697580">1</text>
+<text x="47" y="161" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="start" fill="#24313d">Phân tích nhu cầu</text>
+<rect x="12" y="170" width="266" height="25" rx="4" fill="#f5f6f7" stroke="#d8dfe4" stroke-width="1.3"/>
+<text x="29" y="188" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#697580">2</text>
+<text x="47" y="188" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="start" fill="#24313d">Mục tiêu &amp; mô-đun</text>
+<rect x="12" y="197" width="266" height="25" rx="4" fill="#e9f1f7" stroke="#315e81" stroke-width="1.3"/>
+<text x="29" y="215" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#315e81">3</text>
+<rect x="47" y="202" width="22" height="16" rx="3" fill="#fff" stroke="#315e81" stroke-width="1.3"/>
+<path d="M58 202v-4" fill="none" stroke="#315e81" stroke-width="1.7"/>
+<circle cx="54" cy="209" r="1.6" fill="#315e81"/>
+<circle cx="62" cy="209" r="1.6" fill="#315e81"/>
+<text x="78" y="215" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" text-anchor="start" fill="#24313d">Đánh giá</text>
+<rect x="12" y="224" width="266" height="25" rx="4" fill="#f5f6f7" stroke="#d8dfe4" stroke-width="1.3"/>
+<text x="29" y="242" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#697580">4</text>
+<text x="47" y="242" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="start" fill="#24313d">Hoạt động</text>
+<rect x="12" y="251" width="266" height="25" rx="4" fill="#f5f6f7" stroke="#d8dfe4" stroke-width="1.3"/>
+<text x="29" y="269" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#697580">5</text>
+<text x="47" y="269" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="start" fill="#24313d">Học liệu</text>
+<rect x="12" y="278" width="266" height="25" rx="4" fill="#f5f6f7" stroke="#d8dfe4" stroke-width="1.3"/>
+<text x="29" y="296" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#697580">6</text>
+<text x="47" y="296" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="start" fill="#24313d">Triển khai</text>
+<path d="M12 208H5V303H34" fill="none" stroke="#697580" stroke-width="1.7" marker-end="url(#grey)"/>
+<rect x="34" y="303" width="244" height="39" rx="7" fill="#fff" stroke="#cad2d9" stroke-width="1.3"/>
+<rect x="45" y="315" width="22" height="16" rx="3" fill="#fff" stroke="#315e81" stroke-width="1.3"/>
+<path d="M56 315v-4" fill="none" stroke="#315e81" stroke-width="1.7"/>
+<circle cx="52" cy="322" r="1.6" fill="#315e81"/>
+<circle cx="60" cy="322" r="1.6" fill="#315e81"/>
+<text x="170" y="319" font-family="Arial,Helvetica,sans-serif" font-size="15.5" font-weight="700" text-anchor="middle" fill="#24313d">Developer · bước 3–6</text>
+<text x="170" y="336" font-family="Arial,Helvetica,sans-serif" font-size="15.5" font-weight="400" text-anchor="middle" fill="#697580">1 tác tử / bộ việc</text>
+<rect x="394" y="78" width="221" height="230" rx="7" fill="#edf4f4" stroke="#8bb5af" stroke-width="1.3"/>
+<text x="504.5" y="103" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="700" text-anchor="middle" fill="#28776f">HARNESS</text>
+<text x="504.5" y="125" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" text-anchor="middle" fill="#24313d">Khung điều phối</text>
+<text x="504.5" y="65" font-family="Arial,Helvetica,sans-serif" font-size="15.5" font-weight="400" text-anchor="middle" fill="#697580">Mọi tác tử qua công cụ</text>
+<text x="504.5" y="160" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle" fill="#24313d">Đọc trạng thái</text>
+<path d="M410 176H599" fill="none" stroke="#28776f" stroke-width="1.7"/>
+<text x="504.5" y="199" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle" fill="#24313d">Xác thực nộp</text>
+<text x="504.5" y="224" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle" fill="#24313d">Ghi nút · dựng cạnh</text>
+<text x="504.5" y="246" font-family="Arial,Helvetica,sans-serif" font-size="15.5" font-weight="400" text-anchor="middle" fill="#697580">từ ID khai báo</text>
+<text x="504.5" y="283" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#28776f">Kiểm tra tất định</text>
+<path d="M278 210H301V152H394" fill="none" stroke="#315e81" stroke-width="1.7" marker-end="url(#blue)"/>
+<text x="343" y="145" font-family="Arial,Helvetica,sans-serif" font-size="15.5" font-weight="400" text-anchor="middle" fill="#315e81">Gọi công cụ</text>
+<path d="M394 270H302V220H278" fill="none" stroke="#315e81" stroke-width="1.7" marker-end="url(#blue)"/>
+<text x="344" y="291" font-family="Arial,Helvetica,sans-serif" font-size="15.5" font-weight="400" text-anchor="middle" fill="#315e81">Quan sát</text>
+<text x="344" y="313" font-family="Arial,Helvetica,sans-serif" font-size="15.5" font-weight="400" text-anchor="middle" fill="#697580">state /</text>
+<text x="344" y="332" font-family="Arial,Helvetica,sans-serif" font-size="15.5" font-weight="400" text-anchor="middle" fill="#697580">COMMITTED / lỗi</text>
+<rect x="652" y="78" width="271" height="230" rx="7" fill="#fff" stroke="#8aa5bb" stroke-width="1.3"/>
+<text x="787.5" y="103" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#315e81">ĐỒ THỊ CĂN CHỈNH</text>
+<text x="787.5" y="125" font-family="Arial,Helvetica,sans-serif" font-size="15.5" font-weight="400" text-anchor="middle" fill="#697580">Trạng thái dùng chung</text>
+<path d="M615 213H652" fill="none" stroke="#28776f" stroke-width="1.7" marker-end="url(#teal)"/>
+<rect x="739" y="142" width="97" height="33" rx="7" fill="#e9f1f7" stroke="#8aa5bb" stroke-width="1.3"/>
+<text x="787.5" y="164" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#24313d">Mục tiêu</text>
+<path d="M754 175L705 234" fill="none" stroke="#315e81" stroke-width="1.7" marker-end="url(#blue)"/>
+<path d="M821 175L870 234" fill="none" stroke="#315e81" stroke-width="1.7" marker-end="url(#blue)"/>
+<text x="715" y="204" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#315e81">C3</text>
+<text x="861" y="204" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#315e81">C2</text>
+<rect x="664" y="235" width="101" height="46" rx="7" fill="#e9f1f7" stroke="#8aa5bb" stroke-width="1.3"/>
+<text x="714.5" y="263" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#24313d">Hoạt động</text>
+<rect x="817" y="235" width="94" height="46" rx="7" fill="#e9f1f7" stroke="#8aa5bb" stroke-width="1.3"/>
+<text x="864" y="253" font-family="Arial,Helvetica,sans-serif" font-size="15.5" font-weight="700" text-anchor="middle" fill="#24313d">Nhiệm vụ</text>
+<text x="864" y="272" font-family="Arial,Helvetica,sans-serif" font-size="15.5" font-weight="700" text-anchor="middle" fill="#24313d">đánh giá</text>
+<path d="M765 258H817" fill="none" stroke="#315e81" stroke-width="1.7" marker-end="url(#blue)"/>
+<text x="791" y="248" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#315e81">C4</text>
+<text x="787.5" y="299" font-family="Arial,Helvetica,sans-serif" font-size="15.5" font-weight="400" text-anchor="middle" fill="#697580">+ quan hệ phụ</text>
+<path d="M923 191H943V155H956" fill="none" stroke="#315e81" stroke-width="1.7" marker-end="url(#blue)"/>
+<path d="M943 191V262H956" fill="none" stroke="#315e81" stroke-width="1.7" marker-end="url(#blue)"/>
+<rect x="956" y="129" width="132" height="63" rx="7" fill="#f4f6f8" stroke="#cad2d9" stroke-width="1.3"/>
+<text x="1022" y="151" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" text-anchor="middle" fill="#24313d">Đầu ra ADDIE</text>
+<text x="1022" y="177" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" text-anchor="middle" fill="#24313d">5 pha</text>
+<rect x="956" y="234" width="132" height="59" rx="7" fill="#f4f6f8" stroke="#cad2d9" stroke-width="1.3"/>
+<text x="1022" y="258" font-family="Menlo,monospace" font-size="15.5" font-weight="400" text-anchor="middle" fill="#24313d">graph.json</text>
+<text x="1022" y="281" font-family="Arial,Helvetica,sans-serif" font-size="15.5" font-weight="400" text-anchor="middle" fill="#24313d">+ sổ vi phạm</text>
+<path d="M504 308V352H287V201H278" fill="none" stroke="#28776f" stroke-width="1.7" marker-end="url(#teal)"/>
+<text x="339" y="374" font-family="Arial,Helvetica,sans-serif" font-size="15.5" font-weight="400" text-anchor="middle" fill="#28776f">Lượt sửa → tác tử sở hữu</text>
+<path d="M615 294H632V324H1022V293" fill="none" stroke="#697580" stroke-width="1.7" stroke-dasharray="4 3" marker-end="url(#grey)"/>
+<text x="809" y="344" font-family="Arial,Helvetica,sans-serif" font-size="15.5" font-weight="400" text-anchor="middle" fill="#697580">Ghi mọi vi phạm</text>
+</svg>

@@ -17,6 +17,17 @@ they stay a thesis-only concept:
 (Supersedes the 2026-08-11 ordering Phuong Viet Bui / Van-Tam Bui / Hai Van Pham,
 which used the senior-author-last convention and unhyphenated name forms.)
 
+## REV-ECIT 2026 conference paper byline (`docs/paper/rev-ecit2026/main.tex`)
+
+Different from the journal byline above, per the supervisor's message of 2026-10-13
+("em đứng tên đầu, thầy Tâm, rồi mình"):
+
+1. **Bùi Việt Phương** — first author
+2. **Bùi Văn Tâm**
+3. **Phạm Văn Hải** — corresponding author (`*`), confirmed 2026-10-13
+
+The journal paper keeps its own order above.
+
 ## Author
 
 - **Bùi Việt Phương** (Viet-Phuong Bui)
