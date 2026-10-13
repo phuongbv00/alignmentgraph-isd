@@ -150,9 +150,13 @@ Mức tất định được phép claim: *reproducible up to floating-point noi
   cùng một tham số lúc được nghe lúc không (đo 2026-09-23). Ladder trộn hai loại endpoint sẽ
   ép trần ở nấc này và không ở nấc kia, tức là nhiễu thiên lệch theo đúng biến độc lập; nếu
   không tự host được cả bốn nấc thì posture hợp lệ duy nhất là `0`.
-- **`objective_cognitive_congruence` dùng cosine để ghép cặp** trước khi so Bloom, nên họ B
-  không độc lập hoàn toàn với họ A; chỉ Porter và Webb–Bloom là đối trọng đầy đủ. Nói trước,
-  không chờ reviewer bắt.
+- **Cả ba tín hiệu họ B đều dùng cosine của encoder họ A**, nên họ B không độc lập hoàn toàn với
+  họ A. `objective_cognitive_congruence` ghép mỗi mục tiêu với câu hỏi gần nhất theo cosine;
+  `webb_bloom_consistency` ghép mỗi câu hỏi với mục tiêu gần nhất theo cosine
+  (`_bloom_consistency`); `porter_mean` gán mỗi phần tử vào chủ đề gần nhất theo cosine trước
+  khi lập ma trận chủ đề × mức Bloom (`_argmax_topic`, `_porter_matrix`). Phần độc lập của họ B
+  là mức Bloom do bộ phân loại gán, không phải việc ghép cặp. Không được viết rằng tín hiệu nào
+  của họ B là đối trọng độc lập với họ A. Nói trước, không chờ reviewer bắt.
 - **Panel đổi định nghĩa 2026-08-30**: `porter_mean` giờ là trung bình trên ba cạnh tam giác,
   nên mọi số `porter_*` cũ không so được.
 - **Bẫy artifact chi phí**: `metadata.cost_usd` sai (giá API thương mại trên pod tự host);

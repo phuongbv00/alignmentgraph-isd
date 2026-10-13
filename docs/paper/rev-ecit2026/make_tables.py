@@ -1,10 +1,20 @@
 #!/usr/bin/env python3
 """Generate the REV-ECIT 2026 tables and number macros from the pooled results.
 
-Reads the two documents the experiment's own pooling writes, never the run dirs:
+Reads the two documents the experiment's own pooling writes:
 
   pooled_comparison.json  (./isd-exp pool comparison)  -> Bảng I, Bảng II
   pooled_ablation.json    (./isd-exp pool ablation)    -> Bảng III
+
+Four disclosures the pooling does not carry are read from the run dirs those two
+documents name, and from the Bloom checkpoint's own held-out record:
+
+  spread between the three LLM judges, and each judge's mean ADDIE for the
+  proposed system and React-ADDIE        <- comparison_report.json per scenario
+  constrained passes of the proposed system  <- its trajectory metadata.autonomy
+  family-A signals of the four ablation arms <- alignment_summary.csv (primary arm;
+                                                descriptive, no test)
+  Bloom classifier agreement              <- held_out_metrics.json
 
 and writes into ``generated/`` beside this file:
 
@@ -29,12 +39,22 @@ Run with the experiment's interpreter (stdlib only, but kept beside the rest):
 from __future__ import annotations
 
 import argparse
+import ast
+import csv
 import json
 import math
+import statistics
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 RESULTS = HERE.parents[2] / "experiments" / "results"
+BLOOM_METRICS = (HERE.parents[2] / "experiments" / "tests" / "fixtures" / "bloom"
+                 / "held_out_metrics.json")
+JUDGES = {  # LLM judge model id -> macro code
+    "openai/gpt-6-luna": "Luna",
+    "google/gemini-3.1-flash-lite": "Gem",
+    "deepseek/deepseek-v4.1-flash": "Ds",
+}
 OUT = HERE / "generated"
 ALPHA = 0.05
 
@@ -109,6 +129,13 @@ def bold_best(cells: list[str], values: list, higher: bool = True) -> list[str]:
             for c, v in zip(cells, values)]
 
 
+def table_note(*lines: str) -> list[str]:
+    """Notes set under the tabular at column width, so a long note wraps
+    instead of widening the table."""
+    return [r"  \par\vspace{2pt}",
+            r"  {\scriptsize\raggedright " + r"\\ ".join(lines) + r"\par}"]
+
+
 def star(cell: str, p) -> str:
     return cell + r"$^{*}$" if ok(p) and p < ALPHA else cell
 
@@ -168,7 +195,7 @@ def comparison_tables(doc: dict, mac: Macros) -> tuple[str, str]:
         for s, (mf, sf, _, sc) in SCORES.items():
             m, sd = st.get(mf), st.get(sf)
             p = comparison_rows(model, s, policy).get(a, {}).get("p_holm")
-            cell = f"{f1(m)} $\\pm$ {f1(sd)}" if ok(m) else DASH
+            cell = f"{f1(m)}\\,$\\pm$\\,{f1(sd)}" if ok(m) else DASH
             cols[s].append(star(cell, p) if a != proposed else cell)
             vals[s].append(m)
             mac.add(f"cmp{code}{sc}", f1(m))
@@ -180,6 +207,10 @@ def comparison_tables(doc: dict, mac: Macros) -> tuple[str, str]:
         t = tokens.get(a, {}).get("total_tokens", {}).get("mean")
         tok_cells.append(ktok(t))
         mac.add(f"cmp{code}Tok", ktok(t))
+        calls = tokens.get(a, {}).get("llm_calls", {}).get("mean")
+        secs = tokens.get(a, {}).get("execution_time_seconds", {}).get("mean")
+        mac.add(f"cmp{code}Calls", f"{calls:.0f}" if ok(calls) else DASH)
+        mac.add(f"cmp{code}Min", f"{secs / 60:.0f}" if ok(secs) else DASH)
     for s in SCORES:
         cols[s] = bold_best(cols[s], vals[s])
     ag_tok = tokens.get(proposed, {}).get("total_tokens", {}).get("mean")
@@ -192,13 +223,11 @@ def comparison_tables(doc: dict, mac: Macros) -> tuple[str, str]:
         name = AGENTS.get(a, (a, a))[0]
         cells = [cols[s][i] for s in SCORES] + [tok_cells[i]]
         body.append(f"    {name} & " + " & ".join(cells) + r" \\")
-    note = (r"\multicolumn{5}{@{}l@{}}{\scriptsize $^{*}$ khác AlignmentGraph-ISD, "
-            r"Wilcoxon theo cặp, Holm trong từng điểm, $p<0.05$.}\\")
+    notes = [r"$^{*}$ khác AlignmentGraph-ISD, Wilcoxon theo cặp, Holm trong từng điểm, "
+             r"$p<0.05$."]
     if failed:
-        note += ("\n    " + r"\multicolumn{5}{@{}l@{}}{\scriptsize Kịch bản không có đầu ra "
-                 r"chấm được, tính 0 điểm: "
-                 + ", ".join(f"{AGENTS.get(a, (a,))[0]} {n}" for a, n in failed)
-                 + r".}\\")
+        notes.append("Kịch bản không có đầu ra chấm được, tính 0 điểm: "
+                     + ", ".join(f"{AGENTS.get(a, (a,))[0]} {n}" for a, n in failed) + ".")
     tab1 = "\n".join([
         r"\begin{table}[t]",
         rf"  \caption{{Thí nghiệm 1: điểm LLM judge (trung bình $\pm$ độ lệch chuẩn qua "
@@ -206,15 +235,16 @@ def comparison_tables(doc: dict, mac: Macros) -> tuple[str, str]:
         r"  \label{tab:judge}",
         r"  \centering",
         r"  \footnotesize",
-        r"  \setlength{\tabcolsep}{3pt}",
+        r"  \setlength{\tabcolsep}{2.5pt}",
         r"  \begin{tabular}{@{}lcccc@{}}",
         r"    \toprule",
-        r"    Hệ & ADDIE $\uparrow$ & Trajectory $\uparrow$ & Total $\uparrow$ & Token (k) \\",
+        r"    Hệ & ADDIE $\uparrow$ & Trajectory $\uparrow$ & Total $\uparrow$ "
+        r"& Token (k) $\downarrow$ \\",
         r"    \midrule",
         *body,
         r"    \bottomrule",
-        "    " + note,
         r"  \end{tabular}",
+        *table_note(*notes),
         r"\end{table}",
         "",
     ])
@@ -253,7 +283,7 @@ def comparison_tables(doc: dict, mac: Macros) -> tuple[str, str]:
         r"  \label{tab:panel}",
         r"  \centering",
         r"  \footnotesize",
-        r"  \setlength{\tabcolsep}{3.5pt}",
+        r"  \setlength{\tabcolsep}{3pt}",
         r"  \begin{tabular}{@{}lcccccc@{}}",
         r"    \toprule",
         r"    & \multicolumn{3}{c}{Họ A: văn bản} & \multicolumn{3}{c}{Họ B: Bloom} \\",
@@ -262,9 +292,9 @@ def comparison_tables(doc: dict, mac: Macros) -> tuple[str, str]:
         r"    \midrule",
         *body,
         r"    \bottomrule",
-        r"    \multicolumn{7}{@{}l@{}}{\scriptsize $^{*}$ khác AlignmentGraph-ISD, "
-        r"Wilcoxon theo cặp, Holm trong từng tín hiệu, $p<0.05$.}\\",
         r"  \end{tabular}",
+        *table_note(r"$^{*}$ khác AlignmentGraph-ISD, Wilcoxon theo cặp, Holm trong từng "
+                    r"tín hiệu, $p<0.05$."),
         r"\end{table}",
         "",
     ])
@@ -296,7 +326,7 @@ def ablation_table(doc: dict, mac: Macros) -> str:
         addie, total = st.get("mean_addie"), st.get("mean_total")
         triad = triad_means.get(a)
         tok = ((pr.get("cost") or {}).get("total_tokens") or {}).get("mean")
-        cols["addie"].append(f"{f1(addie)} $\\pm$ {f1(st.get('sd_addie_across_scenarios'))}"
+        cols["addie"].append(f"{f1(addie)}\\,$\\pm$\\,{f1(st.get('sd_addie_across_scenarios'))}"
                              if ok(addie) else DASH)
         cols["total"].append(f1(total))
         cols["triad"].append(pct(triad))
@@ -308,6 +338,10 @@ def ablation_table(doc: dict, mac: Macros) -> str:
         mac.add(f"abl{code}Total", f1(total))
         mac.add(f"abl{code}Triad", pct(triad))
         mac.add(f"abl{code}Tok", ktok(tok))
+        cut = (pr.get("autonomy") or {}).get("pct_stages_via_budget_exhaustion")
+        mac.add(f"abl{code}Cut", f1(cut))
+        repaired = (pr.get("triad_references") or {}).get("activities_repaired")
+        mac.add(f"abl{code}Repaired", f1(100 * repaired) if ok(repaired) else DASH)
     for k in vals:
         cols[k] = bold_best(cols[k], vals[k])
 
@@ -324,6 +358,7 @@ def ablation_table(doc: dict, mac: Macros) -> str:
         mac.add(f"abl{key}Diff", fmt(t.get("mean_diff")) if ok(t.get("mean_diff")) else DASH)
         mac.add(f"abl{key}CILo", fmt(lo) if ok(lo) else DASH)
         mac.add(f"abl{key}CIHi", fmt(hi) if ok(hi) else DASH)
+        mac.add(f"abl{key}CILoAbs", fmt(abs(lo)) if ok(lo) else DASH)
         mac.add(f"abl{key}P", fp(t.get("p_holm")))
         mac.add(f"abl{key}Verdict", t.get("verdict", DASH))
 
@@ -341,16 +376,89 @@ def ablation_table(doc: dict, mac: Macros) -> str:
         r"  \begin{tabular}{@{}lcccc@{}}",
         r"    \toprule",
         r"    Biến thể & ADDIE $\uparrow$ & Total $\uparrow$ & Khép kín (\%) $\uparrow$ "
-        r"& Token (k) \\",
+        r"& Token (k) $\downarrow$ \\",
         r"    \midrule",
         *body,
         r"    \bottomrule",
-        r"    \multicolumn{5}{@{}l@{}}{\scriptsize Khép kín: tỉ lệ mục tiêu có đủ ba cạnh "
-        r"C2--C4 trong đầu ra.}\\",
         r"  \end{tabular}",
+        *table_note(r"Khép kín: tỉ lệ mục tiêu có đủ ba cạnh $C_2$--$C_4$ trong đầu ra."),
         r"\end{table}",
         "",
     ])
+
+
+# ── disclosures read from the run dirs ──────────────────────────────────────
+def _scenario_dirs(doc: dict) -> list[Path]:
+    run_dirs = one_model(doc, "run dirs")["run_dirs"]
+    if len(run_dirs) != 1:
+        raise SystemExit(f"expected one run dir, found {len(run_dirs)}")
+    root = Path(run_dirs[0])
+    return sorted(p for p in root.glob("*/*") if (p / "comparison_report.json").exists())
+
+
+def judge_disclosures(doc: dict, mac: Macros) -> None:
+    """Spread between the three LLM judges over every judged output, and each
+    judge's mean ADDIE for the proposed system and React-ADDIE."""
+    proposed = doc["config"]["proposed"]
+    spreads: list[float] = []
+    per_judge: dict[tuple[str, str], list[float]] = {}
+    for sc in _scenario_dirs(doc):
+        report = json.loads((sc / "comparison_report.json").read_text(encoding="utf-8"))
+        for row in report["comparison"]["rankings"]:
+            judges = row["judges"]
+            if isinstance(judges, str):
+                judges = ast.literal_eval(judges)
+            scores = [j["addie_score"] for j in judges
+                      if ok(j.get("addie_score")) and not j.get("error")]
+            if len(scores) >= 2:
+                spreads.append(statistics.stdev(scores))
+            for j, s in zip(judges, [j.get("addie_score") for j in judges]):
+                if ok(s) and not j.get("error"):
+                    per_judge.setdefault((row["agent_id"], j["model"]), []).append(s)
+    mac.add("JudgeSD", f1(statistics.mean(spreads)) if spreads else DASH)
+    for agent, acode in ((proposed, "AG"), ("react-isd", "React")):
+        for model, jcode in JUDGES.items():
+            vals = per_judge.get((agent, model), [])
+            mac.add(f"judge{jcode}{acode}", f1(statistics.mean(vals)) if vals else DASH)
+
+
+def constrained_disclosures(doc: dict, mac: Macros) -> None:
+    """Constrained passes of the proposed system per scenario, and how many of
+    them the validator still refused."""
+    proposed = doc["config"]["proposed"]
+    passes, refused = [], []
+    for sc in _scenario_dirs(doc):
+        path = sc / f"{proposed}_trajectory.json"
+        if not path.exists():
+            continue
+        autonomy = json.loads(path.read_text(encoding="utf-8"))["metadata"]["autonomy"]
+        stages = [v for v in autonomy.values() if isinstance(v, dict)]
+        passes.append(sum(v.get("constrained_passes", 0) for v in stages))
+        refused.append(sum(v.get("constrained_pass_rejected", 0) for v in stages))
+    mac.add("CPass", f1(statistics.mean(passes)) if passes else DASH)
+    mac.add("CPassRej", f1(statistics.mean(refused)) if refused else DASH)
+
+
+def ablation_family_a(doc: dict, mac: Macros) -> None:
+    """Family-A signals of the four arms (primary encoder), descriptive only."""
+    root = Path(one_model(doc, "pooled_ablation")["run_dirs"][0])
+    path = root / "alignment_summary.csv"
+    if not path.exists():
+        raise SystemExit(f"{path} not found: run `./isd-exp judge alignment` on the "
+                         "ablation run dir.")
+    with path.open(encoding="utf-8") as fh:
+        rows = {r["agent_id"]: r for r in csv.DictReader(fh)}
+    for arm, (_, code) in ARMS.items():
+        r = rows.get(arm, {})
+        for s, (_, sc) in list(SIGNALS.items())[:3]:
+            v = r.get(s)
+            mac.add(f"abl{code}{sc}", f2(float(v)) if v not in (None, "") else DASH)
+
+
+def bloom_disclosure(mac: Macros) -> None:
+    m = json.loads(BLOOM_METRICS.read_text(encoding="utf-8"))
+    mac.add("BloomKappa", f2(m["cohen_kappa"]))
+    mac.add("BloomN", str(m["n_held_out"]))
 
 
 #: The pooled-file version these tables read: means and tests under failure = 0.
@@ -377,15 +485,21 @@ def main() -> None:
     args.out.mkdir(parents=True, exist_ok=True)
     mac = Macros()
     wrote = []
+    bloom_disclosure(mac)
     if args.comparison.exists():
-        tab1, tab2 = comparison_tables(load_pooled(args.comparison), mac)
+        cmp_doc = load_pooled(args.comparison)
+        tab1, tab2 = comparison_tables(cmp_doc, mac)
+        judge_disclosures(cmp_doc, mac)
+        constrained_disclosures(cmp_doc, mac)
         (args.out / "tab_judge.tex").write_text(tab1, encoding="utf-8")
         (args.out / "tab_panel.tex").write_text(tab2, encoding="utf-8")
         wrote += ["tab_judge.tex", "tab_panel.tex"]
     else:
         print(f"skip Bảng I–II: {args.comparison} not found")
     if args.ablation.exists():
-        tab3 = ablation_table(load_pooled(args.ablation), mac)
+        abl_doc = load_pooled(args.ablation)
+        tab3 = ablation_table(abl_doc, mac)
+        ablation_family_a(abl_doc, mac)
         (args.out / "tab_ablation.tex").write_text(tab3, encoding="utf-8")
         wrote.append("tab_ablation.tex")
     else:

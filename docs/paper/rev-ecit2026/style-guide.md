@@ -75,8 +75,9 @@ Bố cục ta chọn, theo nhóm bài hệ thống hoặc ứng dụng:
 - **Hình kiến trúc** có ở 20/20 bài: sơ đồ khối vẽ tay, ô bo góc màu nhạt (pastel), mũi tên. Thường đặt
   trải rộng cả trang (`figure*`).
   - Chữ trong hình bằng tiếng Anh ở khoảng 3/4 số bài, nhưng bài tiếng Việt cũng phổ biến.
-  - **Ta dùng nhãn tiếng Việt**, giữ mã quan hệ (C2–C4, P…) và tên tệp (`graph.json`).
-  - Nguồn hình: `figures/make_architecture_vi.py` sinh SVG, `rsvg-convert` chuyển sang PDF.
+  - **Ta dùng nhãn tiếng Anh** (như khoảng 3/4 số bài), kể cả mã quan hệ (C2–C4, P…) và tên tệp
+    (`graph.json`). Chú thích hình viết bằng tiếng Việt.
+  - Nguồn hình: `figures/make_architecture_timeline.py` sinh SVG, `rsvg-convert` chuyển sang PDF.
 - **Biểu đồ:** gần như toàn bộ dùng matplotlib hoặc seaborn mặc định, nhãn trục thường bằng tiếng Anh.
   Biểu đồ cột có in giá trị trên cột; ma trận nhầm lẫn theo bảng màu "Blues".
   - **Ta:** matplotlib, nhãn trục tiếng Việt cho thống nhất với bài, cỡ chữ đọc được ở khổ một cột.
