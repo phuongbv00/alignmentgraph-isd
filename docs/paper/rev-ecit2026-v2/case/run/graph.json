@@ -1,0 +1,4816 @@
+{
+  "nodes": [
+    {
+      "type": "gap",
+      "id": "gap:G001",
+      "data": {
+        "id": "G001",
+        "description": "Quy trình xây dựng mô hình học máy từ chuẩn bị dữ liệu đến đánh giá chưa được làm rõ"
+      },
+      "label": "G001",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "gap",
+      "id": "gap:G002",
+      "data": {
+        "id": "G002",
+        "description": "Các mô hình học máy phổ biến (hồi quy tuyến tính, cây quyết định) không được dạy cụ thể"
+      },
+      "label": "G002",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "gap",
+      "id": "gap:G003",
+      "data": {
+        "id": "G003",
+        "description": "Chứng minh cho học sinh rằng độ đo phù hợp (accuracy, F1, RMSE) quan trọng"
+      },
+      "label": "G003",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "gap",
+      "id": "gap:G004",
+      "data": {
+        "id": "G004",
+        "description": "Hiểu về hiện tượng quá khớp và cách khắc phục bằng điều chuẩn"
+      },
+      "label": "G004",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "gap",
+      "id": "gap_0",
+      "data": {
+        "problem_definition": "Học sinh Công nghệ Thông tin đang đối mặt với khoảng cách giữa kiến thức lý thuyết về học máy và ứng dụng thực tế. Lý do: Mô hình học máy là lĩnh vực tiên tiến, phức tạp, và cần nhiều hiểu biết để áp dụng thành công. Học sinh có thể biết về các thuật toán nhưng không biết cách thực hiện từ dữ liệu đến mô hình.",
+        "performance_analysis": "Khoảng cách giữa kiến thức và thành thạo: Học sinh hiểu lý thuyết nhưng không thể cài đặt mô hình học máy trên Python. Instruction là giải pháp vì học sinh cần hướng dẫn từng bước cụ thể từ chuẩn bị dữ liệu đến đánh giá mô hình.",
+        "priority_matrix": {
+          "high": [
+            "G001",
+            "G002"
+          ],
+          "medium": [
+            "G003",
+            "G004"
+          ],
+          "low": []
+        }
+      },
+      "label": "gap",
+      "kind": "section",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "learner_profile",
+      "id": "learner_profile_0",
+      "data": {
+        "target_audience": "Sinh viên Công nghệ Thông tin năm thứ ba",
+        "characteristics": [
+          "Đại học",
+          "Năm thứ ba",
+          "Sinh viên",
+          "Học sinh",
+          "Công nghệ Thông tin"
+        ],
+        "prior_knowledge": "Lập trình Python cơ bản, xác suất thống kê và đại số tuyến tính",
+        "motivation": "Cần kiến thức thực tế để ứng dụng trong công việc sau đại học, có mong muốn học kỹ thuật AI",
+        "challenges": [
+          "Sự phức tạp của học máy cho người mới",
+          "Không có kinh nghiệm sử dụng Python",
+          "Challenges trong việc ứng dụng lý thuyết vào thực tế"
+        ]
+      },
+      "label": "learner_profile",
+      "kind": "section",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "constraint",
+      "id": "constraint:C001",
+      "data": {
+        "id": "C001",
+        "description": "Học sinh cần được tiếp cận với thiết bị thực hành máy tính và Google Colab"
+      },
+      "label": "C001",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "constraint",
+      "id": "constraint:C002",
+      "data": {
+        "id": "C002",
+        "description": "Không có chi phí phần mềm, chỉ sử dụng Python, scikit-learn, pandas, matplotlib"
+      },
+      "label": "C002",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "constraint",
+      "id": "constraint:C003",
+      "data": {
+        "id": "C003",
+        "description": "Thời gian 4 tuần, 30h, học kết hợp lý thuyết trên lớp và thực hành"
+      },
+      "label": "C003",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "constraint",
+      "id": "constraint:C004",
+      "data": {
+        "id": "C004",
+        "description": "Học liệu cần được xem được trên máy tính và điện thoại"
+      },
+      "label": "C004",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "constraint",
+      "id": "constraint:C005",
+      "data": {
+        "id": "C005",
+        "description": "Giao tiếp bằng tiếng Việt, giữ nguyên thuật ngữ chuyên ngành"
+      },
+      "label": "C005",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "constraint",
+      "id": "constraint_0",
+      "data": {
+        "environment": "Học kết hợp: lý thuyết trên lớp, thực hành lập trình Python trên Google Colab",
+        "duration": "4 tuần, 30h",
+        "resources": [
+          "Phòng thực hành máy tính",
+          "Google Colab",
+          "Hệ thống quản lý học tập (LMS) của trường"
+        ],
+        "resources_list": [
+          "Phòng thực hành máy tính",
+          "Google Colab",
+          "Hệ thống quản lý học tập (LMS) của trường"
+        ],
+        "budget": "Không phát sinh chi phí phần mềm",
+        "tech_requirements": "Python, scikit-learn, pandas, matplotlib",
+        "assessment_type": "Kết hợp đánh giá quá trình và đánh giá cuối khóa",
+        "language": "Tiếng Việt",
+        "difficulty": "Trung bình",
+        "domain": "Công nghệ Thông tin / Trí tuệ nhân tạo",
+        "class_size": "Khoảng 40 sinh viên",
+        "learner_age": "Từ 20 đến 22 tuổi",
+        "institution_type": "Trường đại học kỹ thuật",
+        "additional_context": "Toàn bộ sản phẩm thiết kế (mục tiêu, câu hỏi, hoạt động, học liệu, hướng dẫn buổi học) viết bằng tiếng Việt; giữ nguyên thuật ngữ chuyên ngành tiếng Anh khi cần."
+      },
+      "label": "constraint",
+      "kind": "section",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "topic",
+      "id": "topic:T001",
+      "data": {
+        "id": "T001",
+        "topic": "Mô hình học máy có giám sát",
+        "subtopics": [
+          "Quy trình xây dựng mô hình",
+          "Chuẩn bị dữ liệu",
+          "Đánh giá mô hình"
+        ]
+      },
+      "label": "T001",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "topic",
+      "id": "topic:T002",
+      "data": {
+        "id": "T002",
+        "topic": "Hồi quy tuyến tính",
+        "subtopics": [
+          "Thuật toán hồi quy",
+          "Tiêu chí đánh giá (accuracy, F1, RMSE)"
+        ]
+      },
+      "label": "T002",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "topic",
+      "id": "topic:T003",
+      "data": {
+        "id": "T003",
+        "topic": "Cây quyết định",
+        "subtopics": [
+          "Thuật toán cây",
+          "Tiêu chí đánh giá (accuracy, F1, RMSE)"
+        ]
+      },
+      "label": "T003",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "topic",
+      "id": "topic:T004",
+      "data": {
+        "id": "T004",
+        "topic": "Quá khớp và điều chuẩn",
+        "subtopics": [
+          "Hiểu về hiện tượng quá khớp",
+          "Kỹ thuật điều chuẩn",
+          "Khắc phục"
+        ]
+      },
+      "label": "T004",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "topic",
+      "id": "topic:T005",
+      "data": {
+        "id": "T005",
+        "topic": "Thực hành Python",
+        "subtopics": [
+          "Sử dụng libraries (scikit-learn, pandas, matplotlib)"
+        ]
+      },
+      "label": "T005",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "topic",
+      "id": "topic_0",
+      "data": {
+        "prerequisites": [
+          "Lập trình Python cơ bản",
+          "Xác suất thống kê",
+          "Đại số tuyến tính"
+        ],
+        "entry_behaviors": [
+          "Có kiến thức cơ bản về Python",
+          "Hiểu về khái niệm xác suất và thống kê",
+          "Có hiểu biết cơ bản về đại số"
+        ],
+        "initial_objectives": [
+          {
+            "draft": "Sinh viên sẽ hiểu quy trình xây dựng mô hình học máy",
+            "critique": "Nhức được 'hiểu' - cần 'thực hiện' được",
+            "revision": "Sinh viên sẽ giải thích được quy trình xây dựng một mô hình học máy có giám sát, từ chuẩn bị dữ liệu đến đánh giá mô hình."
+          }
+        ],
+        "review_summary": "Mục tiêu được xây dựng từ các chủ đề về mô hình học máy, hồi quy tuyến tính, cây quyết định, quá khớp và điều chuẩn trong Python. Mục tiêu là giúp sinh viên giải thích được quy trình xây dựng mô hình từ chuẩn bị dữ liệu đến đánh giá, cài đặt mô hình hồi quy tuyến tính và cây quyết định, đánh giá và so sánh mô hình, nhận diện hiện tượng quá khớp và áp dụng kỹ thuật điều chuẩn."
+      },
+      "label": "topic",
+      "kind": "section",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "improvement",
+      "id": "improvement:I001",
+      "data": {
+        "id": "I001",
+        "addresses_gap": "G001",
+        "action": "Định dạng một quy trình chi tiết, đảm bảo chắc chắn rằng sinh viên hiểu rõ từng bước chuẩn bị dữ liệu cho mô hình học máy"
+      },
+      "label": "I001",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "improvement",
+      "id": "improvement:I002",
+      "data": {
+        "id": "I002",
+        "addresses_gap": "G002",
+        "action": "Cài đặt mô hình hồi quy tuyến tính và cây quyết định trên Google Colab, hướng dẫn cụ thể cách sử dụng scikit-learn"
+      },
+      "label": "I002",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "improvement",
+      "id": "improvement:I003",
+      "data": {
+        "id": "I003",
+        "addresses_gap": "G003",
+        "action": "Thực hành tính và so sánh độ đo phù hợp (accuracy, F1, RMSE) trên tập dữ liệu mẫu, giải thích ý nghĩa của từng độ đo"
+      },
+      "label": "I003",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "improvement",
+      "id": "improvement:I004",
+      "data": {
+        "id": "I004",
+        "addresses_gap": "G004",
+        "action": "Tạo bài tập về hiện tượng quá khớp, hướng dẫn kỹ thuật điều chuẩn và so sánh trước/sau kỹ thuật này"
+      },
+      "label": "I004",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "improvement",
+      "id": "improvement_0",
+      "data": {
+        "feedback_summary": "Các khoảng cách giữa kiến thức và kỹ năng đã được xác định rõ. Học sinh cần được hướng dẫn cụ thể từng bước từ chuẩn bị dữ liệu đến đánh giá mô hình học máy. Cần làm rõ các thuật toán và tiêu chí đánh giá, đồng thời giải thích cách ứng dụng thực tế các khái niệm lý thuyết.",
+        "next_iteration_goals": [
+          "Sinh viên có thể giải thích được quy trình xây dựng mô hình học máy có giám sát",
+          "Sinh viên có thể cài đặt mô hình hồi quy tuyến tính và cây quyết định bằng Python",
+          "Sinh viên có thể đánh giá và so sánh các mô hình bằng độ đo phù hợp",
+          "Sinh viên có thể nhận diện hiện tượng quá khớp và áp dụng kỹ thuật điều chuẩn"
+        ]
+      },
+      "label": "improvement",
+      "kind": "section",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "objective",
+      "id": "objective:ILO-01",
+      "data": {
+        "id": "ILO-01",
+        "level": "understand",
+        "statement": "Sinh viên giải thích được quy trình xây dựng một mô hình học máy có giám sát, bao gồm các bước chuẩn bị dữ liệu, huấn luyện mô hình và đánh giá kết quả.",
+        "bloom_verb": "explain"
+      },
+      "label": "ILO-01",
+      "kind": "element",
+      "detail": "",
+      "level": "understand",
+      "repaired": false
+    },
+    {
+      "type": "objective",
+      "id": "objective:ILO-02",
+      "data": {
+        "id": "ILO-02",
+        "level": "apply",
+        "statement": "Sinh viên cài đặt được mô hình hồi quy tuyến tính và cây quyết định bằng Python sử dụng thư viện scikit-learn trên tập dữ liệu mẫu.",
+        "bloom_verb": "apply"
+      },
+      "label": "ILO-02",
+      "kind": "element",
+      "detail": "",
+      "level": "apply",
+      "repaired": false
+    },
+    {
+      "type": "objective",
+      "id": "objective:ILO-03",
+      "data": {
+        "id": "ILO-03",
+        "level": "evaluate",
+        "statement": "Sinh viên đánh giá và so sánh hiệu suất của các mô hình học máy bằng các độ đo phù hợp như accuracy, F1, RMSE.",
+        "bloom_verb": "evaluate"
+      },
+      "label": "ILO-03",
+      "kind": "element",
+      "detail": "",
+      "level": "evaluate",
+      "repaired": false
+    },
+    {
+      "type": "objective",
+      "id": "objective:ILO-04",
+      "data": {
+        "id": "ILO-04",
+        "level": "analyze",
+        "statement": "Sinh viên nhận diện được hiện tượng quá khớp khi mô hình học máy hoạt động tốt trên dữ liệu huấn luyện nhưng kém trên dữ liệu mới.",
+        "bloom_verb": "analyze"
+      },
+      "label": "ILO-04",
+      "kind": "element",
+      "detail": "",
+      "level": "analyze",
+      "repaired": false
+    },
+    {
+      "type": "objective",
+      "id": "objective:ILO-05",
+      "data": {
+        "id": "ILO-05",
+        "level": "evaluate",
+        "statement": "Sinh viên áp dụng được kỹ thuật điều chuẩn (cross-validation) để kiểm tra và cải thiện độ ổn định của mô hình học máy.",
+        "bloom_verb": "evaluate"
+      },
+      "label": "ILO-05",
+      "kind": "element",
+      "detail": "",
+      "level": "evaluate",
+      "repaired": false
+    },
+    {
+      "type": "module",
+      "id": "module:MOD-01",
+      "data": {
+        "id": "MOD-01",
+        "title": "Khái niệm học máy và chuẩn bị dữ liệu",
+        "description": "Học sinh hiểu về học máy có giám sát và quy trình chuẩn bị dữ liệu cho mô hình học máy.",
+        "objectives": [
+          "ILO-01",
+          "ILO-02"
+        ],
+        "covers_topics": [
+          "T001",
+          "T002"
+        ],
+        "minutes": 45
+      },
+      "label": "MOD-01",
+      "kind": "element",
+      "detail": "Khái niệm học máy và chuẩn bị dữ liệu",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "module",
+      "id": "module:MOD-02",
+      "data": {
+        "id": "MOD-02",
+        "title": "Mô hình hồi quy tuyến tính và cây quyết định",
+        "description": "Học sinh cài đặt và hiểu hai mô hình cơ bản trong học máy.",
+        "objectives": [
+          "ILO-03",
+          "ILO-04"
+        ],
+        "covers_topics": [
+          "T003",
+          "T004"
+        ],
+        "minutes": 60
+      },
+      "label": "MOD-02",
+      "kind": "element",
+      "detail": "Mô hình hồi quy tuyến tính và cây quyết định",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "module",
+      "id": "module:MOD-03",
+      "data": {
+        "id": "MOD-03",
+        "title": "Đánh giá và điều chế mô hình",
+        "description": "Học sinh đánh giá mô hình và áp dụng kỹ thuật điều chuẩn.",
+        "objectives": [
+          "ILO-05"
+        ],
+        "covers_topics": [
+          "T004"
+        ],
+        "minutes": 45
+      },
+      "label": "MOD-03",
+      "kind": "element",
+      "detail": "Đánh giá và điều chế mô hình",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "assessment_plan",
+      "id": "assessment_plan_0",
+      "data": {
+        "sets": [
+          {
+            "module_id": "MOD-01",
+            "assessment_tasks": [
+              {
+                "id": "AT-01",
+                "timing": "diagnostic",
+                "format": "short_answer",
+                "item_counts": {
+                  "short_answer": 1
+                },
+                "covers_objectives": [
+                  "ILO-01",
+                  "ILO-02"
+                ],
+                "minutes": 15,
+                "weight_percent": 0
+              }
+            ]
+          },
+          {
+            "module_id": "MOD-02",
+            "assessment_tasks": [
+              {
+                "id": "AT-02",
+                "timing": "summative",
+                "format": "performance_task",
+                "item_counts": {
+                  "short_answer": 1,
+                  "performance_task": 2
+                },
+                "covers_objectives": [
+                  "ILO-03",
+                  "ILO-04"
+                ],
+                "minutes": 45,
+                "weight_percent": 10
+              }
+            ]
+          },
+          {
+            "module_id": "MOD-03",
+            "assessment_tasks": [
+              {
+                "id": "AT-03",
+                "timing": "summative",
+                "format": "performance_task",
+                "item_counts": {
+                  "short_answer": 1,
+                  "performance_task": 2
+                },
+                "covers_objectives": [
+                  "ILO-05"
+                ],
+                "minutes": 45,
+                "weight_percent": 10
+              }
+            ]
+          }
+        ],
+        "expected_evidence": {
+          "ILO-01": "AT-01 short_answer",
+          "ILO-02": "AT-01 short_answer",
+          "ILO-03": "AT-02 performance_task",
+          "ILO-04": "AT-02 performance_task",
+          "ILO-05": "AT-03 performance_task"
+        },
+        "formative_methods": [
+          "Exit tickets after each module (AT-01, AT-02, AT-03)"
+        ],
+        "pilot_data_plan": {
+          "collection_points": [
+            {
+              "when": "After Week 1 (Module 1)",
+              "where": "Session 1 (Introduction to Machine Learning)",
+              "what": "AT-01 Short Answer Exam",
+              "from_whom": "Students who completed AT-01"
+            },
+            {
+              "when": "After Week 3 (Module 3)",
+              "where": "Session 3 (Cross-Validation)",
+              "what": "AT-03 Cross-Validation Quiz",
+              "from_whom": "Students who completed AT-03"
+            }
+          ],
+          "anticipated_difficulties": [
+            {
+              "area": "Module 2 (Regression Trees)",
+              "rationale": "Students may struggle with scikit-learn API and tree structure understanding",
+              "detected_by": "AT-02 performance_task results showing frequent errors in tree selection parameters",
+              "first_revision": "Add visual tree diagrams and instructor-guided practice before Module 2"
+            },
+            {
+              "area": "Module 3 (Cross-Validation)",
+              "rationale": "Students may misunderstand cross-validation as a single split rather than k-fold partitioning",
+              "detected_by": "AT-03 short_answer results showing confusion about k-fold vs random split",
+              "first_revision": "Add interactive visualization of cross-validation process in Module 3 session"
+            }
+          ]
+        },
+        "summative_evaluation_plan": {
+          "administration": "All summative tasks conducted in Google Colab via Google Forms (20 minutes per task)",
+          "effectiveness_analysis": "Expected accuracy ≥85% on performance tasks indicates successful mastery of ILO-03, ILO-04, ILO-05",
+          "data_sources": "AT-02 and AT-03 performance task scores and short_answer results from AT-01"
+        },
+        "adoption_criteria": {
+          "goal_attainment": "Students achieving ≥85% accuracy on performance tasks",
+          "learner_satisfaction": "Survey of 100 students on clarity of tasks and feedback",
+          "cost_efficiency": "Total cost $0 (LMS-based, Google Colab free)",
+          "decision_rule": "If goal_attainment ≥85% and satisfaction ≥4.0 (on 5-point scale) → adopt; revise if goal_attainment <80% or satisfaction <3.5; drop if goal_attainment <75%"
+        },
+        "lo_coverage_targets": {
+          "ILO-01": [
+            "diagnostic"
+          ],
+          "ILO-02": [
+            "diagnostic"
+          ],
+          "ILO-03": [
+            "summative"
+          ],
+          "ILO-04": [
+            "summative"
+          ],
+          "ILO-05": [
+            "summative"
+          ]
+        }
+      },
+      "label": "assessment_plan",
+      "kind": "section",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "assessment",
+      "id": "assessment:AT-01",
+      "data": {
+        "id": "AT-01",
+        "timing": "diagnostic",
+        "format": "short_answer",
+        "item_counts": {
+          "short_answer": 1
+        },
+        "covers_objectives": [
+          "ILO-01",
+          "ILO-02"
+        ],
+        "minutes": 15,
+        "weight_percent": 0,
+        "module_id": "MOD-01",
+        "items": [
+          {
+            "type": "short_answer",
+            "question": "Sinh viên cần giải thích quy trình nào trong 3 bước cốt lõi để xây dựng một mô hình học máy có giám sát được mô tả trong yêu cầu này?",
+            "aligned_objective": "ILO-01",
+            "plan_category": "diagnostic",
+            "required_cognitive_process": "understand",
+            "scoring_criteria": "1. Excellent: Sinh viên giải thích đầy đủ 3 bước chu kỳ: chuẩn bị dữ liệu, huấn luyện mô hình, và đánh giá kết quả. 2. Satisfactory: Sinh viên giải thích được 2 trong 3 bước trên. 3. Needs improvement: Sinh viên chỉ giải thích được 1 bước hoặc bí ẩn quy trình.",
+            "rubric": [
+              {
+                "id": "b1",
+                "description": "Đề cập toàn bộ 3 bước chu kỳ: chuẩn bị dữ liệu, huấn luyện mô hình, và đánh giá kết quả.",
+                "evidence_type": "short_answer",
+                "levels": {
+                  "excellent": "Sinh viên giải thích đầy đủ 3 bước chu kỳ: chuẩn bị dữ liệu, huấn luyện mô hình, và đánh giá kết quả.",
+                  "satisfactory": "Sinh viên giải thích được 2 trong 3 bước trên.",
+                  "needs_improvement": "Sinh viên chỉ giải thích được 1 bước hoặc bí ẩn quy trình."
+                }
+              },
+              {
+                "id": "b2",
+                "description": "Đề cập đầy đủ quy trình chuẩn bị dữ liệu (thu thập, tiền xử lý, đánh giá) trước khi huấn luyện.",
+                "evidence_type": "short_answer",
+                "levels": {
+                  "excellent": "Sinh viên giải thích đầy đủ quy trình chuẩn bị dữ liệu: thu thập, tiền xử lý, đánh giá.",
+                  "satisfactory": "Sinh viên giải thích được chuẩn bị dữ liệu nhưng thiếu chi tiết về tiền xử lý hoặc đánh giá.",
+                  "needs_improvement": "Sinh viên chỉ đề cập đến huấn luyện hoặc đánh giá mà bỏ qua chuẩn bị dữ liệu."
+                }
+              }
+            ],
+            "item_id": "ATI-0101",
+            "plan_set": "AS-AT-01"
+          },
+          {
+            "type": "short_answer",
+            "question": "Sinh viên cần thực hiện thao tác nào để cài đặt mô hình hồi quy tuyến tính và cây quyết định bằng Python với thư viện scikit-learn?",
+            "aligned_objective": "ILO-02",
+            "plan_category": "diagnostic",
+            "required_cognitive_process": "apply",
+            "scoring_criteria": "1. Excellent: Sinh viên thực hiện các bước cài đặt đầy đủ: boilerplate code, import library, fit model, predict output, và kiểm tra doğrivaldity. 2. Satisfactory: Sinh viên thực hiện 2 trong các bước trên nhưng thiếu bước cuối cùng. 3. Needs improvement: Sinh viên chỉ thực hiện 1 bước hoặc code không hoàn chỉnh.",
+            "rubric": [
+              {
+                "id": "c1",
+                "description": "Thực hiện đầy đủ 4 bước: boilerplate code, import library, fit model, và predict output.",
+                "evidence_type": "short_answer",
+                "levels": {
+                  "excellent": "Sinh viên thực hiện đầy đủ 4 bước: boilerplate code, import library, fit model, và predict output.",
+                  "satisfactory": "Sinh viên thực hiện 3 trong 4 bước nhưng thiếu bước cuối cùng.",
+                  "needs_improvement": "Sinh viên chỉ thực hiện 1 trong 4 bước hoặc code không hoàn chỉnh."
+                }
+              },
+              {
+                "id": "c2",
+                "description": "Thực hiện đúng việc import library scikit-learn và mô hình hóa hồi quy tuyến tính.",
+                "evidence_type": "short_answer",
+                "levels": {
+                  "excellent": "Sinh viên thực hiện đúng việc import library scikit-learn và mô hình hóa hồi quy tuyến tính.",
+                  "satisfactory": "Sinh viên import đúng library nhưng mô hình hóa hồi quy tuyến tính không chính xác.",
+                  "needs_improvement": "Sinh viên không import đúng library hoặc mô hình hóa hồi quy tuyến tính sai."
+                }
+              }
+            ],
+            "item_id": "ATI-0102",
+            "plan_set": "AS-AT-01"
+          }
+        ]
+      },
+      "label": "AT-01",
+      "kind": "element",
+      "detail": "short_answer",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "assessment",
+      "id": "assessment:AT-02",
+      "data": {
+        "id": "AT-02",
+        "timing": "summative",
+        "format": "performance_task",
+        "item_counts": {
+          "short_answer": 1,
+          "performance_task": 2
+        },
+        "covers_objectives": [
+          "ILO-03",
+          "ILO-04"
+        ],
+        "minutes": 45,
+        "weight_percent": 10,
+        "module_id": "MOD-02",
+        "items": [
+          {
+            "type": "short_answer",
+            "question": "Sinh viên cần thực hiện phép toán bình phương trung bình và lấy căn bậc hai để tính toán gì trong quá trình thử nghiệm và đánh giá mô hình hồi quy tuyến tính?",
+            "options": [
+              "RMSE",
+              "RMSE",
+              "Accuracy",
+              "F1"
+            ],
+            "correct_answer": "RMSE",
+            "aligned_objective": "ILO-03",
+            "plan_category": "summative",
+            "required_cognitive_process": "apply",
+            "rubric": [
+              {
+                "id": "a1",
+                "description": "Đáp án hoàn hảo: Chỉ ra chính xác RMSE là độ đo sai số bình phương trung bình và giải thích ý nghĩa (độ đo nhỏ đồng nghĩa với mô hình chính xác hơn).",
+                "evidence_type": "short_answer",
+                "levels": {
+                  "excellent": "Chỉ ra chính xác RMSE là độ đo phù hợp, giải thích đầy đủ ý nghĩa (độ đo nhỏ = mô hình tốt).",
+                  "satisfactory": "Chỉ ra RMSE là độ đo cho độ chính xác số học nhưng thiếu giải thích ý nghĩa.",
+                  "needs_improvement": "Không chỉ ra chính xác RMSE hoặc giải thích sai ý nghĩa."
+                }
+              }
+            ],
+            "item_id": "ATI-0201",
+            "plan_set": "AS-AT-02"
+          },
+          {
+            "type": "performance_task",
+            "question": "Đánh giá hiệu suất của một mô hình học máy có giám sát bằng cách so sánh độ đo Accuracy, F1 và RMSE giữa dữ liệu huấn luyện và dữ liệu kiểm tra, giải thích ý nghĩa của từng độ đo và đưa ra lời khuyên cải thiện nếu Accuracy cao, F1 thấp, hoặc RMSE cao.",
+            "options": [
+              "Đánh giá bằng chỉ số Accuracy",
+              "Đánh giá bằng chỉ số F1",
+              "Đánh giá bằng chỉ số RMSE và giải thích",
+              "Đánh giá bằng chỉ số B10"
+            ],
+            "correct_answer": "Đánh giá bằng chỉ số RMSE và giải thích",
+            "aligned_objective": "ILO-03",
+            "plan_category": "summative",
+            "required_cognitive_process": "evaluate",
+            "rubric": [
+              {
+                "id": "r1",
+                "description": "Mô hình hoàn hảo: Phân biệt được chính xác Accuracy, F1, RMSE là độ đo phù hợp cho từng mục tiêu (Accuracy cho tổng thể, F1 cho imbalance, RMSE cho độ chính xác số học), giải thích đầy đủ ý nghĩa của từng độ đo và đưa ra lời khuyên cụ thể khi Accuracy cao, F1 thấp, hoặc RMSE cao.",
+                "evidence_type": "performance_task",
+                "levels": {
+                  "excellent": "Phân biệt chính xác Accuracy, F1, RMSE, giải thích đầy đủ ý nghĩa mỗi độ đo, đưa ra lời khuyên cụ thể khi Accuracy cao, F1 thấp, hoặc RMSE cao.",
+                  "satisfactory": "Phân biệt được Accuracy, F1, RMSE nhưng chỉ giải thích ý nghĩa chung, không đưa ra lời khuyên cụ thể.",
+                  "needs_improvement": "Không phân biệt được Accuracy, F1 hoặc RMSE hoặc không đưa ra lời khuyên cụ thể."
+                }
+              }
+            ],
+            "item_id": "ATI-0202",
+            "plan_set": "AS-AT-02"
+          },
+          {
+            "type": "performance_task",
+            "question": "Đánh giá độ chính xác của một mô hình học máy có giám sát bằng cách so sánh độ đo Accuracy, F1 và RMSE giữa dữ liệu huấn luyện và dữ liệu kiểm tra, giải thích ý nghĩa của từng độ đo và đưa ra lời khuyên cải thiện nếu Accuracy cao, F1 thấp, hoặc RMSE cao.",
+            "options": [
+              "Đánh giá bằng chỉ số Accuracy",
+              "Đánh giá bằng chỉ số F1",
+              "Đánh giá bằng chỉ số RMSE và giải thích",
+              "Đánh giá bằng chỉ số B10"
+            ],
+            "correct_answer": "Đánh giá bằng chỉ số RMSE và giải thích",
+            "aligned_objective": "ILO-04",
+            "plan_category": "summative",
+            "required_cognitive_process": "evaluate",
+            "rubric": [
+              {
+                "id": "r2",
+                "description": "Mô hình hoàn hảo: Phân biệt được chính xác Accuracy, F1, RMSE là độ đo phù hợp cho từng mục tiêu (Accuracy cho tổng thể, F1 cho imbalance, RMSE cho độ chính xác số học), giải thích đầy đủ ý nghĩa của từng độ đo và đưa ra lời khuyên cụ thể khi Accuracy cao, F1 thấp, hoặc RMSE cao.",
+                "evidence_type": "performance_task",
+                "levels": {
+                  "excellent": "Phân biệt chính xác Accuracy, F1, RMSE, giải thích đầy đủ ý nghĩa mỗi độ đo, đưa ra lời khuyên cụ thể khi Accuracy cao, F1 thấp, hoặc RMSE cao.",
+                  "satisfactory": "Phân biệt được Accuracy, F1, RMSE nhưng chỉ giải thích ý nghĩa chung, không đưa ra lời khuyên cụ thể.",
+                  "needs_improvement": "Không phân biệt được Accuracy, F1 hoặc RMSE hoặc không đưa ra lời khuyên cụ thể."
+                }
+              }
+            ],
+            "item_id": "ATI-0203",
+            "plan_set": "AS-AT-02"
+          }
+        ]
+      },
+      "label": "AT-02",
+      "kind": "element",
+      "detail": "performance_task",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "assessment",
+      "id": "assessment:AT-03",
+      "data": {
+        "id": "AT-03",
+        "timing": "summative",
+        "format": "performance_task",
+        "item_counts": {
+          "short_answer": 1,
+          "performance_task": 2
+        },
+        "covers_objectives": [
+          "ILO-05"
+        ],
+        "minutes": 45,
+        "weight_percent": 10,
+        "module_id": "MOD-03",
+        "items": [
+          {
+            "type": "performance_task",
+            "question": "Hãy mô tả phương pháp cross-validation để xác định độ ổn định của mô hình học máy có giám sát, bao gồm việc chia tập dữ liệu và tính toán các méo đo.",
+            "aligned_objective": "ILO-05",
+            "plan_category": "summative",
+            "required_cognitive_process": "evaluate",
+            "scoring_criteria": "Excellent: Mô tả chi tiết 5 bước thực hiện cross-validation (split train/valid/test k lần, tính toán MSE, RMSE, R2) và phân tích so sánh độ ổn định giữa các tập vi mô. Sử dụng ví dụ số liệu cụ thể. Satisfactory: Mô tả 4-5 bước nhưng thiếu chi tiết tính toán hoặc phân tích so sánh. Needs improvement: Chỉ liệt kê bước chia dữ liệu mà không có phương pháp tính toán độ ổn định.",
+            "rubric": [
+              {
+                "id": "excellent",
+                "description": "Mô tả chi tiết 5 bước thực hiện cross-validation (split train/valid/test k lần, tính toán MSE, RMSE, R2) và phân tích so sánh độ ổn định giữa các tập vi mô, kèm ví dụ số liệu cụ thể.",
+                "evidence_type": "performance_task",
+                "levels": {
+                  "excellent": "Mô tả chi tiết 5 bước thực hiện cross-validation (split train/valid/test k lần, tính toán MSE, RMSE, R2) và phân tích so sánh độ ổn định giữa các tập vi mô, kèm ví dụ số liệu cụ thể.",
+                  "satisfactory": "Mô tả 4-5 bước nhưng thiếu chi tiết tính toán hoặc phân tích so sánh.",
+                  "needs_improvement": "Chỉ liệt kê bước chia dữ liệu mà không có phương pháp tính toán độ ổn định."
+                }
+              },
+              {
+                "id": "satisfactory",
+                "description": "Mô tả 4-5 bước thực hiện cross-validation nhưng thiếu chi tiết tính toán độ ổn định.",
+                "evidence_type": "performance_task",
+                "levels": {
+                  "excellent": "Mô tả chi tiết 5 bước thực hiện cross-validation (split train/valid/test k lần, tính toán MSE, RMSE, R2) và phân tích so sánh độ ổn định giữa các tập vi mô, kèm ví dụ số liệu cụ thể.",
+                  "satisfactory": "Mô tả 4-5 bước nhưng thiếu chi tiết tính toán hoặc phân tích so sánh.",
+                  "needs_improvement": "Chỉ liệt kê bước chia dữ liệu mà không có phương pháp tính toán độ ổn định."
+                }
+              },
+              {
+                "id": "needs_improvement",
+                "description": "Chưa mô tả đầy đủ phương pháp cross-validation để kiểm tra độ ổn định.",
+                "evidence_type": "performance_task",
+                "levels": {
+                  "excellent": "Mô tả chi tiết 5 bước thực hiện cross-validation (split train/valid/test k lần, tính toán MSE, RMSE, R2) và phân tích so sánh độ ổn định giữa các tập vi mô, kèm ví dụ số liệu cụ thể.",
+                  "satisfactory": "Mô tả 4-5 bước nhưng thiếu chi tiết tính toán hoặc phân tích so sánh.",
+                  "needs_improvement": "Chỉ liệt kê bước chia dữ liệu mà không có phương pháp tính toán độ ổn định."
+                }
+              }
+            ],
+            "item_id": "ATI-0301",
+            "plan_set": "AS-AT-03"
+          },
+          {
+            "type": "short_answer",
+            "question": "Khi sử dụng cross-validation để đánh giá mô hình, các méo đo nào được sử dụng để đo độ ổn định và độ chính xác?",
+            "aligned_objective": "ILO-05",
+            "plan_category": "summative",
+            "required_cognitive_process": "understand",
+            "scoring_criteria": "Excellent: Nêu chính xác các méo đo 'Mean Squared Error (MSE)' và 'Root Mean Squared Error (RMSE)' và giải thích ý nghĩa của chúng trong bối cảnh cross-validation. Satisfactory: Nêu tên 'MSE' và 'RMSE' nhưng thiếu giải thích ý nghĩa hoặc chỉ nêu chung chung. Needs improvement: Nối sai hoặc không nêu rõ méo đo được sử dụng.",
+            "rubric": [
+              {
+                "id": "excellent",
+                "description": "Nêu chính xác các méo đo 'Mean Squared Error (MSE)' và 'Root Mean Squared Error (RMSE)' và giải thích ý nghĩa của chúng trong bối cảnh cross-validation.",
+                "evidence_type": "short_answer",
+                "levels": {
+                  "excellent": "Nêu chính xác các méo đo 'Mean Squared Error (MSE)' và 'Root Mean Squared Error (RMSE)' và giải thích ý nghĩa của chúng trong bối cảnh cross-validation.",
+                  "satisfactory": "Nêu tên 'MSE' và 'RMSE' nhưng thiếu giải thích ý nghĩa hoặc chỉ nêu chung chung.",
+                  "needs_improvement": "Nối sai hoặc không nêu rõ méo đo được sử dụng."
+                }
+              },
+              {
+                "id": "satisfactory",
+                "description": "Nêu tên 'MSE' và 'RMSE' nhưng không giải thích ý nghĩa.",
+                "evidence_type": "short_answer",
+                "levels": {
+                  "excellent": "Nêu chính xác các méo đo 'Mean Squared Error (MSE)' và 'Root Mean Squared Error (RMSE)' và giải thích ý nghĩa của chúng trong bối cảnh cross-validation.",
+                  "satisfactory": "Nêu tên 'MSE' và 'RMSE' nhưng thiếu giải thích ý nghĩa hoặc chỉ nêu chung chung.",
+                  "needs_improvement": "Nối sai hoặc không nêu rõ méo đo được sử dụng."
+                }
+              },
+              {
+                "id": "needs_improvement",
+                "description": "Chưa xác định được méo đo nào được sử dụng trong cross-validation.",
+                "evidence_type": "short_answer",
+                "levels": {
+                  "excellent": "Nêu chính xác các méo đo 'Mean Squared Error (MSE)' và 'Root Mean Squared Error (RMSE)' và giải thích ý nghĩa của chúng trong bối cảnh cross-validation.",
+                  "satisfactory": "Nêu tên 'MSE' và 'RMSE' nhưng thiếu giải thích ý nghĩa hoặc chỉ nêu chung chung.",
+                  "needs_improvement": "Chưa xác định được méo đo nào được sử dụng trong cross-validation."
+                }
+              }
+            ],
+            "item_id": "ATI-0302",
+            "plan_set": "AS-AT-03"
+          },
+          {
+            "type": "short_answer",
+            "question": "Khi đánh giá mô hình cây quyết định, độ đo 'accuracy' được sử dụng để đo lường điều gì?",
+            "aligned_objective": "ILO-05",
+            "plan_category": "summative",
+            "required_cognitive_process": "understand",
+            "scoring_criteria": "Excellent: Nêu chính xác 'accuracy' là tỷ lệ mô hình dự đoán đúng trong tổng số dự đoán, đặc biệt quan trọng cho việc so sánh giữa các mô hình có số lượng mẫu lớn. Satisfactory: Nối 'accuracy' với 'train' hoặc 'test' nhưng thiếu giải thích 'accuracy' là tỷ lệ dự đoán đúng. Needs improvement: Nối sai hoặc không giải thích ý nghĩa của 'accuracy' trong cây quyết định.",
+            "rubric": [
+              {
+                "id": "excellent",
+                "description": "Nêu chính xác 'accuracy' là tỷ lệ mô hình dự đoán đúng trong tổng số dự đoán, đặc biệt quan trọng cho việc so sánh giữa các mô hình có số lượng mẫu lớn.",
+                "evidence_type": "short_answer",
+                "levels": {
+                  "excellent": "Nêu chính xác 'accuracy' là tỷ lệ mô hình dự đoán đúng trong tổng số dự đoán, đặc biệt quan trọng cho việc so sánh giữa các mô hình có số lượng mẫu lớn.",
+                  "satisfactory": "Nối 'accuracy' với 'train' hoặc 'test' nhưng thiếu giải thích 'accuracy' là tỷ lệ dự đoán đúng.",
+                  "needs_improvement": "Nối sai hoặc không giải thích ý nghĩa của 'accuracy' trong cây quyết định."
+                }
+              },
+              {
+                "id": "satisfactory",
+                "description": "Nối 'accuracy' với 'train' hoặc 'test' nhưng không giải thích ý nghĩa.",
+                "evidence_type": "short_answer",
+                "levels": {
+                  "excellent": "Nêu chính xác 'accuracy' là tỷ lệ mô hình dự đoán đúng trong tổng số dự đoán, đặc biệt quan trọng cho việc so sánh giữa các mô hình có số lượng mẫu lớn.",
+                  "satisfactory": "Nối 'accuracy' với 'train' hoặc 'test' nhưng thiếu giải thích 'accuracy' là tỷ lệ dự đoán đúng.",
+                  "needs_improvement": "Nối sai hoặc không giải thích ý nghĩa của 'accuracy' trong cây quyết định."
+                }
+              },
+              {
+                "id": "needs_improvement",
+                "description": "Chưa xác định được độ đo nào được sử dụng để đo 'accuracy' trong cây quyết định.",
+                "evidence_type": "short_answer",
+                "levels": {
+                  "excellent": "Nêu chính xác 'accuracy' là tỷ lệ mô hình dự đoán đúng trong tổng số dự đoán, đặc biệt quan trọng cho việc so sánh giữa các mô hình có số lượng mẫu lớn.",
+                  "satisfactory": "Nối 'accuracy' với 'train' hoặc 'test' nhưng không giải thích ý nghĩa.",
+                  "needs_improvement": "Chưa xác định được độ đo nào được sử dụng để đo 'accuracy' trong cây quyết định."
+                }
+              }
+            ],
+            "item_id": "ATI-0303",
+            "plan_set": "AS-AT-03"
+          }
+        ]
+      },
+      "label": "AT-03",
+      "kind": "element",
+      "detail": "performance_task",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "activity_plan",
+      "id": "activity_plan_0",
+      "data": {
+        "instructional_strategies": {
+          "model": "Instructional Strategies for introducing Machine Learning for Computer Science Students",
+          "sequence": [
+            {
+              "event": "Gagné's Event #1: Attention",
+              "activity": "Lectures: Khái niệm cơ bản về học máy",
+              "duration": "30 minutes",
+              "resources": [
+                "Giao diện học máy trên Google Colab"
+              ]
+            },
+            {
+              "event": "Gagné's Event #2: Signaling",
+              "activity": "Sinh viên thực hiện các bài tập ngắn (15 phút)",
+              "duration": "15 minutes",
+              "resources": [
+                "LMS với các bài tập ngắn"
+              ]
+            },
+            {
+              "event": "Gagné's Event #3: Stimulus and Response",
+              "activity": "Sinh viên thực hiện các bài tập ngắn (15 phút)",
+              "duration": "15 minutes",
+              "resources": [
+                "LMS với các bài tập ngắn"
+              ]
+            },
+            {
+              "event": "Gagné's Event #4: Dissonance",
+              "activity": "Sinh viên thực hiện các bài tập ngắn (15 phút)",
+              "duration": "15 minutes",
+              "resources": [
+                "LMS với các bài tập ngắn"
+              ]
+            },
+            {
+              "event": "Gagné's Event #5: Incentive",
+              "activity": "Sinh viên thực hiện các bài tập ngắn (15 phút)",
+              "duration": "15 minutes",
+              "resources": [
+                "LMS với các bài tập ngắn"
+              ]
+            },
+            {
+              "event": "Gagné's Event #6: Preparation",
+              "activity": "Sinh viên thực hiện các bài tập ngắn (15 phút)",
+              "duration": "15 minutes",
+              "resources": [
+                "LMS với các bài tập ngắn"
+              ]
+            },
+            {
+              "event": "Gagné's Event #7: Imitation",
+              "activity": "Sinh viên thực hiện các bài tập ngắn (15 phút)",
+              "duration": "15 minutes",
+              "resources": [
+                "LMS với các bài tập ngắn"
+              ]
+            },
+            {
+              "event": "Gagné's Event #8: Apprehension",
+              "activity": "Sinh viên thực hiện các bài tập ngắn (15 phút)",
+              "duration": "15 minutes",
+              "resources": [
+                "LMS với các bài tập ngắn"
+              ]
+            },
+            {
+              "event": "Gagné's Event #9: Participation",
+              "activity": "Sinh viên thực hiện các bài tập ngắn (15 phút)",
+              "duration": "15 minutes",
+              "resources": [
+                "LMS với các bài tập ngắn"
+              ]
+            }
+          ],
+          "methods": [
+            "Lecture",
+            "Interactive Learning",
+            "Practice"
+          ],
+          "rationale": "Thiết kế 9 sự kiện của Gagné để đảm bảo tất cả các mục tiêu học đều được thực hiện và đánh giá. Mỗi sự kiện sẽ kết nối với một mục tiêu học cụ thể, giúp sinh viên hiểu rõ quy trình xây dựng mô hình học máy có giám sát."
+        },
+        "non_instructional_strategies": {
+          "support_strategies": [
+            "Scaffolding: Các bài tập ngắn sẽ giúp sinh viên hiểu rõ hơn về quy trình học máy"
+          ],
+          "motivation_strategies": [
+            "Nhận xét tích cực sau mỗi bài tập"
+          ],
+          "self_directed_learning": [
+            "Sinh viên tự thực hiện các bài tập trên Google Colab"
+          ]
+        }
+      },
+      "label": "activity_plan",
+      "kind": "section",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "activity",
+      "id": "activity:TLA-0101",
+      "data": {
+        "activity_name": "Exploring the Machine Learning Pipeline",
+        "duration": "15 minutes",
+        "description": "Review and explain the three core steps of supervised ML model building: Data Preparation, Model Training, and Model Evaluation. Use a visual timeline to show how each step feeds into the next.",
+        "module_id": "MOD-01",
+        "materials_needed": "Visual infographic or slide deck showing the ML pipeline lifecycle.",
+        "aligned_objectives": [
+          "ILO-01",
+          "ILO-02"
+        ],
+        "prepares_for_assessment": [
+          "AT-01"
+        ],
+        "learner_cognitive_process": "understand",
+        "prerequisite_activities": [],
+        "id": "TLA-0101",
+        "plan_set": "AB-MOD-01"
+      },
+      "label": "TLA-0101",
+      "kind": "element",
+      "detail": "Exploring the Machine Learning Pipeline",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "activity",
+      "id": "activity:TLA-0102",
+      "data": {
+        "activity_name": "Hands-on: Setting Up Linear Regression and Decision Trees in Python",
+        "duration": "45 minutes",
+        "description": "Students run the provided scikit-learn dataset through linear regression and decision tree models to compare performance metrics. This is a hands-on lab exercise, ensuring they apply the concepts from the module.",
+        "module_id": "MOD-01",
+        "materials_needed": "Google Colab notebook with the scikit-learn dataset loaded.",
+        "aligned_objectives": [
+          "ILO-02"
+        ],
+        "prepares_for_assessment": [
+          "AT-01"
+        ],
+        "learner_cognitive_process": "apply",
+        "prerequisite_activities": [],
+        "id": "TLA-0102",
+        "plan_set": "AB-MOD-01"
+      },
+      "label": "TLA-0102",
+      "kind": "element",
+      "detail": "Hands-on: Setting Up Linear Regression and Decision Trees in Python",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "activity",
+      "id": "activity:TLA-0103",
+      "data": {
+        "activity_name": "Performance Analysis and Overfitting Mitigation",
+        "duration": "30 minutes",
+        "description": "Students interpret accuracy, F1, and RMSE scores from the models. Conduct a cross-validation check for overfitting and apply the hold-out technique to reduce generalization error.",
+        "module_id": "MOD-01",
+        "materials_needed": "Code snippet demonstrating cross-validation and overfitting metrics.",
+        "aligned_objectives": [
+          "ILO-02"
+        ],
+        "prepares_for_assessment": [
+          "AT-01"
+        ],
+        "learner_cognitive_process": "analyze",
+        "prerequisite_activities": [
+          "TLA-0101"
+        ],
+        "id": "TLA-0103",
+        "plan_set": "AB-MOD-01"
+      },
+      "label": "TLA-0103",
+      "kind": "element",
+      "detail": "Performance Analysis and Overfitting Mitigation",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "activity",
+      "id": "activity:TLA-0201",
+      "data": {
+        "activity_name": "1. Thuyết trình về hồi quy tuyến tính",
+        "duration": "30 minutes",
+        "description": "Giới thiệu khái niệm hồi quy tuyến tính, các biến độc lập và phụ thuộc, ý nghĩa của đường hồi quy.",
+        "module_id": "MOD-02",
+        "materials_needed": "Slide trình bày, ví dụ minh họa trên bảng.",
+        "aligned_objectives": [
+          "ILO-03"
+        ],
+        "prepares_for_assessment": [
+          "AT-02"
+        ],
+        "learner_cognitive_process": "understand",
+        "id": "TLA-0201",
+        "plan_set": "AB-MOD-02"
+      },
+      "label": "TLA-0201",
+      "kind": "element",
+      "detail": "1. Thuyết trình về hồi quy tuyến tính",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "activity",
+      "id": "activity:TLA-0202",
+      "data": {
+        "activity_name": "2. Giới thiệu vấn đề quá khớp và điều chuẩn",
+        "duration": "15 minutes",
+        "description": "Giải thích hiện tượng quá khớp, nguyên nhân, và kỹ thuật điều chuẩn (regularization).",
+        "module_id": "MOD-02",
+        "materials_needed": "Slide trình bày, ví dụ so sánh mô hình quá khớp và điều chuẩn.",
+        "aligned_objectives": [
+          "ILO-03",
+          "ILO-04"
+        ],
+        "prepares_for_assessment": [
+          "AT-02"
+        ],
+        "learner_cognitive_process": "analyze",
+        "id": "TLA-0202",
+        "plan_set": "AB-MOD-02"
+      },
+      "label": "TLA-0202",
+      "kind": "element",
+      "detail": "2. Giới thiệu vấn đề quá khớp và điều chuẩn",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "activity",
+      "id": "activity:TLA-0203",
+      "data": {
+        "activity_name": "3. Thực hành cài đặt mô hình trên Google Colab",
+        "duration": "30 minutes",
+        "description": "Hướng dẫn cài đặt Python, scikit-learn, và pandas trên Google Colab. Thực hiện các bước chuẩn bị dữ liệu.",
+        "module_id": "MOD-02",
+        "materials_needed": "Google Colab, môi trường Python, bias & variance matrix.",
+        "aligned_objectives": [
+          "ILO-03",
+          "ILO-04"
+        ],
+        "prepares_for_assessment": [
+          "AT-02"
+        ],
+        "learner_cognitive_process": "apply",
+        "id": "TLA-0203",
+        "plan_set": "AB-MOD-02"
+      },
+      "label": "TLA-0203",
+      "kind": "element",
+      "detail": "3. Thực hành cài đặt mô hình trên Google Colab",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "activity",
+      "id": "activity:TLA-0204",
+      "data": {
+        "activity_name": "4. Thực hành đánh giá mô hình và phân tích độ đo",
+        "duration": "30 minutes",
+        "description": "Thực hiện phân tích độ đo (accuracy, F1, RMSE) và so sánh giữa mô hình gốc và mô hình điều chuẩn.",
+        "module_id": "MOD-02",
+        "materials_needed": "Google Colab, script phân tích, kết quả so sánh.",
+        "aligned_objectives": [
+          "ILO-03",
+          "ILO-04"
+        ],
+        "prepares_for_assessment": [
+          "AT-02"
+        ],
+        "learner_cognitive_process": "analyze",
+        "id": "TLA-0204",
+        "plan_set": "AB-MOD-02"
+      },
+      "label": "TLA-0204",
+      "kind": "element",
+      "detail": "4. Thực hành đánh giá mô hình và phân tích độ đo",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "activity",
+      "id": "activity:TLA-0301",
+      "data": {
+        "activity_name": "Hoạt động 1: Giới thiệu và Tổng quan Cross-Validation",
+        "duration": "15 minutes",
+        "description": "Giới thiệu về công việc cross-validation, lý do tại sao cần chia dữ liệu và các méo đo liên quan",
+        "module_id": "MOD-03",
+        "materials_needed": "Bảng so sánh giữa các méo đo và ví dụ minh họa",
+        "aligned_objectives": [
+          "ILO-05"
+        ],
+        "prepares_for_assessment": [
+          "AT-03"
+        ],
+        "learner_cognitive_process": "evaluate",
+        "id": "TLA-0301",
+        "plan_set": "AB-MOD-03"
+      },
+      "label": "TLA-0301",
+      "kind": "element",
+      "detail": "Hoạt động 1: Giới thiệu và Tổng quan Cross-Validation",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "activity",
+      "id": "activity:TLA-0302",
+      "data": {
+        "activity_name": "Hoạt động 2: Thực hành code Cross-Validation trên Google Colab",
+        "duration": "25 minutes",
+        "description": "Học sinh cài đặt và chạy các hàm cross-validation cho dữ liệu mẫu trên Google Colab",
+        "module_id": "MOD-03",
+        "materials_needed": "Tài liệu hướng dẫn Google Colab, ví dụ mô hình hồi quy tuyến tính",
+        "aligned_objectives": [
+          "ILO-05"
+        ],
+        "prepares_for_assessment": [
+          "AT-03"
+        ],
+        "learner_cognitive_process": "evaluate",
+        "id": "TLA-0302",
+        "plan_set": "AB-MOD-03"
+      },
+      "label": "TLA-0302",
+      "kind": "element",
+      "detail": "Hoạt động 2: Thực hành code Cross-Validation trên Google Colab",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "activity",
+      "id": "activity:TLA-0303",
+      "data": {
+        "activity_name": "Hoạt động 3: Đánh giá kết quả và so sánh các méo đo",
+        "duration": "5 minutes",
+        "description": "So sánh kết quả cross-validation với các méo đo khác và đặt ra câu hỏi phản biện",
+        "module_id": "MOD-03",
+        "materials_needed": "Tài liệu so sánh các méo đo",
+        "aligned_objectives": [
+          "ILO-05"
+        ],
+        "prepares_for_assessment": [
+          "AT-03"
+        ],
+        "learner_cognitive_process": "evaluate",
+        "id": "TLA-0303",
+        "plan_set": "AB-MOD-03"
+      },
+      "label": "TLA-0303",
+      "kind": "element",
+      "detail": "Hoạt động 3: Đánh giá kết quả và so sánh các méo đo",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "media_selection",
+      "id": "media_selection:M01",
+      "data": {
+        "id": "M01",
+        "media_type": "slides",
+        "purpose": "Khái niệm học máy và chuẩn bị dữ liệu",
+        "rationale": "Modul 1 cung cấp nền tảng lý thuyết cần thiết, phù hợp với học sinh có nền tảng toán học cơ bản.",
+        "respects_constraints": [
+          "C001",
+          "C002",
+          "C004"
+        ],
+        "for_modules": [
+          "MOD-01"
+        ],
+        "description": "Trang 1: Giới thiệu học máy. Trang 2: Vấn đề và giải pháp. Trang 3: Chuẩn bị dữ liệu. Trang 4: Các thành phần chính của mô hình học máy. Trang 5: Quy trình phân tích dữ liệu. Trang 6: Tổng kết."
+      },
+      "label": "M01",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "media_selection",
+      "id": "media_selection:M02",
+      "data": {
+        "id": "M02",
+        "media_type": "simulation",
+        "purpose": "Mô hình hồi quy tuyến tính và cây quyết định",
+        "rationale": "Modul 2 cung cấp thực hành thực tế, sử dụng công cụ mô phỏng để sinh động hóa các khái niệm toán học.",
+        "respects_constraints": [
+          "C001",
+          "C002",
+          "C004"
+        ],
+        "for_modules": [
+          "MOD-02"
+        ],
+        "description": "Trang 1: Giới thiệu hồi quy tuyến tính. Trang 2: Giới thiệu cây quyết định. Trang 3: Minh họa quá khớp. Trang 4: Minh họa điều chuẩn. Trang 5: Tổng kết."
+      },
+      "label": "M02",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "media_selection",
+      "id": "media_selection:M03",
+      "data": {
+        "id": "M03",
+        "media_type": "simulation",
+        "purpose": "Đánh giá và điều chế mô hình",
+        "rationale": "Modul 3 cung cấp trải nghiệm thực hành đánh giá mô hình, giúp sinh viên hiểu rõ vấn đề đánh giá.",
+        "respects_constraints": [
+          "C001",
+          "C002",
+          "C004"
+        ],
+        "for_modules": [
+          "MOD-03"
+        ],
+        "description": "Trang 1: Giới thiệu Cross-Validation. Trang 2: Minh họa quá khớp. Trang 3: Thực hành Cross-Validation. Trang 4: Đánh giá và so sánh méo đo. Trang 5: Tổng kết."
+      },
+      "label": "M03",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "material",
+      "id": "material:MAT-0101",
+      "data": {
+        "title": "Slide 1: Giới thiệu học máy",
+        "type": "slides",
+        "format": "PDF",
+        "content": "Học máy (Machine Learning - ML) là một nhánh của trí tuệ nhân tạo (AI) tập trung vào việc xây dựng các hệ thống máy tính tự động học từ dữ liệu mà không cần được lập trình theo quy trình xác định trước. Trong học máy có giám sát (supervised learning), mô hình được huấn luyện bằng cách so sánh dự đoán của nó với các nhãn (labels) thực tế thu thập từ dữ liệu huấn luyện.",
+        "linked_module": "MOD-01",
+        "id": "MAT-0101",
+        "plan_set": "MU-MOD-01"
+      },
+      "label": "MAT-0101",
+      "kind": "element",
+      "detail": "slides",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "material",
+      "id": "material:MAT-0201",
+      "data": {
+        "title": "Mô hình hồi quy tuyến tính và cây quyết định",
+        "type": "simulation",
+        "format": "video",
+        "content": "Chào mừng các bạn đến với Module 2: Mô hình hồi quy tuyến tính và cây quyết định. Trong 4 tuần đến đây, các bạn sẽ thực hành xây dựng và đánh giá hai mô hình cơ bản trong học máy. Chúng ta sẽ đi từ việc hiểu rõ các khái niệm toán học, cài đặt mô hình bằng Python trên Google Colab, đến việc điều chỉnh mô hình để khắc hiện tượng quá khớp. Hãy bắt đầu bằng cách xem phần giới thiệu về hồi quy tuyến tính.",
+        "linked_module": "MOD-02",
+        "id": "MAT-0201",
+        "plan_set": "MU-MOD-02"
+      },
+      "label": "MAT-0201",
+      "kind": "element",
+      "detail": "simulation",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "material",
+      "id": "material:MAT-0301",
+      "data": {
+        "title": "Cross-Validation: Nguyên tắc và Ý nghĩa",
+        "type": "simulation",
+        "format": "video",
+        "content": "Video giới thiệu Cross-Validation trong 5 phút. Nội dung: Khái niệm Cross-Validation, Lợi ích của việc chia dữ liệu, Minh họa quá khớp và Underfitting bằng hình ảnh so sánh. Kết thúc với lời kêu gọi hành động xem phần thực hành tiếp theo.",
+        "linked_module": "MOD-03",
+        "id": "MAT-0301",
+        "plan_set": "MU-MOD-03"
+      },
+      "label": "MAT-0301",
+      "kind": "element",
+      "detail": "simulation",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "implementation_plan",
+      "id": "implementation_plan_0",
+      "data": {
+        "instructor_orientation": {
+          "orientation_objectives": [
+            "Instructors will understand the machine learning pipeline for their students",
+            "Instructors will know how to guide students through practical Python coding on Google Colab",
+            "Instructors will be equipped to explain supervised learning models and their evaluation metrics",
+            "Instructors will have contingency plans for technical issues during the lab sessions"
+          ],
+          "schedule": "4 tuần, 30h",
+          "materials": [
+            "Slide 1: Giới thiệu học máy",
+            "Mô hình hồi quy tuyến tính và cây quyết định",
+            "Cross-Validation: Nguyên tắc và Ý nghĩa"
+          ],
+          "competency_checklist": [
+            "Instructor can explain the ML pipeline to students",
+            "Instructor can guide hands-on coding on Google Colab",
+            "Instructor can assess student performance in module assessments",
+            "Instructor can manage technical issues during lab sessions"
+          ]
+        },
+        "system_check": {
+          "checklist": [
+            "Learning platform: Google Colab access verified",
+            "Lab/resource access: Computer lab and materials available",
+            "Login: All instructor accounts created and tested",
+            "Network: Stable internet for Google Colab connection",
+            "Data capture: Student data collection system ready",
+            "Accessibility: Materials available on devices",
+            "Fallback: Error handling for technical issues"
+          ],
+          "technical_validation": "Python 3.12 environment with scikit-learn, pandas, and matplotlib installed",
+          "contingency_plans": [
+            "If network fails, use offline data analysis",
+            "If students can't access Google Colab, use local Python environment",
+            "If data collection fails, use manual grading system",
+            "If instructor account fails, use backup accounts"
+          ]
+        },
+        "prototype_execution": {
+          "pilot_scope": "Module 1: Introduction to Machine Learning and Data Preparation",
+          "participants": "40 students from Technology Information course, 3rd year, basic programming knowledge",
+          "execution_log": [
+            "Students explore machine learning pipeline concept",
+            "Students demonstrate understanding of supervised learning classification",
+            "Students prepare dataset for machine learning models"
+          ],
+          "issues_encountered": [
+            "Some students unfamiliar with basic Python syntax",
+            "Data collection requires additional time, need to schedule separately"
+          ],
+          "success_criteria": [
+            "All students complete module 1 activities",
+            "Students can explain ML pipeline to peers",
+            "Students demonstrate understanding of supervised learning concepts"
+          ],
+          "data_collection": {
+            "activities": [
+              "Exploring ML pipeline concept",
+              "Hands-on coding on Google Colab",
+              "Performance analysis and overfitting mitigation"
+            ],
+            "metrics": [
+              "Student participation rate",
+              "Activity completion rate",
+              "Peer teaching assessment"
+            ]
+          }
+        },
+        "monitoring": {
+          "monitoring_criteria": [
+            "Instructor reminders sent 24 hours before session",
+            "Student progress tracked via LMS",
+            "Student data collected in real-time",
+            "Technical support team notified of issues",
+            "Real-time adjustments based on class performance"
+          ],
+          "support_channels": [
+            "Instructor email",
+            "Google Colab support",
+            "LMS notifications",
+            "Technical support hotline"
+          ],
+          "issue_resolution_log": [
+            "Logged all technical issues encountered",
+            "Resolved technical issues within 1 hour",
+            "Escalated critical issues to technical support team",
+            "Followed up on student concerns"
+          ],
+          "real_time_adjustments": [
+            "Adjusted pace based on student performance",
+            "Added extra materials for struggling students",
+            "Modified lecture timing based on Q&A",
+            "Escalated difficult technical issues to technical support team"
+          ]
+        },
+        "instructor_guide": {
+          "overview": "Hướng dẫn giảng viên mô hình học máy và chuẩn bị dữ liệu",
+          "facilitation_tips": [
+            "Hướng dẫn sinh viên giải thích quy trình xây dựng mô hình learning",
+            "Dành thời gian cho sinh viên thực hành trên Google Colab",
+            "Chẩn đoán và hỗ trợ khi sinh viên gặp vấn đề",
+            "Đánh giá sinh viên và nhận xét sau mỗi buổi học"
+          ],
+          "troubleshooting": [
+            "Nếu sinh viên không hiểu khái niệm: tóm tắt lại bằng ví dụ",
+            "Nếu gặp lỗi Python: hướng dẫn kiểm tra cài đặt Python và thư viện",
+            "Nếu không có internet: hướng dẫn sử dụng environment offline",
+            "Nếu không có Google Colab: hướng dẫn sử dụng environment trên máy tính"
+          ]
+        },
+        "operator_manual": {
+          "system_setup": "1. Tạo tài khoản Google Colab cho mỗi giảng viên: https://console.cloud.google.com/credentials, điền email và password, lưu dưới dạng JSON file",
+          "operation_procedures": [
+            "1. Mở Python IDE (PyCharm, VS Code, hoặc Jupyter Notebook)",
+            "2. Cài đặt required libraries: pip install pandas numpy matplotlib scikit-learn",
+            "3. Import và load dataset từ file trong thư viện",
+            "4. Thực hiện mô hình hồi quy tuyến tính",
+            "5. Thực hiện mô hình cây quyết định",
+            "6. Đánh giá mô hình bằng accuracy, F1, RMSE"
+          ],
+          "support_procedures": [
+            "1. Nếu gặp lỗi ImportError: kiểm tra file requirements.txt và uninstall các thư viện không cần thiết",
+            "2. Nếu gặp lỗi import không tìm thấy module: sửa đường dẫn thư viện trong code",
+            "3. Nếu cần data lớn: download từ Google Drive hoặc Hugging Face",
+            "4. Nếu cần hỗ trợ kỹ thuật: liên hệ support Google Colab"
+          ],
+          "escalation_process": "Nếu gặp lỗi nghiêm trọng (không thể khởi động Python, không thể load data): gọi support Google Colab, đợi 15 phút, nếu vẫn không giải quyết được thì gọi email support@example.com"
+        }
+      },
+      "label": "implementation_plan",
+      "kind": "section",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "session_guide",
+      "id": "session_guide:SG-0101",
+      "data": {
+        "session": 1,
+        "objectives": [
+          "OBJ-0001"
+        ],
+        "activities": [
+          "Exploring the Machine Learning Pipeline: Understanding the core components of the ML lifecycle, including data acquisition, preprocessing, model training, evaluation, and deployment. Learners will examine how each stage contributes to the final model performance and identify common pitfalls at each stage.",
+          "learning_outcomes_and_tools"
+        ],
+        "activity_ids": [
+          "TLA-0101"
+        ],
+        "material_ids": [
+          "MAT-0101"
+        ],
+        "notes": "Instructor should introduce the ML pipeline visualization tool and ensure learners activate the dataset before starting the 'Explore' phase. Monitor for confusion between pipeline stages.",
+        "id": "SG-0101",
+        "plan_set": "SB-MOD-01"
+      },
+      "label": "SG-0101",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "session_guide",
+      "id": "session_guide:SG-0102",
+      "data": {
+        "session": 2,
+        "objectives": [
+          "OBJ-0002"
+        ],
+        "activities": [
+          "Hands-on: Setting Up Linear Regression and Decision Trees in Python: Learners will install and configure the required Python libraries (scikit-learn, pandas, matplotlib) on their local machine or Google Colab. They will perform a 'Hello World' regression and decision tree experiment to verify environment setup and basic functionality.",
+          "learning_outcomes_and_tools"
+        ],
+        "activity_ids": [
+          "TLA-0102"
+        ],
+        "material_ids": [
+          "MAT-0101"
+        ],
+        "notes": "Ensure learners have internet access for Google Colab or verify their local environment. Check that the GPU is available for Colab. Watch for issues with library imports and version mismatches.",
+        "id": "SG-0102",
+        "plan_set": "SB-MOD-01"
+      },
+      "label": "SG-0102",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "session_guide",
+      "id": "session_guide:SG-0103",
+      "data": {
+        "session": 3,
+        "objectives": [
+          "OBJ-0003"
+        ],
+        "activities": [
+          "Performance Analysis and Overfitting Mitigation: Learners will apply the established ML pipeline to a provided dataset. They will analyze model performance metrics (accuracy, RMSE, F1). They will then identify overfitting, visualize the training/validation curves, and implement a cross-validation strategy to mitigate overfitting.",
+          "learning_outcomes_and_tools"
+        ],
+        "activity_ids": [
+          "TLA-0103"
+        ],
+        "material_ids": [
+          "MAT-0101"
+        ],
+        "notes": "Provide the dataset data file in a form suitable for analysis. Ensure learners understand the difference between a good fit and overfitting. Monitor for attempts to cheat by copying code.",
+        "id": "SG-0103",
+        "plan_set": "SB-MOD-01"
+      },
+      "label": "SG-0103",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "session_guide",
+      "id": "session_guide:SG-0201",
+      "data": {
+        "session": 2,
+        "objectives": [
+          "MOD-02-01",
+          "MOD-02-02"
+        ],
+        "activities": [
+          "Thuyết trình về hồi quy tuyến tính - Sinh viên phân tích ví dụ và giải thích các bước chuẩn bị dữ liệu, lựa chọn mô hình, xử lý biến và đánh giá mô hình hồi quy tuyến tính."
+        ],
+        "activity_ids": [
+          "TLA-0201"
+        ],
+        "material_ids": [
+          "MAT-0201"
+        ],
+        "notes": "Xác nhận sinh viên hiểu rõ mục tiêu của bài học: nắm vững quy trình xây dựng mô hình học máy có giám sát. Kiểm tra xem sinh viên có thể giải thích các bước chuẩn bị dữ liệu và lựa chọn mô hình phù hợp chưa.",
+        "id": "SG-0201",
+        "plan_set": "SB-MOD-02"
+      },
+      "label": "SG-0201",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "session_guide",
+      "id": "session_guide:SG-0202",
+      "data": {
+        "session": 3,
+        "objectives": [
+          "MOD-02-03",
+          "MOD-02-04"
+        ],
+        "activities": [
+          "Giới thiệu vấn đề quá khớp và giải pháp điều chuẩn - Giải thích khái niệm overfitting, phân tích ảnh hưởng của quá khớp đến mô hình và giới thiệu kỹ thuật điều chuẩn để giảm độ phức tạp."
+        ],
+        "activity_ids": [
+          "TLA-0202"
+        ],
+        "material_ids": [
+          "MAT-0201"
+        ],
+        "notes": "Chú ý: Bài học này có thể làm tri chuyển cho buổi học sau. Đảm bảo sinh viên nắm bắt được hiện tượng và giải pháp cơ bản trước khi thực hành.",
+        "id": "SG-0202",
+        "plan_set": "SB-MOD-02"
+      },
+      "label": "SG-0202",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "session_guide",
+      "id": "session_guide:SG-0301",
+      "data": {
+        "session": 4,
+        "objectives": [
+          "OBJ-0301"
+        ],
+        "activities": [
+          "Hoạt động 1: Giới thiệu và Tổng quan Cross-Validation",
+          "Hoạt động 2: Thực hành code Cross-Validation trên Google Colab",
+          "Hoạt động 3: Đánh giá kết quả và so sánh các méo đo"
+        ],
+        "activity_ids": [
+          "TLA-0301",
+          "TLA-0302",
+          "TLA-0303"
+        ],
+        "material_ids": [
+          "MAT-0301"
+        ],
+        "notes": "Trong session này, giảng viên giới thiệu khái niệm 'Cross-Validation' qua video. Sau đó dẫn dắt học sinh thực hiện code trên Google Colab để hiểu cách đánh giá mô hình. Kết thúc bằng việc so sánh các méo đo để học sinh nhận diện hiện tượng quá khớp.",
+        "id": "SG-0301",
+        "plan_set": "SB-MOD-03"
+      },
+      "label": "SG-0301",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "session_guide",
+      "id": "session_guide:SG-5201",
+      "data": {
+        "session": 2,
+        "objectives": [
+          "OBJECTIVE:02-01"
+        ],
+        "activities": [
+          "Thuyết trình về hồi quy tuyến tính",
+          "Giới thiệu vấn đề quá khớp và điều chuẩn",
+          "Thực hành cài đặt mô hình trên Google Colab",
+          "Thực hành đánh giá mô hình và phân tích độ đo"
+        ],
+        "activity_ids": [
+          "TLA-0201",
+          "TLA-0202",
+          "TLA-0203",
+          "TLA-0204"
+        ],
+        "material_ids": [
+          "MAT-0201"
+        ],
+        "notes": "Giới thiệu mô hình hồi quy tuyến tính. Nhấn mạnh việc hiểu cách hoạt động của mô hình và các thuật toán tối ưu hóa.",
+        "id": "SG-5201",
+        "plan_set": "SB-MOD-02R1"
+      },
+      "label": "SG-5201",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    },
+    {
+      "type": "session_guide",
+      "id": "session_guide:SG-5202",
+      "data": {
+        "session": 3,
+        "objectives": [
+          "OBJECTIVE:02-02"
+        ],
+        "activities": [
+          "Thực hành cài đặt mô hình trên Google Colab",
+          "Thực hành đánh giá mô hình và phân tích độ đo"
+        ],
+        "activity_ids": [
+          "TLA-0203",
+          "TLA-0204"
+        ],
+        "material_ids": [
+          "MAT-0201"
+        ],
+        "notes": "Thực hành cài đặt mô hình cây quyết định và hồi quy tuyến tính trên Google Colab. Đánh giá quá khớp.",
+        "id": "SG-5202",
+        "plan_set": "SB-MOD-02R1"
+      },
+      "label": "SG-5202",
+      "kind": "element",
+      "detail": "",
+      "level": "",
+      "repaired": false
+    }
+  ],
+  "edges": [
+    {
+      "type": "narrates",
+      "source": "gap_0",
+      "target": "gap:G001",
+      "evidence": "",
+      "rationale": "gap_0 carries the section-level narrative for gap:G001.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|gap_0|gap:G001|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "gap_0",
+      "target": "gap:G002",
+      "evidence": "",
+      "rationale": "gap_0 carries the section-level narrative for gap:G002.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|gap_0|gap:G002|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "gap_0",
+      "target": "gap:G003",
+      "evidence": "",
+      "rationale": "gap_0 carries the section-level narrative for gap:G003.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|gap_0|gap:G003|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "gap_0",
+      "target": "gap:G004",
+      "evidence": "",
+      "rationale": "gap_0 carries the section-level narrative for gap:G004.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|gap_0|gap:G004|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "constraint_0",
+      "target": "constraint:C001",
+      "evidence": "",
+      "rationale": "constraint_0 carries the section-level narrative for constraint:C001.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|constraint_0|constraint:C001|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "constraint_0",
+      "target": "constraint:C002",
+      "evidence": "",
+      "rationale": "constraint_0 carries the section-level narrative for constraint:C002.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|constraint_0|constraint:C002|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "constraint_0",
+      "target": "constraint:C003",
+      "evidence": "",
+      "rationale": "constraint_0 carries the section-level narrative for constraint:C003.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|constraint_0|constraint:C003|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "constraint_0",
+      "target": "constraint:C004",
+      "evidence": "",
+      "rationale": "constraint_0 carries the section-level narrative for constraint:C004.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|constraint_0|constraint:C004|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "constraint_0",
+      "target": "constraint:C005",
+      "evidence": "",
+      "rationale": "constraint_0 carries the section-level narrative for constraint:C005.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|constraint_0|constraint:C005|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "topic_0",
+      "target": "topic:T001",
+      "evidence": "",
+      "rationale": "topic_0 carries the section-level narrative for topic:T001.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|topic_0|topic:T001|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "topic_0",
+      "target": "topic:T002",
+      "evidence": "",
+      "rationale": "topic_0 carries the section-level narrative for topic:T002.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|topic_0|topic:T002|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "topic_0",
+      "target": "topic:T003",
+      "evidence": "",
+      "rationale": "topic_0 carries the section-level narrative for topic:T003.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|topic_0|topic:T003|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "topic_0",
+      "target": "topic:T004",
+      "evidence": "",
+      "rationale": "topic_0 carries the section-level narrative for topic:T004.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|topic_0|topic:T004|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "topic_0",
+      "target": "topic:T005",
+      "evidence": "",
+      "rationale": "topic_0 carries the section-level narrative for topic:T005.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|topic_0|topic:T005|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "improvement_0",
+      "target": "improvement:I001",
+      "evidence": "",
+      "rationale": "improvement_0 carries the section-level narrative for improvement:I001.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|improvement_0|improvement:I001|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "improvement_0",
+      "target": "improvement:I002",
+      "evidence": "",
+      "rationale": "improvement_0 carries the section-level narrative for improvement:I002.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|improvement_0|improvement:I002|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "improvement_0",
+      "target": "improvement:I003",
+      "evidence": "",
+      "rationale": "improvement_0 carries the section-level narrative for improvement:I003.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|improvement_0|improvement:I003|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "improvement_0",
+      "target": "improvement:I004",
+      "evidence": "",
+      "rationale": "improvement_0 carries the section-level narrative for improvement:I004.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|improvement_0|improvement:I004|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P9-addresses",
+      "source": "gap:G001",
+      "target": "improvement:I001",
+      "evidence": "",
+      "rationale": "improvement:I001 was generated by traversing gap:G001.",
+      "relation_id": "P9",
+      "established_by": "provenance",
+      "id": "P9|gap:G001|improvement:I001|P9-addresses",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P9-addresses",
+      "source": "gap:G002",
+      "target": "improvement:I002",
+      "evidence": "",
+      "rationale": "improvement:I002 was generated by traversing gap:G002.",
+      "relation_id": "P9",
+      "established_by": "provenance",
+      "id": "P9|gap:G002|improvement:I002|P9-addresses",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P9-addresses",
+      "source": "gap:G003",
+      "target": "improvement:I003",
+      "evidence": "",
+      "rationale": "improvement:I003 was generated by traversing gap:G003.",
+      "relation_id": "P9",
+      "established_by": "provenance",
+      "id": "P9|gap:G003|improvement:I003|P9-addresses",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P9-addresses",
+      "source": "gap:G004",
+      "target": "improvement:I004",
+      "evidence": "",
+      "rationale": "improvement:I004 was generated by traversing gap:G004.",
+      "relation_id": "P9",
+      "established_by": "provenance",
+      "id": "P9|gap:G004|improvement:I004|P9-addresses",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "gap:G001",
+      "target": "objective:ILO-01",
+      "evidence": "",
+      "rationale": "objective:ILO-01 was generated by traversing gap:G001.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|gap:G001|objective:ILO-01|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "gap:G002",
+      "target": "objective:ILO-01",
+      "evidence": "",
+      "rationale": "objective:ILO-01 was generated by traversing gap:G002.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|gap:G002|objective:ILO-01|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "gap:G003",
+      "target": "objective:ILO-01",
+      "evidence": "",
+      "rationale": "objective:ILO-01 was generated by traversing gap:G003.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|gap:G003|objective:ILO-01|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "gap:G004",
+      "target": "objective:ILO-01",
+      "evidence": "",
+      "rationale": "objective:ILO-01 was generated by traversing gap:G004.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|gap:G004|objective:ILO-01|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T001",
+      "target": "objective:ILO-01",
+      "evidence": "",
+      "rationale": "objective:ILO-01 was generated by traversing topic:T001.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T001|objective:ILO-01|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T002",
+      "target": "objective:ILO-01",
+      "evidence": "",
+      "rationale": "objective:ILO-01 was generated by traversing topic:T002.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T002|objective:ILO-01|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T003",
+      "target": "objective:ILO-01",
+      "evidence": "",
+      "rationale": "objective:ILO-01 was generated by traversing topic:T003.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T003|objective:ILO-01|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T004",
+      "target": "objective:ILO-01",
+      "evidence": "",
+      "rationale": "objective:ILO-01 was generated by traversing topic:T004.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T004|objective:ILO-01|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T005",
+      "target": "objective:ILO-01",
+      "evidence": "",
+      "rationale": "objective:ILO-01 was generated by traversing topic:T005.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T005|objective:ILO-01|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P2-fits",
+      "source": "learner_profile_0",
+      "target": "objective:ILO-01",
+      "evidence": "",
+      "rationale": "objective:ILO-01 was generated by traversing learner_profile_0.",
+      "relation_id": "P2",
+      "established_by": "provenance",
+      "id": "P2|learner_profile_0|objective:ILO-01|P2-fits",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "gap:G001",
+      "target": "objective:ILO-02",
+      "evidence": "",
+      "rationale": "objective:ILO-02 was generated by traversing gap:G001.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|gap:G001|objective:ILO-02|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "gap:G002",
+      "target": "objective:ILO-02",
+      "evidence": "",
+      "rationale": "objective:ILO-02 was generated by traversing gap:G002.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|gap:G002|objective:ILO-02|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "gap:G003",
+      "target": "objective:ILO-02",
+      "evidence": "",
+      "rationale": "objective:ILO-02 was generated by traversing gap:G003.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|gap:G003|objective:ILO-02|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "gap:G004",
+      "target": "objective:ILO-02",
+      "evidence": "",
+      "rationale": "objective:ILO-02 was generated by traversing gap:G004.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|gap:G004|objective:ILO-02|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T001",
+      "target": "objective:ILO-02",
+      "evidence": "",
+      "rationale": "objective:ILO-02 was generated by traversing topic:T001.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T001|objective:ILO-02|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T002",
+      "target": "objective:ILO-02",
+      "evidence": "",
+      "rationale": "objective:ILO-02 was generated by traversing topic:T002.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T002|objective:ILO-02|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T003",
+      "target": "objective:ILO-02",
+      "evidence": "",
+      "rationale": "objective:ILO-02 was generated by traversing topic:T003.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T003|objective:ILO-02|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T004",
+      "target": "objective:ILO-02",
+      "evidence": "",
+      "rationale": "objective:ILO-02 was generated by traversing topic:T004.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T004|objective:ILO-02|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T005",
+      "target": "objective:ILO-02",
+      "evidence": "",
+      "rationale": "objective:ILO-02 was generated by traversing topic:T005.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T005|objective:ILO-02|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P2-fits",
+      "source": "learner_profile_0",
+      "target": "objective:ILO-02",
+      "evidence": "",
+      "rationale": "objective:ILO-02 was generated by traversing learner_profile_0.",
+      "relation_id": "P2",
+      "established_by": "provenance",
+      "id": "P2|learner_profile_0|objective:ILO-02|P2-fits",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "gap:G001",
+      "target": "objective:ILO-03",
+      "evidence": "",
+      "rationale": "objective:ILO-03 was generated by traversing gap:G001.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|gap:G001|objective:ILO-03|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "gap:G002",
+      "target": "objective:ILO-03",
+      "evidence": "",
+      "rationale": "objective:ILO-03 was generated by traversing gap:G002.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|gap:G002|objective:ILO-03|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "gap:G003",
+      "target": "objective:ILO-03",
+      "evidence": "",
+      "rationale": "objective:ILO-03 was generated by traversing gap:G003.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|gap:G003|objective:ILO-03|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "gap:G004",
+      "target": "objective:ILO-03",
+      "evidence": "",
+      "rationale": "objective:ILO-03 was generated by traversing gap:G004.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|gap:G004|objective:ILO-03|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T001",
+      "target": "objective:ILO-03",
+      "evidence": "",
+      "rationale": "objective:ILO-03 was generated by traversing topic:T001.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T001|objective:ILO-03|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T002",
+      "target": "objective:ILO-03",
+      "evidence": "",
+      "rationale": "objective:ILO-03 was generated by traversing topic:T002.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T002|objective:ILO-03|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T003",
+      "target": "objective:ILO-03",
+      "evidence": "",
+      "rationale": "objective:ILO-03 was generated by traversing topic:T003.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T003|objective:ILO-03|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T004",
+      "target": "objective:ILO-03",
+      "evidence": "",
+      "rationale": "objective:ILO-03 was generated by traversing topic:T004.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T004|objective:ILO-03|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T005",
+      "target": "objective:ILO-03",
+      "evidence": "",
+      "rationale": "objective:ILO-03 was generated by traversing topic:T005.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T005|objective:ILO-03|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P2-fits",
+      "source": "learner_profile_0",
+      "target": "objective:ILO-03",
+      "evidence": "",
+      "rationale": "objective:ILO-03 was generated by traversing learner_profile_0.",
+      "relation_id": "P2",
+      "established_by": "provenance",
+      "id": "P2|learner_profile_0|objective:ILO-03|P2-fits",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "gap:G001",
+      "target": "objective:ILO-04",
+      "evidence": "",
+      "rationale": "objective:ILO-04 was generated by traversing gap:G001.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|gap:G001|objective:ILO-04|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "gap:G002",
+      "target": "objective:ILO-04",
+      "evidence": "",
+      "rationale": "objective:ILO-04 was generated by traversing gap:G002.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|gap:G002|objective:ILO-04|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "gap:G003",
+      "target": "objective:ILO-04",
+      "evidence": "",
+      "rationale": "objective:ILO-04 was generated by traversing gap:G003.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|gap:G003|objective:ILO-04|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "gap:G004",
+      "target": "objective:ILO-04",
+      "evidence": "",
+      "rationale": "objective:ILO-04 was generated by traversing gap:G004.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|gap:G004|objective:ILO-04|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T001",
+      "target": "objective:ILO-04",
+      "evidence": "",
+      "rationale": "objective:ILO-04 was generated by traversing topic:T001.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T001|objective:ILO-04|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T002",
+      "target": "objective:ILO-04",
+      "evidence": "",
+      "rationale": "objective:ILO-04 was generated by traversing topic:T002.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T002|objective:ILO-04|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T003",
+      "target": "objective:ILO-04",
+      "evidence": "",
+      "rationale": "objective:ILO-04 was generated by traversing topic:T003.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T003|objective:ILO-04|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T004",
+      "target": "objective:ILO-04",
+      "evidence": "",
+      "rationale": "objective:ILO-04 was generated by traversing topic:T004.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T004|objective:ILO-04|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T005",
+      "target": "objective:ILO-04",
+      "evidence": "",
+      "rationale": "objective:ILO-04 was generated by traversing topic:T005.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T005|objective:ILO-04|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P2-fits",
+      "source": "learner_profile_0",
+      "target": "objective:ILO-04",
+      "evidence": "",
+      "rationale": "objective:ILO-04 was generated by traversing learner_profile_0.",
+      "relation_id": "P2",
+      "established_by": "provenance",
+      "id": "P2|learner_profile_0|objective:ILO-04|P2-fits",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "gap:G001",
+      "target": "objective:ILO-05",
+      "evidence": "",
+      "rationale": "objective:ILO-05 was generated by traversing gap:G001.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|gap:G001|objective:ILO-05|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "gap:G002",
+      "target": "objective:ILO-05",
+      "evidence": "",
+      "rationale": "objective:ILO-05 was generated by traversing gap:G002.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|gap:G002|objective:ILO-05|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "gap:G003",
+      "target": "objective:ILO-05",
+      "evidence": "",
+      "rationale": "objective:ILO-05 was generated by traversing gap:G003.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|gap:G003|objective:ILO-05|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "gap:G004",
+      "target": "objective:ILO-05",
+      "evidence": "",
+      "rationale": "objective:ILO-05 was generated by traversing gap:G004.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|gap:G004|objective:ILO-05|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T001",
+      "target": "objective:ILO-05",
+      "evidence": "",
+      "rationale": "objective:ILO-05 was generated by traversing topic:T001.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T001|objective:ILO-05|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T002",
+      "target": "objective:ILO-05",
+      "evidence": "",
+      "rationale": "objective:ILO-05 was generated by traversing topic:T002.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T002|objective:ILO-05|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T003",
+      "target": "objective:ILO-05",
+      "evidence": "",
+      "rationale": "objective:ILO-05 was generated by traversing topic:T003.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T003|objective:ILO-05|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T004",
+      "target": "objective:ILO-05",
+      "evidence": "",
+      "rationale": "objective:ILO-05 was generated by traversing topic:T004.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T004|objective:ILO-05|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P1-informs",
+      "source": "topic:T005",
+      "target": "objective:ILO-05",
+      "evidence": "",
+      "rationale": "objective:ILO-05 was generated by traversing topic:T005.",
+      "relation_id": "P1",
+      "established_by": "provenance",
+      "id": "P1|topic:T005|objective:ILO-05|P1-informs",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P2-fits",
+      "source": "learner_profile_0",
+      "target": "objective:ILO-05",
+      "evidence": "",
+      "rationale": "objective:ILO-05 was generated by traversing learner_profile_0.",
+      "relation_id": "P2",
+      "established_by": "provenance",
+      "id": "P2|learner_profile_0|objective:ILO-05|P2-fits",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P7-covers",
+      "source": "topic:T001",
+      "target": "module:MOD-01",
+      "evidence": "",
+      "rationale": "module:MOD-01 was generated by traversing topic:T001.",
+      "relation_id": "P7",
+      "established_by": "provenance",
+      "id": "P7|topic:T001|module:MOD-01|P7-covers",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P7-covers",
+      "source": "topic:T002",
+      "target": "module:MOD-01",
+      "evidence": "",
+      "rationale": "module:MOD-01 was generated by traversing topic:T002.",
+      "relation_id": "P7",
+      "established_by": "provenance",
+      "id": "P7|topic:T002|module:MOD-01|P7-covers",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P12-groups",
+      "source": "module:MOD-01",
+      "target": "objective:ILO-01",
+      "evidence": "",
+      "rationale": "objective:ILO-01 was generated by traversing module:MOD-01.",
+      "relation_id": "P12",
+      "established_by": "provenance",
+      "id": "P12|module:MOD-01|objective:ILO-01|P12-groups",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P12-groups",
+      "source": "module:MOD-01",
+      "target": "objective:ILO-02",
+      "evidence": "",
+      "rationale": "objective:ILO-02 was generated by traversing module:MOD-01.",
+      "relation_id": "P12",
+      "established_by": "provenance",
+      "id": "P12|module:MOD-01|objective:ILO-02|P12-groups",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P7-covers",
+      "source": "topic:T003",
+      "target": "module:MOD-02",
+      "evidence": "",
+      "rationale": "module:MOD-02 was generated by traversing topic:T003.",
+      "relation_id": "P7",
+      "established_by": "provenance",
+      "id": "P7|topic:T003|module:MOD-02|P7-covers",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P7-covers",
+      "source": "topic:T004",
+      "target": "module:MOD-02",
+      "evidence": "",
+      "rationale": "module:MOD-02 was generated by traversing topic:T004.",
+      "relation_id": "P7",
+      "established_by": "provenance",
+      "id": "P7|topic:T004|module:MOD-02|P7-covers",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P12-groups",
+      "source": "module:MOD-02",
+      "target": "objective:ILO-03",
+      "evidence": "",
+      "rationale": "objective:ILO-03 was generated by traversing module:MOD-02.",
+      "relation_id": "P12",
+      "established_by": "provenance",
+      "id": "P12|module:MOD-02|objective:ILO-03|P12-groups",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P12-groups",
+      "source": "module:MOD-02",
+      "target": "objective:ILO-04",
+      "evidence": "",
+      "rationale": "objective:ILO-04 was generated by traversing module:MOD-02.",
+      "relation_id": "P12",
+      "established_by": "provenance",
+      "id": "P12|module:MOD-02|objective:ILO-04|P12-groups",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P7-covers",
+      "source": "topic:T004",
+      "target": "module:MOD-03",
+      "evidence": "",
+      "rationale": "module:MOD-03 was generated by traversing topic:T004.",
+      "relation_id": "P7",
+      "established_by": "provenance",
+      "id": "P7|topic:T004|module:MOD-03|P7-covers",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P12-groups",
+      "source": "module:MOD-03",
+      "target": "objective:ILO-05",
+      "evidence": "",
+      "rationale": "objective:ILO-05 was generated by traversing module:MOD-03.",
+      "relation_id": "P12",
+      "established_by": "provenance",
+      "id": "P12|module:MOD-03|objective:ILO-05|P12-groups",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P3-realizes",
+      "source": "assessment_plan_0",
+      "target": "assessment:AT-01",
+      "evidence": "diagnostic",
+      "rationale": "assessment:AT-01 realizes the 'diagnostic' assessment_plan category.",
+      "relation_id": "P3",
+      "established_by": "type",
+      "id": "P3|assessment_plan_0|assessment:AT-01|P3-realizes",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P3-realizes",
+      "source": "assessment_plan_0",
+      "target": "assessment:AT-02",
+      "evidence": "summative",
+      "rationale": "assessment:AT-02 realizes the 'summative' assessment_plan category.",
+      "relation_id": "P3",
+      "established_by": "type",
+      "id": "P3|assessment_plan_0|assessment:AT-02|P3-realizes",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P3-realizes",
+      "source": "assessment_plan_0",
+      "target": "assessment:AT-03",
+      "evidence": "summative",
+      "rationale": "assessment:AT-03 realizes the 'summative' assessment_plan category.",
+      "relation_id": "P3",
+      "established_by": "type",
+      "id": "P3|assessment_plan_0|assessment:AT-03|P3-realizes",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P14-assessed_through",
+      "source": "module:MOD-01",
+      "target": "assessment:AT-01",
+      "evidence": "MOD-01",
+      "rationale": "assessment:AT-01 declares module_id=MOD-01.",
+      "relation_id": "P14",
+      "established_by": "id",
+      "id": "P14|module:MOD-01|assessment:AT-01|P14-assessed_through",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P14-assessed_through",
+      "source": "module:MOD-02",
+      "target": "assessment:AT-02",
+      "evidence": "MOD-02",
+      "rationale": "assessment:AT-02 declares module_id=MOD-02.",
+      "relation_id": "P14",
+      "established_by": "id",
+      "id": "P14|module:MOD-02|assessment:AT-02|P14-assessed_through",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P14-assessed_through",
+      "source": "module:MOD-03",
+      "target": "assessment:AT-03",
+      "evidence": "MOD-03",
+      "rationale": "assessment:AT-03 declares module_id=MOD-03.",
+      "relation_id": "P14",
+      "established_by": "id",
+      "id": "P14|module:MOD-03|assessment:AT-03|P14-assessed_through",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C2-assessed_by",
+      "source": "objective:ILO-01",
+      "target": "assessment:AT-01",
+      "evidence": "ILO-01",
+      "rationale": "assessment:AT-01 holds an item declaring aligned_objective=ILO-01, resolved to objective:ILO-01.",
+      "relation_id": "C2",
+      "established_by": "id",
+      "id": "C2|objective:ILO-01|assessment:AT-01|C2-assessed_by",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C2-assessed_by",
+      "source": "objective:ILO-02",
+      "target": "assessment:AT-01",
+      "evidence": "ILO-02",
+      "rationale": "assessment:AT-01 holds an item declaring aligned_objective=ILO-02, resolved to objective:ILO-02.",
+      "relation_id": "C2",
+      "established_by": "id",
+      "id": "C2|objective:ILO-02|assessment:AT-01|C2-assessed_by",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C2-assessed_by",
+      "source": "objective:ILO-03",
+      "target": "assessment:AT-02",
+      "evidence": "ILO-03",
+      "rationale": "assessment:AT-02 holds an item declaring aligned_objective=ILO-03, resolved to objective:ILO-03.",
+      "relation_id": "C2",
+      "established_by": "id",
+      "id": "C2|objective:ILO-03|assessment:AT-02|C2-assessed_by",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C2-assessed_by",
+      "source": "objective:ILO-04",
+      "target": "assessment:AT-02",
+      "evidence": "ILO-04",
+      "rationale": "assessment:AT-02 holds an item declaring aligned_objective=ILO-04, resolved to objective:ILO-04.",
+      "relation_id": "C2",
+      "established_by": "id",
+      "id": "C2|objective:ILO-04|assessment:AT-02|C2-assessed_by",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C2-assessed_by",
+      "source": "objective:ILO-05",
+      "target": "assessment:AT-03",
+      "evidence": "ILO-05",
+      "rationale": "assessment:AT-03 holds an item declaring aligned_objective=ILO-05, resolved to objective:ILO-05.",
+      "relation_id": "C2",
+      "established_by": "id",
+      "id": "C2|objective:ILO-05|assessment:AT-03|C2-assessed_by",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P13-delivered_through",
+      "source": "module:MOD-01",
+      "target": "activity:TLA-0101",
+      "evidence": "MOD-01",
+      "rationale": "activity:TLA-0101 declares module_id=MOD-01, resolved to module:MOD-01.",
+      "relation_id": "P13",
+      "established_by": "id",
+      "id": "P13|module:MOD-01|activity:TLA-0101|P13-delivered_through",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P13-delivered_through",
+      "source": "module:MOD-01",
+      "target": "activity:TLA-0102",
+      "evidence": "MOD-01",
+      "rationale": "activity:TLA-0102 declares module_id=MOD-01, resolved to module:MOD-01.",
+      "relation_id": "P13",
+      "established_by": "id",
+      "id": "P13|module:MOD-01|activity:TLA-0102|P13-delivered_through",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P13-delivered_through",
+      "source": "module:MOD-01",
+      "target": "activity:TLA-0103",
+      "evidence": "MOD-01",
+      "rationale": "activity:TLA-0103 declares module_id=MOD-01, resolved to module:MOD-01.",
+      "relation_id": "P13",
+      "established_by": "id",
+      "id": "P13|module:MOD-01|activity:TLA-0103|P13-delivered_through",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C3-practiced_by",
+      "source": "objective:ILO-01",
+      "target": "activity:TLA-0101",
+      "evidence": "ILO-01",
+      "rationale": "activity:TLA-0101 declares aligned_objectives including ILO-01.",
+      "relation_id": "C3",
+      "established_by": "id",
+      "id": "C3|objective:ILO-01|activity:TLA-0101|C3-practiced_by",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C3-practiced_by",
+      "source": "objective:ILO-02",
+      "target": "activity:TLA-0101",
+      "evidence": "ILO-02",
+      "rationale": "activity:TLA-0101 declares aligned_objectives including ILO-02.",
+      "relation_id": "C3",
+      "established_by": "id",
+      "id": "C3|objective:ILO-02|activity:TLA-0101|C3-practiced_by",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C3-practiced_by",
+      "source": "objective:ILO-02",
+      "target": "activity:TLA-0102",
+      "evidence": "ILO-02",
+      "rationale": "activity:TLA-0102 declares aligned_objectives including ILO-02.",
+      "relation_id": "C3",
+      "established_by": "id",
+      "id": "C3|objective:ILO-02|activity:TLA-0102|C3-practiced_by",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C3-practiced_by",
+      "source": "objective:ILO-02",
+      "target": "activity:TLA-0103",
+      "evidence": "ILO-02",
+      "rationale": "activity:TLA-0103 declares aligned_objectives including ILO-02.",
+      "relation_id": "C3",
+      "established_by": "id",
+      "id": "C3|objective:ILO-02|activity:TLA-0103|C3-practiced_by",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C4-prepares_for",
+      "source": "activity:TLA-0101",
+      "target": "assessment:AT-01",
+      "evidence": "AT-01",
+      "rationale": "activity:TLA-0101 declares prepares_for_assessment including AT-01.",
+      "relation_id": "C4",
+      "established_by": "id",
+      "id": "C4|activity:TLA-0101|assessment:AT-01|C4-prepares_for",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C4-prepares_for",
+      "source": "activity:TLA-0102",
+      "target": "assessment:AT-01",
+      "evidence": "AT-01",
+      "rationale": "activity:TLA-0102 declares prepares_for_assessment including AT-01.",
+      "relation_id": "C4",
+      "established_by": "id",
+      "id": "C4|activity:TLA-0102|assessment:AT-01|C4-prepares_for",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C4-prepares_for",
+      "source": "activity:TLA-0103",
+      "target": "assessment:AT-01",
+      "evidence": "AT-01",
+      "rationale": "activity:TLA-0103 declares prepares_for_assessment including AT-01.",
+      "relation_id": "C4",
+      "established_by": "id",
+      "id": "C4|activity:TLA-0103|assessment:AT-01|C4-prepares_for",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P4-realizes",
+      "source": "activity_plan_0",
+      "target": "activity:TLA-0101",
+      "evidence": "",
+      "rationale": "activity:TLA-0101 was generated by traversing activity_plan_0.",
+      "relation_id": "P4",
+      "established_by": "provenance",
+      "id": "P4|activity_plan_0|activity:TLA-0101|P4-realizes",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P4-realizes",
+      "source": "activity_plan_0",
+      "target": "activity:TLA-0102",
+      "evidence": "",
+      "rationale": "activity:TLA-0102 was generated by traversing activity_plan_0.",
+      "relation_id": "P4",
+      "established_by": "provenance",
+      "id": "P4|activity_plan_0|activity:TLA-0102|P4-realizes",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P4-realizes",
+      "source": "activity_plan_0",
+      "target": "activity:TLA-0103",
+      "evidence": "",
+      "rationale": "activity:TLA-0103 was generated by traversing activity_plan_0.",
+      "relation_id": "P4",
+      "established_by": "provenance",
+      "id": "P4|activity_plan_0|activity:TLA-0103|P4-realizes",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "precedes",
+      "source": "activity:TLA-0101",
+      "target": "activity:TLA-0103",
+      "evidence": "TLA-0101",
+      "rationale": "",
+      "relation_id": "S1",
+      "established_by": "id",
+      "id": "S1|activity:TLA-0101|activity:TLA-0103|precedes",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P13-delivered_through",
+      "source": "module:MOD-02",
+      "target": "activity:TLA-0201",
+      "evidence": "MOD-02",
+      "rationale": "activity:TLA-0201 declares module_id=MOD-02, resolved to module:MOD-02.",
+      "relation_id": "P13",
+      "established_by": "id",
+      "id": "P13|module:MOD-02|activity:TLA-0201|P13-delivered_through",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P13-delivered_through",
+      "source": "module:MOD-02",
+      "target": "activity:TLA-0202",
+      "evidence": "MOD-02",
+      "rationale": "activity:TLA-0202 declares module_id=MOD-02, resolved to module:MOD-02.",
+      "relation_id": "P13",
+      "established_by": "id",
+      "id": "P13|module:MOD-02|activity:TLA-0202|P13-delivered_through",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P13-delivered_through",
+      "source": "module:MOD-02",
+      "target": "activity:TLA-0203",
+      "evidence": "MOD-02",
+      "rationale": "activity:TLA-0203 declares module_id=MOD-02, resolved to module:MOD-02.",
+      "relation_id": "P13",
+      "established_by": "id",
+      "id": "P13|module:MOD-02|activity:TLA-0203|P13-delivered_through",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P13-delivered_through",
+      "source": "module:MOD-02",
+      "target": "activity:TLA-0204",
+      "evidence": "MOD-02",
+      "rationale": "activity:TLA-0204 declares module_id=MOD-02, resolved to module:MOD-02.",
+      "relation_id": "P13",
+      "established_by": "id",
+      "id": "P13|module:MOD-02|activity:TLA-0204|P13-delivered_through",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C3-practiced_by",
+      "source": "objective:ILO-03",
+      "target": "activity:TLA-0201",
+      "evidence": "ILO-03",
+      "rationale": "activity:TLA-0201 declares aligned_objectives including ILO-03.",
+      "relation_id": "C3",
+      "established_by": "id",
+      "id": "C3|objective:ILO-03|activity:TLA-0201|C3-practiced_by",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": true,
+      "invalid_reason": "bloom_activity"
+    },
+    {
+      "type": "C3-practiced_by",
+      "source": "objective:ILO-03",
+      "target": "activity:TLA-0202",
+      "evidence": "ILO-03",
+      "rationale": "activity:TLA-0202 declares aligned_objectives including ILO-03.",
+      "relation_id": "C3",
+      "established_by": "id",
+      "id": "C3|objective:ILO-03|activity:TLA-0202|C3-practiced_by",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": true,
+      "invalid_reason": "bloom_activity"
+    },
+    {
+      "type": "C3-practiced_by",
+      "source": "objective:ILO-04",
+      "target": "activity:TLA-0202",
+      "evidence": "ILO-04",
+      "rationale": "activity:TLA-0202 declares aligned_objectives including ILO-04.",
+      "relation_id": "C3",
+      "established_by": "id",
+      "id": "C3|objective:ILO-04|activity:TLA-0202|C3-practiced_by",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C3-practiced_by",
+      "source": "objective:ILO-03",
+      "target": "activity:TLA-0203",
+      "evidence": "ILO-03",
+      "rationale": "activity:TLA-0203 declares aligned_objectives including ILO-03.",
+      "relation_id": "C3",
+      "established_by": "id",
+      "id": "C3|objective:ILO-03|activity:TLA-0203|C3-practiced_by",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": true,
+      "invalid_reason": "bloom_activity"
+    },
+    {
+      "type": "C3-practiced_by",
+      "source": "objective:ILO-04",
+      "target": "activity:TLA-0203",
+      "evidence": "ILO-04",
+      "rationale": "activity:TLA-0203 declares aligned_objectives including ILO-04.",
+      "relation_id": "C3",
+      "established_by": "id",
+      "id": "C3|objective:ILO-04|activity:TLA-0203|C3-practiced_by",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C3-practiced_by",
+      "source": "objective:ILO-03",
+      "target": "activity:TLA-0204",
+      "evidence": "ILO-03",
+      "rationale": "activity:TLA-0204 declares aligned_objectives including ILO-03.",
+      "relation_id": "C3",
+      "established_by": "id",
+      "id": "C3|objective:ILO-03|activity:TLA-0204|C3-practiced_by",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": true,
+      "invalid_reason": "bloom_activity"
+    },
+    {
+      "type": "C3-practiced_by",
+      "source": "objective:ILO-04",
+      "target": "activity:TLA-0204",
+      "evidence": "ILO-04",
+      "rationale": "activity:TLA-0204 declares aligned_objectives including ILO-04.",
+      "relation_id": "C3",
+      "established_by": "id",
+      "id": "C3|objective:ILO-04|activity:TLA-0204|C3-practiced_by",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C4-prepares_for",
+      "source": "activity:TLA-0201",
+      "target": "assessment:AT-02",
+      "evidence": "AT-02",
+      "rationale": "activity:TLA-0201 declares prepares_for_assessment including AT-02.",
+      "relation_id": "C4",
+      "established_by": "id",
+      "id": "C4|activity:TLA-0201|assessment:AT-02|C4-prepares_for",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C4-prepares_for",
+      "source": "activity:TLA-0202",
+      "target": "assessment:AT-02",
+      "evidence": "AT-02",
+      "rationale": "activity:TLA-0202 declares prepares_for_assessment including AT-02.",
+      "relation_id": "C4",
+      "established_by": "id",
+      "id": "C4|activity:TLA-0202|assessment:AT-02|C4-prepares_for",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C4-prepares_for",
+      "source": "activity:TLA-0203",
+      "target": "assessment:AT-02",
+      "evidence": "AT-02",
+      "rationale": "activity:TLA-0203 declares prepares_for_assessment including AT-02.",
+      "relation_id": "C4",
+      "established_by": "id",
+      "id": "C4|activity:TLA-0203|assessment:AT-02|C4-prepares_for",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C4-prepares_for",
+      "source": "activity:TLA-0204",
+      "target": "assessment:AT-02",
+      "evidence": "AT-02",
+      "rationale": "activity:TLA-0204 declares prepares_for_assessment including AT-02.",
+      "relation_id": "C4",
+      "established_by": "id",
+      "id": "C4|activity:TLA-0204|assessment:AT-02|C4-prepares_for",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P4-realizes",
+      "source": "activity_plan_0",
+      "target": "activity:TLA-0201",
+      "evidence": "",
+      "rationale": "activity:TLA-0201 was generated by traversing activity_plan_0.",
+      "relation_id": "P4",
+      "established_by": "provenance",
+      "id": "P4|activity_plan_0|activity:TLA-0201|P4-realizes",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P4-realizes",
+      "source": "activity_plan_0",
+      "target": "activity:TLA-0202",
+      "evidence": "",
+      "rationale": "activity:TLA-0202 was generated by traversing activity_plan_0.",
+      "relation_id": "P4",
+      "established_by": "provenance",
+      "id": "P4|activity_plan_0|activity:TLA-0202|P4-realizes",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P4-realizes",
+      "source": "activity_plan_0",
+      "target": "activity:TLA-0203",
+      "evidence": "",
+      "rationale": "activity:TLA-0203 was generated by traversing activity_plan_0.",
+      "relation_id": "P4",
+      "established_by": "provenance",
+      "id": "P4|activity_plan_0|activity:TLA-0203|P4-realizes",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P4-realizes",
+      "source": "activity_plan_0",
+      "target": "activity:TLA-0204",
+      "evidence": "",
+      "rationale": "activity:TLA-0204 was generated by traversing activity_plan_0.",
+      "relation_id": "P4",
+      "established_by": "provenance",
+      "id": "P4|activity_plan_0|activity:TLA-0204|P4-realizes",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P13-delivered_through",
+      "source": "module:MOD-03",
+      "target": "activity:TLA-0301",
+      "evidence": "MOD-03",
+      "rationale": "activity:TLA-0301 declares module_id=MOD-03, resolved to module:MOD-03.",
+      "relation_id": "P13",
+      "established_by": "id",
+      "id": "P13|module:MOD-03|activity:TLA-0301|P13-delivered_through",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P13-delivered_through",
+      "source": "module:MOD-03",
+      "target": "activity:TLA-0302",
+      "evidence": "MOD-03",
+      "rationale": "activity:TLA-0302 declares module_id=MOD-03, resolved to module:MOD-03.",
+      "relation_id": "P13",
+      "established_by": "id",
+      "id": "P13|module:MOD-03|activity:TLA-0302|P13-delivered_through",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P13-delivered_through",
+      "source": "module:MOD-03",
+      "target": "activity:TLA-0303",
+      "evidence": "MOD-03",
+      "rationale": "activity:TLA-0303 declares module_id=MOD-03, resolved to module:MOD-03.",
+      "relation_id": "P13",
+      "established_by": "id",
+      "id": "P13|module:MOD-03|activity:TLA-0303|P13-delivered_through",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C3-practiced_by",
+      "source": "objective:ILO-05",
+      "target": "activity:TLA-0301",
+      "evidence": "ILO-05",
+      "rationale": "activity:TLA-0301 declares aligned_objectives including ILO-05.",
+      "relation_id": "C3",
+      "established_by": "id",
+      "id": "C3|objective:ILO-05|activity:TLA-0301|C3-practiced_by",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C3-practiced_by",
+      "source": "objective:ILO-05",
+      "target": "activity:TLA-0302",
+      "evidence": "ILO-05",
+      "rationale": "activity:TLA-0302 declares aligned_objectives including ILO-05.",
+      "relation_id": "C3",
+      "established_by": "id",
+      "id": "C3|objective:ILO-05|activity:TLA-0302|C3-practiced_by",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C3-practiced_by",
+      "source": "objective:ILO-05",
+      "target": "activity:TLA-0303",
+      "evidence": "ILO-05",
+      "rationale": "activity:TLA-0303 declares aligned_objectives including ILO-05.",
+      "relation_id": "C3",
+      "established_by": "id",
+      "id": "C3|objective:ILO-05|activity:TLA-0303|C3-practiced_by",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C4-prepares_for",
+      "source": "activity:TLA-0301",
+      "target": "assessment:AT-03",
+      "evidence": "AT-03",
+      "rationale": "activity:TLA-0301 declares prepares_for_assessment including AT-03.",
+      "relation_id": "C4",
+      "established_by": "id",
+      "id": "C4|activity:TLA-0301|assessment:AT-03|C4-prepares_for",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C4-prepares_for",
+      "source": "activity:TLA-0302",
+      "target": "assessment:AT-03",
+      "evidence": "AT-03",
+      "rationale": "activity:TLA-0302 declares prepares_for_assessment including AT-03.",
+      "relation_id": "C4",
+      "established_by": "id",
+      "id": "C4|activity:TLA-0302|assessment:AT-03|C4-prepares_for",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "C4-prepares_for",
+      "source": "activity:TLA-0303",
+      "target": "assessment:AT-03",
+      "evidence": "AT-03",
+      "rationale": "activity:TLA-0303 declares prepares_for_assessment including AT-03.",
+      "relation_id": "C4",
+      "established_by": "id",
+      "id": "C4|activity:TLA-0303|assessment:AT-03|C4-prepares_for",
+      "layer": "alignment",
+      "tier": "core",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P4-realizes",
+      "source": "activity_plan_0",
+      "target": "activity:TLA-0301",
+      "evidence": "",
+      "rationale": "activity:TLA-0301 was generated by traversing activity_plan_0.",
+      "relation_id": "P4",
+      "established_by": "provenance",
+      "id": "P4|activity_plan_0|activity:TLA-0301|P4-realizes",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P4-realizes",
+      "source": "activity_plan_0",
+      "target": "activity:TLA-0302",
+      "evidence": "",
+      "rationale": "activity:TLA-0302 was generated by traversing activity_plan_0.",
+      "relation_id": "P4",
+      "established_by": "provenance",
+      "id": "P4|activity_plan_0|activity:TLA-0302|P4-realizes",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P4-realizes",
+      "source": "activity_plan_0",
+      "target": "activity:TLA-0303",
+      "evidence": "",
+      "rationale": "activity:TLA-0303 was generated by traversing activity_plan_0.",
+      "relation_id": "P4",
+      "established_by": "provenance",
+      "id": "P4|activity_plan_0|activity:TLA-0303|P4-realizes",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P8-constrains",
+      "source": "constraint:C001",
+      "target": "media_selection:M01",
+      "evidence": "",
+      "rationale": "media_selection:M01 was generated by traversing constraint:C001.",
+      "relation_id": "P8",
+      "established_by": "provenance",
+      "id": "P8|constraint:C001|media_selection:M01|P8-constrains",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P8-constrains",
+      "source": "constraint:C002",
+      "target": "media_selection:M01",
+      "evidence": "",
+      "rationale": "media_selection:M01 was generated by traversing constraint:C002.",
+      "relation_id": "P8",
+      "established_by": "provenance",
+      "id": "P8|constraint:C002|media_selection:M01|P8-constrains",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P8-constrains",
+      "source": "constraint:C004",
+      "target": "media_selection:M01",
+      "evidence": "",
+      "rationale": "media_selection:M01 was generated by traversing constraint:C004.",
+      "relation_id": "P8",
+      "established_by": "provenance",
+      "id": "P8|constraint:C004|media_selection:M01|P8-constrains",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P8-constrains",
+      "source": "constraint:C001",
+      "target": "media_selection:M02",
+      "evidence": "",
+      "rationale": "media_selection:M02 was generated by traversing constraint:C001.",
+      "relation_id": "P8",
+      "established_by": "provenance",
+      "id": "P8|constraint:C001|media_selection:M02|P8-constrains",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P8-constrains",
+      "source": "constraint:C002",
+      "target": "media_selection:M02",
+      "evidence": "",
+      "rationale": "media_selection:M02 was generated by traversing constraint:C002.",
+      "relation_id": "P8",
+      "established_by": "provenance",
+      "id": "P8|constraint:C002|media_selection:M02|P8-constrains",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P8-constrains",
+      "source": "constraint:C004",
+      "target": "media_selection:M02",
+      "evidence": "",
+      "rationale": "media_selection:M02 was generated by traversing constraint:C004.",
+      "relation_id": "P8",
+      "established_by": "provenance",
+      "id": "P8|constraint:C004|media_selection:M02|P8-constrains",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P8-constrains",
+      "source": "constraint:C001",
+      "target": "media_selection:M03",
+      "evidence": "",
+      "rationale": "media_selection:M03 was generated by traversing constraint:C001.",
+      "relation_id": "P8",
+      "established_by": "provenance",
+      "id": "P8|constraint:C001|media_selection:M03|P8-constrains",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P8-constrains",
+      "source": "constraint:C002",
+      "target": "media_selection:M03",
+      "evidence": "",
+      "rationale": "media_selection:M03 was generated by traversing constraint:C002.",
+      "relation_id": "P8",
+      "established_by": "provenance",
+      "id": "P8|constraint:C002|media_selection:M03|P8-constrains",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P8-constrains",
+      "source": "constraint:C004",
+      "target": "media_selection:M03",
+      "evidence": "",
+      "rationale": "media_selection:M03 was generated by traversing constraint:C004.",
+      "relation_id": "P8",
+      "established_by": "provenance",
+      "id": "P8|constraint:C004|media_selection:M03|P8-constrains",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P5-covers",
+      "source": "module:MOD-01",
+      "target": "material:MAT-0101",
+      "evidence": "",
+      "rationale": "material:MAT-0101 was generated by traversing module:MOD-01.",
+      "relation_id": "P5",
+      "established_by": "provenance",
+      "id": "P5|module:MOD-01|material:MAT-0101|P5-covers",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P6-realizes",
+      "source": "media_selection:M01",
+      "target": "material:MAT-0101",
+      "evidence": "slides",
+      "rationale": "material:MAT-0101 realizes media category 'slides'.",
+      "relation_id": "P6",
+      "established_by": "type",
+      "id": "P6|media_selection:M01|material:MAT-0101|P6-realizes",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P5-covers",
+      "source": "module:MOD-02",
+      "target": "material:MAT-0201",
+      "evidence": "",
+      "rationale": "material:MAT-0201 was generated by traversing module:MOD-02.",
+      "relation_id": "P5",
+      "established_by": "provenance",
+      "id": "P5|module:MOD-02|material:MAT-0201|P5-covers",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P5-covers",
+      "source": "module:MOD-03",
+      "target": "material:MAT-0301",
+      "evidence": "",
+      "rationale": "material:MAT-0301 was generated by traversing module:MOD-03.",
+      "relation_id": "P5",
+      "established_by": "provenance",
+      "id": "P5|module:MOD-03|material:MAT-0301|P5-covers",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P10-delivers",
+      "source": "session_guide:SG-0101",
+      "target": "activity:TLA-0101",
+      "evidence": "",
+      "rationale": "activity:TLA-0101 was generated by traversing session_guide:SG-0101.",
+      "relation_id": "P10",
+      "established_by": "provenance",
+      "id": "P10|session_guide:SG-0101|activity:TLA-0101|P10-delivers",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P11-provisions",
+      "source": "session_guide:SG-0101",
+      "target": "material:MAT-0101",
+      "evidence": "",
+      "rationale": "material:MAT-0101 was generated by traversing session_guide:SG-0101.",
+      "relation_id": "P11",
+      "established_by": "provenance",
+      "id": "P11|session_guide:SG-0101|material:MAT-0101|P11-provisions",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P10-delivers",
+      "source": "session_guide:SG-0102",
+      "target": "activity:TLA-0102",
+      "evidence": "",
+      "rationale": "activity:TLA-0102 was generated by traversing session_guide:SG-0102.",
+      "relation_id": "P10",
+      "established_by": "provenance",
+      "id": "P10|session_guide:SG-0102|activity:TLA-0102|P10-delivers",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P11-provisions",
+      "source": "session_guide:SG-0102",
+      "target": "material:MAT-0101",
+      "evidence": "",
+      "rationale": "material:MAT-0101 was generated by traversing session_guide:SG-0102.",
+      "relation_id": "P11",
+      "established_by": "provenance",
+      "id": "P11|session_guide:SG-0102|material:MAT-0101|P11-provisions",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P10-delivers",
+      "source": "session_guide:SG-0103",
+      "target": "activity:TLA-0103",
+      "evidence": "",
+      "rationale": "activity:TLA-0103 was generated by traversing session_guide:SG-0103.",
+      "relation_id": "P10",
+      "established_by": "provenance",
+      "id": "P10|session_guide:SG-0103|activity:TLA-0103|P10-delivers",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P11-provisions",
+      "source": "session_guide:SG-0103",
+      "target": "material:MAT-0101",
+      "evidence": "",
+      "rationale": "material:MAT-0101 was generated by traversing session_guide:SG-0103.",
+      "relation_id": "P11",
+      "established_by": "provenance",
+      "id": "P11|session_guide:SG-0103|material:MAT-0101|P11-provisions",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "implementation_plan_0",
+      "target": "session_guide:SG-0101",
+      "evidence": "",
+      "rationale": "implementation_plan_0 carries the section-level narrative for session_guide:SG-0101.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|implementation_plan_0|session_guide:SG-0101|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "implementation_plan_0",
+      "target": "session_guide:SG-0102",
+      "evidence": "",
+      "rationale": "implementation_plan_0 carries the section-level narrative for session_guide:SG-0102.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|implementation_plan_0|session_guide:SG-0102|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "implementation_plan_0",
+      "target": "session_guide:SG-0103",
+      "evidence": "",
+      "rationale": "implementation_plan_0 carries the section-level narrative for session_guide:SG-0103.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|implementation_plan_0|session_guide:SG-0103|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P10-delivers",
+      "source": "session_guide:SG-0201",
+      "target": "activity:TLA-0201",
+      "evidence": "",
+      "rationale": "activity:TLA-0201 was generated by traversing session_guide:SG-0201.",
+      "relation_id": "P10",
+      "established_by": "provenance",
+      "id": "P10|session_guide:SG-0201|activity:TLA-0201|P10-delivers",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P11-provisions",
+      "source": "session_guide:SG-0201",
+      "target": "material:MAT-0201",
+      "evidence": "",
+      "rationale": "material:MAT-0201 was generated by traversing session_guide:SG-0201.",
+      "relation_id": "P11",
+      "established_by": "provenance",
+      "id": "P11|session_guide:SG-0201|material:MAT-0201|P11-provisions",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P10-delivers",
+      "source": "session_guide:SG-0202",
+      "target": "activity:TLA-0202",
+      "evidence": "",
+      "rationale": "activity:TLA-0202 was generated by traversing session_guide:SG-0202.",
+      "relation_id": "P10",
+      "established_by": "provenance",
+      "id": "P10|session_guide:SG-0202|activity:TLA-0202|P10-delivers",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P11-provisions",
+      "source": "session_guide:SG-0202",
+      "target": "material:MAT-0201",
+      "evidence": "",
+      "rationale": "material:MAT-0201 was generated by traversing session_guide:SG-0202.",
+      "relation_id": "P11",
+      "established_by": "provenance",
+      "id": "P11|session_guide:SG-0202|material:MAT-0201|P11-provisions",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "implementation_plan_0",
+      "target": "session_guide:SG-0201",
+      "evidence": "",
+      "rationale": "implementation_plan_0 carries the section-level narrative for session_guide:SG-0201.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|implementation_plan_0|session_guide:SG-0201|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "implementation_plan_0",
+      "target": "session_guide:SG-0202",
+      "evidence": "",
+      "rationale": "implementation_plan_0 carries the section-level narrative for session_guide:SG-0202.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|implementation_plan_0|session_guide:SG-0202|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P10-delivers",
+      "source": "session_guide:SG-0301",
+      "target": "activity:TLA-0301",
+      "evidence": "",
+      "rationale": "activity:TLA-0301 was generated by traversing session_guide:SG-0301.",
+      "relation_id": "P10",
+      "established_by": "provenance",
+      "id": "P10|session_guide:SG-0301|activity:TLA-0301|P10-delivers",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P10-delivers",
+      "source": "session_guide:SG-0301",
+      "target": "activity:TLA-0302",
+      "evidence": "",
+      "rationale": "activity:TLA-0302 was generated by traversing session_guide:SG-0301.",
+      "relation_id": "P10",
+      "established_by": "provenance",
+      "id": "P10|session_guide:SG-0301|activity:TLA-0302|P10-delivers",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P10-delivers",
+      "source": "session_guide:SG-0301",
+      "target": "activity:TLA-0303",
+      "evidence": "",
+      "rationale": "activity:TLA-0303 was generated by traversing session_guide:SG-0301.",
+      "relation_id": "P10",
+      "established_by": "provenance",
+      "id": "P10|session_guide:SG-0301|activity:TLA-0303|P10-delivers",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P11-provisions",
+      "source": "session_guide:SG-0301",
+      "target": "material:MAT-0301",
+      "evidence": "",
+      "rationale": "material:MAT-0301 was generated by traversing session_guide:SG-0301.",
+      "relation_id": "P11",
+      "established_by": "provenance",
+      "id": "P11|session_guide:SG-0301|material:MAT-0301|P11-provisions",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "implementation_plan_0",
+      "target": "session_guide:SG-0301",
+      "evidence": "",
+      "rationale": "implementation_plan_0 carries the section-level narrative for session_guide:SG-0301.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|implementation_plan_0|session_guide:SG-0301|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P10-delivers",
+      "source": "session_guide:SG-5201",
+      "target": "activity:TLA-0201",
+      "evidence": "",
+      "rationale": "activity:TLA-0201 was generated by traversing session_guide:SG-5201.",
+      "relation_id": "P10",
+      "established_by": "provenance",
+      "id": "P10|session_guide:SG-5201|activity:TLA-0201|P10-delivers",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P10-delivers",
+      "source": "session_guide:SG-5201",
+      "target": "activity:TLA-0202",
+      "evidence": "",
+      "rationale": "activity:TLA-0202 was generated by traversing session_guide:SG-5201.",
+      "relation_id": "P10",
+      "established_by": "provenance",
+      "id": "P10|session_guide:SG-5201|activity:TLA-0202|P10-delivers",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P10-delivers",
+      "source": "session_guide:SG-5201",
+      "target": "activity:TLA-0203",
+      "evidence": "",
+      "rationale": "activity:TLA-0203 was generated by traversing session_guide:SG-5201.",
+      "relation_id": "P10",
+      "established_by": "provenance",
+      "id": "P10|session_guide:SG-5201|activity:TLA-0203|P10-delivers",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P10-delivers",
+      "source": "session_guide:SG-5201",
+      "target": "activity:TLA-0204",
+      "evidence": "",
+      "rationale": "activity:TLA-0204 was generated by traversing session_guide:SG-5201.",
+      "relation_id": "P10",
+      "established_by": "provenance",
+      "id": "P10|session_guide:SG-5201|activity:TLA-0204|P10-delivers",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P11-provisions",
+      "source": "session_guide:SG-5201",
+      "target": "material:MAT-0201",
+      "evidence": "",
+      "rationale": "material:MAT-0201 was generated by traversing session_guide:SG-5201.",
+      "relation_id": "P11",
+      "established_by": "provenance",
+      "id": "P11|session_guide:SG-5201|material:MAT-0201|P11-provisions",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P10-delivers",
+      "source": "session_guide:SG-5202",
+      "target": "activity:TLA-0203",
+      "evidence": "",
+      "rationale": "activity:TLA-0203 was generated by traversing session_guide:SG-5202.",
+      "relation_id": "P10",
+      "established_by": "provenance",
+      "id": "P10|session_guide:SG-5202|activity:TLA-0203|P10-delivers",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P10-delivers",
+      "source": "session_guide:SG-5202",
+      "target": "activity:TLA-0204",
+      "evidence": "",
+      "rationale": "activity:TLA-0204 was generated by traversing session_guide:SG-5202.",
+      "relation_id": "P10",
+      "established_by": "provenance",
+      "id": "P10|session_guide:SG-5202|activity:TLA-0204|P10-delivers",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "P11-provisions",
+      "source": "session_guide:SG-5202",
+      "target": "material:MAT-0201",
+      "evidence": "",
+      "rationale": "material:MAT-0201 was generated by traversing session_guide:SG-5202.",
+      "relation_id": "P11",
+      "established_by": "provenance",
+      "id": "P11|session_guide:SG-5202|material:MAT-0201|P11-provisions",
+      "layer": "provenance",
+      "tier": "secondary",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "implementation_plan_0",
+      "target": "session_guide:SG-5201",
+      "evidence": "",
+      "rationale": "implementation_plan_0 carries the section-level narrative for session_guide:SG-5201.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|implementation_plan_0|session_guide:SG-5201|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    },
+    {
+      "type": "narrates",
+      "source": "implementation_plan_0",
+      "target": "session_guide:SG-5202",
+      "evidence": "",
+      "rationale": "implementation_plan_0 carries the section-level narrative for session_guide:SG-5202.",
+      "relation_id": "S2",
+      "established_by": "provenance",
+      "id": "S2|implementation_plan_0|session_guide:SG-5202|narrates",
+      "layer": "scaffolding",
+      "tier": "structural",
+      "invalid": false,
+      "invalid_reason": ""
+    }
+  ],
+  "objective_alignment": {
+    "objective:ILO-01": {
+      "assessed_by": true,
+      "practiced_by": true,
+      "prepares_for": true,
+      "bloom_ok": true,
+      "bloom_assessment_ok": true,
+      "bloom_activity_ok": true,
+      "bloom_notes": [],
+      "legs": [
+        {
+          "relation_id": "C2",
+          "verb": "assessed_by",
+          "label": "learning outcome assessed by assessment task",
+          "ok": true
+        },
+        {
+          "relation_id": "C3",
+          "verb": "practiced_by",
+          "label": "learning outcome practiced by activity",
+          "ok": true
+        },
+        {
+          "relation_id": "C4",
+          "verb": "prepares_for",
+          "label": "activity prepares for assessment task",
+          "ok": true
+        }
+      ],
+      "aligned": true
+    },
+    "objective:ILO-02": {
+      "assessed_by": true,
+      "practiced_by": true,
+      "prepares_for": true,
+      "bloom_ok": true,
+      "bloom_assessment_ok": true,
+      "bloom_activity_ok": true,
+      "bloom_notes": [],
+      "legs": [
+        {
+          "relation_id": "C2",
+          "verb": "assessed_by",
+          "label": "learning outcome assessed by assessment task",
+          "ok": true
+        },
+        {
+          "relation_id": "C3",
+          "verb": "practiced_by",
+          "label": "learning outcome practiced by activity",
+          "ok": true
+        },
+        {
+          "relation_id": "C4",
+          "verb": "prepares_for",
+          "label": "activity prepares for assessment task",
+          "ok": true
+        }
+      ],
+      "aligned": true
+    },
+    "objective:ILO-03": {
+      "assessed_by": true,
+      "practiced_by": true,
+      "prepares_for": true,
+      "bloom_ok": false,
+      "bloom_assessment_ok": true,
+      "bloom_activity_ok": false,
+      "bloom_notes": [
+        "Objective 'ILO-03' targets evaluate, but of the 4 activity/activities practising it (TLA-0201, TLA-0202, TLA-0203, TLA-0204), the highest learner_cognitive_process is analyze — learners never rehearse at the level they are assessed on."
+      ],
+      "legs": [
+        {
+          "relation_id": "C2",
+          "verb": "assessed_by",
+          "label": "learning outcome assessed by assessment task",
+          "ok": true
+        },
+        {
+          "relation_id": "C3",
+          "verb": "practiced_by",
+          "label": "learning outcome practiced by activity",
+          "ok": true
+        },
+        {
+          "relation_id": "C4",
+          "verb": "prepares_for",
+          "label": "activity prepares for assessment task",
+          "ok": true
+        }
+      ],
+      "aligned": true
+    },
+    "objective:ILO-04": {
+      "assessed_by": true,
+      "practiced_by": true,
+      "prepares_for": true,
+      "bloom_ok": true,
+      "bloom_assessment_ok": true,
+      "bloom_activity_ok": true,
+      "bloom_notes": [],
+      "legs": [
+        {
+          "relation_id": "C2",
+          "verb": "assessed_by",
+          "label": "learning outcome assessed by assessment task",
+          "ok": true
+        },
+        {
+          "relation_id": "C3",
+          "verb": "practiced_by",
+          "label": "learning outcome practiced by activity",
+          "ok": true
+        },
+        {
+          "relation_id": "C4",
+          "verb": "prepares_for",
+          "label": "activity prepares for assessment task",
+          "ok": true
+        }
+      ],
+      "aligned": true
+    },
+    "objective:ILO-05": {
+      "assessed_by": true,
+      "practiced_by": true,
+      "prepares_for": true,
+      "bloom_ok": true,
+      "bloom_assessment_ok": true,
+      "bloom_activity_ok": true,
+      "bloom_notes": [],
+      "legs": [
+        {
+          "relation_id": "C2",
+          "verb": "assessed_by",
+          "label": "learning outcome assessed by assessment task",
+          "ok": true
+        },
+        {
+          "relation_id": "C3",
+          "verb": "practiced_by",
+          "label": "learning outcome practiced by activity",
+          "ok": true
+        },
+        {
+          "relation_id": "C4",
+          "verb": "prepares_for",
+          "label": "activity prepares for assessment task",
+          "ok": true
+        }
+      ],
+      "aligned": true
+    }
+  },
+  "relation_coverage": {
+    "C2": {
+      "label": "learning outcome assessed by assessment task",
+      "mechanism": "id-reverse",
+      "tier": "core",
+      "coverage": 1.0,
+      "uncovered": []
+    },
+    "C3": {
+      "label": "learning outcome practiced by activity",
+      "mechanism": "id-list-reverse",
+      "tier": "core",
+      "coverage": 1.0,
+      "uncovered": []
+    },
+    "C4": {
+      "label": "activity prepares for assessment task",
+      "mechanism": "id-list",
+      "tier": "core",
+      "coverage": 1.0,
+      "uncovered": []
+    },
+    "P1": {
+      "label": "gap/topic informs learning outcome",
+      "mechanism": "provenance",
+      "tier": "secondary",
+      "coverage": 1.0,
+      "uncovered": []
+    },
+    "P2": {
+      "label": "learner profile fits learning outcome",
+      "mechanism": "provenance",
+      "tier": "secondary",
+      "coverage": 1.0,
+      "uncovered": []
+    },
+    "P3": {
+      "label": "assessment plan realized by assessment task",
+      "mechanism": "type",
+      "tier": "secondary",
+      "coverage": 1.0,
+      "uncovered": []
+    },
+    "P4": {
+      "label": "activity plan realized by activity",
+      "mechanism": "provenance",
+      "tier": "secondary",
+      "coverage": 1.0,
+      "uncovered": []
+    },
+    "P5": {
+      "label": "module covers material",
+      "mechanism": "provenance",
+      "tier": "secondary",
+      "coverage": 1.0,
+      "uncovered": []
+    },
+    "P6": {
+      "label": "media selection realized by material",
+      "mechanism": "type",
+      "tier": "secondary",
+      "coverage": 0.3333333333333333,
+      "uncovered": [
+        "material:MAT-0201",
+        "material:MAT-0301"
+      ]
+    },
+    "P7": {
+      "label": "topic covered by module",
+      "mechanism": "provenance",
+      "tier": "secondary",
+      "coverage": 1.0,
+      "uncovered": []
+    },
+    "P8": {
+      "label": "constraint constrains media selection",
+      "mechanism": "provenance",
+      "tier": "secondary",
+      "coverage": 1.0,
+      "uncovered": []
+    },
+    "P9": {
+      "label": "gap addressed by improvement",
+      "mechanism": "provenance",
+      "tier": "secondary",
+      "coverage": 1.0,
+      "uncovered": []
+    },
+    "P10": {
+      "label": "session guide delivers activity",
+      "mechanism": "provenance",
+      "tier": "secondary",
+      "coverage": 1.0,
+      "uncovered": []
+    },
+    "P11": {
+      "label": "session guide provisions material",
+      "mechanism": "provenance",
+      "tier": "secondary",
+      "coverage": 1.0,
+      "uncovered": []
+    },
+    "P12": {
+      "label": "module groups learning outcome",
+      "mechanism": "provenance",
+      "tier": "secondary",
+      "coverage": 1.0,
+      "uncovered": []
+    },
+    "P13": {
+      "label": "module delivered through activity",
+      "mechanism": "id-reverse",
+      "tier": "secondary",
+      "coverage": 1.0,
+      "uncovered": []
+    },
+    "P14": {
+      "label": "module assessed through assessment task",
+      "mechanism": "id-reverse",
+      "tier": "secondary",
+      "coverage": 1.0,
+      "uncovered": []
+    }
+  },
+  "node_violations": {
+    "objective:ILO-02": [
+      "measurability"
+    ],
+    "material:MAT-0201": [
+      "P6"
+    ],
+    "material:MAT-0301": [
+      "P6"
+    ],
+    "objective:ILO-03": [
+      "bloom_mismatch_activity"
+    ]
+  },
+  "legend": {
+    "edges": [
+      {
+        "key": "id",
+        "label": "id-match edge"
+      },
+      {
+        "key": "type",
+        "label": "type-match edge"
+      },
+      {
+        "key": "provenance",
+        "label": "provenance edge"
+      },
+      {
+        "key": "secondary",
+        "label": "secondary (P) relation"
+      },
+      {
+        "key": "invalid",
+        "label": "Bloom/format ⚠ (invalid)"
+      }
+    ],
+    "nodes": [
+      {
+        "key": "objective_aligned",
+        "label": "objective aligned (C2/C3/C4 ok)"
+      },
+      {
+        "key": "objective_unaligned",
+        "label": "objective has a gap"
+      },
+      {
+        "key": "assessment",
+        "label": "assessment task (AT)"
+      },
+      {
+        "key": "activity",
+        "label": "activity (TLA)"
+      },
+      {
+        "key": "module",
+        "label": "module / material"
+      },
+      {
+        "key": "section",
+        "label": "section node (a whole ADDIE section)"
+      },
+      {
+        "key": "has_violation",
+        "label": "a check failed on this node"
+      }
+    ]
+  },
+  "schema_version": 2,
+  "metadata": {
+    "design_brief_id": "VI-ML-001",
+    "generated_at": "2026-10-13T10:59:12.960652+00:00",
+    "node_count": 61,
+    "edge_count": 181,
+    "node_counts_by_type": {
+      "gap": 5,
+      "learner_profile": 1,
+      "constraint": 6,
+      "topic": 6,
+      "improvement": 5,
+      "objective": 5,
+      "module": 3,
+      "assessment_plan": 1,
+      "assessment": 3,
+      "activity_plan": 1,
+      "activity": 10,
+      "media_selection": 3,
+      "material": 3,
+      "implementation_plan": 1,
+      "session_guide": 8
+    },
+    "edge_counts_by_type": {
+      "narrates": 26,
+      "P9-addresses": 4,
+      "P1-informs": 45,
+      "P2-fits": 5,
+      "P7-covers": 5,
+      "P12-groups": 5,
+      "P3-realizes": 3,
+      "P14-assessed_through": 3,
+      "C2-assessed_by": 5,
+      "P13-delivered_through": 10,
+      "C3-practiced_by": 14,
+      "C4-prepares_for": 10,
+      "P4-realizes": 10,
+      "precedes": 1,
+      "P8-constrains": 9,
+      "P5-covers": 3,
+      "P6-realizes": 1,
+      "P10-delivers": 14,
+      "P11-provisions": 8
+    }
+  }
+}

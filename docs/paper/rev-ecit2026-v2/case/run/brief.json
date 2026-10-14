@@ -1,0 +1,40 @@
+{
+  "id": "VI-ML-001",
+  "title": "Nhập môn Học máy cho sinh viên Công nghệ Thông tin",
+  "user_message": "",
+  "refinement_request": {},
+  "domain": "Công nghệ Thông tin / Trí tuệ nhân tạo",
+  "difficulty": "Trung bình",
+  "duration": "4 tuần, 30h",
+  "target_audience": "Sinh viên ngành Công nghệ Thông tin năm thứ ba",
+  "learning_goals": [
+    "Sinh viên giải thích được quy trình xây dựng một mô hình học máy có giám sát, từ chuẩn bị dữ liệu đến đánh giá mô hình.",
+    "Sinh viên cài đặt được mô hình hồi quy tuyến tính và cây quyết định bằng Python với thư viện scikit-learn trên một tập dữ liệu cho trước.",
+    "Sinh viên đánh giá và so sánh được các mô hình bằng độ đo phù hợp (accuracy, F1, RMSE) và kiểm chứng chéo.",
+    "Sinh viên nhận diện được hiện tượng quá khớp và áp dụng được kỹ thuật điều chuẩn để khắc phục."
+  ],
+  "context": {
+    "duration": "4 tuần, 30h",
+    "learning_environment": "Học kết hợp: lý thuyết trên lớp, thực hành lập trình Python trên Google Colab",
+    "class_size": "Khoảng 40 sinh viên",
+    "learner_age": "Từ 20 đến 22 tuổi",
+    "learner_education": "Đại học, năm thứ ba",
+    "learner_role": "Sinh viên",
+    "domain_expertise": "Cơ bản",
+    "prior_knowledge": "Lập trình Python cơ bản, xác suất thống kê và đại số tuyến tính",
+    "institution_type": "Trường đại học kỹ thuật",
+    "additional_context": "Toàn bộ sản phẩm thiết kế (mục tiêu, câu hỏi, hoạt động, học liệu, hướng dẫn buổi học) viết bằng tiếng Việt; giữ nguyên thuật ngữ chuyên ngành tiếng Anh khi cần."
+  },
+  "constraints": {
+    "resources": [
+      "Phòng thực hành máy tính",
+      "Google Colab",
+      "Hệ thống quản lý học tập (LMS) của trường"
+    ],
+    "budget": "Không phát sinh chi phí phần mềm",
+    "tech_requirements": "Python, scikit-learn, pandas, matplotlib",
+    "assessment_type": "Kết hợp đánh giá quá trình và đánh giá cuối khóa",
+    "accessibility": "Học liệu xem được trên máy tính và điện thoại",
+    "language": "Tiếng Việt"
+  }
+}

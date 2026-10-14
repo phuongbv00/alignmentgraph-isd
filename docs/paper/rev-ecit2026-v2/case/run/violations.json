@@ -1,0 +1,242 @@
+[
+  {
+    "key": "measurability|objective:ILO-02",
+    "node_id": "objective:ILO-02",
+    "edge_type": "",
+    "type": "measurability",
+    "severity": "warning",
+    "messages": [
+      "LO 'ILO-02' states no success criterion or condition; achievement cannot be judged objectively."
+    ],
+    "repair_hint": "Add an observable degree and/or condition to the statement, e.g. 'given a starter codebase, ... with at least 80% of unit tests passing'.",
+    "metadata": {
+      "lo_id": "ILO-02",
+      "statement": "Sinh viên cài đặt được mô hình hồi quy tuyến tính và cây quyết định bằng Python sử dụng thư viện scikit-learn trên tập dữ liệu mẫu."
+    },
+    "target_designer": "",
+    "first_round": 1,
+    "first_phase": "outcomes",
+    "first_family": "outcome_designer",
+    "last_round": 8,
+    "sightings": 2,
+    "shown_to_agent": 0,
+    "outcome": "open",
+    "open_reason": "unowned",
+    "report_only": true,
+    "repaired_by": "",
+    "repaired_at_round": 0,
+    "converged_at_round": 0
+  },
+  {
+    "key": "blueprint_consistency|assessment_plan_0|thin_summative_task|AT-02|||",
+    "node_id": "assessment_plan_0",
+    "edge_type": "",
+    "type": "blueprint_consistency",
+    "severity": "warning",
+    "messages": [
+      "Summative task AT-02 plans 2 item(s); an instrument the course grades on carries at least 3."
+    ],
+    "repair_hint": "Raise the task's item_counts to at least 3 items across its types.",
+    "metadata": {
+      "kind": "thin_summative_task",
+      "task_id": "AT-02",
+      "item_total": 2
+    },
+    "target_designer": "",
+    "first_round": 2,
+    "first_phase": "assessment",
+    "first_family": "assessment_designer",
+    "last_round": 2,
+    "sightings": 1,
+    "shown_to_agent": 1,
+    "outcome": "repaired_by_agent",
+    "open_reason": "",
+    "report_only": false,
+    "repaired_by": "",
+    "repaired_at_round": 0,
+    "converged_at_round": 0
+  },
+  {
+    "key": "blueprint_consistency|assessment_plan_0|thin_summative_task|AT-03|||",
+    "node_id": "assessment_plan_0",
+    "edge_type": "",
+    "type": "blueprint_consistency",
+    "severity": "warning",
+    "messages": [
+      "Summative task AT-03 plans 2 item(s); an instrument the course grades on carries at least 3."
+    ],
+    "repair_hint": "Raise the task's item_counts to at least 3 items across its types.",
+    "metadata": {
+      "kind": "thin_summative_task",
+      "task_id": "AT-03",
+      "item_total": 2
+    },
+    "target_designer": "",
+    "first_round": 2,
+    "first_phase": "assessment",
+    "first_family": "assessment_designer",
+    "last_round": 2,
+    "sightings": 1,
+    "shown_to_agent": 1,
+    "outcome": "repaired_by_agent",
+    "open_reason": "",
+    "report_only": false,
+    "repaired_by": "",
+    "repaired_at_round": 0,
+    "converged_at_round": 0
+  },
+  {
+    "key": "bloom_mismatch_activity|objective:ILO-03",
+    "node_id": "objective:ILO-03",
+    "edge_type": "",
+    "type": "bloom_mismatch_activity",
+    "severity": "error",
+    "messages": [
+      "Objective 'ILO-03' targets evaluate, but of the 4 activity/activities practising it (TLA-0201, TLA-0202, TLA-0203, TLA-0204), the highest learner_cognitive_process is analyze — learners never rehearse at the level they are assessed on."
+    ],
+    "repair_hint": "Set learner_cognitive_process to 'evaluate' on at least one of TLA-0201, TLA-0202, TLA-0203, TLA-0204 and make the activity actually require it (an evaluate-level task, not a walkthrough of one) — or add such an activity aligned to ILO-03.",
+    "metadata": {
+      "lo_id": "ILO-03",
+      "activity_ids": [
+        "TLA-0201",
+        "TLA-0202",
+        "TLA-0203",
+        "TLA-0204"
+      ],
+      "objective_level": 5,
+      "best_level": 4,
+      "field": "learner_cognitive_process"
+    },
+    "target_designer": "activity_designer",
+    "first_round": 5,
+    "first_phase": "activities",
+    "first_family": "activity_designer",
+    "last_round": 10,
+    "sightings": 2,
+    "shown_to_agent": 0,
+    "outcome": "open",
+    "open_reason": "unseen",
+    "report_only": true,
+    "repaired_by": "",
+    "repaired_at_round": 0,
+    "converged_at_round": 0
+  },
+  {
+    "key": "time_budget|module:MOD-01",
+    "node_id": "module:MOD-01",
+    "edge_type": "",
+    "type": "time_budget",
+    "severity": "warning",
+    "messages": [
+      "The 3 activities of MOD-01 add up to 90 minutes of learner time against the 45 minutes the module has."
+    ],
+    "repair_hint": "Shorten or merge this module's activities until they fit its minutes.",
+    "metadata": {
+      "module_minutes": 45.0,
+      "activity_minutes": 90.0,
+      "activities": 3,
+      "untimed": 0
+    },
+    "target_designer": "activity_designer",
+    "first_round": 5,
+    "first_phase": "activities",
+    "first_family": "activity_designer",
+    "last_round": 10,
+    "sightings": 2,
+    "shown_to_agent": 0,
+    "outcome": "open",
+    "open_reason": "unseen",
+    "report_only": true,
+    "repaired_by": "",
+    "repaired_at_round": 0,
+    "converged_at_round": 0
+  },
+  {
+    "key": "time_budget|module:MOD-02",
+    "node_id": "module:MOD-02",
+    "edge_type": "",
+    "type": "time_budget",
+    "severity": "warning",
+    "messages": [
+      "The 4 activities of MOD-02 add up to 105 minutes of learner time against the 60 minutes the module has."
+    ],
+    "repair_hint": "Shorten or merge this module's activities until they fit its minutes.",
+    "metadata": {
+      "module_minutes": 60.0,
+      "activity_minutes": 105.0,
+      "activities": 4,
+      "untimed": 0
+    },
+    "target_designer": "activity_designer",
+    "first_round": 5,
+    "first_phase": "activities",
+    "first_family": "activity_designer",
+    "last_round": 10,
+    "sightings": 2,
+    "shown_to_agent": 0,
+    "outcome": "open",
+    "open_reason": "unseen",
+    "report_only": true,
+    "repaired_by": "",
+    "repaired_at_round": 0,
+    "converged_at_round": 0
+  },
+  {
+    "key": "P6|material:MAT-0201",
+    "node_id": "material:MAT-0201",
+    "edge_type": "",
+    "type": "P6",
+    "severity": "warning",
+    "messages": [
+      "material:MAT-0201 does not match any media selection category."
+    ],
+    "repair_hint": "",
+    "metadata": {
+      "node_id": "material:MAT-0201",
+      "item_id": "MAT-0201",
+      "plan_set": "MU-MOD-02"
+    },
+    "target_designer": "content_designer",
+    "first_round": 6,
+    "first_phase": "content",
+    "first_family": "content_designer",
+    "last_round": 11,
+    "sightings": 2,
+    "shown_to_agent": 0,
+    "outcome": "open",
+    "open_reason": "unseen",
+    "report_only": true,
+    "repaired_by": "",
+    "repaired_at_round": 0,
+    "converged_at_round": 0
+  },
+  {
+    "key": "P6|material:MAT-0301",
+    "node_id": "material:MAT-0301",
+    "edge_type": "",
+    "type": "P6",
+    "severity": "warning",
+    "messages": [
+      "material:MAT-0301 does not match any media selection category."
+    ],
+    "repair_hint": "",
+    "metadata": {
+      "node_id": "material:MAT-0301",
+      "item_id": "MAT-0301",
+      "plan_set": "MU-MOD-03"
+    },
+    "target_designer": "content_designer",
+    "first_round": 6,
+    "first_phase": "content",
+    "first_family": "content_designer",
+    "last_round": 11,
+    "sightings": 2,
+    "shown_to_agent": 0,
+    "outcome": "open",
+    "open_reason": "unseen",
+    "report_only": true,
+    "repaired_by": "",
+    "repaired_at_round": 0,
+    "converged_at_round": 0
+  }
+]

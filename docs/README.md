@@ -6,7 +6,9 @@ tài liệu trùng nội dung luôn lệch nhau sau vài tuần.
 
 | Đường dẫn | Canonical cho |
 |:---|:---|
-| `paper/rev-ecit2026/` | **Nội dung bài báo** (bài hội thảo REV-ECIT 2026). Source of truth cho cấu trúc, luận điểm, thứ tự mục, từng mục nói gì. Không có giàn ý song song ở chỗ khác. `generated/`, `main.pdf` và `figures/*.pdf` được commit. |
+| `paper/rev-ecit2026-v2/` | **Bản nộp REV-ECIT 2026** (bài ứng dụng theo góp ý thầy Hải 2026-10-13): mô hình tổng quát, một bảng LLM judge, triển khai ứng dụng web trên học phần tiếng Việt; không nêu tên hệ. `make_tables.py` sinh `generated/` từ `pooled_comparison.json` và run của web app (`--case-dir`). |
+| `paper/rev-ecit2026/` | **Bản v1, seed bài tạp chí** (tag `rev-ecit2026-v1`, không sửa để nộp hội thảo): bài phương pháp đủ TN1, TN2 2×2 và panel 6 tín hiệu. Source of truth cho cấu trúc và luận điểm của bài tạp chí. `generated/`, `main.pdf` và `figures/*.pdf` được commit. |
+| `paper/journal-code-fixes.md` | Lỗi code (`alignmentgraph-isd`) và việc dời sang bài tạp chí, rút từ review biên tập bản v2 (2026-10-14). Mục A1 giải thích vì sao sổ vi phạm của case được đối chiếu lại bằng `rev-ecit2026-v2/case/reconcile_ledger.py`. |
 | `paper/claim-rules.md` | **Luật viết.** Điều gì cấm claim và viết thay bằng gì, từ vựng điểm số, câu phải giữ nguyên văn, điều bắt buộc phải khai. Chỉ luật, không nội dung — nên không thể stale so với bản thảo. |
 | `paper/structure-guide.md` | Khung cấu trúc bài báo khoa học theo đề cương của GVHD. |
 | `paper/refs-deployment-survey.md` | Tư liệu citation cho phần triển khai SLM trong giáo dục (Intro + Related Work). |

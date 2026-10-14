@@ -1,0 +1,22 @@
+\begin{table}[t]
+  \caption{Điểm LLM judge trên ISD-Agent-Bench (trung bình $\pm$ độ lệch chuẩn qua 30 kịch bản) và token mỗi kịch bản}
+  \label{tab:judge}
+  \centering
+  \footnotesize
+  \setlength{\tabcolsep}{2.5pt}
+  \begin{tabular}{@{}lcccc@{}}
+    \toprule
+    Hệ & ADDIE $\uparrow$ & Trajectory $\uparrow$ & Total $\uparrow$ & Token (k) $\downarrow$ \\
+    \midrule
+    Hệ đề xuất & 59.0\,$\pm$\,2.8 & 69.7\,$\pm$\,5.9 & 62.2\,$\pm$\,2.3 & 282 \\
+    EduPlanner & 30.0\,$\pm$\,19.8$^{*}$ & 53.0\,$\pm$\,32.7 & 36.9\,$\pm$\,23.2$^{*}$ & 70 \\
+    Baseline & 43.4\,$\pm$\,17.7$^{*}$ & 69.2\,$\pm$\,19.0 & 51.1\,$\pm$\,16.6$^{*}$ & 10 \\
+    React-ADDIE & \textbf{59.1\,$\pm$\,6.7} & 71.5\,$\pm$\,9.5 & \textbf{62.8\,$\pm$\,4.9} & 15 \\
+    ADDIE-Agent & 48.5\,$\pm$\,3.6$^{*}$ & \textbf{81.5\,$\pm$\,3.0$^{*}$} & 58.4\,$\pm$\,2.7$^{*}$ & 23 \\
+    Dick-Carey-Agent & 58.0\,$\pm$\,3.0 & 72.6\,$\pm$\,5.6 & 62.4\,$\pm$\,3.1 & 26 \\
+    RPISD-Agent & 58.4\,$\pm$\,2.5 & 69.9\,$\pm$\,3.3 & 61.8\,$\pm$\,1.9 & 61 \\
+    \bottomrule
+  \end{tabular}
+  \par\vspace{2pt}
+  {\scriptsize\raggedright $^{*}$ khác có ý nghĩa so với hệ đề xuất (Wilcoxon theo cặp, Holm trong từng điểm, $p<0.05$).\\ Token trung bình trên các kịch bản có số liệu: EduPlanner 22, Baseline 28.\\ Kịch bản không có đầu ra chấm được, tính 0 điểm: EduPlanner 8, Baseline 2.\par}
+\end{table}
