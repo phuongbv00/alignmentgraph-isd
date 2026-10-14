@@ -59,8 +59,8 @@ sổ vi phạm ghi nhận \caseViol{} vi phạm, trong đó \caseViolAgent{} vi 
 trình sinh và \caseViolOpen{} vi phạm được lưu lại để giảng viên xem xét. Bên cạnh đó, thực nghiệm
 trên \NScen{} kịch bản của ISD-Agent-Bench với Qwen3.5-2B cho thấy hệ thống đề xuất đạt điểm ADDIE
 \cmpAGAddie; không ghi nhận khác biệt có ý nghĩa thống kê so với React-ADDIE, với điểm ADDIE
-\cmpReactAddie. Các kết quả bước đầu cho thấy kiến trúc đa tác tử đề xuất có thể duy trì chất
-lượng thiết kế cạnh tranh trên cùng một SLM, đồng thời cung cấp khả năng truy vết cấu trúc nhằm hỗ
+\cmpReactAddie. Kết quả cho thấy chất lượng ADDIE của kiến trúc đề xuất cạnh tranh với các tác
+tử đối chứng trên cùng SLM, đồng thời cung cấp khả năng truy vết cấu trúc nhằm hỗ
 trợ giảng viên phát hiện và rà soát các vấn đề trong bản thiết kế. Tuy nhiên, sản phẩm do SLM tạo
 ra vẫn cần được giảng viên thẩm định trước khi đưa vào sử dụng.
 \end{abstract}
@@ -108,7 +108,7 @@ chưa khớp nhau mà không phải đọc lại toàn bộ bản thiết kế.
 
 Đóng góp kỹ thuật của bài báo gồm ba điểm. (i) Một kiến trúc đa tác tử (Multi-Agent System --
 MAS) gồm sáu tác tử theo công đoạn, cùng làm việc trên một đồ thị căn chỉnh tường minh; mỗi quan
-hệ mục tiêu--hoạt động--đánh giá là một cạnh có kiểu, do khung điều phối ghi từ id mà tác tử
+hệ mục tiêu--hoạt động--đánh giá là một cạnh có kiểu, do lớp điều phối của hệ thống (orchestration layer) ghi từ id mà tác tử
 khai báo. (ii) Một cơ chế kiểm tra và sửa trong quá trình sinh: mỗi lần nộp được kiểm tra theo
 định dạng và theo quan hệ trên đồ thị; vi phạm cấu trúc được chuẩn hóa tự động, vi phạm cần viết
 nội dung được trả lại cho tác tử phụ trách, và mọi vi phạm được ghi vào sổ vi phạm cùng kết quả
@@ -136,7 +136,7 @@ chương trình học~\cite{katharakis2025slm}. Các nghiên cứu này không n
 thiết kế giảng dạy. Pereira và cộng sự dùng ChatGPT để thiết kế khóa học theo constructive
 alignment và nhận thấy kết quả vẫn cần giảng viên hoàn thiện~\cite{pereira2024constructive}. Thang phân loại Bloom sửa đổi cung cấp bộ từ vựng
 chung về mức nhận thức~\cite{anderson2001taxonomy}. Hệ thống đề xuất dùng thang này để so mức nhận
-thức mà câu hỏi và hoạt động khai báo với mức của mục tiêu.
+thức mà câu hỏi và hoạt động khai báo với mục tiêu.
 
 \section{MÔ HÌNH HỆ THỐNG ĐỀ XUẤT}
 \label{sec:system}
@@ -147,20 +147,20 @@ thức mà câu hỏi và hoạt động khai báo với mức của mục tiêu
 \begin{figure*}[t]
   \centering
   \includegraphics[width=0.9\textwidth]{overview.pdf}
-  \caption{Kiến trúc tổng quát của hệ. Lớp 1 gồm sáu tác tử theo công đoạn; lớp 2 là khung
+  \caption{Kiến trúc tổng quát của hệ thống. Lớp 1 gồm sáu tác tử theo công đoạn; lớp 2 là lớp
   điều phối quanh SLM; lớp 3 là quá trình dạy và học, nơi giảng viên dùng bản thiết kế. Các khối nét
   đứt ở lớp 3 và vòng cải tiến là bối cảnh sử dụng và hướng mở rộng, không thuộc phạm vi thực
   nghiệm.}
   \label{fig:arch}
 \end{figure*}
 
-Hình~\ref{fig:arch} trình bày kiến trúc tổng quát của hệ. Đầu vào là một bản mô tả yêu cầu
-thiết kế (design brief): mục tiêu khóa học, hồ sơ người học, bối cảnh và ràng buộc. Hệ gồm ba
-lớp. Lớp thiết kế và lập kế hoạch gồm sáu tác tử, mỗi tác tử đảm nhận một công đoạn. Lớp hỗ trợ SLM là khung
-điều phối (harness) bao quanh mô hình. Lớp này giữ đồ thị căn chỉnh, kiểm tra từng sản phẩm,
+Hình~\ref{fig:arch} trình bày kiến trúc tổng quát của hệ thống. Đầu vào là một bản mô tả yêu cầu
+thiết kế (design brief): mục tiêu khóa học, hồ sơ người học, bối cảnh và ràng buộc. Kiến trúc đề xuất gồm ba
+lớp. Lớp thiết kế và lập kế hoạch gồm sáu tác tử, mỗi tác tử đảm nhận một công đoạn. Lớp hỗ trợ SLM là lớp
+điều phối bao quanh mô hình. Lớp này giữ đồ thị căn chỉnh, kiểm tra từng sản phẩm,
 trả lỗi để tác tử sửa và ghi sổ vi phạm. Lớp dạy và học là nơi giảng viên xem, truy vết và
 duyệt bản thiết kế. Mô hình viết nội dung giảng dạy và quyết định cách thực hiện từng công
-đoạn. Khung điều phối quyết định thứ tự
+đoạn. Lớp điều phối quyết định thứ tự
 công đoạn, định dạng của từng sản phẩm, việc ghi đồ thị và việc kiểm tra.
 
 Đầu ra gồm bản thiết kế khóa học theo cấu trúc ADDIE, đồ thị căn chỉnh và sổ vi phạm. Bản thiết kế có mục
@@ -233,7 +233,7 @@ không. Một cạnh vẫn được tính khi phép kiểm tra mức Bloom gắn
 sổ vi phạm.
 
 Mô hình không trực tiếp tạo cạnh. Với ba quan hệ cốt lõi, mỗi sản phẩm khai báo mã định danh (id) của sản phẩm mà nó
-phục vụ, ví dụ một hoạt động khai báo mục tiêu mà nó luyện tập. Khi ghi sản phẩm, khung điều
+phục vụ, ví dụ một hoạt động khai báo mục tiêu mà nó luyện tập. Khi ghi sản phẩm, lớp điều
 phối tra từng id và tự ghi cạnh có kiểu. Lần nộp mà không id nào trong một trường tham chiếu trỏ tới nút có thật bị
 từ chối. Vì vậy, độ phủ đo việc mỗi sản phẩm được gắn tới một đích hợp lệ, không đo sự phù hợp về
 nội dung. Mức Bloom của mục tiêu, câu hỏi và hoạt động cũng do tác tử khai báo; các phép kiểm tra so
@@ -244,19 +244,19 @@ sánh những nhãn và id này, không đọc lại nội dung văn bản.
 
 Mỗi tác tử làm việc theo vòng lặp hành động--quan sát theo kiểu ReAct~\cite{yao2023react}, hiện
 thực bằng cơ chế gọi công cụ của mô hình.
-Tác tử đọc phần đồ thị thuộc phạm vi vai của mình, rồi nộp sản phẩm qua một công cụ nộp riêng. Khung
+Tác tử đọc phần đồ thị thuộc phạm vi vai của mình, rồi nộp sản phẩm qua một công cụ nộp riêng. Lớp
 điều phối kiểm tra mỗi lần nộp theo định dạng của sản phẩm. Lần nộp hợp lệ được ghi thành nút
 kèm các cạnh. Lần nộp không hợp lệ bị từ chối, và thông báo lỗi trở thành quan sát kế tiếp để
 tác tử sửa. Sau mỗi công đoạn, các phép kiểm tra trong Bảng~\ref{tab:stages} chạy mà không gọi
-mô hình. Khung điều phối không tự sinh mới các thành phần nội dung giảng dạy; các sửa tự động chỉ
+mô hình. Lớp điều phối không tự sinh mới các thành phần nội dung giảng dạy; các sửa tự động chỉ
 giới hạn ở các phép chuẩn hóa cấu trúc hoặc từ vựng được định nghĩa trước. Các vi phạm cần viết
 thêm nội dung được trả lại cho tác tử phụ trách khi tác tử đó còn đang làm việc; vi phạm phát
 hiện muộn hơn được ghi vào sổ để giảng viên xem. Riêng bản tóm tắt kiểm tra và một số đoạn mô tả tổng hợp
-trong đầu ra do khung điều phối sinh từ sổ vi phạm và từ mẫu cố định.
+trong đầu ra do lớp điều phối sinh từ sổ vi phạm và từ mẫu cố định.
 
 Vì mỗi sản phẩm là một nút có id và mỗi quan hệ là một cạnh có kiểu, kiến trúc tạo nền tảng cho hướng
 mở rộng sang vòng cải tiến cục bộ (khối nét đứt ở Hình~\ref{fig:arch}): khi giảng viên sửa một sản phẩm,
-hệ lần theo cạnh để tìm các sản phẩm liên quan, giao lại cho đúng tác tử và chỉ kiểm tra lại phần
+hệ thống lần theo cạnh để tìm các sản phẩm liên quan, giao lại cho đúng tác tử và chỉ kiểm tra lại phần
 đó. Vòng cải tiến này chưa được hiện thực trong nghiên cứu này.
 
 \section{THỰC NGHIỆM VÀ ĐÁNH GIÁ}
@@ -315,7 +315,7 @@ sánh với từng hệ còn lại bằng kiểm định Wilcoxon theo cặp k�
 
 \begin{figure*}[t]
   \centering
-  \includegraphics[width=0.78\textwidth]{case_audit.png}
+  \includegraphics[width=0.84\textwidth]{case_audit.png}
   \caption{Đồ thị và sổ vi phạm trên giao diện. (a) Mục tiêu ILO-04 khép kín tam giác $C_2$--$C_4$ và các phép kiểm tra mức Bloom của nó.
   (b) Sổ vi phạm: các vi phạm còn mở và các vi phạm đã được sửa, kèm bên đã sửa.}
   \label{fig:audit}
@@ -343,23 +343,22 @@ và kiểm toán, mà không diễn giải rằng hệ thống đề xuất hi�
 \subsection{Nghiên cứu tình huống: học phần Nhập môn Học máy}
 \label{sec:case}
 
-Hệ được đóng gói thành một ứng dụng web. Giảng viên nhập bản mô tả yêu cầu thiết kế, hoặc mô tả
-học phần bằng hội thoại, rồi khởi chạy hệ trên một SLM tự triển khai. Trong lúc hệ chạy, quy trình và
+Kiến trúc đề xuất được hiện thực thành một ứng dụng web. Giảng viên nhập bản mô tả yêu cầu thiết kế, hoặc mô tả
+học phần bằng hội thoại, rồi khởi chạy hệ thống trên một SLM tự triển khai. Trong lúc hệ thống chạy, quy trình và
 đồ thị căn chỉnh được cập nhật dần trên màn hình. Sau khi chạy xong, giảng viên chọn từng nút
 để xem nội dung sản phẩm, các quan hệ của nó và các vi phạm còn mở.
 
 Trong nghiên cứu tình huống, chúng tôi soạn bản mô tả yêu cầu cho học phần Nhập môn Học máy dành cho sinh viên Công nghệ
 Thông tin năm thứ ba: 4 tuần (30 giờ), học kết hợp, khoảng 40 sinh viên, thực hành Python
 trên Google Colab. Bản mô tả có bốn mục tiêu khóa học: quy trình học có giám sát, cài đặt hồi
-quy tuyến tính và cây quyết định, đánh giá mô hình, và xử lý quá khớp. Ngôn ngữ đầu ra yêu cầu
-là tiếng Việt. Hệ chạy trên Qwen3.5-2B với cùng cấu hình như Mục~\ref{sec:setup} và hoàn thành
-sau khoảng \caseMin{} phút.
+quy tuyến tính và cây quyết định, đánh giá mô hình, và xử lý quá khớp. Đầu ra yêu cầu bằng
+tiếng Việt. Hệ thống chạy với cùng cấu hình như Mục~\ref{sec:setup}.
 
-Hình~\ref{fig:case}a cho thấy quy trình thực hiện. Hệ sinh \caseObj{} mục tiêu, \caseMod{}
+Hình~\ref{fig:case}a cho thấy quy trình thực hiện. Hệ thống sinh \caseObj{} mục tiêu, \caseMod{}
 mô-đun, \caseTask{} nhiệm vụ đánh giá với \caseItem{} câu hỏi, \caseAct{} hoạt động,
 \caseMat{} tài liệu và \caseSess{} kế hoạch buổi học, dùng \caseTok{}k token qua \caseCalls{}
 lời gọi mô hình. Mục tiêu khóa học thứ tư gồm hai hành vi (nhận diện quá khớp, áp dụng điều
-chuẩn) nên được tách thành ILO-04 và ILO-05; vì vậy bốn mục tiêu khóa học thành \caseObj{} mục tiêu học tập.
+chuẩn) nên được tách thành ILO-04 và ILO-05; vì vậy bốn mục tiêu khóa học thành \caseObj{} mục tiêu.
 
 Hình~\ref{fig:outputs} trình bày ba loại sản phẩm đầu ra. Tài liệu MAT-0101 là slide giới thiệu
 học máy, viết bằng tiếng Việt. Hoạt động TLA-0102 là bài thực hành cài đặt hồi quy tuyến tính
@@ -382,7 +381,7 @@ số \caseDiagWeight\%, nên tam giác khép kín về cấu trúc nhưng chưa 
 thứ hai có các kế hoạch buổi học chồng lấn nhau, và trường mục tiêu của kế hoạch buổi học trỏ tới id
 không tồn tại mà không bị phát hiện, vì không quan hệ nào đọc trường đó. Mục tiêu, câu hỏi, rubric và tài liệu được viết bằng
 tiếng Việt, nhưng kế hoạch đánh giá, các sản phẩm của pha triển khai và các hoạt động của mô-đun
-đầu tiên được viết bằng tiếng Anh (Hình~\ref{fig:outputs}b); một phần do khung điều phối sinh từ
+đầu tiên được viết bằng tiếng Anh (Hình~\ref{fig:outputs}b); một phần do lớp điều phối sinh từ
 mẫu cố định. Một mục tiêu gọi kiểm chứng chéo là kỹ thuật điều chuẩn. Độ phủ quan hệ và tam giác
 khép kín hỗ trợ truy vết cấu trúc nhưng không thay thế thẩm định chuyên môn của giảng viên. Các lỗi
 này cho thấy bản thiết kế do SLM sinh ra vẫn cần giảng viên rà soát trước khi dùng.
@@ -409,18 +408,18 @@ React-ADDIE thay đổi theo từng LLM judge. Hệ thống đề xuất đượ
 thêm bước giải mã có ràng buộc, trong khi các tác tử đối chứng chạy nguyên phương pháp; phép so sánh
 vì vậy đánh giá cả gói hệ thống, không tách riêng đóng góp của kiến trúc. Nghiên cứu tình huống chỉ gồm một học phần, một lần chạy, chưa được đưa vào giảng dạy và chưa có
 đánh giá của chuyên gia hay của người học. Với đầu ra tiếng Việt, SLM 2B còn trộn ngôn ngữ và
-mắc lỗi chuyên môn, và các mẫu văn bản của khung điều phối chưa được bản địa hóa.
+mắc lỗi chuyên môn, và các mẫu văn bản của lớp điều phối chưa được bản địa hóa.
 
 \section{KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN}
 \label{sec:conclusion}
 
-Bài báo đã trình bày một hệ đa tác tử hỗ trợ thiết kế giảng dạy trên SLM tự triển khai,
-trong đó các tác tử của sáu công đoạn dùng chung một đồ thị căn chỉnh. Điểm ADDIE của hệ không khác
+Nghiên cứu này đã xây dựng và đánh giá một hệ thống đa tác tử hỗ trợ thiết kế giảng dạy trên SLM tự triển khai,
+trong đó các tác tử của sáu công đoạn dùng chung một đồ thị căn chỉnh. Điểm ADDIE của hệ thống không khác
 biệt có ý nghĩa với tác tử mạnh nhất của benchmark, với chi phí token cao hơn khoảng
 \cmpTokRatioReact{} lần, và sổ vi phạm chỉ ra cho giảng viên những chỗ cần xem lại. Bản thiết kế
 vẫn cần giảng viên rà soát trước khi dùng. Hướng phát triển gồm vòng chỉnh sửa có giảng viên
 tham gia và sinh lại cục bộ theo đồ thị, đánh giá trên nhiều cỡ mô hình, và lấy nhận xét của
-chuyên gia trên các học phần thực tế.
+chuyên gia.
 
 \bibliographystyle{IEEEtran}
 \bibliography{refs}
