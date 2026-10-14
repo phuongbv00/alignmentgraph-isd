@@ -34,7 +34,7 @@ HERE = Path(__file__).resolve().parent
 RESULTS = HERE.parents[2] / "experiments" / "results"
 OUT = HERE / "generated"
 ALPHA = 0.05
-PROPOSED_LABEL = "Hệ đề xuất"
+PROPOSED_LABEL = "Hệ thống đề xuất"
 CASE_MODEL = "Qwen/Qwen3.5-2B"
 
 AGENTS = {  # id -> (display, macro code)
@@ -196,7 +196,7 @@ def judge_table(doc: dict, mac: Macros) -> str:
     for i, a in enumerate(order):
         cells = [cols[s][i] for s in SCORES] + [tok_cells[i]]
         body.append(f"    {AGENTS.get(a, (a, a))[0]} & " + " & ".join(cells) + r" \\")
-    notes = [r"$^{*}$ khác có ý nghĩa so với hệ đề xuất (Wilcoxon theo cặp, Holm trong từng "
+    notes = [r"$^{*}$ khác có ý nghĩa so với hệ thống đề xuất (Wilcoxon theo cặp, Holm trong từng "
              r"điểm, $p<0.05$)."]
     if tok_n:
         notes.append("Token trung bình trên các kịch bản có số liệu: "
