@@ -31,8 +31,8 @@
 
 \begin{document}
 
-\title{Ứng dụng hệ đa tác tử dựa trên\\
-mô hình ngôn ngữ nhỏ trong thiết kế giảng dạy}
+\title{Ứng dụng hệ đa tác tử dựa trên mô hình\\
+ngôn ngữ nhỏ trong thiết kế học liệu giảng dạy}
 
 \author{\IEEEauthorblockN{Bùi Việt Phương\textsuperscript{1}, Bùi Văn Tâm\textsuperscript{2}, Phạm Văn Hải\textsuperscript{1,*}}
 \IEEEauthorblockA{\textsuperscript{1}Trường Công nghệ Thông tin và Truyền thông, Đại học Bách khoa Hà Nội\\
@@ -44,21 +44,23 @@ Email: phuong.bv242011m@sis.hust.edu.vn, tambv@dhhp.edu.vn, haipv@soict.hust.edu
 
 \begin{abstract}
 Các hệ tác tử dựa trên mô hình ngôn ngữ lớn (LLM) cho thiết kế giảng dạy (ISD) phần lớn dựa
-vào LLM thương mại gọi qua API, trong khi các cơ sở giáo dục có nhu cầu dùng mô hình ngôn ngữ nhỏ
-(SLM) vận hành tại chỗ. Với SLM, sự căn chỉnh giữa mục tiêu, hoạt động và đánh giá có thể bị
-phá vỡ mà khó được phát hiện. Bài báo đề xuất một hệ đa tác tử thiết kế giảng dạy, trong đó các tác
-tử theo vai thực hiện sáu công đoạn và dùng chung một đồ thị căn chỉnh. Khung điều phối ghi và
-kiểm tra các quan hệ căn chỉnh, rồi xuất đồ thị cùng sổ vi phạm để giảng viên truy vết; đồ thị
-này cũng cho phép mở rộng sang cải tiến cục bộ. Hệ được đóng gói thành ứng dụng web và được
-minh họa qua việc thiết kế một học phần. Trên \NScen{} kịch bản của
-ISD-Agent-Bench với Qwen3.5-2B, điểm ADDIE của hệ (\cmpAGAddie) không khác biệt có ý nghĩa thống kê với
-tác tử mạnh nhất của benchmark là React-ADDIE (\cmpReactAddie).
+vào các phiên bản LLM thương mại gọi qua API, trong khi các cơ sở giáo dục có nhu cầu dùng mô hình
+ngôn ngữ nhỏ (SLM) vận hành tại các trường và phù hợp với việc tinh chỉnh tham số theo dữ liệu
+của trường. Bài báo đề xuất một hệ đa tác tử thiết kế giảng dạy, trong đó các tác tử được
+thiết kế thành sáu công đoạn dùng chung một đồ thị căn chỉnh. Từ đồ thị này, khung điều phối ghi và
+kiểm tra các quan hệ căn chỉnh, nhằm giúp giảng viên phát hiện và truy vết những chỗ mục tiêu,
+hoạt động và đánh giá trong bản thiết kế chưa khớp nhau; đồ thị này cũng cho phép mở rộng sang cải tiến cục bộ. Hệ thống được đóng gói thành ứng dụng
+Web và được minh họa qua việc thiết kế một học phần. Kết quả thực nghiệm trên \NScen{} kịch bản
+của ISD-Agent-Bench với Qwen3.5-2B thể hiện điểm ADDIE của hệ đề xuất (\cmpAGAddie) không khác
+biệt có ý nghĩa thống kê so với tác tử mạnh nhất của benchmark là React-ADDIE (\cmpReactAddie),
+cho thấy hệ đề xuất khả thi triển khai để hỗ trợ giảng viên thiết kế học liệu giảng dạy trong các
+cơ sở đào tạo.
 \end{abstract}
 
 \begin{IEEEkeywords}
 hệ đa tác tử (multi-agent system); mô hình ngôn ngữ nhỏ (small language model);
-thiết kế giảng dạy (instructional design); căn chỉnh kiến tạo (constructive
-alignment); học liệu số (digital learning materials)
+thiết kế giảng dạy (instructional design); constructive alignment; học liệu giảng dạy
+(instructional materials)
 \end{IEEEkeywords}
 
 \section{GIỚI THIỆU}
@@ -67,7 +69,7 @@ alignment); học liệu số (digital learning materials)
 Thiết kế giảng dạy (Instructional Systems Design -- ISD) là quá trình xây dựng một khóa học,
 từ phân tích nhu cầu đến kế hoạch triển khai. Mô hình ADDIE tổ chức quá trình này thành năm
 pha: phân tích, thiết kế, phát triển, triển khai và đánh giá~\cite{branch2009addie}. Với giảng
-viên, mỗi pha đòi hỏi nhiều công sức: viết mục tiêu, ra đề, thiết kế hoạt động, soạn học liệu và
+viên, mỗi pha đòi hỏi nhiều công sức: viết mục tiêu, ra đề, thiết kế hoạt động, soạn tài liệu và
 lập kế hoạch từng buổi. Các hệ tác tử dựa trên mô hình ngôn ngữ lớn (Large Language Model --
 LLM) đã có thể tự động hóa nhiều phần của quy trình này, từ kế hoạch bài giảng đến trọn bộ
 học liệu của một khóa học~\cite{zeng2026coma,zhang2025eduplanner,yao2025instructionalagents}.
@@ -80,23 +82,27 @@ tạo~\cite{robert2025educause}. Khi gọi API, dữ liệu học phần và ng�
 thứ ba, trong khi việc dùng LLM trong giáo dục đã đặt ra lo ngại về quyền riêng tư của dữ liệu
 người học~\cite{yan2024ethical}. Vì vậy, các cơ sở giáo dục quan tâm đến mô
 hình ngôn ngữ nhỏ (Small Language Model -- SLM) mã nguồn mở, vận hành tại
-chỗ~\cite{chan2026bigger,katharakis2025slm}.
+chỗ~\cite{chan2026bigger,katharakis2025slm}. SLM còn có thể được tinh chỉnh theo dữ liệu của
+trường, ví dụ để sinh giáo án~\cite{zheng2025lessonplanlm}.
 
-Mặt khác, SLM kém hơn LLM ở các tác vụ nhiều bước dùng công cụ~\cite{shen2024multillmagent} và
-có thể khó giữ sự nhất quán khi phải sinh một bản thiết kế dài. Với ISD, một yêu cầu nhất quán
-cốt lõi là constructive alignment: mục tiêu học tập, hoạt
-động dạy--học và đánh giá phải cùng hướng về một kết quả~\cite{biggs1996enhancing}. Trong các
-hệ tác tử ISD nêu trên, quan hệ này chủ yếu tồn tại ngầm trong văn bản truyền giữa các bước. Khi
-mô hình nhỏ đi, một nhiệm vụ đánh giá có thể không còn đo đúng mục tiêu, trong khi các hệ này chưa
-có cơ chế tường minh, kiểm tra được bằng máy để phát hiện điều đó.
+Mặt khác, SLM kém hơn LLM ở các tác vụ nhiều bước dùng công cụ~\cite{shen2024multillmagent},
+trong khi một bản thiết kế khóa học dài và gồm nhiều phần phụ thuộc nhau. Yêu cầu cốt lõi giữa
+các phần này là constructive alignment~\cite{biggs1996enhancing}: mục tiêu học tập nêu người học
+phải làm được gì, hoạt động dạy--học cho người học luyện việc đó, và đánh giá đo đúng việc đó. Ví
+dụ, khi mục tiêu yêu cầu sinh viên đánh giá một mô hình học máy, câu hỏi kiểm tra không thể chỉ
+hỏi lại định nghĩa. Trong các hệ tác tử ISD nêu trên, quan hệ này chỉ nằm ngầm trong văn bản. Các hệ
+này không kiểm tra quan hệ đó, nên khi mô hình nhỏ đi, lỗi lệch có thể dễ xảy ra hơn và đến thẳng
+giảng viên.
 
-Đóng góp của bài báo là một hệ đa tác tử (Multi-Agent System -- MAS) thiết kế giảng dạy chạy
-trên SLM, trong đó các tác tử của sáu công đoạn dùng chung một đồ thị căn chỉnh tường minh, và
-hệ được đóng gói thành ứng dụng web để giảng viên truy vết và rà soát bản thiết kế. Chúng tôi
-đánh giá hệ trên ISD-Agent-Bench với Qwen3.5-2B và áp dụng hệ cho một học phần Công nghệ Thông
-tin với yêu cầu đầu ra bằng tiếng Việt. Đồ thị tường minh còn cho phép mở rộng sang cải tiến
-bản thiết kế một cách cục bộ: khi một phần cần sửa, đồ thị chỉ ra các sản phẩm liên quan cần
-xem xét và kiểm tra lại.
+Mục tiêu của bài báo là xây dựng một hệ dùng SLM tự triển khai để sinh học liệu giảng dạy cho
+một học phần, tức toàn bộ bản thiết kế gồm mục tiêu và mô-đun, đánh giá, hoạt động, tài liệu, kế
+hoạch buổi học và tài liệu giảng viên. Hệ cần đạt hai yêu cầu: điểm ADDIE của bản thiết kế không
+thấp hơn có ý nghĩa thống kê so với các hệ tác tử hiện có trên cùng một SLM, và giúp giảng viên phát hiện và truy vết những chỗ mục tiêu, hoạt động và đánh giá chưa khớp nhau.
+
+Đóng góp của bài báo là một hệ đa tác tử (Multi-Agent System -- MAS) sáu công đoạn đáp ứng mục
+tiêu này: các tác tử dùng chung một đồ thị căn chỉnh tường minh, và hệ được đóng gói thành ứng
+dụng Web để giảng viên truy vết bản thiết kế. Chúng tôi đánh giá hệ trên ISD-Agent-Bench với
+Qwen3.5-2B và áp dụng hệ cho một học phần Công nghệ Thông tin với đầu ra tiếng Việt.
 
 \section{CÁC NGHIÊN CỨU LIÊN QUAN}
 \label{sec:related}
@@ -128,7 +134,7 @@ thức mà câu hỏi và hoạt động khai báo với mức của mục tiêu
 
 \begin{figure*}[t]
   \centering
-  \includegraphics[width=\textwidth]{overview.pdf}
+  \includegraphics[width=0.9\textwidth]{overview.pdf}
   \caption{Kiến trúc tổng quát của hệ. Lớp 1 gồm sáu tác tử theo công đoạn; lớp 2 là khung
   điều phối quanh SLM; lớp 3 là quá trình dạy và học, nơi giảng viên dùng bản thiết kế. Các khối nét
   đứt ở lớp 3 và vòng cải tiến là bối cảnh sử dụng và hướng mở rộng, không thuộc phạm vi thực
@@ -146,7 +152,7 @@ duyệt bản thiết kế. Mô hình viết nội dung giảng dạy và quyế
 công đoạn, định dạng của từng sản phẩm, việc ghi đồ thị và việc kiểm tra.
 
 Đầu ra gồm bản thiết kế khóa học theo cấu trúc ADDIE và hồ sơ kiểm toán. Bản thiết kế có mục
-tiêu và mô-đun, kế hoạch đánh giá kèm câu hỏi và rubric, hoạt động, học liệu, kế hoạch buổi học
+tiêu và mô-đun, kế hoạch đánh giá kèm câu hỏi và rubric, hoạt động, tài liệu, kế hoạch buổi học
 và tài liệu giảng viên; hồ sơ kiểm toán gồm đồ thị căn chỉnh và sổ vi phạm (violation ledger).
 
 \subsection{Sáu công đoạn}
@@ -166,8 +172,8 @@ và tài liệu giảng viên; hồ sơ kiểm toán gồm đồ thị căn ch�
     2. Mục tiêu, mô-đun & mục tiêu kèm động từ và mức Bloom; mô-đun kèm thời lượng & động từ khớp mức Bloom; mô-đun phủ mục tiêu \\
     3. Đánh giá & bảng đặc tả, nhiệm vụ đánh giá, câu hỏi kèm rubric & mỗi mục tiêu được đánh giá, có câu hỏi ở mức không thấp hơn mục tiêu \\
     4. Hoạt động & hoạt động học tập theo mô-đun & hoạt động luyện mục tiêu và chuẩn bị cho đánh giá; ngân sách thời gian \\
-    5. Học liệu & lựa chọn phương tiện, học liệu & học liệu thuộc mô-đun, đúng phương tiện đã chọn \\
-    6. Triển khai & kế hoạch buổi học, tài liệu giảng viên, tài liệu vận hành & mọi hoạt động và học liệu được xếp vào buổi học \\
+    5. Tài liệu & lựa chọn phương tiện, tài liệu & tài liệu thuộc mô-đun, đúng phương tiện đã chọn \\
+    6. Triển khai & kế hoạch buổi học, tài liệu giảng viên, tài liệu vận hành & mọi hoạt động và tài liệu được xếp vào buổi học \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -188,7 +194,7 @@ Trạng thái dùng chung của các tác tử là một đồ thị có hướn
 G=(V,E),\qquad E\subseteq V\times V\times\mathcal{R}.
 \end{equation}
 Mỗi nút $v\in V$ là một sản phẩm thiết kế có kiểu, như mục tiêu, mô-đun, nhiệm vụ đánh giá,
-hoạt động hay học liệu. Mỗi cạnh $(u,v,r)$ nối hai sản phẩm qua một kiểu quan hệ
+hoạt động hay tài liệu. Mỗi cạnh $(u,v,r)$ nối hai sản phẩm qua một kiểu quan hệ
 $r\in\mathcal{R}$. Ký hiệu $E_r=\{(u,v)\colon(u,v,r)\in E\}$. Ba quan hệ cốt lõi là ba cạnh
 của tam giác constructive alignment: $C_2$ nối mục tiêu với nhiệm vụ đánh giá đo nó, $C_3$ nối mục
 tiêu với hoạt động luyện tập nó, và $C_4$ nối hoạt động với nhiệm vụ đánh giá mà nó chuẩn bị.
@@ -246,8 +252,8 @@ hệ lần theo cạnh để tìm các sản phẩm liên quan, giao lại cho �
 
 \begin{figure*}[t]
   \centering
-  \includegraphics[width=0.86\textwidth]{case.png}
-  \caption{Ứng dụng web trên học phần Nhập môn Học máy. (a) Quy trình: sáu công đoạn, bước đối
+  \includegraphics[width=0.76\textwidth]{case.png}
+  \caption{Ứng dụng Web trên học phần Nhập môn Học máy. (a) Quy trình: sáu công đoạn, bước đối
   chiếu vi phạm và bước tổng hợp, kèm tác tử, sản phẩm đã nộp và kết quả tự kiểm tra.
   (b) Đồ thị căn chỉnh của khóa học ở lớp quan hệ cốt lõi: mục tiêu (ILO), hoạt động (TLA) và
   nhiệm vụ đánh giá (AT); cạnh nét đứt màu đỏ là liên kết không khớp mức Bloom; viền nét đứt màu cam đánh dấu mục tiêu có phép
@@ -284,16 +290,16 @@ chỉ nhận 20 lời gọi công cụ đầu tiên~\cite{isdagentbench}, nên h
 Total bằng
 $0.7\cdot\mathrm{ADDIE}+0.3\cdot\mathrm{Trajectory}$. Hệ đề xuất được so sánh với từng hệ còn
 lại bằng kiểm định Wilcoxon theo cặp kịch bản, hiệu chỉnh Holm trong từng điểm. Một hệ không tạo
-ra đầu ra chấm được ở kịch bản nào thì nhận 0 điểm ở kịch bản đó.
+ra đầu ra chấm được ở kịch bản nào thì nhận 0 điểm ở đó.
 
 \subsection{Kết quả trên benchmark}
 \label{sec:results}
 
 \begin{figure*}[t]
   \centering
-  \includegraphics[width=0.88\textwidth]{case_outputs.png}
+  \includegraphics[width=0.78\textwidth]{case_outputs.png}
   \caption{Ba sản phẩm đầu ra trên giao diện, mỗi sản phẩm kèm các quan hệ của nó trong đồ thị.
-  (a) Học liệu MAT-0101 (slide), thuộc mô-đun MOD-01 và được dùng ở \caseMatSessions{} buổi học. (b) Hoạt động
+  (a) Tài liệu MAT-0101 (slide), thuộc mô-đun MOD-01 và được dùng ở \caseMatSessions{} buổi học. (b) Hoạt động
   TLA-0102, luyện mục tiêu ILO-02 và chuẩn bị cho nhiệm vụ đánh giá AT-01. (c) Nhiệm vụ đánh giá
   tổng kết AT-02, đo \caseTaskObjs{} mục tiêu và được \caseTaskActs{} hoạt động chuẩn bị, cùng một câu hỏi của nó kèm
   tiêu chí rubric; dải chấm đánh dấu phần nội dung được lược bớt. Các quan hệ P ghi nguồn gốc và
@@ -303,7 +309,7 @@ ra đầu ra chấm được ở kịch bản nào thì nhận 0 điểm ở k�
 
 \begin{figure*}[t]
   \centering
-  \includegraphics[width=0.88\textwidth]{case_audit.png}
+  \includegraphics[width=0.78\textwidth]{case_audit.png}
   \caption{Hồ sơ kiểm toán trên giao diện. (a) Mục tiêu ILO-04 khép kín tam giác $C_2$--$C_4$ và các phép kiểm tra mức Bloom của nó.
   (b) Sổ vi phạm: các vi phạm còn mở và các vi phạm đã được sửa, kèm bên đã sửa.}
   \label{fig:audit}
@@ -334,7 +340,7 @@ và kiểm toán, mà không diễn giải rằng hệ hiệu quả hơn về m�
 \subsection{Triển khai ứng dụng}
 \label{sec:case}
 
-Hệ được đóng gói thành một ứng dụng web. Giảng viên nhập bản mô tả yêu cầu thiết kế, hoặc mô tả
+Hệ được đóng gói thành một ứng dụng Web. Giảng viên nhập bản mô tả yêu cầu thiết kế, hoặc mô tả
 học phần bằng hội thoại, rồi khởi chạy hệ trên một SLM tự triển khai. Trong lúc hệ chạy, quy trình và
 đồ thị căn chỉnh được cập nhật dần trên màn hình. Sau khi chạy xong, giảng viên chọn từng nút
 để xem nội dung sản phẩm, các quan hệ của nó và các vi phạm còn mở.
@@ -348,12 +354,12 @@ sau khoảng \caseMin{} phút.
 
 Hình~\ref{fig:case}a cho thấy quy trình thực hiện. Hệ sinh \caseObj{} mục tiêu, \caseMod{}
 mô-đun, \caseTask{} nhiệm vụ đánh giá với \caseItem{} câu hỏi, \caseAct{} hoạt động,
-\caseMat{} học liệu và \caseSess{} kế hoạch buổi học, dùng \caseTok{}k token qua \caseCalls{}
+\caseMat{} tài liệu và \caseSess{} kế hoạch buổi học, dùng \caseTok{}k token qua \caseCalls{}
 lời gọi mô hình. Trên đồ thị (Hình~\ref{fig:case}b), độ phủ của $C_2$, $C_3$ và $C_4$ là
 \caseCovTwo\%, \caseCovThree\% và \caseCovFour\%, và \caseClosed{} trên \caseObj{} mục tiêu
 khép kín tam giác (Hình~\ref{fig:audit}a).
 
-Hình~\ref{fig:outputs} trình bày ba loại sản phẩm đầu ra. Học liệu MAT-0101 là slide giới thiệu
+Hình~\ref{fig:outputs} trình bày ba loại sản phẩm đầu ra. Tài liệu MAT-0101 là slide giới thiệu
 học máy, viết bằng tiếng Việt. Hoạt động TLA-0102 là bài thực hành cài đặt hồi quy tuyến tính
 và cây quyết định trên Google Colab, kéo dài \caseActMinutes{} phút. Câu hỏi tổng kết của AT-02 yêu cầu so sánh
 các độ đo giữa dữ liệu huấn luyện và dữ liệu kiểm tra, gắn với mục tiêu ILO-03 ở mức
@@ -364,12 +370,12 @@ sửa, \caseViolOpen{} còn mở. Các vi phạm còn mở chưa được đưa 
 sau khi tác tử phụ trách đã kết thúc hoặc thuộc phép kiểm tra chưa có tác tử phụ trách. Chúng chỉ
 cho giảng viên những chỗ cần xem lại: ILO-02 chưa nêu tiêu chí đạt, hoạt động của ILO-03 thấp hơn
 mức Bloom của mục tiêu (cạnh nét đứt màu đỏ ở Hình~\ref{fig:case}b), tổng thời lượng hoạt động của
-\caseOverrunMods{} mô-đun vượt thời lượng của mô-đun, và \caseMediaMismatch{} học liệu khai loại mô
+\caseOverrunMods{} mô-đun vượt thời lượng của mô-đun, và \caseMediaMismatch{} tài liệu khai loại mô
 phỏng nhưng thực chất là kịch bản video. Bản thiết kế còn những lỗi nằm ngoài
 phạm vi của các phép kiểm tra. \caseDiagOnlyIds{} chỉ được đo bởi một nhiệm vụ chẩn đoán có trọng
 số \caseDiagWeight\%, nên tam giác khép kín về cấu trúc nhưng chưa có đánh giá tổng kết. Mô-đun
 thứ hai có các kế hoạch buổi học chồng lấn nhau, và trường mục tiêu của kế hoạch buổi học trỏ tới id
-không tồn tại mà không bị phát hiện, vì không quan hệ nào đọc trường đó. Mục tiêu, câu hỏi, rubric và học liệu được viết bằng
+không tồn tại mà không bị phát hiện, vì không quan hệ nào đọc trường đó. Mục tiêu, câu hỏi, rubric và tài liệu được viết bằng
 tiếng Việt, nhưng kế hoạch đánh giá, các sản phẩm của pha triển khai và các hoạt động của mô-đun
 đầu tiên được viết bằng tiếng Anh (Hình~\ref{fig:outputs}b); một phần do khung điều phối sinh từ
 mẫu cố định. Một mục tiêu gọi kiểm chứng chéo là kỹ thuật điều chuẩn. Các lỗi
@@ -403,12 +409,13 @@ mắc lỗi chuyên môn, và các mẫu văn bản của khung điều phối c
 \section{KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN}
 \label{sec:conclusion}
 
-Bài báo đã trình bày một hệ đa tác tử thiết kế giảng dạy chạy trên SLM tự triển khai. Hệ chia
-quy trình thành sáu công đoạn, các tác tử dùng chung một đồ thị căn chỉnh, và đầu ra kèm hồ sơ
-kiểm toán. Trên \NScen{} kịch bản với Qwen3.5-2B, điểm ADDIE của hệ không khác biệt có ý nghĩa
-với tác tử mạnh nhất của benchmark, với chi phí token cao hơn khoảng \cmpTokRatioReact{} lần. Hệ
-được đóng gói thành ứng dụng web và được dùng để thiết kế một học phần Công nghệ Thông tin với
-đầu ra tiếng Việt. Hướng phát triển gồm vòng chỉnh sửa có giảng viên
+Bài báo đã trình bày một hệ đa tác tử hỗ trợ thiết kế học liệu giảng dạy chạy trên SLM tự triển
+khai, trong đó các tác tử của sáu công đoạn dùng chung một đồ thị căn chỉnh. Trên \NScen{} kịch bản với Qwen3.5-2B, điểm ADDIE của hệ không khác biệt có ý nghĩa
+với tác tử mạnh nhất của benchmark, với chi phí token cao hơn khoảng \cmpTokRatioReact{} lần.
+Trên một học phần Công nghệ Thông tin với đầu ra tiếng Việt, sổ vi phạm chỉ ra \caseViolOpen{}
+chỗ giảng viên cần xem lại, nhưng bản thiết kế còn những lỗi nằm ngoài các phép kiểm tra. SLM tự
+triển khai vì vậy có thể hỗ trợ giảng viên thiết kế học liệu, khi giảng viên rà soát bản thiết kế
+trước khi dùng. Hướng phát triển gồm vòng chỉnh sửa có giảng viên
 tham gia và sinh lại cục bộ theo đồ thị, đánh giá trên nhiều cỡ mô hình, và lấy nhận xét của
 chuyên gia thiết kế giảng dạy trên các học phần thực tế.
 
