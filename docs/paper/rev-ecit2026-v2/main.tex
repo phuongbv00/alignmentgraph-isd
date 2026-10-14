@@ -103,10 +103,12 @@ này không kiểm tra quan hệ đó, nên khi mô hình nhỏ đi, nguy cơ b�
 phát hiện ở giai đoạn giảng viên rà soát.
 
 
-Từ những hạn chế trên, nghiên cứu này xem xét khả năng sử dụng SLM được triển khai cục bộ cho quy
+Từ những hạn chế trên, mục tiêu của nghiên cứu này là sử dụng SLM được triển khai cục bộ cho quy
 trình thiết kế khóa học nhiều bước, đồng thời làm tường minh các quan hệ giữa mục tiêu học tập,
 hoạt động và đánh giá. Trên cơ sở đó, một kiến trúc đa tác tử được xây dựng để tạo bản thiết kế khóa
-học và hỗ trợ giảng viên phát hiện, truy vết các bất nhất trong cấu trúc thiết kế.
+học và hỗ trợ giảng viên phát hiện, truy vết các bất nhất trong cấu trúc thiết kế. Kiến trúc được đánh giá trên ISD-Agent-Bench với cùng một SLM cho
+tất cả các phương pháp đối chứng, đồng thời được minh họa qua nghiên cứu tình huống đối với khóa học
+Nhập môn Học máy.
 
 Các đóng góp kỹ thuật chính của nghiên cứu gồm: (i) một kiến trúc đa tác tử (Multi-Agent System --
 MAS) gồm sáu tác tử theo công đoạn, cùng làm việc trên một đồ thị căn chỉnh (alignment graph) tường
@@ -115,8 +117,7 @@ minh, với mỗi quan hệ mục tiêu học tập--hoạt động--đánh giá
 sửa trong quá trình sinh, gồm kiểm tra từng lần nộp theo định dạng và theo quan hệ trên đồ thị, chuẩn
 hóa tự động các vi phạm cấu trúc, trả các vi phạm cần viết nội dung cho tác tử phụ trách và ghi mọi vi
 phạm vào sổ vi phạm (violation ledger) cùng kết quả xử lý; (iii) một ứng dụng web hiển thị đồ thị và
-sổ vi phạm để giảng viên truy vết bản thiết kế. Hệ thống được đánh giá trên ISD-Agent-Bench với
-Qwen3.5-2B và qua một nghiên cứu tình huống trên khóa học Nhập môn Học máy với đầu ra tiếng Việt.
+sổ vi phạm để giảng viên truy vết bản thiết kế.
 
 \section{CÁC NGHIÊN CỨU LIÊN QUAN}
 \label{sec:related}
