@@ -206,7 +206,7 @@ def judge_table(doc: dict, mac: Macros) -> str:
                      + ", ".join(f"{AGENTS.get(a, (a,))[0]} {k}" for a, k in failed) + ".")
     return "\n".join([
         r"\begin{table}[t]",
-        rf"  \caption{{Điểm LLM judge trên ISD-Agent-Bench (trung bình $\pm$ độ lệch chuẩn qua "
+        rf"  \caption{{Điểm của mô hình chấm trên ISD-Agent-Bench (trung bình $\pm$ độ lệch chuẩn qua "
         rf"{n} kịch bản) và token mỗi kịch bản}}",
         r"  \label{tab:judge}",
         r"  \centering",
