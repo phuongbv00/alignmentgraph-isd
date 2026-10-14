@@ -57,8 +57,8 @@ phạm để hỗ trợ giảng viên truy vết, rà soát bản thiết kế. 
 dụng web được xây dựng và minh họa thông qua nghiên cứu tình huống đối với khóa học Nhập môn Học
 máy. Kết quả nghiên cứu tình huống cho thấy ứng dụng có khả năng tạo các thành phần của bản thiết
 kế, bao gồm mục tiêu học tập, chủ đề, nhiệm vụ đánh giá, hoạt động, học liệu và kế hoạch buổi học;
-sổ vi phạm ghi nhận \caseViolWord{} vi phạm, trong đó \caseViolAgentWord{} vi phạm được xử lý trong quá
-trình sinh và \caseViolOpenWord{} vi phạm được lưu lại để giảng viên xem xét. Bên cạnh đó, thực nghiệm
+sổ vi phạm ghi nhận \caseViol{} vi phạm, trong đó \caseViolAgent{} vi phạm được xử lý trong quá
+trình sinh và \caseViolOpen{} vi phạm được lưu lại để giảng viên xem xét. Bên cạnh đó, thực nghiệm
 trên \NScen{} kịch bản của ISD-Agent-Bench với Qwen3.5-2B cho thấy hệ thống đề xuất đạt điểm ADDIE
 \cmpAGAddie; không ghi nhận khác biệt có ý nghĩa thống kê so với React-ADDIE, với điểm ADDIE
 \cmpReactAddie. Trong thiết lập thực nghiệm này, kiến trúc đề xuất đạt mức điểm ADDIE gần với các
@@ -352,7 +352,7 @@ chủ đề, \caseTask{} nhiệm vụ đánh giá với \caseItem{} câu hỏi, 
 \caseMat{} học liệu và \caseSess{} kế hoạch buổi học, dùng \caseTok{}k token qua \caseCalls{}
 lời gọi mô hình. Mục tiêu khóa học thứ tư bao gồm hai hành vi là nhận diện quá khớp và áp dụng
 điều chuẩn (regularization), và được hệ thống cụ thể hóa thành ILO-04 và ILO-05; vì vậy bốn mục tiêu khóa học thành
-\caseObjWord{} mục tiêu học tập.
+\caseObj{} mục tiêu học tập.
 
 Hình~\ref{fig:outputs} trình bày ba loại sản phẩm đầu ra. Học liệu MAT-0101 là slide giới thiệu
 học máy, viết bằng tiếng Việt. Hoạt động TLA-0102 là bài thực hành cài đặt hồi quy tuyến tính
@@ -365,7 +365,7 @@ quan trọng đối với quá trình rà soát của giảng viên. Trên đồ
 (Hình~\ref{fig:case}b), độ phủ của $C_2$, $C_3$ và $C_4$ là \caseCovTwo\%, \caseCovThree\% và
 \caseCovFour\%, và \caseClosed{} trên \caseObj{} mục tiêu học tập khép kín tam giác
 (Hình~\ref{fig:audit}a). Tuy vậy, sổ vi phạm (Mục~\ref{sec:repair}, Hình~\ref{fig:audit}b) ghi
-nhận \caseViolWord{} trường hợp, gồm \caseViolAgentWord{} trường hợp đã được tác tử sửa và \caseViolOpenWord{} trường hợp còn mở. Các vi
+nhận \caseViol{} trường hợp, gồm \caseViolAgent{} trường hợp đã được tác tử sửa và \caseViolOpen{} trường hợp còn mở. Các vi
 phạm còn mở chưa được chuyển lại cho tác tử phụ trách, vì được phát hiện
 sau khi tác tử phụ trách đã kết thúc hoặc thuộc phép kiểm tra chưa có tác tử phụ trách. Các vi phạm này
 được duy trì như các chỉ số bất lợi để giảng viên tiếp tục thẩm định: ILO-02 chưa nêu tiêu chí đạt, hoạt động của ILO-03 thấp hơn

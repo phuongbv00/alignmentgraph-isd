@@ -59,14 +59,6 @@ CORE = {"C2": "Two", "C3": "Three", "C4": "Four"}
 #: elements (gaps, topics, constraints, improvements) are left out of the count.
 DESIGN_TYPES = {"objective", "module", "assessment", "activity", "media_selection",
                 "material", "session_guide"}
-#: Vietnamese number words for the small counts the prose writes out.
-WORDS = {1: "một", 2: "hai", 3: "ba", 4: "bốn", 5: "năm", 6: "sáu", 7: "bảy", 8: "tám",
-         9: "chín", 10: "mười"}
-
-
-def word(n: int) -> str:
-    return WORDS.get(n, str(n))
-
 DASH = "--"
 
 
@@ -260,7 +252,6 @@ def case_macros(run: Path, mac: Macros) -> None:
             counts[node["type"]] += 1
     for t, code in CASE_TYPES.items():
         mac.add(f"case{code}", str(counts[t]))
-    mac.add("caseObjWord", word(counts["objective"]))
     tasks = (addie.get("development") or {}).get("assessment_tools") or []
     mac.add("caseItem", str(sum(len(t.get("items") or []) for t in tasks)))
 
@@ -281,15 +272,12 @@ def case_macros(run: Path, mac: Macros) -> None:
                              "graph still flags it; run case/reconcile_ledger.py first")
     outcomes = {"repaired_by_agent": "Agent", "repaired_by_harness": "Harness", "open": "Open"}
     mac.add("caseViol", str(len(ledger)))
-    mac.add("caseViolWord", word(len(ledger)))
     for outcome, code in outcomes.items():
-        n = sum(1 for f in ledger if f.get("outcome") == outcome)
-        mac.add(f"caseViol{code}", str(n))
-        mac.add(f"caseViol{code}Word", word(n))
+        mac.add(f"caseViol{code}", str(sum(1 for f in ledger if f.get("outcome") == outcome)))
 
     open_types = [f.get("type") for f in ledger if f.get("outcome") == "open"]
-    mac.add("caseOverrunMods", word(open_types.count("time_budget")))
-    mac.add("caseMediaMismatch", word(open_types.count("P6")))
+    mac.add("caseOverrunMods", str(open_types.count("time_budget")))
+    mac.add("caseMediaMismatch", str(open_types.count("P6")))
 
     local_scope(graph, ledger, mac)
     figure_numbers(graph, mac)
@@ -332,8 +320,8 @@ def local_scope(graph: dict, ledger: list, mac: Macros) -> None:
             if a in rewrite and b in design:
                 touched.add(b)
     mac.add("caseDesign", str(len(design)))
-    mac.add("caseLocalRewrite", word(len(rewrite)))
-    mac.add("caseLocalCheck", word(len(touched - rewrite)))
+    mac.add("caseLocalRewrite", str(len(rewrite)))
+    mac.add("caseLocalCheck", str(len(touched - rewrite)))
     mac.add("caseLocalOutside", str(len(design - touched)))
     mac.add("caseLocalObjective", str(finding.get("metadata", {}).get("lo_id", "")).replace("_", "-"))
 
@@ -348,11 +336,11 @@ def _edges(graph: dict, node: str, rel: str, end: str) -> list[str]:
 def figure_numbers(graph: dict, mac: Macros) -> None:
     """The counts Hình 3 shows for its three artifacts, read off the graph."""
     nodes = {n["id"]: n for n in graph["nodes"]}
-    mac.add("caseMatSessions", word(len(_edges(graph, "material:MAT-0101", "P11", "target"))))
+    mac.add("caseMatSessions", str(len(_edges(graph, "material:MAT-0101", "P11", "target"))))
     dur = str((nodes.get("activity:TLA-0102") or {}).get("data", {}).get("duration", ""))
     mac.add("caseActMinutes", dur.split()[0] if dur else DASH)
-    mac.add("caseTaskObjs", word(len(_edges(graph, "assessment:AT-02", "C2", "target"))))
-    mac.add("caseTaskActs", word(len(_edges(graph, "assessment:AT-02", "C4", "target"))))
+    mac.add("caseTaskObjs", str(len(_edges(graph, "assessment:AT-02", "C2", "target"))))
+    mac.add("caseTaskActs", str(len(_edges(graph, "assessment:AT-02", "C4", "target"))))
 
 
 def diagnostic_only(graph: dict, addie: dict, mac: Macros) -> None:
@@ -363,7 +351,7 @@ def diagnostic_only(graph: dict, addie: dict, mac: Macros) -> None:
     only = [o for o in objs
             if (ends := _edges(graph, o, "C2", "source"))
             and all((tasks.get(d) or {}).get("timing") == "diagnostic" for d in ends)]
-    mac.add("caseDiagOnly", word(len(only)))
+    mac.add("caseDiagOnly", str(len(only)))
     mac.add("caseDiagOnlyIds", " và ".join(o.split(":", 1)[1] for o in only))
     diag = [int(t.get("weight_percent") or 0) for t in tasks.values() if t.get("timing") == "diagnostic"]
     mac.add("caseDiagWeight", str(sum(diag)) if diag else DASH)
