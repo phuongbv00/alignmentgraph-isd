@@ -108,14 +108,15 @@ trình thiết kế khóa học nhiều bước, đồng thời làm tường mi
 hoạt động và đánh giá. Trên cơ sở đó, một kiến trúc đa tác tử được xây dựng để tạo bản thiết kế khóa
 học và hỗ trợ giảng viên phát hiện, truy vết các bất nhất trong cấu trúc thiết kế.
 
-Kiến trúc này có ba đóng góp kỹ thuật chính. (i) Một kiến trúc đa tác tử (Multi-Agent System --
-MAS) gồm sáu tác tử theo công đoạn, cùng làm việc trên một đồ thị căn chỉnh (alignment graph) tường minh; mỗi quan
-hệ mục tiêu học tập--hoạt động--đánh giá là một cạnh, được lớp điều phối của hệ thống (orchestration layer) tạo từ các
-định danh tham chiếu do tác tử khai báo. (ii) Một cơ chế kiểm tra và sửa trong quá trình sinh: mỗi lần nộp được kiểm tra theo
-định dạng và theo quan hệ trên đồ thị; vi phạm cấu trúc được chuẩn hóa tự động, vi phạm cần viết
-nội dung được trả lại cho tác tử phụ trách, và mọi vi phạm được ghi vào sổ vi phạm (violation ledger) cùng kết quả
-xử lý. (iii) Một ứng dụng web hiển thị đồ thị và sổ vi phạm để giảng viên truy vết bản thiết kế. Hệ thống được đánh giá trên ISD-Agent-Bench với Qwen3.5-2B và qua một nghiên cứu tình huống
-trên khóa học Nhập môn Học máy với đầu ra tiếng Việt.
+Các đóng góp kỹ thuật chính của nghiên cứu gồm: (i) một kiến trúc đa tác tử (Multi-Agent System --
+MAS) gồm sáu tác tử theo công đoạn, cùng làm việc trên một đồ thị căn chỉnh (alignment graph) tường
+minh, với mỗi quan hệ mục tiêu học tập--hoạt động--đánh giá là một cạnh do lớp điều phối của hệ thống
+(orchestration layer) tạo từ các định danh tham chiếu mà tác tử khai báo; (ii) một cơ chế kiểm tra và
+sửa trong quá trình sinh, gồm kiểm tra từng lần nộp theo định dạng và theo quan hệ trên đồ thị, chuẩn
+hóa tự động các vi phạm cấu trúc, trả các vi phạm cần viết nội dung cho tác tử phụ trách và ghi mọi vi
+phạm vào sổ vi phạm (violation ledger) cùng kết quả xử lý; (iii) một ứng dụng web hiển thị đồ thị và
+sổ vi phạm để giảng viên truy vết bản thiết kế. Hệ thống được đánh giá trên ISD-Agent-Bench với
+Qwen3.5-2B và qua một nghiên cứu tình huống trên khóa học Nhập môn Học máy với đầu ra tiếng Việt.
 
 \section{CÁC NGHIÊN CỨU LIÊN QUAN}
 \label{sec:related}
