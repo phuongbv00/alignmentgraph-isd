@@ -199,7 +199,7 @@ def judge_table(doc: dict, mac: Macros) -> str:
     notes = [r"$^{*}$ khác có ý nghĩa so với hệ thống đề xuất (Wilcoxon theo cặp, Holm trong từng "
              r"điểm, $p<0.05$)."]
     if tok_n:
-        notes.append("Token trung bình trên các kịch bản có số liệu: "
+        notes.append("Số kịch bản có dữ liệu token: "
                      + ", ".join(f"{AGENTS.get(a, (a,))[0]} {k}" for a, k in tok_n) + ".")
     if failed:
         notes.append("Kịch bản không có đầu ra chấm được, tính 0 điểm: "
