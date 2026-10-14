@@ -35,7 +35,7 @@ const LABELS: Record<string, string> = {
   orphan_content: 'content traces to instructional purpose',
   time_budget: 'activities fit the time the course has',
   media_coverage: 'every module has a medium chosen for it',
-  blueprint_consistency: 'assessment blueprint agrees with its coverage targets',
+  blueprint_consistency: 'assessment blueprint is sound',
   instrument_alignment: 'item belongs to an instrument of the plan',
   feasibility: 'plan fits the stated constraints',
   actionability: 'implementation plan is concrete enough to run',
