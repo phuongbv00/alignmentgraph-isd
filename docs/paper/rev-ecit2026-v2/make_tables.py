@@ -260,6 +260,7 @@ def case_macros(run: Path, mac: Macros) -> None:
             counts[node["type"]] += 1
     for t, code in CASE_TYPES.items():
         mac.add(f"case{code}", str(counts[t]))
+    mac.add("caseObjWord", word(counts["objective"]))
     tasks = (addie.get("development") or {}).get("assessment_tools") or []
     mac.add("caseItem", str(sum(len(t.get("items") or []) for t in tasks)))
 
@@ -280,8 +281,11 @@ def case_macros(run: Path, mac: Macros) -> None:
                              "graph still flags it; run case/reconcile_ledger.py first")
     outcomes = {"repaired_by_agent": "Agent", "repaired_by_harness": "Harness", "open": "Open"}
     mac.add("caseViol", str(len(ledger)))
+    mac.add("caseViolWord", word(len(ledger)))
     for outcome, code in outcomes.items():
-        mac.add(f"caseViol{code}", str(sum(1 for f in ledger if f.get("outcome") == outcome)))
+        n = sum(1 for f in ledger if f.get("outcome") == outcome)
+        mac.add(f"caseViol{code}", str(n))
+        mac.add(f"caseViol{code}Word", word(n))
 
     open_types = [f.get("type") for f in ledger if f.get("outcome") == "open"]
     mac.add("caseOverrunMods", word(open_types.count("time_budget")))
@@ -329,7 +333,7 @@ def local_scope(graph: dict, ledger: list, mac: Macros) -> None:
                 touched.add(b)
     mac.add("caseDesign", str(len(design)))
     mac.add("caseLocalRewrite", word(len(rewrite)))
-    mac.add("caseLocalCheck", str(len(touched - rewrite)))
+    mac.add("caseLocalCheck", word(len(touched - rewrite)))
     mac.add("caseLocalOutside", str(len(design - touched)))
     mac.add("caseLocalObjective", str(finding.get("metadata", {}).get("lo_id", "")).replace("_", "-"))
 

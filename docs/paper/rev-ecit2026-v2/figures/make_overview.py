@@ -1,22 +1,23 @@
-"""Render figures/overview.svg: Hình 1, the general architecture.
+"""Render figures/overview.svg and overview.pdf: Hình 1, the general architecture.
 
-The layout is the general-architecture sketch the supervisor suggested, kept as
-it is: a title banner, an Input column of cards, three stacked layers of cards,
-an Output column of cards, and a continuous-improvement bar under everything that
-closes the loop from the output back to the input. Only the text that would be
-untrue of this system is changed, and the colours are set for print (white or
-near-white fills, dark strokes and text, no solid colour blocks):
+The layout is the general-architecture sketch the supervisor suggested: an Input column
+of cards, three stacked layers of cards, an Output column of cards, and a dashed
+local-editing bar under everything that closes the loop from the output back to the
+input. Colours are set for print (white or near-white fills, dark strokes and text):
 
-* 1. Instructional design layer -- the six role agents, as in the sketch;
-* 2. Small-language-model support layer -- what the harness keeps around the
-     model: the alignment graph, validation, the repair loop, a schema per artifact
+* 1. Course design & planning layer -- the six role agents and the Developer tier;
+* 2. Small-language-model support layer -- what the orchestration layer keeps around
+     the model: the alignment graph, validation, the repair loop, a schema per artifact
      and the audit trail;
-* 3. Teaching & learning process layer -- the web app in which the teacher reviews the design
-     exists; delivery, learners and learning outcomes are drawn dashed,
-     as is the improvement loop: this study neither built nor measured them.
+* 3. Teaching & learning process layer -- the web app in which the teacher reviews the
+     design exists; delivery, learners and outcomes are drawn dashed, as is the editing
+     loop: this study neither built nor measured them.
 
-Build: python3 make_overview.py  (writes overview.svg, then overview.pdf through headless
-Chrome, which embeds the fonts as TrueType; rsvg-convert leaves Type 3 fonts in the PDF)
+Every card carries an icon and a title only; what each part does is in the text.
+
+Build: python3 make_overview.py  (writes overview.svg, then overview.pdf through
+headless Chrome, which embeds the fonts as TrueType; rsvg-convert leaves Type 3 fonts
+in the PDF)
 """
 import subprocess
 import tempfile
@@ -138,12 +139,17 @@ def i_calendar(cx, cy, c=NAVY):
                 f'fill="{c}"/>')
 
 
-def i_graph(cx, cy, c=BROWN):
-    p = [(cx, cy - 13), (cx - 13, cy + 10), (cx + 13, cy + 10)]
-    raw(f'<path d="M {p[0][0]} {p[0][1]} L {p[1][0]} {p[1][1]} L {p[2][0]} {p[2][1]} Z" '
-        f'fill="none" stroke="{c}" stroke-width="2.2"/>')
-    for x, y in p:
-        raw(f'<circle cx="{x}" cy="{y}" r="5" fill="{c}"/>')
+def i_graph(cx, cy, c=PURP):
+    """A small network: a hub joined to four nodes, two of which are also linked."""
+    hub = (cx, cy + 1)
+    nodes = [(cx - 14, cy - 11), (cx + 14, cy - 11), (cx - 14, cy + 13), (cx + 14, cy + 13)]
+    for x, y in nodes:
+        raw(f'<path d="M {hub[0]} {hub[1]} L {x} {y}" stroke="{c}" stroke-width="2"/>')
+    raw(f'<path d="M {nodes[0][0]} {nodes[0][1]} L {nodes[1][0]} {nodes[1][1]}" '
+        f'stroke="{c}" stroke-width="2"/>')
+    for (x, y), r in [(hub, 6)] + [(n, 4.5) for n in nodes]:
+        raw(f'<circle cx="{x}" cy="{y}" r="{r}" fill="#FFFFFF" stroke="{c}" '
+            f'stroke-width="2"/>')
 
 
 def i_check(cx, cy, c=PURP):
@@ -174,6 +180,27 @@ def i_ledger(cx, cy, c=PURP):
         raw(f'<path d="{mark}" stroke="{OK if good else RED}" stroke-width="1.6" '
             f'fill="none"/>')
         raw(f'<path d="M {x + 13} {yy} h 7" stroke="{c}" stroke-width="1.4"/>')
+
+
+def i_graph_ledger(cx, cy, c=GOLD):
+    """The two audit outputs side by side: a small graph and a ledger page."""
+    hub = (cx - 12, cy + 1)
+    nodes = [(cx - 23, cy - 9), (cx - 1, cy - 9), (cx - 23, cy + 11), (cx - 1, cy + 11)]
+    for x, y in nodes:
+        raw(f'<path d="M {hub[0]} {hub[1]} L {x} {y}" stroke="{c}" stroke-width="1.8"/>')
+    for (x, y), r in [(hub, 5)] + [(n, 3.6) for n in nodes]:
+        raw(f'<circle cx="{x}" cy="{y}" r="{r}" fill="#FFFFFF" stroke="{c}" '
+            f'stroke-width="1.8"/>')
+    x, y = cx + 6, cy - 14
+    raw(f'<rect x="{x}" y="{y}" width="20" height="28" rx="3" fill="#FFFFFF" stroke="{c}" '
+        f'stroke-width="2"/>')
+    for k, good in enumerate((True, False, True)):
+        yy = y + 7.5 + 7 * k
+        mark = (f'M {x + 3.5} {yy} l 2 2.5 l 3.5 -4.5' if good else
+                f'M {x + 3.5} {yy - 2.2} l 4.4 4.4 M {x + 7.9} {yy - 2.2} l -4.4 4.4')
+        raw(f'<path d="{mark}" stroke="{OK if good else RED}" stroke-width="1.5" '
+            f'fill="none"/>')
+        raw(f'<path d="M {x + 11} {yy} h 6" stroke="{c}" stroke-width="1.3"/>')
 
 
 def i_teacher(cx, cy, c=GREEN):
@@ -226,38 +253,31 @@ def badge(x, y, n, color):
     text(x, y + 1, str(n), fs=14, bold=True, fc=color)
 
 
-def card(x, y, w, h, icon, title, desc, *, color, n=None, dashed=False):
-    """A layer card: icon on top, a bold title, a grey description."""
+def card(x, y, w, h, icon, title, *, color, n=None, dashed=False):
+    """A layer card: icon on top, a bold title under it."""
     rect(x, y, w, h, fill="#FFFFFF", stroke=color, sw=1.6, r=10, dash=dashed)
-    icon(x + w / 2, y + 28)
-    ty = y + 60
+    icon(x + w / 2, y + 26)
+    ty = y + 56
     for k, line in enumerate(title):
         text(x + w / 2, ty + 19 * k, line, fs=16, bold=True, fc=GREY if dashed else INK)
-    dy = ty + 19 * len(title) + 5
-    for k, line in enumerate(desc):
-        text(x + w / 2, dy + 17 * k, line, fs=14, fc=GREY)
     if n is not None:
         badge(x + 4, y + 4, n, color)
 
 
-def side_card(x, y, w, h, icon, title, bullets, color):
-    """An input/output card: icon beside a bold title, bullets under it, the
+def side_card(x, y, w, h, icon, title, color):
+    """An input/output card: the icon on top and the bold title centred under it, the
     whole block centred vertically so every card carries the same margins."""
     rect(x, y, w, h, fill="#FFFFFF", stroke=color, sw=1.0, r=10)
-    head, gap, step = 42, 10, 20
-    top = y + (h - (head + gap + step * len(bullets))) / 2
-    icon(x + 26, top + head / 2)
-    t0 = top + head / 2 - 9.5 * (len(title) - 1)
-    for k, line in enumerate(title):
-        text(x + 52, t0 + 19 * k, line, fs=16, bold=True, anchor="start")
-    for k, line in enumerate(bullets):
-        text(x + 18, top + head + gap + step * k + step / 2, "• " + line, fs=15, fc=GREY,
-             anchor="start")
+    icon_h, gap, line = 34, 10, 19
+    top = y + (h - (icon_h + gap + line * len(title))) / 2
+    icon(x + w / 2, top + icon_h / 2)
+    for k, t in enumerate(title):
+        text(x + w / 2, top + icon_h + gap + line * k + line / 2, t, fs=16, bold=True)
 
 
 def layer(x, y, w, h, title, color, bg):
     rect(x, y, w, h, fill=bg, stroke=color, sw=2.2, r=12)
-    text(x + 16, y + 20, title, fs=19, bold=True, fc=color, anchor="start")
+    text(x + PAD, y + 20, title, fs=19, bold=True, fc=color, anchor="start")
 
 
 def chevrons(xs, y, color):
@@ -266,22 +286,23 @@ def chevrons(xs, y, color):
 
 
 # ── grid ────────────────────────────────────────────────────────────────────
-TOP, GAP, VGAP = 6, 26, 30
-IN_X, SIDE_W = 6, 210
-BAN_Y, BAN_H = TOP, 44
-MID_X = IN_X + SIDE_W + GAP
+# One set of spacings for every container: SP between containers (across and down),
+# HEAD for a container's title band, PAD from a container's edge to its cards, CGAP
+# between sibling cards. BADGE is the extra room the stage numbers need above layer 1.
+TOP, SP, HEAD, PAD, CGAP, BADGE = 6, 22, 36, 12, 14, 8
+IN_X, SIDE_W = 6, 170
+MID_X = IN_X + SIDE_W + SP
 MID_W = 880
-OUT_X = MID_X + MID_W + GAP
+OUT_X = MID_X + MID_W + SP
 W = OUT_X + SIDE_W + 6
 
-L1_Y, L1_H = BAN_Y + BAN_H + 18, 236
-L2_Y, L2_H = L1_Y + L1_H + VGAP, 196
-L3_Y, L3_H = L2_Y + L2_H + VGAP, 196
-SIDE_TOP, SIDE_BOTTOM = L1_Y - 18 + 0, L3_Y + L3_H
-SIDE_TOP = L1_Y
-BAR_Y, BAR_H = SIDE_BOTTOM + 30, 58
+CH1, CH2, CH3, DEV_H = 96, 78, 78, 30
+L1_Y, L1_H = TOP, HEAD + BADGE + CH1 + CGAP + DEV_H + PAD
+L2_Y, L2_H = L1_Y + L1_H + SP, HEAD + CH2 + PAD
+L3_Y, L3_H = L2_Y + L2_H + SP, HEAD + CH3 + PAD
+SIDE_TOP, SIDE_BOTTOM = L1_Y, L3_Y + L3_H
+BAR_Y, BAR_H = SIDE_BOTTOM + SP, 46
 H = BAR_Y + BAR_H + 6
-PAD, CGAP = 16, 18
 
 
 def row(n):
@@ -290,73 +311,67 @@ def row(n):
 
 
 # ── title banner ────────────────────────────────────────────────────────────
-rect(MID_X, BAN_Y, MID_W, BAN_H, fill="#FFFFFF", stroke=NAVY, sw=2.4, r=12)
-text(MID_X + MID_W / 2, BAN_Y + BAN_H / 2, "General Architecture of the Multi-Agent "
-     "Instructional Design System", fs=21, bold=True, fc=NAVY)
+
 
 # ── input ───────────────────────────────────────────────────────────────────
 rect(IN_X, SIDE_TOP, SIDE_W, SIDE_BOTTOM - SIDE_TOP, fill=NAVY_BG, stroke=NAVY, sw=2.2, r=12)
-text(IN_X + SIDE_W / 2, SIDE_TOP + 24, "Input", fs=22, bold=True, fc=NAVY)
-INPUTS = [(i_doc, ["Course goals", "& objectives"],
-           ["learning goals", "duration", "learning setting"]),
-          (i_people, ["Learners' profile"], ["prior knowledge", "level, age", "class size"]),
-          (i_book, ["Learning", "resources"], ["labs, LMS, tools", "technology",
-                                                "language"]),
-          (i_server, ["Small language", "model"], ["open-weight model", "self-hosted",
-                                                    "no external API"])]
-ch = (SIDE_BOTTOM - SIDE_TOP - 50 - 3 * 10) / 4
-for k, (icon, title, bullets) in enumerate(INPUTS):
-    side_card(IN_X + 9, SIDE_TOP + 44 + k * (ch + 10), SIDE_W - 18, ch, icon, title,
-              bullets, NAVY)
+text(IN_X + SIDE_W / 2, SIDE_TOP + 20, "Input", fs=22, bold=True, fc=NAVY)
+INPUTS = [(i_doc, ["Course goals", "& objectives"]),
+          (i_people, ["Learners' profile"]),
+          (i_book, ["Learning", "resources"]),
+          (i_server, ["Small language", "model"])]
+ch = (SIDE_BOTTOM - SIDE_TOP - HEAD - PAD - 3 * CGAP) / 4
+for k, (icon, title) in enumerate(INPUTS):
+    side_card(IN_X + PAD, SIDE_TOP + HEAD + k * (ch + CGAP), SIDE_W - 2 * PAD, ch, icon,
+              title, NAVY)
 
 # ── layer 1: the six stages ─────────────────────────────────────────────────
-layer(MID_X, L1_Y, MID_W, L1_H, "1. Instructional Design & Planning Layer (multi-agent)",
+layer(MID_X, L1_Y, MID_W, L1_H, "1. Course Design & Planning Layer (multi-agent)",
       NAVY, NAVY_BG)
-STAGES = [(i_search, ["Needs", "Analysis"], ["gaps, topics,", "constraints"]),
-          (i_target, ["Outcome", "Designer"], ["objectives,", "modules"]),
-          (i_clip, ["Assessment", "Designer"], ["blueprint, items,", "rubrics"]),
-          (i_bulb, ["Activity", "Designer"], ["learning", "activities"]),
-          (i_doc, ["Content", "Designer"], ["media,", "materials"]),
-          (i_calendar, ["Implementation", "Planner"], ["sessions, guides,", "manuals"])]
+STAGES = [(i_search, ["Needs", "Analysis"]),
+          (i_target, ["Outcome", "Designer"]),
+          (i_clip, ["Assessment", "Designer"]),
+          (i_bulb, ["Activity", "Designer"]),
+          (i_doc, ["Content", "Designer"]),
+          (i_calendar, ["Implementation", "Planner"])]
 xs, cw = row(6)
-CY1, CH1 = L1_Y + 40, 150
-for k, (icon, title, desc) in enumerate(STAGES):
-    card(xs[k], CY1, cw, CH1, icon, title, desc, color=NAVY, n=k + 1)
+CY1 = L1_Y + HEAD + BADGE
+for k, (icon, title) in enumerate(STAGES):
+    card(xs[k], CY1, cw, CH1, icon, title, color=NAVY, n=k + 1)
 chevrons([xs[k] + cw + CGAP / 2 for k in range(5)], CY1 + CH1 / 2, NAVY)
-DY = CY1 + CH1 + 9
-rect(xs[2], DY, xs[5] + cw - xs[2], 30, fill="#FFFFFF", stroke=NAVY, sw=1.3, r=8)
+DY = CY1 + CH1 + CGAP
+rect(xs[2], DY, xs[5] + cw - xs[2], DEV_H, fill="#FFFFFF", stroke=NAVY, sw=1.3, r=8)
 for k in range(3):
     i_robot(xs[2] + 22 + 24 * k, DY + 18, s=0.72)
 text(xs[2] + 100, DY + 15, "Developer agents: items, activities, materials, sessions "
-     "per module", fs=14, anchor="start")
+     "per topic", fs=14, anchor="start")
 text(xs[0], DY + 15, "Backward Design order", fs=14, fc=GREY, italic=True, anchor="start")
 
 # ── layer 2: support around the small model ────────────────────────────────
 layer(MID_X, L2_Y, MID_W, L2_H, "2. Small Language Model Support Layer (orchestration)",
       PURP, PURP_BG)
-ORCH = [(i_graph, ["Alignment", "Graph"], ["links objectives,", "activities, assessments"]),
-        (i_check, ["Validation"], ["checks each", "submitted artifact"]),
-        (i_loop, ["Repair Loop"], ["errors back to", "the owner agent"]),
-        (i_braces, ["Schema per", "Artifact"], ["constrained decoding", "(vLLM)"]),
-        (i_ledger, ["Audit &", "Tracking"], ["graph and", "violation ledger"])]
+ORCH = [(i_graph, ["Alignment Graph"]),
+        (i_check, ["Validation"]),
+        (i_loop, ["Repair Loop"]),
+        (i_braces, ["Artifact Schema"]),
+        (i_ledger, ["Audit Trail"])]
 xs, cw = row(5)
-for k, (icon, title, desc) in enumerate(ORCH):
-    card(xs[k], L2_Y + 38, cw, L2_H - 52, lambda x, y, f=icon: f(x, y, PURP) if f not in
-         (i_graph,) else f(x, y), title, desc, color=PURP)
+for k, (icon, title) in enumerate(ORCH):
+    card(xs[k], L2_Y + HEAD, cw, CH2, lambda x, y, f=icon: f(x, y, PURP), title, color=PURP)
 
 # ── layer 3: teaching and learning ──────────────────────────────────────────
 layer(MID_X, L3_Y, MID_W, L3_H, "3. Teaching & Learning Process Layer", GREEN, GREEN_BG)
-USE = [(i_screen, ["Web App"], ["teacher traces and", "reviews the design"], False),
-       (i_teacher, ["Delivery"], ["teaches with", "session plans"], True),
-       (i_people, ["Students"], ["study, practise,", "take assessments"], True),
-       (i_chat, ["Interaction"], ["teacher and", "students"], True),
-       (i_chart, ["Learning", "outcomes"], ["knowledge,", "skills"], True)]
+USE = [(i_screen, ["Web App"], False),
+       (i_teacher, ["Delivery"], True),
+       (i_people, ["Students"], True),
+       (i_chat, ["Interaction"], True),
+       (i_chart, ["Outcomes"], True)]
 xs, cw = row(5)
-for k, (icon, title, desc, dashed) in enumerate(USE):
-    card(xs[k], L3_Y + 38, cw, L3_H - 52, lambda x, y, f=icon: f(x, y, GREEN), title, desc,
+for k, (icon, title, dashed) in enumerate(USE):
+    card(xs[k], L3_Y + HEAD, cw, CH3, lambda x, y, f=icon: f(x, y, GREEN), title,
          color=GREEN, dashed=dashed)
-chevrons([xs[k] + cw + CGAP / 2 for k in range(4)], L3_Y + 38 + (L3_H - 52) / 2, GREEN)
-text(MID_X + MID_W - 16, L3_Y + 20, "dashed: not built or measured in this study", fs=14,
+chevrons([xs[k] + cw + CGAP / 2 for k in range(4)], L3_Y + HEAD + CH3 / 2, GREEN)
+text(MID_X + MID_W - PAD, L3_Y + 20, "dashed: not built or measured in this study", fs=14,
      fc=GREY, italic=True, anchor="end")
 
 # arrows down between the layers and into the bar
@@ -366,19 +381,14 @@ for y0, y1 in ((L1_Y + L1_H, L2_Y), (L2_Y + L2_H, L3_Y), (L3_Y + L3_H, BAR_Y)):
 
 # ── output ──────────────────────────────────────────────────────────────────
 rect(OUT_X, SIDE_TOP, SIDE_W, SIDE_BOTTOM - SIDE_TOP, fill=GOLD_BG, stroke=GOLD, sw=2.2, r=12)
-text(OUT_X + SIDE_W / 2, SIDE_TOP + 24, "Output", fs=22, bold=True, fc=GOLD)
-OUTPUTS = [(i_doc, ["Course design"], ["objectives, modules", "assessment plan",
-                                         "items, rubrics"]),
-           (i_book, ["Teaching", "materials"], ["learning activities", "media selection",
-                                                "materials per module"]),
-           (i_calendar, ["Delivery plan"], ["session plans", "instructor guide",
-                                            "operator manual"]),
-           (None, ["Audit record"], ["alignment graph", "violation ledger",
-                                     "traced in web app"])]
-for k, (icon, title, bullets) in enumerate(OUTPUTS):
-    draw = (lambda x, y: i_graph(x, y)) if icon is None else (lambda x, y, f=icon: f(x, y, GOLD))
-    side_card(OUT_X + 9, SIDE_TOP + 44 + k * (ch + 10), SIDE_W - 18, ch, draw, title,
-              bullets, GOLD)
+text(OUT_X + SIDE_W / 2, SIDE_TOP + 20, "Output", fs=22, bold=True, fc=GOLD)
+OUTPUTS = [(i_doc, ["Course design"]),
+           (i_book, ["Learning", "materials"]),
+           (i_calendar, ["Delivery plan"]),
+           (i_graph_ledger, ["Alignment graph", "& violation ledger"])]
+for k, (icon, title) in enumerate(OUTPUTS):
+    side_card(OUT_X + PAD, SIDE_TOP + HEAD + k * (ch + CGAP), SIDE_W - 2 * PAD, ch,
+              lambda x, y, f=icon: f(x, y, GOLD), title, GOLD)
 
 # input -> layer 1, layer 1 -> output
 path([(IN_X + SIDE_W + 2, CY1 + CH1 / 2), (MID_X - 3, CY1 + CH1 / 2)], color=NAVY, sw=3)
@@ -387,10 +397,10 @@ path([(MID_X + MID_W + 2, CY1 + CH1 / 2), (OUT_X - 3, CY1 + CH1 / 2)], color=GOL
 # ── continuous improvement: output -> bar -> input, all dashed ─────────────
 rect(MID_X, BAR_Y, MID_W, BAR_H, fill="#FFFFFF", stroke=NAVY, sw=2.2, r=12, dash=True)
 i_loop(MID_X + 40, BAR_Y + BAR_H / 2)
-text(MID_X + 72, BAR_Y + 19, "Continuous Improvement (Feedback Loop) — future extension",
-     fs=17, bold=True, fc=NAVY, anchor="start")
-text(MID_X + 72, BAR_Y + 40, "Teacher edits  →  trace affected artifacts in the graph  →  "
-     "owner agent revises  →  re-check", fs=15, fc=GREY, anchor="start")
+text(MID_X + 72, BAR_Y + 15, "Local Editing Loop — future extension", fs=17, bold=True,
+     fc=NAVY, anchor="start")
+text(MID_X + 72, BAR_Y + 33, "Teacher edits  →  trace affected artifacts in the graph  →  "
+     "owner agent revises  →  re-check", fs=14, fc=GREY, anchor="start")
 oc, ic = OUT_X + SIDE_W / 2, IN_X + SIDE_W / 2
 by = BAR_Y + BAR_H / 2
 path([(oc, SIDE_BOTTOM + 2), (oc, by), (MID_X + MID_W + 3, by)], color=NAVY, sw=2.6,
