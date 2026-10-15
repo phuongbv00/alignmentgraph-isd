@@ -149,9 +149,8 @@ chiếu mức nhận thức được khai báo cho câu hỏi đánh giá và ho
 
 \begin{figure*}[t]
   \centering
-  \includegraphics[width=0.94\textwidth]{overview.pdf}
-  \caption{Kiến trúc tổng quát của hệ thống. Lớp 1 gồm sáu tác tử theo công đoạn; lớp 2 là lớp
-  điều phối quanh SLM; lớp 3 là quá trình dạy và học, nơi giảng viên dùng bản thiết kế. Các khối nét
+  \includegraphics[width=0.86\textwidth]{overview.pdf}
+  \caption{Kiến trúc tổng quát của hệ thống. Các khối nét
   đứt ở lớp 3 và vòng chỉnh sửa là bối cảnh sử dụng và hướng mở rộng, không thuộc phạm vi thực
   nghiệm.}
   \label{fig:arch}
@@ -190,8 +189,7 @@ bài giảng được tổ chức theo cấu trúc ADDIE, đồ thị căn chỉ
 \end{table}
 
 Bảng~\ref{tab:stages} liệt kê sáu công đoạn. Thứ tự công đoạn tuân theo Backward Design: xác định kết quả mong muốn trước, sau đó đến bằng chứng đánh giá và cuối
-cùng là kế hoạch học tập~\cite{wiggins2005ubd}. Thứ tự này cố định. Tác tử tự chủ trong cách
-thực hiện một công đoạn nhưng không chọn công đoạn kế tiếp. Ở bốn công đoạn sau, số sản phẩm
+cùng là kế hoạch học tập~\cite{wiggins2005ubd}. Ở bốn công đoạn sau, số sản phẩm
 tăng theo quy mô học phần. Các sản phẩm này do tầng tác tử phát triển (Developer) viết theo
 từng chủ đề. Mỗi Developer nhận một nhóm việc được suy ra từ thiết kế đã có. Sáu công đoạn là cách phân rã vận hành của hệ
 đa tác tử; đầu ra cuối cùng vẫn được tổ chức theo năm pha ADDIE để tương thích với benchmark.
@@ -228,14 +226,13 @@ $C_2$ và $C_3$, nhiệm vụ đánh giá với $C_4$) và $N_r(v)$ là tập n�
 \end{equation}
 Hai đại
 lượng này cho biết quan hệ có tồn tại hay không, không cho biết thiết kế có giá trị sư phạm hay
-không. Một cạnh vẫn được tính khi phép kiểm tra mức Bloom gắn cờ nó; cờ này được báo riêng trong
-sổ vi phạm.
+không.
 
 SLM không trực tiếp khởi tạo các cạnh của đồ thị. Với ba quan hệ cốt lõi, mỗi sản phẩm khai báo định danh của sản phẩm mà nó
 phục vụ, ví dụ một hoạt động khai báo mục tiêu học tập mà hoạt động đó hỗ trợ đạt. Khi ghi nhận một sản phẩm, lớp điều
 phối đối chiếu từng định danh tham chiếu và tự động tạo cạnh tương ứng. Một lần nộp bị từ chối
 nếu trường tham chiếu không chứa định danh (ID) hợp lệ trỏ đến một nút đã tồn tại trong đồ thị. Mức Bloom của mục tiêu học tập, câu hỏi và hoạt động cũng do tác tử khai báo; các phép kiểm tra so
-sánh những nhãn và ID này, không đọc lại nội dung văn bản.
+sánh các nhãn và ID này, không đọc nội dung văn bản.
 
 \subsection{Kiểm tra, sửa và khả năng mở rộng}
 \label{sec:repair}
@@ -261,7 +258,7 @@ hệ thống lần theo cạnh để tìm các sản phẩm liên quan, giao l�
 
 \begin{figure*}[t]
   \centering
-  \includegraphics[width=0.76\textwidth]{case.png}
+  \includegraphics[width=0.66\textwidth]{case.png}
   \caption{Ứng dụng web cho học phần Nhập môn Học máy. (a) Quy trình: sáu công đoạn, bước đối
   chiếu vi phạm và bước tổng hợp, kèm tác tử, sản phẩm đã nộp và kết quả tự kiểm tra.
   (b) Đồ thị căn chỉnh của bộ bài giảng ở lớp quan hệ cốt lõi: mục tiêu học tập (ILO), hoạt động (TLA) và
@@ -304,21 +301,21 @@ khả năng ứng dụng, không phải một phép đánh giá chất lượng 
 
 \begin{figure*}[t]
   \centering
-  \includegraphics[width=0.86\textwidth]{case_outputs.png}
-  \caption{Ba sản phẩm đầu ra trên giao diện, mỗi sản phẩm kèm các quan hệ của nó trong đồ thị.
+  \includegraphics[width=0.74\textwidth]{case_outputs.png}
+  \caption{Ba sản phẩm đầu ra, kèm các quan hệ trong đồ thị.
   (a) Học liệu MAT-0101 (slide), thuộc chủ đề MOD-01 và được dùng ở \caseMatSessions{} kế hoạch buổi học. (b) Hoạt động
   TLA-0102, hỗ trợ đạt mục tiêu học tập ILO-02 và chuẩn bị cho nhiệm vụ đánh giá AT-01. (c) Nhiệm vụ đánh giá
-  tổng kết AT-02, đo \caseTaskObjs{} mục tiêu học tập và được \caseTaskActs{} hoạt động chuẩn bị, cùng một câu hỏi của nó kèm
-  tiêu chí rubric; dải chấm đánh dấu phần nội dung được lược bớt. Các quan hệ P ghi nguồn gốc và
+  tổng kết AT-02, đo \caseTaskObjs{} mục tiêu học tập và được \caseTaskActs{} hoạt động chuẩn bị, cùng một câu hỏi kèm
+  tiêu chí rubric; dải chấm là phần lược bớt. Các quan hệ phụ (P) ghi nguồn gốc và
   cách tổ chức theo chủ đề.}
   \label{fig:outputs}
 \end{figure*}
 
 \begin{figure*}[t]
   \centering
-  \includegraphics[width=0.84\textwidth]{case_audit.png}
-  \caption{Đồ thị và sổ vi phạm trên giao diện. (a) Mục tiêu học tập ILO-04 khép kín tam giác $C_2$--$C_4$ và các phép kiểm tra mức Bloom của nó.
-  (b) Sổ vi phạm: các vi phạm còn mở và các vi phạm đã được sửa, kèm bên đã sửa.}
+  \includegraphics[width=0.70\textwidth]{case_audit.png}
+  \caption{Đồ thị và sổ vi phạm. (a) Mục tiêu học tập ILO-04 khép kín tam giác $C_2$--$C_4$, kèm phép kiểm tra mức Bloom.
+  (b) Vi phạm còn mở và vi phạm đã sửa, kèm bên sửa.}
   \label{fig:audit}
 \end{figure*}
 
@@ -347,7 +344,7 @@ Kiến trúc đề xuất được hiện thực thành một ứng dụng web. 
 học phần thông qua giao diện hội thoại, rồi khởi chạy hệ thống trên một SLM được triển khai cục bộ. Sau khi chạy xong, giảng viên chọn từng nút
 để xem nội dung sản phẩm, các quan hệ của nó và các vi phạm còn mở.
 
-Trong nghiên cứu tình huống, chúng tôi soạn bản mô tả yêu cầu cho học phần Nhập môn Học máy dành cho sinh viên Công nghệ
+Chúng tôi soạn bản mô tả yêu cầu cho học phần Nhập môn Học máy dành cho sinh viên Công nghệ
 Thông tin năm thứ ba: 4 tuần (30 giờ), học kết hợp, sĩ số 40 sinh viên, thực hành Python
 trên Google Colab. Bản mô tả có bốn mục tiêu của học phần: quy trình học có giám sát, cài đặt hồi
 quy tuyến tính và cây quyết định, đánh giá mô hình, và xử lý quá khớp (overfitting). Đầu ra yêu cầu bằng
@@ -372,7 +369,7 @@ quan trọng đối với quá trình rà soát của giảng viên. Trên đồ
 \caseCovFour\%, và \caseClosed{} trên \caseObj{} mục tiêu học tập khép kín tam giác
 (Hình~\ref{fig:audit}a). Tuy vậy, sổ vi phạm (Mục~\ref{sec:repair}, Hình~\ref{fig:audit}b) ghi
 nhận \caseViol{} trường hợp, gồm \caseViolAgent{} trường hợp đã được tác tử sửa và \caseViolOpen{} trường hợp còn mở. Các vi
-phạm còn mở chưa được chuyển lại cho tác tử phụ trách, vì được phát hiện
+phạm còn mở chưa được chuyển lại cho tác tử nào, vì được phát hiện
 sau khi tác tử phụ trách đã kết thúc hoặc thuộc phép kiểm tra chưa có tác tử phụ trách. Các vi phạm này
 được duy trì như các chỉ báo cần giảng viên tiếp tục thẩm định: ILO-02 chưa nêu tiêu chí đạt, hoạt động của ILO-03 thấp hơn
 mức Bloom của mục tiêu học tập (cạnh nét đứt màu đỏ ở Hình~\ref{fig:case}b), tổng thời lượng hoạt động của
