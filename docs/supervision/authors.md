@@ -23,8 +23,8 @@ Different from the journal byline above, per the supervisor's message of 2026-10
 ("em đứng tên đầu, thầy Tâm, rồi mình"):
 
 1. **Bùi Việt Phương** — first author
-2. **Bùi Văn Tâm**
-3. **Phạm Văn Hải** — corresponding author (`*`), confirmed 2026-10-13
+2. **Bùi Văn Tâm** — corresponding author (2026-10-15), marked on EasyChair only; the byline carries no `*`
+3. **Phạm Văn Hải**
 
 The journal paper keeps its own order above.
 
