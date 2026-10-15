@@ -5,7 +5,7 @@ of cards, three stacked layers of cards, an Output column of cards, and a dashed
 local-editing bar under everything that closes the loop from the output back to the
 input. Colours are set for print (white or near-white fills, dark strokes and text):
 
-* 1. Course design & planning layer -- the six role agents and the Developer tier;
+* 1. Instructional design & planning layer -- the six role agents and the Developer tier;
 * 2. Small-language-model support layer -- what the orchestration layer keeps around
      the model: the alignment graph, validation, the repair loop, a schema per artifact
      and the audit trail;
@@ -316,7 +316,7 @@ def row(n):
 # ── input ───────────────────────────────────────────────────────────────────
 rect(IN_X, SIDE_TOP, SIDE_W, SIDE_BOTTOM - SIDE_TOP, fill=NAVY_BG, stroke=NAVY, sw=2.2, r=12)
 text(IN_X + SIDE_W / 2, SIDE_TOP + 20, "Input", fs=22, bold=True, fc=NAVY)
-INPUTS = [(i_doc, ["Course goals", "& objectives"]),
+INPUTS = [(i_doc, ["Learning goals", "& objectives"]),
           (i_people, ["Learners' profile"]),
           (i_book, ["Learning", "resources"]),
           (i_server, ["Small language", "model"])]
@@ -326,7 +326,7 @@ for k, (icon, title) in enumerate(INPUTS):
               title, NAVY)
 
 # ── layer 1: the six stages ─────────────────────────────────────────────────
-layer(MID_X, L1_Y, MID_W, L1_H, "1. Course Design & Planning Layer (multi-agent)",
+layer(MID_X, L1_Y, MID_W, L1_H, "1. Instructional Design & Planning Layer (multi-agent)",
       NAVY, NAVY_BG)
 STAGES = [(i_search, ["Needs", "Analysis"]),
           (i_target, ["Outcome", "Designer"]),
@@ -382,7 +382,7 @@ for y0, y1 in ((L1_Y + L1_H, L2_Y), (L2_Y + L2_H, L3_Y), (L3_Y + L3_H, BAR_Y)):
 # ── output ──────────────────────────────────────────────────────────────────
 rect(OUT_X, SIDE_TOP, SIDE_W, SIDE_BOTTOM - SIDE_TOP, fill=GOLD_BG, stroke=GOLD, sw=2.2, r=12)
 text(OUT_X + SIDE_W / 2, SIDE_TOP + 20, "Output", fs=22, bold=True, fc=GOLD)
-OUTPUTS = [(i_doc, ["Course design"]),
+OUTPUTS = [(i_doc, ["Instructional design"]),
            (i_book, ["Learning", "materials"]),
            (i_calendar, ["Delivery plan"]),
            (i_graph_ledger, ["Alignment graph", "& violation ledger"])]

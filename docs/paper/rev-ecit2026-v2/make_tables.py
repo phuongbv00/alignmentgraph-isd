@@ -206,7 +206,7 @@ def judge_table(doc: dict, mac: Macros) -> str:
         r"  \setlength{\tabcolsep}{2.5pt}",
         r"  \begin{tabular}{@{}lcccc@{}}",
         r"    \toprule",
-        r"    Hệ & ADDIE $\uparrow$ & Trajectory $\uparrow$ & Total $\uparrow$ "
+        r"    Phương pháp & ADDIE $\uparrow$ & Trajectory $\uparrow$ & Total $\uparrow$ "
         r"& Token (k) $\downarrow$ \\",
         r"    \midrule",
         *body,
