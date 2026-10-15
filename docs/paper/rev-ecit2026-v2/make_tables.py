@@ -188,7 +188,7 @@ def judge_table(doc: dict, mac: Macros) -> str:
     for i, a in enumerate(order):
         cells = [cols[s][i] for s in SCORES] + [tok_cells[i]]
         body.append(f"    {AGENTS.get(a, (a, a))[0]} & " + " & ".join(cells) + r" \\")
-    notes = [r"$^{*}$ khác có ý nghĩa so với hệ thống đề xuất (Wilcoxon theo cặp, Holm trong từng "
+    notes = [r"$^{*}$ khác biệt có ý nghĩa so với hệ thống đề xuất (Wilcoxon theo cặp, Holm trong từng "
              r"điểm, $p<0.05$)."]
     if tok_n:
         notes.append("Số kịch bản có dữ liệu token: "
